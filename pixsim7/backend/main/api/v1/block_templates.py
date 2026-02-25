@@ -6,6 +6,7 @@ REST API for managing block templates and rolling prompts:
 - Preview: count/sample matching blocks for a slot definition
 """
 from datetime import datetime
+from collections import Counter
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -550,16 +551,18 @@ def _resolve_block_matrix_value(
         return missing_label
 
     top_level_keys = {"role", "category", "package_name", "kind", "default_intent", "complexity_level"}
+    tags = getattr(block, "tags", None)
+    tags_dict: Dict[str, Any] = tags if isinstance(tags, dict) else {}
 
     if key.startswith("tag:"):
         tag_key = key[4:]
-        value = (getattr(block, "tags", None) or {}).get(tag_key)
+        value = tags_dict.get(tag_key)
     elif key in top_level_keys:
         value = getattr(block, key, None)
         if key == "default_intent" and value is not None:
             value = getattr(value, "value", value)
     else:
-        value = (getattr(block, "tags", None) or {}).get(key)
+        value = tags_dict.get(key)
 
     if value is None or value == "":
         return missing_label
@@ -569,6 +572,212 @@ def _resolve_block_matrix_value(
         # Keep matrix cells readable; nested dicts are not ideal matrix axes.
         return "{...}"
     return str(value)
+
+
+def _extend_axis_values_from_canonical_dictionary(
+    axis_values: set[str],
+    axis_key: str,
+    *,
+    include_empty: bool,
+    expected_values_csv: Optional[str],
+) -> None:
+    """Augment observed axis values with canonical allowed values when requested.
+
+    This makes matrix presets more future-proof:
+    - If `include_empty=true` and the axis is a canonical tag key with allowed_values,
+      we include those values even if no blocks exist yet.
+    - Explicit `expected_*_values` always wins (we still include those as well).
+    """
+    if expected_values_csv:
+        axis_values.update(v.strip() for v in expected_values_csv.split(",") if v.strip())
+        return
+    if not include_empty:
+        return
+
+    # Only apply to tag axes (explicit tag:<key>), or implicit tag axes that match canonical keys.
+    from pixsim7.backend.main.services.prompt.block.tag_dictionary import get_canonical_block_tag_dictionary
+
+    canonical = get_canonical_block_tag_dictionary()
+    axis_key = (axis_key or "").strip()
+    if not axis_key:
+        return
+
+    top_level_keys = {"role", "category", "package_name", "kind", "default_intent", "complexity_level"}
+    tag_key: Optional[str] = None
+    if axis_key.startswith("tag:"):
+        tag_key = axis_key[4:].strip()
+    elif axis_key not in top_level_keys and axis_key in canonical:
+        tag_key = axis_key
+
+    if not tag_key:
+        return
+
+    meta = canonical.get(tag_key) or {}
+    allowed = meta.get("allowed_values") or []
+    if isinstance(allowed, list) and allowed:
+        axis_values.update(str(v) for v in allowed if v is not None and str(v).strip())
+
+
+def _parse_csv_values(csv: Optional[str]) -> List[str]:
+    if not csv:
+        return []
+    return [v.strip() for v in csv.split(",") if v.strip()]
+
+
+def _axis_key_to_tag_key(axis_key: str) -> Optional[str]:
+    """Map a matrix axis key to the underlying tag key, if it targets tags."""
+    axis_key = (axis_key or "").strip()
+    if not axis_key:
+        return None
+    if axis_key.startswith("tag:"):
+        return axis_key[4:].strip() or None
+    top_level_keys = {"role", "category", "package_name", "kind", "default_intent", "complexity_level"}
+    return None if axis_key in top_level_keys else axis_key
+
+
+def _canonical_allowed_values_for_tag_key(tag_key: str) -> List[str]:
+    from pixsim7.backend.main.services.prompt.block.tag_dictionary import get_canonical_block_tag_dictionary
+
+    canonical = get_canonical_block_tag_dictionary()
+    meta = canonical.get(tag_key) or {}
+    allowed = meta.get("allowed_values") or []
+    if not isinstance(allowed, list):
+        return []
+    return [str(v).strip() for v in allowed if v is not None and str(v).strip()]
+
+
+def _build_block_matrix_drift_report(
+    *,
+    blocks: List[Any],
+    row_key: str,
+    col_key: str,
+    missing_label: str,
+    expected_row_values_csv: Optional[str],
+    expected_col_values_csv: Optional[str],
+    use_canonical_expected_values: bool,
+    expected_tag_keys_csv: Optional[str],
+    required_tag_keys_csv: Optional[str],
+    max_entries: int,
+    max_examples_per_entry: int,
+) -> Dict[str, Any]:
+    observed_row_values: set[str] = set()
+    observed_col_values: set[str] = set()
+    row_missing = 0
+    col_missing = 0
+    dict_axis_values = {"row": 0, "col": 0}
+
+    expected_row_values = _parse_csv_values(expected_row_values_csv)
+    expected_col_values = _parse_csv_values(expected_col_values_csv)
+
+    if use_canonical_expected_values and not expected_row_values:
+        tag_key = _axis_key_to_tag_key(row_key)
+        if tag_key:
+            expected_row_values = _canonical_allowed_values_for_tag_key(tag_key)
+    if use_canonical_expected_values and not expected_col_values:
+        tag_key = _axis_key_to_tag_key(col_key)
+        if tag_key:
+            expected_col_values = _canonical_allowed_values_for_tag_key(tag_key)
+
+    expected_row_set = set(expected_row_values) if expected_row_values else None
+    expected_col_set = set(expected_col_values) if expected_col_values else None
+
+    expected_tag_keys = set(_parse_csv_values(expected_tag_keys_csv)) if expected_tag_keys_csv else None
+    required_tag_keys = _parse_csv_values(required_tag_keys_csv)
+
+    unexpected_tag_key_counts: Counter[str] = Counter()
+    unexpected_tag_key_examples: Dict[str, List[str]] = {}
+    missing_required_counts: Counter[str] = Counter()
+    missing_required_examples: Dict[str, List[str]] = {}
+    observed_tag_key_counts: Counter[str] = Counter()
+
+    for b in blocks:
+        row_value = _resolve_block_matrix_value(b, row_key, missing_label=missing_label)
+        col_value = _resolve_block_matrix_value(b, col_key, missing_label=missing_label)
+
+        observed_row_values.add(row_value)
+        observed_col_values.add(col_value)
+
+        if row_value == missing_label:
+            row_missing += 1
+        if col_value == missing_label:
+            col_missing += 1
+        if row_value == "{...}":
+            dict_axis_values["row"] += 1
+        if col_value == "{...}":
+            dict_axis_values["col"] += 1
+
+        tags = b.tags if isinstance(getattr(b, "tags", None), dict) else {}
+        block_id = getattr(b, "block_id", "") or ""
+
+        for k in tags.keys():
+            key = str(k)
+            observed_tag_key_counts[key] += 1
+            if expected_tag_keys is not None and key not in expected_tag_keys:
+                unexpected_tag_key_counts[key] += 1
+                bucket = unexpected_tag_key_examples.setdefault(key, [])
+                if block_id and len(bucket) < max_examples_per_entry:
+                    bucket.append(block_id)
+
+        for req_key in required_tag_keys:
+            value = tags.get(req_key)
+            missing = value is None or value == "" or value == [] or value == {}
+            if missing:
+                missing_required_counts[req_key] += 1
+                bucket = missing_required_examples.setdefault(req_key, [])
+                if block_id and len(bucket) < max_examples_per_entry:
+                    bucket.append(block_id)
+
+    unexpected_row_values: List[str] = []
+    unexpected_col_values: List[str] = []
+    if expected_row_set is not None:
+        unexpected_row_values = sorted(
+            v for v in observed_row_values
+            if v not in expected_row_set and v != missing_label
+        )
+    if expected_col_set is not None:
+        unexpected_col_values = sorted(
+            v for v in observed_col_values
+            if v not in expected_col_set and v != missing_label
+        )
+
+    def _top(counter: Counter[str]) -> List[Dict[str, Any]]:
+        items = [{"key": k, "count": v} for k, v in counter.most_common(max_entries)]
+        return items
+
+    def _top_with_examples(counter: Counter[str], examples: Dict[str, List[str]]) -> List[Dict[str, Any]]:
+        items = []
+        for k, v in counter.most_common(max_entries):
+            items.append({"key": k, "count": v, "examples": examples.get(k, [])})
+        return items
+
+    drift: Dict[str, Any] = {
+        "row": {
+            "row_key": row_key,
+            "missing_label": missing_label,
+            "missing_count": row_missing,
+            "dict_value_count": dict_axis_values["row"],
+            "observed_values": sorted(observed_row_values),
+            "expected_values": expected_row_values or None,
+            "unexpected_values": unexpected_row_values,
+        },
+        "col": {
+            "col_key": col_key,
+            "missing_label": missing_label,
+            "missing_count": col_missing,
+            "dict_value_count": dict_axis_values["col"],
+            "observed_values": sorted(observed_col_values),
+            "expected_values": expected_col_values or None,
+            "unexpected_values": unexpected_col_values,
+        },
+        "tags": {
+            "expected_keys": sorted(expected_tag_keys) if expected_tag_keys is not None else None,
+            "required_keys": required_tag_keys or None,
+            "observed_keys_top": _top(observed_tag_key_counts),
+            "unexpected_keys_top": _top_with_examples(unexpected_tag_key_counts, unexpected_tag_key_examples) if expected_tag_keys is not None else [],
+            "missing_required_top": _top_with_examples(missing_required_counts, missing_required_examples) if required_tag_keys else [],
+        },
+    }
+    return drift
 
 
 def _to_block_response(block: Any) -> BlockResponse:
@@ -706,6 +915,12 @@ async def get_block_matrix(
     include_empty: bool = Query(False, description="Include zero-count cells in response"),
     expected_row_values: Optional[str] = Query(None, description="Optional comma-separated row values to include even when empty"),
     expected_col_values: Optional[str] = Query(None, description="Optional comma-separated column values to include even when empty"),
+    include_drift_report: bool = Query(False, description="Include drift report under filters.drift_report"),
+    use_canonical_expected_values: bool = Query(False, description="When drift report enabled, treat canonical tag allowed_values as expected when expected_* is not provided"),
+    expected_tag_keys: Optional[str] = Query(None, description="Comma-separated tag keys expected in scoped blocks (drift report)"),
+    required_tag_keys: Optional[str] = Query(None, description="Comma-separated tag keys required in scoped blocks (drift report)"),
+    drift_max_entries: int = Query(50, ge=1, le=500, description="Max distinct drift items returned per section (drift report)"),
+    drift_examples_per_entry: int = Query(5, ge=0, le=50, description="Max example block_ids returned per drift item (drift report)"),
     db: AsyncSession = Depends(get_db),
 ):
     """Build a block coverage matrix from DB-loaded blocks (AI + UI friendly)."""
@@ -740,10 +955,18 @@ async def get_block_matrix(
             if len(bucket) < sample_per_cell:
                 bucket.append(b)
 
-    if expected_row_values:
-        row_values.update(v.strip() for v in expected_row_values.split(",") if v.strip())
-    if expected_col_values:
-        col_values.update(v.strip() for v in expected_col_values.split(",") if v.strip())
+    _extend_axis_values_from_canonical_dictionary(
+        row_values,
+        row_key,
+        include_empty=include_empty,
+        expected_values_csv=expected_row_values,
+    )
+    _extend_axis_values_from_canonical_dictionary(
+        col_values,
+        col_key,
+        include_empty=include_empty,
+        expected_values_csv=expected_col_values,
+    )
 
     sorted_rows = sorted(row_values)
     sorted_cols = sorted(col_values)
@@ -793,6 +1016,21 @@ async def get_block_matrix(
             "limit": limit,
             "sample_per_cell": sample_per_cell,
             "missing_label": missing_label,
+            "drift_report": _build_block_matrix_drift_report(
+                blocks=blocks,
+                row_key=row_key,
+                col_key=col_key,
+                missing_label=missing_label,
+                expected_row_values_csv=expected_row_values,
+                expected_col_values_csv=expected_col_values,
+                use_canonical_expected_values=use_canonical_expected_values,
+                expected_tag_keys_csv=expected_tag_keys,
+                required_tag_keys_csv=required_tag_keys,
+                max_entries=drift_max_entries,
+                max_examples_per_entry=drift_examples_per_entry,
+            )
+            if include_drift_report
+            else None,
         },
         cells=cells,
     )
