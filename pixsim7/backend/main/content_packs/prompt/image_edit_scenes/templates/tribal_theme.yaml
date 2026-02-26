@@ -68,7 +68,7 @@ templates:
           defaultValue: 0
           effects:
             - kind: slot_tag_boost
-              slotLabel: Wardrobe theme
+              slotLabel: Aesthetic theme
               enabledAt: 0
               boostTags: { theme_variant: general }
               avoidTags: { theme_variant: [desert, forest, mountain, tundra] }
@@ -78,7 +78,7 @@ templates:
               boostTags: { theme_variant: general }
               avoidTags: { theme_variant: [desert, forest, mountain, tundra] }
             - kind: slot_tag_boost
-              slotLabel: Wardrobe theme
+              slotLabel: Aesthetic theme
               enabledAt: 1
               boostTags: { theme_variant: desert }
               avoidTags: { theme_variant: [general, forest, mountain, tundra] }
@@ -88,7 +88,7 @@ templates:
               boostTags: { theme_variant: desert }
               avoidTags: { theme_variant: [general, forest, mountain, tundra] }
             - kind: slot_tag_boost
-              slotLabel: Wardrobe theme
+              slotLabel: Aesthetic theme
               enabledAt: 2
               boostTags: { theme_variant: forest }
               avoidTags: { theme_variant: [general, desert, mountain, tundra] }
@@ -98,7 +98,7 @@ templates:
               boostTags: { theme_variant: forest }
               avoidTags: { theme_variant: [general, desert, mountain, tundra] }
             - kind: slot_tag_boost
-              slotLabel: Wardrobe theme
+              slotLabel: Aesthetic theme
               enabledAt: 3
               boostTags: { theme_variant: mountain }
               avoidTags: { theme_variant: [general, desert, forest, tundra] }
@@ -108,7 +108,7 @@ templates:
               boostTags: { theme_variant: mountain }
               avoidTags: { theme_variant: [general, desert, forest, tundra] }
             - kind: slot_tag_boost
-              slotLabel: Wardrobe theme
+              slotLabel: Aesthetic theme
               enabledAt: 4
               boostTags: { theme_variant: tundra }
               avoidTags: { theme_variant: [general, desert, forest, mountain] }
@@ -179,22 +179,22 @@ templates:
       matrix_presets:
         - id: tribal-subgenre-coverage
           label: "Tribal: Sub-Genre Coverage"
-          description: "Coverage of tribal wardrobe blocks by sub-genre."
+          description: "Coverage of tribal aesthetic blocks by sub-genre."
           query:
             row_key: tag:theme_variant
             col_key: tag:palette
             role: style
-            category: wardrobe
+            category: aesthetic
             package_name: image_edit_scenes
             tags: theme_family:tribal_handcrafted
             include_empty: true
             expected_row_values: "general,desert,forest,mountain,tundra"
         - id: tribal-allure-coverage
           label: "Tribal: Allure Coverage"
-          description: "Coverage of tribal wardrobe modifier blocks by allure level and silhouette."
+          description: "Coverage of tribal wardrobe modifier blocks by allure level and tightness."
           query:
             row_key: tag:allure_level
-            col_key: tag:silhouette
+            col_key: tag:tightness
             role: style
             category: wardrobe_modifier
             package_name: theme_modifiers
@@ -252,9 +252,9 @@ templates:
         optional: true
         fallback_text: "Preserve the original setting and spatial continuity of the source image."
 
-      - label: Wardrobe theme
+      - label: Aesthetic theme
         role: style
-        category: wardrobe
+        category: aesthetic
         tag_constraints:
           theme_family: tribal_handcrafted
         selection_strategy: weighted_tags

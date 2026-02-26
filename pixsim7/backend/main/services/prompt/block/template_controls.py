@@ -20,10 +20,10 @@ CONTROL_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     # preset defined in template_slots.py.
     #
     # Step mapping:
-    #   0  → preserve existing silhouette / fit
+    #   0  → preserve existing fit
     #   4  → subtle confidence / fitted tailoring
-    #   6  → medium allure / accentuated silhouette
-    #   8  → high allure / daring (non-explicit) silhouette
+    #   6  → medium allure / tight (body-conforming)
+    #   8  → high allure / skin_tight (form-fitting, daring)
     "allure_wardrobe_modifier": [
         {
             "id": "allure",
@@ -41,7 +41,6 @@ CONTROL_PRESETS: Dict[str, List[Dict[str, Any]]] = {
                     "boostTags": {
                         "allure_level": "preserve",
                         "modesty_level": "balanced",
-                        "silhouette": "preserve",
                     },
                     "avoidTags": {"allure_level": ["high"]},
                 },
@@ -52,7 +51,7 @@ CONTROL_PRESETS: Dict[str, List[Dict[str, Any]]] = {
                     "boostTags": {
                         "allure_level": "subtle",
                         "modesty_level": "balanced",
-                        "silhouette": "fitted",
+                        "tightness": "fitted",
                     },
                     "avoidTags": {"allure_level": ["preserve"]},
                 },
@@ -63,7 +62,7 @@ CONTROL_PRESETS: Dict[str, List[Dict[str, Any]]] = {
                     "boostTags": {
                         "allure_level": "medium",
                         "modesty_level": "balanced",
-                        "silhouette": "accentuated",
+                        "tightness": "tight",
                     },
                     "avoidTags": {"allure_level": ["preserve"]},
                 },
@@ -74,7 +73,7 @@ CONTROL_PRESETS: Dict[str, List[Dict[str, Any]]] = {
                     "boostTags": {
                         "allure_level": "high",
                         "modesty_level": "daring",
-                        "silhouette": "accentuated",
+                        "tightness": "skin_tight",
                     },
                     "avoidTags": {"allure_level": ["preserve"]},
                 },

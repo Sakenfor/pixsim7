@@ -26,7 +26,7 @@ blocks:
     category: wardrobe_modifier
     kind: single_state
     text: >-
-      Keep the outfit's fit and overall silhouette aligned with the source image.
+      Keep the outfit's fit and overall cut aligned with the source image.
       Do not introduce bolder tailoring or more daring cut lines; prioritize continuity.
     tags:
       intent: modify
@@ -34,7 +34,6 @@ blocks:
       modifier_target: wardrobe
       allure_level: preserve
       modesty_level: balanced
-      silhouette: preserve
     complexity_level: simple
 
   - block_id: ie_mod_wardrobe_allure_subtle_01
@@ -50,7 +49,7 @@ blocks:
       modifier_target: wardrobe
       allure_level: subtle
       modesty_level: balanced
-      silhouette: fitted
+      tightness: fitted
     complexity_level: moderate
 
   - block_id: ie_mod_wardrobe_allure_medium_01
@@ -58,15 +57,15 @@ blocks:
     category: wardrobe_modifier
     kind: single_state
     text: >-
-      Steer the outfit toward a confident, fashion-forward silhouette while staying non-explicit.
-      Prefer a more fitted structure with coherent styling lines, wrapped waist accents, and a deliberate, modern finish.
+      Steer the outfit toward a confident, fashion-forward cut while staying non-explicit.
+      Prefer a more body-conforming structure with coherent styling lines, wrapped waist accents, and a deliberate, modern finish.
     tags:
       intent: modify
       modifier_family: allure
       modifier_target: wardrobe
       allure_level: medium
       modesty_level: balanced
-      silhouette: accentuated
+      tightness: tight
     complexity_level: complex
 
   - block_id: ie_mod_wardrobe_allure_high_01
@@ -74,13 +73,13 @@ blocks:
     category: wardrobe_modifier
     kind: single_state
     text: >-
-      Steer the outfit toward a bold, daring, fashion-forward silhouette while remaining tasteful and non-explicit.
-      Prefer stronger fitted structure, more daring but appropriate cut lines, and confident styling emphasis.
+      Steer the outfit toward a bold, form-fitting cut while remaining tasteful and non-explicit.
+      Prefer stronger body-hugging structure, more daring but appropriate cut lines, and confident styling emphasis.
     tags:
       intent: modify
       modifier_family: allure
       modifier_target: wardrobe
       allure_level: high
       modesty_level: daring
-      silhouette: accentuated
+      tightness: skin_tight
     complexity_level: complex

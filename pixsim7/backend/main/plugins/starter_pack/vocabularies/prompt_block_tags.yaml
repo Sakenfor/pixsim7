@@ -181,6 +181,18 @@ tags:
         category: wardrobe
     status: deprecated
 
+  tightness:
+    label: "Tightness"
+    description: "How form-fitting the garment is relative to the body. Used by wardrobe modifier blocks to steer garment cut."
+    data_type: string
+    allowed_values: [fitted, tight, skin_tight]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe_modifier
+    status: active
+
   social_tone:
     label: "Social Tone"
     description: "Lightweight social tone for public interactions."

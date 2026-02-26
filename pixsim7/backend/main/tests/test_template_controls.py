@@ -47,12 +47,18 @@ def test_expand_allure_preset_has_four_effects() -> None:
 def test_expand_allure_preset_effect_tags() -> None:
     [ctrl] = expand_control_presets([{"preset": "allure_wardrobe_modifier"}])
     effects = ctrl["effects"]
-    # Step 0: preserve
+    # Step 0: preserve — no tightness boost
     assert effects[0]["boostTags"]["allure_level"] == "preserve"
     assert effects[0]["boostTags"]["modesty_level"] == "balanced"
-    # Step 8: high / daring
+    assert "tightness" not in effects[0]["boostTags"]
+    # Step 4: fitted
+    assert effects[1]["boostTags"]["tightness"] == "fitted"
+    # Step 6: tight
+    assert effects[2]["boostTags"]["tightness"] == "tight"
+    # Step 8: high / daring / skin_tight
     assert effects[3]["boostTags"]["allure_level"] == "high"
     assert effects[3]["boostTags"]["modesty_level"] == "daring"
+    assert effects[3]["boostTags"]["tightness"] == "skin_tight"
     # All effects target the Wardrobe modifier slot
     assert all(e["slotLabel"] == "Wardrobe modifier" for e in effects)
 

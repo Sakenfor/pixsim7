@@ -1,0 +1,312 @@
+version: "1.0.0"
+
+blocks:
+  # ═══════════════════════════════════════════════════════════════════
+  # STYLE — tribal-inspired handcrafted
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_style_tribal_handcrafted_01
+    role: style
+    category: aesthetic
+    kind: single_state
+    text: >-
+      Contemporary tribal-inspired, handcrafted aesthetic. Natural fibers, woven
+      textures, leather wraps, beadwork accents, and geometric motifs. Earthy palette:
+      sand, umber, charcoal, muted red.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tribal_subgenre: general
+      theme_variant: general
+      genre: modern
+      palette: earthy
+    complexity_level: complex
+
+  - block_id: ie_style_tribal_handcrafted_02
+    role: style
+    category: aesthetic
+    kind: single_state
+    text: >-
+      Earthy, artisan tribal-inspired aesthetic. Layered textiles, stitched seams,
+      subtle fringe, and small beadwork details. Matte materials and weathered texture.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tribal_subgenre: general
+      theme_variant: general
+      genre: modern
+      palette: earthy
+    complexity_level: complex
+
+  - block_id: ie_style_tribal_handcrafted_desert_01
+    role: style
+    category: aesthetic
+    kind: single_state
+    text: >-
+      Desert-worn, handcrafted tribal-inspired aesthetic. Sun-bleached textiles,
+      sand-toned wraps, weathered leather straps, and minimal beadwork accents.
+      Earth palette with warm highlights.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tribal_subgenre: desert
+      theme_variant: desert
+      genre: modern
+      palette: sandy_warm
+    complexity_level: complex
+
+  - block_id: ie_style_tribal_handcrafted_desert_02
+    role: style
+    category: aesthetic
+    kind: single_state
+    text: >-
+      Sun-worn handcrafted desert aesthetic. Lightweight layered wraps in faded ochre
+      and bone-white, linen-weight panels, fine cord-wrapped details at waist and hem.
+      Ceramic or stone bead trim in place of metal.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tribal_subgenre: desert
+      theme_variant: desert
+      genre: modern
+      palette: sandy_warm
+    complexity_level: complex
+
+  - block_id: ie_style_tribal_handcrafted_forest_01
+    role: style
+    category: aesthetic
+    kind: single_state
+    text: >-
+      Forest-toned, handcrafted tribal-inspired aesthetic. Woven textures, layered
+      cloth, subtle fringe, and beadwork accents in mossy green and deep brown tones.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tribal_subgenre: forest
+      theme_variant: forest
+      genre: modern
+      palette: moss_earth
+    complexity_level: complex
+
+  - block_id: ie_style_tribal_handcrafted_forest_02
+    role: style
+    category: aesthetic
+    kind: single_state
+    text: >-
+      Canopy-shade handcrafted forest aesthetic. Soft draping cloth in dappled olive
+      and bark-brown, seed-bead accents at neckline and cuffs, stitched leaf-vein
+      motifs along hems. Materials feel gathered rather than tailored.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tribal_subgenre: forest
+      theme_variant: forest
+      genre: modern
+      palette: moss_earth
+    complexity_level: complex
+
+  - block_id: ie_style_tribal_handcrafted_mountain_01
+    role: style
+    category: aesthetic
+    kind: single_state
+    text: >-
+      Mountain-utility, handcrafted tribal-inspired aesthetic. Heavier woven layers,
+      stitched edging, rugged straps, and stone/bead accents. Palette of charcoal,
+      slate, and muted earth tones.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tribal_subgenre: mountain
+      theme_variant: mountain
+      genre: modern
+      palette: slate_earth
+    complexity_level: complex
+
+  - block_id: ie_style_tribal_handcrafted_mountain_02
+    role: style
+    category: aesthetic
+    kind: single_state
+    text: >-
+      High-altitude handcrafted aesthetic. Quilted panels in granite-grey and deep
+      ochre, toggle closures carved from bone or wood, wrapped over-layers at the
+      torso, obsidian bead trim at seams. Construction feels functional and durable.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tribal_subgenre: mountain
+      theme_variant: mountain
+      genre: modern
+      palette: slate_earth
+    complexity_level: complex
+
+  - block_id: ie_style_tribal_handcrafted_tundra_01
+    role: style
+    category: aesthetic
+    kind: single_state
+    text: >-
+      Cold-climate, handcrafted tribal-inspired aesthetic. Layered textiles with
+      warmer weight, subtle trim, and small bead details. Palette of off-white,
+      charcoal, and muted blue-grey.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tribal_subgenre: tundra
+      theme_variant: tundra
+      genre: modern
+      palette: cold_earth
+    complexity_level: complex
+
+  - block_id: ie_style_tribal_handcrafted_tundra_02
+    role: style
+    category: aesthetic
+    kind: single_state
+    text: >-
+      Arctic-edge handcrafted aesthetic. Dense wrapped layers in ash-white and
+      pewter-grey, embroidered geometric borders at cuffs and hem, small bone-white
+      bead clusters at the collar. Fabric weight feels substantial; no exposed seams.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tribal_subgenre: tundra
+      theme_variant: tundra
+      genre: modern
+      palette: cold_earth
+    complexity_level: complex
+
+  # ═══════════════════════════════════════════════════════════════════
+  # ACCESSORIES — bone ornament controls (preserve vs add)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_accessory_bone_preserve_01
+    role: style
+    category: accessories
+    kind: single_state
+    text: >-
+      If the source image already contains bone beads or bone ornaments, preserve them.
+      Otherwise keep accessories minimal and do not add new bone elements.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      bone_ornament_policy: allow
+    complexity_level: simple
+
+  - block_id: ie_accessory_bone_subtle_01
+    role: style
+    category: accessories
+    kind: single_state
+    text: >-
+      Add subtle bone-themed accessories: a small bone-bead bracelet or a short
+      bead strand necklace. Keep proportions realistic and understated.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      bone_ornament_policy: require
+      bone_ornament_level: subtle
+    complexity_level: moderate
+
+  - block_id: ie_accessory_bone_medium_01
+    role: style
+    category: accessories
+    kind: single_state
+    text: >-
+      Add moderate bone ornamentation: a bone-bead necklace with a small pendant,
+      matching bracelet, and one hair pin. Keep materials matte and natural.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      bone_ornament_policy: require
+      bone_ornament_level: medium
+    complexity_level: complex
+
+  - block_id: ie_accessory_bone_heavy_01
+    role: style
+    category: accessories
+    kind: single_state
+    text: >-
+      Add prominent bone ornamentation: a layered bone-bead necklace, larger pendant,
+      and multiple matching accessories. Keep it tasteful and physically plausible;
+      avoid sharp or threatening shapes.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      bone_ornament_policy: require
+      bone_ornament_level: heavy
+    complexity_level: complex
+
+  # ═══════════════════════════════════════════════════════════════════
+  # BODY ART — tattoo controls (preserve vs add)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_body_art_tattoo_preserve_01
+    role: style
+    category: body_art
+    kind: single_state
+    text: >-
+      If the source image already contains tattoos, preserve them faithfully.
+      Otherwise do not introduce new tattoos.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tattoo_policy: allow
+    complexity_level: simple
+
+  - block_id: ie_body_art_tattoo_subtle_01
+    role: style
+    category: body_art
+    kind: single_state
+    text: >-
+      Add subtle, minimal tattoos: a small geometric pattern on the forearm or shoulder.
+      Keep linework clean and realistic; do not cover large areas.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tattoo_policy: require
+      tattoo_level: subtle
+    complexity_level: moderate
+
+  - block_id: ie_body_art_tattoo_medium_01
+    role: style
+    category: body_art
+    kind: single_state
+    text: >-
+      Add moderate tattoos with geometric motifs: a forearm band and a shoulder piece,
+      sized to the visible skin area. Keep design coherent and not tied to any specific culture.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tattoo_policy: require
+      tattoo_level: medium
+    complexity_level: complex
+
+  - block_id: ie_body_art_tattoo_heavy_01
+    role: style
+    category: body_art
+    kind: single_state
+    text: >-
+      Add prominent tattoos with bold geometric patterns, covering a larger visible area
+      (upper arm and shoulder). Keep them tasteful, physically plausible, and consistent
+      with lighting and skin texture.
+    tags:
+      intent: modify
+      aesthetic: tribal_handcrafted
+      theme_family: tribal_handcrafted
+      tattoo_policy: require
+      tattoo_level: heavy
+    complexity_level: complex
