@@ -1188,7 +1188,7 @@ export function ReferencePipelineTab({ character, onChange }: ReferencePipelineT
           <>
             {/* Section nav — grouped */}
             {navGroups.map((group) => (
-              <GraphSidebarSection key={group.title} title={group.title}>
+              <GraphSidebarSection key={group.title} title={group.title} className="mb-1">
                 <nav className="space-y-0.5">
                   {group.items.map((item) => (
                     <button
@@ -1196,7 +1196,7 @@ export function ReferencePipelineTab({ character, onChange }: ReferencePipelineT
                       type="button"
                       onClick={() => setActiveSection(item.id)}
                       className={clsx(
-                        'flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs transition',
+                        'flex w-full items-center justify-between gap-2 rounded py-1.5 pl-4 pr-2 text-left text-xs transition',
                         activeSection === item.id
                           ? 'bg-neutral-700 text-neutral-100'
                           : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200',
