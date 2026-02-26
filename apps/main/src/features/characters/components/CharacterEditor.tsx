@@ -11,7 +11,7 @@ import { BehaviorTab } from './tabs/BehaviorTab';
 import { GameLinkTab } from './tabs/GameLinkTab';
 import { IdentityTab } from './tabs/IdentityTab';
 import { PersonalityTab } from './tabs/PersonalityTab';
-import { ReferencePipelineTab } from './tabs/ReferencePipelineTab';
+import { ReferencePipelineTab, type ProductionSection } from './tabs/ReferencePipelineTab';
 import { RenderingTab } from './tabs/RenderingTab';
 import { VisualTab } from './tabs/VisualTab';
 import { VoiceTab } from './tabs/VoiceTab';
@@ -24,9 +24,25 @@ const TABS = [
   { id: 'behavior', label: 'Behavior' },
   { id: 'voice', label: 'Voice' },
   { id: 'rendering', label: 'Rendering' },
-  { id: 'references', label: 'References' },
+  { id: 'ref-ingest', label: 'Ingest' },
+  { id: 'ref-slots', label: 'Slots' },
+  { id: 'ref-assets', label: 'Assets' },
+  { id: 'ref-scene-prep', label: 'Scene Prep' },
+  { id: 'ref-quick-batch', label: 'Quick Batch' },
+  { id: 'ref-templates', label: 'Templates' },
+  { id: 'ref-tagging', label: 'Tagging' },
   { id: 'game-link', label: 'Game Link' },
 ] as const;
+
+const REF_SECTION_MAP: Partial<Record<string, ProductionSection>> = {
+  'ref-ingest': 'ingest',
+  'ref-slots': 'slots',
+  'ref-assets': 'assets',
+  'ref-scene-prep': 'scene-prep',
+  'ref-quick-batch': 'quick-batch',
+  'ref-templates': 'templates',
+  'ref-tagging': 'tagging',
+};
 
 type TabId = (typeof TABS)[number]['id'];
 
@@ -50,7 +66,9 @@ const TAB_GROUPS: CharacterNavGroup[] = [
   {
     id: 'production',
     title: 'Production',
-    items: TABS.filter((tab) => ['references', 'game-link'].includes(tab.id)),
+    items: TABS.filter((tab) =>
+      ['ref-ingest', 'ref-slots', 'ref-assets', 'ref-scene-prep', 'ref-quick-batch', 'ref-templates', 'ref-tagging', 'game-link'].includes(tab.id),
+    ),
   },
 ];
 
@@ -69,6 +87,7 @@ export function CharacterEditor({
 }: CharacterEditorProps) {
   const [activeTab, setActiveTab] = useState<TabId>('identity');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set(TAB_GROUPS.map((g) => g.id)));
+  const refSection = REF_SECTION_MAP[activeTab] ?? null;
   const activeTabLabel = TABS.find((tab) => tab.id === activeTab)?.label ?? activeTab;
   const activeGroupId = TAB_GROUPS.find((group) => group.items.some((item) => item.id === activeTab))?.id ?? TAB_GROUPS[0].id;
 
@@ -165,8 +184,8 @@ export function CharacterEditor({
             {activeTab === 'rendering' && (
               <RenderingTab character={character} onChange={onChange} />
             )}
-            {activeTab === 'references' && (
-              <ReferencePipelineTab character={character} onChange={onChange} />
+            {refSection != null && (
+              <ReferencePipelineTab character={character} onChange={onChange} section={refSection} />
             )}
             {activeTab === 'game-link' && (
               <GameLinkTab character={character} onChange={onChange} />

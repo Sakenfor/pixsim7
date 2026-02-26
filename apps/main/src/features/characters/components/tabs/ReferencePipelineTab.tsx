@@ -1,13 +1,10 @@
 import { Badge, Button, DisclosureSection, FormField, Input, Select } from '@pixsim7/shared.ui';
-import clsx from 'clsx';
 import { useCallback, useMemo, useState } from 'react';
 
 import type { CharacterDetail, ReferenceAsset } from '@lib/api/characters';
 import { pixsimClient } from '@lib/api/client';
 
 import { MiniGallery } from '@features/gallery';
-import { GraphEditorSplitLayout } from '@features/graph/components/graph/GraphEditorSplitLayout';
-import { GraphSidebarSection } from '@features/graph/components/graph/GraphSidebarSection';
 
 import { buildBackendFanoutExecutionPolicy } from '@/features/generation/lib/fanoutExecutionPolicy';
 import { buildGuidancePlanReferences } from '@/features/generation/lib/runContext';
@@ -34,7 +31,7 @@ type AssetKind = 'identity' | 'expression_ref' | 'pose_ref' | 'outfit_ref';
 type ReferenceIngestStatus = 'ingest' | 'analyzing' | 'analyzed' | 'suggested' | 'ready' | 'error';
 type ReferenceSlotKey = 'identity_primary' | 'face_closeup' | 'expression_smile' | 'expression_thinking' | 'pose_neutral';
 type ReferenceIngestAnalyzerMode = 'auto' | 'general' | 'face' | 'sheet';
-type ProductionSection = 'ingest' | 'slots' | 'assets' | 'scene-prep' | 'quick-batch' | 'templates' | 'tagging';
+export type ProductionSection = 'ingest' | 'slots' | 'assets' | 'scene-prep' | 'quick-batch' | 'templates' | 'tagging';
 
 interface ReferenceSlotAssignment {
   asset_id: string;
@@ -134,13 +131,6 @@ const PIPELINE_STAGES = [
   },
 ] as const;
 
-const CHECKLIST_STEPS = [
-  { step: 1, label: 'Create base identity refs', key: 'base-identity' },
-  { step: 2, label: 'Create expression set', key: 'expression-set' },
-  { step: 3, label: 'Create pose set', key: 'pose-set' },
-  { step: 4, label: 'Tag assets', key: 'tagging' },
-  { step: 5, label: 'Link to game NPC / sync', key: 'game-link' },
-] as const;
 
 const RECOMMENDED_TAGS = [
   { category: 'Identity', examples: ['npc:<id>', 'player'] },
@@ -742,9 +732,10 @@ function RefAssetEditor({
 export interface ReferencePipelineTabProps {
   character: Partial<CharacterDetail>;
   onChange: (patch: Partial<CharacterDetail>) => void;
+  section: ProductionSection;
 }
 
-export function ReferencePipelineTab({ character, onChange }: ReferencePipelineTabProps) {
+export function ReferencePipelineTab({ character, onChange, section }: ReferencePipelineTabProps) {
   const tags = (character.tags as Record<string, unknown>) ?? {};
   const allAssets: ReferenceAsset[] = (character.reference_assets as ReferenceAsset[]) ?? [];
 
@@ -786,7 +777,6 @@ export function ReferencePipelineTab({ character, onChange }: ReferencePipelineT
   const [ingestDraftNote, setIngestDraftNote] = useState('');
   const [ingestBulkAnalyzing, setIngestBulkAnalyzing] = useState(false);
   const [ingestAnalyzerMode, setIngestAnalyzerMode] = useState<ReferenceIngestAnalyzerMode>('auto');
-  const [activeSection, setActiveSection] = useState<ProductionSection>('ingest');
 
   const setIngestItems = useCallback((nextItems: ReferenceIngestItem[]) => {
     onChange({
@@ -1134,121 +1124,11 @@ export function ReferencePipelineTab({ character, onChange }: ReferencePipelineT
     primaryIdentityAssetId,
   ]);
 
-  /* Checklist statuses */
-  const checklistDone = useMemo(() => {
-    const identityAssets = assetsByKind(allAssets, 'identity');
-    const bodyDone = identityAssets.some((a) => a.shot === 'full_body') && identityAssets.some((a) => a.shot === 'closeup_face');
-    const exprDone = assetsByKind(allAssets, 'expression_ref').length >= 3;
-    const poseDone = assetsByKind(allAssets, 'pose_ref').length >= 3;
-    const tagged = Object.keys(tags).some((k) => !k.startsWith('_'));
-    const linked = character.game_npc_id != null;
-    return { 'base-identity': bodyDone, 'expression-set': exprDone, 'pose-set': poseDone, tagging: tagged, 'game-link': linked };
-  }, [allAssets, tags, character.game_npc_id]);
-
-  /* ── Production workspace nav groups ────────────────────────────── */
-  const navGroups: { title: string; items: { id: ProductionSection; label: string; badge?: number }[] }[] = [
-    {
-      title: 'References',
-      items: [
-        { id: 'ingest', label: 'Ingest', badge: ingestItems.length > 0 ? ingestItems.length : undefined },
-        { id: 'slots', label: 'Slots', badge: Object.keys(referenceSlots).length > 0 ? Object.keys(referenceSlots).length : undefined },
-        { id: 'assets', label: 'Assets', badge: allAssets.length > 0 ? allAssets.length : undefined },
-      ],
-    },
-    {
-      title: 'Scene',
-      items: [
-        { id: 'scene-prep', label: 'Scene Prep' },
-        { id: 'quick-batch', label: 'Quick Batch' },
-      ],
-    },
-    {
-      title: 'Config',
-      items: [
-        { id: 'templates', label: 'Templates' },
-        { id: 'tagging', label: 'Tagging' },
-      ],
-    },
-  ];
-
   return (
-    <div className="flex flex-col">
-      {/* Header strip */}
-      <div className="border-b border-neutral-700/30 px-3 py-2">
-        <p className="text-xs text-neutral-500">
-          Build reusable game-ready reference surfaces for this character. Work through each stage in order.
-        </p>
-      </div>
+    <div className="space-y-3">
 
-      {/* Production workspace split */}
-      <GraphEditorSplitLayout
-        sidebarWidthPx={192}
-        className="min-h-[540px]"
-        sidebar={
-          <>
-            {/* Section nav — grouped */}
-            {navGroups.map((group) => (
-              <GraphSidebarSection key={group.title} title={group.title} className="mb-1">
-                <nav className="space-y-0.5">
-                  {group.items.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setActiveSection(item.id)}
-                      className={clsx(
-                        'flex w-full items-center justify-between gap-2 rounded py-1.5 pl-4 pr-2 text-left text-xs transition',
-                        activeSection === item.id
-                          ? 'bg-neutral-700 text-neutral-100'
-                          : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200',
-                      )}
-                    >
-                      <span>{item.label}</span>
-                      {item.badge != null && (
-                        <span
-                          className={clsx(
-                            'rounded px-1.5 py-0.5 text-[10px] tabular-nums',
-                            activeSection === item.id
-                              ? 'bg-neutral-600 text-neutral-200'
-                              : 'bg-neutral-800 text-neutral-500',
-                          )}
-                        >
-                          {item.badge}
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </nav>
-              </GraphSidebarSection>
-            ))}
-
-            {/* Compact checklist */}
-            <GraphSidebarSection title="Checklist">
-              <ol className="space-y-1">
-                {CHECKLIST_STEPS.map(({ step, label, key }) => {
-                  const done = checklistDone[key];
-                  return (
-                    <li key={key} className="flex items-center gap-1.5 text-[11px]">
-                      <span
-                        className={clsx(
-                          'flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold',
-                          done ? 'bg-green-600 text-white' : 'bg-neutral-700 text-neutral-400',
-                        )}
-                      >
-                        {done ? '✓' : step}
-                      </span>
-                      <span className={done ? 'text-neutral-500 line-through' : 'text-neutral-400'}>{label}</span>
-                    </li>
-                  );
-                })}
-              </ol>
-            </GraphSidebarSection>
-          </>
-        }
-        main={
-          <div className="space-y-3">
-
-            {/* ── Ingest ─────────────────────────────────────────────── */}
-            {activeSection === 'ingest' && (
+      {/* ── Ingest ─────────────────────────────────────────────── */}
+      {section === 'ingest' && (
               <div className="space-y-3">
                 <div>
                   <p className="text-sm font-semibold text-neutral-200">
@@ -1415,7 +1295,7 @@ export function ReferencePipelineTab({ character, onChange }: ReferencePipelineT
             )}
 
             {/* ── Slots ──────────────────────────────────────────────── */}
-            {activeSection === 'slots' && (
+      {section === 'slots' && (
               <div className="space-y-2.5">
                 <div>
                   <p className="text-sm font-semibold text-neutral-200">Reference Slots (Curated)</p>
@@ -1480,7 +1360,7 @@ export function ReferencePipelineTab({ character, onChange }: ReferencePipelineT
             )}
 
             {/* ── Assets ─────────────────────────────────────────────── */}
-            {activeSection === 'assets' && (
+      {section === 'assets' && (
               <div className="space-y-3">
                 <div>
                   <p className="text-sm font-semibold text-neutral-200">Reference Assets</p>
@@ -1543,7 +1423,7 @@ export function ReferencePipelineTab({ character, onChange }: ReferencePipelineT
             )}
 
             {/* ── Scene Prep ─────────────────────────────────────────── */}
-            {activeSection === 'scene-prep' && (
+      {section === 'scene-prep' && (
               <div className="space-y-2">
                 <div>
                   <p className="text-sm font-semibold text-neutral-200">Scene Prep</p>
@@ -1563,7 +1443,7 @@ export function ReferencePipelineTab({ character, onChange }: ReferencePipelineT
             )}
 
             {/* ── Quick Batch ────────────────────────────────────────── */}
-            {activeSection === 'quick-batch' && (
+      {section === 'quick-batch' && (
               <div className="space-y-2.5">
                 <div>
                   <p className="text-sm font-semibold text-neutral-200">
@@ -1657,7 +1537,7 @@ export function ReferencePipelineTab({ character, onChange }: ReferencePipelineT
             )}
 
             {/* ── Templates ──────────────────────────────────────────── */}
-            {activeSection === 'templates' && (
+      {section === 'templates' && (
               <div className="space-y-2">
                 <div>
                   <p className="text-sm font-semibold text-neutral-200">Template Launch Presets</p>
@@ -1679,7 +1559,7 @@ export function ReferencePipelineTab({ character, onChange }: ReferencePipelineT
             )}
 
             {/* ── Tagging ────────────────────────────────────────────── */}
-            {activeSection === 'tagging' && (
+      {section === 'tagging' && (
               <div className="space-y-2.5">
                 <div>
                   <p className="text-sm font-semibold text-neutral-200">Tagging Guidance</p>
@@ -1700,9 +1580,6 @@ export function ReferencePipelineTab({ character, onChange }: ReferencePipelineT
               </div>
             )}
 
-          </div>
-        }
-      />
     </div>
   );
 }
