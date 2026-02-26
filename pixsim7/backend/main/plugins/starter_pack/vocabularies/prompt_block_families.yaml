@@ -1,0 +1,262 @@
+# Prompt Block Families Vocabulary
+# Sequence-family contracts for prompt blocks (axes, required tags, preferred role/category bindings).
+version: "1.0.0"
+
+families:
+  pov_approach_response:
+    label: "POV Approach Response"
+    description: "Reusable sequential approach/response progression family."
+    axis_tag_key: beat_axis
+    family_tag_key: sequence_family
+    required_base_tags: [sequence_family, beat_axis]
+    axes:
+      view:
+        preferred_bindings:
+          - role: camera
+            category: composition
+        required_tags: [view_profile]
+        expected_values:
+          view_profile: [observer, pov_hand, ots]
+      presence:
+        preferred_bindings:
+          - role: composition
+            category: framing
+        required_tags: []
+      continuity:
+        preferred_bindings:
+          - role: placement
+            category: depth
+        required_tags: []
+      proximity:
+        preferred_bindings:
+          - role: placement
+            category: depth
+        required_tags: [proximity_stage]
+        expected_values:
+          proximity_stage: [far, near, arm_reach, close]
+      contact:
+        preferred_bindings:
+          - role: action
+            category: interaction_beat
+        required_tags: [contact_stage]
+        expected_values:
+          contact_stage: [none, offered_hand, brief_contact]
+      response:
+        preferred_bindings:
+          - role: action
+            category: interaction_beat
+        required_tags: [response_mode]
+        expected_values:
+          response_mode: [receptive, neutral, hesitant, boundary]
+      expression:
+        preferred_bindings:
+          - role: subject
+            category: expression_behavior
+        required_tags: [response_mode]
+        expected_values:
+          response_mode: [receptive, neutral, hesitant, boundary]
+      refine:
+        preferred_bindings:
+          - role: composition
+            category: motion_beat
+        required_tags: []
+      tone:
+        preferred_bindings:
+          - role: style
+            category: atmosphere
+        required_tags: []
+
+  public_social_idle:
+    label: "Public Social Idle"
+    description: "Generic public-space social idle/notice/greet/brief exchange harvesting family."
+    axis_tag_key: beat_axis
+    family_tag_key: sequence_family
+    required_base_tags: [sequence_family, beat_axis]
+    axes:
+      environment:
+        preferred_bindings:
+          - role: environment
+            category: scene_build
+        required_tags: [loc_type, crowd_level]
+        expected_values:
+          loc_type: [cafe, mall, station, park]
+          crowd_level: [low, moderate]
+      view:
+        preferred_bindings:
+          - role: camera
+            category: composition
+        required_tags: [view_profile]
+        expected_values:
+          view_profile: [observer, ots]
+      continuity:
+        preferred_bindings:
+          - role: placement
+            category: depth
+        required_tags: []
+      activity:
+        preferred_bindings:
+          - role: action
+            category: interaction_beat
+        required_tags: [beat_type]
+        expected_values:
+          beat_type: [idle, drink, notice, greet, brief_exchange, look_back]
+      social_cue:
+        preferred_bindings:
+          - role: action
+            category: interaction_beat
+        required_tags: [beat_type, social_tone]
+        expected_values:
+          beat_type: [idle, drink, notice, greet, brief_exchange, look_back]
+          social_tone: [neutral, warm, playful]
+      passerby:
+        preferred_bindings:
+          - role: placement
+            category: character_desc
+        required_tags: [beat_type]
+        expected_values:
+          beat_type: [notice, greet, brief_exchange]
+      expression:
+        preferred_bindings:
+          - role: subject
+            category: expression_behavior
+        required_tags: [social_tone]
+        expected_values:
+          social_tone: [neutral, warm, playful]
+      refine:
+        preferred_bindings:
+          - role: composition
+            category: motion_beat
+        required_tags: []
+      tone:
+        preferred_bindings:
+          - role: style
+            category: atmosphere
+        required_tags: [social_tone]
+        expected_values:
+          social_tone: [neutral, warm, playful]
+
+  walk_turn_head_progression:
+    label: "Walk Turn Head Progression"
+    description: "Sequential walk-away -> stop -> head-turn-back progression family for image-edit scene harvesting."
+    axis_tag_key: beat_axis
+    family_tag_key: sequence_family
+    required_base_tags: [sequence_family, beat_axis]
+    axes:
+      view:
+        preferred_bindings:
+          - role: camera
+            category: composition
+        required_tags: [view_profile]
+        expected_values:
+          view_profile: [observer, ots]
+      continuity:
+        preferred_bindings:
+          - role: placement
+            category: depth
+        required_tags: []
+      movement:
+        preferred_bindings:
+          - role: action
+            category: motion_beat
+        required_tags: [beat_stage]
+        expected_values:
+          beat_stage: [walk_away]
+      stop:
+        preferred_bindings:
+          - role: action
+            category: motion_beat
+        required_tags: [beat_stage]
+        expected_values:
+          beat_stage: [slow_stop, stop_hold]
+      head_turn:
+        preferred_bindings:
+          - role: action
+            category: interaction_beat
+        required_tags: [beat_stage]
+        expected_values:
+          beat_stage: [head_turn_back]
+      expression:
+        preferred_bindings:
+          - role: subject
+            category: expression_behavior
+        required_tags: []
+        expected_values:
+          beat_stage: [head_turn_back]
+      refine:
+        preferred_bindings:
+          - role: composition
+            category: motion_beat
+        required_tags: []
+      tone:
+        preferred_bindings:
+          - role: style
+            category: atmosphere
+        required_tags: []
+
+  ten_seconds_forward:
+    label: "Ten Seconds Forward"
+    description: "Generic micro-progression family for advancing a scene by ~10 seconds."
+    axis_tag_key: beat_axis
+    family_tag_key: sequence_family
+    required_base_tags: [sequence_family, beat_axis]
+    recommended_base_tags: [delta_t]
+    axes:
+      view:
+        preferred_bindings:
+          - role: camera
+            category: composition
+        required_tags: [view_profile]
+        recommended_tags: [delta_t]
+        expected_values:
+          view_profile: [observer, ots]
+          delta_t: ["10s"]
+      presence:
+        preferred_bindings:
+          - role: composition
+            category: framing
+        required_tags: []
+        recommended_tags: [delta_t]
+        expected_values:
+          delta_t: ["10s"]
+      continuity:
+        preferred_bindings:
+          - role: placement
+            category: depth
+        required_tags: []
+        recommended_tags: [delta_t]
+        expected_values:
+          delta_t: ["10s"]
+      activity:
+        preferred_bindings:
+          - role: action
+            category: interaction_beat
+        required_tags: [beat_type]
+        recommended_tags: [delta_t, activity_group]
+        expected_values:
+          delta_t: ["10s"]
+          activity_group: [hold, micro_motion, object_use, micro_gesture, move, social_light]
+      expression:
+        preferred_bindings:
+          - role: subject
+            category: expression_behavior
+        required_tags: []
+        recommended_tags: [delta_t, expression_tone]
+        expected_values:
+          delta_t: ["10s"]
+          expression_tone: [neutral, warm, focused, curious]
+      refine:
+        preferred_bindings:
+          - role: composition
+            category: motion_beat
+        required_tags: []
+        recommended_tags: [delta_t]
+        expected_values:
+          delta_t: ["10s"]
+      tone:
+        preferred_bindings:
+          - role: style
+            category: atmosphere
+        required_tags: []
+        recommended_tags: [delta_t]
+        expected_values:
+          delta_t: ["10s"]

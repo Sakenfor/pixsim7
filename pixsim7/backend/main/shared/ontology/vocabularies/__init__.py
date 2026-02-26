@@ -47,6 +47,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     SpatialDef,
     CameraDef,
     ProgressionDef,
+    GenericVocabDef,
     ScoringConfig,
     ScoringWeights,
     PartialCredit,
@@ -138,6 +139,16 @@ def get_progression(progression_id: str) -> Optional[ProgressionDef]:
     return get_registry().get_progression(progression_id)
 
 
+def get_prompt_block_tag(tag_key: str) -> Optional[GenericVocabDef]:
+    """Get a prompt-block tag schema item by canonical tag key."""
+    return get_registry().get_prompt_block_tag(tag_key)
+
+
+def get_prompt_block_family(family_id: str) -> Optional[GenericVocabDef]:
+    """Get a prompt-block family schema item by family ID."""
+    return get_registry().get_prompt_block_family(family_id)
+
+
 def check_pose_compatibility(pose_a_id: str, pose_b_id: str) -> bool:
     """Check if two poses are compatible for composition."""
     return get_registry().check_pose_compatibility(pose_a_id, pose_b_id)
@@ -165,6 +176,7 @@ __all__ = [
     "SpatialDef",
     "CameraDef",
     "ProgressionDef",
+    "GenericVocabDef",
     "ScoringConfig",
     "ScoringWeights",
     "PartialCredit",
@@ -192,6 +204,8 @@ __all__ = [
     "get_spatial",
     "get_camera",
     "get_progression",
+    "get_prompt_block_tag",
+    "get_prompt_block_family",
     "check_pose_compatibility",
     "match_keywords",
 ]

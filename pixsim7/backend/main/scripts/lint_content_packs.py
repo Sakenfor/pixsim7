@@ -20,6 +20,8 @@ from typing import List, Optional
 
 import yaml
 
+from pixsim7.backend.main.services.prompt.block import content_pack_loader
+
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 CONTENT_PACKS_DIR = BACKEND_ROOT / "content_packs" / "prompt"
 
@@ -55,6 +57,9 @@ class Violation:
 @dataclass
 class LintResult:
     violations: list[Violation] = field(default_factory=list)
+    block_validation_errors: list[str] = field(default_factory=list)
+    template_validation_errors: list[str] = field(default_factory=list)
+    character_validation_errors: list[str] = field(default_factory=list)
     files_scanned: int = 0
     blocks_scanned: int = 0
 
@@ -142,6 +147,33 @@ def lint_file(filepath: Path) -> LintResult:
     return result
 
 
+def validate_pack_blocks(pack_dir: Path) -> list[str]:
+    """Run authoritative block schema/family validation via content-pack loader."""
+    try:
+        content_pack_loader.parse_blocks(pack_dir)
+        return []
+    except content_pack_loader.ContentPackValidationError as exc:
+        return [str(exc)]
+
+
+def validate_pack_templates(pack_dir: Path) -> list[str]:
+    """Run authoritative template schema/family validation via content-pack loader."""
+    try:
+        content_pack_loader.parse_templates(pack_dir)
+        return []
+    except content_pack_loader.ContentPackValidationError as exc:
+        return [str(exc)]
+
+
+def validate_pack_characters(pack_dir: Path) -> list[str]:
+    """Run authoritative character schema validation via content-pack loader."""
+    try:
+        content_pack_loader.parse_characters(pack_dir)
+        return []
+    except content_pack_loader.ContentPackValidationError as exc:
+        return [str(exc)]
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Lint content-pack YAML files")
     parser.add_argument("--pack", help="Lint only this package directory (e.g. 'dane', 'shared')")
@@ -152,17 +184,27 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"ERROR: content packs directory not found: {CONTENT_PACKS_DIR}", file=sys.stderr)
         return 1
 
-    # Collect YAML files
+    # Collect YAML files (single-file packs and multi-file fragments)
     if args.pack:
         pack_dir = CONTENT_PACKS_DIR / args.pack
         if not pack_dir.is_dir():
             print(f"ERROR: pack directory not found: {pack_dir}", file=sys.stderr)
             return 1
-        yaml_files = sorted(pack_dir.glob("*.yaml"))
+        yaml_files = sorted([*pack_dir.rglob("*.yaml"), *pack_dir.rglob("*.yml")])
     else:
-        yaml_files = sorted(CONTENT_PACKS_DIR.rglob("*.yaml"))
+        yaml_files = sorted([*CONTENT_PACKS_DIR.rglob("*.yaml"), *CONTENT_PACKS_DIR.rglob("*.yml")])
 
     total = LintResult()
+    if args.pack:
+        pack_dirs = [CONTENT_PACKS_DIR / args.pack]
+    else:
+        pack_dirs = sorted([d for d in CONTENT_PACKS_DIR.iterdir() if d.is_dir()])
+
+    for pack_dir in pack_dirs:
+        total.block_validation_errors.extend(validate_pack_blocks(pack_dir))
+        total.template_validation_errors.extend(validate_pack_templates(pack_dir))
+        total.character_validation_errors.extend(validate_pack_characters(pack_dir))
+
     for filepath in yaml_files:
         result = lint_file(filepath)
         total.files_scanned += result.files_scanned
@@ -170,7 +212,35 @@ def main(argv: Optional[List[str]] = None) -> int:
         total.violations.extend(result.violations)
 
     # Report
-    if total.violations:
+    has_validation_errors = bool(
+        total.block_validation_errors
+        or total.template_validation_errors
+        or total.character_validation_errors
+    )
+    if has_validation_errors or total.violations:
+        if has_validation_errors:
+            print(f"\n{'='*70}")
+            print(
+                "  CONTENT VALIDATION: "
+                f"{len(total.block_validation_errors) + len(total.template_validation_errors) + len(total.character_validation_errors)} error(s)"
+            )
+            print(f"{'='*70}\n")
+            if total.block_validation_errors:
+                print(f"  [Blocks] {len(total.block_validation_errors)} error(s)")
+                for err in total.block_validation_errors:
+                    print(f"    {err}")
+                print()
+            if total.template_validation_errors:
+                print(f"  [Templates] {len(total.template_validation_errors)} error(s)")
+                for err in total.template_validation_errors:
+                    print(f"    {err}")
+                print()
+            if total.character_validation_errors:
+                print(f"  [Characters] {len(total.character_validation_errors)} error(s)")
+                for err in total.character_validation_errors:
+                    print(f"    {err}")
+                print()
+
         print(f"\n{'='*70}")
         print(f"  FLAGGED WORDS: {len(total.violations)} violation(s)")
         print(f"  Scanned {total.files_scanned} file(s), {total.blocks_scanned} block(s)")

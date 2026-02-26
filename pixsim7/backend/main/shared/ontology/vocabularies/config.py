@@ -36,6 +36,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.factories import (
     make_spatial,
     make_camera,
     make_progression,
+    make_generic,
 )
 
 
@@ -131,6 +132,20 @@ VOCAB_CONFIGS: Dict[str, VocabTypeConfig] = {
         yaml_key="progression",
         factory=make_progression,
         keywords_attr=None,  # Progression items don't have keywords
+    ),
+    "prompt_block_tags": VocabTypeConfig(
+        name="prompt_block_tags",
+        yaml_file="prompt_block_tags.yaml",
+        yaml_key="tags",
+        factory=make_generic,
+        keywords_attr=None,
+    ),
+    "prompt_block_families": VocabTypeConfig(
+        name="prompt_block_families",
+        yaml_file="prompt_block_families.yaml",
+        yaml_key="families",
+        factory=make_generic,
+        keywords_attr=None,
     ),
 }
 

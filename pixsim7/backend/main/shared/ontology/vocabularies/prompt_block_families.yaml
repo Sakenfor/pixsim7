@@ -1,0 +1,6 @@
+# Prompt Block Families Vocabulary (core schema only)
+# Concrete family/axis contracts are provided by vocab packs.
+version: "1.0.0"
+
+families: {}
+

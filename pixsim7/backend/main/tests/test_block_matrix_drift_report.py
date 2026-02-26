@@ -79,3 +79,52 @@ def test_build_block_matrix_drift_report_ignores_missing_label_in_unexpected_val
     assert drift["row"]["missing_count"] == 1
     assert drift["row"]["unexpected_values"] == []
 
+
+def test_build_block_matrix_drift_report_uses_family_schema_defaults() -> None:
+    blocks = [
+        _b(
+            "ok1",
+            tags={
+                "sequence_family": "public_social_idle",
+                "beat_axis": "social_cue",
+                "beat_type": "greet",
+                "social_tone": "warm",
+            },
+        ),
+        _b(
+            "unexpected",
+            tags={
+                "sequence_family": "public_social_idle",
+                "beat_axis": "social_cue",
+                "beat_type": "wave_only",
+                "social_tone": "warm",
+            },
+        ),
+        _b(
+            "missing_social_tone",
+            tags={
+                "sequence_family": "public_social_idle",
+                "beat_axis": "social_cue",
+                "beat_type": "notice",
+            },
+        ),
+    ]
+    drift = _build_block_matrix_drift_report(
+        blocks=blocks,
+        row_key="tag:beat_type",
+        col_key="tag:social_tone",
+        missing_label="__missing__",
+        expected_row_values_csv=None,
+        expected_col_values_csv=None,
+        use_canonical_expected_values=False,
+        expected_tag_keys_csv=None,
+        required_tag_keys_csv=None,
+        max_entries=50,
+        max_examples_per_entry=5,
+        tag_constraints={"sequence_family": "public_social_idle", "beat_axis": "social_cue"},
+    )
+
+    assert "wave_only" in drift["row"]["unexpected_values"]
+    assert drift["col"]["expected_values"] == ["neutral", "warm", "playful"]
+    assert drift["tags"]["family_schema"] == "public_social_idle"
+    assert "social_tone" in (drift["tags"]["required_keys"] or [])

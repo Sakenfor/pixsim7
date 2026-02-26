@@ -1,0 +1,585 @@
+# Prompt Block Tags Vocabulary
+# Canonical block tag keys, aliases, and allowed values for prompt-block authoring/querying.
+version: "1.0.0"
+
+tags:
+  sequence_family:
+    label: "Sequence Family"
+    description: "Named block family for progression/coverage grouping."
+    data_type: string
+    allowed_values:
+      - pov_approach_response
+      - public_social_idle
+      - walk_turn_head_progression
+      - ten_seconds_forward
+    aliases: []
+    value_aliases: {}
+    applies_to: []
+    status: active
+
+  beat_axis:
+    label: "Beat Axis"
+    description: "Axis of variation inside a sequence family."
+    data_type: string
+    allowed_values:
+      - view
+      - presence
+      - continuity
+      - proximity
+      - contact
+      - response
+      - expression
+      - refine
+      - tone
+      - environment
+      - activity
+      - social_cue
+      - passerby
+      - movement
+      - stop
+      - head_turn
+    aliases: []
+    value_aliases: {}
+    applies_to: []
+    status: active
+
+  view_profile:
+    label: "View Profile"
+    description: "Camera/view relationship profile."
+    data_type: string
+    allowed_values: [observer, pov_hand, ots]
+    aliases: [view]
+    value_aliases:
+      pov: pov_hand
+      over_shoulder: ots
+    applies_to:
+      - role: camera
+        category: composition
+    status: active
+
+  proximity_stage:
+    label: "Proximity Stage"
+    description: "Discrete spatial distance stage for progression beats."
+    data_type: string
+    allowed_values: [far, near, arm_reach, close]
+    aliases: [distance]
+    value_aliases:
+      arms_reach: arm_reach
+    applies_to:
+      - role: placement
+        category: depth
+    status: active
+
+  contact_stage:
+    label: "Contact Stage"
+    description: "Explicit contact state for interaction progression beats."
+    data_type: string
+    allowed_values: [none, offered_hand, brief_contact]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: interaction_beat
+    status: active
+
+  response_mode:
+    label: "Response Mode"
+    description: "Body-language response mode for interaction progression."
+    data_type: string
+    allowed_values: [receptive, neutral, hesitant, boundary]
+    aliases: [reaction_mode]
+    value_aliases:
+      reluctant: hesitant
+    applies_to:
+      - role: action
+        category: interaction_beat
+      - role: subject
+        category: expression_behavior
+    status: active
+
+  rigidity:
+    label: "Rigidity"
+    description: "Pose-lock strength tier used by pose lock blocks and slider coverage."
+    data_type: string
+    allowed_values: [minimal, low, medium, high, maximum]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: subject
+        category: pose_lock
+    status: active
+
+  approach:
+    label: "Approach"
+    description: "Pose-lock prompting approach variant."
+    data_type: string
+    allowed_values: [skeletal, contour, gravity, i2v]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: subject
+        category: pose_lock
+    status: active
+
+  scene_scope:
+    label: "Scene Scope"
+    description: "High-level scene semantics scope for generic image-edit fallback scene blocks."
+    data_type: string
+    allowed_values: [generic_real_world]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: environment
+        category: scene_build
+    status: active
+
+  edit_mode:
+    label: "Edit Mode"
+    description: "Editing mode tag for generic image-edit scene semantics."
+    data_type: string
+    allowed_values: [image_edit]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: environment
+        category: scene_build
+    status: active
+
+  allure_level:
+    label: "Allure Level"
+    description: "Abstract styling dial for wardrobe selection (non-explicit)."
+    data_type: string
+    allowed_values: [preserve, subtle, medium, high]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe
+    status: active
+
+  modesty_level:
+    label: "Modesty Level"
+    description: "Abstract modesty/daring dial for wardrobe selection (non-explicit)."
+    data_type: string
+    allowed_values: [conservative, balanced, daring]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe
+    status: active
+
+  silhouette:
+    label: "Silhouette"
+    description: "Legacy broad wardrobe-outline descriptor. Prefer explicit garment-specific shape/fit axes for new content."
+    data_type: string
+    allowed_values: [preserve, fitted, accentuated]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe
+    status: deprecated
+
+  social_tone:
+    label: "Social Tone"
+    description: "Lightweight social tone for public interactions."
+    data_type: string
+    allowed_values: [neutral, warm, playful]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: interaction_beat
+      - role: subject
+        category: expression_behavior
+      - role: style
+        category: atmosphere
+    status: active
+
+  beat_type:
+    label: "Beat Type"
+    description: "Fine-grained beat type inside an interaction/activity axis."
+    data_type: string
+    allowed_values:
+      - idle
+      - drink
+      - notice
+      - greet
+      - brief_exchange
+      - look_back
+      - hold
+      - weight_shift
+      - glance_around
+      - check_phone
+      - adjust_clothing
+      - small_step
+      - turn_slightly
+      - brief_acknowledge
+      - pass_item
+    aliases: []
+    value_aliases:
+      lookback: look_back
+    applies_to:
+      - role: action
+        category: interaction_beat
+      - role: placement
+        category: character_desc
+    status: active
+
+  beat_stage:
+    label: "Beat Stage"
+    description: "Stage marker within a progression family timeline."
+    data_type: string
+    allowed_values:
+      - walk_away
+      - slow_stop
+      - stop_hold
+      - head_turn_back
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: motion_beat
+      - role: action
+        category: interaction_beat
+      - role: subject
+        category: expression_behavior
+    status: active
+
+  loc_type:
+    label: "Location Type"
+    description: "Public-space location type."
+    data_type: string
+    allowed_values: [cafe, mall, station, park]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: environment
+        category: scene_build
+    status: active
+
+  crowd_level:
+    label: "Crowd Level"
+    description: "Ambient crowd density cue."
+    data_type: string
+    allowed_values: [low, moderate]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: environment
+        category: scene_build
+    status: active
+
+  theme_family:
+    label: "Theme Family"
+    description: "Orthogonal theme overlay family that can combine with other domains."
+    data_type: string
+    allowed_values: [tribal_handcrafted]
+    aliases: [theme]
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: theme_cue
+    status: active
+
+  theme_variant:
+    label: "Theme Variant"
+    description: "Variant within a theme family."
+    data_type: string
+    allowed_values: [general, desert, forest, mountain, tundra]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: theme_cue
+    status: active
+
+  garment:
+    label: "Garment"
+    description: "Target garment domain for wardrobe descriptors."
+    data_type: string
+    allowed_values: [skirt]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe
+    status: active
+
+  wardrobe_axis:
+    label: "Wardrobe Axis"
+    description: "Wardrobe descriptor axis (shape, texture, pattern, etc.)."
+    data_type: string
+    allowed_values: [shape]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe
+    status: active
+
+  skirt_shape:
+    label: "Skirt Shape"
+    description: "Skirt shape descriptor."
+    data_type: string
+    allowed_values:
+      - pencil
+      - a_line
+      - pleated
+      - wrap
+      - circle
+      - tiered
+      - bias_cut
+      - tulip
+      - trumpet
+      - skater
+      - asym_hem
+      - slit
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe
+    status: active
+
+  modifier_family:
+    label: "Modifier Family"
+    description: "Abstract modifier family for reusable modifier blocks."
+    data_type: string
+    allowed_values: [allure, pattern, texture, condition]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe_modifier
+    status: active
+
+  modifier_target:
+    label: "Modifier Target"
+    description: "Target domain for modifier blocks."
+    data_type: string
+    allowed_values: [wardrobe]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe_modifier
+    status: active
+
+  tattoo_policy:
+    label: "Tattoo Policy"
+    description: "Edit policy for tattoo changes (allow additions vs require existing tattoos)."
+    data_type: string
+    allowed_values: [allow, require]
+    aliases: [tattoo_anchor]
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: body_art
+    status: active
+
+  tattoo_level:
+    label: "Tattoo Level"
+    description: "Tattoo intensity level. Policy belongs in tattoo_policy, not here."
+    data_type: string
+    allowed_values: [none, subtle, medium, heavy]
+    aliases: [tattoos_level]
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: body_art
+    status: active
+
+  bone_ornament_policy:
+    label: "Bone Ornament Policy"
+    description: "Edit policy for bone ornament changes (allow additions vs require existing ornaments)."
+    data_type: string
+    allowed_values: [allow, require]
+    aliases: [bone_anchor]
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: accessories
+    status: active
+
+  bone_ornament_level:
+    label: "Bone Ornament Level"
+    description: "Bone ornament intensity level. Policy belongs in bone_ornament_policy, not here."
+    data_type: string
+    allowed_values: [none, subtle, medium, heavy]
+    aliases: [bone_ornaments_level]
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: accessories
+    status: active
+
+  pattern_family:
+    label: "Pattern Family"
+    description: "Pattern motif family."
+    data_type: string
+    allowed_values: [pinstripe, plaid, check, polka_dot, floral, geometric]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe_modifier
+    status: active
+
+  pattern_level:
+    label: "Pattern Level"
+    description: "Pattern intensity/readability level."
+    data_type: string
+    allowed_values: [none, subtle, clear]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe_modifier
+    status: active
+
+  pattern_scale:
+    label: "Pattern Scale"
+    description: "Pattern scale descriptor."
+    data_type: string
+    allowed_values: [fine, small, medium]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe_modifier
+    status: active
+
+  pattern_contrast:
+    label: "Pattern Contrast"
+    description: "Pattern contrast level."
+    data_type: string
+    allowed_values: [low, medium]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe_modifier
+    status: active
+
+  texture_family:
+    label: "Texture Family"
+    description: "Fabric/material texture family."
+    data_type: string
+    allowed_values: [matte_clean, denim, knit, tweed, leather, linen, satin]
+    aliases: []
+    value_aliases:
+      satin_sheen: satin
+    applies_to:
+      - role: style
+        category: wardrobe_modifier
+    status: active
+
+  texture_level:
+    label: "Texture Level"
+    description: "Texture prominence level."
+    data_type: string
+    allowed_values: [subtle, clear]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe_modifier
+    status: active
+
+  texture_sheen:
+    label: "Texture Sheen"
+    description: "Sheen characteristic for texture modifiers."
+    data_type: string
+    allowed_values: [matte, low, medium]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe_modifier
+    status: active
+
+  texture_weight:
+    label: "Texture Weight"
+    description: "Visual weight of fabric texture."
+    data_type: string
+    allowed_values: [light, medium, heavy]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe_modifier
+    status: active
+
+  wear_level:
+    label: "Wear Level"
+    description: "Overall wear/read of garment condition."
+    data_type: string
+    allowed_values: [pristine, light_wear, worn, rugged, distressed]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe_modifier
+    status: active
+
+  damage_level:
+    label: "Damage Level"
+    description: "Damage severity descriptor for condition modifiers."
+    data_type: string
+    allowed_values: [none, minimal, light, moderate]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: wardrobe_modifier
+    status: active
+
+  delta_t:
+    label: "Time Delta"
+    description: "Approximate time-step delta intended by a progression beat."
+    data_type: string
+    allowed_values: ["10s"]
+    aliases: [time_step]
+    value_aliases: {}
+    applies_to:
+      - role: camera
+        category: composition
+      - role: composition
+        category: framing
+      - role: placement
+        category: depth
+      - role: action
+        category: interaction_beat
+      - role: subject
+        category: expression_behavior
+      - role: composition
+        category: motion_beat
+      - role: style
+        category: atmosphere
+    status: experimental
+
+  activity_group:
+    label: "Activity Group"
+    description: "Grouping of micro-activity beat types."
+    data_type: string
+    allowed_values: [hold, micro_motion, object_use, micro_gesture, move, social_light]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: interaction_beat
+    status: experimental
+
+  expression_tone:
+    label: "Expression Tone"
+    description: "Facial-expression tone variant for generic progression."
+    data_type: string
+    allowed_values: [neutral, warm, focused, curious]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: subject
+        category: expression_behavior
+    status: experimental

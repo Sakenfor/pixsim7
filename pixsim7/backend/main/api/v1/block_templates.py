@@ -660,6 +660,131 @@ def _canonical_allowed_values_for_tag_key(tag_key: str) -> List[str]:
     return [str(v).strip() for v in allowed if v is not None and str(v).strip()]
 
 
+def _get_prompt_block_family_schema(sequence_family: Optional[str]) -> Optional[Dict[str, Any]]:
+    sequence_family = (sequence_family or "").strip()
+    if not sequence_family:
+        return None
+    try:
+        from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
+
+        item = get_registry().get_prompt_block_family(sequence_family)
+    except Exception:
+        return None
+    if item is None:
+        return None
+    data = getattr(item, "data", None)
+    return dict(data) if isinstance(data, dict) else None
+
+
+def _family_selected_axis_from_tag_constraints(
+    family_schema: Optional[Dict[str, Any]],
+    tag_constraints: Optional[Dict[str, str]],
+) -> Optional[str]:
+    if not family_schema or not isinstance(tag_constraints, dict):
+        return None
+    axis_tag_key = str(family_schema.get("axis_tag_key") or "beat_axis")
+    value = tag_constraints.get(axis_tag_key)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()
+
+
+def _family_expected_values_for_matrix_axis(
+    family_schema: Optional[Dict[str, Any]],
+    *,
+    axis_key: str,
+    tag_constraints: Optional[Dict[str, str]],
+) -> List[str]:
+    if not family_schema:
+        return []
+    axes = family_schema.get("axes") or {}
+    if not isinstance(axes, dict) or not axes:
+        return []
+
+    tag_key = _axis_key_to_tag_key(axis_key)
+    if not tag_key:
+        return []
+
+    family_axis_tag_key = str(family_schema.get("axis_tag_key") or "beat_axis")
+    if tag_key == family_axis_tag_key:
+        return sorted(str(k) for k in axes.keys() if str(k).strip())
+
+    selected_axis = _family_selected_axis_from_tag_constraints(family_schema, tag_constraints)
+    if selected_axis and selected_axis in axes:
+        axis_meta = axes.get(selected_axis) or {}
+        expected_values = axis_meta.get("expected_values") or {}
+        values = expected_values.get(tag_key) if isinstance(expected_values, dict) else None
+        if isinstance(values, list):
+            return [str(v).strip() for v in values if v is not None and str(v).strip()]
+
+    # No explicit beat_axis filter; union values across axes.
+    union: set[str] = set()
+    for axis_meta in axes.values():
+        if not isinstance(axis_meta, dict):
+            continue
+        expected_values = axis_meta.get("expected_values") or {}
+        if not isinstance(expected_values, dict):
+            continue
+        values = expected_values.get(tag_key)
+        if isinstance(values, list):
+            union.update(str(v).strip() for v in values if v is not None and str(v).strip())
+    return sorted(union)
+
+
+def _family_expected_and_required_tag_keys(
+    family_schema: Optional[Dict[str, Any]],
+    *,
+    tag_constraints: Optional[Dict[str, str]],
+) -> tuple[List[str], List[str]]:
+    if not family_schema:
+        return [], []
+    axes = family_schema.get("axes") or {}
+    if not isinstance(axes, dict):
+        axes = {}
+
+    expected: set[str] = set()
+    required: set[str] = set()
+
+    family_tag_key = str(family_schema.get("family_tag_key") or "sequence_family")
+    axis_tag_key = str(family_schema.get("axis_tag_key") or "beat_axis")
+    if family_tag_key:
+        expected.add(family_tag_key)
+    if axis_tag_key:
+        expected.add(axis_tag_key)
+
+    for key in family_schema.get("required_base_tags") or []:
+        if isinstance(key, str) and key.strip():
+            expected.add(key.strip())
+            required.add(key.strip())
+    for key in family_schema.get("recommended_base_tags") or []:
+        if isinstance(key, str) and key.strip():
+            expected.add(key.strip())
+
+    selected_axis = _family_selected_axis_from_tag_constraints(family_schema, tag_constraints)
+    axes_to_scan: List[Dict[str, Any]] = []
+    if selected_axis and isinstance(axes.get(selected_axis), dict):
+        axes_to_scan = [axes[selected_axis]]
+    else:
+        axes_to_scan = [axis_meta for axis_meta in axes.values() if isinstance(axis_meta, dict)]
+
+    for axis_meta in axes_to_scan:
+        for key in axis_meta.get("required_tags") or []:
+            if isinstance(key, str) and key.strip():
+                expected.add(key.strip())
+                required.add(key.strip())
+        for key in axis_meta.get("recommended_tags") or []:
+            if isinstance(key, str) and key.strip():
+                expected.add(key.strip())
+        expected_values = axis_meta.get("expected_values") or {}
+        if isinstance(expected_values, dict):
+            for key in expected_values.keys():
+                key_str = str(key).strip()
+                if key_str:
+                    expected.add(key_str)
+
+    return sorted(expected), sorted(required)
+
+
 def _build_block_matrix_drift_report(
     *,
     blocks: List[Any],
@@ -673,6 +798,7 @@ def _build_block_matrix_drift_report(
     required_tag_keys_csv: Optional[str],
     max_entries: int,
     max_examples_per_entry: int,
+    tag_constraints: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     observed_row_values: set[str] = set()
     observed_col_values: set[str] = set()
@@ -682,6 +808,20 @@ def _build_block_matrix_drift_report(
 
     expected_row_values = _parse_csv_values(expected_row_values_csv)
     expected_col_values = _parse_csv_values(expected_col_values_csv)
+
+    family_schema = _get_prompt_block_family_schema((tag_constraints or {}).get("sequence_family"))
+    if not expected_row_values:
+        expected_row_values = _family_expected_values_for_matrix_axis(
+            family_schema,
+            axis_key=row_key,
+            tag_constraints=tag_constraints,
+        )
+    if not expected_col_values:
+        expected_col_values = _family_expected_values_for_matrix_axis(
+            family_schema,
+            axis_key=col_key,
+            tag_constraints=tag_constraints,
+        )
 
     if use_canonical_expected_values and not expected_row_values:
         tag_key = _axis_key_to_tag_key(row_key)
@@ -695,8 +835,14 @@ def _build_block_matrix_drift_report(
     expected_row_set = set(expected_row_values) if expected_row_values else None
     expected_col_set = set(expected_col_values) if expected_col_values else None
 
-    expected_tag_keys = set(_parse_csv_values(expected_tag_keys_csv)) if expected_tag_keys_csv else None
-    required_tag_keys = _parse_csv_values(required_tag_keys_csv)
+    family_expected_tag_keys, family_required_tag_keys = _family_expected_and_required_tag_keys(
+        family_schema,
+        tag_constraints=tag_constraints,
+    )
+    expected_tag_keys = set(_parse_csv_values(expected_tag_keys_csv)) if expected_tag_keys_csv else (
+        set(family_expected_tag_keys) if family_expected_tag_keys else None
+    )
+    required_tag_keys = _parse_csv_values(required_tag_keys_csv) or family_required_tag_keys
 
     unexpected_tag_key_counts: Counter[str] = Counter()
     unexpected_tag_key_examples: Dict[str, List[str]] = {}
@@ -786,6 +932,7 @@ def _build_block_matrix_drift_report(
         "tags": {
             "expected_keys": sorted(expected_tag_keys) if expected_tag_keys is not None else None,
             "required_keys": required_tag_keys or None,
+            "family_schema": (tag_constraints or {}).get("sequence_family") if family_schema else None,
             "observed_keys_top": _top(observed_tag_key_counts),
             "unexpected_keys_top": _top_with_examples(unexpected_tag_key_counts, unexpected_tag_key_examples) if expected_tag_keys is not None else [],
             "missing_required_top": _top_with_examples(missing_required_counts, missing_required_examples) if required_tag_keys else [],
@@ -940,13 +1087,32 @@ async def get_block_matrix(
     """Build a block coverage matrix from DB-loaded blocks (AI + UI friendly)."""
     from pixsim7.backend.main.domain.prompt import PromptBlock
 
+    tag_constraints = _parse_tag_csv(tags) or None
+    family_schema = _get_prompt_block_family_schema((tag_constraints or {}).get("sequence_family"))
+    auto_expected_row_values = _family_expected_values_for_matrix_axis(
+        family_schema,
+        axis_key=row_key,
+        tag_constraints=tag_constraints,
+    )
+    auto_expected_col_values = _family_expected_values_for_matrix_axis(
+        family_schema,
+        axis_key=col_key,
+        tag_constraints=tag_constraints,
+    )
+    effective_expected_row_values = expected_row_values or (
+        ",".join(auto_expected_row_values) if auto_expected_row_values else None
+    )
+    effective_expected_col_values = expected_col_values or (
+        ",".join(auto_expected_col_values) if auto_expected_col_values else None
+    )
+
     query = build_prompt_block_query(
         role=role,
         category=category,
         kind=kind,
         package_name=package_name,
         text_query=q,
-        tag_constraints=_parse_tag_csv(tags) or None,
+        tag_constraints=tag_constraints,
     )
     query = query.order_by(PromptBlock.block_id).limit(limit)
     result = await db.execute(query)
@@ -973,13 +1139,13 @@ async def get_block_matrix(
         row_values,
         row_key,
         include_empty=include_empty,
-        expected_values_csv=expected_row_values,
+        expected_values_csv=effective_expected_row_values,
     )
     _extend_axis_values_from_canonical_dictionary(
         col_values,
         col_key,
         include_empty=include_empty,
-        expected_values_csv=expected_col_values,
+        expected_values_csv=effective_expected_col_values,
     )
 
     sorted_rows = sorted(row_values)
@@ -1026,7 +1192,7 @@ async def get_block_matrix(
             "kind": kind,
             "package_name": package_name,
             "q": q,
-            "tags": _parse_tag_csv(tags) or None,
+            "tags": tag_constraints,
             "limit": limit,
             "sample_per_cell": sample_per_cell,
             "missing_label": missing_label,
@@ -1035,13 +1201,14 @@ async def get_block_matrix(
                 row_key=row_key,
                 col_key=col_key,
                 missing_label=missing_label,
-                expected_row_values_csv=expected_row_values,
-                expected_col_values_csv=expected_col_values,
+                expected_row_values_csv=effective_expected_row_values,
+                expected_col_values_csv=effective_expected_col_values,
                 use_canonical_expected_values=use_canonical_expected_values,
                 expected_tag_keys_csv=expected_tag_keys,
                 required_tag_keys_csv=required_tag_keys,
                 max_entries=drift_max_entries,
                 max_examples_per_entry=drift_examples_per_entry,
+                tag_constraints=tag_constraints,
             )
             if include_drift_report
             else None,

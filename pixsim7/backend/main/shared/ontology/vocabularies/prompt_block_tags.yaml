@@ -1,0 +1,6 @@
+# Prompt Block Tags Vocabulary (core schema only)
+# Concrete tag-key authorities are provided by vocab packs (e.g., starter_pack).
+version: "1.0.0"
+
+tags: {}
+

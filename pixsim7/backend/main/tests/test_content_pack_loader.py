@@ -142,6 +142,81 @@ blocks:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_parse_blocks_enforces_registered_family_axis_required_tags() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "blocks.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - block_id: env_missing_crowd
+    role: environment
+    category: scene_build
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: environment
+      loc_type: cafe
+    text: "Generic cafe scene."
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="requires tag 'crowd_level'"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_family_validation_accepts_value_aliases() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "blocks.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - block_id: activity_alias_value
+    role: action
+    category: interaction_beat
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: activity
+      beat_type: lookback
+    text: "Brief glance over the shoulder before moving on."
+""",
+        )
+
+        parsed = loader.parse_blocks(pack_dir)
+        assert [b["block_id"] for b in parsed] == ["activity_alias_value"]
+        assert parsed[0]["tags"]["beat_type"] == "lookback"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_unknown_sequence_family() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "blocks.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - block_id: unknown_family_block
+    role: action
+    category: interaction_beat
+    tags:
+      sequence_family: totally_new_family
+      beat_axis: activity
+    text: "Placeholder."
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="unknown sequence_family 'totally_new_family'"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_parse_templates_requires_slug() -> None:
     root, pack_dir = _make_pack_dir()
     try:
@@ -190,6 +265,60 @@ templates:
         assert sorted(t["slug"] for t in parsed) == ["t-a", "t-b"]
         for t in parsed:
             assert t["template_metadata"][loader.CONTENT_PACK_SOURCE_KEY] == "demo_pack"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_templates_rejects_unknown_sequence_family_in_slot_tags() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "templates.yaml",
+            """
+version: "1.0.0"
+templates:
+  - slug: bad-family-template
+    name: Bad Family
+    slots:
+      - label: Movement beat
+        role: action
+        category: motion_beat
+        tags:
+          all:
+            sequence_family: totally_new_family
+            beat_axis: movement
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="unknown value 'totally_new_family'"):
+            loader.parse_templates(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_templates_rejects_invalid_family_axis_in_slot_tags() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "templates.yaml",
+            """
+version: "1.0.0"
+templates:
+  - slug: bad-axis-template
+    name: Bad Axis
+    slots:
+      - label: Camera framing
+        role: camera
+        category: composition
+        tags:
+          all:
+            sequence_family: public_social_idle
+            beat_axis: stop
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="beat_axis.*invalid value 'stop'.*public_social_idle"):
+            loader.parse_templates(pack_dir)
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

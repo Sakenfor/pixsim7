@@ -26,6 +26,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     SpatialDef,
     CameraDef,
     ProgressionDef,
+    GenericVocabDef,
     ScoringConfig,
     ScoringWeights,
     PartialCredit,
@@ -671,6 +672,12 @@ class VocabularyRegistry:
     def get_progression(self, progression_id: str) -> Optional[ProgressionDef]:
         return self.get("progression", progression_id)
 
+    def get_prompt_block_tag(self, tag_key: str) -> Optional[GenericVocabDef]:
+        return self.get("prompt_block_tags", tag_key)
+
+    def get_prompt_block_family(self, family_id: str) -> Optional[GenericVocabDef]:
+        return self.get("prompt_block_families", family_id)
+
     # =========================================================================
     # Typed List Getters
     # =========================================================================
@@ -713,6 +720,12 @@ class VocabularyRegistry:
 
     def all_progression(self) -> List[ProgressionDef]:
         return self.all_of("progression")
+
+    def all_prompt_block_tags(self) -> List[GenericVocabDef]:
+        return self.all_of("prompt_block_tags")
+
+    def all_prompt_block_families(self) -> List[GenericVocabDef]:
+        return self.all_of("prompt_block_families")
 
     # =========================================================================
     # Properties
