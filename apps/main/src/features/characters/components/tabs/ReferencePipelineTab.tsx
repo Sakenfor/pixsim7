@@ -1145,15 +1145,30 @@ export function ReferencePipelineTab({ character, onChange }: ReferencePipelineT
     return { 'base-identity': bodyDone, 'expression-set': exprDone, 'pose-set': poseDone, tagging: tagged, 'game-link': linked };
   }, [allAssets, tags, character.game_npc_id]);
 
-  /* ── Production workspace nav sections ──────────────────────────── */
-  const navSections: { id: ProductionSection; label: string; badge?: number }[] = [
-    { id: 'ingest', label: 'Ingest', badge: ingestItems.length > 0 ? ingestItems.length : undefined },
-    { id: 'slots', label: 'Slots', badge: Object.keys(referenceSlots).length > 0 ? Object.keys(referenceSlots).length : undefined },
-    { id: 'assets', label: 'Assets', badge: allAssets.length > 0 ? allAssets.length : undefined },
-    { id: 'scene-prep', label: 'Scene Prep' },
-    { id: 'quick-batch', label: 'Quick Batch' },
-    { id: 'templates', label: 'Templates' },
-    { id: 'tagging', label: 'Tagging' },
+  /* ── Production workspace nav groups ────────────────────────────── */
+  const navGroups: { title: string; items: { id: ProductionSection; label: string; badge?: number }[] }[] = [
+    {
+      title: 'References',
+      items: [
+        { id: 'ingest', label: 'Ingest', badge: ingestItems.length > 0 ? ingestItems.length : undefined },
+        { id: 'slots', label: 'Slots', badge: Object.keys(referenceSlots).length > 0 ? Object.keys(referenceSlots).length : undefined },
+        { id: 'assets', label: 'Assets', badge: allAssets.length > 0 ? allAssets.length : undefined },
+      ],
+    },
+    {
+      title: 'Scene',
+      items: [
+        { id: 'scene-prep', label: 'Scene Prep' },
+        { id: 'quick-batch', label: 'Quick Batch' },
+      ],
+    },
+    {
+      title: 'Config',
+      items: [
+        { id: 'templates', label: 'Templates' },
+        { id: 'tagging', label: 'Tagging' },
+      ],
+    },
   ];
 
   return (
@@ -1171,38 +1186,40 @@ export function ReferencePipelineTab({ character, onChange }: ReferencePipelineT
         className="min-h-[540px]"
         sidebar={
           <>
-            {/* Section nav */}
-            <GraphSidebarSection title="Production">
-              <nav className="space-y-0.5">
-                {navSections.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setActiveSection(item.id)}
-                    className={clsx(
-                      'flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs transition',
-                      activeSection === item.id
-                        ? 'bg-neutral-700 text-neutral-100'
-                        : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200',
-                    )}
-                  >
-                    <span>{item.label}</span>
-                    {item.badge != null && (
-                      <span
-                        className={clsx(
-                          'rounded px-1.5 py-0.5 text-[10px] tabular-nums',
-                          activeSection === item.id
-                            ? 'bg-neutral-600 text-neutral-200'
-                            : 'bg-neutral-800 text-neutral-500',
-                        )}
-                      >
-                        {item.badge}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </nav>
-            </GraphSidebarSection>
+            {/* Section nav — grouped */}
+            {navGroups.map((group) => (
+              <GraphSidebarSection key={group.title} title={group.title}>
+                <nav className="space-y-0.5">
+                  {group.items.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setActiveSection(item.id)}
+                      className={clsx(
+                        'flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs transition',
+                        activeSection === item.id
+                          ? 'bg-neutral-700 text-neutral-100'
+                          : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200',
+                      )}
+                    >
+                      <span>{item.label}</span>
+                      {item.badge != null && (
+                        <span
+                          className={clsx(
+                            'rounded px-1.5 py-0.5 text-[10px] tabular-nums',
+                            activeSection === item.id
+                              ? 'bg-neutral-600 text-neutral-200'
+                              : 'bg-neutral-800 text-neutral-500',
+                          )}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </nav>
+              </GraphSidebarSection>
+            ))}
 
             {/* Compact checklist */}
             <GraphSidebarSection title="Checklist">
