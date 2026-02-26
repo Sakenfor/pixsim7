@@ -12,81 +12,72 @@ defaults:
 blocks:
 
   # ═══════════════════════════════════════════════════════════════════
-  # STYLE — scene-specific wardrobe styles
+  # STYLE — scene-specific aesthetics
   # ═══════════════════════════════════════════════════════════════════
 
   - block_id: ie_style_medieval_thief
     role: style
-    category: wardrobe
+    category: aesthetic
     kind: single_state
     text: >-
-      Rework clothing into a rugged, belt-heavy medieval thief aesthetic
-      while preserving garment length and silhouette.
-      Fitted dark leather bodice following the natural contour precisely.
-      Multiple layered belts crossing the waist and wrapping the hips at
-      varied angles. Compact pouches and small metal loops along the belt line.
-      Shorter asymmetrical overskirt consistent with the original hemline.
-      Thigh-high stockings with integrated harness detailing.
-      Distressed matte leather and heavy cloth in charcoal and deep brown tones.
+      Rugged, belt-heavy medieval thief aesthetic. Fitted dark leather bodice
+      following the natural contour precisely. Multiple layered belts crossing
+      the waist and wrapping the hips at varied angles. Compact pouches and
+      small metal loops along the belt line. Shorter asymmetrical overskirt.
+      Thigh-high stockings with integrated harness detailing. Distressed matte
+      leather and heavy cloth in charcoal and deep brown tones.
     tags:
       intent: modify
       aesthetic: medieval_thief
       genre: fantasy
       palette: dark
-      texture: leather
     complexity_level: complex
 
   - block_id: ie_style_cyberpunk
     role: style
-    category: wardrobe
+    category: aesthetic
     kind: single_state
     text: >-
-      Rework clothing into a cyberpunk streetwear aesthetic while preserving
-      garment length and silhouette. Synthetic fabrics with subtle neon-thread
-      accents. Cropped utility jacket with luminous piping along seams.
-      Layered tech-fabric underlayers. Holographic belt buckle, cable-wrapped
-      accessories. Dark base tones with electric blue or magenta highlights.
+      Cyberpunk streetwear aesthetic. Synthetic fabrics with subtle neon-thread
+      accents. Cropped utility jacket with luminous piping along seams. Layered
+      tech-fabric underlayers. Holographic belt buckle, cable-wrapped accessories.
+      Dark base tones with electric blue or magenta highlights.
     tags:
       intent: modify
       aesthetic: cyberpunk
       genre: sci_fi
       palette: dark_neon
-      texture: synthetic
     complexity_level: complex
 
   - block_id: ie_style_victorian_elegant
     role: style
-    category: wardrobe
+    category: aesthetic
     kind: single_state
     text: >-
-      Rework clothing into a refined Victorian evening aesthetic while
-      preserving garment length and silhouette. Structured corset bodice
-      with lace overlay. High collar with cameo brooch. Layered bustle skirt
-      in rich fabric. Elbow-length gloves, pearl accents. Deep burgundy,
-      midnight blue, or black with gold trim.
+      Refined Victorian evening aesthetic. Structured corset bodice with lace
+      overlay. High collar with cameo brooch. Layered bustle skirt in rich
+      fabric. Elbow-length gloves, pearl accents. Deep burgundy, midnight blue,
+      or black with gold trim.
     tags:
       intent: modify
       aesthetic: victorian
       genre: period
       palette: rich
-      texture: silk_lace
     complexity_level: complex
 
   - block_id: ie_style_athletic_minimal
     role: style
-    category: wardrobe
+    category: aesthetic
     kind: single_state
     text: >-
-      Rework clothing into clean athletic wear while preserving garment
-      length and silhouette. Fitted sports bra or crop top, high-waisted
-      leggings. Minimal accessories — one wristband, small earbuds.
-      Matte performance fabrics in monochrome tones.
+      Clean athletic aesthetic. Fitted sports bra or crop top, high-waisted
+      leggings. Minimal accessories — one wristband, small earbuds. Matte
+      performance fabrics in monochrome tones.
     tags:
       intent: modify
       aesthetic: athletic
       genre: modern
       palette: monochrome
-      texture: performance
     complexity_level: moderate
 
   # ── atmosphere / tone (scene-specific) ─────────────────────────
@@ -98,7 +89,7 @@ blocks:
     text: >-
       Controlled predator atmosphere. Dramatic low-angle tension,
       silhouette-forward framing, narrow confined space, stylized contrast.
-      The subject's pose remains completely unchanged.
+      {{subject}}'s pose remains completely unchanged.
     tags:
       intent: modify
       atmosphere: predator
@@ -137,7 +128,7 @@ blocks:
     category: scene_build
     kind: single_state
     text: >-
-      Modern hotel lobby behind the subject's current position.
+      Modern hotel lobby behind {{subject}}'s current position.
       Polished floors, reception desk in background, warm ambient light.
     tags:
       intent: modify
@@ -151,7 +142,7 @@ blocks:
     category: scene_build
     kind: single_state
     text: >-
-      Sleek corporate office behind the subject's current position.
+      Sleek corporate office behind {{subject}}'s current position.
       Glass walls, city skyline visible through windows.
     tags:
       intent: modify
@@ -165,7 +156,7 @@ blocks:
     category: scene_build
     kind: single_state
     text: >-
-      Sunlit park behind the subject's current position.
+      Sunlit park behind {{subject}}'s current position.
       Trees, open grass, benches, natural daylight.
     tags:
       intent: modify
@@ -179,7 +170,7 @@ blocks:
     category: scene_build
     kind: single_state
     text: >-
-      Dimly lit nightclub interior behind the subject's current position.
+      Dimly lit nightclub interior behind {{subject}}'s current position.
       Ambient colored lighting, bar area visible, silhouettes of other patrons.
     tags:
       intent: modify
@@ -214,7 +205,7 @@ blocks:
     default_intent: add
     text: >-
       He wears a hotel porter uniform and stands attentively.
-      One hand rests lightly near the subject's side as if assisting
+      One hand rests lightly near {{subject}}'s side as if assisting
       or steadying something.
     tags:
       intent: add
@@ -228,7 +219,7 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      He is facing away from the subject, looking at his phone.
+      He is facing away from {{subject}}, looking at his phone.
       Casual posture, visibly absorbed in the screen, unaware of
       his surroundings.
     tags:
@@ -243,7 +234,7 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      A male figure, partially visible. Angled toward the subject.
+      A male figure, partially visible. Angled toward {{subject}}.
       Integrated into the scene lighting. Physical presence without
       narrative specificity.
     tags:
@@ -1287,7 +1278,7 @@ blocks:
     text: >-
       Camera positioned at eye level within arm's reach of the standing
       group, angled to capture all figures in a compressed frame. The
-      nearest man and the subject dominate the foreground while the
+      nearest man and {{subject}} dominate the foreground while the
       remaining figures layer tightly behind. Shallow depth of field
       softens the metro interior beyond the group.
     tags:
@@ -1319,7 +1310,7 @@ blocks:
     category: framing
     kind: single_state
     text: >-
-      Frame the group in a tight intimate composition. The subject and
+      Frame the group in a tight intimate composition. {{subject}} and
       the nearest man occupy the visual centre, their proximity the
       focal anchor. The second and third men layer close behind and to
       the sides, their shoulders overlapping in the frame. Negative
@@ -1694,7 +1685,7 @@ blocks:
     kind: single_state
     default_intent: preserve
     text: >-
-      The subject's clothing remains exactly as it appears in the source image.
+      {{subject}}'s clothing remains exactly as it appears in the source image.
       No added layers, no redesign, no structural changes. Maintain
       fabric type, fit, coverage, and colour precisely. The outfit
       integrates into the new environment without modification.
@@ -1710,10 +1701,10 @@ blocks:
     kind: single_state
     default_intent: preserve
     text: >-
-      Preserve every aspect of the subject's clothing exactly as-is — cut, colour,
+      Preserve every aspect of {{subject}}'s clothing exactly as-is — cut, colour,
       fabric, layering, accessories. Do not adapt, stylise, or reinterpret
-      any garment to match the surrounding scene. The subject wears what they wear;
-      the environment conforms to the subject, not the reverse.
+      any garment to match the surrounding scene. {{subject}} wears what they wear;
+      the environment conforms to {{subject}}, not the reverse.
     tags:
       intent: preserve
       layer: foreground
@@ -1788,9 +1779,9 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      {{conductor}} lingers in the confined aisle immediately behind the subject.
+      {{conductor}} lingers in the confined aisle immediately behind {{subject}}.
       The narrow carriage forces {{conductor}} close — shoulder line
-      nearly overlapping the subject's in the frame, separated by inches
+      nearly overlapping {{subject}}'s in the frame, separated by inches
       rather than choice. The aisle offers no room to step aside.
     tags:
       intent: add
@@ -1807,9 +1798,9 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      {{conductor}} stands directly behind the subject in the aisle, the
+      {{conductor}} stands directly behind {{subject}} in the aisle, the
       carriage width leaving no lateral clearance. {{conductor}}'s uniform
-      brushes the air close to the subject's back. The train's subtle sway
+      brushes the air close to {{subject}}'s back. The train's subtle sway
       compresses the remaining distance between them at irregular intervals.
     tags:
       intent: add
@@ -2184,10 +2175,10 @@ blocks:
     category: drift
     kind: single_state
     text: >-
-      The camera descends from a high angle, tracking slowly downward
-      and behind her until it settles at hip height, the framing
-      placing her lower back and hi_p-s center-screen, the depth of
-      field narrowing to isolate her figure
+      The camera drifts subtly from its starting position, easing
+      into a tighter framing without repositioning her body, the
+      existing composition preserved as the depth of field narrows
+      and the background softens into bokeh
     tags:
       camera: drift_behind
       motion: drift
@@ -2282,4 +2273,38 @@ blocks:
     tags:
       tone: warm
       setting: exterior
+    complexity_level: simple
+
+  # ═══════════════════════════════════════════════════════════════════
+  # ENVIRONMENT — generic real-world scene semantics fallback
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_scene_generic_real_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Preserve the existing setting as shown in the source image.
+      Maintain architectural lines, surface textures, and ambient
+      lighting of the original environment.
+    tags:
+      scene_scope: generic_real_world
+      edit_mode: image_edit
+      intent: preserve
+    complexity_level: simple
+
+  - block_id: ie_scene_generic_real_02
+    role: environment
+    category: scene_build
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Keep the real-world environment from the source image intact.
+      Background elements, spatial depth, and natural lighting
+      conditions remain unaltered.
+    tags:
+      scene_scope: generic_real_world
+      edit_mode: image_edit
+      intent: preserve
     complexity_level: simple
