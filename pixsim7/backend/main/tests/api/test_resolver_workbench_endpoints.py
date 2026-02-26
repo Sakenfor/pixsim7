@@ -228,6 +228,95 @@ async def test_resolve_invalid_resolver_id_returns_400():
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="httpx/fastapi not available")
+async def test_resolve_required_capabilities_filters_candidates():
+    """required_capabilities_by_target drops candidates missing the required capability."""
+    payload = {
+        "resolver_id": "next_v1",
+        "seed": 1,
+        "intent": {
+            "targets": [{"key": "scene", "kind": "slot", "category": "scene_build"}],
+            "required_capabilities_by_target": {"scene": ["scene_build"]},
+        },
+        "candidates_by_target": {
+            "scene": [
+                {
+                    "block_id": "block_wrong_cap",
+                    "text": "wrong category block",
+                    "capabilities": ["wardrobe_modifier"],
+                    "avg_rating": 5.0,
+                },
+                {
+                    "block_id": "block_correct_cap",
+                    "text": "correct category block",
+                    "capabilities": ["scene_build"],
+                    "avg_rating": 3.0,
+                },
+            ],
+        },
+        "constraints": [],
+        "debug": {"include_trace": True, "include_candidate_scores": True},
+    }
+    app = _app()
+    async with _client(app) as client:
+        resp = await client.post(
+            "/api/v1/block-templates/dev/resolver-workbench/resolve",
+            json=payload,
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    # Despite block_wrong_cap having a higher rating, it lacks the required capability
+    assert data["selected_by_target"]["scene"]["block_id"] == "block_correct_cap"
+    events = data["trace"]["events"]
+    assert any(
+        ev["kind"] == "constraint_failed"
+        and ev.get("candidate_block_id") == "block_wrong_cap"
+        for ev in events
+    )
+
+
+# ---------------------------------------------------------------------------
+# Compiler helper unit tests (no HTTP, test enrichment logic directly)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="httpx/fastapi not available")
+def test_slot_tag_constraint_groups_emits_all_any_not():
+    """_slot_tag_constraint_groups returns all three groups from tag_constraints."""
+    from pixsim7.backend.main.api.v1.block_templates import _slot_tag_constraint_groups
+
+    slot = {
+        "tag_constraints": {
+            "aesthetic": "police_uniform",
+            "location": "break_room",
+        },
+    }
+    groups = _slot_tag_constraint_groups(slot)
+    assert groups["all"] == {"aesthetic": "police_uniform", "location": "break_room"}
+    assert groups["any"] == {}
+    assert groups["not"] == {}
+
+
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="httpx/fastapi not available")
+def test_slot_tag_constraint_groups_handles_tag_query_with_not():
+    """_slot_tag_constraint_groups extracts `not` group from tag_query style constraints."""
+    from pixsim7.backend.main.api.v1.block_templates import _slot_tag_constraint_groups
+
+    slot = {
+        "tags": {
+            "all": {"aesthetic": "tribal_handcrafted"},
+            "not": {"allure_level": "high"},
+        },
+    }
+    groups = _slot_tag_constraint_groups(slot)
+    assert groups["all"] == {"aesthetic": "tribal_handcrafted"}
+    assert groups["not"] == {"allure_level": "high"}
+
+
+# ---------------------------------------------------------------------------
+# compile-template endpoint tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="httpx/fastapi not available")
 async def test_compile_template_requires_slug_or_id():
     """compile-template returns 400 when neither slug nor template_id is given."""
     mock_db = AsyncMock()
