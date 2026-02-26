@@ -83,11 +83,32 @@ CONTROL_PRESETS: Dict[str, List[Dict[str, Any]]] = {
 }
 
 
+_TAG_SELECT_REQUIRED: frozenset[str] = frozenset({"id", "label", "target_tag", "target_slot"})
+
+
+def _validate_tag_select_control(ctrl: Dict[str, Any]) -> None:
+    """Raise ``ValueError`` if a ``tag_select`` control is missing required fields."""
+    missing = _TAG_SELECT_REQUIRED - set(ctrl.keys())
+    if missing:
+        raise ValueError(
+            f"tag_select control missing required fields: {sorted(missing)}"
+        )
+    for field in _TAG_SELECT_REQUIRED:
+        v = ctrl.get(field)
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError(
+                f"tag_select control field {field!r} must be a non-empty string"
+            )
+
+
 def expand_control_presets(raw_controls: List[Any]) -> List[Any]:
     """Replace ``{"preset": "name"}`` entries with deep-copied preset controls.
 
-    Non-preset entries are passed through unchanged.  Raises ``ValueError``
-    on unknown preset names so callers can wrap with precise path context.
+    Non-preset entries are passed through unchanged, with light structural
+    validation for known lazy control types (e.g. ``tag_select``).
+
+    Raises ``ValueError`` on unknown preset names or structurally invalid lazy
+    controls so callers can wrap with precise path context.
     """
     expanded: List[Any] = []
     for ctrl in raw_controls:
@@ -101,5 +122,7 @@ def expand_control_presets(raw_controls: List[Any]) -> List[Any]:
                 )
             expanded.extend(copy.deepcopy(CONTROL_PRESETS[preset_name]))
         else:
+            if isinstance(ctrl, dict) and ctrl.get("type") == "tag_select":
+                _validate_tag_select_control(ctrl)
             expanded.append(ctrl)
     return expanded
