@@ -18,6 +18,36 @@ This file focuses on:
 - acceptance criteria and validation
 - handoff conventions
 
+## Structural Principle (Compiler + Resolver over Shared Content)
+
+This track is not just "a resolve step after a compile step". The intended architecture is:
+
+1. **Shared content source** (same blocks, same templates; at least initially)
+2. **Compiler layer** (versioned/pluggable) -> emits `ResolutionRequest`
+3. **Shared IR** (`ResolutionRequest`)
+4. **Resolver layer** (versioned/pluggable) -> emits `ResolutionResult`
+5. **Shared output contract** (`ResolutionResult`)
+
+Both compiler and resolver layers are **independently evolvable** over the same content source.
+
+### Long-term target
+
+- shared content source
+- multiple compilers (`compiler_v1`, `compiler_v2`, ...)
+- shared `ResolutionRequest` IR
+- multiple resolvers (`legacy_v1`, `next_v1`, ...)
+- shared `ResolutionResult` contract
+
+### Acceptable intermediate state (current)
+
+This is an explicit, valid transition state:
+
+- legacy template roll path still exists and does **not** use `ResolutionRequest`
+- workbench path uses `compiler_v1 -> next_v1`
+- migration comparison tooling is deferred
+
+Do not treat this as architectural inconsistency; it is the planned staging model.
+
 ## Current Baseline (Implemented)
 
 ### Backend: resolver core (parallel, no legacy runtime integration yet)
@@ -57,6 +87,9 @@ Implemented endpoints:
   - applies control effects to slots
   - fetches candidates per slot (limited)
   - emits a `ResolutionRequest` JSON for workbench experimentation
+
+Note: this currently behaves as an implicit **`compiler_v1`**, but it is still implemented
+as endpoint-local functions inside `block_templates.py` rather than a first-class compiler module/protocol.
 
 ### Frontend: Prompt Resolver Workbench panel (implemented)
 
@@ -108,6 +141,11 @@ These should be preserved unless explicitly changing architecture.
 - Evolve versioned fields deliberately.
 - Prefer additive changes over breaking renames.
 
+3a. Treat the compiler as a first-class architecture layer
+
+- Do not let compiler evolution remain hidden as endpoint-local helper churn forever.
+- When compiler behavior grows, promote it to a named/versioned compiler module (`compiler_v1`) with a protocol/registry.
+
 4. Keep UI/Workbench generic
 
 - Avoid hardcoding police/tribal semantics into shared workbench UI.
@@ -141,7 +179,36 @@ Goal: when `next_v1` is mature enough to consider for production, provide toolin
 to compare outputs and build confidence in the switch.
 Deferred until `next_v1` development track is meaningfully ahead.
 
+### Compiler Architecture Track (cross-cutting; supports `next_v1` development)
+
+Goal: make the compiler layer a first-class, versioned part of the architecture,
+parallel to the resolver layer (not just a helper inside an endpoint).
+
+This track is distinct from resolver development, but it directly unblocks it.
+
 ## Near-Term Workstreams
+
+### Track 0: Compiler Layer Formalization (Architecture hygiene, before/alongside enrichment)
+
+This is the missing structural piece in code/docs.
+Right now `compile-template` behaves like `compiler_v1`, but it is not named/versioned as such.
+
+Examples:
+
+- define `BlockCompiler` protocol (parallel to `BlockResolver`)
+- add compiler request/diagnostics types (or explicitly document compiler input/output shape)
+- create `compiler_core` (or equivalent) package with `compiler_v1`
+- make `/compile-template` endpoint dispatch through compiler registry
+- keep behavior unchanged while formalizing boundaries
+
+Files (future target):
+
+- `pixsim7/backend/main/services/prompt/block/compiler_core/*` (or colocated equivalent)
+- `pixsim7/backend/main/api/v1/block_templates.py`
+
+Note:
+- This is **not** required before all compiler enrichment work, but the roadmap should treat it
+  as a first-class architectural objective, not endpoint cleanup.
 
 ### Track 1: Compiler Enrichment — `template → ResolutionRequest` (HIGHEST PRIORITY)
 
@@ -236,6 +303,7 @@ Files:
 
 Each item should be shippable and reviewable.
 Ordered by track priority: compiler enrichment → relational scoring → trace usability → migration (last).
+Compiler layer formalization can land just before or during compiler enrichment if the endpoint helper starts accreting complexity.
 
 ### ~~Iteration 1~~: Workbench control overrides + endpoint tests ✓ DONE
 
@@ -275,6 +343,21 @@ Validation:
 - `python -m py_compile pixsim7/backend/main/api/v1/block_templates.py`
 - `pnpm -C apps/main exec tsc --noEmit`
 - targeted pytest for endpoint tests + resolution_core tests
+
+### Iteration 3b (or 4a): Compiler formalization (`compiler_v1`)
+
+Track 0. Convert the current implicit compiler into a first-class/versioned entity.
+
+Scope:
+- introduce `BlockCompiler` protocol + compiler registry
+- move endpoint-local compile helpers into `compiler_v1`
+- keep `/compile-template` endpoint behavior unchanged (just dispatch through registry)
+- document `compiler_v1` in code comments / module docs
+
+Acceptance criteria:
+- no workbench behavior regression
+- compile endpoint returns same request shape for existing templates
+- compiler is selectable by ID internally (even if endpoint still defaults to `compiler_v1`)
 
 ### Iteration 4: `next_v1` relational scoring
 
@@ -351,6 +434,7 @@ Validation:
 ### Backend (hot)
 
 - `pixsim7/backend/main/api/v1/block_templates.py`
+- future compiler formalization target: `pixsim7/backend/main/services/prompt/block/compiler_core/*`
 - `pixsim7/backend/main/services/prompt/block/resolution_core/types.py`
 - `pixsim7/backend/main/services/prompt/block/resolution_core/next_v1_resolver.py`
 - `pixsim7/backend/main/services/prompt/block/resolution_core/registry.py`
@@ -375,6 +459,7 @@ Validation:
 
 - It maps slots/candidates/preferences/constraints enough for experimentation
 - It does not yet fully model all template semantics
+- It is not yet a first-class/versioned compiler module (`compiler_v1`)
 
 2. Workbench does not yet support legacy comparison mode
 
@@ -392,6 +477,7 @@ Revisit `prompt-resolver-next-v1.md` and potentially refine core interfaces if:
 - workbench needs repeated payload normalization hacks
 - more than one resolver implementation exists and traces are not comparable
 - compiler enrichments require major type changes
+- compiler behavior becomes difficult to reason about because it is still endpoint-local helpers
 
 ## Nice-to-Have (Later, not urgent)
 
@@ -400,4 +486,3 @@ Revisit `prompt-resolver-next-v1.md` and potentially refine core interfaces if:
 - save/share snapshot files under `docs/fixtures/` or `test_artifacts`
 - compare multiple seeds
 - trace search by block id / target / event kind
-
