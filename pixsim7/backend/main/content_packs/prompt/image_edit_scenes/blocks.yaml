@@ -28,9 +28,60 @@ blocks:
     tags:
       intent: modify
       aesthetic: medieval_thief
+      variant: utility
       genre: fantasy
       palette: dark
     complexity_level: complex
+
+  - block_id: ie_style_medieval_thief_02
+    role: style
+    category: aesthetic
+    kind: single_state
+    text: >-
+      Shadow-operative thief aesthetic. Close-fitted dark materials with minimal
+      hardware. Single utility strap across the torso. Low-profile attachment
+      points; nothing protrudes or catches. Surfaces flat and non-reflective.
+    tags:
+      intent: modify
+      aesthetic: medieval_thief
+      variant: shadow
+      genre: fantasy
+      palette: dark
+    complexity_level: moderate
+
+  - block_id: ie_style_medieval_thief_03
+    role: style
+    category: aesthetic
+    kind: single_state
+    text: >-
+      Outlaw rogue aesthetic. Layered strapping with visible wear and improvised
+      repair. Metal ring and loop details at irregular intervals. Asymmetric
+      balance across the torso and hips. Materials distressed and patched rather
+      than purpose-built.
+    tags:
+      intent: modify
+      aesthetic: medieval_thief
+      variant: outlaw
+      genre: fantasy
+      palette: dark
+    complexity_level: moderate
+
+  - block_id: ie_style_medieval_thief_04
+    role: style
+    category: aesthetic
+    kind: single_state
+    text: >-
+      Guild-trained thief aesthetic. Deliberate strap geometry with riveted
+      reinforcement at key stress points. Uniform attachment hardware along a
+      consistent line. Close, controlled fit with minimal excess material.
+      Purposeful and precise.
+    tags:
+      intent: modify
+      aesthetic: medieval_thief
+      variant: guild
+      genre: fantasy
+      palette: dark
+    complexity_level: moderate
 
   - block_id: ie_style_cyberpunk
     role: style

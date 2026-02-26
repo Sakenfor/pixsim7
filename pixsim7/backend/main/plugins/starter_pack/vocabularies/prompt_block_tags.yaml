@@ -295,6 +295,18 @@ tags:
         category: theme_cue
     status: active
 
+  variant:
+    label: "Variant"
+    description: "Style variant within an aesthetic. Values are aesthetic-specific; no global allowed_values constraint."
+    data_type: string
+    allowed_values: []
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: style
+        category: aesthetic
+    status: active
+
   theme_variant:
     label: "Theme Variant"
     description: "Variant within a theme family."
