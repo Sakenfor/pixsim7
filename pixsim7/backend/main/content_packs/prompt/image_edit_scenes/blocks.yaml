@@ -20,12 +20,11 @@ blocks:
     category: aesthetic
     kind: single_state
     text: >-
-      Rugged, belt-heavy medieval thief aesthetic. Fitted dark leather bodice
-      following the natural contour precisely. Multiple layered belts crossing
-      the waist and wrapping the hips at varied angles. Compact pouches and
-      small metal loops along the belt line. Shorter asymmetrical overskirt.
-      Thigh-high stockings with integrated harness detailing. Distressed matte
-      leather and heavy cloth in charcoal and deep brown tones.
+      Rugged, belt-heavy medieval thief aesthetic. Dark leather fitted closely
+      to the natural contour. Multiple layered belts crossing the waist and
+      wrapping the hips at varied angles. Compact pouches and small metal loops
+      along the belt line. Integrated harness detailing at the thigh. Distressed
+      matte leather and heavy cloth in charcoal and deep brown tones.
     tags:
       intent: modify
       aesthetic: medieval_thief
@@ -39,9 +38,9 @@ blocks:
     kind: single_state
     text: >-
       Cyberpunk streetwear aesthetic. Synthetic fabrics with subtle neon-thread
-      accents. Cropped utility jacket with luminous piping along seams. Layered
-      tech-fabric underlayers. Holographic belt buckle, cable-wrapped accessories.
-      Dark base tones with electric blue or magenta highlights.
+      accents. Luminous piping along seams. Layered tech-fabric underlayers.
+      Holographic and cable-wrapped hardware details. Dark base tones with
+      electric blue or magenta highlights.
     tags:
       intent: modify
       aesthetic: cyberpunk
