@@ -471,6 +471,111 @@ def _validate_manifest_query_registry(
                     )
 
 
+def _parse_compact_tags(tags_str: str) -> Dict[str, str]:
+    """Parse a compact ``key:value,...`` tags string into a dict.
+
+    Only the first ``key:value`` pair per key is kept.  Values that do not
+    contain a colon are silently ignored (they are not valid key:value pairs).
+    """
+    result: Dict[str, str] = {}
+    for part in tags_str.split(","):
+        part = part.strip()
+        kv = part.split(":", 1)
+        if len(kv) == 2:
+            k, v = kv[0].strip(), kv[1].strip()
+            if k and k not in result:
+                result[k] = v
+    return result
+
+
+def _validate_manifest_query_family_axes(
+    *,
+    query: Dict[str, Any],
+    src: Path,
+    preset_index: int,
+    family_schemas: Dict[str, Any],
+) -> None:
+    """Validate axis and expected-value consistency against family contracts.
+
+    When a manifest query's ``tags`` string pins both ``sequence_family`` and
+    the family's axis tag key (typically ``beat_axis``) to a single value:
+
+    1. Confirms the axis value is registered in the family schema.
+    2. For each of ``expected_row_values`` / ``expected_col_values``:
+       if the corresponding ``row_key`` / ``col_key`` is ``tag:<key>`` *and*
+       the family+axis schema declares ``expected_values`` for that tag key,
+       validates every CSV token against the allowed set.
+
+    Silently skips when:
+    - ``family_schemas`` is empty (registry unavailable)
+    - ``tags`` does not pin exactly one family + axis
+    - The family schema has no ``expected_values`` for the referenced tag key
+    """
+    if not family_schemas:
+        return
+
+    tags_str = query.get("tags")
+    if not isinstance(tags_str, str):
+        return
+
+    tag_pairs = _parse_compact_tags(tags_str)
+    family_id = tag_pairs.get("sequence_family")
+    if not family_id:
+        return
+
+    family_schema = family_schemas.get(family_id)
+    if not isinstance(family_schema, dict):
+        return  # already caught by sequence_family validation
+
+    axis_tag_key = str(family_schema.get("axis_tag_key") or "beat_axis")
+    axis_id = tag_pairs.get(axis_tag_key)
+    if not axis_id:
+        return  # no axis pinned — nothing to validate here
+
+    axes = family_schema.get("axes") or {}
+    if not isinstance(axes, dict):
+        return
+
+    if axis_id not in axes:
+        valid_axes = ", ".join(sorted(str(k) for k in axes.keys()))
+        raise ContentPackValidationError(
+            f"{src}: matrix_presets[{preset_index}].query.tags references "
+            f"unknown axis '{axis_id}' for family '{family_id}'"
+            + (f" (valid: {valid_axes})" if valid_axes else "")
+        )
+
+    axis_schema = axes.get(axis_id) or {}
+    expected_values_map = axis_schema.get("expected_values") or {}
+    if not isinstance(expected_values_map, dict) or not expected_values_map:
+        return
+
+    # Check expected_row_values / expected_col_values against the family contract.
+    for axis_field, ev_field in (
+        ("row_key", "expected_row_values"),
+        ("col_key", "expected_col_values"),
+    ):
+        key_ref = query.get(axis_field, "")
+        ev_csv = query.get(ev_field)
+        if not isinstance(key_ref, str) or not isinstance(ev_csv, str):
+            continue
+        if not key_ref.startswith("tag:"):
+            continue
+        tag_key = key_ref[4:].strip()
+        if not tag_key or tag_key not in expected_values_map:
+            continue
+        allowed_raw = expected_values_map[tag_key]
+        allowed = {str(v) for v in (allowed_raw if isinstance(allowed_raw, list) else [allowed_raw])}
+        for val in ev_csv.split(","):
+            val = val.strip()
+            if val and val not in allowed:
+                allowed_display = ", ".join(sorted(allowed))
+                raise ContentPackValidationError(
+                    f"{src}: matrix_presets[{preset_index}].query.{ev_field} value '{val}' "
+                    f"is not valid for family '{family_id}' axis '{axis_id}' "
+                    f"tag '{tag_key}' (expected one of: {allowed_display})"
+                )
+
+
 def _iter_pack_manifest_sources(content_dir: Path) -> List[Path]:
     """Return manifest.yaml/yml sources within a content pack.
 
@@ -588,6 +693,12 @@ def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]
                 preset_index=i,
                 family_schemas=family_schemas,
                 known_tag_keys=known_tag_keys,
+            )
+            _validate_manifest_query_family_axes(
+                query=normalized_query,
+                src=src,
+                preset_index=i,
+                family_schemas=family_schemas,
             )
             parsed_presets.append({"label": label, "query": normalized_query})
 

@@ -485,3 +485,216 @@ def test_parse_manifests_deprecated_tag_key_passes() -> None:
         assert len(manifests) == 1
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+# ── Suggestion 4: family axis validation ─────────────────────────────────────
+
+def test_parse_manifests_unknown_axis_for_family_raises() -> None:
+    """An unregistered beat_axis value for a known family must raise."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "matrix_presets": [
+                    {
+                        "label": "X",
+                        "query": {
+                            "row_key": "tag:loc_type",
+                            "col_key": "tag:crowd_level",
+                            "tags": "sequence_family:public_social_idle,beat_axis:nonexistent_axis_xyz",
+                        },
+                    }
+                ]
+            },
+        )
+        with pytest.raises(ContentPackValidationError, match="unknown axis"):
+            parse_manifests(root, pack_name="testpack")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_manifests_known_axis_for_family_passes() -> None:
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "matrix_presets": [
+                    {
+                        "label": "X",
+                        "query": {
+                            "row_key": "tag:loc_type",
+                            "col_key": "tag:crowd_level",
+                            "tags": "sequence_family:public_social_idle,beat_axis:environment",
+                        },
+                    }
+                ]
+            },
+        )
+        manifests = parse_manifests(root, pack_name="testpack")
+        assert len(manifests) == 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_manifests_invalid_expected_row_value_for_family_axis_raises() -> None:
+    """An expected_row_values token that violates the family+axis contract must raise."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "matrix_presets": [
+                    {
+                        "label": "X",
+                        "query": {
+                            "row_key": "tag:loc_type",
+                            "col_key": "tag:crowd_level",
+                            "tags": "sequence_family:public_social_idle,beat_axis:environment",
+                            # "airport" is not a valid loc_type for this family+axis
+                            "expected_row_values": "cafe,mall,airport",
+                        },
+                    }
+                ]
+            },
+        )
+        with pytest.raises(ContentPackValidationError, match="not valid for family"):
+            parse_manifests(root, pack_name="testpack")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_manifests_invalid_expected_col_value_for_family_axis_raises() -> None:
+    """An expected_col_values token that violates the family+axis contract must raise."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "matrix_presets": [
+                    {
+                        "label": "X",
+                        "query": {
+                            "row_key": "tag:loc_type",
+                            "col_key": "tag:crowd_level",
+                            "tags": "sequence_family:public_social_idle,beat_axis:environment",
+                            "expected_col_values": "low,high",  # "high" not valid
+                        },
+                    }
+                ]
+            },
+        )
+        with pytest.raises(ContentPackValidationError, match="not valid for family"):
+            parse_manifests(root, pack_name="testpack")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_manifests_valid_expected_values_for_family_axis_pass() -> None:
+    """Fully valid expected_row/col values against a real family+axis must pass."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "matrix_presets": [
+                    {
+                        "label": "X",
+                        "query": {
+                            "row_key": "tag:loc_type",
+                            "col_key": "tag:crowd_level",
+                            "tags": "sequence_family:public_social_idle,beat_axis:environment",
+                            "expected_row_values": "cafe,mall,station,park",
+                            "expected_col_values": "low,moderate",
+                        },
+                    }
+                ]
+            },
+        )
+        manifests = parse_manifests(root, pack_name="testpack")
+        assert len(manifests) == 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_manifests_no_axis_in_tags_skips_axis_validation() -> None:
+    """A query with only sequence_family (no beat_axis) skips axis validation entirely."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "matrix_presets": [
+                    {
+                        "label": "X",
+                        "query": {
+                            "row_key": "tag:beat_axis",
+                            "col_key": "role",
+                            # only family pinned, no beat_axis — expected values can't be validated
+                            "tags": "sequence_family:ten_seconds_forward",
+                            "expected_row_values": "view,presence,totally_invented_value",
+                        },
+                    }
+                ]
+            },
+        )
+        # No axis pinned → axis validation is skipped → no error
+        manifests = parse_manifests(root, pack_name="testpack")
+        assert len(manifests) == 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_manifests_non_tag_row_key_skips_expected_value_check() -> None:
+    """A plain (non-tag:) row_key means expected_row_values can't be checked against family schema."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "matrix_presets": [
+                    {
+                        "label": "X",
+                        "query": {
+                            "row_key": "role",   # not tag: — can't map to a tag key
+                            "col_key": "tag:crowd_level",
+                            "tags": "sequence_family:public_social_idle,beat_axis:environment",
+                            "expected_row_values": "anything,goes,here",
+                        },
+                    }
+                ]
+            },
+        )
+        manifests = parse_manifests(root, pack_name="testpack")
+        assert len(manifests) == 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_manifests_tag_key_not_in_family_axis_expected_values_skips() -> None:
+    """If the family+axis has no expected_values for the queried tag key, skip silently."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "matrix_presets": [
+                    {
+                        "label": "X",
+                        "query": {
+                            # activity_group is the row axis; beat_type has no expected_values
+                            # in ten_seconds_forward/activity so col validation is skipped
+                            "row_key": "tag:activity_group",
+                            "col_key": "tag:beat_type",
+                            "tags": "sequence_family:ten_seconds_forward,beat_axis:activity",
+                            "expected_row_values": "hold,micro_motion,object_use,micro_gesture,move,social_light",
+                        },
+                    }
+                ]
+            },
+        )
+        manifests = parse_manifests(root, pack_name="testpack")
+        assert len(manifests) == 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
