@@ -32,6 +32,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel
 
+from pixsim7.backend.main.services.prompt.block.template_controls import (
+    expand_control_presets,
+)
 from pixsim7.backend.main.services.prompt.block.template_slots import (
     TEMPLATE_SLOT_SCHEMA_VERSION,
     normalize_template_slots,
@@ -784,6 +787,14 @@ def parse_templates(content_dir: Path) -> List[Dict[str, Any]]:
                 field="template_metadata",
             )
             slot_schema_version = raw_metadata.get("slot_schema_version")
+            raw_controls = raw_metadata.get("controls")
+            if isinstance(raw_controls, list):
+                try:
+                    raw_metadata["controls"] = expand_control_presets(raw_controls)
+                except ValueError as exc:
+                    raise ContentPackValidationError(
+                        f"{src}: templates[{index}].template_metadata.controls invalid: {exc}"
+                    ) from exc
             try:
                 raw["slots"] = normalize_template_slots(slots, schema_version=slot_schema_version)
             except ValueError as exc:

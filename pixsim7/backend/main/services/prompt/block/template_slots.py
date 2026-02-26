@@ -65,6 +65,25 @@ SLOT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
             "optional": False,
         },
     ],
+    # Pairs with the allure_wardrobe_modifier control preset in template_controls.py.
+    # Uses the v2 ``tags`` format directly (not ``tag_constraints``) so that tag
+    # constraints survive preset expansion, which happens after slot migration.
+    "wardrobe_allure_modifier": [
+        {
+            "label": "Wardrobe modifier",
+            "role": "style",
+            "category": "wardrobe_modifier",
+            "package_name": "theme_modifiers",
+            "tags": {
+                "all": {
+                    "modifier_family": "allure",
+                    "modifier_target": "wardrobe",
+                }
+            },
+            "selection_strategy": "weighted_tags",
+            "optional": False,
+        },
+    ],
 }
 
 
@@ -137,6 +156,9 @@ class TemplateSlotSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     slot_index: int = Field(default=0, ge=0)
+    # Stable identifier for targeting control effects (avoids brittle label matching).
+    # Optional for backwards compatibility with existing templates.
+    key: Optional[str] = Field(default=None, min_length=1, max_length=120)
     label: str = Field(default="")
     role: Optional[str] = None
     category: Optional[str] = None
@@ -156,7 +178,8 @@ class TemplateSlotSpec(BaseModel):
     optional: bool = False
     fallback_text: Optional[str] = None
     reinforcement_text: Optional[str] = None
-    intensity: Optional[int] = Field(default=None, ge=1, le=10)
+    # Intensity 0 is valid in template controls/slot authoring (e.g. minimal pose lock).
+    intensity: Optional[int] = Field(default=None, ge=0, le=10)
     inherit_intensity: bool = False
     exclude_block_ids: Optional[List[UUID]] = None
 
@@ -378,6 +401,14 @@ def normalize_template_slot(
         result["label"] = ""
     else:
         result["label"] = result["label"].strip()
+
+    # Canonicalize slot key (do not auto-generate here; callers that persist templates
+    # should generate stable keys once to avoid churn across reloads).
+    if not isinstance(result.get("key"), str):
+        result["key"] = None
+    else:
+        key = result["key"].strip()
+        result["key"] = key or None
     return result
 
 

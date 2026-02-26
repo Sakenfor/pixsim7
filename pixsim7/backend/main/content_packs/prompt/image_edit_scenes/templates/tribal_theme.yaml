@@ -1,0 +1,289 @@
+version: "1.0.0"
+
+templates:
+  - slug: tribal-theme-woman
+    name: "Image Edit - Tribal Theme (Woman)"
+    description: >-
+      Image edit template that shifts a single adult woman toward a respectful,
+      non-specific tribal-inspired handcrafted theme while preserving identity,
+      framing, and pose. Sliders control whether tattoos and bone ornaments are
+      preserved only or actively added, and at what intensity. An Allure slider
+      steers wardrobe variants in a non-explicit way.
+    composition_strategy: sequential
+    package_name: image_edit_scenes
+    tags: [image_edit, theme, tribal, wardrobe, body_art, accessories]
+    is_public: true
+    character_bindings:
+      subject:
+        character_id: ""
+        fallback_name: "the woman"
+        cast:
+          label: "Source subject"
+          filter_category: "human"
+    template_metadata:
+      target_operation: image_to_image
+      mode: image_edit
+      notes: "Designed for a single adult woman in the source image. Preserves identity and framing."
+      controls:
+        - id: pose_lock
+          type: slider
+          label: Pose Lock
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 6
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 0
+              boostTags: { rigidity: minimal }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 2
+              boostTags: { rigidity: low }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 4
+              boostTags: { rigidity: medium }
+              avoidTags: { rigidity: [minimal, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 6
+              boostTags: { rigidity: high }
+              avoidTags: { rigidity: [minimal, low] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 8
+              boostTags: { rigidity: maximum }
+              avoidTags: { rigidity: [minimal, low, medium] }
+
+        - id: tribal_subgenre
+          type: slider
+          label: Tribal Sub-Genre
+          min: 0
+          max: 4
+          step: 1
+          defaultValue: 0
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Wardrobe theme
+              enabledAt: 0
+              boostTags: { theme_variant: general }
+              avoidTags: { theme_variant: [desert, forest, mountain, tundra] }
+            - kind: slot_tag_boost
+              slotLabel: Sub-genre cue
+              enabledAt: 0
+              boostTags: { theme_variant: general }
+              avoidTags: { theme_variant: [desert, forest, mountain, tundra] }
+            - kind: slot_tag_boost
+              slotLabel: Wardrobe theme
+              enabledAt: 1
+              boostTags: { theme_variant: desert }
+              avoidTags: { theme_variant: [general, forest, mountain, tundra] }
+            - kind: slot_tag_boost
+              slotLabel: Sub-genre cue
+              enabledAt: 1
+              boostTags: { theme_variant: desert }
+              avoidTags: { theme_variant: [general, forest, mountain, tundra] }
+            - kind: slot_tag_boost
+              slotLabel: Wardrobe theme
+              enabledAt: 2
+              boostTags: { theme_variant: forest }
+              avoidTags: { theme_variant: [general, desert, mountain, tundra] }
+            - kind: slot_tag_boost
+              slotLabel: Sub-genre cue
+              enabledAt: 2
+              boostTags: { theme_variant: forest }
+              avoidTags: { theme_variant: [general, desert, mountain, tundra] }
+            - kind: slot_tag_boost
+              slotLabel: Wardrobe theme
+              enabledAt: 3
+              boostTags: { theme_variant: mountain }
+              avoidTags: { theme_variant: [general, desert, forest, tundra] }
+            - kind: slot_tag_boost
+              slotLabel: Sub-genre cue
+              enabledAt: 3
+              boostTags: { theme_variant: mountain }
+              avoidTags: { theme_variant: [general, desert, forest, tundra] }
+            - kind: slot_tag_boost
+              slotLabel: Wardrobe theme
+              enabledAt: 4
+              boostTags: { theme_variant: tundra }
+              avoidTags: { theme_variant: [general, desert, forest, mountain] }
+            - kind: slot_tag_boost
+              slotLabel: Sub-genre cue
+              enabledAt: 4
+              boostTags: { theme_variant: tundra }
+              avoidTags: { theme_variant: [general, desert, forest, mountain] }
+
+        - preset: allure_wardrobe_modifier
+
+        - id: bone_ornaments
+          type: slider
+          label: Bone Ornaments
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 2
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Bone ornaments
+              enabledAt: 0
+              boostTags: { bone_ornament_policy: allow }
+            - kind: slot_tag_boost
+              slotLabel: Bone ornaments
+              enabledAt: 4
+              boostTags: { bone_ornament_policy: require, bone_ornament_level: subtle }
+              avoidTags: { bone_ornament_policy: [allow] }
+            - kind: slot_tag_boost
+              slotLabel: Bone ornaments
+              enabledAt: 6
+              boostTags: { bone_ornament_policy: require, bone_ornament_level: medium }
+              avoidTags: { bone_ornament_level: [subtle] }
+            - kind: slot_tag_boost
+              slotLabel: Bone ornaments
+              enabledAt: 8
+              boostTags: { bone_ornament_policy: require, bone_ornament_level: heavy }
+              avoidTags: { bone_ornament_level: [subtle, medium] }
+
+        - id: tattoos
+          type: slider
+          label: Tattoos
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 2
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Tattoos
+              enabledAt: 0
+              boostTags: { tattoo_policy: allow }
+            - kind: slot_tag_boost
+              slotLabel: Tattoos
+              enabledAt: 4
+              boostTags: { tattoo_policy: require, tattoo_level: subtle }
+              avoidTags: { tattoo_policy: [allow] }
+            - kind: slot_tag_boost
+              slotLabel: Tattoos
+              enabledAt: 6
+              boostTags: { tattoo_policy: require, tattoo_level: medium }
+              avoidTags: { tattoo_level: [subtle] }
+            - kind: slot_tag_boost
+              slotLabel: Tattoos
+              enabledAt: 8
+              boostTags: { tattoo_policy: require, tattoo_level: heavy }
+              avoidTags: { tattoo_level: [subtle, medium] }
+
+      matrix_presets:
+        - id: tribal-subgenre-coverage
+          label: "Tribal: Sub-Genre Coverage"
+          description: "Coverage of tribal wardrobe blocks by sub-genre."
+          query:
+            row_key: tag:theme_variant
+            col_key: tag:palette
+            role: style
+            category: wardrobe
+            package_name: image_edit_scenes
+            tags: theme_family:tribal_handcrafted
+            include_empty: true
+            expected_row_values: "general,desert,forest,mountain,tundra"
+        - id: tribal-allure-coverage
+          label: "Tribal: Allure Coverage"
+          description: "Coverage of tribal wardrobe modifier blocks by allure level and silhouette."
+          query:
+            row_key: tag:allure_level
+            col_key: tag:silhouette
+            role: style
+            category: wardrobe_modifier
+            package_name: theme_modifiers
+            tags: modifier_family:allure
+            include_empty: true
+        - id: tribal-tattoos-coverage
+          label: "Tribal: Tattoos Coverage"
+          description: "Coverage of tribal body_art blocks by tattoo anchor and level."
+          query:
+            row_key: tag:tattoo_policy
+            col_key: tag:tattoo_level
+            role: style
+            category: body_art
+            package_name: image_edit_scenes
+            tags: aesthetic:tribal_handcrafted
+            include_empty: true
+        - id: tribal-bone-coverage
+          label: "Tribal: Bone Ornaments Coverage"
+          description: "Coverage of tribal accessories blocks by bone anchor and level."
+          query:
+            row_key: tag:bone_ornament_policy
+            col_key: tag:bone_ornament_level
+            role: style
+            category: accessories
+            package_name: image_edit_scenes
+            tags: aesthetic:tribal_handcrafted
+            include_empty: true
+
+    slots:
+      - preset: pose_lock_graduated
+
+      - label: Identity lock
+        role: subject
+        category: identity_lock
+        optional: false
+
+      - label: Framing lock
+        role: subject
+        category: framing_lock
+        optional: false
+
+      - label: Clothing lock
+        role: subject
+        category: clothing_lock
+        selection_strategy: uniform
+        optional: false
+
+      - label: Scene semantics
+        role: environment
+        category: scene_build
+        tag_constraints:
+          scene_scope: generic_real_world
+          edit_mode: image_edit
+        selection_strategy: uniform
+        optional: true
+        fallback_text: "Preserve the original setting and spatial continuity of the source image."
+
+      - label: Wardrobe theme
+        role: style
+        category: wardrobe
+        tag_constraints:
+          theme_family: tribal_handcrafted
+        selection_strategy: weighted_tags
+        optional: false
+
+      - preset: wardrobe_allure_modifier
+
+      - label: Sub-genre cue
+        role: style
+        category: theme_cue
+        package_name: shared
+        tag_constraints:
+          cue_family: theme_subgenre
+          theme_family: tribal_handcrafted
+        selection_strategy: weighted_tags
+        optional: false
+
+      - label: Bone ornaments
+        role: style
+        category: accessories
+        tag_constraints:
+          theme_family: tribal_handcrafted
+        selection_strategy: weighted_tags
+        optional: true
+
+      - label: Tattoos
+        role: style
+        category: body_art
+        tag_constraints:
+          theme_family: tribal_handcrafted
+        selection_strategy: weighted_tags
+        optional: true
