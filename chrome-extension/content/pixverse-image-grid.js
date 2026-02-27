@@ -755,9 +755,19 @@
             throw new Error('Asset was not deleted (deleted_count = 0)');
           }
 
+          const providerDeleteWarning = Array.isArray(data?.warnings)
+            ? data.warnings.find((w) => w?.kind === 'provider_delete')
+            : null;
+          if (providerDeleteWarning) {
+            console.warn('[Delete] Provider delete warning:', providerDeleteWarning);
+          }
+
           // Show success feedback
           if (showToast) {
-            showToast('Asset deleted from DB + Provider!', true);
+            showToast(
+              providerDeleteWarning?.message || 'Asset deleted from DB + Provider!',
+              !providerDeleteWarning
+            );
           }
 
           // Remove the thumbnail from UI with animation
@@ -1151,10 +1161,20 @@
               throw new Error('Asset was not deleted (deleted_count = 0)');
             }
 
+            const providerDeleteWarning = Array.isArray(data?.warnings)
+              ? data.warnings.find((w) => w?.kind === 'provider_delete')
+              : null;
+            if (providerDeleteWarning) {
+              console.warn('[Delete] Provider delete warning:', providerDeleteWarning);
+            }
+
             // Show success feedback
             if (showToast) {
               const location = deleteFromProvider ? 'DB + Provider' : 'DB only';
-              showToast(`Asset deleted from ${location}!`, true);
+              showToast(
+                providerDeleteWarning?.message || `Asset deleted from ${location}!`,
+                !providerDeleteWarning
+              );
             }
 
             // Remove the thumbnail from UI

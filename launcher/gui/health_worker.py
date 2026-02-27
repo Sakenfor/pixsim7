@@ -207,7 +207,11 @@ class HealthWorker(QThread):
             "queue_pending_legacy_default": legacy_pending if legacy_pending not in (None, 0) else None,
             "details_updated_at": time.strftime("%H:%M:%S"),
         }
-        if main_pids and main_pid and main_pid not in main_pids:
+        if len(main_pids) > 1:
+            details["note"] = f"Multiple ARQ main workers detected: {main_pids}"
+        elif len(retry_pids) > 1:
+            details["note"] = f"Multiple ARQ retry workers detected: {retry_pids}"
+        elif main_pids and main_pid and main_pid not in main_pids:
             details["note"] = f"Launcher PID {main_pid} differs from detected ARQ main PIDs {main_pids}"
         elif retry_pending and retry_pending > 0 and not retry_pids:
             details["note"] = "Retry queue has jobs but no retry worker process detected"

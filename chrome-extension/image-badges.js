@@ -126,12 +126,28 @@
     .${BADGE_CLASS} {
       position: fixed; z-index: 2147483646;
       background: rgba(17,24,39,0.92); color: #e5e7eb; font-size: 11px; line-height: 1;
-      padding: 6px 8px; border-radius: 6px; cursor: pointer; opacity: 0.95;
-      display: inline-flex; align-items: center; gap: 6px; user-select: none;
+      border-radius: 6px; opacity: 0.95;
+      display: inline-flex; align-items: center; user-select: none;
       box-shadow: 0 6px 18px rgba(0,0,0,.2); border: 1px solid rgba(55,65,81,.6);
-      pointer-events: auto;
+      pointer-events: auto; overflow: hidden;
     }
-    .${BADGE_CLASS}:hover { background: rgba(31,41,55,0.98); opacity: 1; }
+    .${BADGE_CLASS}:hover { opacity: 1; }
+    .${BADGE_CLASS} .pxs7-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 8px; cursor: pointer; background: transparent;
+      border: 0; color: inherit; font-size: 11px; line-height: 1;
+    }
+    .${BADGE_CLASS} .pxs7-btn:hover { background: rgba(55,65,81,0.6); }
+    .${BADGE_CLASS} .pxs7-divider {
+      width: 1px; height: 16px; background: rgba(75,85,99,0.6); flex-shrink: 0;
+    }
+    .${BADGE_CLASS} .pxs7-view-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 6px 7px; cursor: pointer; background: transparent;
+      border: 0; color: inherit; font-size: 12px; line-height: 1;
+    }
+    .${BADGE_CLASS} .pxs7-view-btn:hover { background: rgba(55,65,81,0.6); }
+    .${BADGE_CLASS} .pxs7-view-btn svg { width: 14px; height: 14px; }
 
     .${MENU_CLASS} { position: fixed; z-index: 2147483647; background: #111827; color: #e5e7eb; border: 1px solid #374151; border-radius: 6px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.2); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; pointer-events: auto; }
     .${MENU_CLASS} button { display: block; width: 100%; text-align: left; background: transparent; border: 0; color: inherit; padding: 8px 10px; font-size: 12px; cursor: pointer; }
@@ -518,18 +534,72 @@
   let currentVideo = null;
   let defProvCache = 'pixverse';
 
+  /**
+   * Send media to the frontend viewer via BroadcastChannel (with URL fallback)
+   */
+  async function sendToViewer(mediaUrl, isVideo) {
+    try {
+      const resolvedUrl = await resolveMediaUrl(mediaUrl, isVideo, !isVideo ? currentImg : null);
+      const type = isVideo ? 'video' : 'image';
+
+      // Try BroadcastChannel first
+      let acked = false;
+      try {
+        const ch = new BroadcastChannel('pixsim7-viewer');
+        ch.postMessage({ action: 'view', url: resolvedUrl, type });
+
+        acked = await new Promise((resolve) => {
+          const timer = setTimeout(() => { ch.close(); resolve(false); }, 500);
+          ch.onmessage = (ev) => {
+            if (ev.data && ev.data.action === 'ack') {
+              clearTimeout(timer);
+              ch.close();
+              resolve(true);
+            }
+          };
+        });
+      } catch (bcErr) {
+        console.warn('[pxs7 badge] BroadcastChannel not available:', bcErr);
+      }
+
+      if (acked) {
+        showToast('Sent to viewer', true);
+        return;
+      }
+
+      // Fallback: open/reuse frontend tab with query params
+      const settings = await getSettings();
+      const backendUrl = settings.backendUrl || 'http://localhost:8001';
+      // Derive frontend URL: replace port with 5173
+      const frontendUrl = backendUrl.replace(/:\d+$/, ':5173');
+      const viewUrl = `${frontendUrl}?view=${encodeURIComponent(resolvedUrl)}&viewType=${type}`;
+
+      chrome.runtime.sendMessage({ action: 'openTab', url: viewUrl, reuseFrontend: true });
+      showToast('Opening in viewer...', true);
+    } catch (e) {
+      showToast(e.message || 'View error', false);
+    }
+  }
+
   function ensureBadge() {
     if (badgeEl) return badgeEl;
     badgeEl = document.createElement('div');
     badgeEl.className = BADGE_CLASS;
-    badgeEl.innerHTML = '<span style="font-size:12px">⬆</span><span>PixSim7</span>';
+    badgeEl.innerHTML = `
+      <span class="pxs7-btn pxs7-upload-btn"><span style="font-size:12px">⬆</span><span>PixSim7</span></span>
+      <span class="pxs7-divider"></span>
+      <span class="pxs7-view-btn" title="View in PixSim7"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
+    `;
     document.documentElement.appendChild(badgeEl);
     badgeEl.style.display = 'none';
 
-    // Click to upload or sync
+    const uploadBtn = badgeEl.querySelector('.pxs7-upload-btn');
+    const viewBtn = badgeEl.querySelector('.pxs7-view-btn');
+
+    // Click upload button to upload or sync
     // Shift+Click on video = capture current frame as image
     // Ctrl/Cmd+Click = force create asset even if provider fails
-    badgeEl.addEventListener('click', async (e) => {
+    uploadBtn.addEventListener('click', async (e) => {
       e.preventDefault(); e.stopPropagation();
       const hasVideo = !!(currentVideo && currentVideo.src);
       const hasImage = !!(currentImg && currentImg.src);
@@ -572,8 +642,18 @@
         await upload(src, defProvCache, isVideo, { ensureAsset });
       }
     });
-    // Right-click provider menu
-    badgeEl.addEventListener('contextmenu', async (e) => {
+
+    // View button click: send to frontend viewer
+    viewBtn.addEventListener('click', async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const isVideo = !!(currentVideo && currentVideo.src);
+      const src = isVideo ? currentVideo.src : (currentImg && currentImg.src);
+      if (!src) return;
+      await sendToViewer(src, isVideo);
+    });
+
+    // Right-click provider menu (on upload button area)
+    uploadBtn.addEventListener('contextmenu', async (e) => {
       e.preventDefault(); e.stopPropagation();
       const prov = await pickProvider(e.clientX, e.clientY, defProvCache);
       const isVideo = !!(currentVideo && currentVideo.src);
@@ -582,7 +662,7 @@
     });
     // Middle-click: save to backend as asset only (no provider upload)
     // Alt+Middle-click on video: extract last frame
-    badgeEl.addEventListener('auxclick', async (e) => {
+    uploadBtn.addEventListener('auxclick', async (e) => {
       if (e.button !== 1) return; // Only middle click
       e.preventDefault(); e.stopPropagation();
 
@@ -721,29 +801,30 @@
 
   function updateBadgeLabel(isVideo, mediaSrc = null, mediaElement = null) {
     if (!badgeEl) return;
+    const uploadBtn = badgeEl.querySelector('.pxs7-upload-btn');
+    if (!uploadBtn) return;
+
     // On PixVerse site with PixVerse media URL: show sync badge
     const onPixverse = isPixverseSite();
     const isPixverseMedia = mediaSrc && isPixverseMediaUrl(mediaSrc);
     const assetInfo = isPixverseMedia ? extractPixverseAssetInfo(mediaSrc, mediaElement) : null;
     const isBlobUrl = mediaSrc && mediaSrc.startsWith('blob:');
     const isFileUrl = mediaSrc && mediaSrc.startsWith('file://');
-    const isLocalUrl = isBlobUrl || isFileUrl;
 
     if (onPixverse && assetInfo) {
-      // Show sync icon for PixVerse images we can identify
       const idDisplay = assetInfo.numericId || assetInfo.uuid.slice(0, 8) + '...';
       const idType = assetInfo.numericId ? 'ID' : 'UUID';
-      badgeEl.innerHTML = '<span style="font-size:12px">🔗</span><span>Sync</span>';
-      badgeEl.title = `Sync to PixSim7 (${idType}: ${idDisplay})`;
+      uploadBtn.innerHTML = '<span style="font-size:12px">🔗</span><span>Sync</span>';
+      uploadBtn.title = `Sync to PixSim7 (${idType}: ${idDisplay})`;
     } else if (isVideo) {
-      badgeEl.innerHTML = '<span style="font-size:12px">🎥</span><span>PixSim7</span>';
-      badgeEl.title = 'Click: Save video | Shift+Click: Capture frame | Middle: Asset only | Alt+Middle: Last frame';
+      uploadBtn.innerHTML = '<span style="font-size:12px">🎥</span><span>PixSim7</span>';
+      uploadBtn.title = 'Click: Save video | Shift+Click: Capture frame | Middle: Asset only';
     } else if (isFileUrl) {
-      badgeEl.innerHTML = '<span style="font-size:12px">📁</span><span>PixSim7</span>';
-      badgeEl.title = 'Click: Upload | Middle: Asset only';
+      uploadBtn.innerHTML = '<span style="font-size:12px">📁</span><span>PixSim7</span>';
+      uploadBtn.title = 'Click: Upload | Middle: Asset only';
     } else {
-      badgeEl.innerHTML = '<span style="font-size:12px">⬆</span><span>PixSim7</span>';
-      badgeEl.title = isBlobUrl
+      uploadBtn.innerHTML = '<span style="font-size:12px">⬆</span><span>PixSim7</span>';
+      uploadBtn.title = isBlobUrl
         ? 'Click: Save (from blob) | Middle: Asset only'
         : 'Click: Upload to provider | Middle: Asset only';
     }

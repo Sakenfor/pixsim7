@@ -75,6 +75,8 @@ const SKIP_DIRS = new Set([
   'launcher',
   'pixsim7',
   'chrome-extension',
+  '.tmp-test',
+  'pytest_tmp_root',
 ]);
 
 function getArgValue(flag: string, args: string[]): string | undefined {
@@ -104,7 +106,13 @@ async function walkDir(root: string): Promise<{ packages: string[]; manifests: s
   const manifests: string[] = [];
 
   async function walk(current: string) {
-    const entries = await fs.readdir(current, { withFileTypes: true });
+    let entries;
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true });
+    } catch {
+      // Skip directories we can't read (permission errors, etc.)
+      return;
+    }
     for (const entry of entries) {
       const fullPath = path.join(current, entry.name);
       if (entry.isDirectory()) {

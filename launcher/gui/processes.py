@@ -2,6 +2,7 @@ import os
 import signal
 import subprocess
 import threading
+import json
 from collections import deque
 from typing import Optional, Union
 from PySide6.QtCore import QProcess, QTimer
@@ -263,6 +264,91 @@ class ServiceProcess:
                 )
             except Exception:
                 pass
+
+    def _scan_worker_family_pids(self) -> list[int]:
+        """Best-effort scan for ARQ worker-family processes managed by the worker card."""
+        if self.defn.key != "worker":
+            return []
+
+        found: list[int] = []
+        try:
+            if os.name == 'nt':
+                ps_cmd = (
+                    "Get-CimInstance Win32_Process | "
+                    "Where-Object { $_.CommandLine -and $_.CommandLine -like '*pixsim7.backend.main.workers.arq_worker*' } | "
+                    "Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"
+                )
+                result = subprocess.run(
+                    ["powershell", "-NoProfile", "-Command", ps_cmd],
+                    capture_output=True,
+                    text=True,
+                    timeout=4,
+                )
+                raw = (result.stdout or "").strip()
+                if raw:
+                    data = json.loads(raw)
+                    rows = data if isinstance(data, list) else [data]
+                    for row in rows:
+                        pid = row.get("ProcessId")
+                        cmd = (row.get("CommandLine") or "")
+                        if not pid or not cmd:
+                            continue
+                        if (
+                            "pixsim7.backend.main.workers.arq_worker.WorkerSettings" in cmd
+                            or "pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings" in cmd
+                        ):
+                            found.append(int(pid))
+            else:
+                result = subprocess.run(
+                    ["ps", "-eo", "pid=,args="],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
+                for line in (result.stdout or "").splitlines():
+                    line = line.strip()
+                    if not line or "pixsim7.backend.main.workers.arq_worker" not in line:
+                        continue
+                    try:
+                        pid_str, cmd = line.split(None, 1)
+                        pid = int(pid_str)
+                    except Exception:
+                        continue
+                    if (
+                        "arq_worker.WorkerSettings" in cmd
+                        or "GenerationRetryWorkerSettings" in cmd
+                    ):
+                        found.append(pid)
+        except Exception:
+            return []
+
+        return sorted(set(found))
+
+    def _kill_worker_family_processes(self, graceful: bool, exclude_pids: Optional[set[int]] = None) -> list[int]:
+        """Best-effort kill all worker-family ARQ processes (main + retry), excluding tracked PIDs."""
+        if self.defn.key != "worker":
+            return []
+        pu = _get_process_utils()
+        force = not graceful
+        exclude = {int(pid) for pid in (exclude_pids or set()) if pid}
+        killed: list[int] = []
+        for pid in self._scan_worker_family_pids():
+            if pid in exclude:
+                continue
+            try:
+                success = pu.kill_process_by_pid(pid, force=force)
+                _log(
+                    "worker_family_process_kill",
+                    service_key=self.defn.key,
+                    pid=pid,
+                    force=force,
+                    success=success,
+                )
+                if success:
+                    killed.append(pid)
+            except Exception:
+                pass
+        return killed
 
     def _load_persisted_logs(self):
         """Load previously saved console logs on startup."""
@@ -553,6 +639,11 @@ class ServiceProcess:
     def stop(self, graceful=True):
         effective_pid = self.get_effective_pid()
         if not self.running and not effective_pid and not self.extra_started_pids:
+            # Worker card may have orphan retry/main ARQ processes from a previous
+            # launcher session (companion PIDs are tracked only in-memory).
+            orphan_killed = self._kill_worker_family_processes(graceful=graceful)
+            if orphan_killed:
+                self._mark_stopped()
             return
 
         # Mark that user requested the service to be stopped
@@ -590,18 +681,22 @@ class ServiceProcess:
         # Handle subprocess.Popen (detached process)
         if isinstance(self.proc, subprocess.Popen):
             target_pid = self.get_effective_pid()
+            tracked_pids = set(self.extra_started_pids or [])
             if target_pid:
                 pu = _get_process_utils()
                 force = not graceful
                 success = pu.kill_process_by_pid(target_pid, force=force)
                 _log("detached_process_kill", service_key=self.defn.key, pid=target_pid, force=force, success=success)
+                tracked_pids.add(target_pid)
             self._kill_extra_started_processes(graceful=graceful)
+            self._kill_worker_family_processes(graceful=graceful, exclude_pids=tracked_pids)
             self._mark_stopped()
             return
 
         # Handle detected process (not started by launcher)
         if self.proc is None and self.detected_pid:
             self._stop_detected_process(graceful)
+            self._kill_worker_family_processes(graceful=graceful, exclude_pids={self.detected_pid})
             return
 
         if graceful and self.defn.key == 'backend':

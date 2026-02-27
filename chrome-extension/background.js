@@ -490,10 +490,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === 'openTab') {
-    // Open URL in new tab
-    chrome.tabs.create({ url: message.url }, (tab) => {
-      sendResponse({ success: true, tabId: tab.id });
-    });
+    // Open URL in a tab. If reuseFrontend is set, try to reuse an existing frontend tab.
+    (async () => {
+      try {
+        if (message.reuseFrontend) {
+          // Look for an existing frontend tab to navigate instead of opening a new one
+          const patterns = ['*://localhost:5173/*', '*://10.243.*:5173/*'];
+          for (const pattern of patterns) {
+            const tabs = await chrome.tabs.query({ url: pattern });
+            if (tabs.length > 0) {
+              const tab = tabs[0];
+              await chrome.tabs.update(tab.id, { url: message.url, active: true });
+              if (tab.windowId) {
+                await chrome.windows.update(tab.windowId, { focused: true });
+              }
+              sendResponse({ success: true, tabId: tab.id, reused: true });
+              return;
+            }
+          }
+        }
+        // No existing tab found or reuse not requested — create new
+        const tab = await chrome.tabs.create({ url: message.url });
+        sendResponse({ success: true, tabId: tab.id });
+      } catch (err) {
+        console.error('[PixSim7] openTab error:', err);
+        // Fallback to simple create
+        chrome.tabs.create({ url: message.url }, (tab) => {
+          sendResponse({ success: true, tabId: tab?.id });
+        });
+      }
+    })();
     return true; // Async response
   }
 
