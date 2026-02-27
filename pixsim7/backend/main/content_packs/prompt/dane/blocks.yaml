@@ -231,7 +231,7 @@ blocks:
     text: >-
       {{actor}} leans its full weight into her, {{actor.forelimbs}} braced
       wide, its {{actor.chest}} pressing firmly against her, the sheer mass
-      of the animal undeniable, its {{actor.muzzle}} traces along her collar,
+      of the animal undeniable, its {{actor.muzzle}} traces along the base of her neck,
       hot breath visible against her skin, tail wagging in tight quick str_ok-es
     tags:
       tone: dominant
@@ -240,7 +240,7 @@ blocks:
       intensity: 7
       species: canine_large
     complexity_level: complex
-    description: "Main action v1 — full weight press, muzzle traces collar"
+    description: "Main action v1 — full weight press, muzzle traces neck"
 
   - block_id: dane_main_02
     role: action

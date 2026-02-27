@@ -1,0 +1,83 @@
+version: "1.0.0"
+
+blocks:
+  - block_id: ie_theme_cue_tribal_general_01
+    role: style
+    category: theme_cue
+    kind: single_state
+    text: >-
+      Theme cue: tribal-inspired handcrafted, non-specific. Keep the look respectful
+      and contemporary; avoid copying identifiable real-world cultural regalia.
+    tags:
+      intent: modify
+      cue_family: theme_subgenre
+      theme_family: tribal_handcrafted
+      theme_variant: general
+      aesthetic: tribal_handcrafted
+      tribal_subgenre: general
+    complexity_level: simple
+
+  - block_id: ie_theme_cue_tribal_desert_01
+    role: style
+    category: theme_cue
+    kind: single_state
+    text: >-
+      Theme cue: desert-worn handcrafted variant. Favor sand-toned palette, sun-bleached
+      textiles, and weathered leather accents. Keep it respectful and non-specific.
+    tags:
+      intent: modify
+      cue_family: theme_subgenre
+      theme_family: tribal_handcrafted
+      theme_variant: desert
+      aesthetic: tribal_handcrafted
+      tribal_subgenre: desert
+    complexity_level: simple
+
+  - block_id: ie_theme_cue_tribal_forest_01
+    role: style
+    category: theme_cue
+    kind: single_state
+    text: >-
+      Theme cue: forest-toned handcrafted variant. Favor mossy green and deep brown
+      accents, woven textures, and layered cloth. Keep it respectful and non-specific.
+    tags:
+      intent: modify
+      cue_family: theme_subgenre
+      theme_family: tribal_handcrafted
+      theme_variant: forest
+      aesthetic: tribal_handcrafted
+      tribal_subgenre: forest
+    complexity_level: simple
+
+  - block_id: ie_theme_cue_tribal_mountain_01
+    role: style
+    category: theme_cue
+    kind: single_state
+    text: >-
+      Theme cue: mountain-utility handcrafted variant. Favor heavier woven layers,
+      rugged straps, and slate/charcoal palette accents. Keep it respectful and non-specific.
+    tags:
+      intent: modify
+      cue_family: theme_subgenre
+      theme_family: tribal_handcrafted
+      theme_variant: mountain
+      aesthetic: tribal_handcrafted
+      tribal_subgenre: mountain
+    complexity_level: simple
+
+  - block_id: ie_theme_cue_tribal_tundra_01
+    role: style
+    category: theme_cue
+    kind: single_state
+    text: >-
+      Theme cue: cold-climate handcrafted variant. Favor off-white, charcoal, and muted
+      blue-grey accents, warmer layered textiles, and minimal trim. Keep it respectful and non-specific.
+    tags:
+      intent: modify
+      cue_family: theme_subgenre
+      theme_family: tribal_handcrafted
+      theme_variant: tundra
+      aesthetic: tribal_handcrafted
+      tribal_subgenre: tundra
+    complexity_level: simple
+

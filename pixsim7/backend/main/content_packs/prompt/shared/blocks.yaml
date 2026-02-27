@@ -2947,7 +2947,7 @@ blocks:
     tags:
       sequence_family: public_social_idle
       beat_axis: activity
-      beat_type: look_back
+      beat_type: notice
       intent: modify
     complexity_level: simple
 
@@ -3135,7 +3135,7 @@ blocks:
     tags:
       sequence_family: public_social_idle
       beat_axis: passerby
-      beat_type: look_back
+      beat_type: notice
       intent: add
     complexity_level: simple
 

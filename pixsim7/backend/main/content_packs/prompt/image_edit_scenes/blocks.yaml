@@ -746,77 +746,59 @@ blocks:
 
   - block_id: ie_style_police_uniform_01
     role: style
-    category: wardrobe
+    category: aesthetic
     kind: single_state
     text: >-
-      Refine her existing outfit into a sleek police uniform interpretation
-      while preserving the original garment structure and coverage area.
-      Deep navy tone, smooth fitted tailoring that traces every line and
-      curve of her natural figure with deliberate precision. The fabric
-      sits flush against her waist, hips, and thighs, following the body
-      closely enough that each subtle contour reads clearly through the
-      material. Structured waist with a slim duty belt riding low on her
-      hips. Precise seams run along the sides, drawing the eye down her
-      silhouette. A small polished badge catches the light at her chest.
-      Where her pose creates natural tension — a bent arm, a shifted hip —
-      the fabric pulls slightly taut, revealing the shape beneath with
-      quiet emphasis. The uniform reads as deliberately fitted, form over
-      function, every panel cut to flatter.
+      Police-uniform aesthetic with sleek, modern station presentation.
+      Deep navy palette, polished insignia accents, clean seam geometry,
+      structured waistband, and precise tailoring cues. Duty-ready details
+      such as badge placement, belt line, and uniform paneling read clearly
+      while the overall finish stays professional and intentional.
     tags:
       intent: modify
       aesthetic: police_uniform
+      variant: sleek
       genre: police
       palette: dark_navy
       texture: smooth_wool
-      sensuality: elevated
     complexity_level: complex
 
   - block_id: ie_style_police_uniform_02
     role: style
-    category: wardrobe
+    category: aesthetic
     kind: single_state
     text: >-
-      Adapt her clothing into a modern police duty uniform that clings to
-      her frame as though tailored to a second-skin fit. Matte navy fabric
-      with a faint sheen where it stretches over curves. The shirt buttons
-      follow the centerline precisely, the material drawing smooth between
-      them. Tailored trousers sit high at the waist and follow the hip and
-      thigh line without a single crease of excess fabric. A narrow belt
-      with a polished buckle cinches the waist, accentuating the ratio above
-      and below. Epaulettes at the shoulders, a single breast pocket, collar
-      pressed sharp. The overall effect is regulation on the surface, but
-      every seam and dart exists to sculpt and define her shape beneath.
+      Modern duty-uniform aesthetic with matte technical fabric and clean
+      regulation cues. Epaulettes, a sharp collar line, centered button
+      placket, tidy pocket structure, and a polished buckle establish the
+      police-uniform identity. The look should read contemporary, coherent,
+      and professionally styled.
     tags:
       intent: modify
       aesthetic: police_uniform
+      variant: duty
       genre: police
       palette: dark_navy
       texture: matte_stretch
-      sensuality: elevated
     complexity_level: complex
 
   - block_id: ie_style_police_uniform_03
     role: style
-    category: wardrobe
+    category: aesthetic
     kind: single_state
     text: >-
-      Rework her outfit into a fitted precinct uniform with deliberate
-      couture sharpness. Dark navy, almost black. The blouse is tucked
-      tight, its fabric smooth and uninterrupted across her torso, the
-      bottom two buttons left undone where it meets the waistband. Slim
-      tactical trousers hug her hips and upper thighs before tapering.
-      A thin leather duty belt sits on the hip bones, its weight pulling
-      the waistband fractionally lower. Cuffs folded once at the forearm,
-      exposing bare wrists. The silhouette is unmistakably uniform yet
-      reads like something chosen rather than issued — every contour
-      emphasized by the precision of the cut.
+      Precinct uniform aesthetic with fashion-forward sharpness while
+      remaining clearly police-coded. Dark navy near-black palette,
+      crisp blouse and trouser structure, slim duty belt, and deliberate
+      cuff and waist detailing. The overall read is controlled, polished,
+      and stylized without losing uniform identity.
     tags:
       intent: modify
       aesthetic: police_uniform
+      variant: tailored
       genre: police
       palette: dark_navy
       texture: smooth_tactical
-      sensuality: elevated
     complexity_level: complex
 
   # ── wardrobe — su_lt-ry uniform variants (genre-generic) ────────

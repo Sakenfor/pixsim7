@@ -1,0 +1,204 @@
+version: "1.0.0"
+
+templates:
+  - slug: crowd-grope-nearby
+    name: "Crowd Grope — Nearby Characters"
+    description: >-
+      Generic i2v groping scene. Source image already positions characters
+      close to the woman — no entrance needed. The template animates
+      hands making contact, escalating touch, her reaction, and holds
+      the camera steady. Pose lock preserves her position from the
+      source frame. Works with any crowd/proximity setup image.
+    composition_strategy: sequential
+    package_name: crowd_grope
+    tags: [grope, crowd, nearby, intimate, i2v, hands, generic]
+    is_public: true
+    template_metadata:
+      target_duration_sec: 5
+      max_chars: 2048
+      provider: pixverse
+      mode: image_to_video
+      target_operation: image_to_video
+      notes: "Source image must already show characters positioned near the woman"
+      controls:
+        - id: pose_lock
+          type: slider
+          label: Pose Lock
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 5
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 0
+              boostTags: { rigidity: minimal }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 3
+              boostTags: { rigidity: low }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 5
+              boostTags: { rigidity: medium }
+              avoidTags: { rigidity: [minimal, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 7
+              boostTags: { rigidity: high }
+              avoidTags: { rigidity: [minimal, low] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 9
+              boostTags: { rigidity: maximum }
+              avoidTags: { rigidity: [minimal, low, medium] }
+        - id: intensity
+          type: slider
+          label: Intensity
+          min: 1
+          max: 10
+          step: 1
+          defaultValue: 5
+          effects:
+            - kind: slot_intensity
+              slotLabel: Hands action
+            - kind: slot_intensity
+              slotLabel: Her reaction
+        - id: escalation
+          type: slider
+          label: Escalation
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 4
+          effects:
+            - kind: slot_intensity
+              slotLabel: Escalation
+            - kind: slot_tag_boost
+              slotLabel: Escalation
+              enabledAt: 0
+              boostTags: { intensity: 6 }
+              avoidTags: { intensity: [8] }
+            - kind: slot_tag_boost
+              slotLabel: Escalation
+              enabledAt: 4
+              boostTags: { intensity: 6 }
+            - kind: slot_tag_boost
+              slotLabel: Escalation
+              enabledAt: 7
+              boostTags: { intensity: 7 }
+              avoidTags: { intensity: [6] }
+            - kind: slot_tag_boost
+              slotLabel: Escalation
+              enabledAt: 9
+              boostTags: { intensity: 8 }
+              avoidTags: { intensity: [6] }
+        - id: reaction_tone
+          type: slider
+          label: Reaction Tone
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 5
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 0
+              boostTags: { response: startled }
+              avoidTags: { response: [vocal, surrender] }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 3
+              boostTags: { response: startled }
+              avoidTags: { response: [surrender] }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 5
+              boostTags: { response: yielding }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 7
+              boostTags: { response: vocal }
+              avoidTags: { response: [startled] }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 9
+              boostTags: { response: surrender }
+              avoidTags: { response: [startled] }
+
+    slots:
+      # ── Pose lock (shared — graduated via slider)
+      - label: Pose lock
+        role: subject
+        category: pose_lock
+        selection_strategy: weighted_tags
+        tags:
+          lock: pose
+          mode: [i2v, any]
+        preferences:
+          boost_tags:
+            rigidity: medium
+        optional: false
+
+      # ── Scene context (reinforcement — static text)
+      - label: Scene context
+        kind: reinforcement
+        reinforcement_text: "(Crowded setting, figures pressed close together, bodies in contact, the space tight and inescapable.)"
+
+      # ── Camera stability (shared)
+      - label: Camera hold
+        role: camera
+        category: camera_stability
+        selection_strategy: weighted_tags
+        tags:
+          lock: camera
+        preferences:
+          boost_tags:
+            camera_rigidity: high
+        optional: false
+
+      # ── Initial hand contact (shared intimate_touch)
+      - label: Hands action
+        role: action
+        category: intimate_touch
+        selection_strategy: uniform
+        tags:
+          scene_type: grope
+        intensity: 5
+        optional: false
+
+      # ── Escalation — optional multi-hand (crowd_grope pack)
+      - label: Escalation
+        role: action
+        category: grope_escalation
+        selection_strategy: uniform
+        tags:
+          scene_type: grope
+          motion: multi_touch
+        intensity: 6
+        optional: true
+        fallback_text: ""
+
+      # ── Her reaction (shared)
+      - label: Her reaction
+        role: character
+        category: reaction
+        selection_strategy: weighted_tags
+        tags:
+          motion: reaction
+        intensity: 5
+        preferences:
+          boost_tags:
+            response: yielding
+        optional: false
+
+      # ── Terminal camera lock (image_edit_scenes)
+      - label: Camera lock
+        role: camera
+        category: camera_lock
+        selection_strategy: uniform
+        tags:
+          camera: observer_lock
+        optional: false

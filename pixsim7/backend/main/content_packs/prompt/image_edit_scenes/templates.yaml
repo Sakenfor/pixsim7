@@ -58,7 +58,6 @@ templates:
               enabledAt: 8
               boostTags: { rigidity: maximum }
               avoidTags: { rigidity: [minimal, low, medium] }
-
     slots:
       # ── Subject preservation (graduated pose lock + absolute identity/framing)
       - preset: pose_lock_graduated
@@ -572,6 +571,21 @@ templates:
               boostTags: { rigidity: maximum }
               avoidTags: { rigidity: [minimal, low, medium] }
 
+      features:
+        - preset: wardrobe_allure_bundle
+          target_slot_key: uniform_aesthetic
+          target_slot: Uniform aesthetic
+          include_variant_select: true
+          include_matrix_preset: true
+          variant_control_id: uniform_variant
+          variant_control_label: Uniform Variant
+          variant_default_value: duty
+          variant_control_description: "Choose the base police-uniform variant; the Allure control adjusts fit/daring separately."
+          matrix_preset_id: police-allure-coverage
+          matrix_preset_label: "Police Precinct: Allure Coverage"
+          matrix_preset_description: "Coverage of wardrobe modifier blocks by allure level and tightness."
+
+
     slots:
       # ── Subject preservation (graduated pose lock + absolute identity/framing)
       - preset: pose_lock_graduated
@@ -587,13 +601,15 @@ templates:
         optional: false
 
       # ── Wardrobe — su_lt-ry uniform rework (genre from context) ──
-      - label: Uniform style
+      - key: uniform_aesthetic
+        label: Uniform aesthetic
         role: style
-        category: wardrobe
+        category: aesthetic
         tag_constraints:
-          variant: sultry
-        selection_strategy: uniform
+          aesthetic: police_uniform
+        selection_strategy: weighted_tags
         optional: false
+
 
       # ── Environment ────────────────────────────────────────────
       - label: Break room scene

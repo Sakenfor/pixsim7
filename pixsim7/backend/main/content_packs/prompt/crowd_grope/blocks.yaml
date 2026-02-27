@@ -1,0 +1,68 @@
+version: "1.0.0"
+package_name: crowd_grope
+
+defaults:
+  source_type: library
+  curation_status: curated
+  is_public: true
+  style: cinematic
+  duration_sec: 1.5
+  created_by: content_pack
+
+blocks:
+
+  # ═══════════════════════════════════════════════════════════════════
+  # ACTION — two-hand escalation (same figure, not crowd)
+  # Single-hand touch blocks live in shared (action/intimate_touch)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: cg_escalate_01
+    role: action
+    category: grope_escalation
+    kind: single_state
+    text: >-
+      The same hand tightens its grip while the other slides up
+      from her hi_p, both hands now working — one anchoring her
+      waist, the other exploring higher along her ribcage, the
+      figure behind her pulling closer
+    tags:
+      tone: dominant
+      scene_type: grope
+      motion: two_hand
+      intensity: 6
+    complexity_level: moderate
+    description: "Two-hand — waist anchor plus ribcage explore"
+
+  - block_id: cg_escalate_02
+    role: action
+    category: grope_escalation
+    kind: single_state
+    text: >-
+      Both hands move with purpose — one cupping her bu_tt-oks from
+      behind while the other slides around her waist, pulling her
+      back against the body pressed to hers, the grip possessive
+      and unhurried
+    tags:
+      tone: dominant
+      scene_type: grope
+      motion: two_hand
+      intensity: 7
+    complexity_level: moderate
+    description: "Two-hand — rear grip plus waist pull"
+
+  - block_id: cg_escalate_03
+    role: action
+    category: grope_escalation
+    kind: single_state
+    text: >-
+      One hand hooks into her waistband while the other closes
+      over her bre_as-t, both squeezing simultaneously, the figure
+      behind her pressing its full weight forward, pinning her
+      between its body and whatever she braces against
+    tags:
+      tone: dominant
+      scene_type: grope
+      motion: two_hand
+      intensity: 8
+    complexity_level: complex
+    description: "Two-hand — waistband hook plus chest, pinning"
