@@ -4,6 +4,11 @@ This directory contains architectural documentation for PixSim7.
 
 ## Contents
 
+### Active Architecture Tracks
+- [Prompt Resolver `next_v1` Spec](./prompt-resolver-next-v1.md) - Parallel resolver architecture, interfaces, and migration strategy.
+- [Prompt Resolver Workbench Roadmap](./prompt-resolver-workbench-roadmap.md) - Multi-iteration implementation plan and handoff guide for resolver workbench development.
+- [Scene Concepts Map](./scene-concepts-map.md) - Distinguishes Scene Prep vs game/runtime scenes vs legacy scene concepts.
+
 ### [Subsystems](./subsystems/README.md)
 Detailed architecture documentation for specific subsystems:
 - Launcher architecture
