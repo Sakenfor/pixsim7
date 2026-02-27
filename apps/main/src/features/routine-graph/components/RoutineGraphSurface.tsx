@@ -6,10 +6,7 @@
  */
 
 import { useCallback, useEffect } from 'react';
-import ReactFlow, {
-  Background,
-  Controls,
-  MiniMap,
+import {
   Panel,
   useNodesState,
   useEdgesState,
@@ -22,6 +19,13 @@ import ReactFlow, {
   BackgroundVariant,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { useShallow } from 'zustand/react/shallow';
+
+import { GraphCanvasShell } from '@/features/graph/components/graph/GraphCanvasShell';
+import {
+  type GraphDomainAdapter,
+} from '@/features/graph/components/graph/graphDomainAdapter';
+import { useGraphCanvasAdapter } from '@/features/graph/hooks/useGraphCanvasAdapter';
 
 import { useRoutineGraphStore, routineGraphSelectors } from '../stores/routineGraphStore';
 import { useRoutineGraphSelectionStore } from '../stores/selectionStore';
@@ -40,6 +44,12 @@ const nodeTypes: NodeTypes = {
   time_slot: TimeSlotNodeRenderer,
   decision: DecisionNodeRenderer,
   activity: ActivityNodeRenderer,
+};
+
+const SNAP_GRID: [number, number] = [20, 20];
+
+const DEFAULT_EDGE_OPTIONS = {
+  type: 'smoothstep' as const,
 };
 
 // ============================================================================
@@ -156,7 +166,7 @@ function GraphSelector({ graphs, currentGraphId, onSelect, onNew }: GraphSelecto
 export function RoutineGraphSurface() {
   // Data store
   const currentGraph = useRoutineGraphStore(routineGraphSelectors.currentGraph);
-  const graphs = useRoutineGraphStore(routineGraphSelectors.graphList);
+  const graphs = useRoutineGraphStore(useShallow(routineGraphSelectors.graphList));
   const currentGraphId = useRoutineGraphStore((s) => s.currentGraphId);
 
   const {
@@ -165,11 +175,20 @@ export function RoutineGraphSurface() {
     addNodeOfType,
     updateNode,
     connectNodes,
-  } = useRoutineGraphStore();
+  } = useRoutineGraphStore(useShallow((s) => ({
+    setCurrentGraph: s.setCurrentGraph,
+    createGraph: s.createGraph,
+    addNodeOfType: s.addNodeOfType,
+    updateNode: s.updateNode,
+    connectNodes: s.connectNodes,
+  })));
 
   // Selection store (separate from data)
   const selectedNodeId = useRoutineGraphSelectionStore((s) => s.selectedNodeId);
-  const { selectNode, clearSelection } = useRoutineGraphSelectionStore();
+  const { selectNode, clearSelection } = useRoutineGraphSelectionStore(useShallow((s) => ({
+    selectNode: s.selectNode,
+    clearSelection: s.clearSelection,
+  })));
 
   // ReactFlow state
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -189,6 +208,16 @@ export function RoutineGraphSurface() {
       // Sync position changes back to store
       changes.forEach((change) => {
         if (change.type === 'position' && change.position && change.id) {
+          const state = useRoutineGraphStore.getState();
+          const graph = state.currentGraphId ? state.graphs[state.currentGraphId] : null;
+          const existingNode = graph?.nodes.find((n) => n.id === change.id);
+          if (
+            existingNode &&
+            existingNode.position.x === change.position.x &&
+            existingNode.position.y === change.position.y
+          ) {
+            return;
+          }
           updateNode(change.id, { position: change.position });
         }
       });
@@ -249,27 +278,40 @@ export function RoutineGraphSurface() {
     return getNodeTypeColor(node.type as RoutineNodeType);
   }, []);
 
+  const graphDomainAdapter = useGraphCanvasAdapter<GraphDomainAdapter>(
+    () => ({
+      nodes,
+      edges,
+      onNodesChange: handleNodesChange,
+      onEdgesChange,
+      onConnect: handleConnect,
+      onNodeClick: handleNodeClick,
+      onPaneClick: handlePaneClick,
+      nodeTypes,
+      snapToGrid: true,
+      snapGrid: SNAP_GRID,
+      defaultEdgeOptions: DEFAULT_EDGE_OPTIONS,
+    }),
+    [
+      nodes,
+      edges,
+      handleNodesChange,
+      onEdgesChange,
+      handleConnect,
+      handleNodeClick,
+      handlePaneClick,
+    ],
+  );
+
   return (
-    <div className="absolute inset-0">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={handleNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={handleConnect}
-        onNodeClick={handleNodeClick}
-        onPaneClick={handlePaneClick}
-        nodeTypes={nodeTypes}
-        fitView
-        snapToGrid
-        snapGrid={[20, 20]}
-        defaultEdgeOptions={{
-          type: 'smoothstep',
-        }}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-        <Controls />
-        <MiniMap nodeColor={getMinimapNodeColor} />
+    <GraphCanvasShell
+      adapter={graphDomainAdapter}
+      fitView
+      containerClassName="absolute inset-0 rounded-none border-0 bg-transparent"
+      canvasClassName="bg-transparent"
+      backgroundVariant={BackgroundVariant.Dots}
+      miniMapNodeColor={getMinimapNodeColor}
+    >
 
         {/* Top-left: Graph selector */}
         <Panel position="top-left">
@@ -302,8 +344,7 @@ export function RoutineGraphSurface() {
             </div>
           </Panel>
         )}
-      </ReactFlow>
-    </div>
+    </GraphCanvasShell>
   );
 }
 

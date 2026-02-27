@@ -28,6 +28,8 @@ const defaultEdgeOptions = {
   animated: false,
 };
 
+const SNAP_GRID: [number, number] = [15, 15];
+
 /**
  * Convert arc graph nodes to React Flow format
  */
@@ -397,7 +399,7 @@ export function ArcGraphPanel() {
             defaultEdgeOptions={defaultEdgeOptions}
             fitView
             snapToGrid
-            snapGrid={[15, 15]}
+            snapGrid={SNAP_GRID}
           >
             <Background />
             <Controls />

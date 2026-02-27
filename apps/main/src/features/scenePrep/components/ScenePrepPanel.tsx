@@ -15,6 +15,13 @@ import {
 import { openWorkspacePanel } from '@features/workspace';
 
 import {
+  useSceneArtifactStore,
+  type SceneArtifact,
+  type SceneArtifactPrepState,
+  type SceneArtifactStage,
+  type SceneArtifactStatus,
+} from '@/domain/sceneArtifact';
+import {
   buildBackendEachExecutionPolicy,
   buildBackendFanoutExecutionPolicy,
 } from '@/features/generation/lib/fanoutExecutionPolicy';
@@ -60,6 +67,26 @@ interface ScenePrepVariantRow {
   shot?: string;
   view?: string;
   state?: string;
+}
+
+interface ScenePrepLaunchHistoryEntry {
+  id: string;
+  launchId: string;
+  stage: ScenePrepStage;
+  createdAtMs: number;
+  estimatedRows: number;
+  executionMode: ScenePrepExecutionMode;
+  reusePreviousOutputAsInput: boolean;
+  sourceAssetId: number | null;
+  executionId?: number;
+  generationCount?: number;
+}
+
+interface ScenePrepStageHandoff {
+  sourceAssetId: string;
+  fromStage: ScenePrepStage;
+  fromLaunchId: string;
+  capturedAtMs: number;
 }
 
 export interface ScenePrepPrefillCastRow {
@@ -200,6 +227,55 @@ function normalizeVariantRows(rows: unknown): ScenePrepVariantRow[] {
   return next.length > 0 ? next : createDefaultVariants();
 }
 
+function isScenePrepStage(value: unknown): value is ScenePrepStage {
+  return value === 'explore' || value === 'compose' || value === 'refine' || value === 'custom';
+}
+
+function normalizeLaunchHistoryRows(rows: unknown): ScenePrepLaunchHistoryEntry[] {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .filter((row) => row && typeof row === 'object')
+    .map((row) => {
+      const item = row as Record<string, unknown>;
+      const stage = isScenePrepStage(item.stage) ? item.stage : 'custom';
+      const executionMode = item.executionMode === 'sequential' ? 'sequential' : 'fanout';
+      const sourceAssetIdRaw = item.sourceAssetId;
+      const sourceAssetId = typeof sourceAssetIdRaw === 'number' && Number.isFinite(sourceAssetIdRaw)
+        ? Math.trunc(sourceAssetIdRaw)
+        : null;
+      return {
+        id: typeof item.id === 'string' && item.id ? item.id : nextRowId('launch'),
+        launchId: typeof item.launchId === 'string' ? item.launchId : '',
+        stage,
+        createdAtMs: typeof item.createdAtMs === 'number' && Number.isFinite(item.createdAtMs) ? item.createdAtMs : Date.now(),
+        estimatedRows: typeof item.estimatedRows === 'number' && Number.isFinite(item.estimatedRows) ? Math.max(1, Math.floor(item.estimatedRows)) : 1,
+        executionMode,
+        reusePreviousOutputAsInput: Boolean(item.reusePreviousOutputAsInput),
+        sourceAssetId,
+        executionId: typeof item.executionId === 'number' && Number.isFinite(item.executionId) ? Math.floor(item.executionId) : undefined,
+        generationCount: typeof item.generationCount === 'number' && Number.isFinite(item.generationCount) ? Math.floor(item.generationCount) : undefined,
+      } satisfies ScenePrepLaunchHistoryEntry;
+    })
+    .filter((row) => row.launchId.trim());
+}
+
+function normalizeStageHandoff(value: unknown): ScenePrepStageHandoff | null {
+  if (!value || typeof value !== 'object') return null;
+  const item = value as Record<string, unknown>;
+  if (!isScenePrepStage(item.fromStage)) return null;
+  if (typeof item.sourceAssetId !== 'string' || !item.sourceAssetId.trim()) return null;
+  if (typeof item.fromLaunchId !== 'string' || !item.fromLaunchId.trim()) return null;
+  return {
+    sourceAssetId: item.sourceAssetId.trim(),
+    fromStage: item.fromStage,
+    fromLaunchId: item.fromLaunchId.trim(),
+    capturedAtMs:
+      typeof item.capturedAtMs === 'number' && Number.isFinite(item.capturedAtMs)
+        ? item.capturedAtMs
+        : Date.now(),
+  };
+}
+
 function buildDefaultDraft(args: {
   initialTemplateId: string;
   initialProviderId: string;
@@ -304,6 +380,25 @@ function createScenePrepLaunchId(): string {
   const randomUuid = globalThis.crypto?.randomUUID?.();
   if (randomUuid) return randomUuid;
   return `sceneprep_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function shortId(value: string, max = 8): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.length > max ? trimmed.slice(0, max) : trimmed;
+}
+
+function getNextScenePrepStage(stage: ScenePrepStage): ScenePrepStage | null {
+  if (stage === 'explore') return 'compose';
+  if (stage === 'compose') return 'refine';
+  return null;
+}
+
+function scenePrepStageToArtifactStatus(stage: ScenePrepStage): SceneArtifactStatus {
+  if (stage === 'explore') return 'explored';
+  if (stage === 'compose') return 'composed';
+  if (stage === 'refine') return 'refined';
+  return 'draft';
 }
 
 function uniqueNonEmptyStrings(values: Array<string | null | undefined>): string[] {
@@ -531,6 +626,20 @@ export function ScenePrepPanel({
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [candidateImportGroup, setCandidateImportGroup] = useState<CandidateGroup>('other');
+  const [launchHistory, setLaunchHistory] = useState<ScenePrepLaunchHistoryEntry[]>([]);
+  const [stageHandoff, setStageHandoff] = useState<ScenePrepStageHandoff | null>(null);
+  const [artifactTitle, setArtifactTitle] = useState(initialDraft.sceneName || 'Untitled Scene');
+
+  const sceneArtifactsById = useSceneArtifactStore((state) => state.artifacts);
+  const currentSceneArtifactId = useSceneArtifactStore((state) => state.currentArtifactId);
+  const setCurrentSceneArtifact = useSceneArtifactStore((state) => state.setCurrentArtifact);
+  const upsertPrepArtifact = useSceneArtifactStore((state) => state.upsertPrepArtifact);
+  const getSceneArtifact = useSceneArtifactStore((state) => state.getArtifact);
+  const deleteSceneArtifact = useSceneArtifactStore((state) => state.deleteArtifact);
+  const sceneArtifacts = useMemo(
+    () => Object.values(sceneArtifactsById).sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0)),
+    [sceneArtifactsById],
+  );
 
   const characterBindings = useMemo(() => buildCharacterBindings(castRows), [castRows]);
   const guidancePlan = useMemo(() => buildGuidancePlanFromRows(guidanceRefRows), [guidanceRefRows]);
@@ -576,6 +685,153 @@ export function ScenePrepPanel({
   const activeCharacterLabel = activeCharacter
     ? (activeCharacter.displayName || activeCharacter.name || activeCharacter.characterId)
     : null;
+  const latestLaunch = launchHistory[0] ?? null;
+  const nextStageSuggestion = getNextScenePrepStage(stage);
+  const selectedSceneArtifact = useMemo<SceneArtifact | null>(() => {
+    if (!currentSceneArtifactId) return null;
+    return sceneArtifactsById[currentSceneArtifactId] ?? null;
+  }, [currentSceneArtifactId, sceneArtifactsById]);
+
+  useEffect(() => {
+    if (selectedSceneArtifact) {
+      setArtifactTitle(selectedSceneArtifact.title || 'Untitled Scene');
+      return;
+    }
+    if (artifactTitle.trim()) return;
+    const fallback = sceneName.trim() || 'Untitled Scene';
+    setArtifactTitle(fallback);
+  }, [artifactTitle, sceneName, selectedSceneArtifact]);
+
+  const buildSceneArtifactPrepState = useCallback((): SceneArtifactPrepState => ({
+    templateId,
+    providerId,
+    basePrompt,
+    sceneName,
+    stage: stage as SceneArtifactStage,
+    variantCount,
+    executionMode,
+    reusePreviousOutputAsInput,
+    operationMode,
+    sourceAssetId,
+    matrixQuery,
+    discoveryNotes,
+    castRows: castRows.map((row) => ({ ...row })),
+    guidanceRefRows: guidanceRefRows.map((row) => ({ ...row })),
+    candidateAssets: candidateAssets.map((row) => ({ ...row })),
+    variantRows: variantRows.map((row) => ({ ...row })),
+    launchHistory: launchHistory.map((row) => ({ ...row })),
+    stageHandoff: stageHandoff ? { ...stageHandoff } : null,
+  }), [
+    basePrompt,
+    candidateAssets,
+    castRows,
+    discoveryNotes,
+    executionMode,
+    guidanceRefRows,
+    launchHistory,
+    matrixQuery,
+    operationMode,
+    providerId,
+    reusePreviousOutputAsInput,
+    sceneName,
+    sourceAssetId,
+    stage,
+    stageHandoff,
+    templateId,
+    variantCount,
+    variantRows,
+  ]);
+
+  const applySceneArtifactPrepState = useCallback((prep: SceneArtifactPrepState) => {
+    setTemplateId(typeof prep.templateId === 'string' ? prep.templateId : '');
+    setProviderId(typeof prep.providerId === 'string' ? prep.providerId : 'pixverse');
+    setBasePrompt(typeof prep.basePrompt === 'string' ? prep.basePrompt : '');
+    setSceneName(typeof prep.sceneName === 'string' ? prep.sceneName : '');
+    setStage(isScenePrepStage(prep.stage) ? prep.stage : 'custom');
+    setVariantCount(typeof prep.variantCount === 'string' ? prep.variantCount : '4');
+    setExecutionMode(prep.executionMode === 'sequential' ? 'sequential' : 'fanout');
+    setReusePreviousOutputAsInput(Boolean(prep.reusePreviousOutputAsInput));
+    setOperationMode(
+      prep.operationMode === 'text_to_image' || prep.operationMode === 'image_to_image' || prep.operationMode === 'auto'
+        ? prep.operationMode
+        : 'auto',
+    );
+    setSourceAssetId(typeof prep.sourceAssetId === 'string' ? prep.sourceAssetId : '');
+    setMatrixQuery(typeof prep.matrixQuery === 'string' ? prep.matrixQuery : '');
+    setDiscoveryNotes(typeof prep.discoveryNotes === 'string' ? prep.discoveryNotes : '');
+    setCastRows(normalizeCastRows(prep.castRows));
+    setGuidanceRefRows(normalizeGuidanceRefRows(prep.guidanceRefRows));
+    setCandidateAssets(normalizeCandidateRows(prep.candidateAssets));
+    setVariantRows(normalizeVariantRows(prep.variantRows));
+    setLaunchHistory(normalizeLaunchHistoryRows(prep.launchHistory));
+    setStageHandoff(normalizeStageHandoff(prep.stageHandoff));
+  }, []);
+
+  const saveSceneArtifact = useCallback(() => {
+    const title = (artifactTitle.trim() || sceneName.trim() || 'Untitled Scene').slice(0, 120);
+    const id = upsertPrepArtifact({
+      artifactId: currentSceneArtifactId,
+      title,
+      status: scenePrepStageToArtifactStatus(stage),
+      prep: buildSceneArtifactPrepState(),
+      metadata: {
+        source: 'scene-prep',
+      },
+    });
+    setCurrentSceneArtifact(id);
+    setArtifactTitle(title);
+    setError(null);
+    setStatus(
+      currentSceneArtifactId
+        ? `Updated Scene Artifact "${title}".`
+        : `Saved new Scene Artifact "${title}".`,
+    );
+  }, [
+    artifactTitle,
+    buildSceneArtifactPrepState,
+    currentSceneArtifactId,
+    sceneName,
+    setCurrentSceneArtifact,
+    stage,
+    upsertPrepArtifact,
+  ]);
+
+  const loadSceneArtifact = useCallback((artifactId?: string | null) => {
+    const targetId = artifactId ?? currentSceneArtifactId;
+    if (!targetId) {
+      setError('Select a Scene Artifact to load.');
+      return;
+    }
+    const artifact = getSceneArtifact(targetId);
+    if (!artifact) {
+      setError('Scene Artifact not found.');
+      return;
+    }
+    applySceneArtifactPrepState(artifact.prep);
+    setCurrentSceneArtifact(targetId);
+    setArtifactTitle(artifact.title || 'Untitled Scene');
+    setError(null);
+    setStatus(`Loaded Scene Artifact "${artifact.title}".`);
+  }, [applySceneArtifactPrepState, currentSceneArtifactId, getSceneArtifact, setCurrentSceneArtifact]);
+
+  const resetSceneArtifactSelection = useCallback(() => {
+    setCurrentSceneArtifact(null);
+    setArtifactTitle(sceneName.trim() || 'Untitled Scene');
+    setStatus('Started a new Scene Artifact draft (unlinked).');
+    setError(null);
+  }, [sceneName, setCurrentSceneArtifact]);
+
+  const removeCurrentSceneArtifact = useCallback(() => {
+    if (!currentSceneArtifactId) {
+      setError('No Scene Artifact selected to delete.');
+      return;
+    }
+    const artifact = getSceneArtifact(currentSceneArtifactId);
+    deleteSceneArtifact(currentSceneArtifactId);
+    setCurrentSceneArtifact(null);
+    setStatus(`Deleted Scene Artifact "${artifact?.title || currentSceneArtifactId}".`);
+    setError(null);
+  }, [currentSceneArtifactId, deleteSceneArtifact, getSceneArtifact, setCurrentSceneArtifact]);
 
   const patchCastRow = useCallback((id: string, patch: Partial<ScenePrepCastRow>) => {
     setCastRows((rows) => rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -708,6 +964,56 @@ export function ScenePrepPanel({
     openWorkspacePanel('block-matrix');
   }, []);
 
+  const applySelectedAssetAsStageSource = useCallback((options?: { advanceStage?: boolean }) => {
+    if (!currentSelectionAssetId) {
+      setError('No selected asset to use as source. Select a generated output first.');
+      return;
+    }
+    const sourceLaunch = latestLaunch;
+    const fromStage = sourceLaunch?.stage ?? stage;
+    const fromLaunchId = sourceLaunch?.launchId ?? 'manual_selection';
+
+    setSourceAssetId(currentSelectionAssetId);
+    setOperationMode((prev) => (prev === 'text_to_image' ? 'auto' : prev));
+    setStageHandoff({
+      sourceAssetId: currentSelectionAssetId,
+      fromStage,
+      fromLaunchId,
+      capturedAtMs: Date.now(),
+    });
+
+    if (options?.advanceStage) {
+      const next = getNextScenePrepStage(fromStage);
+      if (next) {
+        handleStageChange(next);
+        setStatus(`Using selected asset ${currentSelectionAssetId} as source and prefilling next stage (${next}) from ${fromStage}.`);
+      } else {
+        setStatus(`Using selected asset ${currentSelectionAssetId} as source (no next-stage preset after ${fromStage}; staying on current stage).`);
+      }
+    } else {
+      setStatus(`Using selected asset ${currentSelectionAssetId} as source for next launch (${fromStage} handoff).`);
+    }
+    setError(null);
+  }, [currentSelectionAssetId, handleStageChange, latestLaunch, stage]);
+
+  const prefillNextStage = useCallback(() => {
+    const sourceStage = stageHandoff?.fromStage ?? latestLaunch?.stage ?? stage;
+    const next = getNextScenePrepStage(sourceStage);
+    if (!next) {
+      setStatus(`No automatic next-stage preset after ${sourceStage}. Switch stage manually if needed.`);
+      return;
+    }
+    handleStageChange(next);
+    setError(null);
+    setStatus(`Prefilled next stage preset: ${sourceStage} -> ${next}.`);
+  }, [handleStageChange, latestLaunch, stage, stageHandoff]);
+
+  const clearStageHandoff = useCallback(() => {
+    setStageHandoff(null);
+    setStatus('Cleared stage handoff source.');
+    setError(null);
+  }, []);
+
   const applyHostPrefill = useCallback(() => {
     if (!effectiveHostPrefill) return;
     if (effectiveHostPrefill.sceneName) setSceneName(effectiveHostPrefill.sceneName);
@@ -742,6 +1048,9 @@ export function ScenePrepPanel({
     setGuidanceRefRows(next.guidanceRefRows);
     setCandidateAssets(next.candidateAssets);
     setVariantRows(next.variantRows);
+    setLaunchHistory([]);
+    setStageHandoff(null);
+    setArtifactTitle(next.sceneName || 'Untitled Scene');
     setStatus(null);
     setError(null);
   }, [effectiveHostPrefill, initialBasePrompt, initialProviderId, initialTemplateId]);
@@ -872,6 +1181,14 @@ export function ScenePrepPanel({
       ...(Object.keys(characterBindings).length > 0 ? { character_bindings: characterBindings } : {}),
       ...(guidancePlan ? { guidance_plan: guidancePlan } : {}),
       ...(candidateSummary.length > 0 ? { scene_prep_candidates: candidateSummary } : {}),
+      ...(stageHandoff ? {
+        scene_prep_handoff: {
+          source_asset_id: toNumericAssetId(stageHandoff.sourceAssetId) ?? stageHandoff.sourceAssetId,
+          from_stage: stageHandoff.fromStage,
+          from_launch_id: stageHandoff.fromLaunchId,
+          captured_at_ms: stageHandoff.capturedAtMs,
+        },
+      } : {}),
     };
 
     const commonExtraParams: Record<string, unknown> = {};
@@ -916,6 +1233,21 @@ export function ScenePrepPanel({
         },
       });
 
+      setLaunchHistory((prev) => [
+        {
+          id: nextRowId('launch'),
+          launchId,
+          stage,
+          createdAtMs: Date.now(),
+          estimatedRows: rows.length,
+          executionMode,
+          reusePreviousOutputAsInput: effectiveReusePrevious,
+          sourceAssetId: resolvedSourceAssetId,
+          executionId: result.execution.id,
+          generationCount: result.generationIds.length,
+        },
+        ...prev,
+      ].slice(0, 12));
       setStatus(`Scene prep launched (${result.generationIds.length} generations, execution ${result.execution.id})`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to launch scene prep batch');
@@ -939,6 +1271,7 @@ export function ScenePrepPanel({
     guidancePlan,
     resolvedOperation,
     resolvedSourceAssetId,
+    stageHandoff,
   ]);
 
   const candidateCount = candidateAssets.filter((row) => row.asset_id.trim()).length;
@@ -1018,6 +1351,67 @@ export function ScenePrepPanel({
               {resolvedSourceAssetId != null && <span className="text-neutral-500"> (source asset {resolvedSourceAssetId})</span>}
             </span>
           </div>
+        </div>
+      </DisclosureSection>
+
+      <DisclosureSection label={<span className="text-sm">Scene Artifact</span>} defaultOpen={false} size="sm" bordered>
+        <div className="space-y-2.5 pt-1">
+          <p className="text-xs text-neutral-500">
+            Save this prep state as a reusable <code>SceneArtifact</code> (non-game scene record). This stays separate from <code>GameScene</code>.
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <FormField label="Artifact Title" size="sm">
+              <Input
+                size="sm"
+                value={artifactTitle}
+                onChange={(e) => setArtifactTitle(e.target.value)}
+                placeholder="Scene Artifact title"
+              />
+            </FormField>
+            <FormField label="Artifact" size="sm">
+              <Select
+                size="sm"
+                value={currentSceneArtifactId || ''}
+                onChange={(e) => setCurrentSceneArtifact(e.target.value || null)}
+              >
+                <option value="">(new / unlinked)</option>
+                {sceneArtifacts.map((artifact) => (
+                  <option key={artifact.id} value={artifact.id}>
+                    {artifact.title} · {artifact.status}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="xs" onClick={saveSceneArtifact}>Save Scene Artifact</Button>
+            <Button size="xs" variant="ghost" onClick={() => loadSceneArtifact()} disabled={!currentSceneArtifactId}>
+              Load Artifact
+            </Button>
+            <Button size="xs" variant="ghost" onClick={resetSceneArtifactSelection}>
+              New Artifact Draft
+            </Button>
+            <Button size="xs" variant="ghost" onClick={removeCurrentSceneArtifact} disabled={!currentSceneArtifactId}>
+              Delete Artifact
+            </Button>
+            <span className="text-xs text-neutral-500">
+              Total artifacts: <span className="text-neutral-300">{sceneArtifacts.length}</span>
+            </span>
+          </div>
+          {selectedSceneArtifact && (
+            <div className="rounded border border-neutral-700/40 bg-neutral-800/20 p-2 text-xs text-neutral-400">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge color="gray">{selectedSceneArtifact.status}</Badge>
+                <span>updated {new Date(selectedSceneArtifact.updatedAt).toLocaleString()}</span>
+                {selectedSceneArtifact.gameSceneId && (
+                  <span className="text-neutral-500">· game scene {selectedSceneArtifact.gameSceneId}</span>
+                )}
+              </div>
+              <div className="mt-1 text-[11px] text-neutral-500">
+                Artifact ID: {selectedSceneArtifact.id}
+              </div>
+            </div>
+          )}
         </div>
       </DisclosureSection>
 
@@ -1171,6 +1565,68 @@ export function ScenePrepPanel({
             <div className="mt-1">
               Execution compiles to backend raw-item template fanout and records prep metadata in <code>run_context</code>.
             </div>
+          </div>
+
+          <div className="rounded border border-neutral-700/40 bg-neutral-800/20 p-2 text-xs text-neutral-400">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-neutral-300">Stage handoff</span>
+              {stageHandoff ? (
+                <>
+                  <Badge color="green">source {stageHandoff.sourceAssetId}</Badge>
+                  <Badge color="gray">{stageHandoff.fromStage}</Badge>
+                  <Badge color="gray">launch {shortId(stageHandoff.fromLaunchId)}</Badge>
+                </>
+              ) : (
+                <span>No handoff source selected.</span>
+              )}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <Button size="xs" variant="ghost" onClick={() => applySelectedAssetAsStageSource()} disabled={!currentSelectionAssetId}>
+                Use Selected Asset as Next-Stage Source
+              </Button>
+              <Button size="xs" variant="ghost" onClick={() => applySelectedAssetAsStageSource({ advanceStage: true })} disabled={!currentSelectionAssetId}>
+                Use Selected + Prefill Next Stage
+              </Button>
+              <Button size="xs" variant="ghost" onClick={prefillNextStage} disabled={!nextStageSuggestion && !(stageHandoff || latestLaunch)}>
+                Prefill Next Stage
+              </Button>
+              <Button size="xs" variant="ghost" onClick={clearStageHandoff} disabled={!stageHandoff}>
+                Clear Handoff
+              </Button>
+            </div>
+            <div className="mt-1 text-[11px] text-neutral-500">
+              Select an output asset in the gallery, then use it as the next stage source. Handoff metadata is recorded in <code>run_context</code> (no tags are auto-applied).
+            </div>
+          </div>
+
+          <div className="rounded border border-neutral-700/40 bg-neutral-800/20 p-2 text-xs text-neutral-400">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="text-neutral-300">Stage Launch History (session)</span>
+              <span className="text-[11px] text-neutral-500">latest {launchHistory.length} launches</span>
+            </div>
+            {launchHistory.length === 0 ? (
+              <div className="text-[11px] text-neutral-500">
+                Launches will appear here so you can hand off outputs into later stages.
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {launchHistory.map((entry) => (
+                  <div key={entry.id} className="rounded border border-neutral-700/30 bg-neutral-900/20 px-2 py-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge color="gray">{entry.stage}</Badge>
+                      <span className="text-neutral-200">launch {shortId(entry.launchId)}</span>
+                      {typeof entry.executionId === 'number' && <span>exec {entry.executionId}</span>}
+                      {typeof entry.generationCount === 'number' && <span>{entry.generationCount} gens</span>}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-neutral-500">
+                      rows {entry.estimatedRows} · {entry.executionMode}
+                      {entry.reusePreviousOutputAsInput ? ' · chain prev' : ''}
+                      {entry.sourceAssetId != null ? ` · src ${entry.sourceAssetId}` : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
