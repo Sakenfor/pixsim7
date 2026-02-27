@@ -137,6 +137,7 @@ interface ScenePrepDraftState {
   guidanceRefRows: ScenePrepGuidanceRefRow[];
   candidateAssets: ScenePrepCandidateAssetRow[];
   variantRows: ScenePrepVariantRow[];
+  deliverableSetId: string;
 }
 
 const SCENE_PREP_DRAFT_STORAGE_VERSION = 1;
@@ -300,6 +301,7 @@ function buildDefaultDraft(args: {
     guidanceRefRows: buildGuidanceRowsFromPrefill(prefill),
     candidateAssets: [createDefaultCandidate()],
     variantRows: createDefaultVariants(),
+    deliverableSetId: createScenePrepLaunchId(),
   };
 }
 
@@ -333,6 +335,9 @@ function readScenePrepDraft(key: string): ScenePrepDraftState | null {
       guidanceRefRows: normalizeGuidanceRefRows(draft.guidanceRefRows),
       candidateAssets: normalizeCandidateRows(draft.candidateAssets),
       variantRows: normalizeVariantRows(draft.variantRows),
+      deliverableSetId: typeof draft.deliverableSetId === 'string' && draft.deliverableSetId
+        ? draft.deliverableSetId
+        : createScenePrepLaunchId(),
     };
   } catch {
     return null;
@@ -622,6 +627,7 @@ export function ScenePrepPanel({
   const [guidanceRefRows, setGuidanceRefRows] = useState<ScenePrepGuidanceRefRow[]>(initialDraft.guidanceRefRows);
   const [candidateAssets, setCandidateAssets] = useState<ScenePrepCandidateAssetRow[]>(initialDraft.candidateAssets);
   const [variantRows, setVariantRows] = useState<ScenePrepVariantRow[]>(initialDraft.variantRows);
+  const [deliverableSetId, setDeliverableSetId] = useState(initialDraft.deliverableSetId);
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -721,10 +727,12 @@ export function ScenePrepPanel({
     variantRows: variantRows.map((row) => ({ ...row })),
     launchHistory: launchHistory.map((row) => ({ ...row })),
     stageHandoff: stageHandoff ? { ...stageHandoff } : null,
+    deliverableSetId,
   }), [
     basePrompt,
     candidateAssets,
     castRows,
+    deliverableSetId,
     discoveryNotes,
     executionMode,
     guidanceRefRows,
@@ -765,6 +773,9 @@ export function ScenePrepPanel({
     setVariantRows(normalizeVariantRows(prep.variantRows));
     setLaunchHistory(normalizeLaunchHistoryRows(prep.launchHistory));
     setStageHandoff(normalizeStageHandoff(prep.stageHandoff));
+    setDeliverableSetId(typeof prep.deliverableSetId === 'string' && prep.deliverableSetId
+      ? prep.deliverableSetId
+      : createScenePrepLaunchId());
   }, []);
 
   const saveSceneArtifact = useCallback(() => {
@@ -1048,6 +1059,7 @@ export function ScenePrepPanel({
     setGuidanceRefRows(next.guidanceRefRows);
     setCandidateAssets(next.candidateAssets);
     setVariantRows(next.variantRows);
+    setDeliverableSetId(next.deliverableSetId);
     setLaunchHistory([]);
     setStageHandoff(null);
     setArtifactTitle(next.sceneName || 'Untitled Scene');
@@ -1084,6 +1096,7 @@ export function ScenePrepPanel({
     setGuidanceRefRows(persisted.guidanceRefRows);
     setCandidateAssets(persisted.candidateAssets);
     setVariantRows(persisted.variantRows);
+    setDeliverableSetId(persisted.deliverableSetId);
     setStatus(null);
     setError(null);
   }, [effectiveDraftPersistenceKey]);
@@ -1107,6 +1120,7 @@ export function ScenePrepPanel({
       guidanceRefRows,
       candidateAssets,
       variantRows,
+      deliverableSetId,
     });
   }, [
     effectiveDraftPersistenceKey,
@@ -1126,6 +1140,7 @@ export function ScenePrepPanel({
     guidanceRefRows,
     candidateAssets,
     variantRows,
+    deliverableSetId,
   ]);
 
   const launchScenePrep = useCallback(async () => {
@@ -1173,6 +1188,7 @@ export function ScenePrepPanel({
       scene_prep_schema_version: 2,
       scene_prep_stage: stage,
       scene_prep_launch_id: launchId,
+      scene_prep_deliverable_set_id: deliverableSetId,
       scene_prep_name: prepName,
       scene_key: sceneKey || null,
       scene_prompt_base: trimmedBasePrompt,
@@ -1222,6 +1238,7 @@ export function ScenePrepPanel({
           prep_name: prepName,
           scene_prep_stage: stage,
           scene_prep_launch_id: launchId,
+          scene_prep_deliverable_set_id: deliverableSetId,
         },
       });
 
@@ -1268,6 +1285,7 @@ export function ScenePrepPanel({
     matrixQuery,
     discoveryNotes,
     characterBindings,
+    deliverableSetId,
     guidancePlan,
     resolvedOperation,
     resolvedSourceAssetId,

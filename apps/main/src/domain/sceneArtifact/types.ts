@@ -81,6 +81,7 @@ export interface SceneArtifactPrepState {
   variantRows: SceneArtifactVariantRow[];
   launchHistory: SceneArtifactLaunchHistoryEntry[];
   stageHandoff: SceneArtifactStageHandoff | null;
+  deliverableSetId?: string;
 }
 
 export interface SceneArtifact {
