@@ -45,6 +45,21 @@ export interface MediaSegment {
   tags?: string[]
 }
 
+export interface NodeHotspotRegionRect2d {
+  x: number   // 0.0–1.0 normalized
+  y: number
+  w: number
+  h: number
+}
+
+export interface NodeHotspotRegion {
+  id: string
+  label?: string
+  rect2d: NodeHotspotRegionRect2d
+  edgeId: string    // matches SceneEdge.id
+  tooltip?: string
+}
+
 export type SelectionStrategy =
   | { kind: 'ordered' }
   | { kind: 'random' }
@@ -103,6 +118,9 @@ export interface SceneContentNode {
   templateKind?: string  // e.g., 'characterInstance', 'itemTemplate', 'propTemplate'
   templateId?: string    // Template entity ID (usually UUID)
   linkId?: string        // Optional explicit link ID for specific link resolution
+
+  // Clickable overlay regions (point-and-click hotspots)
+  hotspotRegions?: NodeHotspotRegion[]
 
   // optional prompt or metadata
   meta?: Record<string, any>

@@ -63,6 +63,8 @@ export interface VideoConfig {
   npcId?: number;
   speakerRole?: string;
   npcState?: string;
+  // Choice overlay visibility during playback
+  choiceOverlay?: 'always' | 'on_end' | 'hidden';
 }
 
 /**

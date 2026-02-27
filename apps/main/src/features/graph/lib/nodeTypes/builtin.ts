@@ -52,6 +52,7 @@ export function registerBuiltinNodeTypes() {
       media: [],
       selection: { kind: 'ordered' },
       playback: { kind: 'normal' },
+      hotspotRegions: [],
     },
     editorComponent: 'VideoNodeEditor',
     rendererComponent: 'VideoNodeRenderer',
@@ -80,6 +81,7 @@ export function registerBuiltinNodeTypes() {
       media: node.segments,
       selection: node.selection,
       playback: node.playback,
+      hotspotRegions: node.hotspotRegions ?? [],
     }),
   });
 

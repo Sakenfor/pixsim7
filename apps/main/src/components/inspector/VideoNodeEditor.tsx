@@ -24,6 +24,7 @@ export function VideoNodeEditor({ node, onUpdate }: NodeEditorProps) {
       npcId: undefined,
       speakerRole: '',
       npcState: '',
+      choiceOverlay: 'always' as const,
     },
     loadFromNode: (node) => {
       const metadata = node.metadata as Record<string, unknown> | undefined;
@@ -31,7 +32,10 @@ export function VideoNodeEditor({ node, onUpdate }: NodeEditorProps) {
       // Try new standardized field first
       const savedConfig = metadata?.videoConfig as VideoConfig | undefined;
       if (savedConfig) {
-        return savedConfig;
+        return {
+          choiceOverlay: 'always' as const, // default for nodes saved before this field existed
+          ...savedConfig,
+        };
       }
 
       // Fallback: construct from old scattered fields
@@ -278,6 +282,28 @@ export function VideoNodeEditor({ node, onUpdate }: NodeEditorProps) {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Choice Overlay */}
+      <div className="border-t pt-3 dark:border-neutral-700">
+        <label className="block text-sm font-medium mb-1">Choice Overlay</label>
+        <select
+          value={formState.choiceOverlay ?? 'always'}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value === 'always' || value === 'on_end' || value === 'hidden') {
+              setFormState({ ...formState, choiceOverlay: value });
+            }
+          }}
+          className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+        >
+          <option value="always">Always visible</option>
+          <option value="on_end">After clip ends</option>
+          <option value="hidden">Hidden (auto-advance or manual)</option>
+        </select>
+        <p className="text-xs text-neutral-500 mt-1">
+          When to show the choice dropdown on top of the media during playback
+        </p>
       </div>
 
       {/* Life Sim Section */}

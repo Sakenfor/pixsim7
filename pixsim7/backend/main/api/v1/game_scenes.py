@@ -33,6 +33,21 @@ class MediaSegment(BaseModel):
     tags: Optional[List[str]] = None
 
 
+class NodeHotspotRegionRect2d(BaseModel):
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+class NodeHotspotRegion(BaseModel):
+    id: str
+    label: Optional[str] = None
+    rect2d: NodeHotspotRegionRect2d
+    edge_id: str
+    tooltip: Optional[str] = None
+
+
 class SceneNode(BaseModel):
     """Scene node model for API responses.
 
@@ -72,6 +87,7 @@ class SceneNode(BaseModel):
     returnValues: Optional[Dict[str, Any]] = None
     endType: Optional[str] = None  # Legacy - use meta.endConfig instead
     endMessage: Optional[str] = None  # Legacy - use meta.endConfig instead
+    hotspot_regions: Optional[List[NodeHotspotRegion]] = None
     meta: Optional[Dict[str, Any]] = None
 
 
@@ -200,6 +216,7 @@ async def get_scene(
                 media=media_segments or None,
                 selection=None,
                 playback=None,
+                hotspot_regions=n.hotspot_regions or None,
                 meta=n.meta,
             )
         )

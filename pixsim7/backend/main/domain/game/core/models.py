@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON, Text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -34,6 +34,11 @@ class GameSceneNode(SQLModel, table=True):
     loopable: bool = Field(default=False)
     skippable: bool = Field(default=False)
     reveal_choices_at_sec: Optional[float] = None
+    hotspot_regions: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        sa_column=Column(JSONB),
+        description="Clickable rect2d regions for this node; each maps to an outgoing edge_id.",
+    )
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=utcnow, index=True)
     __table_args__ = (Index("idx_scene_node_scene", "scene_id"),)

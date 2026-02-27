@@ -6,6 +6,10 @@ import { MiniGameHost } from './minigames/MiniGameHost'
 import { getDefaultNextEdge } from '@pixsim7/game.engine'
 import { useSceneRuntime } from '@pixsim7/game.react'
 
+function isImageUrl(url: string): boolean {
+  return /\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(url)
+}
+
 export interface ScenePlayerProps {
   scene: Scene  // Primary scene (for backwards compatibility)
   scenes?: Record<string, Scene>  // Scene bundle for multi-scene support
@@ -38,9 +42,11 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
     onStateChange,
   })
   const totalSegments = progression?.segments.length || 0
+  const videoChoiceOverlay = (currentNode?.meta?.videoConfig as { choiceOverlay?: string } | undefined)?.choiceOverlay ?? 'always'
   const [isPlaying, setIsPlaying] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [hasEnded, setHasEnded] = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const sourceUrl = selectedSegment?.url || currentNode?.mediaUrl || ''
 
@@ -50,6 +56,7 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
     if (!v || !sourceUrl) return
     setError(null)
     setIsLoading(true)
+    setHasEnded(false)
     v.src = sourceUrl
     v.currentTime = 0
     v.muted = true // allow autoplay in most browsers
@@ -107,6 +114,7 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
     const v = videoRef.current
     if (!v) return
     const onEnded = () => {
+      setHasEnded(true)
       // Use getDefaultNextEdge with autoAdvance=true to get edge if applicable
       const edge = getDefaultNextEdge({ scene: currentScene, state, autoAdvance: true, node: currentNode })
       if (edge) {
@@ -154,11 +162,55 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
         </div>
 
         {/* Video Node */}
-        {currentNode?.type === 'video' && (currentNode.mediaUrl || selectedSegment) && (
+        {currentNode?.type === 'video' && (currentNode.mediaUrl || selectedSegment) && (() => {
+          const progressionBlocked = !!progression && (state.progressionIndex ?? -1) < (totalSegments - 1)
+          const showChoiceDropdown =
+            !progressionBlocked &&
+            playableEdges.length > 0 &&
+            (videoChoiceOverlay === 'always' || (videoChoiceOverlay === 'on_end' && hasEnded))
+          return (
           <div className="relative aspect-video w-full bg-black/90 text-white">
-            <video ref={videoRef} className="w-full h-full" playsInline />
+            {isImageUrl(sourceUrl)
+              ? <img src={sourceUrl} className="w-full h-full object-cover" alt={currentNode?.label ?? ''} />
+              : <video ref={videoRef} className="w-full h-full" playsInline />
+            }
+            {/* hotspot overlay regions */}
+            {currentNode?.hotspotRegions?.map((region) => {
+              const edge = outgoingEdges.find((e) => e.id === region.edgeId)
+              if (!edge) return null
+              return (
+                <button
+                  key={region.id}
+                  title={region.tooltip ?? region.label}
+                  onClick={() => chooseEdge(edge)}
+                  style={{
+                    position: 'absolute',
+                    left:   `${region.rect2d.x * 100}%`,
+                    top:    `${region.rect2d.y * 100}%`,
+                    width:  `${region.rect2d.w * 100}%`,
+                    height: `${region.rect2d.h * 100}%`,
+                  }}
+                  className="cursor-pointer rounded border-2 border-transparent hover:border-white/60 hover:bg-white/10 transition-colors"
+                />
+              )
+            })}
             {/* overlay controls */}
             <div className="absolute bottom-2 left-2 right-2 flex flex-col gap-2 pointer-events-none">
+              {showChoiceDropdown && (
+                <select
+                  className="pointer-events-auto w-full px-3 py-2 rounded bg-black/75 text-white border border-white/20 text-sm backdrop-blur-sm cursor-pointer"
+                  value=""
+                  onChange={(e) => {
+                    const edge = playableEdges.find((ed) => ed.id === e.target.value)
+                    if (edge) chooseEdge(edge)
+                  }}
+                >
+                  <option value="" disabled>Where to go...</option>
+                  {playableEdges.map((edge) => (
+                    <option key={edge.id} value={edge.id}>{edge.label || 'Continue'}</option>
+                  ))}
+                </select>
+              )}
               <div className="pointer-events-auto flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Button size="sm" variant="secondary" onClick={togglePlay}>{isPlaying ? 'Pause' : 'Play'}</Button>
@@ -181,7 +233,8 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
               )}
             </div>
           </div>
-        )}
+          )
+        })()}
 
         {/* Choice Node */}
         {currentNode?.type === 'choice' && (
@@ -415,8 +468,9 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
         <div className="text-xs text-neutral-500">Flags: {JSON.stringify(state.flags)}</div>
       </Panel>
 
-      {/* Edge-based choices (for video nodes and nodes without built-in choices) */}
-      {currentNode?.type !== 'choice' && currentNode?.type !== 'end' && currentNode?.type !== 'return' && (
+      {/* Edge-based choices — hidden for video nodes that use the in-media dropdown overlay */}
+      {currentNode?.type !== 'choice' && currentNode?.type !== 'end' && currentNode?.type !== 'return'
+        && !(currentNode?.type === 'video' && videoChoiceOverlay !== 'hidden') && (
         <Panel className="space-y-2">
           <h4 className="font-medium">Transitions</h4>
           {progression && (state.progressionIndex ?? -1) < (totalSegments - 1) && (
