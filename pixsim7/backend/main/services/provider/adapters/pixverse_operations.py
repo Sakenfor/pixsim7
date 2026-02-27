@@ -322,7 +322,7 @@ class PixverseOperationsMixin:
                     metadata["planned_duration_sec"] = int(planned_duration)
 
             raw_video_url = getattr(video, 'url', None)
-            raw_thumbnail_url = getattr(video, 'thumbnail_url', None)
+            raw_thumbnail_url = getattr(video, 'thumbnail', None)
             video_url = _normalize_pixverse_url(raw_video_url) if raw_video_url else None
             thumbnail_url = _normalize_pixverse_url(raw_thumbnail_url) if raw_thumbnail_url else None
 
@@ -862,7 +862,7 @@ class PixverseOperationsMixin:
                         status=status,
                         video_url=_normalize_pixverse_url(_get_field(video, "url")),
                         thumbnail_url=_normalize_pixverse_url(
-                            _get_field(video, "first_frame", "thumbnail_url")
+                            _get_field(video, "first_frame", "thumbnail")
                         ),
                         width=_get_field(video, "output_width", "width"),
                         height=_get_field(video, "output_height", "height"),

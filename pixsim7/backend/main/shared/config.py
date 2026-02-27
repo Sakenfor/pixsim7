@@ -194,6 +194,100 @@ class Settings(BaseSettings):
         le=2592000,
         description="Redis TTL for per-generation content-filter yield counters."
     )
+    pixverse_concurrent_cooldown_seconds: int = Field(
+        default=6,
+        ge=1,
+        le=600,
+        description="Base cooldown after provider concurrent-limit errors for Pixverse (non-I2I operations).",
+    )
+    pixverse_i2i_concurrent_cooldown_seconds: int = Field(
+        default=2,
+        ge=1,
+        le=600,
+        description="Base cooldown after provider concurrent-limit errors for Pixverse image_to_image operations.",
+    )
+    dispatch_stagger_per_slot_seconds: float = Field(
+        default=1.5,
+        ge=0.0,
+        le=30.0,
+        description="Random stagger multiplier per occupied local slot before provider submit.",
+    )
+    dispatch_stagger_max_seconds: float = Field(
+        default=12.0,
+        ge=0.0,
+        le=300.0,
+        description="Maximum dispatch stagger before provider submit.",
+    )
+    pinned_wait_padding_seconds: int = Field(
+        default=1,
+        ge=0,
+        le=60,
+        description="Padding added to pinned-account cooldown/capacity defers.",
+    )
+    min_pinned_cooldown_defer_seconds: int = Field(
+        default=2,
+        ge=1,
+        le=300,
+        description="Minimum defer for pinned-account cooldown waits.",
+    )
+    adaptive_provider_concurrency_enabled: bool = Field(
+        default=True,
+        description="Enable adaptive per-account/provider submit throttling when provider concurrency limits are lower than configured caps.",
+    )
+    adaptive_provider_concurrency_state_ttl_seconds: int = Field(
+        default=21600,
+        ge=60,
+        le=604800,
+        description="Redis TTL for adaptive provider concurrency state.",
+    )
+    adaptive_provider_concurrency_probe_min_seconds: int = Field(
+        default=120,
+        ge=30,
+        le=3600,
+        description="Minimum delay before probing whether provider concurrency has recovered.",
+    )
+    adaptive_provider_concurrency_probe_max_seconds: int = Field(
+        default=180,
+        ge=30,
+        le=3600,
+        description="Maximum delay before probing whether provider concurrency has recovered.",
+    )
+    adaptive_provider_concurrency_probe_lock_ttl_seconds: int = Field(
+        default=300,
+        ge=30,
+        le=3600,
+        description="Redis lock TTL used to ensure one adaptive concurrency probe at a time per account/provider key.",
+    )
+    adaptive_provider_concurrency_defer_jitter_max_seconds: int = Field(
+        default=6,
+        ge=0,
+        le=120,
+        description="Additional jitter added to adaptive concurrent-limit defers to avoid synchronized retries.",
+    )
+    adaptive_provider_concurrency_lower_after_consecutive_rejects: int = Field(
+        default=10,
+        ge=1,
+        le=1000,
+        description="Consecutive provider concurrency-limit rejects required before lowering the learned effective cap (lowering is applied one step at a time).",
+    )
+    adaptive_provider_concurrency_raise_after_consecutive_probe_successes: int = Field(
+        default=2,
+        ge=1,
+        le=1000,
+        description="Consecutive successful probe submits required before raising the learned effective cap (raising is applied one step at a time).",
+    )
+    max_pinned_concurrent_waits: int = Field(
+        default=72,
+        ge=1,
+        le=10000,
+        description="Guardrail on fairness/adaptive pinned concurrent waits before failing the generation.",
+    )
+    pinned_concurrent_wait_counter_ttl_seconds: int = Field(
+        default=172800,
+        ge=60,
+        le=2592000,
+        description="Redis TTL for per-generation pinned concurrent wait counters.",
+    )
     validate_composition_vocabs: bool = Field(
         default=False,
         description="Validate composition asset vocab fields (role, pose_id, location_id, etc.) against the vocabulary registry. Logs warnings for unknown values."

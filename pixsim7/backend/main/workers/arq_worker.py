@@ -75,6 +75,21 @@ _event_bridge = None
 _retry_event_bridge = None
 
 
+async def _load_persisted_system_config_for_worker() -> None:
+    """Best-effort load of persisted system config into worker process memory."""
+    try:
+        from pixsim7.backend.main.infrastructure.database.session import get_async_session
+        from pixsim7.backend.main.services.system_config import apply_all_from_db
+        import pixsim7.backend.main.services.system_config.appliers  # noqa: F401
+
+        async with get_async_session() as db:
+            applied = await apply_all_from_db(db)
+        if applied:
+            logger.info("worker_system_config_loaded", namespaces=applied)
+    except Exception as e:
+        logger.warning("worker_system_config_load_failed", error=str(e))
+
+
 async def startup(ctx: dict) -> None:
     """
     Worker startup handler
@@ -108,6 +123,7 @@ async def startup(ctx: dict) -> None:
 
     # Register providers (required for generation processing)
     from pixsim7.backend.main.domain.providers.registry import register_default_providers
+    await _load_persisted_system_config_for_worker()
     register_default_providers()
     logger.info("worker_providers_registered", msg="Provider plugins loaded")
     logger.info("worker_component_registered", component="process_generation")
@@ -170,6 +186,7 @@ async def retry_startup(ctx: dict) -> None:
 
     from pixsim7.backend.main.domain.providers.registry import register_default_providers
 
+    await _load_persisted_system_config_for_worker()
     register_default_providers()
     logger.info("worker_component_registered", component="process_generation", queue=GENERATION_RETRY_QUEUE_NAME)
     _retry_event_bridge = await start_event_bus_bridge(role="arq_generation_retry_worker")

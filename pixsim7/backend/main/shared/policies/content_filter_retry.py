@@ -10,48 +10,57 @@ from pixsim7.backend.main.shared.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Submit-time content filter retries (handled directly in job_processor)
-MAX_SUBMIT_CONTENT_FILTER_RETRIES = settings.content_filter_submit_max_retries
+def max_submit_content_filter_retries() -> int:
+    return int(settings.content_filter_submit_max_retries)
 
-# After this many content-filter retries, non-pinned generations should clear
-# account affinity so account selection can rotate to a different account.
-CONTENT_FILTER_ROTATE_AFTER_RETRIES = settings.content_filter_rotate_after_retries
 
-# Pinned generations should start yielding early when siblings are queued on the
-# same account so multiple jobs don't hammer one account in lockstep.
-CONTENT_FILTER_PINNED_YIELD_AFTER_RETRIES = settings.content_filter_pinned_yield_after_retries
+def _content_filter_rotate_after_retries() -> int:
+    return int(settings.content_filter_rotate_after_retries)
 
-# Defer timings for pinned-yield behavior
-CONTENT_FILTER_RETRY_DEFER_SECONDS = settings.content_filter_retry_defer_seconds
-CONTENT_FILTER_PINNED_YIELD_DEFER_MULTIPLIER = settings.content_filter_pinned_yield_defer_multiplier
-CONTENT_FILTER_YIELD_COUNTS_AS_RETRY = settings.content_filter_yield_counts_as_retry
-CONTENT_FILTER_MAX_YIELDS = settings.content_filter_max_yields
-CONTENT_FILTER_YIELD_COUNTER_TTL_SECONDS = settings.content_filter_yield_counter_ttl_seconds
+
+def _content_filter_pinned_yield_after_retries() -> int:
+    return int(settings.content_filter_pinned_yield_after_retries)
+
+
+def _content_filter_retry_defer_seconds() -> int:
+    return int(settings.content_filter_retry_defer_seconds)
+
+
+def _content_filter_pinned_yield_defer_multiplier() -> int:
+    return int(settings.content_filter_pinned_yield_defer_multiplier)
+
+
+def _content_filter_yield_counts_as_retry() -> bool:
+    return bool(settings.content_filter_yield_counts_as_retry)
+
+
+def _content_filter_yield_counter_ttl_seconds() -> int:
+    return int(settings.content_filter_yield_counter_ttl_seconds)
 
 
 def should_rotate_content_filter_account(current_retries: int | None) -> bool:
     """Return True when a content-filter retry should rotate accounts."""
-    return (current_retries or 0) >= CONTENT_FILTER_ROTATE_AFTER_RETRIES
+    return (current_retries or 0) >= _content_filter_rotate_after_retries()
 
 
 def should_yield_pinned_content_filter_retry(current_retries: int | None) -> bool:
     """Return True when a pinned generation should consider yielding."""
-    return (current_retries or 0) >= CONTENT_FILTER_PINNED_YIELD_AFTER_RETRIES
+    return (current_retries or 0) >= _content_filter_pinned_yield_after_retries()
 
 
 def content_filter_yield_defer_seconds() -> int:
     """Standard defer duration for pinned content-filter yielding."""
-    return CONTENT_FILTER_RETRY_DEFER_SECONDS * CONTENT_FILTER_PINNED_YIELD_DEFER_MULTIPLIER
+    return _content_filter_retry_defer_seconds() * _content_filter_pinned_yield_defer_multiplier()
 
 
 def content_filter_yield_counts_as_retry() -> bool:
     """Whether fairness-only yields should consume retry_count."""
-    return bool(CONTENT_FILTER_YIELD_COUNTS_AS_RETRY)
+    return _content_filter_yield_counts_as_retry()
 
 
 def content_filter_max_yields() -> int:
     """Configured cap for fairness-only yields (0 disables the cap)."""
-    return int(CONTENT_FILTER_MAX_YIELDS)
+    return int(settings.content_filter_max_yields)
 
 
 def _yield_counter_key(generation_id: int) -> str:
@@ -75,7 +84,7 @@ async def try_acquire_content_filter_yield(generation_id: int) -> tuple[bool, in
         redis = await get_redis()
         key = _yield_counter_key(generation_id)
         new_count = await redis.incr(key)
-        await redis.expire(key, CONTENT_FILTER_YIELD_COUNTER_TTL_SECONDS)
+        await redis.expire(key, _content_filter_yield_counter_ttl_seconds())
         return new_count <= max_yields, int(new_count)
     except Exception as exc:
         # Fail open: fairness should not block retries if Redis is unavailable.

@@ -28,7 +28,6 @@ from pixsim7.backend.main.shared.policies.content_filter_retry import (
     content_filter_yield_counts_as_retry,
     content_filter_max_yields,
     try_acquire_content_filter_yield,
-    reset_content_filter_yield_counter,
 )
 from pixsim7.backend.main.domain import Generation
 from pixsim7.backend.main.domain.enums import GenerationStatus, GenerationErrorCode
@@ -170,7 +169,6 @@ async def handle_event(event: Event) -> None:
                     and generation.account_id is not None
                     and should_rotate_content_filter_account(current_retries)
                 ):
-                    await reset_content_filter_yield_counter(generation.id)
                     rotate_account_from = generation.account_id
                     generation.account_id = None
                     logger.info(
@@ -186,8 +184,6 @@ async def handle_event(event: Event) -> None:
             if fairness_yield and not content_filter_yield_counts_as_retry():
                 retry_incremented = False
             else:
-                if _is_poll_time_content_filtered(generation) and not fairness_yield:
-                    await reset_content_filter_yield_counter(generation.id)
                 generation.retry_count += 1
             generation.status = GenerationStatus.PENDING
             generation.started_at = None

@@ -335,6 +335,8 @@ async def sync_all_account_credits(
                                 plan_details = await provider.get_plan_details(account)
                                 if plan_details:
                                     plan_result = provider.apply_plan_to_account(account, plan_details)
+                                    from sqlalchemy.orm.attributes import flag_modified
+                                    flag_modified(account, "provider_metadata")
                                     plan_synced = {
                                         "plan_name": plan_result.get("plan_name"),
                                         "is_pro": plan_result.get("is_pro"),
@@ -648,6 +650,9 @@ async def sync_account_plan(
 
         # Apply plan to account
         result = provider.apply_plan_to_account(account, plan_details)
+        # SQLAlchemy doesn't detect in-place JSON mutations; force dirty flag
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(account, "provider_metadata")
         await db.commit()
         await db.refresh(account)
 

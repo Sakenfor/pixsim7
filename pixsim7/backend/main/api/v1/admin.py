@@ -721,6 +721,132 @@ async def update_generation_config(
     )
 
 
+# ===== GENERATION WORKER CONFIG (RUNTIME BACKOFF / DISPATCH) =====
+
+class GenerationWorkerConfigResponse(BaseModel):
+    """Current generation worker runtime config (backoff/dispatch tuning)."""
+    content_filter_submit_max_retries: int
+    content_filter_rotate_after_retries: int
+    content_filter_pinned_yield_after_retries: int
+    content_filter_retry_defer_seconds: int
+    content_filter_pinned_yield_defer_multiplier: int
+    content_filter_yield_counts_as_retry: bool
+    content_filter_max_yields: int
+    content_filter_yield_counter_ttl_seconds: int
+    pixverse_concurrent_cooldown_seconds: int
+    pixverse_i2i_concurrent_cooldown_seconds: int
+    dispatch_stagger_per_slot_seconds: float
+    dispatch_stagger_max_seconds: float
+    pinned_wait_padding_seconds: int
+    min_pinned_cooldown_defer_seconds: int
+    adaptive_provider_concurrency_enabled: bool
+    adaptive_provider_concurrency_state_ttl_seconds: int
+    adaptive_provider_concurrency_probe_min_seconds: int
+    adaptive_provider_concurrency_probe_max_seconds: int
+    adaptive_provider_concurrency_probe_lock_ttl_seconds: int
+    adaptive_provider_concurrency_defer_jitter_max_seconds: int
+    adaptive_provider_concurrency_lower_after_consecutive_rejects: int
+    adaptive_provider_concurrency_raise_after_consecutive_probe_successes: int
+    max_pinned_concurrent_waits: int
+    pinned_concurrent_wait_counter_ttl_seconds: int
+
+
+class GenerationWorkerConfigUpdate(BaseModel):
+    """Partial update for generation worker runtime config."""
+    content_filter_submit_max_retries: int | None = Field(None, ge=1, le=20)
+    content_filter_rotate_after_retries: int | None = Field(None, ge=0, le=20)
+    content_filter_pinned_yield_after_retries: int | None = Field(None, ge=0, le=20)
+    content_filter_retry_defer_seconds: int | None = Field(None, ge=1, le=600)
+    content_filter_pinned_yield_defer_multiplier: int | None = Field(None, ge=1, le=20)
+    content_filter_yield_counts_as_retry: bool | None = None
+    content_filter_max_yields: int | None = Field(None, ge=0, le=200)
+    content_filter_yield_counter_ttl_seconds: int | None = Field(None, ge=60, le=2592000)
+    pixverse_concurrent_cooldown_seconds: int | None = Field(None, ge=1, le=600)
+    pixverse_i2i_concurrent_cooldown_seconds: int | None = Field(None, ge=1, le=600)
+    dispatch_stagger_per_slot_seconds: float | None = Field(None, ge=0.0, le=30.0)
+    dispatch_stagger_max_seconds: float | None = Field(None, ge=0.0, le=300.0)
+    pinned_wait_padding_seconds: int | None = Field(None, ge=0, le=60)
+    min_pinned_cooldown_defer_seconds: int | None = Field(None, ge=1, le=300)
+    adaptive_provider_concurrency_enabled: bool | None = None
+    adaptive_provider_concurrency_state_ttl_seconds: int | None = Field(None, ge=60, le=604800)
+    adaptive_provider_concurrency_probe_min_seconds: int | None = Field(None, ge=30, le=3600)
+    adaptive_provider_concurrency_probe_max_seconds: int | None = Field(None, ge=30, le=3600)
+    adaptive_provider_concurrency_probe_lock_ttl_seconds: int | None = Field(None, ge=30, le=3600)
+    adaptive_provider_concurrency_defer_jitter_max_seconds: int | None = Field(None, ge=0, le=120)
+    adaptive_provider_concurrency_lower_after_consecutive_rejects: int | None = Field(None, ge=1, le=1000)
+    adaptive_provider_concurrency_raise_after_consecutive_probe_successes: int | None = Field(None, ge=1, le=1000)
+    max_pinned_concurrent_waits: int | None = Field(None, ge=1, le=10000)
+    pinned_concurrent_wait_counter_ttl_seconds: int | None = Field(None, ge=60, le=2592000)
+
+
+def _generation_worker_config_response_from_settings():
+    from pixsim7.backend.main.shared.config import settings
+
+    return GenerationWorkerConfigResponse(
+        content_filter_submit_max_retries=settings.content_filter_submit_max_retries,
+        content_filter_rotate_after_retries=settings.content_filter_rotate_after_retries,
+        content_filter_pinned_yield_after_retries=settings.content_filter_pinned_yield_after_retries,
+        content_filter_retry_defer_seconds=settings.content_filter_retry_defer_seconds,
+        content_filter_pinned_yield_defer_multiplier=settings.content_filter_pinned_yield_defer_multiplier,
+        content_filter_yield_counts_as_retry=settings.content_filter_yield_counts_as_retry,
+        content_filter_max_yields=settings.content_filter_max_yields,
+        content_filter_yield_counter_ttl_seconds=settings.content_filter_yield_counter_ttl_seconds,
+        pixverse_concurrent_cooldown_seconds=settings.pixverse_concurrent_cooldown_seconds,
+        pixverse_i2i_concurrent_cooldown_seconds=settings.pixverse_i2i_concurrent_cooldown_seconds,
+        dispatch_stagger_per_slot_seconds=settings.dispatch_stagger_per_slot_seconds,
+        dispatch_stagger_max_seconds=settings.dispatch_stagger_max_seconds,
+        pinned_wait_padding_seconds=settings.pinned_wait_padding_seconds,
+        min_pinned_cooldown_defer_seconds=settings.min_pinned_cooldown_defer_seconds,
+        adaptive_provider_concurrency_enabled=settings.adaptive_provider_concurrency_enabled,
+        adaptive_provider_concurrency_state_ttl_seconds=settings.adaptive_provider_concurrency_state_ttl_seconds,
+        adaptive_provider_concurrency_probe_min_seconds=settings.adaptive_provider_concurrency_probe_min_seconds,
+        adaptive_provider_concurrency_probe_max_seconds=settings.adaptive_provider_concurrency_probe_max_seconds,
+        adaptive_provider_concurrency_probe_lock_ttl_seconds=settings.adaptive_provider_concurrency_probe_lock_ttl_seconds,
+        adaptive_provider_concurrency_defer_jitter_max_seconds=settings.adaptive_provider_concurrency_defer_jitter_max_seconds,
+        adaptive_provider_concurrency_lower_after_consecutive_rejects=settings.adaptive_provider_concurrency_lower_after_consecutive_rejects,
+        adaptive_provider_concurrency_raise_after_consecutive_probe_successes=settings.adaptive_provider_concurrency_raise_after_consecutive_probe_successes,
+        max_pinned_concurrent_waits=settings.max_pinned_concurrent_waits,
+        pinned_concurrent_wait_counter_ttl_seconds=settings.pinned_concurrent_wait_counter_ttl_seconds,
+    )
+
+
+@router.get("/admin/generation-worker/config", response_model=GenerationWorkerConfigResponse)
+async def get_generation_worker_config(user: CurrentUser):
+    """Get generation worker runtime config (any authenticated user)."""
+    return _generation_worker_config_response_from_settings()
+
+
+@router.patch("/admin/generation-worker/config", response_model=GenerationWorkerConfigResponse)
+async def update_generation_worker_config(
+    body: GenerationWorkerConfigUpdate,
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+):
+    """Update generation worker runtime config (admin only, persisted)."""
+    from pixsim7.backend.main.shared.config import settings
+    from pixsim7.backend.main.services.system_config import patch_config, apply_namespace
+
+    patch_data = body.model_dump(exclude_none=True)
+    if patch_data:
+        row = await patch_config(db, "generation_worker", patch_data, admin.id)
+        apply_namespace("generation_worker", row.data)
+
+    logger.info(
+        "Generation worker config updated by admin %s: cf_submit=%d cf_yields=%d pixverse_cd=%ds i2i_cd=%ds adaptive=%s probe=%d-%ds max_waits=%d",
+        admin.username,
+        settings.content_filter_submit_max_retries,
+        settings.content_filter_max_yields,
+        settings.pixverse_concurrent_cooldown_seconds,
+        settings.pixverse_i2i_concurrent_cooldown_seconds,
+        settings.adaptive_provider_concurrency_enabled,
+        settings.adaptive_provider_concurrency_probe_min_seconds,
+        settings.adaptive_provider_concurrency_probe_max_seconds,
+        settings.max_pinned_concurrent_waits,
+    )
+
+    return _generation_worker_config_response_from_settings()
+
+
 # ===== LLM CONFIG (CACHE TUNING) =====
 
 class LLMConfigResponse(BaseModel):
