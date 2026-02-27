@@ -21,6 +21,16 @@ export interface GenerateAssetResponse {
   raw?: any; // backend GenerationResponse for advanced callers
 }
 
+export interface PreparedGenerateAssetSubmission {
+  providerId: string;
+  generationType: OperationType;
+  generationConfig: GenerationNodeConfigSchema;
+  generationParams: Record<string, any>;
+  preferredAccountId?: number;
+  name: string;
+  priority: number;
+}
+
 /**
  * Map Control Center operation type to unified generation_type.
  * The backend maps these back to OperationType in api/v1/generations.py.
@@ -169,6 +179,32 @@ function buildGenerationConfig(
  * Returns a job ID that can be tracked via polling.
  */
 export async function generateAsset(req: GenerateAssetRequest): Promise<GenerateAssetResponse> {
+  const prepared = prepareGenerateAssetSubmission(req);
+
+  // Create generation request
+  // Use force_new to bypass deduplication (avoids getting stuck on pending generations)
+  const generationRequest: CreateGenerationRequest & { preferred_account_id?: number } = {
+    config: prepared.generationConfig,
+    provider_id: prepared.providerId,
+    name: prepared.name,
+    priority: prepared.priority,
+    version_intent: 'new',
+    force_new: true,
+    ...(prepared.preferredAccountId ? { preferred_account_id: prepared.preferredAccountId } : {}),
+  };
+
+  // Call new unified generations API
+  const generation = await createGeneration(generationRequest);
+
+  // Return in legacy format
+  return {
+    job_id: generation.id,
+    status: generation.status as GenerateAssetResponse['status'],
+    raw: generation,
+  };
+}
+
+export function prepareGenerateAssetSubmission(req: GenerateAssetRequest): PreparedGenerateAssetSubmission {
   const restExtra = { ...((req.extraParams || {}) as Record<string, any>) };
   const preferred_account_id = restExtra.preferred_account_id;
   delete restExtra.preferred_account_id;
@@ -198,26 +234,15 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
     providerId,
     req.runContext,
   );
-
-  // Create generation request
-  // Use force_new to bypass deduplication (avoids getting stuck on pending generations)
-  const generationRequest: CreateGenerationRequest & { preferred_account_id?: number } = {
-    config,
-    provider_id: providerId,
+  return {
+    providerId,
+    generationType,
+    generationConfig: config,
+    generationParams: {
+      generation_config: config,
+    },
+    preferredAccountId: preferred_account_id,
     name: `Quick generation: ${req.prompt.slice(0, 50)}`,
     priority: 5,
-    version_intent: 'new',
-    force_new: true,
-    ...(preferred_account_id ? { preferred_account_id } : {}),
-  };
-
-  // Call new unified generations API
-  const generation = await createGeneration(generationRequest);
-
-  // Return in legacy format
-  return {
-    job_id: generation.id,
-    status: generation.status as GenerateAssetResponse['status'],
-    raw: generation,
   };
 }

@@ -317,6 +317,16 @@ export function MediaCard(props: MediaCardProps) {
   const [intrinsicThumbAspectRatio, setIntrinsicThumbAspectRatio] = useState<number | null>(null);
 
   useEffect(() => {
+    if (mediaType !== 'video') {
+      setIntrinsicVideoAspectRatio(null);
+      return;
+    }
+    // Reset between assets/src changes so a prior video's metadata ratio does not
+    // briefly poison layout for the next card.
+    setIntrinsicVideoAspectRatio(null);
+  }, [id, mediaType, videoSrc]);
+
+  useEffect(() => {
     if (mediaType !== 'video' || !thumbSrc) {
       setIntrinsicThumbAspectRatio(null);
       return;
@@ -348,8 +358,14 @@ export function MediaCard(props: MediaCardProps) {
       return width / height;
     }
 
+    // Do not trust thumbnail image dimensions when a real video source exists.
+    // Placeholder thumbs can have the wrong aspect ratio and break card layout.
+    if (videoSrc) {
+      return intrinsicVideoAspectRatio ?? 16 / 9;
+    }
+
     return intrinsicVideoAspectRatio ?? intrinsicThumbAspectRatio ?? 16 / 9;
-  }, [mediaType, width, height, intrinsicThumbAspectRatio, intrinsicVideoAspectRatio]);
+  }, [mediaType, width, height, intrinsicThumbAspectRatio, intrinsicVideoAspectRatio, videoSrc]);
 
   // Extract tag slugs for overlay data (quick tag matching, technical tag filtering)
   const tagSlugs = useMemo(() => tags?.map(t => t.slug) || [], [tags]);
@@ -588,6 +604,10 @@ export function MediaCard(props: MediaCardProps) {
       <OverlayContainer
         configuration={overlayConfig}
         data={overlayData}
+        customState={useMemo(() => ({
+          gesturePhase: activeGesture?.phase ?? 'idle',
+          edgeInset: gestureEdgeInset,
+        }), [activeGesture?.phase, gestureEdgeInset])}
         onWidgetClick={(widgetId) => {
           console.log('Widget clicked:', widgetId);
         }}

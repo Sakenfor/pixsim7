@@ -184,6 +184,11 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
 
     // Step 4: Panel layout — panels, defaultLayout, resolvePanelPosition
     const layout = useQuickGenPanelLayout({ showBlocks });
+    const panelHostResetKey = useMemo(() => {
+      const layoutShape = layout.panels.join('|');
+      const usesTransitionLayout = operationType === 'video_transition';
+      return `dockview:${layoutShape}:${usesTransitionLayout ? 'transition' : 'standard'}`;
+    }, [layout.panels, operationType]);
 
     // Step 5: Storage key computation
     const storageKey = useMemo(() => {
@@ -272,7 +277,7 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
         {/* Panel host */}
         <div className={panelHostClassName ?? 'flex-1 min-h-0'}>
           <div
-            key={`dockview-${operationType}-${layout.supportsInputs ? 'with-asset' : 'no-asset'}`}
+            key={panelHostResetKey}
             className="h-full relative"
           >
             <QuickGenPanelHost

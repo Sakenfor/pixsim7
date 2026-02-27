@@ -16,6 +16,8 @@ import {
 } from '@features/contextHub';
 import {
   getGenerationSessionStore,
+  getGenerationSettingsStore,
+  getGenerationInputStore,
 } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
 import { buildCompositionAssetsFromAssetIds, buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
@@ -97,12 +99,18 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
         triggerGenerate = false,
       } = options;
 
-      // Use the scoped stores directly — getGenerationSettingsStore('global')
-      // creates a separate store from the singleton useGenerationSettingsStore,
-      // so we must use the stores from scope context to read/write the correct state.
-      const sessionStore = (useSessionStore as any).getState();
-      const settingsStore = (useSettingsStore as any).getState();
-      const inputStore = (useInputStore as any).getState();
+        // Prefer the actual widget scope when available so "Load to Quick Gen"
+        // hydrates the visible widget, not a nearby media-card-local scope.
+        const targetScopeId = widgetContext?.scopeId ?? scopedScopeId;
+        const sessionStore = targetScopeId
+          ? getGenerationSessionStore(targetScopeId).getState()
+          : (useSessionStore as any).getState();
+        const settingsStore = targetScopeId
+          ? getGenerationSettingsStore(targetScopeId).getState()
+          : (useSettingsStore as any).getState();
+        const inputStore = targetScopeId
+          ? getGenerationInputStore(targetScopeId).getState()
+          : (useInputStore as any).getState();
 
       sessionStore.setOperationType(nextOperationType);
       widgetContext?.setOperationType?.(nextOperationType);
@@ -135,8 +143,8 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
 
       return false;
     },
-    [widgetContext, useSessionStore, useSettingsStore, useInputStore],
-  );
+      [widgetContext, scopedScopeId, useSessionStore, useSettingsStore, useInputStore],
+    );
 
   const submitDirectGeneration = useCallback(
     async (options: {

@@ -40,6 +40,11 @@ export function useProvideGenerationWidget(config: UseProvideGenerationWidgetCon
   const scopedAddInput = useInputStore((s) => s.addInput);
   const scopedAddInputs = useInputStore((s) => s.addInputs);
 
+  // Prefer widgets that are currently visible/open when resolving CAP_GENERATION_WIDGET.
+  // This avoids "closed but higher-priority" widgets (e.g. Control Center) stealing actions
+  // from an active widget (e.g. Viewer Quick Generate) for things like gesture quick-generate.
+  const effectivePriority = config.priority + (config.isOpen ? 1000 : 0);
+
   const widgetProviderId = `generation-widget:${config.widgetId}`;
 
   const generationWidgetValue = useMemo<GenerationWidgetContext>(
@@ -73,12 +78,12 @@ export function useProvideGenerationWidget(config: UseProvideGenerationWidgetCon
     () => ({
       id: widgetProviderId,
       label: config.label,
-      priority: config.priority,
+      priority: effectivePriority,
       exposeToContextMenu: true,
       isAvailable: () => true,
       getValue: () => generationWidgetValue,
     }),
-    [generationWidgetValue, widgetProviderId, config.label, config.priority],
+    [generationWidgetValue, widgetProviderId, config.label, effectivePriority],
   );
 
   // Local: ensures this widget wins within its own scope (resolveProvider walks local → root,

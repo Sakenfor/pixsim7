@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+ 
 import type { OverlayWidget } from '@lib/ui/overlay';
 
 import type { MediaCardResolvedProps } from './MediaCard';
@@ -20,6 +20,7 @@ interface MediaCardRuntimeWidgetFactories {
   createUploadButton: MediaCardWidgetFactory;
   createInfoPopover: MediaCardWidgetFactory;
   createGenerationButtonGroup: MediaCardWidgetFactory;
+  createGenerationActionModeBadge: MediaCardWidgetFactory;
   createQuickTagWidget: () => OverlayWidget<MediaCardOverlayData> | null;
   createQuickAddButton: () => OverlayWidget<MediaCardOverlayData> | null;
 }
@@ -45,6 +46,7 @@ export function buildMediaCardRuntimeWidgets(
     createUploadButton,
     createInfoPopover,
     createGenerationButtonGroup,
+    createGenerationActionModeBadge,
     createQuickTagWidget,
     createQuickAddButton,
   } = factories;
@@ -63,6 +65,7 @@ export function buildMediaCardRuntimeWidgets(
     createUploadButton(props),
     createInfoPopover(props),
     createQuickAddButton(),
+    createGenerationActionModeBadge(props),
     createGenerationButtonGroup(props),
   ];
 
@@ -79,4 +82,3 @@ export function buildMediaCardRuntimeWidgets(
 
   return result;
 }
-

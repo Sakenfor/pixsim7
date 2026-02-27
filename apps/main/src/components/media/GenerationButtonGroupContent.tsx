@@ -20,7 +20,9 @@ import { extractUploadError } from '@features/assets/lib/uploadActions';
 import { useUploadProviderStore } from '@features/assets/stores/uploadProviderStore';
 import {
   CAP_GENERATION_WIDGET,
+  CAP_CHARACTER_INGEST_ACTION,
   useCapability,
+  type CharacterIngestActionContext,
   type GenerationWidgetContext,
 } from '@features/contextHub';
 import { useGenerationScopeStores, getGenerationSessionStore, getGenerationSettingsStore } from '@features/generation';
@@ -29,6 +31,8 @@ import { providerCapabilityRegistry, useProviderCapabilities, useOperationSpec, 
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
 import type { MediaCardResolvedProps } from './MediaCard';
+import type { MediaCardActionMode } from './mediaCardActionModeStore';
+import { useMediaCardActionModeStore } from './mediaCardActionModeStore';
 import { buildGenerationMenuItems } from './mediaCardGeneration';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
 import { getSmartActionLabel, resolveMaxSlotsForModel, SlotPickerGrid } from './SlotPicker';
@@ -55,10 +59,15 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const [isUploading, setIsUploading] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
+  const storedActionMode = useMediaCardActionModeStore((s) => s.byAssetId[id]);
+  const setStoredActionMode = useMediaCardActionModeStore((s) => s.setMode);
+  const clearStoredActionMode = useMediaCardActionModeStore((s) => s.clearMode);
 
   // Use capability to get nearest generation widget, with global fallback
   const { value: widgetContext, provider: widgetProvider } =
     useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
+  const { value: characterIngestAction } =
+    useCapability<CharacterIngestActionContext>(CAP_CHARACTER_INGEST_ACTION);
 
   // Get scoped stores (follows same scoping as the widget capability)
   const { useSessionStore, useSettingsStore, useInputStore, id: scopedScopeId } = useGenerationScopeStores();
@@ -440,6 +449,40 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     && !!widgetContext?.generateWithAsset
     && assetUploadedToProvider;
 
+  const availableActionModes = useMemo<MediaCardActionMode[]>(() => {
+    const modes: MediaCardActionMode[] = ['generation'];
+    if (mediaType === 'image' && !!characterIngestAction?.addAssetsToIngest) {
+      modes.push('character-ingest');
+    }
+    return modes;
+  }, [mediaType, characterIngestAction]);
+
+  const activeActionMode: MediaCardActionMode =
+    storedActionMode && availableActionModes.includes(storedActionMode)
+      ? storedActionMode
+      : 'generation';
+
+  useEffect(() => {
+    if (storedActionMode && !availableActionModes.includes(storedActionMode)) {
+      clearStoredActionMode(id);
+    }
+  }, [storedActionMode, availableActionModes, clearStoredActionMode, id]);
+
+  const cycleActionMode = useCallback((delta: 1 | -1) => {
+    if (availableActionModes.length <= 1) return;
+    const currentIndex = Math.max(0, availableActionModes.indexOf(activeActionMode));
+    const nextIndex = (currentIndex + delta + availableActionModes.length) % availableActionModes.length;
+    setStoredActionMode(id, availableActionModes[nextIndex]);
+  }, [availableActionModes, activeActionMode, id, setStoredActionMode]);
+
+  const handleModeCycleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    if (!(e.altKey || e.ctrlKey)) return;
+    if (availableActionModes.length <= 1) return;
+    e.preventDefault();
+    e.stopPropagation();
+    cycleActionMode(e.deltaY >= 0 ? 1 : -1);
+  }, [availableActionModes.length, cycleActionMode]);
+
   // Build button group items
   const supportsSlots = true;
   const inputScopeId = widgetContext?.scopeId;
@@ -481,34 +524,60 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       id: 'menu',
       icon: <Icon name="chevronDown" size={12} />,
       onClick: () => setIsMenuOpen(!isMenuOpen),
-      title: 'Generation options',
+      title: 'More actions',
     });
   }
-
-  buttonItems.push({
+  if (activeActionMode === 'character-ingest' && mediaType === 'image' && characterIngestAction?.addAssetsToIngest) {
+    const characterLabel = characterIngestAction.characterLabel || characterIngestAction.characterId;
+    buttonItems.push({
       id: 'smart-action',
-      icon: <Icon name="zap" size={12} />,
-      onClick: handleSmartAction,
-      onAuxClick: handleMiddleClick,
-      title: isReplaceMode
-        ? `Replace current input${targetInfo}`
-        : supportsSlots
-          ? `${smartActionLabel}${targetInfo}\nHover: slot picker\nMiddle-click: replace slot 1`
-          : `${smartActionLabel}${targetInfo}`,
-      badge: isReplaceMode ? (
+      icon: <Icon name="user" size={12} />,
+      onClick: async () => {
+        try {
+          await Promise.resolve(characterIngestAction.addAssetsToIngest([inputAsset.id]));
+          toast.success(`Added to ${characterLabel} ingest`);
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Failed to add to character ingest');
+        }
+      },
+      title: [
+        `Add To Character Ingest`,
+        `Target: ${characterLabel}`,
+        availableActionModes.length > 1 ? 'Alt/Ctrl+Wheel: switch action mode' : null,
+      ].filter(Boolean).join('\n'),
+      badge: availableActionModes.length > 1 ? (
         <ActionHintBadge icon={<Icon name="refresh-cw" size={7} color="#fff" />} />
       ) : undefined,
-      expandContent: supportsSlots ? (
-        <SlotPickerGrid
-          asset={inputAsset}
-          operationType={operationType}
-          onSelectSlot={handleSelectSlot}
-          maxSlots={maxSlots}
-          inputScopeId={inputScopeId}
-        />
-      ) : undefined,
-      expandDelay: 150,
     });
+  } else {
+    buttonItems.push({
+        id: 'smart-action',
+        icon: <Icon name="zap" size={12} />,
+        onClick: handleSmartAction,
+        onAuxClick: handleMiddleClick,
+        title: [
+          isReplaceMode
+            ? `Replace current input${targetInfo}`
+            : supportsSlots
+              ? `${smartActionLabel}${targetInfo}\nHover: slot picker\nMiddle-click: replace slot 1`
+              : `${smartActionLabel}${targetInfo}`,
+          availableActionModes.length > 1 ? 'Alt/Ctrl+Wheel: switch action mode' : null,
+        ].filter(Boolean).join('\n'),
+        badge: isReplaceMode || availableActionModes.length > 1 ? (
+          <ActionHintBadge icon={<Icon name="refresh-cw" size={7} color="#fff" />} />
+        ) : undefined,
+        expandContent: supportsSlots ? (
+          <SlotPickerGrid
+            asset={inputAsset}
+            operationType={operationType}
+            onSelectSlot={handleSelectSlot}
+            maxSlots={maxSlots}
+            inputScopeId={inputScopeId}
+          />
+        ) : undefined,
+        expandDelay: 150,
+      });
+  }
 
   if (hasQuickGenerate) {
     // Show widget scope values — these match what generateWithAsset will actually use.
@@ -617,6 +686,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
         ref={triggerRef}
         onClick={(e) => e.stopPropagation()}
         onAuxClick={(e) => e.stopPropagation()}
+        onWheel={handleModeCycleWheel}
         onMouseDown={(e) => {
           // Keep card click handlers from hijacking button interactions,
           // but allow right-click to bubble so asset context menus can resolve.

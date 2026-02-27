@@ -11,7 +11,8 @@ import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration } fr
 import { Icons, Icon } from '@lib/icons';
 
 import { getGenerationStatusDisplay } from '@features/generation/lib/core/generationAssetMapping';
-import { getGenerationSessionStore, getGenerationSettingsStore } from '@features/generation/stores/generationScopeStores';
+import { getGenerationSessionStore } from '@features/generation/stores/generationScopeStores';
+import { useGenerationSettingsStore } from '@features/generation/stores/generationSettingsStore';
 
 import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
@@ -159,7 +160,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
     // Set params from rawParams or canonicalParams
     const params = generation.canonicalParams || generation.rawParams;
     if (params) {
-      getGenerationSettingsStore('global').getState().setDynamicParams(params);
+      useGenerationSettingsStore.getState().setDynamicParams(params);
     }
   }, []);
 
@@ -314,40 +315,71 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
     const hasSubmitEvidence =
       (generation.attemptCount != null && generation.attemptCount > 0) ||
       generation.latestSubmissionPayload != null;
+    const hasProviderAcceptance = Boolean(generation.latestSubmissionProviderJobId);
     if (generation.status === 'processing') {
       if (!hasSubmitEvidence) {
         return {
-          label: 'START',
+          label: 'STARTING',
           className:
             'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
           title: 'Starting / processing state without visible submit attempt yet',
         };
       }
+      if (!hasProviderAcceptance) {
+        return {
+          label: 'SUBMIT',
+          className:
+            'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+          title: 'Submission attempt recorded; waiting for provider job acceptance',
+        };
+      }
       return {
-        label: 'LIVE',
+        label: 'POLLING',
         className:
           'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
-        title: 'Actively processing at the provider',
+        title: 'Provider accepted (job ID assigned); polling for status',
       };
     }
     if (generation.status === 'pending' || generation.status === 'queued') {
       if (generation.retryCount > 0) {
         return {
-          label: 'RETRY',
+          label: 'RETRYING',
           className:
             'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
           title: 'Waiting for a retry attempt',
         };
       }
+      if (hasProviderAcceptance) {
+        return {
+          label: 'ACCEPTED',
+          className:
+            'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+          title: 'Latest known provider submission has a provider job ID',
+        };
+      }
+      if (hasSubmitEvidence) {
+        return {
+          label: 'SUBMITTED',
+          className:
+            'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+          title: 'Submitted to provider previously; currently waiting',
+        };
+      }
       return {
-        label: 'WAIT',
+        label: 'QUEUED',
         className:
           'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
         title: 'Queued / waiting to start',
       };
     }
     return null;
-  }, [generation.status, generation.retryCount, generation.attemptCount, generation.latestSubmissionPayload]);
+  }, [
+    generation.status,
+    generation.retryCount,
+    generation.attemptCount,
+    generation.latestSubmissionPayload,
+    generation.latestSubmissionProviderJobId,
+  ]);
 
   // Manual refresh for debugging stuck generations
   const handleRefresh = useCallback(async () => {

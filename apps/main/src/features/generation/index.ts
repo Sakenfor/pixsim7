@@ -81,6 +81,7 @@ export type {
   GenerationPresetState,
   GenerationPresetActions,
 } from './stores/generationPresetStore';
+export { useFanoutPresetStore } from './stores/fanoutPresetStore';
 export { useGenerationHistoryStore } from './stores/generationHistoryStore';
 export type {
   AssetHistoryEntry,
@@ -114,6 +115,28 @@ export type {
   GenerationRunItemDescriptor,
   ResolvedGenerationRunDescriptor,
 } from './lib/runContext';
+
+// Lib - Sequential execution core (frontend orchestration primitive)
+export {
+  SEQUENTIAL_TERMINAL_GENERATION_STATUSES,
+  SequentialStepTimeoutError,
+  waitForGenerationTerminal,
+  executeSequentialSteps,
+  createSequentialStepRunContextMetadata,
+} from './lib/sequentialExecutor';
+export type {
+  SequentialTerminalGenerationStatus,
+  SequentialGenerationTerminalResult,
+  WaitForGenerationTerminalOptions,
+  SequentialExecutionStepStatus,
+  SequentialExecutionStepDefinition,
+  SequentialExecutionStepRecord,
+  SequentialExecutionResult,
+  SequentialSubmitStepResult,
+  SequentialStepExecutionContext,
+  ExecuteSequentialStepsOptions,
+  SequentialStepRunContextMetadataInput,
+} from './lib/sequentialExecutor';
 
 // Lib - Multi-Asset Mode
 export {

@@ -70,7 +70,7 @@ export function useGenerationPresets(): UseGenerationPresetsResult {
   const setActiveOperationType = useSettingsStore((s) => s.setActiveOperationType);
 
   const inputsByOperation = useInputStore((s) => s.inputsByOperation);
-  const addInput = useInputStore((s) => s.addInput);
+  const addInputs = useInputStore((s) => s.addInputs);
   const clearInputs = useInputStore((s) => s.clearInputs);
   const updateLockedTimestamp = useInputStore((s) => s.updateLockedTimestamp);
 
@@ -143,23 +143,27 @@ export function useGenerationPresets(): UseGenerationPresetsResult {
       // Set params
       setDynamicParams(preset.params);
 
-      // Clear existing inputs and add preset inputs
+      // Clear existing inputs and batch-add preset inputs.
+      // In carousel mode the input mode is "replace", so addInput() in a loop
+      // would keep replacing the current slot and only preserve the last asset.
       clearInputs(preset.operationType);
+      const resolvedEntries = preset.inputs
+        .map((inputRef) => ({ inputRef, asset: resolveAsset(inputRef.assetId) }))
+        .filter((entry): entry is { inputRef: PresetInputRef; asset: AssetModel } => !!entry.asset);
 
-      for (const inputRef of preset.inputs) {
-        const asset = resolveAsset(inputRef.assetId);
-        if (asset) {
-          addInput({ asset, operationType: preset.operationType });
+      if (resolvedEntries.length > 0) {
+        addInputs({
+          assets: resolvedEntries.map((e) => e.asset),
+          operationType: preset.operationType,
+        });
+      }
 
-          // If there's a locked timestamp, we need to update it after adding
-          // Note: This requires the input to be added first
-          if (inputRef.lockedTimestamp !== undefined) {
-            const opInputs = useInputStore.getState().inputsByOperation[preset.operationType];
-            const addedItem = opInputs?.items.find((item) => item.asset.id === inputRef.assetId);
-            if (addedItem) {
-              updateLockedTimestamp(preset.operationType, addedItem.id, inputRef.lockedTimestamp);
-            }
-          }
+      for (const { inputRef } of resolvedEntries) {
+        if (inputRef.lockedTimestamp === undefined) continue;
+        const opInputs = useInputStore.getState().inputsByOperation[preset.operationType];
+        const addedItem = opInputs?.items.find((item) => item.asset.id === inputRef.assetId);
+        if (addedItem) {
+          updateLockedTimestamp(preset.operationType, addedItem.id, inputRef.lockedTimestamp);
         }
       }
 
@@ -175,7 +179,7 @@ export function useGenerationPresets(): UseGenerationPresetsResult {
       setPrompt,
       setDynamicParams,
       clearInputs,
-      addInput,
+      addInputs,
       updateLockedTimestamp,
       setLastUsed,
       useInputStore,
@@ -203,27 +207,33 @@ export function useGenerationPresets(): UseGenerationPresetsResult {
         // Clear existing inputs
         clearInputs(preset.operationType);
 
-        // Fetch and add assets
+        // Fetch assets first, then batch-add. This preserves order and avoids
+        // carousel replace-mode dropping all but the last asset.
+        const resolvedEntries: Array<{ inputRef: PresetInputRef; asset: AssetModel }> = [];
         for (const inputRef of preset.inputs) {
           try {
             const assetResponse = await getAsset(inputRef.assetId);
             const asset = fromAssetResponse(assetResponse);
-
-            addInput({ asset, operationType: preset.operationType });
-
-            // If there's a locked timestamp, update it after adding
-            if (inputRef.lockedTimestamp !== undefined) {
-              // Small delay to ensure the input is added before we try to update it
-              await new Promise((resolve) => setTimeout(resolve, 10));
-              const opInputs = useInputStore.getState().inputsByOperation[preset.operationType];
-              const addedItem = opInputs?.items.find((item) => item.asset.id === inputRef.assetId);
-              if (addedItem) {
-                updateLockedTimestamp(preset.operationType, addedItem.id, inputRef.lockedTimestamp);
-              }
-            }
+            resolvedEntries.push({ inputRef, asset });
           } catch (err) {
             console.warn(`[loadPresetAsync] Failed to load asset ${inputRef.assetId}:`, err);
             // Continue loading other assets even if one fails
+          }
+        }
+
+        if (resolvedEntries.length > 0) {
+          addInputs({
+            assets: resolvedEntries.map((e) => e.asset),
+            operationType: preset.operationType,
+          });
+        }
+
+        for (const { inputRef } of resolvedEntries) {
+          if (inputRef.lockedTimestamp === undefined) continue;
+          const opInputs = useInputStore.getState().inputsByOperation[preset.operationType];
+          const addedItem = opInputs?.items.find((item) => item.asset.id === inputRef.assetId);
+          if (addedItem) {
+            updateLockedTimestamp(preset.operationType, addedItem.id, inputRef.lockedTimestamp);
           }
         }
 
@@ -242,7 +252,7 @@ export function useGenerationPresets(): UseGenerationPresetsResult {
       setPrompt,
       setDynamicParams,
       clearInputs,
-      addInput,
+      addInputs,
       updateLockedTimestamp,
       setLastUsed,
       useInputStore,

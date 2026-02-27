@@ -8,6 +8,41 @@ import type { OperationType } from '@/types/operations';
 // Params that are persisted per-model (quality, resolution-related)
 const PER_MODEL_PARAMS = new Set(['quality', 'resolution', 'output_resolution']);
 
+// Params that should behave like global UI preferences (not per-operation).
+// These are stored inside the same params object today, but should not be
+// accidentally dropped when switching operations or hydrating other operation scopes.
+const GLOBAL_UI_PARAMS = new Set([
+  'autoSwitchOperationType',
+  'autoRetryEnabled',
+  'autoRetryMaxAttempts',
+]);
+
+function pickGlobalUiParams(params: Record<string, any>): Record<string, any> {
+  const picked: Record<string, any> = {};
+  for (const key of GLOBAL_UI_PARAMS) {
+    if (params[key] !== undefined) {
+      picked[key] = params[key];
+    }
+  }
+  return picked;
+}
+
+function mergeMissingGlobalUiParams(
+  base: Record<string, any>,
+  globals: Record<string, any>,
+): Record<string, any> {
+  if (!globals || Object.keys(globals).length === 0) return base;
+  let changed = false;
+  const next = { ...base };
+  for (const [key, value] of Object.entries(globals)) {
+    if (next[key] === undefined) {
+      next[key] = value;
+      changed = true;
+    }
+  }
+  return changed ? next : base;
+}
+
 export interface GenerationSettingsState {
   /**
    * Current dynamic generation parameters shared across UIs
@@ -93,16 +128,21 @@ export function createGenerationSettingsStore(
 
         setActiveOperationType: (operationType) => {
           const state = get();
+          const globals = pickGlobalUiParams(state.params);
           // Save current params to the current operation before switching
           const updatedParamsPerOp = {
             ...state.paramsPerOperation,
             [state.activeOperationType]: state.params,
           };
           // Load params for the new operation (or empty if none saved)
-          const newParams = updatedParamsPerOp[operationType] || {};
+          const baseParams = updatedParamsPerOp[operationType] || {};
+          const newParams = mergeMissingGlobalUiParams(baseParams, globals);
           set({
             activeOperationType: operationType,
-            paramsPerOperation: updatedParamsPerOp,
+            paramsPerOperation: {
+              ...updatedParamsPerOp,
+              [operationType]: newParams,
+            },
             params: newParams,
           });
         },
@@ -163,6 +203,9 @@ export function createGenerationSettingsStore(
               };
             }
           }
+
+          // Preserve global UI params (these are not operation-specific)
+          finalParams = mergeMissingGlobalUiParams(finalParams, pickGlobalUiParams(prev.params));
 
             return {
               params: finalParams,
@@ -281,7 +324,22 @@ export function createGenerationSettingsStore(
           // After rehydration, set params from paramsPerOperation for active operation
           if (state) {
             const activeParams = state.paramsPerOperation[state.activeOperationType] || {};
-            state.params = activeParams;
+            // Backward-compat: if a global UI param exists in any other operation bucket,
+            // merge it into the active operation params so feature toggles don't "flip back".
+            const globals = { ...pickGlobalUiParams(activeParams) };
+            if (Object.keys(globals).length < GLOBAL_UI_PARAMS.size) {
+              for (const params of Object.values(state.paramsPerOperation)) {
+                if (!params) continue;
+                Object.assign(globals, pickGlobalUiParams(params));
+                if (Object.keys(globals).length >= GLOBAL_UI_PARAMS.size) {
+                  break;
+                }
+              }
+            }
+
+            const mergedActive = mergeMissingGlobalUiParams(activeParams, globals);
+            state.paramsPerOperation[state.activeOperationType] = mergedActive;
+            state.params = mergedActive;
             state._hasHydrated = true;
           }
         },
@@ -307,8 +365,23 @@ if (typeof window !== 'undefined') {
     // After rehydration, derive params from paramsPerOperation
     const state = useGenerationSettingsStore.getState();
     const activeParams = state.paramsPerOperation[state.activeOperationType] || {};
+    const globals = { ...pickGlobalUiParams(activeParams) };
+    if (Object.keys(globals).length < GLOBAL_UI_PARAMS.size) {
+      for (const params of Object.values(state.paramsPerOperation)) {
+        if (!params) continue;
+        Object.assign(globals, pickGlobalUiParams(params));
+        if (Object.keys(globals).length >= GLOBAL_UI_PARAMS.size) {
+          break;
+        }
+      }
+    }
+    const mergedActive = mergeMissingGlobalUiParams(activeParams, globals);
     useGenerationSettingsStore.setState({
-      params: activeParams,
+      params: mergedActive,
+      paramsPerOperation: {
+        ...state.paramsPerOperation,
+        [state.activeOperationType]: mergedActive,
+      },
       _hasHydrated: true,
     });
     exposeStoreForDebugging(useGenerationSettingsStore, 'GenerationSettings');

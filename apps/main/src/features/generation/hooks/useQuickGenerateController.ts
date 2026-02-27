@@ -9,7 +9,7 @@ import { resolveAssetSet, assetModelsToInputItems } from '@features/assets/lib/a
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import { useGenerationsStore, createPendingGeneration } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
-import { generateAsset } from '@features/generation/lib/api';
+import { generateAsset, prepareGenerateAssetSubmission } from '@features/generation/lib/api';
 import { useQuickGenerateBindings } from '@features/prompts';
 import { useBlockTemplateStore } from '@features/prompts/stores/blockTemplateStore';
 import { providerCapabilityRegistry } from '@features/providers';
@@ -20,9 +20,20 @@ import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 
 
-import { computeCombinations, computeSetCombinations, isSetStrategy, type EachStrategy, type CombinationStrategy } from '../lib/combinationStrategies';
+import { isSetStrategy, type CombinationStrategy } from '../lib/combinationStrategies';
+import {
+  executeTrackedEachBackendExecution,
+  prepareEachBackendExecutionPayload,
+} from '../lib/eachBackendExecution';
+import { prepareEachExecutionItems } from '../lib/eachExecutionItems';
+import { planFanoutGroups } from '../lib/fanoutPlanner';
+import {
+  normalizeFanoutRunOptions,
+  type FanoutRunOptions,
+} from '../lib/fanoutPresets';
 import { buildGenerationRequest } from '../lib/quickGenerateLogic';
 import { createGenerationRunDescriptor, createGenerationRunItemContext, type GenerationRunContext } from '../lib/runContext';
+import { executeSequentialSteps, createSequentialStepRunContextMetadata } from '../lib/sequentialExecutor';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 
 
@@ -324,6 +335,125 @@ export function useQuickGenerateController() {
 
   // ─── Generation actions ───
 
+  async function submitEachViaBackendExecution(args: {
+    groups: any[][];
+    total: number;
+    run: any;
+    strategy: CombinationStrategy;
+    setId?: string;
+    overrideParams: Record<string, any>;
+    rolledOnce: string | null;
+    onError: 'continue' | 'stop';
+    executionMode: FanoutRunOptions['executionMode'];
+    reusePreviousOutputAsInput: boolean;
+  }) {
+    const {
+      groups,
+      total,
+      run,
+      strategy,
+      setId,
+      overrideParams,
+      rolledOnce,
+      onError,
+      executionMode,
+      reusePreviousOutputAsInput,
+    } = args;
+    const itemPayloads = await prepareEachExecutionItems({
+      groups,
+      total,
+      strategy,
+      onError,
+      emptyErrorMessage: `No valid items could be prepared for backend ${executionMode === 'sequential' ? 'sequential Each' : 'fanout'}`,
+      prepareItem: async ({ index: i, total, group, primaryInput }) => {
+        const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
+        await applyFrameExtraction(dynamicParams, primaryInput, []);
+        const request = buildRequest(dynamicParams, group, primaryInput, { promptOverride: rolledOnce });
+        if ('error' in request) {
+          return { kind: 'skip', reason: request.error };
+        }
+        const runContext = createGenerationRunItemContext(run, {
+          itemIndex: i,
+          itemTotal: total,
+          inputAssetIds: extractInputAssetIds(group),
+        });
+        const prepared = prepareGenerateAssetSubmission({
+          prompt: request.finalPrompt,
+          providerId,
+          operationType: request.effectiveOperationType,
+          extraParams: request.params,
+          runContext: withServerTemplateRollRunContext(runContext),
+        });
+        return {
+          kind: 'item',
+          item: {
+          id: `item_${i}`,
+          label: `Each ${i + 1}/${total}`,
+          params: prepared.generationParams,
+          operation: prepared.generationType,
+          provider_id: prepared.providerId,
+          ...(prepared.preferredAccountId ? { preferred_account_id: prepared.preferredAccountId } : {}),
+          name: prepared.name,
+          priority: prepared.priority,
+          force_new: true,
+          ...(executionMode === 'sequential' && reusePreviousOutputAsInput && i > 0
+            ? { use_previous_output_as_input: true }
+            : {}),
+          },
+        };
+      },
+      onItemSkipped: ({ index: i }, reason) => {
+        logEvent('ERROR', 'generate_each_item_skipped', {
+          index: i,
+          strategy,
+          error: reason,
+          transport: 'backend_fanout',
+        });
+      },
+      onItemPrepareFailed: ({ index: i }, itemErr) => {
+        logEvent('ERROR', 'generate_each_item_prepare_failed', {
+          eachIndex: i + 1,
+          strategy,
+          error: extractErrorMessage(itemErr, 'Unknown error'),
+          transport: 'backend_fanout',
+        });
+      },
+    });
+
+    const request = prepareEachBackendExecutionPayload({
+      providerId: providerId || 'pixverse',
+      strategy,
+      setId,
+      onError,
+      executionMode,
+      reusePreviousOutputAsInput,
+      items: itemPayloads,
+    });
+
+    const { generationIds } = await executeTrackedEachBackendExecution({
+      request,
+      total,
+      executionMode,
+      onProgress: (progress) => setQueueProgress(progress),
+    });
+
+    for (const genId of generationIds) {
+      addOrUpdateGeneration(createPendingGeneration({
+        id: genId,
+        operationType,
+        providerId,
+        finalPrompt: prompt,
+        params: {},
+        status: 'pending',
+      }));
+    }
+    if (generationIds.length > 0) {
+      const lastId = generationIds[generationIds.length - 1];
+      setGenerationId(lastId);
+      setWatchingGeneration(lastId);
+    }
+  }
+
   async function generate(options?: { overrideDynamicParams?: Record<string, any>; overrideOperationInputs?: any[] }) {
     resetForGeneration();
 
@@ -472,6 +602,118 @@ export function useQuickGenerateController() {
     setGenerating,
   ]);
 
+  const generateSequentialBurst = useCallback(async (count: number, options?: { overrideDynamicParams?: Record<string, any> }) => {
+    if (count <= 1) return generate(options);
+
+    resetForGeneration();
+    const total = count;
+    const generatedIds: number[] = [];
+    const run = createGenerationRunDescriptor({ mode: 'quickgen_burst' });
+    setQueueProgress({ queued: 0, total });
+
+    try {
+      const { currentInputs, currentInput, transitionInputs } = getInputState();
+      const baseDynamicParams = { ...bindings.dynamicParams, ...options?.overrideDynamicParams };
+
+      await applyFrameExtraction(baseDynamicParams, currentInput, transitionInputs);
+
+      const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
+      const rollOnce = !useServerRolling ? await maybeRollTemplate() : null;
+
+      recordInputHistory(operationType, currentInputs);
+
+      const result = await executeSequentialSteps({
+        steps: Array.from({ length: count }, (_, i) => ({
+          id: `burst_seq_${i + 1}`,
+          label: `Burst Seq ${i + 1}/${count}`,
+          metadata: { burstIndex: i, burstTotal: count },
+        })),
+        submitStep: async (context) => {
+          const dynamicParams = { ...baseDynamicParams };
+          let operationInputsForStep = currentInputs;
+          let currentInputForStep = currentInput;
+
+          // Sequential burst semantics: from step 2 onward, use previous output as the new source
+          // for operations that consume a source asset (img2img/i2v/etc.). We force this by
+          // overriding source asset params and clearing queued inputs so buildRequest prefers them.
+          if (context.stepIndex > 0 && context.previousAssetId != null) {
+            dynamicParams.source_asset_id = context.previousAssetId;
+            delete dynamicParams.sourceAssetId;
+            dynamicParams.source_asset_ids = [context.previousAssetId];
+            delete dynamicParams.sourceAssetIds;
+            delete dynamicParams.original_video_id;
+            delete dynamicParams.composition_assets;
+            operationInputsForStep = [];
+            currentInputForStep = undefined;
+          }
+
+          const request = buildRequest(
+            dynamicParams,
+            operationInputsForStep,
+            currentInputForStep,
+            { promptOverride: rollOnce },
+          );
+          if ('error' in request) {
+            throw new Error(request.error);
+          }
+
+          const genId = await submitOne(
+            request,
+            createGenerationRunItemContext(run, {
+              itemIndex: context.stepIndex,
+              itemTotal: total,
+              metadata: createSequentialStepRunContextMetadata({
+                stepId: context.step.id,
+                stepIndex: context.stepIndex,
+                stepTotal: context.stepTotal,
+                sourceGenerationId: context.previousGenerationId,
+                sourceAssetId: context.previousAssetId,
+                metadata: {
+                  run_mode: 'quickgen_burst_sequential',
+                  chain_previous_output: true,
+                },
+              }),
+            }),
+          );
+          generatedIds.push(genId);
+          return { generationId: genId };
+        },
+        onStepUpdate: (record) => {
+          const completed = generatedIds.length;
+          if (record.status === 'completed' || record.status === 'failed' || record.status === 'cancelled' || record.status === 'timeout') {
+            setQueueProgress({ queued: completed, total });
+          }
+        },
+        continueOnFailure: false,
+      });
+
+      if (generatedIds.length > 0) {
+        const lastId = generatedIds[generatedIds.length - 1];
+        setGenerationId(lastId);
+        setWatchingGeneration(lastId);
+      }
+
+      if (result.status !== 'completed') {
+        const failed = result.failedStepIndex != null ? result.failedStepIndex + 1 : null;
+        setError(failed ? `Sequential burst stopped at step ${failed}/${count}` : 'Sequential burst failed');
+      }
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to run sequential burst'));
+    } finally {
+      setGenerating(false);
+      setTimeout(() => setQueueProgress(null), 2000);
+    }
+  }, [
+    generate,
+    operationType,
+    pinnedTemplateId,
+    templateRollMode,
+    bindings.dynamicParams,
+    useInputStore,
+    setWatchingGeneration,
+    setGenerating,
+  ]);
+
   /**
    * Generate individually for each queued input asset (or group of assets
    * when a combination strategy is selected).
@@ -484,18 +726,31 @@ export function useQuickGenerateController() {
     overrideDynamicParams?: Record<string, any>;
     strategy?: CombinationStrategy;
     setId?: string;
+    fanoutOptions?: Partial<FanoutRunOptions>;
   }) => {
     const { currentInputs } = getInputState();
-    const strategy = options?.strategy ?? 'each';
+    const fanout = normalizeFanoutRunOptions({
+      strategy: options?.strategy,
+      setId: options?.setId,
+      ...(options?.fanoutOptions || {}),
+    });
+    const strategy = fanout.strategy;
     const run = createGenerationRunDescriptor({
       mode: 'quickgen_each',
       strategy,
-      setId: options?.setId,
+      setId: fanout.setId,
+      metadata: {
+        repeat_count: fanout.repeatCount,
+        dispatch: fanout.dispatch,
+        on_error: fanout.onError,
+        execution_mode: fanout.executionMode,
+        reuse_previous_output_as_input: fanout.reusePreviousOutputAsInput,
+      },
     });
 
     // ─── Set strategy path ───
-    if (isSetStrategy(strategy) && options?.setId) {
-      const assetSet = useAssetSetStore.getState().getSet(options.setId);
+    if (isSetStrategy(strategy) && fanout.setId) {
+      const assetSet = useAssetSetStore.getState().getSet(fanout.setId);
       if (!assetSet) {
         setError('Asset set not found');
         return;
@@ -511,8 +766,12 @@ export function useQuickGenerateController() {
           return;
         }
 
-        const setInputItems = assetModelsToInputItems(resolvedAssets);
-        const groups = computeSetCombinations(currentInputs, setInputItems, strategy);
+        const planning = planFanoutGroups({
+          inputs: currentInputs,
+          options: fanout,
+          setItems: assetModelsToInputItems(resolvedAssets),
+        });
+        const groups = planning.groups;
 
         const total = groups.length;
         if (total === 0) {
@@ -520,8 +779,6 @@ export function useQuickGenerateController() {
           setGenerating(false);
           return;
         }
-        let queued = 0;
-        const generatedIds: number[] = [];
         setQueueProgress({ queued: 0, total });
 
         const overrideParams = options?.overrideDynamicParams || {};
@@ -531,69 +788,17 @@ export function useQuickGenerateController() {
         // - 'once' mode: roll once client-side, pass prompt override for all items
         const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
         const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
-
-        for (let i = 0; i < groups.length; i++) {
-          const group = groups[i];
-          const primaryInput = group[0];
-
-          try {
-            const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
-            await applyFrameExtraction(dynamicParams, primaryInput, []);
-
-            const request = buildRequest(dynamicParams, group, primaryInput, { promptOverride: rolledOnce });
-            if ('error' in request) {
-              logEvent('ERROR', 'generate_each_item_skipped', {
-                index: i,
-                strategy,
-                error: request.error,
-              });
-              continue;
-            }
-
-            const genId = await submitOne(
-              request,
-              createGenerationRunItemContext(run, {
-                itemIndex: i,
-                itemTotal: total,
-                inputAssetIds: extractInputAssetIds(group),
-              }),
-            );
-            generatedIds.push(genId);
-            queued++;
-            setQueueProgress({ queued, total });
-            recordInputHistory(operationType, group);
-
-            logEvent('INFO', 'generate_each_created', {
-              generationId: genId,
-              operationType,
-              providerId: providerId || 'pixverse',
-              strategy,
-              setId: options.setId,
-              eachIndex: i + 1,
-              eachTotal: total,
-            });
-          } catch (itemErr) {
-            logEvent('ERROR', 'generate_each_item_failed', {
-              eachIndex: i + 1,
-              strategy,
-              error: extractErrorMessage(itemErr, 'Unknown error'),
-            });
-          }
-        }
-
-        if (generatedIds.length > 0) {
-          const lastId = generatedIds[generatedIds.length - 1];
-          setGenerationId(lastId);
-          setWatchingGeneration(lastId);
-        }
-
-        logEvent('INFO', 'generate_each_complete', {
-          queued,
+        await submitEachViaBackendExecution({
+          groups,
           total,
+          run,
           strategy,
-          setId: options.setId,
-          operationType,
-          providerId: providerId || 'pixverse',
+          setId: fanout.setId,
+          overrideParams,
+          rolledOnce,
+          onError: fanout.onError,
+          executionMode: fanout.executionMode,
+          reusePreviousOutputAsInput: fanout.reusePreviousOutputAsInput,
         });
       } catch (err) {
         setError(extractErrorMessage(err, 'Failed to queue set generations'));
@@ -605,7 +810,10 @@ export function useQuickGenerateController() {
     }
 
     // ─── Standard input strategy path ───
-    const groups = computeCombinations(currentInputs, strategy as EachStrategy);
+    const groups = planFanoutGroups({
+      inputs: currentInputs,
+      options: fanout,
+    }).groups;
     if (groups.length === 0) {
       setError('No queued inputs to generate');
       return;
@@ -613,8 +821,6 @@ export function useQuickGenerateController() {
 
     resetForGeneration();
     const total = groups.length;
-    let queued = 0;
-    const generatedIds: number[] = [];
     setQueueProgress({ queued: 0, total });
 
     try {
@@ -625,68 +831,16 @@ export function useQuickGenerateController() {
       // - 'once' mode: roll once client-side, pass prompt override for all items
       const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
       const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
-
-      for (let i = 0; i < groups.length; i++) {
-        const group = groups[i];
-        // For single-item groups use the item as currentInput; for multi-item groups use the first
-        const primaryInput = group[0];
-
-        try {
-          const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
-          await applyFrameExtraction(dynamicParams, primaryInput, []);
-
-          const request = buildRequest(dynamicParams, group, primaryInput, { promptOverride: rolledOnce });
-          if ('error' in request) {
-            logEvent('ERROR', 'generate_each_item_skipped', {
-              index: i,
-              strategy,
-              error: request.error,
-            });
-            continue;
-          }
-
-          const genId = await submitOne(
-            request,
-            createGenerationRunItemContext(run, {
-              itemIndex: i,
-              itemTotal: total,
-              inputAssetIds: extractInputAssetIds(group),
-            }),
-          );
-          generatedIds.push(genId);
-          queued++;
-          setQueueProgress({ queued, total });
-          recordInputHistory(operationType, group);
-
-          logEvent('INFO', 'generate_each_created', {
-            generationId: genId,
-            operationType,
-            providerId: providerId || 'pixverse',
-            strategy,
-            eachIndex: i + 1,
-            eachTotal: total,
-          });
-        } catch (itemErr) {
-          logEvent('ERROR', 'generate_each_item_failed', {
-            eachIndex: i + 1,
-            strategy,
-            error: extractErrorMessage(itemErr, 'Unknown error'),
-          });
-        }
-      }
-
-      if (generatedIds.length > 0) {
-        const lastId = generatedIds[generatedIds.length - 1];
-        setGenerationId(lastId);
-        setWatchingGeneration(lastId);
-      }
-
-      logEvent('INFO', 'generate_each_complete', {
-        queued,
+      await submitEachViaBackendExecution({
+        groups,
         total,
+        run,
         strategy,
-        operationType,
-        providerId: providerId || 'pixverse',
+        overrideParams,
+        rolledOnce,
+        onError: fanout.onError,
+        executionMode: fanout.executionMode,
+        reusePreviousOutputAsInput: fanout.reusePreviousOutputAsInput,
       });
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to queue individual generations'));
@@ -864,6 +1018,7 @@ export function useQuickGenerateController() {
     generate,
     generateWithAsset,
     generateBurst,
+    generateSequentialBurst,
     generateEach,
   };
 }

@@ -17,6 +17,7 @@ import type { OverlayWidget } from '@lib/ui/overlay';
 import { createMenuWidget, type MenuItem, type BadgeWidgetConfig } from '@lib/ui/overlay';
 import { createBadgeWidget } from '@lib/ui/overlay';
 
+import { useCapability, CAP_CHARACTER_INGEST_ACTION, type CharacterIngestActionContext } from '@features/contextHub';
 import {
   getStatusConfig,
   getStatusBadgeClasses,
@@ -24,6 +25,7 @@ import {
 
 import { GenerationButtonGroupContent } from './GenerationButtonGroupContent';
 import type { MediaCardResolvedProps } from './MediaCard';
+import { useMediaCardActionModeStore } from './mediaCardActionModeStore';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
 
 // Re-export from split modules for backward compatibility
@@ -185,6 +187,48 @@ export function createGenerationButtonGroup(props: MediaCardResolvedProps): Over
     render: (data: MediaCardOverlayData) => (
       <GenerationButtonGroupContent data={data} cardProps={props} />
     ),
+  };
+}
+
+function GenerationActionModeBadgeContent({ cardProps }: { cardProps: MediaCardResolvedProps }) {
+  const mode = useMediaCardActionModeStore((s) => s.byAssetId[cardProps.id] ?? 'generation');
+  const { value: characterIngestAction } =
+    useCapability<CharacterIngestActionContext>(CAP_CHARACTER_INGEST_ACTION);
+
+  const canShowCharacterMode = cardProps.mediaType === 'image' && !!characterIngestAction?.addAssetsToIngest;
+  if (!canShowCharacterMode) return null;
+
+  const label = mode === 'character-ingest' ? 'CHAR' : 'GEN';
+  const className = mode === 'character-ingest'
+    ? 'bg-emerald-600/90 text-white border-emerald-400/40'
+    : 'bg-black/65 text-white border-white/15';
+  const title = mode === 'character-ingest'
+    ? `Character ingest mode (${characterIngestAction.characterLabel || characterIngestAction.characterId})`
+    : 'Generation mode';
+
+  return (
+    <div
+      className={`pointer-events-none rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide border backdrop-blur-sm ${className}`}
+      title={title}
+    >
+      {label}
+    </div>
+  );
+}
+
+export function createGenerationActionModeBadge(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
+  if (!props.presetCapabilities?.showsGenerationMenu) {
+    return null;
+  }
+
+  return {
+    id: 'generation-action-mode-badge',
+    type: 'custom',
+    position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
+    visibility: { trigger: 'hover-container' },
+    priority: 34,
+    interactive: false,
+    render: () => <GenerationActionModeBadgeContent cardProps={props} />,
   };
 }
 

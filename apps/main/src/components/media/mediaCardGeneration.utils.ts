@@ -2,8 +2,9 @@
  * Pure data-parsing utilities for generation record handling.
  * Split from mediaCardGeneration.tsx — no React dependencies.
  */
-import type { InputItem } from '@features/generation';
 import type { AssetGenerationContext } from '@lib/api/assets';
+
+import type { InputItem } from '@features/generation';
 
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
@@ -281,8 +282,21 @@ export function parseGenerationContext(
       ? (ctx.operation_type as OperationType)
       : fallbackOperationType;
 
-  // canonical_params is already flat provider params (backend handles unwrapping)
-  const params = { ...ctx.canonical_params };
+  const rawParams = (ctx.raw_params && typeof ctx.raw_params === 'object' && !Array.isArray(ctx.raw_params))
+    ? (ctx.raw_params as Record<string, unknown>)
+    : {};
+
+  // canonical_params is expected to be flat provider params (backend handles unwrapping);
+  // keep raw_params as a backward-compat fallback for missing keys.
+  const params = {
+    ...rawParams,
+    ...ctx.canonical_params,
+  } as Record<string, unknown>;
+
+  // Normalize common legacy/camelCase keys used by some providers/exports.
+  if (params.aspectRatio !== undefined && params.aspect_ratio === undefined) {
+    params.aspect_ratio = params.aspectRatio;
+  }
 
   return {
     params,

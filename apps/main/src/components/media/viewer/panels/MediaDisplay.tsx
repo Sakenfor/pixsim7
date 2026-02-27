@@ -4,7 +4,7 @@
  * Renders the actual media (image or video) with zoom and fit mode applied.
  */
 
-import { useMemo, useRef, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 
 import { useAutoContextMenu } from '@lib/dockview';
 
@@ -35,6 +35,11 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef, imageRe
   const mediaUrl = asset.fullUrl || asset.url;
   const { mediaSrc } = useResolvedAssetMedia({ mediaUrl });
   const resolvedMediaUrl = mediaSrc;
+  const [videoReady, setVideoReady] = useState(asset.type !== 'video');
+
+  useEffect(() => {
+    setVideoReady(asset.type !== 'video');
+  }, [asset.id, asset.type, resolvedMediaUrl]);
 
   // Provide asset capability for context menu actions
   const assetProvider = useMemo(() => ({
@@ -76,15 +81,26 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef, imageRe
       {...contextMenuProps}
     >
       {asset.type === 'video' ? (
-        <video
-          ref={resolvedVideoRef}
-          src={resolvedMediaUrl}
-          className={`${getFitClass()} rounded-lg`}
-          style={{ transform: `scale(${zoom / 100})` }}
-          controls
-          autoPlay={settings.autoPlayVideos}
-          loop={settings.loopVideos}
-        />
+        <div className="relative">
+          <video
+            ref={resolvedVideoRef}
+            src={resolvedMediaUrl}
+            className={`${getFitClass()} rounded-lg transition-opacity ${videoReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+            style={{ transform: `scale(${zoom / 100})` }}
+            controls={videoReady}
+            autoPlay={settings.autoPlayVideos}
+            loop={settings.loopVideos}
+            preload="metadata"
+            playsInline
+            onLoadedMetadata={() => setVideoReady(true)}
+            onCanPlay={() => setVideoReady(true)}
+          />
+          {!videoReady && (
+            <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-neutral-100/70 dark:bg-neutral-900/70 pointer-events-none">
+              <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+        </div>
       ) : (
         <img
           ref={resolvedImageRef}

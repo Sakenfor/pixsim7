@@ -110,7 +110,8 @@ export function SettingsPanel(props: QuickGenPanelProps) {
           targetProviderId={targetProviderId}
           queueProgress={controller.queueProgress}
           onGenerateBurst={controller.generateBurst}
-          onGenerateEach={(strategy, setId) => controller.generateEach({ strategy, setId })}
+          onGenerateSequentialBurst={controller.generateSequentialBurst}
+          onGenerateEach={(fanoutOptions) => controller.generateEach({ fanoutOptions })}
           sourceToggle={sourceToggle}
         />
       </div>

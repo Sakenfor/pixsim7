@@ -46,30 +46,39 @@ export function useMediaGenerationActions() {
 
   const selectAsset = useAssetSelectionStore((s) => s.selectAsset);
 
-  const { value: widgetContext } = useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
-  const currentOperationType = widgetContext?.operationType ?? sessionOperationType;
+  const { provider: widgetProvider } = useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
+  const getWidgetContext = useCallback((): GenerationWidgetContext | null => {
+    const value = widgetProvider?.getValue?.();
+    return value ? (value as GenerationWidgetContext) : null;
+  }, [widgetProvider]);
+  const getCurrentOperationType = useCallback(
+    (): OperationType => getWidgetContext()?.operationType ?? sessionOperationType,
+    [getWidgetContext, sessionOperationType],
+  );
 
   const openGenerationWidget = useCallback(
     (operationType?: OperationType) => {
-      if (!widgetContext) return false;
-      if (operationType && widgetContext.setOperationType) {
-        widgetContext.setOperationType(operationType);
+      const widget = getWidgetContext();
+      if (!widget) return false;
+      if (operationType && widget.setOperationType) {
+        widget.setOperationType(operationType);
       }
-      widgetContext.setOpen(true);
+      widget.setOpen(true);
       return true;
     },
-    [widgetContext],
+    [getWidgetContext],
   );
 
   const setOperationType = useCallback(
     (operationType: OperationType) => {
-      if (widgetContext?.setOperationType) {
-        widgetContext.setOperationType(operationType);
+      const widget = getWidgetContext();
+      if (widget?.setOperationType) {
+        widget.setOperationType(operationType);
         return;
       }
       setSessionOperationType(operationType);
     },
-    [setSessionOperationType, widgetContext],
+    [getWidgetContext, setSessionOperationType],
   );
 
   const addInputs = useCallback(
@@ -77,13 +86,14 @@ export function useMediaGenerationActions() {
       assets: AssetModel[];
       operationType: OperationType;
     }) => {
-      if (widgetContext?.addInputs) {
-        widgetContext.addInputs(options);
+      const widget = getWidgetContext();
+      if (widget?.addInputs) {
+        widget.addInputs(options);
         return;
       }
-      if (widgetContext?.addInput) {
+      if (widget?.addInput) {
         options.assets.forEach((asset) => {
-          widgetContext.addInput({
+          widget.addInput({
             asset,
             operationType: options.operationType,
           });
@@ -92,7 +102,7 @@ export function useMediaGenerationActions() {
       }
       scopedAddInputs(options);
     },
-    [scopedAddInputs, widgetContext],
+    [getWidgetContext, scopedAddInputs],
   );
 
   // Helper to select asset in selection store
@@ -103,6 +113,7 @@ export function useMediaGenerationActions() {
   // Smart input action - routes based on operation metadata
   const createQueueAction = useCallback(
     (operationType: OperationType) => (asset: AssetModel) => {
+      const currentOperationType = getCurrentOperationType();
       // Use centralized input store which handles routing automatically
       addInputs({ assets: [asset], operationType });
 
@@ -115,7 +126,7 @@ export function useMediaGenerationActions() {
 
       openGenerationWidget(operationType);
     },
-    [addInputs, selectAssetFromSummary, setOperationType, currentOperationType, openGenerationWidget],
+    [addInputs, selectAssetFromSummary, setOperationType, getCurrentOperationType, openGenerationWidget],
   );
 
   // Memoize individual actions for stable references
@@ -126,23 +137,25 @@ export function useMediaGenerationActions() {
 
   const queueAutoGenerate = useCallback(
     (asset: AssetModel) => {
+      const currentOperationType = getCurrentOperationType();
       // Auto-generate uses current operation type for routing
       addInputs({ assets: [asset], operationType: currentOperationType });
       selectAssetFromSummary(asset);
       openGenerationWidget(currentOperationType);
     },
-    [addInputs, currentOperationType, selectAssetFromSummary, openGenerationWidget],
+    [addInputs, getCurrentOperationType, selectAssetFromSummary, openGenerationWidget],
   );
 
   // Silent add - adds inputs without opening control center
   const queueSilentAdd = useCallback(
     (asset: AssetModel) => {
+      const currentOperationType = getCurrentOperationType();
       // Silent add uses current operation type for routing
       addInputs({ assets: [asset], operationType: currentOperationType });
       selectAssetFromSummary(asset);
       // Don't open control center - just add inputs
     },
-    [addInputs, currentOperationType, selectAssetFromSummary],
+    [addInputs, getCurrentOperationType, selectAssetFromSummary],
   );
 
   // Quick generate - delegates to the controller's generateWithAsset method
@@ -151,13 +164,15 @@ export function useMediaGenerationActions() {
   // Optional duration override from gesture secondary axis.
   const quickGenerate = useCallback(
     async (asset: AssetModel, options?: { addToQueue?: boolean; count?: number; duration?: number }) => {
+      const widget = getWidgetContext();
+      const currentOperationType = widget?.operationType ?? sessionOperationType;
       // Optionally add to inputs (default: no)
       if (options?.addToQueue) {
         addInputs({ assets: [asset], operationType: currentOperationType });
         selectAssetFromSummary(asset);
       }
 
-      if (!widgetContext?.generateWithAsset) {
+      if (!widget?.generateWithAsset) {
         useToastStore.getState().addToast({
           type: 'error',
           message: 'No generation widget available for quick generate',
@@ -167,7 +182,7 @@ export function useMediaGenerationActions() {
       }
 
       try {
-        await widgetContext.generateWithAsset(asset, options?.count, { duration: options?.duration });
+        await widget.generateWithAsset(asset, options?.count, { duration: options?.duration });
       } catch (err) {
         useToastStore.getState().addToast({
           type: 'error',
@@ -176,7 +191,7 @@ export function useMediaGenerationActions() {
         });
       }
     },
-    [addInputs, currentOperationType, selectAssetFromSummary, widgetContext],
+    [addInputs, getWidgetContext, sessionOperationType, selectAssetFromSummary],
   );
 
   return {

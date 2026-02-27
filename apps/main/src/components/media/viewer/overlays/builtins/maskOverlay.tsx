@@ -16,7 +16,7 @@ import { authService } from '@lib/auth';
 
 import { useAssets, type AssetModel, type ViewerAsset } from '@features/assets';
 import { extractUploadError, notifyGalleryOfNewAsset } from '@features/assets/lib/uploadActions';
-import { getGenerationSettingsStore, useGenerationScopeStores } from '@features/generation';
+import { getGenerationSettingsStore, useGenerationScopeStores, useGenerationSettingsStore } from '@features/generation';
 import {
   GENERATION_SCOPE_ID,
   getInstanceId,
@@ -170,9 +170,14 @@ function resolveViewerQuickGenScopeId(): string {
 }
 
 function setMaskUrlInRelevantGenerationScopes(maskUrl: string | undefined): void {
-  getGenerationSettingsStore('global').getState().setParam('mask_url', maskUrl);
+  // Global settings use the singleton store, not the scoped-store map.
+  useGenerationSettingsStore.getState().setParam('mask_url', maskUrl);
   const viewerScopeId = resolveViewerQuickGenScopeId();
-  getGenerationSettingsStore(viewerScopeId).getState().setParam('mask_url', maskUrl);
+  if (viewerScopeId === 'global') {
+    useGenerationSettingsStore.getState().setParam('mask_url', maskUrl);
+  } else {
+    getGenerationSettingsStore(viewerScopeId).getState().setParam('mask_url', maskUrl);
+  }
 }
 
 function makeMaskStrokeId(index: number): string {

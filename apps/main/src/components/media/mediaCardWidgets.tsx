@@ -1071,6 +1071,7 @@ import {
 } from './mediaCardBadges';
 import {
   createGenerationButtonGroup,
+  createGenerationActionModeBadge,
 } from './mediaCardGeneration';
 
 /**
@@ -1089,6 +1090,7 @@ export function createDefaultMediaCardWidgets(props: MediaCardResolvedProps): Ov
     createUploadButton,
     createInfoPopover,
     createGenerationButtonGroup,
+    createGenerationActionModeBadge,
     createQuickTagWidget,
     createQuickAddButton,
   });

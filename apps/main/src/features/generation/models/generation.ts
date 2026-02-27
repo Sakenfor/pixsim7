@@ -74,6 +74,7 @@ export interface GenerationModel {
   rawParams: Record<string, unknown>;
   canonicalParams: Record<string, unknown>;
   latestSubmissionPayload: Record<string, unknown> | null;
+  latestSubmissionProviderJobId: string | null;
   inputs: readonly Record<string, unknown>[];
   reproducibleHash: string | null;
 
@@ -119,8 +120,17 @@ export function fromGenerationResponse(response: GenerationResponse): Generation
   const latestSubmissionPayload =
     (response as { latest_submission_payload?: Record<string, unknown> | null })
       .latest_submission_payload ?? null;
+  const latestSubmissionProviderJobId =
+    (response as { latest_submission_provider_job_id?: string | null })
+      .latest_submission_provider_job_id ?? null;
   const attemptCount =
     (response as { attempt_count?: number | null }).attempt_count ?? null;
+  const preferredAccountId =
+    (response as { preferred_account_id?: number | null }).preferred_account_id ?? null;
+  const paramsPreferredAccount =
+    preferredAccountId !== null && preferredAccountId !== undefined
+      ? { preferred_account_id: preferredAccountId }
+      : {};
 
   return {
     // Identity
@@ -154,9 +164,10 @@ export function fromGenerationResponse(response: GenerationResponse): Generation
     promptConfig: response.prompt_config,
 
     // Parameters
-    rawParams: response.raw_params,
-    canonicalParams: response.canonical_params,
+    rawParams: { ...response.raw_params, ...paramsPreferredAccount },
+    canonicalParams: { ...response.canonical_params, ...paramsPreferredAccount },
     latestSubmissionPayload,
+    latestSubmissionProviderJobId,
     inputs: response.inputs,
     reproducibleHash: response.reproducible_hash,
 
@@ -278,6 +289,7 @@ export function createPendingGeneration(options: CreatePendingGenerationOptions)
     rawParams: options.params,
     canonicalParams: options.params,
     latestSubmissionPayload: null,
+    latestSubmissionProviderJobId: null,
     inputs: [],
     reproducibleHash: null,
     account: null,

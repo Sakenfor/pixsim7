@@ -128,6 +128,26 @@ function createDefaultLayout(api: DockviewApi, options?: { excludePanelIds?: Rea
   }
 }
 
+function ensureViewerPreviewPanel(api: DockviewApi) {
+  if (api.getPanel('media-preview')) return;
+
+  const existingPanels = getDockviewPanels(api).filter((panel) => panel?.id !== 'media-preview');
+  const referencePanelId =
+    typeof existingPanels[0]?.id === 'string' ? existingPanels[0].id : undefined;
+
+  api.addPanel({
+    id: 'media-preview',
+    component: 'media-preview',
+    title: 'Preview',
+    position: referencePanelId
+      ? {
+          direction: 'above',
+          referencePanel: referencePanelId,
+        }
+      : undefined,
+  });
+}
+
 export function AssetViewerDockview({
   asset,
   settings,
@@ -174,7 +194,7 @@ export function AssetViewerDockview({
   const dockviewHostRef = useRef<DockviewHost | null>(null);
   const panelHostRef = useRef<PanelHostDockviewRef>(null);
   // Keep state for triggering re-renders when needed (but not in context deps)
-  const [, setDockviewApiVersion] = useState(0);
+  const [dockviewApiVersion, setDockviewApiVersion] = useState(0);
 
   // Build context for panels (includes both ViewerPanelContext and WorkspaceContext fields)
   // Note: dockviewApi is provided via ref to avoid context changes on initial setup
@@ -220,6 +240,39 @@ export function AssetViewerDockview({
     dockviewHostRef.current = panelHostRef.current?.getHost() ?? null;
     setDockviewApiVersion((v) => v + 1);
   }, []);
+
+  useEffect(() => {
+    const api = dockviewApiRef.current;
+    if (!api) return;
+
+    const canRestorePreview =
+      viewerPanelIds.includes('media-preview') &&
+      !floatingViewerPanelIds.includes('media-preview');
+
+    if (!canRestorePreview) return;
+
+    const scheduleEnsurePreview = () => {
+      requestAnimationFrame(() => {
+        const currentApi = dockviewApiRef.current;
+        if (!currentApi) return;
+        if (floatingViewerPanelIds.includes('media-preview')) return;
+        ensureViewerPreviewPanel(currentApi);
+      });
+    };
+
+    scheduleEnsurePreview();
+
+    const removeDisposable = api.onDidRemovePanel(scheduleEnsurePreview);
+    const layoutDisposable =
+      typeof (api as any).onDidLayoutFromJSON === 'function'
+        ? (api as any).onDidLayoutFromJSON(scheduleEnsurePreview)
+        : null;
+
+    return () => {
+      removeDisposable.dispose();
+      layoutDisposable?.dispose?.();
+    };
+  }, [dockviewApiVersion, viewerPanelIds, floatingViewerPanelIds]);
 
   return (
     <PanelHostDockview
