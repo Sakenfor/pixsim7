@@ -8,16 +8,8 @@
  */
 
 import clsx from 'clsx';
-import { useMemo, useEffect, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 
-import {
-  getDurationOptions,
-  getQualityOptions,
-  getAspectRatioLabel,
-  COMMON_ASPECT_RATIOS,
-  getParamIcon,
-  isVisualParam,
-} from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
@@ -30,14 +22,33 @@ import { useCostEstimate, useProviderIdForModel, useProviderAccounts, useUnlimit
 
 import { OPERATION_METADATA } from '@/types/operations';
 
-import type { CombinationStrategy } from '../lib/combinationStrategies';
+import type { FanoutRunOptions } from '../lib/fanoutPresets';
 
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
-import { AspectRatioDropdown } from './generationSettingsPanel/AspectRatioDropdown';
 import { EachSplitButton } from './generationSettingsPanel/EachSplitButton';
+import { GenerationParamControls } from './generationSettingsPanel/GenerationParamControls';
+import {
+  filterQuickGenStyleParamSpecs,
+  getQuickGenStyleAdvancedParamSpecs,
+} from './generationSettingsPanel/generationParamFilters';
 import { OperationIconButton } from './generationSettingsPanel/OperationIconButton';
 import { ProviderIconButton } from './generationSettingsPanel/ProviderIconButton';
 import { PresetSelector } from './PresetSelector';
+
+function getModelMatchKeys(value: unknown): string[] {
+  if (typeof value !== 'string') return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  const lower = trimmed.toLowerCase();
+  const compact = lower.replace(/[\s_-]+/g, '');
+  const lastSegment = lower.split(/[/:]/).filter(Boolean).at(-1) ?? lower;
+  const compactLastSegment = lastSegment.replace(/[\s_-]+/g, '');
+  return [trimmed, lower, compact, lastSegment, compactLastSegment];
+}
+
+function isModelInUnlimitedSet(unlimitedModels: Set<string>, value: unknown): boolean {
+  return getModelMatchKeys(value).some((key) => unlimitedModels.has(key));
+}
 
 export interface GenerationSettingsPanelProps {
   /** Whether to show operation type selector (default: true) */
@@ -71,8 +82,10 @@ export interface GenerationSettingsPanelProps {
   queueProgress?: { queued: number; total: number } | null;
   /** Callback for burst generation (receives count) */
   onGenerateBurst?: (count: number) => void;
+  /** Callback for sequential burst generation (waits for each run to complete before the next) */
+  onGenerateSequentialBurst?: (count: number) => void;
   /** Callback for generate-each mode (one generation per queued asset or group) */
-  onGenerateEach?: (strategy?: CombinationStrategy, setId?: string) => void;
+  onGenerateEach?: (options?: FanoutRunOptions) => void;
   /** Optional node rendered in Row 2 next to Presets (e.g. Asset/My Settings toggle) */
   sourceToggle?: ReactNode;
 }
@@ -91,6 +104,7 @@ export function GenerationSettingsPanel({
   error,
   queueProgress,
   onGenerateBurst,
+  onGenerateSequentialBurst,
   onGenerateEach,
   sourceToggle,
 }: GenerationSettingsPanelProps) {
@@ -102,7 +116,9 @@ export function GenerationSettingsPanel({
 
   // Burst mode - persisted in session store uiState
   const [burstCount, setBurstCount] = usePersistedScopeState('burstCount', 1);
+  const [burstSequentialMode, setBurstSequentialMode] = usePersistedScopeState('burstSequentialMode', false);
   const isBurstMode = burstCount > 1;
+  const canUseSequentialBurst = !!onGenerateSequentialBurst;
 
   // Input count from scoped store
   const inputCount = useInputStore(s => s.inputsByOperation[operationType]?.items?.length ?? 0);
@@ -140,69 +156,26 @@ export function GenerationSettingsPanel({
   const creditEstimate = costEstimate?.estimated_credits ?? null;
 
   // Models that are currently free (unlimited) for the selected account context
-  const preferredAccountId = workbench.dynamicParams?.preferred_account_id;
+  const preferredAccountIdRaw = workbench.dynamicParams?.preferred_account_id;
+  const preferredAccountId = (() => {
+    if (preferredAccountIdRaw === undefined || preferredAccountIdRaw === null || preferredAccountIdRaw === '') {
+      return undefined;
+    }
+    const n = Number(preferredAccountIdRaw);
+    return Number.isFinite(n) ? n : undefined;
+  })();
   const unlimitedModels = useUnlimitedModels(preferredAccountId, inferredProviderId);
   const currentModel = workbench.dynamicParams?.model as string | undefined;
-  const isModelUnlimited = !!currentModel && unlimitedModels.has(currentModel);
+  const isModelUnlimited = isModelInUnlimitedSet(unlimitedModels, currentModel);
+  const isCurrentGenerationFree = isModelUnlimited || (creditEstimate !== null && creditEstimate <= 0);
 
-  // Filter params based on operation type
   const filteredParamSpecs = useMemo(() => {
-    const hideParams = new Set<string>();
-
-    if (operationType === 'video_transition') {
-      hideParams.add('duration');
-    }
-
-    // Operations that inherit aspect ratio from source (don't support custom aspect_ratio)
-    const INHERITS_ASPECT_RATIO = new Set(['image_to_video', 'video_extend']);
-    if (INHERITS_ASPECT_RATIO.has(operationType)) {
-      hideParams.add('aspect_ratio');
-    }
-
-    // Add excluded params
-    excludeParams.forEach(p => hideParams.add(p));
-
-    if (hideParams.size === 0) {
-      return workbench.paramSpecs;
-    }
-
-    return workbench.paramSpecs.filter(p => !hideParams.has(p.name));
+    return filterQuickGenStyleParamSpecs(workbench.paramSpecs, operationType, excludeParams);
   }, [operationType, workbench.paramSpecs, excludeParams]);
 
-  // Advanced params: those not shown in the main settings panel
   const advancedParams = useMemo(() => {
-    const PRIMARY_PARAMS = ['model', 'quality', 'duration', 'aspect_ratio', 'motion_mode', 'camera_movement'];
-    const HIDDEN_PARAMS = ['image_url', 'image_urls', 'prompt', 'prompts', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'composition_assets'];
-
-    return filteredParamSpecs.filter(p => {
-      if (PRIMARY_PARAMS.includes(p.name)) return false;
-      if (HIDDEN_PARAMS.includes(p.name)) return false;
-      return true;
-    });
+    return getQuickGenStyleAdvancedParamSpecs(filteredParamSpecs);
   }, [filteredParamSpecs]);
-
-  // Get duration presets from param specs metadata
-  const durationOptions = useMemo(
-    () => getDurationOptions(workbench.paramSpecs, workbench.dynamicParams?.model)?.options ?? null,
-    [workbench.paramSpecs, workbench.dynamicParams?.model]
-  );
-
-  // Get quality options filtered by model
-  const qualityOptionsForModel = useMemo(
-    () => getQualityOptions(workbench.paramSpecs, workbench.dynamicParams?.model),
-    [workbench.paramSpecs, workbench.dynamicParams?.model]
-  );
-
-  // Reset quality when model changes and current quality is invalid
-  useEffect(() => {
-    if (!qualityOptionsForModel) return;
-    const currentQuality = workbench.dynamicParams?.quality;
-    if (currentQuality && !qualityOptionsForModel.includes(currentQuality)) {
-      workbench.handleParamChange('quality', qualityOptionsForModel[0]);
-    } else if (!currentQuality && qualityOptionsForModel.length > 0) {
-      workbench.handleParamChange('quality', qualityOptionsForModel[0]);
-    }
-  }, [qualityOptionsForModel, workbench.dynamicParams?.quality, workbench.handleParamChange]);
 
   const showTargetButton = canTarget;
 
@@ -275,137 +248,13 @@ export function GenerationSettingsPanel({
         )}
 
         {/* Dynamic params */}
-        {filteredParamSpecs.map(param => {
-          if (param.type === 'boolean') return null;
-          if (param.type === 'string' && !param.enum) return null;
-
-          // Duration dropdown
-          if (param.name === 'duration' && param.type === 'number' && durationOptions) {
-            const currentDuration = Number(workbench.dynamicParams[param.name]) || durationOptions[0];
-            return (
-              <select
-                key="duration"
-                value={currentDuration}
-                onChange={(e) => workbench.handleParamChange('duration', Number(e.target.value))}
-                disabled={generating}
-                className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
-                title="Duration"
-              >
-                {durationOptions.map((seconds) => (
-                  <option key={seconds} value={seconds}>{seconds}s</option>
-                ))}
-              </select>
-            );
-          }
-
-          const options = param.name === 'quality' && qualityOptionsForModel
-            ? qualityOptionsForModel
-            : (param.enum && param.enum.length > 0)
-              ? param.enum
-              : (param.name === 'aspect_ratio' ? COMMON_ASPECT_RATIOS : null);
-
-          if (param.type === 'number' && !options) {
-            return (
-              <input
-                key={param.name}
-                type="number"
-                value={workbench.dynamicParams[param.name] ?? param.default ?? ''}
-                onChange={(e) => workbench.handleParamChange(param.name, e.target.value === '' ? undefined : Number(e.target.value))}
-                disabled={generating}
-                placeholder={param.name}
-                className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
-                title={param.name}
-              />
-            );
-          }
-
-          if (!options) return null;
-
-          // Visual params that should show as button grids with icons
-          const showAsVisualGrid = isVisualParam(param.name);
-          const currentValue = workbench.dynamicParams[param.name] ?? param.default ?? options[0];
-
-          // Aspect ratio: dropdown picker
-          if (param.name === 'aspect_ratio') {
-            return (
-              <AspectRatioDropdown
-                key={param.name}
-                options={options}
-                currentValue={currentValue}
-                onChange={(val) => workbench.handleParamChange(param.name, val)}
-                disabled={generating}
-              />
-            );
-          }
-
-          // Show as button grid for visual params
-          const isIconOnly = param.name === 'quality';
-          const gridLimit = isIconOnly ? 14 : 8;
-          if (showAsVisualGrid && options.length <= gridLimit) {
-            return (
-              <div key={param.name} className="flex flex-wrap gap-1">
-                {options.map((opt: string) => {
-                  const icon = getParamIcon(param.name, opt);
-                  const isSelected = currentValue === opt;
-                  const isFreeModel = param.name === 'model' && unlimitedModels.has(opt);
-
-                  return (
-                    <button
-                      type="button"
-                      key={opt}
-                      onClick={() => workbench.handleParamChange(param.name, opt)}
-                      disabled={generating}
-                      className={clsx(
-                        'rounded-lg text-[11px] font-medium transition-colors duration-200',
-                        'flex items-center',
-                        isIconOnly ? 'px-1.5 py-1 justify-center' : 'px-2 py-1 gap-1.5',
-                        isSelected
-                          ? 'bg-accent text-accent-text shadow-sm'
-                          : 'bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-accent-subtle dark:hover:bg-neutral-700'
-                      )}
-                      title={isFreeModel ? `${opt} (currently free)` : opt}
-                    >
-                      {icon}
-                      {!isIconOnly && <span>{opt}</span>}
-                      {isFreeModel && (
-                        <span className={clsx(
-                          'px-1 py-px rounded text-[8px] font-bold leading-none',
-                          isSelected
-                            ? 'bg-green-300/30 text-green-100'
-                            : 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400'
-                        )}>
-                          free
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          }
-
-          // Fallback to dropdown for non-visual params or long lists
-          return (
-            <select
-              key={param.name}
-              value={currentValue}
-              onChange={(e) => workbench.handleParamChange(param.name, e.target.value)}
-              disabled={generating}
-              className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
-              title={param.name}
-            >
-              {options.map((opt: string) => {
-                const label = param.name === 'aspect_ratio' ? getAspectRatioLabel(opt) : opt;
-                const isFree = param.name === 'model' && unlimitedModels.has(opt);
-                return (
-                  <option key={opt} value={opt}>
-                    {isFree ? `${label} (free)` : label}
-                  </option>
-                );
-              })}
-            </select>
-          );
-        })}
+        <GenerationParamControls
+          paramSpecs={filteredParamSpecs}
+          values={workbench.dynamicParams}
+          onChange={workbench.handleParamChange}
+          generating={generating}
+          unlimitedModels={unlimitedModels}
+        />
 
         {/* Go button — sticky so it stays visible when scrolling */}
         <div className="sticky bottom-0 flex flex-col gap-1 -mx-1.5 px-1.5 pb-1.5 pt-1 bg-neutral-50 dark:bg-neutral-900">
@@ -432,44 +281,57 @@ export function GenerationSettingsPanel({
           </div>
         )}
 
-        {/* Action row: gear, burst, queued, [Each], Go, [Secondary] */}
-        <div className="flex items-center gap-1.5 min-w-0">
-          {/* Advanced settings gear icon */}
-          <div className="flex-shrink-0">
-            <AdvancedSettingsPopover
-              params={advancedParams}
-              values={workbench.dynamicParams}
-              onChange={workbench.handleParamChange}
-              disabled={generating}
-              currentModel={workbench.dynamicParams?.model as string | undefined}
-              accounts={activeAccounts}
-            />
+        {/* Action area: tool row + stable button row */}
+        <div className="quickgen-actions-no-motion flex flex-col gap-1 min-w-0 rounded-xl bg-white/70 dark:bg-neutral-800/60 p-1 shadow-sm ring-1 ring-neutral-200/70 dark:ring-neutral-700/70">
+          <div className="flex items-stretch gap-1.5 min-w-0 flex-nowrap">
+            {/* Advanced settings gear icon */}
+            <div className="flex-shrink-0">
+              <AdvancedSettingsPopover
+                params={advancedParams}
+                values={workbench.dynamicParams}
+                onChange={workbench.handleParamChange}
+                disabled={generating}
+                currentModel={workbench.dynamicParams?.model as string | undefined}
+                accounts={activeAccounts}
+              />
+            </div>
+
+            {/* Generate Each split-button — visible with 2+ inputs or when sets exist */}
+            {onGenerateEach && (inputCount > 1 || useAssetSetStore.getState().sets.length > 0) && OPERATION_METADATA[operationType].multiAssetMode !== 'required' && (
+              <div className="flex-shrink-0 max-w-full">
+                <EachSplitButton
+                  onGenerateEach={onGenerateEach}
+                  disabled={generating || !canGenerate}
+                  generating={generating}
+                  queueProgress={queueProgress}
+                  inputCount={inputCount}
+                />
+              </div>
+            )}
           </div>
 
-          {/* Generate Each split-button — visible with 2+ inputs or when sets exist */}
-          {onGenerateEach && (inputCount > 1 || useAssetSetStore.getState().sets.length > 0) && OPERATION_METADATA[operationType].multiAssetMode !== 'required' && (
-            <EachSplitButton
-              onGenerateEach={onGenerateEach}
-              disabled={generating || !canGenerate}
-              generating={generating}
-              queueProgress={queueProgress}
-            />
-          )}
-
+          <div className={clsx(
+            'grid gap-1.5 min-w-0',
+            secondaryButton ? 'grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]' : 'grid-cols-1',
+          )}>
           {/* Primary Go button with inline burst stepper */}
-          <div className="flex-1 min-w-[52px] flex-shrink-0 flex">
+          <div className="min-w-0 flex">
             {/* Main Go area */}
             <button
               onClick={() => {
                 if (isBurstMode && onGenerateBurst) {
-                  onGenerateBurst(burstCount);
+                  if (burstSequentialMode && onGenerateSequentialBurst) {
+                    onGenerateSequentialBurst(burstCount);
+                  } else {
+                    onGenerateBurst(burstCount);
+                  }
                 } else {
                   onGenerate();
                 }
               }}
               disabled={generating || !canGenerate}
               className={clsx(
-                'flex-1 px-2 py-1.5 text-xs font-semibold text-white',
+                'flex-1 px-2 py-1.5 text-xs font-semibold text-white tabular-nums',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 burstCount > 1 ? 'rounded-l-lg' : 'rounded-lg',
                 generating || !canGenerate
@@ -481,24 +343,30 @@ export function GenerationSettingsPanel({
               style={{ transition: 'none', animation: 'none' }}
             >
               {generating ? (
-                queueProgress ? `${queueProgress.queued}/${queueProgress.total}` : '...'
+                <span className="inline-flex min-w-[6ch] justify-center">Go</span>
+              ) : isCurrentGenerationFree ? (
+                <span className="flex min-w-0 items-center justify-center gap-1">
+                  <span className="truncate">Go</span>
+                  <span
+                    className="inline-flex shrink-0 items-center rounded-full bg-emerald-100/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.04em] text-emerald-100 ring-1 ring-emerald-200/40"
+                    title={isModelUnlimited ? "Currently free for the selected account/model" : "Estimated free"}
+                  >
+                    Free
+                  </span>
+                </span>
               ) : creditLoading ? (
                 'Go'
               ) : creditEstimate !== null ? (
-                <span className="flex items-center justify-center gap-1">
-                  Go
-                  {isModelUnlimited ? (
-                    <span className="text-green-200 text-[10px]" title="Currently free for this account">
-                      <span className="line-through opacity-50">+{Math.round(creditEstimate * burstCount)}</span>
-                    </span>
-                  ) : (
-                    <span className="text-amber-200 text-[10px]">
-                      +{Math.round(creditEstimate * burstCount)}
-                    </span>
-                  )}
+                <span className="flex min-w-0 items-center justify-center gap-1">
+                  <span className="truncate">Go</span>
+                  <span className="shrink-0 text-amber-200 text-[10px]">
+                    +{Math.round(creditEstimate * burstCount)}
+                  </span>
                 </span>
               ) : (
-                'Go'
+                isBurstMode && burstSequentialMode && onGenerateSequentialBurst
+                  ? 'Go Seq'
+                  : 'Go'
               )}
             </button>
             {/* Burst stepper area */}
@@ -522,7 +390,25 @@ export function GenerationSettingsPanel({
               >
                 <Icon name="chevronUp" size={8} />
               </button>
-              <span className="text-[9px] font-mono text-center leading-none px-1">{burstCount}</span>
+              <button
+                type="button"
+                onClick={() => canUseSequentialBurst && setBurstSequentialMode((v: boolean) => !v)}
+                disabled={generating || !canGenerate || !canUseSequentialBurst}
+                className={clsx(
+                  'text-[9px] font-mono text-center leading-none px-1 py-0.5',
+                  canUseSequentialBurst ? 'hover:bg-white/10' : '',
+                  'disabled:cursor-not-allowed',
+                )}
+                title={
+                  canUseSequentialBurst
+                    ? (burstSequentialMode
+                        ? 'Sequential burst: wait for each run to finish before starting the next'
+                        : 'Burst mode: queue all runs immediately (click to toggle sequential)')
+                    : 'Sequential burst not available in this context'
+                }
+              >
+                {burstCount}{burstSequentialMode && canUseSequentialBurst ? 'S' : ''}
+              </button>
               <button
                 type="button"
                 onClick={() => setBurstCount((c: number) => Math.max(1, c - 1))}
@@ -540,7 +426,7 @@ export function GenerationSettingsPanel({
               onClick={secondaryButton.onGenerate}
               disabled={generating || !canGenerate}
               className={clsx(
-                'flex-1 min-w-[48px] flex-shrink-0 px-2 py-1.5 rounded-lg text-xs font-semibold text-white',
+                'min-w-0 px-2 py-1.5 rounded-lg text-xs font-semibold text-white tabular-nums',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 generating || !canGenerate
                   ? 'bg-neutral-400'
@@ -552,25 +438,30 @@ export function GenerationSettingsPanel({
               title="Generate using Media Viewer asset"
             >
               {generating ? (
-                '...'
+                (secondaryButton.label || 'Go')
+              ) : isCurrentGenerationFree ? (
+                <span className="flex min-w-0 items-center justify-center gap-1">
+                  <span className="truncate">{secondaryButton.label || 'Go'}</span>
+                  <span
+                    className="inline-flex shrink-0 items-center rounded-full bg-emerald-100/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.04em] text-emerald-100 ring-1 ring-emerald-200/40"
+                    title={isModelUnlimited ? "Currently free for the selected account/model" : "Estimated free"}
+                  >
+                    Free
+                  </span>
+                </span>
               ) : creditLoading ? (
                 secondaryButton.label || 'Go'
               ) : creditEstimate !== null ? (
-                <span className="flex items-center justify-center gap-1">
-                  {secondaryButton.label || 'Go'}
-                  {isModelUnlimited ? (
-                    <span className="text-green-200 text-[10px]" title="Currently free for this account">
-                      <span className="line-through opacity-50">+{Math.round(creditEstimate)}</span>
-                    </span>
-                  ) : (
-                    <span className="text-amber-200 text-[10px]">+{Math.round(creditEstimate)}</span>
-                  )}
+                <span className="flex min-w-0 items-center justify-center gap-1">
+                  <span className="truncate">{secondaryButton.label || 'Go'}</span>
+                  <span className="shrink-0 text-amber-200 text-[10px]">+{Math.round(creditEstimate)}</span>
                 </span>
               ) : (
                 secondaryButton.label || 'Go'
               )}
             </button>
           )}
+          </div>
         </div>
       </div>
       </div>

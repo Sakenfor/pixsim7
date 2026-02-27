@@ -18,6 +18,12 @@ export interface ChainStepDefinition {
   id: string;
   label?: string | null;
   template_id: string;
+  prompt?: string | null;
+  repeat_count?: number | null;
+  provider_id?: string | null;
+  preferred_account_id?: number | null;
+  inherit_previous_settings?: boolean | null;
+  params_overrides?: Record<string, unknown> | null;
   operation?: string | null;
   input_from?: string | null;
   control_overrides?: Record<string, number> | null;
@@ -72,6 +78,17 @@ export interface ChainStepState {
   completed_at?: string | null;
 }
 
+export interface ExecutionPolicyV1 {
+  version: 1;
+  dispatch_mode: 'single' | 'fanout' | 'sequential';
+  wait_policy: 'none' | 'terminal_per_step' | 'terminal_final';
+  dependency_mode: 'none' | 'previous' | 'explicit';
+  failure_policy: 'stop' | 'continue';
+  concurrency: number;
+  step_timeout_seconds?: number;
+  force_new?: boolean;
+}
+
 /** Chain execution record */
 export interface ChainExecution {
   id: string;
@@ -80,6 +97,7 @@ export interface ChainExecution {
   current_step_index: number;
   total_steps: number;
   step_states: ChainStepState[];
+  execution_policy?: ExecutionPolicyV1 | null;
   error_message?: string | null;
   created_at: string;
   started_at?: string | null;

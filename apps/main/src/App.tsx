@@ -105,6 +105,7 @@ function App() {
               marginBottom: bottomInset,
             } : undefined}
           >
+            <ErrorBoundary>
             <Suspense fallback={<RouteLoadingFallback />}>
               <Routes>
                 {/* Auth routes (not protected) */}
@@ -116,7 +117,8 @@ function App() {
 
                 {/* Dynamic routes from module registry */}
                 {dynamicRoutes.map(page => {
-                  const Component = page.component!;
+                  if (!page.component) return null;
+                  const Component = page.component;
                   return (
                     <Route
                       key={page.id}
@@ -130,6 +132,7 @@ function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
+          </ErrorBoundary>
           </div>
           {/* Control Center - plugin-based (only when authenticated) */}
           {isAuthenticated && (

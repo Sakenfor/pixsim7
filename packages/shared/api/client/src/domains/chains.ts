@@ -19,6 +19,17 @@ export type {
   ChainStepState,
 };
 
+export interface ExecutionPolicyV1Input {
+  version?: 1;
+  dispatch_mode?: 'single' | 'fanout' | 'sequential';
+  wait_policy?: 'none' | 'terminal_per_step' | 'terminal_final';
+  dependency_mode?: 'none' | 'previous' | 'explicit';
+  failure_policy?: 'stop' | 'continue';
+  concurrency?: number;
+  step_timeout_seconds?: number;
+  force_new?: boolean;
+}
+
 export interface CreateChainRequest {
   name: string;
   description?: string;
@@ -44,7 +55,43 @@ export interface ExecuteChainRequest {
   workspace_id?: number | null;
   preferred_account_id?: number | null;
   step_timeout?: number;
+  execution_policy?: ExecutionPolicyV1Input;
   execution_metadata?: Record<string, unknown>;
+}
+
+export interface ExecuteEphemeralChainRequest extends ExecuteChainRequest {
+  name?: string;
+  description?: string;
+  steps: ChainStepDefinition[];
+  chain_metadata?: Record<string, unknown>;
+}
+
+export interface FanoutItemRequest {
+  id: string;
+  label?: string;
+  params: Record<string, unknown>;
+  operation?: string;
+  provider_id?: string;
+  workspace_id?: number | null;
+  preferred_account_id?: number | null;
+  name?: string;
+  description?: string;
+  priority?: number;
+  force_new?: boolean;
+  use_previous_output_as_input?: boolean;
+}
+
+export interface ExecuteEphemeralFanoutRequest {
+  provider_id: string;
+  default_operation?: string;
+  workspace_id?: number | null;
+  preferred_account_id?: number | null;
+  continue_on_error?: boolean;
+  force_new?: boolean;
+  execution_policy?: ExecutionPolicyV1Input;
+  items: FanoutItemRequest[];
+  execution_metadata?: Record<string, unknown>;
+  name?: string;
 }
 
 export interface ExecuteChainResponse {
@@ -102,6 +149,24 @@ export function createChainsApi(client: PixSimApiClient) {
     ): Promise<ExecuteChainResponse> {
       return client.post<ExecuteChainResponse>(
         `/generation-chains/${encodeURIComponent(chainId)}/execute`,
+        request,
+      );
+    },
+
+    async executeEphemeralChain(
+      request: ExecuteEphemeralChainRequest,
+    ): Promise<ExecuteChainResponse> {
+      return client.post<ExecuteChainResponse>(
+        '/generation-chains/execute-ephemeral',
+        request,
+      );
+    },
+
+    async executeEphemeralFanout(
+      request: ExecuteEphemeralFanoutRequest,
+    ): Promise<ExecuteChainResponse> {
+      return client.post<ExecuteChainResponse>(
+        '/generation-chains/execute-fanout-ephemeral',
         request,
       );
     },
