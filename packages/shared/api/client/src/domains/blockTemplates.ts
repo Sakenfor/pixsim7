@@ -53,7 +53,7 @@ export interface RollTemplateRequest {
   seed?: number;
   exclude_block_ids?: string[];
   character_bindings?: CharacterBindings;
-  control_values?: Record<string, number>;
+  control_values?: Record<string, number | string>;
 }
 
 export interface ListTemplatesQuery {
@@ -222,6 +222,41 @@ export interface BlockTagDictionaryResponse {
   scope: Record<string, unknown>;
   keys: BlockTagDictionaryKey[];
   warnings: BlockTagDictionaryWarning[];
+}
+
+export interface BlockTagNormalizeRequest {
+  tags: Record<string, unknown>;
+  apply_value_aliases?: boolean;
+}
+
+export interface BlockTagNormalizeKeyChange {
+  from_key: string;
+  to_key: string;
+}
+
+export interface BlockTagNormalizeValueChange {
+  key: string;
+  from_value: string;
+  to_value: string;
+}
+
+export interface BlockTagNormalizeWarning {
+  kind: string;
+  message: string;
+  key?: string | null;
+  kept_source?: string | null;
+  discarded_source?: string | null;
+}
+
+export interface BlockTagNormalizeResponse {
+  version: number;
+  normalized_tags: Record<string, unknown>;
+  changed: boolean;
+  key_changes: BlockTagNormalizeKeyChange[];
+  value_changes: BlockTagNormalizeValueChange[];
+  warnings: BlockTagNormalizeWarning[];
+  unknown_keys: string[];
+  alias_keys_seen: string[];
 }
 
 export interface ReloadContentPacksQuery {
@@ -434,6 +469,15 @@ export function createBlockTemplatesApi(client: PixSimApiClient) {
       return client.get<BlockTagDictionaryResponse>(
         '/block-templates/meta/blocks/tag-dictionary',
         { params: query },
+      );
+    },
+
+    async normalizeBlockTags(
+      request: BlockTagNormalizeRequest,
+    ): Promise<BlockTagNormalizeResponse> {
+      return client.post<BlockTagNormalizeResponse>(
+        '/block-templates/meta/blocks/tag-dictionary/normalize',
+        request,
       );
     },
   };

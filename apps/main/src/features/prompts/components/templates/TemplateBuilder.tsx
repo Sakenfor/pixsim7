@@ -4,17 +4,18 @@
  * Provides name/description/strategy fields, an ordered list of slot editors
  * with add/remove/reorder, and save functionality.
  */
+import { DisclosureSection } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { listBlockPackages, reloadContentPacks, type ReloadContentPacksResponse } from '@lib/api/blockTemplates';
 import { listCharacters, type CharacterSummary } from '@lib/api/characters';
 import { Icon } from '@lib/icons';
-import { DisclosureSection } from '@pixsim7/shared.ui';
 
 import { OPERATION_TYPES } from '@/types/operations';
 
 import {
+  applyControlDefaultsToSlots,
   readTemplateControls,
   type TemplateControl,
 } from '../../lib/templateControls';
@@ -217,83 +218,40 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
     addDraftSlot(createEmptySlot(draftSlots.length));
   }, [addDraftSlot, draftSlots.length]);
 
-  const handleApplyControlDefaultsToSlots = useCallback(() => {
-    if (templateControls.length === 0 || draftSlots.length === 0) return;
+  const [applyFlash, setApplyFlash] = useState<string | null>(null);
+  const applyFlashTimer = useRef<ReturnType<typeof setTimeout>>();
 
-    let changed = false;
-    const nextSlots = draftSlots.map((slot) => {
-      let nextSlot = slot;
-      for (const control of templateControls) {
-        if (control.type !== 'slider') continue;
-        for (const effect of control.effects) {
-          if (!slot.label || slot.label !== effect.slotLabel) continue;
-
-          if (effect.kind === 'slot_intensity') {
-            if ((nextSlot.inherit_intensity ?? false) || nextSlot.intensity !== control.defaultValue) {
-              nextSlot = {
-                ...nextSlot,
-                inherit_intensity: false,
-                intensity: control.defaultValue,
-              };
-              changed = true;
-            }
-            continue;
-          }
-
-          if (effect.kind === 'slot_tag_boost') {
-            const enabledAt = effect.enabledAt ?? control.min;
-            if (control.defaultValue < enabledAt) {
-              continue;
-            }
-
-            const currentPreferences =
-              nextSlot.preferences && typeof nextSlot.preferences === 'object' && !Array.isArray(nextSlot.preferences)
-                ? (nextSlot.preferences as Record<string, unknown>)
-                : {};
-
-            const nextPreferences: Record<string, unknown> = { ...currentPreferences };
-
-            if (effect.boostTags && Object.keys(effect.boostTags).length > 0) {
-              const currentBoost =
-                currentPreferences.boost_tags && typeof currentPreferences.boost_tags === 'object' && !Array.isArray(currentPreferences.boost_tags)
-                  ? (currentPreferences.boost_tags as Record<string, unknown>)
-                  : {};
-              nextPreferences.boost_tags = {
-                ...currentBoost,
-                ...effect.boostTags,
-              };
-            }
-
-            if (effect.avoidTags && Object.keys(effect.avoidTags).length > 0) {
-              const currentAvoid =
-                currentPreferences.avoid_tags && typeof currentPreferences.avoid_tags === 'object' && !Array.isArray(currentPreferences.avoid_tags)
-                  ? (currentPreferences.avoid_tags as Record<string, unknown>)
-                  : {};
-              nextPreferences.avoid_tags = {
-                ...currentAvoid,
-                ...effect.avoidTags,
-              };
-            }
-
-            const before = JSON.stringify(nextSlot.preferences ?? null);
-            const after = JSON.stringify(nextPreferences);
-            if (before !== after) {
-              nextSlot = {
-                ...nextSlot,
-                preferences: nextPreferences as any,
-              };
-              changed = true;
-            }
-          }
-        }
+  const doApplyControlDefaults = useCallback(
+    (controls: TemplateControl[], slots: typeof draftSlots) => {
+      const result = applyControlDefaultsToSlots(controls, slots);
+      if (result) {
+        setDraftSlots(result.slots);
+        return result.affected;
       }
-      return nextSlot;
-    });
+      return 0;
+    },
+    [setDraftSlots],
+  );
 
-    if (changed) {
-      setDraftSlots(nextSlots);
+  const handleApplyControlDefaultsToSlots = useCallback(() => {
+    const affected = doApplyControlDefaults(templateControls, draftSlots);
+    clearTimeout(applyFlashTimer.current);
+    if (affected > 0) {
+      setApplyFlash(`Applied to ${affected} slot${affected > 1 ? 's' : ''}`);
+    } else {
+      setApplyFlash('No changes');
     }
-  }, [draftSlots, setDraftSlots, templateControls]);
+    applyFlashTimer.current = setTimeout(() => setApplyFlash(null), 1800);
+  }, [draftSlots, doApplyControlDefaults, templateControls]);
+
+  /** Wraps setTemplateControls to also auto-apply slider defaults to slots. */
+  const handleControlsChange = useCallback(
+    (newControls: TemplateControl[]) => {
+      setTemplateControls(newControls);
+      doApplyControlDefaults(newControls, draftSlots);
+    },
+    [draftSlots, doApplyControlDefaults],
+  );
 
   const availableSlotLabels = useMemo(
     () => Array.from(new Set(
@@ -511,23 +469,29 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
         <div className="space-y-2 mt-1">
           <TemplateControlsEditor
             controls={templateControls}
-            onChange={setTemplateControls}
+            onChange={handleControlsChange}
             availableSlotLabels={availableSlotLabels}
             disabled={saving}
           />
           {templateControls.some((c) => c.type === 'slider' && c.effects.length > 0) && (
             <div className="flex items-center justify-between gap-2 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/40 px-2 py-1.5">
               <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                Apply current control defaults to linked slot intensities and slot tag preferences for authoring preview.
+                {applyFlash ?? 'Slider changes auto-apply to linked slots. Click to force re-apply.'}
               </div>
               <button
                 type="button"
                 onClick={handleApplyControlDefaultsToSlots}
                 disabled={saving}
-                className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+                className={clsx(
+                  'text-xs px-2 py-1 rounded border transition-colors',
+                  applyFlash
+                    ? 'border-emerald-400/60 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                    : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                  'disabled:opacity-50',
+                )}
               >
-                <Icon name="sliders" size={10} className="inline mr-1" />
-                Apply to slots
+                <Icon name={applyFlash ? 'check' : 'sliders'} size={10} className="inline mr-1" />
+                {applyFlash ? 'Applied' : 'Apply to slots'}
               </button>
             </div>
           )}

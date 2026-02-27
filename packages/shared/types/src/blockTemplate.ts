@@ -52,6 +52,8 @@ export interface TemplateSlotSelectionConfig {
 
 export interface TemplateSlot {
   slot_index: number;
+  /** Stable slot identifier for targeting control effects; optional for legacy templates. */
+  key?: string | null;
   label: string;
   role?: string | null;
   category?: string | null;

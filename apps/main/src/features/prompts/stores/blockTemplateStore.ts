@@ -93,9 +93,9 @@ interface BlockTemplateState {
   /** Save current pinned state for the old operation and restore for the new one */
   syncOperation: (operationType: string) => void;
 
-  // Control slider overrides (control_id -> value)
-  controlValues: Record<string, number>;
-  setControlValue: (controlId: string, value: number) => void;
+  // Template control overrides (control_id -> value)
+  controlValues: Record<string, number | string>;
+  setControlValue: (controlId: string, value: number | string) => void;
   resetControlValues: () => void;
 
   // Rolling
@@ -106,12 +106,14 @@ interface BlockTemplateState {
 interface PinnedOperationState {
   templateId: string | null;
   rollMode: 'once' | 'each';
-  controlValues: Record<string, number>;
+  controlValues: Record<string, number | string>;
 }
 
 function createEmptySlot(index: number): TemplateSlot {
   return {
     slot_index: index,
+    // Stable key so control effects can target slots without depending on label text.
+    key: (typeof crypto !== 'undefined' && 'randomUUID' in crypto) ? crypto.randomUUID() : `slot_${Date.now()}_${index}`,
     label: '',
     role: null,
     category: null,

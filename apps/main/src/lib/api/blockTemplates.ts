@@ -29,6 +29,8 @@ export type {
   BlockMatrixResponse,
   BlockTagDictionaryQuery,
   BlockTagDictionaryResponse,
+  BlockTagNormalizeRequest,
+  BlockTagNormalizeResponse,
   ReloadContentPacksQuery,
   ReloadContentPacksResponse,
   TemplateDiagnosticsResponse,
@@ -58,3 +60,4 @@ export const listBlockTagFacets = blockTemplatesApi.listBlockTagFacets;
 export const getBlockCatalog = blockTemplatesApi.getBlockCatalog;
 export const getBlockMatrix = blockTemplatesApi.getBlockMatrix;
 export const getBlockTagDictionary = blockTemplatesApi.getBlockTagDictionary;
+export const normalizeBlockTags = blockTemplatesApi.normalizeBlockTags;
