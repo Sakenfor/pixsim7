@@ -27,6 +27,7 @@ import {
   hasEnabledInteractions,
   parseHotspotAction,
   deriveScenePlaybackPhase,
+  isPlayingPhase,
   getTurnDeltaLabel,
   type NpcSlotAssignment,
   type HotspotAction,
@@ -126,11 +127,11 @@ function selectNpcExpressionForPhase(
   const desiredState =
     phase === 'awaiting_input'
       ? 'waiting_for_player'
-      : phase === 'playing'
+      : isPlayingPhase(phase)
         ? 'talking'
         : 'idle';
 
-  const desiredSurfaceType = phase === 'playing' ? 'dialogue' : 'portrait';
+  const desiredSurfaceType = isPlayingPhase(phase) ? 'dialogue' : 'portrait';
 
   return (
     expressions.find(
