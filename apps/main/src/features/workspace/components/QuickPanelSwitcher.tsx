@@ -11,11 +11,7 @@ import { Icon } from "@lib/icons";
 
 import { usePanelConfigStore } from "@features/panels";
 
-import { getBuiltinPreset } from "../lib/builtinPresets";
-import { createDefaultLayout } from "../lib/defaultWorkspaceLayout";
-import { clearDockview, buildLayoutFromRecipe } from "../lib/layoutRecipes";
-import { panelPlacementCoordinator } from "../lib/panelPlacementCoordinator";
-import { resolveWorkspaceDockview } from "../lib/resolveWorkspaceDockview";
+import { applyWorkspacePreset } from "../lib/layoutRecipes";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
 export function QuickPanelSwitcher() {
@@ -27,7 +23,6 @@ export function QuickPanelSwitcher() {
   const getPanelConfig = usePanelConfigStore((s) => s.getPanelConfig);
 
   const presets = useWorkspaceStore((s) => s.presets);
-  const getPresetLayout = useWorkspaceStore((s) => s.getPresetLayout);
   const setActivePreset = useWorkspaceStore((s) => s.setActivePreset);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
@@ -63,31 +58,10 @@ export function QuickPanelSwitcher() {
   };
 
   const handleLoadPreset = useCallback((presetId: string) => {
-    const host = resolveWorkspaceDockview().host;
-    const api = host?.api;
-    if (!api) return;
-
-    // User preset — apply serialized layout directly
-    const layout = getPresetLayout(presetId);
-    if (layout) {
-      api.fromJSON(layout);
-      setActivePreset("workspace", presetId);
-      setIsOpen(false);
-      return;
-    }
-
-    // Built-in preset — apply recipe
-    const builtin = getBuiltinPreset(presetId);
-    if (builtin && builtin.recipe.panels.length > 0) {
-      clearDockview(api);
-      buildLayoutFromRecipe(api, builtin.recipe, panelPlacementCoordinator.getFloatingPanelDefinitionIdSet());
-    } else {
-      clearDockview(api);
-      createDefaultLayout(api);
-    }
+    applyWorkspacePreset(presetId);
     setActivePreset("workspace", presetId);
     setIsOpen(false);
-  }, [getPresetLayout, setActivePreset]);
+  }, [setActivePreset]);
 
   return (
     <div className="relative" ref={dropdownRef}>

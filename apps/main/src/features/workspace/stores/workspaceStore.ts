@@ -156,8 +156,6 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       lastFloatingPanelStates: {},
       activePresetByScope: {
         workspace: "default",
-        "control-center": "control-center-default",
-        "asset-viewer": "asset-viewer-default",
       },
 
       closePanel: (panelId) => {
@@ -300,10 +298,8 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           pinnedQuickAddPanels: ['inspector'],
           lastFloatingPanelStates: {},
           activePresetByScope: {
-        workspace: "default",
-        "control-center": "control-center-default",
-        "asset-viewer": "asset-viewer-default",
-      },
+            workspace: "default",
+          },
         }),
 
       openFloatingPanel: (panelId, options = {}) => {
@@ -547,6 +543,3 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
   ),
 );
 
-// Legacy exports for backwards compatibility
-/** @deprecated Use LayoutPreset instead */
-export type WorkspacePreset = LayoutPreset;

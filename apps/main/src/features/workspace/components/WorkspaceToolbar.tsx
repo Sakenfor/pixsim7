@@ -1,10 +1,7 @@
 import { useState, useCallback } from "react";
 
 import { useWorkspacePresets } from "../hooks/useWorkspacePresets";
-import { getBuiltinPreset } from "../lib/builtinPresets";
-import { createDefaultLayout } from "../lib/defaultWorkspaceLayout";
-import { clearDockview, buildLayoutFromRecipe } from "../lib/layoutRecipes";
-import { panelPlacementCoordinator } from "../lib/panelPlacementCoordinator";
+import { applyWorkspacePreset } from "../lib/layoutRecipes";
 import { resolveWorkspaceDockview } from "../lib/resolveWorkspaceDockview";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
@@ -18,7 +15,6 @@ export function WorkspaceToolbar() {
 
   const presets = useWorkspacePresets("workspace");
   const savePreset = useWorkspaceStore((s) => s.savePreset);
-  const getPresetLayout = useWorkspaceStore((s) => s.getPresetLayout);
   const setActivePreset = useWorkspaceStore((s) => s.setActivePreset);
   const deletePreset = useWorkspaceStore((s) => s.deletePreset);
   const closedPanels = useWorkspaceStore((s) => s.closedPanels);
@@ -33,30 +29,9 @@ export function WorkspaceToolbar() {
   }, []);
 
   const handleLoadPreset = useCallback((presetId: string) => {
-    const host = getWorkspaceHost();
-    const api = host?.api;
-    if (!api) return;
-
-    // User preset — apply serialized layout directly
-    const layout = getPresetLayout(presetId);
-    if (layout) {
-      api.fromJSON(layout);
-      setActivePreset("workspace", presetId);
-      return;
-    }
-
-    // Built-in preset — apply recipe
-    const builtin = getBuiltinPreset(presetId);
-    if (builtin && builtin.recipe.panels.length > 0) {
-      clearDockview(api);
-      buildLayoutFromRecipe(api, builtin.recipe, panelPlacementCoordinator.getFloatingPanelDefinitionIdSet());
-    } else {
-      // Empty recipe (scope defaults) — rebuild default layout
-      clearDockview(api);
-      createDefaultLayout(api);
-    }
+    applyWorkspacePreset(presetId);
     setActivePreset("workspace", presetId);
-  }, [getWorkspaceHost, getPresetLayout, setActivePreset]);
+  }, [setActivePreset]);
 
   const handleSavePreset = useCallback((name: string) => {
     const host = getWorkspaceHost();
@@ -69,14 +44,9 @@ export function WorkspaceToolbar() {
   }, [getWorkspaceHost, savePreset]);
 
   const handleReset = useCallback(() => {
-    const host = getWorkspaceHost();
-    const api = host?.api;
-    if (api) {
-      clearDockview(api);
-      createDefaultLayout(api);
-    }
+    applyWorkspacePreset("default");
     reset();
-  }, [getWorkspaceHost, reset]);
+  }, [reset]);
 
   return (
     <div className="border-b px-3 py-2 flex gap-2 items-center bg-neutral-50 dark:bg-neutral-800 relative">

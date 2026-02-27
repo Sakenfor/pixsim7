@@ -8,7 +8,7 @@ import { SiblingPanelsDropdown } from "@lib/dockview/SiblingPanelsDropdown";
 import { initializePanels } from "@features/panels";
 
 import { useAppDockviewIntegration } from "../hooks/useAppDockviewIntegration";
-import { createDefaultLayout } from "../lib/defaultWorkspaceLayout";
+import { applyPreset } from "../lib/layoutRecipes";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
 // Watermark component for empty workspace
@@ -28,10 +28,10 @@ export function DockviewWorkspace() {
     floatingPanelDefinitionIdSet: floatingPanelIds,
   } = useAppDockviewIntegration("workspace");
 
-  // Wrap createDefaultLayout to pass floating panel IDs
+  // Apply the "default" builtin preset recipe (with ensurePanels safety-net)
   const defaultLayoutWithFloatingCheck = useCallback(
     (api: DockviewApi) => {
-      createDefaultLayout(api, [], floatingPanelIds);
+      applyPreset(api, "default", floatingPanelIds);
     },
     [floatingPanelIds]
   );

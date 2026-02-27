@@ -12,10 +12,7 @@ import { useSelectionStore } from '@features/graph';
 
 import { useWorkspaceStore } from '../stores/workspaceStore';
 
-import { getBuiltinPreset } from './builtinPresets';
-import { createDefaultLayout } from './defaultWorkspaceLayout';
-import { clearDockview, buildLayoutFromRecipe } from './layoutRecipes';
-import { panelPlacementCoordinator } from './panelPlacementCoordinator';
+import { applyWorkspacePreset } from './layoutRecipes';
 import { resolveWorkspaceDockview } from './resolveWorkspaceDockview';
 
 /**
@@ -53,31 +50,11 @@ export const workspaceManifest: ConsoleManifest = {
           execute: (presetId: unknown) => {
             if (typeof presetId !== 'string') throw new Error('presetId must be a string');
 
-            const host = resolveWorkspaceDockview().host;
-            const api = host?.api;
-            if (!api) throw new Error('Workspace dockview not available');
-
-            const store = useWorkspaceStore.getState();
-
-            // User preset — apply serialized layout directly
-            const layout = store.getPresetLayout(presetId);
-            if (layout) {
-              api.fromJSON(layout);
-              store.setActivePreset('workspace', presetId);
-              return `Loaded user preset: ${presetId}`;
+            if (!applyWorkspacePreset(presetId)) {
+              throw new Error(`Preset not found: ${presetId}`);
             }
 
-            // Built-in preset — apply recipe
-            const builtin = getBuiltinPreset(presetId);
-            if (builtin && builtin.recipe.panels.length > 0) {
-              clearDockview(api);
-              buildLayoutFromRecipe(api, builtin.recipe, panelPlacementCoordinator.getFloatingPanelDefinitionIdSet());
-            } else {
-              clearDockview(api);
-              createDefaultLayout(api);
-            }
-
-            store.setActivePreset('workspace', presetId);
+            useWorkspaceStore.getState().setActivePreset('workspace', presetId);
             return `Loaded preset: ${presetId}`;
           },
           params: [param('presetId', 'string', true, 'Preset ID to load')],

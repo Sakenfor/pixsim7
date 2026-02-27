@@ -36,6 +36,7 @@ const BUILTIN_PRESETS: BuiltinPreset[] = [
         { id: "inspector", position: { direction: "right", referencePanel: "graph" } },
         { id: "game", position: { direction: "below", referencePanel: "inspector" } },
       ],
+      ensurePanels: ["gallery", "health", "project", "graph", "inspector", "game"],
     },
   },
   {
@@ -119,23 +120,6 @@ const BUILTIN_PRESETS: BuiltinPreset[] = [
     },
   },
 
-  // ── Scope-specific defaults (empty recipes → use scope defaults) ──
-  {
-    id: "control-center-default",
-    name: "Default Control Center",
-    scope: "control-center",
-    description: "Default control center layout",
-    icon: "layout",
-    recipe: { panels: [] },
-  },
-  {
-    id: "asset-viewer-default",
-    name: "Default Asset Viewer",
-    scope: "asset-viewer",
-    description: "Default asset viewer layout",
-    icon: "layout",
-    recipe: { panels: [] },
-  },
 ];
 
 /** Convert a built-in preset to the LayoutPreset shape used by the store/UI. */

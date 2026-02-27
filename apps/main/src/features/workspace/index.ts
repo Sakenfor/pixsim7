@@ -25,7 +25,6 @@ export {
   type DockviewLayout,
   type LayoutPreset,
   type FloatingPanelState,
-  type WorkspacePreset,
   type WorkspaceState,
   type WorkspaceActions,
 } from "./stores/workspaceStore";
