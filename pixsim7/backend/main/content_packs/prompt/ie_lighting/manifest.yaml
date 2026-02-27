@@ -1,0 +1,28 @@
+id: ie_lighting
+title: "IE Lighting"
+description: "Block Matrix presets for the ie_lighting pack — reusable key and fill lighting blocks for image-edit scenes."
+
+matrix_presets:
+  - label: "Key lights (source × direction)"
+    query:
+      row_key: "tag:key_light"
+      col_key: "tag:direction"
+      role: "lighting"
+      category: "key"
+      package_name: "ie_lighting"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent,key_light,warmth,direction,contrast"
+      required_tag_keys: "key_light"
+
+  - label: "Fill lights (source × purpose)"
+    query:
+      row_key: "tag:fill_light"
+      col_key: "tag:purpose"
+      role: "lighting"
+      category: "fill"
+      package_name: "ie_lighting"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent,fill_light,warmth,purpose"
+      required_tag_keys: "fill_light"

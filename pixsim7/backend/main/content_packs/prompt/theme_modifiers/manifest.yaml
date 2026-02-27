@@ -42,3 +42,18 @@ matrix_presets:
       expected_tag_keys: "intent,modifier_family,modifier_target,wear_level,damage_level,condition_notes"
       required_tag_keys: "modifier_family,modifier_target,wear_level,damage_level"
 
+  - label: "Wardrobe allure (level × modesty)"
+    query:
+      row_key: "tag:allure_level"
+      col_key: "tag:modesty_level"
+      role: "style"
+      category: "wardrobe_modifier"
+      package_name: "theme_modifiers"
+      tags: "modifier_family:allure,modifier_target:wardrobe"
+      include_empty: true
+      include_drift_report: true
+      expected_row_values: "preserve,subtle,medium,high"
+      expected_col_values: "balanced,daring"
+      expected_tag_keys: "intent,modifier_family,modifier_target,allure_level,modesty_level,tightness"
+      required_tag_keys: "modifier_family,modifier_target,allure_level"
+
