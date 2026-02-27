@@ -7,8 +7,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import {
   ContextMenuProvider,
   ContextMenuPortal,
+  PanelPropertiesPopup,
 } from '@lib/dockview';
-import { PanelPropertiesPopup } from '@lib/dockview';
 import { useContentInset } from '@lib/layout/edgeInsets';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
@@ -106,33 +106,33 @@ function App() {
             } : undefined}
           >
             <ErrorBoundary>
-            <Suspense fallback={<RouteLoadingFallback />}>
-              <Routes>
-                {/* Auth routes (not protected) */}
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
+              <Suspense fallback={<RouteLoadingFallback />}>
+                <Routes>
+                  {/* Auth routes (not protected) */}
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
 
-                {/* Home */}
-                <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+                  {/* Home */}
+                  <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
 
-                {/* Dynamic routes from module registry */}
-                {dynamicRoutes.map(page => {
-                  if (!page.component) return null;
-                  const Component = page.component;
-                  return (
-                    <Route
-                      key={page.id}
-                      path={page.route}
-                      element={<ProtectedRoute><Component /></ProtectedRoute>}
-                    />
-                  );
-                })}
+                  {/* Dynamic routes from module registry */}
+                  {dynamicRoutes.map(page => {
+                    if (!page.component) return null;
+                    const Component = page.component;
+                    return (
+                      <Route
+                        key={page.id}
+                        path={page.route}
+                        element={<ProtectedRoute><Component /></ProtectedRoute>}
+                      />
+                    );
+                  })}
 
-                {/* Catch-all redirect */}
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </Suspense>
-          </ErrorBoundary>
+                  {/* Catch-all redirect */}
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </Suspense>
+            </ErrorBoundary>
           </div>
           {/* Control Center - plugin-based (only when authenticated) */}
           {isAuthenticated && (
