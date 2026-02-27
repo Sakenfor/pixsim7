@@ -1,0 +1,15 @@
+id: image_edit_scenes.victorian_detective
+title: "Scene: Victorian Detective Study"
+description: "Victorian study environment, gas-lamp lighting, wardrobe accents, desk activities, detective placement, and intimate disruption mood blocks."
+
+matrix_presets:
+  - label: "Victorian detective (role × category)"
+    query:
+      row_key: "role"
+      col_key: "category"
+      package_name: "image_edit_scenes"
+      tags: "genre:detective"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent,genre"
+      required_tag_keys: "intent"

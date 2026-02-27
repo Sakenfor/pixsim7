@@ -1,0 +1,386 @@
+version: "1.0.0"
+
+blocks:
+
+  # ═══════════════════════════════════════════════════════════════════
+  # ENVIRONMENT — Victorian study variants
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_bg_victorian_study_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Place her inside a worn Victorian study. Heavy wooden desk cluttered
+      with scattered case papers, maps, and handwritten notes. The desk
+      aligns naturally with her current posture so she appears leaned
+      slightly forward over it without changing her pose. Bookshelves line
+      the walls, leather-bound volumes packed tight, a globe on a side table.
+    tags:
+      intent: modify
+      layer: background
+      location: victorian_study
+      setting_style: period
+      genre: detective
+    complexity_level: complex
+
+  - block_id: ie_bg_victorian_study_02
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Place her in a cluttered detective's study. Oak-panelled walls,
+      a broad writing desk covered in open folders, magnifying glass,
+      ink bottles, and a half-rolled map pinned at the corners. A worn
+      armchair sits beside the desk. Curtains are drawn, sealing the
+      room from the outside world.
+    tags:
+      intent: modify
+      layer: background
+      location: victorian_study
+      setting_style: period
+      genre: detective
+    complexity_level: complex
+
+  - block_id: ie_bg_victorian_study_03
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Place her in a small private study off a larger library. The desk
+      is narrower, papers stacked in precarious columns, a brass desk
+      lamp unlit, a coat draped over the chair behind her. The walls
+      close in — the space is intimate by architecture, not choice.
+    tags:
+      intent: modify
+      layer: background
+      location: victorian_study
+      setting_style: period
+      genre: detective
+    complexity_level: complex
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LIGHTING — gas-lamp intimate variants
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_key_gas_lamp_01
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      Warm gas-lamp light pools softly across nearby surfaces and figures,
+      creating a cozy enclosed atmosphere. Avoid sharp outlines or dramatic
+      edge highlights. Illumination should feel close and atmospheric,
+      falling off into deep amber shadow at the room edges.
+    tags:
+      intent: modify
+      key_light: gas_lamp
+      warmth: warm
+      direction: desk_level
+      contrast: low
+    complexity_level: moderate
+
+  - block_id: ie_key_gas_lamp_02
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      Two gas-lamp sconces on the wall behind cast overlapping pools
+      of amber light. The illumination wraps around figures from behind
+      and above, creating warm rim-light on hair and shoulders while
+      nearby surfaces glow from reflected light below.
+    tags:
+      intent: modify
+      key_light: gas_lamp
+      warmth: warm
+      direction: behind_above
+      contrast: medium
+    complexity_level: moderate
+
+  - block_id: ie_key_gas_lamp_03
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      A single desk lamp with a green glass shade provides the only
+      light source, casting a concentrated warm pool across the
+      immediate work surface. Everything beyond arm's reach dissolves
+      into soft darkness. Faces are lit from below and to the side.
+    tags:
+      intent: modify
+      key_light: gas_lamp
+      warmth: warm
+      direction: desk_below
+      contrast: high
+    complexity_level: moderate
+
+  - block_id: ie_fill_fireplace_glow
+    role: lighting
+    category: fill
+    kind: single_state
+    text: >-
+      Low fireplace glow from across the room provides a faint secondary
+      fill, adding warmth to the shadow side without competing with the
+      primary light. Embers pulse slightly, casting barely perceptible
+      movement into the stillness.
+    tags:
+      intent: modify
+      fill_light: fireplace
+      warmth: warm
+      purpose: shadow_softening
+    complexity_level: simple
+
+  # ═══════════════════════════════════════════════════════════════════
+  # STYLE — wardrobe accents (subtle modification)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_style_victorian_accent_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Keep her clothing unchanged except for one subtle period accent
+      integrated naturally into what she already wears — a thin cameo
+      ribbon at the throat, or lace trim visible at a cuff. Maintain
+      her exact silhouette. The accent should feel incidental, not
+      costumed.
+    tags:
+      intent: modify
+      aesthetic: victorian_accent
+      genre: period
+      modification: minimal
+    complexity_level: simple
+
+  - block_id: ie_style_victorian_accent_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Her clothing remains as-is with a single subtle addition — a small
+      pocket watch on a chain tucked into a pocket or looped at the waist.
+      The metal catches the gas-light. Her silhouette does not change.
+    tags:
+      intent: modify
+      aesthetic: victorian_accent
+      genre: period
+      modification: minimal
+    complexity_level: simple
+
+  - block_id: ie_style_victorian_accent_03
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Clothing unchanged. A single dark velvet ribbon is tied loosely at
+      her wrist or around her fingers, as if she absently picked it up
+      from the desk. It reads as a found object, not a deliberate accessory.
+    tags:
+      intent: modify
+      aesthetic: victorian_accent
+      genre: period
+      modification: minimal
+    complexity_level: simple
+
+  # ═══════════════════════════════════════════════════════════════════
+  # ACTIVITY — what the subject is doing at the desk
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_activity_sifting_papers_01
+    role: action
+    category: desk_activity
+    kind: single_state
+    text: >-
+      She is idly sifting through {{detective}}'s papers, lifting and
+      shifting documents in a deliberately careless way, creating mild
+      disorder across the desk. Pages slide, overlap, and drift off alignment.
+    tags:
+      intent: modify
+      activity: paper_sifting
+      mood: playful
+      genre: detective
+    complexity_level: moderate
+
+  - block_id: ie_activity_sifting_papers_02
+    role: action
+    category: desk_activity
+    kind: single_state
+    text: >-
+      She turns pages without reading them, fingertips dragging across
+      handwritten lines, occasionally lifting a sheet to peer at the one
+      beneath, then letting it fall back at a different angle than she
+      found it.
+    tags:
+      intent: modify
+      activity: paper_sifting
+      mood: playful
+      genre: detective
+    complexity_level: moderate
+
+  - block_id: ie_activity_sifting_papers_03
+    role: action
+    category: desk_activity
+    kind: single_state
+    text: >-
+      She holds a folded map open with one hand, her other hand idly
+      rearranging the notes beneath it, stacking and unstacking without
+      system, the careful order of the desk slowly dismantling under
+      her attention.
+    tags:
+      intent: modify
+      activity: paper_sifting
+      mood: playful
+      genre: detective
+    complexity_level: moderate
+
+  - block_id: ie_activity_reading_idle_01
+    role: action
+    category: desk_activity
+    kind: single_state
+    text: >-
+      She reads a single document held loosely in one hand, her posture
+      relaxed, the other hand resting flat on the desk among the papers,
+      as if she has all the time in the world and none of it is {{detective}}'s.
+    tags:
+      intent: modify
+      activity: reading
+      mood: composed
+      genre: detective
+    complexity_level: simple
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PLACEMENT — detective character interaction variants
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_char_detective_behind_01
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{detective}} stands extremely close behind her, leaning in,
+      reaching past her slightly as if to rescue a particular document
+      or stop her from misplacing evidence. One hand brushes lightly
+      near hers as {{detective}} tries to gather the papers she has
+      disturbed. {{detective}}'s expression mixes restrained exasperation
+      with clear distraction.
+    tags:
+      intent: add
+      character_type: detective
+      posture: leaning_over
+      proximity: intimate
+      genre: detective
+    complexity_level: complex
+
+  - block_id: ie_char_detective_behind_02
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{detective}} stands directly behind her, one hand braced on the
+      desk edge beside her hip, the other reaching across to retrieve a
+      file she has just displaced. {{detective}} is close enough that
+      {{detective}}'s waistcoat presses against her back when leaning
+      forward. {{detective}}'s jaw is set, focus split between the papers
+      and her proximity.
+    tags:
+      intent: add
+      character_type: detective
+      posture: braced_reaching
+      proximity: intimate
+      genre: detective
+    complexity_level: complex
+
+  - block_id: ie_char_detective_behind_03
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{detective}} hovers just behind and to her right, head angled
+      down toward the desk, following her hands as they move through
+      {{detective}}'s papers. One arm extends past her shoulder to point
+      at a specific document. {{detective}} has not quite touched her but
+      the distance is measured in inches, irritation palpable in the
+      tension of {{detective}}'s outstretched hand.
+    tags:
+      intent: add
+      character_type: detective
+      posture: hovering_pointing
+      proximity: near
+      genre: detective
+    complexity_level: complex
+
+  - block_id: ie_char_detective_behind_04
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{detective}} leans past her from behind, both hands flat on the
+      desk on either side of her, bracketing her position, chin nearly
+      above her shoulder as {{detective}} reads what she is holding.
+      {{detective}} has forgotten {{detective}}'s own indignation.
+      {{detective}}'s breathing is steady but deliberate.
+    tags:
+      intent: add
+      character_type: detective
+      posture: bracketing
+      proximity: intimate
+      genre: detective
+    complexity_level: complex
+
+  # ═══════════════════════════════════════════════════════════════════
+  # MOOD — intimate disruption / tension
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_mood_intimate_disruption_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Mood: intimate disruption. She unsettles both {{detective}}'s
+      files and {{detective}}'s composure. Playful chaos replacing
+      clinical order. Their shadows fall softly into the room behind them.
+    tags:
+      intent: modify
+      atmosphere: intimate_disruption
+      tension: medium
+      mood: warm
+      genre: detective
+    complexity_level: simple
+
+  - block_id: ie_mood_intimate_disruption_02
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Mood: quiet provocation. The disorder she creates is not
+      accidental — it is a conversational gambit conducted entirely
+      through displaced paperwork. The room holds its breath between
+      them. Their shadows merge on the wall behind the desk.
+    tags:
+      intent: modify
+      atmosphere: intimate_disruption
+      tension: medium
+      mood: warm
+      genre: detective
+    complexity_level: moderate
+
+  - block_id: ie_mood_intimate_disruption_03
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Mood: controlled tension. Every surface in the room suggests
+      order — the shelved books, the labelled files — except the desk
+      where she sits and {{detective}} standing too close behind her.
+      The disruption is localised and deliberate. Warm light conspires
+      with the tight framing to make the room feel smaller than it is.
+    tags:
+      intent: modify
+      atmosphere: intimate_disruption
+      tension: high
+      mood: warm
+      genre: detective
+    complexity_level: moderate

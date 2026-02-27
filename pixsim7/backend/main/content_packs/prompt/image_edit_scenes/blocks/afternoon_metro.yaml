@@ -1,0 +1,516 @@
+version: "1.0.0"
+
+blocks:
+
+  # ═══════════════════════════════════════════════════════════════════
+  # AFTERNOON METRO — environment, lighting, camera, composition,
+  # placement, character descriptions, action, mood
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ── environment — metro car afternoon variants ─────────────────
+
+  - block_id: ie_bg_metro_afternoon_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Transform the surrounding space into the interior of an afternoon metro
+      car. Brushed-steel grab poles run floor to ceiling, moulded plastic seats
+      line both sides, a strip of route map sits above the windows. Warm
+      afternoon sunlight pours through large windows on one side, casting long
+      gold bars across the aisle floor. The car is moderately occupied —
+      standing passengers visible at comfortable intervals without crowding.
+      Her position reads as a natural standing pause near a centre pole.
+    tags:
+      intent: modify
+      layer: background
+      location: metro_car
+      time_of_day: afternoon
+      occupancy: moderate
+      passenger_state: standing
+      setting_style: urban_transit
+    complexity_level: complex
+
+  - block_id: ie_bg_metro_afternoon_02
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Place her inside a modern city metro carriage in afternoon light.
+      Ribbed aluminium walls, rubber-edged doors sealed shut between stops,
+      overhead handles swaying gently. Sunlight enters at a low angle through
+      the right-side windows, warming the neutral grey interior with amber
+      tones. A handful of seated passengers read or scroll phones in the
+      background. The aisle around her is clear enough for a small standing
+      group but narrow enough that proximity is architectural.
+    tags:
+      intent: modify
+      layer: background
+      location: metro_car
+      time_of_day: afternoon
+      occupancy: moderate
+      passenger_state: standing
+      setting_style: urban_transit
+    complexity_level: complex
+
+  # ── lighting — metro window sun key ────────────────────────────
+
+  - block_id: ie_key_metro_window_sun_01
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      Warm afternoon sunlight streams through the metro windows from one
+      side, casting defined gold highlight bands across figures and surfaces.
+      The directional light sculpts contours with medium contrast, leaving
+      the opposite side in soft warm shadow. Dust motes drift visibly
+      through the light shafts.
+    tags:
+      intent: modify
+      key_light: metro_window_sun
+      warmth: warm
+      direction: side
+      contrast: medium
+    complexity_level: moderate
+
+  - block_id: ie_key_metro_window_sun_02
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      Low-angle afternoon sun enters the metro car at window height,
+      painting horizontal stripes of golden light across the standing
+      group. Highlights trace shoulders, cheekbones, and hands while
+      leaving torsos in softer half-light. The warmth saturates skin
+      tones and warms the steel interior.
+    tags:
+      intent: modify
+      key_light: metro_window_sun
+      warmth: warm
+      direction: side
+      contrast: high
+    complexity_level: moderate
+
+  # ── lighting — metro window bounce fill ────────────────────────
+
+  - block_id: ie_fill_metro_window_bounce_01
+    role: lighting
+    category: fill
+    kind: single_state
+    text: >-
+      Sunlight bouncing off the metro's interior surfaces provides a soft
+      secondary fill on shadow-side faces and bodies. The bounce carries
+      the same warm tone as the key light but at reduced intensity,
+      keeping shadows open and readable without flattening the modelling.
+    tags:
+      intent: modify
+      fill_light: metro_window_bounce
+      warmth: warm
+      purpose: shadow_softening
+    complexity_level: simple
+
+  # ── camera — metro group close angle ───────────────────────────
+
+  - block_id: ie_cam_metro_group_close_01
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Camera positioned at eye level within arm's reach of the standing
+      group, angled to capture all figures in a compressed frame. The
+      nearest man and {{subject}} dominate the foreground while the
+      remaining figures layer tightly behind. Shallow depth of field
+      softens the metro interior beyond the group.
+    tags:
+      intent: modify
+      camera_angle: metro_group_close
+      perspective: eye_level
+    complexity_level: moderate
+
+  - block_id: ie_cam_metro_group_close_02
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Tight group-level camera, positioned slightly below eye height
+      and angled upward just enough to compress the vertical space
+      between figures. The framing packs shoulders, faces, and the
+      overhead grab-rail into a single layered composition. Background
+      passengers fall into bokeh.
+    tags:
+      intent: modify
+      camera_angle: metro_group_close
+      perspective: compressed
+    complexity_level: moderate
+
+  # ── composition — tight intimate group framing ─────────────────
+
+  - block_id: ie_comp_tight_group_primary_01
+    role: composition
+    category: framing
+    kind: single_state
+    text: >-
+      Frame the group in a tight intimate composition. {{subject}} and
+      the nearest man occupy the visual centre, their proximity the
+      focal anchor. The second and third men layer close behind and to
+      the sides, their shoulders overlapping in the frame. Negative
+      space between figures is minimal — the grouping reads as a single
+      interconnected mass rather than separate individuals.
+    tags:
+      intent: modify
+      framing: tight_intimate_group
+      focus_priority: nearest_male_primary
+    complexity_level: moderate
+
+  # ── placement — subject anchor at pole ─────────────────────────
+
+  - block_id: ie_place_subject_pole_stand_01
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      She stands in the foreground gripping a vertical grab pole, her
+      body aligned naturally along its axis. The pole anchors her
+      position in frame and provides a spatial reference for the
+      surrounding figures. Her posture remains exactly as in the
+      source image.
+    tags:
+      intent: add
+      layer: foreground
+      setting: metro
+      anchor: pole
+      subject_position: standing
+    complexity_level: simple
+
+  # ── placement — nearest man (primary, intimate beside) ─────────
+
+  - block_id: ie_place_metro_primary_beside_01
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{elderly_man_1}} stands immediately beside her, sharing the same
+      grab pole. The gap between their arms is inches — close enough
+      that the metro's sway periodically erases it. He occupies the
+      near midground, his shoulder line level with hers.
+    tags:
+      intent: add
+      layer: midground
+      setting: metro
+      focus_priority: primary
+      proximity: intimate
+      placement: beside
+    complexity_level: moderate
+
+  - block_id: ie_place_metro_primary_beside_02
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{elderly_man_1}} stands near the same grab pole, a comfortable
+      arm's length from her. There is visible daylight between them —
+      enough that each sways independently with the carriage. He
+      occupies the near midground at a relaxed standing distance.
+    tags:
+      intent: add
+      layer: midground
+      setting: metro
+      focus_priority: primary
+      proximity: relaxed
+      placement: beside
+    complexity_level: moderate
+
+  - block_id: ie_place_metro_primary_beside_03
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{elderly_man_1}} stands beside her at the grab pole, close
+      enough that their elbows occasionally brush when the carriage
+      rocks. The gap between them is narrow but present — a few
+      inches of air that the metro's rhythm intermittently compresses.
+    tags:
+      intent: add
+      layer: midground
+      setting: metro
+      focus_priority: primary
+      proximity: close
+      placement: beside
+    complexity_level: moderate
+
+  # ── placement — second man (secondary, close beside) ───────────
+
+  - block_id: ie_place_metro_secondary_beside_01
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{elderly_man_2}} stands beside her on the opposite side from
+      {{elderly_man_1}}, one hand on an overhead strap. He is close
+      enough that his elbow occasionally brushes her arm when the
+      carriage rocks. He occupies the midground at a comfortable but
+      undeniable closeness.
+    tags:
+      intent: add
+      layer: midground
+      setting: metro
+      focus_priority: secondary
+      proximity: close
+      placement: beside
+    complexity_level: moderate
+
+  - block_id: ie_place_metro_secondary_beside_02
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{elderly_man_2}} stands on the opposite side from {{elderly_man_1}},
+      gripping an overhead strap at a comfortable distance. A full step
+      separates him from her — enough room for another passenger to pass
+      between them. He occupies the midground at a relaxed interval.
+    tags:
+      intent: add
+      layer: midground
+      setting: metro
+      focus_priority: secondary
+      proximity: relaxed
+      placement: beside
+    complexity_level: moderate
+
+  - block_id: ie_place_metro_secondary_beside_03
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{elderly_man_2}} stands immediately beside her on the opposite
+      side from {{elderly_man_1}}, sharing the same overhead strap. The
+      gap between their arms is inches — the carriage sway periodically
+      presses his shoulder against hers. He occupies the midground at
+      an unmistakable closeness.
+    tags:
+      intent: add
+      layer: midground
+      setting: metro
+      focus_priority: secondary
+      proximity: intimate
+      placement: beside
+    complexity_level: moderate
+
+  # ── placement — third man (tertiary, close watching) ───────────
+
+  - block_id: ie_place_metro_tertiary_watch_01
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{elderly_man_3}} stands slightly behind the other two, angled
+      inward toward the group. He holds a ceiling strap with one hand,
+      his weight settled, watching the interaction between her and the
+      nearer men with quiet attentiveness. He occupies the outer edge
+      of the midground.
+    tags:
+      intent: add
+      layer: midground
+      setting: metro
+      focus_priority: tertiary
+      proximity: close
+      reaction_mode: watching
+    complexity_level: moderate
+
+  - block_id: ie_place_metro_tertiary_watch_02
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{elderly_man_3}} stands a step behind the other two, angled
+      toward the group but at a relaxed remove. He grips a ceiling
+      strap, weight settled, watching the interaction from a comfortable
+      observer's distance. He occupies the outer midground with clear
+      space between himself and the nearer figures.
+    tags:
+      intent: add
+      layer: midground
+      setting: metro
+      focus_priority: tertiary
+      proximity: relaxed
+      reaction_mode: watching
+    complexity_level: moderate
+
+  - block_id: ie_place_metro_tertiary_watch_03
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{elderly_man_3}} stands close behind {{elderly_man_1}}, angled
+      inward so his shoulder nearly overlaps the nearer man's. He holds
+      a ceiling strap with one hand, the other resting at his side,
+      his body swaying in sync with the group. The gap between him and
+      her is barely wider than the others — the trio forms a single
+      tight cluster.
+    tags:
+      intent: add
+      layer: midground
+      setting: metro
+      focus_priority: tertiary
+      proximity: intimate
+      reaction_mode: watching
+    complexity_level: moderate
+
+  # ── character descriptions — elderly male trio ─────────────────
+
+  - block_id: ie_char_elderly_male_primary_01
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{elderly_man_1}}, silver-haired with deep laugh lines, broad
+      shoulders slightly rounded with age. He wears a well-kept linen
+      shirt, sleeves rolled to the forearms, a simple watch on one
+      wrist. His expression carries easy warmth — mouth set in a
+      half-smile, eyes attentive and unhurried.
+    tags:
+      intent: add
+      character_type: elderly_male
+      focus_priority: primary
+    complexity_level: moderate
+
+  - block_id: ie_char_elderly_male_secondary_01
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{elderly_man_2}}, lean and upright, thinning grey hair combed
+      neatly back. He wears a lightweight cardigan over a collared
+      shirt, reading glasses folded in his breast pocket. His face is
+      angular, expression amused — watching the group dynamic with the
+      detached pleasure of someone content to be included.
+    tags:
+      intent: add
+      character_type: elderly_male
+      focus_priority: secondary
+    complexity_level: moderate
+
+  - block_id: ie_char_elderly_male_tertiary_01
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{elderly_man_3}}, stocky build, white stubble on a weathered
+      jaw, wearing a dark polo shirt and flat cap. His posture is
+      relaxed but observant — arms folded when not gripping the strap,
+      eyes moving between her and his companions with quiet good humour.
+    tags:
+      intent: add
+      character_type: elderly_male
+      focus_priority: tertiary
+    complexity_level: moderate
+
+  # ── action — playful engagement beats ──────────────────────────
+
+  - block_id: ie_action_metro_playful_engage_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      She tilts her head toward {{elderly_man_1}} with a direct, teasing
+      gaze, one hand adjusting her hair behind her ear in an unhurried
+      gesture that narrows the space between them. Her smile is slight,
+      confident, inviting a response without demanding one.
+    tags:
+      intent: add
+      interaction_style: playful_flirt
+      subject_agency: active
+      gaze: teasing
+      gesture: hair_adjust
+      boldness: moderate
+    complexity_level: moderate
+
+  - block_id: ie_action_metro_playful_engage_02
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      She leans close to {{elderly_man_1}} as if speaking over the
+      carriage noise, her fingertips resting briefly on his forearm for
+      balance. Her gaze is direct and warm, the touch casual yet
+      deliberate — a small anchor of contact held a beat longer than
+      the noise requires.
+    tags:
+      intent: add
+      interaction_style: playful_flirt
+      subject_agency: active
+      gaze: direct
+      gesture: brief_arm_touch
+      boldness: bold
+    complexity_level: moderate
+
+  - block_id: ie_action_metro_playful_engage_03
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      She stands with a warm, relaxed expression, her gaze drifting
+      naturally toward {{elderly_man_1}} without fixing on him. No overt
+      gesture — just an open posture and the faintest upturn at the
+      corner of her mouth. Her hands remain on the pole, her body
+      language receptive but unhurried.
+    tags:
+      intent: add
+      interaction_style: playful_flirt
+      subject_agency: active
+      gaze: soft
+      gesture: none
+      boldness: subtle
+    complexity_level: simple
+
+  # ── action — metro sway contact beat ───────────────────────────
+
+  - block_id: ie_action_metro_sway_contact_01
+    role: action
+    category: motion_beat
+    kind: single_state
+    text: >-
+      The metro sways through a curve and the standing group shifts
+      together. Shoulders brush, hands tighten on poles and straps,
+      and the gaps between figures compress momentarily before
+      settling back to their already-close baseline. The contact
+      reads as incidental and continuous — architecture in motion.
+    tags:
+      intent: add
+      vehicle_motion: metro_sway
+      contact_dynamic: maintained_proximity
+    complexity_level: moderate
+
+  # ── mood — playful group proximity ─────────────────────────────
+
+  - block_id: ie_mood_playful_group_proximity_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Mood: warm afternoon playfulness within arm's reach. The tight
+      group framing, the golden metro light, and the constant low-grade
+      sway conspire to make proximity feel natural and welcome rather
+      than incidental. There is an easy generational warmth — her
+      confidence centres the group, their attentiveness answers it.
+      The atmosphere is buoyant, unhurried, and gently charged.
+    tags:
+      intent: modify
+      atmosphere: playful_group_proximity
+      time_of_day: afternoon
+      mood: warm
+      tension: medium
+    complexity_level: moderate

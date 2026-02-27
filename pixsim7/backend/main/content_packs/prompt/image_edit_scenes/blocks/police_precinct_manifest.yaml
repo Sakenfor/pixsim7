@@ -1,0 +1,15 @@
+id: image_edit_scenes.police_precinct
+title: "Scene: Police Precinct Break Room"
+description: "Police break room environment, uniform aesthetics, coworker placement, station lighting, partner-behind-glass depth, and restrained tension mood blocks."
+
+matrix_presets:
+  - label: "Police precinct (role × category)"
+    query:
+      row_key: "role"
+      col_key: "category"
+      package_name: "image_edit_scenes"
+      tags: "genre:police"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent,genre"
+      required_tag_keys: "intent"

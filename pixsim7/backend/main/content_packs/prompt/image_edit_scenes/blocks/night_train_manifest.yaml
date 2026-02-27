@@ -1,0 +1,15 @@
+id: image_edit_scenes.night_train
+title: "Scene: Night Train"
+description: "Luxury night train environment, conductor placement and character descriptions, wall lamp and window reflection lighting, and confined nocturnal tension mood blocks."
+
+matrix_presets:
+  - label: "Night train (role × category)"
+    query:
+      row_key: "role"
+      col_key: "category"
+      package_name: "image_edit_scenes"
+      tags: "location:night_train"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent"
+      required_tag_keys: "intent"

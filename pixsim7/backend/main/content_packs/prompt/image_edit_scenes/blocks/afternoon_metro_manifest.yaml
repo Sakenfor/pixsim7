@@ -1,0 +1,15 @@
+id: image_edit_scenes.afternoon_metro
+title: "Scene: Afternoon Metro"
+description: "Metro car environment, window-sun lighting, group camera angles, multi-figure placement with proximity variants, elderly male character descriptions, playful engagement actions, and group proximity mood blocks."
+
+matrix_presets:
+  - label: "Afternoon metro (role × category)"
+    query:
+      row_key: "role"
+      col_key: "category"
+      package_name: "image_edit_scenes"
+      tags: "setting:metro"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent"
+      required_tag_keys: "intent"

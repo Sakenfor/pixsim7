@@ -1,0 +1,300 @@
+version: "1.0.0"
+
+blocks:
+
+  # ═══════════════════════════════════════════════════════════════════
+  # NIGHT TRAIN — environment, placement, lighting, mood
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ── environment — luxury night train variants ──────────────────
+
+  - block_id: ie_bg_night_train_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Transform the surrounding space into the interior of an older luxury
+      night train. Polished dark wood paneling lines the walls, slightly
+      dulled brass rails run along overhead luggage racks. Deep upholstered
+      seating in faded burgundy flanks the narrow aisle. Dim yellow wall
+      lamps cast warm, low pools of light along the carriage walls.
+    tags:
+      intent: modify
+      layer: background
+      location: night_train
+      setting_style: vintage_luxury
+    complexity_level: complex
+
+  - block_id: ie_bg_night_train_02
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      The interior of a pre-war sleeper carriage. Walnut veneer panels
+      with hairline cracks in the lacquer, brass fittings tarnished to a
+      dull gold, heavy curtains half-drawn across compartment doorways.
+      The aisle is barely wide enough for two people to pass. Overhead
+      fixtures cast downward cones of amber light between stretches of
+      warm shadow. The carpet underfoot is patterned and slightly worn.
+    tags:
+      intent: modify
+      layer: background
+      location: night_train
+      setting_style: vintage_luxury
+    complexity_level: complex
+
+  - block_id: ie_bg_night_train_03
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      The corridor of a faded Orient Express-era carriage. Narrow passage,
+      polished wood dado rail at hip height, etched glass panels in
+      compartment doors, brass handles reflecting warm lamp-light. The
+      ceiling is low, upholstered in quilted fabric. Shallow alcoves
+      between compartments compress the space further. Near a vestibule
+      junction the corridor narrows, the carriage's gentle sway implied
+      by the slight blur of objects at the frame edges.
+    tags:
+      intent: modify
+      layer: background
+      location: night_train
+      setting_style: vintage_luxury
+    complexity_level: complex
+
+  # ── placement — conductor depth (close, train aisle) ───────────
+
+  - block_id: ie_place_conductor_close_01
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{conductor}} lingers in the confined aisle immediately behind {{subject}}.
+      The narrow carriage forces {{conductor}} close — shoulder line
+      nearly overlapping {{subject}}'s in the frame, separated by inches
+      rather than choice. The aisle offers no room to step aside.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      setting: train
+      visibility: full
+    complexity_level: moderate
+
+  - block_id: ie_place_conductor_close_02
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{conductor}} stands directly behind {{subject}} in the aisle, the
+      carriage width leaving no lateral clearance. {{conductor}}'s uniform
+      brushes the air close to {{subject}}'s back. The train's subtle sway
+      compresses the remaining distance between them at irregular intervals.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      setting: train
+      visibility: full
+    complexity_level: moderate
+
+  # ── placement — conductor character description ────────────────
+
+  - block_id: ie_char_conductor_01
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{conductor}}, slightly shabby in a worn uniform — creases from long
+      shifts visible across the jacket, collar loosened at the throat.
+      A few tickets or folded slips have fallen to the floor. {{conductor}}
+      bends to gather them, forced to lean inward within the tight aisle.
+      As {{conductor}} straightens, one hand steadies against the brass
+      rail. The motion is unhurried, the carriage's subtle sway keeping
+      {{conductor}} close a moment longer than necessary before adjusting
+      posture.
+    tags:
+      intent: add
+      character_type: conductor
+      posture: bending_straightening
+      proximity: close
+      genre: train
+    complexity_level: complex
+
+  - block_id: ie_char_conductor_02
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{conductor}}, uniform softened by years of service — brass buttons
+      dulled, cap slightly askew. {{conductor}} checks a leather-bound
+      manifest, turning sideways in the aisle but misjudging the clearance.
+      {{conductor}} pauses, pen poised, mouthing a question lost under the
+      noise of the wheels. {{conductor}} tilts closer to repeat it, one
+      hand braced on the paneling. The train rocks gently and
+      {{conductor}} holds the leaning posture a beat too long.
+    tags:
+      intent: add
+      character_type: conductor
+      posture: tilting_close
+      proximity: intimate
+      genre: train
+    complexity_level: complex
+
+  - block_id: ie_char_conductor_03
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{conductor}} reaches overhead to adjust a luggage rack latch, torso
+      stretching upward, arm extended. {{conductor}}'s worn jacket rides
+      up, exposing a strip of shirt beneath. The narrow aisle leaves no
+      room to manoeuvre. {{conductor}} lowers the arm slowly, fingertips
+      trailing the brass rail back down to waist height before stepping
+      back — one measured half-step that the carriage promptly erases
+      with its next sway.
+    tags:
+      intent: add
+      character_type: conductor
+      posture: reaching_overhead
+      proximity: intimate
+      genre: train
+    complexity_level: complex
+
+  # ── lighting — wall lamps (train) ──────────────────────────────
+
+  - block_id: ie_key_wall_lamps_01
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      Dim yellow wall lamps mounted at intervals along the carriage
+      cast warm, low pools of light. The illumination integrates
+      naturally with existing tones in the scene, preserving consistent
+      and realistic shading. Between the pools, warm shadow gathers,
+      softening edges and compressing depth.
+    tags:
+      intent: modify
+      key_light: wall_lamps
+      warmth: warm
+      direction: side
+      contrast: low
+    complexity_level: moderate
+
+  - block_id: ie_key_wall_lamps_02
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      Pairs of small brass-hooded lamps glow at shoulder height, their
+      light a deep amber that pools along polished surfaces and catches
+      the underside of overhead racks. The warm tone wraps figures without
+      harsh edges, preserving soft shadow transitions. Existing lighting
+      direction is maintained — the wall lamps reinforce rather than
+      replace any original shading.
+    tags:
+      intent: modify
+      key_light: wall_lamps
+      warmth: warm
+      direction: side
+      contrast: low
+    complexity_level: moderate
+
+  # ── lighting — train window reflection fill ────────────────────
+
+  - block_id: ie_fill_train_window_01
+    role: lighting
+    category: fill
+    kind: single_state
+    text: >-
+      Outside the windows, darkness rushes past. Faint interior
+      reflections layer softly across the glass, ghosting warm lamp-light
+      and silhouettes back into the carriage. The moving reflections add
+      a subtle secondary fill that shifts imperceptibly with the train's
+      motion.
+    tags:
+      intent: modify
+      fill_light: window_reflection_train
+      warmth: warm
+      purpose: atmosphere
+    complexity_level: moderate
+
+  - block_id: ie_fill_train_window_02
+    role: lighting
+    category: fill
+    kind: single_state
+    text: >-
+      Night presses against the carriage windows — pure black beyond
+      the glass, broken only by faint reflected doubles of the interior
+      lamps. Silhouettes overlap as soft ghosts on the window surface,
+      creating a layered transparency that compresses visual depth. The
+      glass acts as a secondary light source, bouncing a fraction of the
+      warm interior glow back into the space.
+    tags:
+      intent: modify
+      fill_light: window_reflection_train
+      warmth: warm
+      purpose: atmosphere
+    complexity_level: moderate
+
+  # ── mood — confined nocturnal tension ──────────────────────────
+
+  - block_id: ie_mood_confined_nocturnal_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Mood: intimate late-night tension inside an aging luxury carriage.
+      Proximity amplified by motion and confined space rather than overt
+      action. The narrow aisle, the low ceiling, the warm amber light,
+      and the darkness outside conspire to make every inch of distance
+      between figures feel deliberate and insufficient.
+    tags:
+      intent: modify
+      atmosphere: confined_nocturnal
+      tension: high
+      mood: warm
+    complexity_level: moderate
+
+  - block_id: ie_mood_confined_nocturnal_02
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Mood: slow nocturnal compression. The train moves, the carriage
+      sways, and the space between two people contracts and expands
+      with the rhythm of the rails. Neither moves to widen the gap.
+      Warm light, worn surfaces, and the sealed darkness outside create
+      a world that begins and ends within the carriage walls. Time
+      stretches with the journey.
+    tags:
+      intent: modify
+      atmosphere: confined_nocturnal
+      tension: medium
+      mood: warm
+    complexity_level: moderate
+
+  - block_id: ie_mood_confined_nocturnal_03
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Mood: quiet inevitability. A long corridor, a late hour, two
+      people and no room. The train's rhythm replaces conversation —
+      a steady pulse that makes stillness feel more charged than motion.
+      Amber light pools on polished wood, darkness streams past the
+      glass, and the space between them holds its shape only because
+      neither has yet decided to close it.
+    tags:
+      intent: modify
+      atmosphere: confined_nocturnal
+      tension: high
+      mood: warm
+    complexity_level: moderate
