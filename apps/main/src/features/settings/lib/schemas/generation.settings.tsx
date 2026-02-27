@@ -41,6 +41,45 @@ async function updateGenerationServerConfig(
   return pixsimClient.patch<GenerationServerConfig>('/admin/generation/config', patch);
 }
 
+// ===== Server generation worker config (runtime backoff/dispatch tuning) =====
+
+interface GenerationWorkerServerConfig {
+  content_filter_submit_max_retries: number;
+  content_filter_rotate_after_retries: number;
+  content_filter_pinned_yield_after_retries: number;
+  content_filter_retry_defer_seconds: number;
+  content_filter_pinned_yield_defer_multiplier: number;
+  content_filter_yield_counts_as_retry: boolean;
+  content_filter_max_yields: number;
+  content_filter_yield_counter_ttl_seconds: number;
+  pixverse_concurrent_cooldown_seconds: number;
+  pixverse_i2i_concurrent_cooldown_seconds: number;
+  dispatch_stagger_per_slot_seconds: number;
+  dispatch_stagger_max_seconds: number;
+  pinned_wait_padding_seconds: number;
+  min_pinned_cooldown_defer_seconds: number;
+  adaptive_provider_concurrency_enabled: boolean;
+  adaptive_provider_concurrency_state_ttl_seconds: number;
+  adaptive_provider_concurrency_probe_min_seconds: number;
+  adaptive_provider_concurrency_probe_max_seconds: number;
+  adaptive_provider_concurrency_probe_lock_ttl_seconds: number;
+  adaptive_provider_concurrency_defer_jitter_max_seconds: number;
+  adaptive_provider_concurrency_lower_after_consecutive_rejects: number;
+  adaptive_provider_concurrency_raise_after_consecutive_probe_successes: number;
+  max_pinned_concurrent_waits: number;
+  pinned_concurrent_wait_counter_ttl_seconds: number;
+}
+
+async function fetchGenerationWorkerServerConfig(): Promise<GenerationWorkerServerConfig> {
+  return pixsimClient.get<GenerationWorkerServerConfig>('/admin/generation-worker/config');
+}
+
+async function updateGenerationWorkerServerConfig(
+  patch: Partial<GenerationWorkerServerConfig>,
+): Promise<GenerationWorkerServerConfig> {
+  return pixsimClient.patch<GenerationWorkerServerConfig>('/admin/generation-worker/config', patch);
+}
+
 // ===== Server LLM config (cache tuning) =====
 
 interface LLMServerConfig {
@@ -370,6 +409,234 @@ const generationGroups: SettingGroup[] = [
     ],
   },
   {
+    id: 'server-worker-runtime',
+    title: 'Worker Runtime',
+    description: 'Generation worker backoff, stagger, and adaptive concurrency tuning. Changes are persisted and applied when workers start (restart workers after edits).',
+    showWhen: adminOnly,
+    adminGroup: true,
+    fields: [
+      {
+        id: 'serverWorker_contentFilterSubmitMaxRetries',
+        type: 'number',
+        label: 'Content Filter Submit Max Retries',
+        description: 'Worker-local retry budget for submit-time retryable content-filter errors.',
+        min: 1,
+        max: 20,
+        step: 1,
+        defaultValue: 3,
+      },
+      {
+        id: 'serverWorker_contentFilterRotateAfterRetries',
+        type: 'number',
+        label: 'Content Filter Rotate After Retries',
+        description: 'For non-pinned generations, rotate account affinity after this many retryable content-filter retries.',
+        min: 0,
+        max: 20,
+        step: 1,
+        defaultValue: 2,
+      },
+      {
+        id: 'serverWorker_contentFilterPinnedYieldAfterRetries',
+        type: 'number',
+        label: 'Pinned CF Yield After Retries',
+        description: 'Pinned generations start fairness-yielding after this many retryable content-filter retries.',
+        min: 0,
+        max: 20,
+        step: 1,
+        defaultValue: 1,
+      },
+      {
+        id: 'serverWorker_contentFilterRetryDeferSeconds',
+        type: 'number',
+        label: 'Content Filter Yield Defer (s)',
+        description: 'Base defer used for pinned content-filter fairness yields.',
+        min: 1,
+        max: 600,
+        step: 1,
+        defaultValue: 10,
+      },
+      {
+        id: 'serverWorker_contentFilterPinnedYieldDeferMultiplier',
+        type: 'number',
+        label: 'CF Yield Defer Multiplier',
+        min: 1,
+        max: 20,
+        step: 1,
+        defaultValue: 3,
+      },
+      {
+        id: 'serverWorker_contentFilterYieldCountsAsRetry',
+        type: 'toggle',
+        label: 'CF Yield Counts As Retry',
+        description: 'Whether fairness-only pinned content-filter yields consume retry_count.',
+        defaultValue: false,
+      },
+      {
+        id: 'serverWorker_contentFilterMaxYields',
+        type: 'number',
+        label: 'Content Filter Max Yields',
+        description: 'Cap fairness-only content-filter yields per generation (0 disables the cap).',
+        min: 0,
+        max: 200,
+        step: 1,
+        defaultValue: 12,
+      },
+      {
+        id: 'serverWorker_contentFilterYieldCounterTtlSeconds',
+        type: 'number',
+        label: 'CF Yield Counter TTL (s)',
+        min: 60,
+        max: 2592000,
+        step: 60,
+        defaultValue: 86400,
+      },
+      {
+        id: 'serverWorker_adaptiveProviderConcurrencyEnabled',
+        type: 'toggle',
+        label: 'Adaptive Provider Concurrency',
+        description: 'Learn a lower effective provider concurrency cap and probe periodically to recover automatically.',
+        defaultValue: true,
+      },
+      {
+        id: 'serverWorker_adaptiveProviderConcurrencyProbeMinSeconds',
+        type: 'number',
+        label: 'Adaptive Probe Min (s)',
+        min: 30,
+        max: 3600,
+        step: 5,
+        defaultValue: 120,
+      },
+      {
+        id: 'serverWorker_adaptiveProviderConcurrencyProbeMaxSeconds',
+        type: 'number',
+        label: 'Adaptive Probe Max (s)',
+        min: 30,
+        max: 3600,
+        step: 5,
+        defaultValue: 180,
+      },
+      {
+        id: 'serverWorker_adaptiveProviderConcurrencyProbeLockTtlSeconds',
+        type: 'number',
+        label: 'Adaptive Probe Lock TTL (s)',
+        min: 30,
+        max: 3600,
+        step: 5,
+        defaultValue: 300,
+      },
+      {
+        id: 'serverWorker_adaptiveProviderConcurrencyDeferJitterMaxSeconds',
+        type: 'number',
+        label: 'Adaptive Defer Jitter Max (s)',
+        min: 0,
+        max: 120,
+        step: 1,
+        defaultValue: 6,
+      },
+      {
+        id: 'serverWorker_adaptiveProviderConcurrencyLowerAfterConsecutiveRejects',
+        type: 'number',
+        label: 'Adaptive Lower After Rejects',
+        description: 'Consecutive provider concurrency-limit rejects required before lowering learned cap (lowering happens one step at a time).',
+        min: 1,
+        max: 1000,
+        step: 1,
+        defaultValue: 10,
+      },
+      {
+        id: 'serverWorker_adaptiveProviderConcurrencyRaiseAfterConsecutiveProbeSuccesses',
+        type: 'number',
+        label: 'Adaptive Raise After Probe Successes',
+        description: 'Consecutive successful probe submits required before raising learned cap (raising happens one step at a time).',
+        min: 1,
+        max: 1000,
+        step: 1,
+        defaultValue: 2,
+      },
+      {
+        id: 'serverWorker_adaptiveProviderConcurrencyStateTtlSeconds',
+        type: 'number',
+        label: 'Adaptive State TTL (s)',
+        min: 60,
+        max: 604800,
+        step: 60,
+        defaultValue: 21600,
+      },
+      {
+        id: 'serverWorker_pixverseConcurrentCooldownSeconds',
+        type: 'number',
+        label: 'Pixverse Concurrent Cooldown (s)',
+        min: 1,
+        max: 600,
+        step: 1,
+        defaultValue: 6,
+      },
+      {
+        id: 'serverWorker_pixverseI2IConcurrentCooldownSeconds',
+        type: 'number',
+        label: 'Pixverse I2I Concurrent Cooldown (s)',
+        min: 1,
+        max: 600,
+        step: 1,
+        defaultValue: 2,
+      },
+      {
+        id: 'serverWorker_dispatchStaggerPerSlotSeconds',
+        type: 'number',
+        label: 'Dispatch Stagger Per Slot (s)',
+        min: 0,
+        max: 30,
+        step: 0.1,
+        defaultValue: 1.5,
+      },
+      {
+        id: 'serverWorker_dispatchStaggerMaxSeconds',
+        type: 'number',
+        label: 'Dispatch Stagger Max (s)',
+        min: 0,
+        max: 300,
+        step: 0.5,
+        defaultValue: 12,
+      },
+      {
+        id: 'serverWorker_pinnedWaitPaddingSeconds',
+        type: 'number',
+        label: 'Pinned Wait Padding (s)',
+        min: 0,
+        max: 60,
+        step: 1,
+        defaultValue: 1,
+      },
+      {
+        id: 'serverWorker_minPinnedCooldownDeferSeconds',
+        type: 'number',
+        label: 'Min Pinned Cooldown Defer (s)',
+        min: 1,
+        max: 300,
+        step: 1,
+        defaultValue: 2,
+      },
+      {
+        id: 'serverWorker_maxPinnedConcurrentWaits',
+        type: 'number',
+        label: 'Max Pinned Concurrent Waits',
+        min: 1,
+        max: 10000,
+        step: 1,
+        defaultValue: 72,
+      },
+      {
+        id: 'serverWorker_pinnedConcurrentWaitCounterTtlSeconds',
+        type: 'number',
+        label: 'Pinned Wait Counter TTL (s)',
+        min: 60,
+        max: 2592000,
+        step: 60,
+        defaultValue: 172800,
+      },
+    ],
+  },
+  {
     id: 'server-llm',
     title: 'LLM Cache',
     description: 'Control LLM response caching behavior. Changes are persisted to the database.',
@@ -419,6 +686,34 @@ const GENERATION_FIELD_MAP: Record<string, keyof GenerationServerConfig> = {
   server_maxAccountsPerUser: 'max_accounts_per_user',
 };
 
+// Field ID -> server config key mapping (generation_worker namespace)
+const GENERATION_WORKER_FIELD_MAP: Record<string, keyof GenerationWorkerServerConfig> = {
+  serverWorker_contentFilterSubmitMaxRetries: 'content_filter_submit_max_retries',
+  serverWorker_contentFilterRotateAfterRetries: 'content_filter_rotate_after_retries',
+  serverWorker_contentFilterPinnedYieldAfterRetries: 'content_filter_pinned_yield_after_retries',
+  serverWorker_contentFilterRetryDeferSeconds: 'content_filter_retry_defer_seconds',
+  serverWorker_contentFilterPinnedYieldDeferMultiplier: 'content_filter_pinned_yield_defer_multiplier',
+  serverWorker_contentFilterYieldCountsAsRetry: 'content_filter_yield_counts_as_retry',
+  serverWorker_contentFilterMaxYields: 'content_filter_max_yields',
+  serverWorker_contentFilterYieldCounterTtlSeconds: 'content_filter_yield_counter_ttl_seconds',
+  serverWorker_pixverseConcurrentCooldownSeconds: 'pixverse_concurrent_cooldown_seconds',
+  serverWorker_pixverseI2IConcurrentCooldownSeconds: 'pixverse_i2i_concurrent_cooldown_seconds',
+  serverWorker_dispatchStaggerPerSlotSeconds: 'dispatch_stagger_per_slot_seconds',
+  serverWorker_dispatchStaggerMaxSeconds: 'dispatch_stagger_max_seconds',
+  serverWorker_pinnedWaitPaddingSeconds: 'pinned_wait_padding_seconds',
+  serverWorker_minPinnedCooldownDeferSeconds: 'min_pinned_cooldown_defer_seconds',
+  serverWorker_adaptiveProviderConcurrencyEnabled: 'adaptive_provider_concurrency_enabled',
+  serverWorker_adaptiveProviderConcurrencyStateTtlSeconds: 'adaptive_provider_concurrency_state_ttl_seconds',
+  serverWorker_adaptiveProviderConcurrencyProbeMinSeconds: 'adaptive_provider_concurrency_probe_min_seconds',
+  serverWorker_adaptiveProviderConcurrencyProbeMaxSeconds: 'adaptive_provider_concurrency_probe_max_seconds',
+  serverWorker_adaptiveProviderConcurrencyProbeLockTtlSeconds: 'adaptive_provider_concurrency_probe_lock_ttl_seconds',
+  serverWorker_adaptiveProviderConcurrencyDeferJitterMaxSeconds: 'adaptive_provider_concurrency_defer_jitter_max_seconds',
+  serverWorker_adaptiveProviderConcurrencyLowerAfterConsecutiveRejects: 'adaptive_provider_concurrency_lower_after_consecutive_rejects',
+  serverWorker_adaptiveProviderConcurrencyRaiseAfterConsecutiveProbeSuccesses: 'adaptive_provider_concurrency_raise_after_consecutive_probe_successes',
+  serverWorker_maxPinnedConcurrentWaits: 'max_pinned_concurrent_waits',
+  serverWorker_pinnedConcurrentWaitCounterTtlSeconds: 'pinned_concurrent_wait_counter_ttl_seconds',
+};
+
 // Field ID → server config key mapping (llm namespace)
 const LLM_FIELD_MAP: Record<string, keyof LLMServerConfig> = {
   server_llmCacheEnabled: 'llm_cache_enabled',
@@ -429,6 +724,8 @@ const LLM_FIELD_MAP: Record<string, keyof LLMServerConfig> = {
 // Boolean server fields need Boolean() coercion instead of Number()
 const SERVER_BOOLEAN_FIELDS = new Set([
   'server_autoRetryEnabled',
+  'serverWorker_contentFilterYieldCountsAsRetry',
+  'serverWorker_adaptiveProviderConcurrencyEnabled',
   'server_llmCacheEnabled',
 ]);
 
@@ -476,6 +773,7 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
 
   // Server config state (admin-only, persisted to DB)
   const [generationConfig, setGenerationConfig] = useState<GenerationServerConfig | null>(null);
+  const [generationWorkerConfig, setGenerationWorkerConfig] = useState<GenerationWorkerServerConfig | null>(null);
   const [llmConfig, setLLMConfig] = useState<LLMServerConfig | null>(null);
   const fetchedRef = useRef(false);
 
@@ -485,6 +783,9 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
     fetchGenerationServerConfig()
       .then(setGenerationConfig)
       .catch((err) => console.error('Failed to fetch generation server config:', err));
+    fetchGenerationWorkerServerConfig()
+      .then(setGenerationWorkerConfig)
+      .catch((err) => console.error('Failed to fetch generation worker server config:', err));
     fetchLLMServerConfig()
       .then(setLLMConfig)
       .catch((err) => console.error('Failed to fetch LLM server config:', err));
@@ -499,6 +800,10 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
       // Server fields — LLM namespace
       const llmKey = LLM_FIELD_MAP[fieldId];
       if (llmKey) return llmConfig?.[llmKey];
+
+      // Server fields — generation_worker namespace
+      const workerKey = GENERATION_WORKER_FIELD_MAP[fieldId];
+      if (workerKey) return generationWorkerConfig?.[workerKey];
 
       switch (fieldId) {
         case 'autoSwitchOperationType':
@@ -568,6 +873,22 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
           .catch((err) => {
             console.error('Failed to update LLM config:', err);
             setLLMConfig(prev);
+          });
+        return;
+      }
+
+      // Server fields — generation_worker namespace (optimistic + PATCH)
+      const workerKey = GENERATION_WORKER_FIELD_MAP[fieldId];
+      if (workerKey && generationWorkerConfig) {
+        const prev = { ...generationWorkerConfig };
+        const coerced = coerceServerValue(fieldId, value);
+        setGenerationWorkerConfig({ ...generationWorkerConfig, [workerKey]: coerced } as GenerationWorkerServerConfig);
+
+        updateGenerationWorkerServerConfig({ [workerKey]: coerced } as Partial<GenerationWorkerServerConfig>)
+          .then(setGenerationWorkerConfig)
+          .catch((err) => {
+            console.error('Failed to update generation worker config:', err);
+            setGenerationWorkerConfig(prev);
           });
         return;
       }
@@ -678,6 +999,31 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
       server_autoRetryMaxAttempts: generationConfig?.auto_retry_max_attempts,
       server_maxJobsPerUser: generationConfig?.max_jobs_per_user,
       server_maxAccountsPerUser: generationConfig?.max_accounts_per_user,
+      // Server config fields — generation_worker
+      serverWorker_contentFilterSubmitMaxRetries: generationWorkerConfig?.content_filter_submit_max_retries,
+      serverWorker_contentFilterRotateAfterRetries: generationWorkerConfig?.content_filter_rotate_after_retries,
+      serverWorker_contentFilterPinnedYieldAfterRetries: generationWorkerConfig?.content_filter_pinned_yield_after_retries,
+      serverWorker_contentFilterRetryDeferSeconds: generationWorkerConfig?.content_filter_retry_defer_seconds,
+      serverWorker_contentFilterPinnedYieldDeferMultiplier: generationWorkerConfig?.content_filter_pinned_yield_defer_multiplier,
+      serverWorker_contentFilterYieldCountsAsRetry: generationWorkerConfig?.content_filter_yield_counts_as_retry,
+      serverWorker_contentFilterMaxYields: generationWorkerConfig?.content_filter_max_yields,
+      serverWorker_contentFilterYieldCounterTtlSeconds: generationWorkerConfig?.content_filter_yield_counter_ttl_seconds,
+      serverWorker_pixverseConcurrentCooldownSeconds: generationWorkerConfig?.pixverse_concurrent_cooldown_seconds,
+      serverWorker_pixverseI2IConcurrentCooldownSeconds: generationWorkerConfig?.pixverse_i2i_concurrent_cooldown_seconds,
+      serverWorker_dispatchStaggerPerSlotSeconds: generationWorkerConfig?.dispatch_stagger_per_slot_seconds,
+      serverWorker_dispatchStaggerMaxSeconds: generationWorkerConfig?.dispatch_stagger_max_seconds,
+      serverWorker_pinnedWaitPaddingSeconds: generationWorkerConfig?.pinned_wait_padding_seconds,
+      serverWorker_minPinnedCooldownDeferSeconds: generationWorkerConfig?.min_pinned_cooldown_defer_seconds,
+      serverWorker_adaptiveProviderConcurrencyEnabled: generationWorkerConfig?.adaptive_provider_concurrency_enabled,
+      serverWorker_adaptiveProviderConcurrencyStateTtlSeconds: generationWorkerConfig?.adaptive_provider_concurrency_state_ttl_seconds,
+      serverWorker_adaptiveProviderConcurrencyProbeMinSeconds: generationWorkerConfig?.adaptive_provider_concurrency_probe_min_seconds,
+      serverWorker_adaptiveProviderConcurrencyProbeMaxSeconds: generationWorkerConfig?.adaptive_provider_concurrency_probe_max_seconds,
+      serverWorker_adaptiveProviderConcurrencyProbeLockTtlSeconds: generationWorkerConfig?.adaptive_provider_concurrency_probe_lock_ttl_seconds,
+      serverWorker_adaptiveProviderConcurrencyDeferJitterMaxSeconds: generationWorkerConfig?.adaptive_provider_concurrency_defer_jitter_max_seconds,
+      serverWorker_adaptiveProviderConcurrencyLowerAfterConsecutiveRejects: generationWorkerConfig?.adaptive_provider_concurrency_lower_after_consecutive_rejects,
+      serverWorker_adaptiveProviderConcurrencyRaiseAfterConsecutiveProbeSuccesses: generationWorkerConfig?.adaptive_provider_concurrency_raise_after_consecutive_probe_successes,
+      serverWorker_maxPinnedConcurrentWaits: generationWorkerConfig?.max_pinned_concurrent_waits,
+      serverWorker_pinnedConcurrentWaitCounterTtlSeconds: generationWorkerConfig?.pinned_concurrent_wait_counter_ttl_seconds,
       // Server config fields — LLM
       server_llmCacheEnabled: llmConfig?.llm_cache_enabled,
       server_llmCacheTtl: llmConfig?.llm_cache_ttl,

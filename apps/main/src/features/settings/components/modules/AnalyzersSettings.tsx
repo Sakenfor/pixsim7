@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 import {
+  ASSET_ANALYZER_INTENT_KEYS,
   DEFAULT_ASSET_ANALYZER_ID,
   DEFAULT_PROMPT_ANALYZER_ID,
   useAnalyzerSettingsStore,
@@ -459,6 +460,9 @@ export function AnalyzersSettings() {
   const setDefaultImageAnalyzer = useAnalyzerSettingsStore((s) => s.setDefaultImageAnalyzer);
   const defaultVideoAnalyzer = useAnalyzerSettingsStore((s) => s.defaultVideoAnalyzer);
   const setDefaultVideoAnalyzer = useAnalyzerSettingsStore((s) => s.setDefaultVideoAnalyzer);
+  const intentAssetAnalyzers = useAnalyzerSettingsStore((s) => s.intentAssetAnalyzers);
+  const setIntentAssetAnalyzer = useAnalyzerSettingsStore((s) => s.setIntentAssetAnalyzer);
+  const clearIntentAssetAnalyzer = useAnalyzerSettingsStore((s) => s.clearIntentAssetAnalyzer);
   const visualSimilarityThreshold = useMediaSettingsStore((s) => s.visualSimilarityThreshold);
   const setVisualSimilarityThreshold = useMediaSettingsStore((s) => s.setVisualSimilarityThreshold);
   const serverSettings = useMediaSettingsStore((s) => s.serverSettings);
@@ -471,11 +475,43 @@ export function AnalyzersSettings() {
   const hasPromptDefaultOption = promptAnalyzers.some((analyzer) => analyzer.id === defaultPromptAnalyzer);
   const hasImageDefaultOption = assetAnalyzers.some((analyzer) => analyzer.id === defaultImageAnalyzer);
   const hasVideoDefaultOption = assetAnalyzers.some((analyzer) => analyzer.id === defaultVideoAnalyzer);
+  const hasAnyIntentOverrides = ASSET_ANALYZER_INTENT_KEYS.some((key) => {
+    const value = intentAssetAnalyzers?.[key];
+    return typeof value === 'string' && value.trim().length > 0;
+  });
   const isAtRecommendedDefaults =
     defaultPromptAnalyzer === DEFAULT_PROMPT_ANALYZER_ID &&
     defaultImageAnalyzer === DEFAULT_ASSET_ANALYZER_ID &&
     defaultVideoAnalyzer === DEFAULT_ASSET_ANALYZER_ID &&
+    !hasAnyIntentOverrides &&
     Math.abs(visualSimilarityThreshold - DEFAULT_VISUAL_SIMILARITY_THRESHOLD) < 0.001;
+
+  const intentOverrideRows: Array<{
+    key: (typeof ASSET_ANALYZER_INTENT_KEYS)[number];
+    label: string;
+    description: string;
+  }> = [
+    {
+      key: 'character_ingest_face',
+      label: 'Character Ingest: Face',
+      description: 'Used by Character Reference Ingest when Analyzer Mode = Face.',
+    },
+    {
+      key: 'character_ingest_sheet',
+      label: 'Character Ingest: Sheet / Composite',
+      description: 'Used by Character Reference Ingest when Analyzer Mode = Sheet / Composite.',
+    },
+    {
+      key: 'scene_prep_location',
+      label: 'Scene Prep: Location',
+      description: 'Reserved for Scene Prep location-reference analysis/import flows.',
+    },
+    {
+      key: 'scene_prep_style',
+      label: 'Scene Prep: Style',
+      description: 'Reserved for Scene Prep style-reference analysis/import flows.',
+    },
+  ];
 
   // Fetch server media settings (for embedding controls)
   useEffect(() => {
@@ -586,6 +622,18 @@ export function AnalyzersSettings() {
     [persistAnalyzerPreferences, setDefaultVideoAnalyzer]
   );
 
+  const handleIntentAssetAnalyzerChange = useCallback(
+    (intent: (typeof ASSET_ANALYZER_INTENT_KEYS)[number], value: string) => {
+      const normalized = value.trim();
+      if (!normalized) {
+        clearIntentAssetAnalyzer(intent);
+        return;
+      }
+      setIntentAssetAnalyzer(intent, normalized);
+    },
+    [clearIntentAssetAnalyzer, setIntentAssetAnalyzer]
+  );
+
   // Form handlers
   const handleFormChange = useCallback((updates: Partial<FormState>) => {
     setFormState(prev => ({ ...prev, ...updates }));
@@ -627,6 +675,9 @@ export function AnalyzersSettings() {
     setDefaultPromptAnalyzer(DEFAULT_PROMPT_ANALYZER_ID);
     setDefaultImageAnalyzer(DEFAULT_ASSET_ANALYZER_ID);
     setDefaultVideoAnalyzer(DEFAULT_ASSET_ANALYZER_ID);
+    for (const intentKey of ASSET_ANALYZER_INTENT_KEYS) {
+      clearIntentAssetAnalyzer(intentKey);
+    }
     setVisualSimilarityThreshold(DEFAULT_VISUAL_SIMILARITY_THRESHOLD);
     void persistAnalyzerPreferences({
       prompt_default_id: DEFAULT_PROMPT_ANALYZER_ID,
@@ -638,6 +689,7 @@ export function AnalyzersSettings() {
     setDefaultImageAnalyzer,
     setDefaultPromptAnalyzer,
     setDefaultVideoAnalyzer,
+    clearIntentAssetAnalyzer,
     setVisualSimilarityThreshold,
   ]);
 
@@ -967,6 +1019,48 @@ export function AnalyzersSettings() {
             <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
               <span className="font-semibold">Used by:</span> Similar Content search defaults (higher = stricter).
             </p>
+          </div>
+        </div>
+
+        <div className="p-3 border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50/60 dark:bg-neutral-900/40 space-y-2">
+          <div>
+            <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+              Intent Overrides (Local)
+            </h4>
+            <p className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">
+              Optional local overrides for specific workflows (e.g. Character Ingest Face/Sheet). These are stored in browser settings for now and fall back to the image default when empty.
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {intentOverrideRows.map((row) => {
+              const currentValue = (intentAssetAnalyzers?.[row.key] ?? '').trim();
+              const hasCurrentOption = !currentValue || assetAnalyzers.some((analyzer) => analyzer.id === currentValue);
+              return (
+                <div key={row.key} className="space-y-1">
+                  <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+                    {row.label}
+                  </label>
+                  <select
+                    value={currentValue}
+                    onChange={(e) => handleIntentAssetAnalyzerChange(row.key, e.target.value)}
+                    className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+                  >
+                    <option value="">Use Image Default ({defaultImageAnalyzer})</option>
+                    {!hasCurrentOption && currentValue && (
+                      <option value={currentValue}>Unavailable: {currentValue}</option>
+                    )}
+                    {assetAnalyzers.map((analyzer) => (
+                      <option key={analyzer.id} value={analyzer.id}>
+                        {analyzer.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                    {row.description}
+                  </p>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>

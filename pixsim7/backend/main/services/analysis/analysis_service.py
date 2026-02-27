@@ -67,6 +67,7 @@ class AnalysisService:
         user: User,
         asset_id: int,
         analyzer_id: Optional[str] = None,
+        analyzer_intent: Optional[str] = None,
         prompt: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         priority: int = 5,
@@ -79,6 +80,8 @@ class AnalysisService:
             asset_id: ID of the asset to analyze
             analyzer_id: Analyzer ID to execute. If omitted, resolves from
                 user analyzer preferences by media type.
+            analyzer_intent: Optional intent key for resolving a more specific
+                asset analyzer default (e.g. character_ingest_face).
             prompt: Optional prompt for the analysis
             params: Optional additional parameters
             priority: Job priority (0=highest, 10=lowest)
@@ -101,6 +104,7 @@ class AnalysisService:
             effective_analyzer_id = resolve_asset_default_analyzer_id(
                 getattr(user, "preferences", None),
                 media_type=media_type,
+                intent=analyzer_intent,
             )
 
         resolved_analyzer_id, provider_id, model_id = await self._resolve_execution_config(

@@ -17,6 +17,7 @@ DEFAULT_ASSET_ANALYZER_ID = "asset:object-detection"
 PROMPT_DEFAULT_ID_KEY = "prompt_default_id"
 ASSET_DEFAULT_IMAGE_ID_KEY = "asset_default_image_id"
 ASSET_DEFAULT_VIDEO_ID_KEY = "asset_default_video_id"
+ASSET_INTENT_DEFAULTS_KEY = "asset_intent_defaults"
 
 
 def get_analyzer_preferences(preferences: Any) -> dict[str, Any]:
@@ -72,10 +73,24 @@ def resolve_prompt_default_analyzer_id(preferences: Any) -> str:
 def resolve_asset_default_analyzer_id(
     preferences: Any,
     media_type: MediaType | str | None = None,
+    *,
+    intent: str | None = None,
 ) -> str:
     """Resolve asset default analyzer ID from user preferences + registry."""
     analyzer_prefs = get_analyzer_preferences(preferences)
     normalized_media_type = _normalize_media_type(media_type)
+    normalized_intent = _normalize_intent(intent)
+
+    if normalized_intent:
+        intent_defaults = analyzer_prefs.get(ASSET_INTENT_DEFAULTS_KEY)
+        if isinstance(intent_defaults, dict):
+            preferred = normalize_analyzer_id_for_target(
+                intent_defaults.get(normalized_intent),
+                AnalyzerTarget.ASSET,
+                require_enabled=True,
+            )
+            if preferred:
+                return preferred
 
     keys = (
         [ASSET_DEFAULT_VIDEO_ID_KEY, ASSET_DEFAULT_IMAGE_ID_KEY]
@@ -106,3 +121,10 @@ def _normalize_media_type(media_type: MediaType | str | None) -> str:
         if normalized in {MediaType.IMAGE.value, MediaType.VIDEO.value}:
             return normalized
     return MediaType.IMAGE.value
+
+
+def _normalize_intent(intent: Any) -> str | None:
+    if not isinstance(intent, str):
+        return None
+    normalized = intent.strip().lower()
+    return normalized or None

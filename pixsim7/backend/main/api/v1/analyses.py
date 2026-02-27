@@ -28,6 +28,15 @@ class CreateAnalysisRequest(BaseModel):
             "If omitted, resolves from user analyzer defaults by media type."
         ),
     )
+    analyzer_intent: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=100,
+        description=(
+            "Optional asset-analysis intent key used to resolve a more specific "
+            "default analyzer from user preferences (e.g. 'character_ingest_face')."
+        ),
+    )
     prompt: Optional[str] = Field(
         None,
         description="Prompt for the analysis (e.g., 'Describe the scene')"
@@ -103,6 +112,7 @@ async def create_analysis(
             user=user,
             asset_id=asset_id,
             analyzer_id=request.analyzer_id,
+            analyzer_intent=request.analyzer_intent,
             prompt=request.prompt,
             params=request.params,
             priority=request.priority,
