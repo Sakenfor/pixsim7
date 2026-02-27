@@ -35,12 +35,10 @@ export function QuickGeneratePanel({ context, params }: QuickGeneratePanelProps)
   const asset = useResolvedPanelAsset({
     context,
     params,
-    precedence: ['context', 'params', 'selection'],
   });
   const sceneId = useResolvedPanelScene({
     context,
     params,
-    precedence: ['context', 'params', 'capability'],
   });
 
   const content = useMemo(() => {

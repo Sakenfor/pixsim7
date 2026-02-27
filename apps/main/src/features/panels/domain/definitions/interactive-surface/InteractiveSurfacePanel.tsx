@@ -206,7 +206,6 @@ export function InteractiveSurfacePanel({
   const asset = useResolvedPanelAsset({
     context,
     params,
-    precedence: ['context', 'params', 'selection'],
   });
 
   // Initialize interaction layer

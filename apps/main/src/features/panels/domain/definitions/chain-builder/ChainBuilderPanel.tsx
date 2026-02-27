@@ -14,6 +14,7 @@ import { listTemplates } from '@lib/api/blockTemplates';
 import type { ChainSummary, ChainStepDefinition } from '@lib/api/chains';
 import { Icon } from '@lib/icons';
 
+import { AssetPickerField, type PickedAsset } from '@features/assets/components/pickers';
 import {
   useChainStore,
   createEmptyStep,
@@ -58,6 +59,7 @@ export function ChainBuilderPanel() {
   // Execute form state
   const [providerId, setProviderId] = useState('pixverse');
   const [defaultOperation, setDefaultOperation] = useState('text_to_image');
+  const [initialAsset, setInitialAsset] = useState<PickedAsset | null>(null);
 
   useEffect(() => {
     void fetchChains();
@@ -132,9 +134,11 @@ export function ChainBuilderPanel() {
       setError('At least one step is required');
       return;
     }
-    const missingTemplate = draftSteps.find((s) => !s.template_id);
-    if (missingTemplate) {
-      setError(`Step "${missingTemplate.label || missingTemplate.id}" needs a template`);
+    const invalidStep = draftSteps.find(
+      (s) => !(s.template_id?.trim()) && !(s.prompt?.trim()),
+    );
+    if (invalidStep) {
+      setError(`Step "${invalidStep.label || invalidStep.id}" needs a template or prompt`);
       return;
     }
     setError(null);
@@ -175,16 +179,45 @@ export function ChainBuilderPanel() {
     [updateDraftStep],
   );
 
+  const handleDuplicateStep = useCallback(
+    (index: number) => {
+      const source = draftSteps[index];
+      if (!source) return;
+
+      const existingIds = new Set(draftSteps.map((s) => s.id));
+      const baseId = source.id?.trim() || `step_${index + 1}`;
+      let nextId = `${baseId}_copy`;
+      let copyIndex = 2;
+      while (existingIds.has(nextId)) {
+        nextId = `${baseId}_copy${copyIndex}`;
+        copyIndex += 1;
+      }
+
+      const baseLabel = (source.label ?? '').trim() || `Step ${index + 1}`;
+      const duplicate: ChainStepDefinition = {
+        ...source,
+        id: nextId,
+        label: `${baseLabel} Copy`,
+      };
+
+      const nextSteps = [...draftSteps];
+      nextSteps.splice(index + 1, 0, duplicate);
+      setDraftSteps(nextSteps);
+    },
+    [draftSteps, setDraftSteps],
+  );
+
   const handleExecute = useCallback(async () => {
     if (!activeChain) return;
     const executionId = await executeChain(activeChain.id, {
       provider_id: providerId,
+      initial_asset_id: initialAsset?.id ?? null,
       default_operation: defaultOperation,
     });
     if (executionId) {
       setView('execution');
     }
-  }, [activeChain, executeChain, providerId, defaultOperation]);
+  }, [activeChain, executeChain, providerId, initialAsset, defaultOperation]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -395,6 +428,7 @@ export function ChainBuilderPanel() {
                     templates={templates}
                     allStepIds={allStepIds}
                     onChange={handleStepChange}
+                    onDuplicate={handleDuplicateStep}
                     onRemove={removeDraftStep}
                     onMoveUp={(idx) => reorderDraftSteps(idx, idx - 1)}
                     onMoveDown={(idx) => reorderDraftSteps(idx, idx + 1)}
@@ -435,7 +469,7 @@ export function ChainBuilderPanel() {
                 <label className="text-[10px] text-neutral-500 dark:text-neutral-400 block">
                   Execution Settings
                 </label>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <div className="flex-1">
                     <label className="text-[10px] text-neutral-400 block mb-0.5">
                       Provider ID
@@ -457,6 +491,17 @@ export function ChainBuilderPanel() {
                       onChange={(e) => setDefaultOperation(e.target.value)}
                       className="w-full text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 outline-none"
                     />
+                  </div>
+                  <div className="flex-1">
+                    <AssetPickerField
+                      label="Initial Asset (optional)"
+                      value={initialAsset}
+                      onChange={setInitialAsset}
+                      mediaTypes={['image', 'video']}
+                    />
+                    <div className="mt-1 text-[10px] text-neutral-400">
+                      Used by step 1 when it needs an asset input.
+                    </div>
                   </div>
                 </div>
               </div>

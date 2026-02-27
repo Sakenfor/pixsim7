@@ -2,6 +2,7 @@ import { IconButton } from "@pixsim7/shared.ui";
 import { memo, useCallback, useState, useRef } from "react";
 import { Rnd } from "react-rnd";
 
+import { readFloatingOriginMeta, stripFloatingOriginMeta } from "@lib/dockview/floatingPanelInterop";
 import { Icon } from "@lib/icons";
 import { devToolSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 
@@ -15,23 +16,6 @@ import { DevToolDynamicPanel } from "@/components/dev/DevToolDynamicPanel";
 import { useDragToDock, type DropZone } from "../../hooks/useDragToDock";
 
 import { DropZoneOverlay } from "./DropZoneOverlay";
-
-interface FloatingOriginMeta {
-  sourceDockviewId?: string | null;
-  sourceGroupId?: string | null;
-  sourceDockPanelId?: string | null;
-  sourcePanelId?: string | null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function getFloatingOriginMeta(context: unknown): FloatingOriginMeta | null {
-  if (!isRecord(context)) return null;
-  const meta = context.__floatingMeta;
-  return isRecord(meta) ? (meta as FloatingOriginMeta) : null;
-}
 
 function formatDockviewOriginLabel(dockviewId: string | null | undefined): string | null {
   if (!dockviewId) return null;
@@ -107,10 +91,8 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
   let Component: React.ComponentType<any>;
   let title: string;
 
-  const rawPanelContext = isRecord(panel.context) ? panel.context : {};
-  const floatingOriginMeta = getFloatingOriginMeta(rawPanelContext);
-  const basePanelContext = { ...rawPanelContext };
-  delete (basePanelContext as Record<string, unknown>).__floatingMeta;
+  const floatingOriginMeta = readFloatingOriginMeta(panel.context);
+  const basePanelContext = stripFloatingOriginMeta(panel.context) ?? {};
 
   // For dev-tool panels, extract toolId from definition ID and ensure it's in context
   let panelContext = basePanelContext;

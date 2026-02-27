@@ -6,6 +6,10 @@ import {
   type SceneContextSummary,
 } from "@features/contextHub";
 
+import type { RuntimeSourceCandidate } from "../lib/runtimeResolution";
+
+import { useResolvedRuntimeSource } from "./useResolvedRuntimeSource";
+
 type SceneSource = "params" | "context" | "capability";
 
 interface SceneContextLike {
@@ -30,21 +34,26 @@ export function useResolvedPanelScene({
   precedence = DEFAULT_PRECEDENCE,
 }: UseResolvedPanelSceneOptions): string | null {
   const { value: sceneContext } = useCapability<SceneContextSummary>(CAP_SCENE_CONTEXT);
+  const candidates = useMemo<RuntimeSourceCandidate<SceneSource, string | null>[]>(
+    () => [
+      {
+        source: "context",
+        enabled: context?.currentSceneId != null,
+        value: context?.currentSceneId != null ? String(context.currentSceneId) : null,
+      },
+      {
+        source: "params",
+        enabled: params?.sceneId != null,
+        value: params?.sceneId != null ? String(params.sceneId) : null,
+      },
+      {
+        source: "capability",
+        enabled: sceneContext?.sceneId != null,
+        value: sceneContext?.sceneId != null ? String(sceneContext.sceneId) : null,
+      },
+    ],
+    [context?.currentSceneId, params?.sceneId, sceneContext?.sceneId],
+  );
 
-  return useMemo(() => {
-    const capabilitySceneId = sceneContext?.sceneId;
-    for (const source of precedence) {
-      if (source === "context" && context?.currentSceneId != null) {
-        return String(context.currentSceneId);
-      }
-      if (source === "params" && params?.sceneId != null) {
-        return String(params.sceneId);
-      }
-      if (source === "capability" && capabilitySceneId != null) {
-        return String(capabilitySceneId);
-      }
-    }
-    return null;
-  }, [context?.currentSceneId, params?.sceneId, sceneContext?.sceneId, precedence]);
+  return useResolvedRuntimeSource(candidates, precedence, null);
 }
-

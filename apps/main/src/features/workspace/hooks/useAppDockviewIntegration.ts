@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 
+import { readFloatingOriginMeta } from "@lib/dockview/floatingPanelInterop";
+
 import { panelPlacementCoordinator } from "../lib/panelPlacementCoordinator";
 
 import { useDockPlacementExclusions, useFloatingPanelDefinitionIdSet } from "./useFloatingPanelPlacement";
@@ -15,12 +17,12 @@ export interface AppDockviewIntegration {
 }
 
 function readSourceGroupId(options: any): string | undefined {
-  const groupId = options?.context?.__floatingMeta?.sourceGroupId;
+  const groupId = readFloatingOriginMeta(options?.context)?.sourceGroupId;
   return typeof groupId === "string" ? groupId : undefined;
 }
 
 function readSourceDockviewId(options: any): string | undefined {
-  const id = options?.context?.__floatingMeta?.sourceDockviewId;
+  const id = readFloatingOriginMeta(options?.context)?.sourceDockviewId;
   return typeof id === "string" ? id : undefined;
 }
 

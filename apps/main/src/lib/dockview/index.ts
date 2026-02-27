@@ -78,3 +78,4 @@ export type {
 
 // Context menu system
 export * from './contextMenu';
+export * from './floatingPanelInterop';

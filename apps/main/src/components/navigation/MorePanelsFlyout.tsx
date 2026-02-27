@@ -9,6 +9,11 @@ import { openWorkspacePanel, useWorkspaceStore } from '@features/workspace';
 
 import { NavIcon } from './ActivityBar';
 
+function formatCategoryLabel(category: string): string {
+  return CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS]
+    ?? category.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 /**
  * "More panels" flyout button for the ActivityBar.
  * Shows a categorized list of all public panels with pin/unpin toggle.
@@ -90,11 +95,30 @@ function FlyoutContent() {
   }, [allPanels, search]);
 
   const grouped = useMemo(
-    () =>
-      CATEGORY_ORDER.map((cat) => ({
-        category: cat,
-        panels: filtered.filter((p) => p.category === cat),
-      })).filter((g) => g.panels.length > 0),
+    () => {
+      const byCategory = new Map<string, typeof filtered>();
+      for (const panel of filtered) {
+        const category = panel.category ?? 'uncategorized';
+        const arr = byCategory.get(category);
+        if (arr) {
+          arr.push(panel);
+        } else {
+          byCategory.set(category, [panel]);
+        }
+      }
+
+      const orderedCategories = [
+        ...CATEGORY_ORDER.filter((cat) => byCategory.has(cat)),
+        ...Array.from(byCategory.keys())
+          .filter((cat) => !CATEGORY_ORDER.includes(cat as any))
+          .sort((a, b) => a.localeCompare(b)),
+      ];
+
+      return orderedCategories.map((category) => ({
+        category,
+        panels: byCategory.get(category) ?? [],
+      }));
+    },
     [filtered],
   );
 
@@ -125,10 +149,10 @@ function FlyoutContent() {
           <div className="text-xs text-neutral-500 px-2 py-3 text-center">No panels found</div>
         )}
         {grouped.map(({ category, panels }) => (
-          <div key={category} className="mb-2 last:mb-0">
-            <div className="text-[10px] uppercase font-semibold text-neutral-500 px-2 py-1">
-              {CATEGORY_LABELS[category]}
-            </div>
+            <div key={category} className="mb-2 last:mb-0">
+              <div className="text-[10px] uppercase font-semibold text-neutral-500 px-2 py-1">
+                {formatCategoryLabel(category)}
+              </div>
             {panels.map((panel) => {
               const isPinned = pinnedIds.includes(panel.id);
               return (

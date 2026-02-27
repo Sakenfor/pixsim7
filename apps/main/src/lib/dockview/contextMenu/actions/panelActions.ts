@@ -11,6 +11,11 @@
 import { menuActionsToCapabilityActions } from '@pixsim7/shared.ui.context-menu';
 
 import { registerActionsFromDefinitions } from '@lib/capabilities';
+import {
+  buildFloatingOriginMetaRecord,
+  deriveFloatingGroupRestoreHint,
+  readFloatingHostContextPayload,
+} from '@lib/dockview/floatingPanelInterop';
 
 import { getDockviewPanels, resolvePanelDefinitionId as resolveDockviewPanelDefinitionId } from '../../panelAdd';
 import { usePropertiesPopupStore } from '../PanelPropertiesPopup';
@@ -18,16 +23,6 @@ import { resolveCurrentDockviewApi } from '../resolveCurrentDockview';
 import type { MenuAction, MenuActionContext } from '../types';
 
 import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
-
-function getFloatingHostContextPayload(panel: unknown): Record<string, unknown> | undefined {
-  if (!panel || typeof panel !== "object") return undefined;
-  const direct = (panel as any).__pixsimFloatingContextPayload;
-  if (direct && typeof direct === "object") return direct as Record<string, unknown>;
-  const api = (panel as any).api;
-  const fromApi = api?.__pixsimFloatingContextPayload;
-  if (fromApi && typeof fromApi === "object") return fromApi as Record<string, unknown>;
-  return undefined;
-}
 
 /**
  * Close the current panel
@@ -143,7 +138,8 @@ export const floatPanelAction: MenuAction = {
       typeof (panel as any)?.params === 'object' && (panel as any).params !== null
         ? (panel as any).params
         : {};
-    const floatingHostContext = getFloatingHostContextPayload(panel);
+    const floatingHostContext = readFloatingHostContextPayload(panel);
+    const sourceGroupRestoreHint = deriveFloatingGroupRestoreHint(api, ctx.groupId ?? panel?.group?.id);
     const floatOptions = {
       width: 600,
       height: 400,
@@ -152,12 +148,13 @@ export const floatPanelAction: MenuAction = {
         ...(existingContext.context == null && floatingHostContext
           ? { context: floatingHostContext }
           : {}),
-        __floatingMeta: {
+        ...buildFloatingOriginMetaRecord({
           sourceDockviewId: ctx.currentDockviewId ?? null,
           sourceGroupId: ctx.groupId ?? null,
           sourceDockPanelId: panelId,
           sourcePanelId: resolvedPanelId,
-        },
+          sourceGroupRestoreHint,
+        }),
       },
     };
 

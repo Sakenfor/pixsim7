@@ -13,7 +13,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { BlockTemplateSummary, CharacterBindings } from '@lib/api/blockTemplates';
-import { getTemplate } from '@lib/api/blockTemplates';
+import { getTemplate, reloadContentPacks } from '@lib/api/blockTemplates';
 import { Icon } from '@lib/icons';
 
 import {
@@ -81,6 +81,8 @@ export function TemplateBuilderPanel() {
   const [updatedTemplateIds, setUpdatedTemplateIds] = useState<Set<string>>(() => new Set());
   const templateUpdatedAtByIdRef = useRef<Map<string, string>>(new Map());
   const hasTemplateListBaselineRef = useRef(false);
+  const [reloadingPinnedPack, setReloadingPinnedPack] = useState(false);
+  const [reloadPinnedPackMessage, setReloadPinnedPackMessage] = useState<string | null>(null);
 
   useEffect(() => {
     void fetchTemplates();
@@ -145,10 +147,57 @@ export function TemplateBuilderPanel() {
     [templates, pinnedTemplateId],
   );
 
+  const pinnedTemplatePack = useMemo(() => {
+    if (!pinnedTemplateId) return null;
+    const fromActive =
+      activeTemplate?.id === pinnedTemplateId
+        ? (
+          activeTemplate.package_name
+          || (typeof activeTemplate.template_metadata === 'object' && activeTemplate.template_metadata
+            ? String((activeTemplate.template_metadata as Record<string, unknown>).content_pack ?? '')
+            : '')
+        )
+        : '';
+    const normalized = (fromActive || '').trim();
+    return normalized || null;
+  }, [activeTemplate, pinnedTemplateId]);
+
   const pinnedControls = useMemo(
     () => readTemplateControls(activeTemplate?.template_metadata),
     [activeTemplate?.template_metadata],
   );
+
+  const handleReloadPinnedPack = useCallback(async () => {
+    if (!pinnedTemplatePack || reloadingPinnedPack) return;
+    setReloadingPinnedPack(true);
+    setReloadPinnedPackMessage(null);
+    try {
+      const response = await reloadContentPacks({ pack: pinnedTemplatePack, force: true });
+      const stats = response.results?.[pinnedTemplatePack];
+      if (stats?.error) {
+        setReloadPinnedPackMessage(`Reload failed: ${stats.error}`);
+      } else {
+        const updatedCount =
+          (stats?.blocks_updated ?? 0)
+          + (stats?.templates_updated ?? 0)
+          + (stats?.characters_updated ?? 0)
+          + (stats?.blocks_created ?? 0)
+          + (stats?.templates_created ?? 0)
+          + (stats?.characters_created ?? 0);
+        setReloadPinnedPackMessage(
+          `Reloaded ${pinnedTemplatePack}${updatedCount ? ` (${updatedCount} rows touched)` : ''}`,
+        );
+        await fetchTemplates();
+        if (pinnedTemplateId) {
+          await fetchTemplate(pinnedTemplateId);
+        }
+      }
+    } catch (err) {
+      setReloadPinnedPackMessage(err instanceof Error ? `Reload failed: ${err.message}` : 'Reload failed');
+    } finally {
+      setReloadingPinnedPack(false);
+    }
+  }, [fetchTemplate, fetchTemplates, pinnedTemplateId, pinnedTemplatePack, reloadingPinnedPack]);
 
   const handleNew = useCallback(() => {
     setActiveTemplate(null);
@@ -325,12 +374,30 @@ export function TemplateBuilderPanel() {
           <div className="flex flex-col min-h-0">
             {/* Pinned template header */}
             {pinnedTemplateId && (
-              <div className="px-3 py-2 bg-accent/10 border-b border-accent/20 shrink-0">
+              <div className="sticky top-0 z-10 px-3 py-2 bg-accent/10 backdrop-blur border-b border-accent/20 shrink-0">
                 <div className="flex items-center gap-1.5">
                   <Icon name="pin" size={11} className="text-accent shrink-0" />
                   <span className="text-[11px] text-accent font-medium truncate flex-1">
                     {pinnedTemplateName ?? pinnedTemplateId}
                   </span>
+                  {pinnedTemplatePack && (
+                    <button
+                      type="button"
+                      onClick={() => void handleReloadPinnedPack()}
+                      disabled={reloadingPinnedPack}
+                      className={clsx(
+                        'px-1.5 py-0.5 rounded border text-[10px] transition-colors shrink-0',
+                        'border-accent/30 text-accent',
+                        reloadingPinnedPack
+                          ? 'opacity-60 cursor-wait'
+                          : 'hover:bg-accent/20',
+                      )}
+                      title={`Force-reload content pack '${pinnedTemplatePack}' (updated count reflects rewritten rows, not semantic diffs)`}
+                    >
+                      <Icon name={reloadingPinnedPack ? 'loader' : 'refreshCw'} size={9} className="inline mr-1" />
+                      {reloadingPinnedPack ? 'Reloading…' : 'Reload Pack'}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setPinnedTemplateId(null)}
@@ -340,6 +407,11 @@ export function TemplateBuilderPanel() {
                     <Icon name="x" size={10} />
                   </button>
                 </div>
+                {pinnedTemplatePack && (
+                  <div className="mt-1 text-[10px] text-accent/70">
+                    Pack: <span className="font-mono">{pinnedTemplatePack}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 mt-1.5">
                   <span className="text-[10px] text-accent/70">Roll mode:</span>
                   <div className="flex rounded-md overflow-hidden border border-accent/30">
@@ -374,26 +446,64 @@ export function TemplateBuilderPanel() {
                 {pinnedControls.length > 0 && (
                   <div className="mt-1.5 space-y-1">
                     {pinnedControls.map((control) => {
-                      if (control.type !== 'slider') return null;
-                      const value = controlValues[control.id] ?? control.defaultValue;
+                      if (control.type === 'slider') {
+                        const value = controlValues[control.id] ?? control.defaultValue;
+                        return (
+                          <div key={control.id} className="flex items-center gap-2">
+                            <span className="text-[10px] text-accent/70 shrink-0 w-16 truncate" title={control.label}>
+                              {control.label}
+                            </span>
+                            <input
+                              type="range"
+                              min={control.min}
+                              max={control.max}
+                              step={control.step}
+                              value={typeof value === 'number' ? value : control.defaultValue}
+                              onChange={(e) => setControlValue(control.id, Number(e.target.value))}
+                              className="flex-1 h-1 accent-[var(--color-accent)]"
+                            />
+                            <span className="text-[10px] font-mono text-accent/70 w-5 text-right">
+                              {typeof value === 'number' ? value : control.defaultValue}
+                            </span>
+                          </div>
+                        );
+                      }
+
+                      if (control.type === 'select') {
+                        const value = typeof controlValues[control.id] === 'string'
+                          ? String(controlValues[control.id])
+                          : (control.defaultValue ?? control.options[0]?.id ?? '');
+                        return (
+                          <div key={control.id} className="flex items-center gap-2">
+                            <span className="text-[10px] text-accent/70 shrink-0 w-16 truncate" title={control.label}>
+                              {control.label}
+                            </span>
+                            <select
+                              value={value}
+                              onChange={(e) => setControlValue(control.id, e.target.value)}
+                              className="flex-1 min-w-0 rounded border border-accent/30 bg-transparent text-[10px] text-accent px-1.5 py-0.5"
+                            >
+                              {control.options.map((option) => (
+                                <option key={option.id} value={option.id} className="text-neutral-900 dark:text-neutral-100">
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      }
+
                       return (
-                        <div key={control.id} className="flex items-center gap-2">
-                          <span className="text-[10px] text-accent/70 shrink-0 w-16 truncate" title={control.label}>
-                            {control.label}
-                          </span>
-                          <input
-                            type="range"
-                            min={control.min}
-                            max={control.max}
-                            step={control.step}
-                            value={value}
-                            onChange={(e) => setControlValue(control.id, Number(e.target.value))}
-                            className="flex-1 h-1 accent-[var(--color-accent)]"
-                          />
-                          <span className="text-[10px] font-mono text-accent/70 w-5 text-right">{value}</span>
+                        <div key={control.id} className="text-[10px] text-accent/60">
+                          {control.label}
                         </div>
                       );
                     })}
+                  </div>
+                )}
+                {reloadPinnedPackMessage && (
+                  <div className="mt-1.5 text-[10px] text-accent/80">
+                    {reloadPinnedPackMessage}
                   </div>
                 )}
               </div>

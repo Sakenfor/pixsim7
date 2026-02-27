@@ -12,6 +12,8 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useContextHubState } from '@features/contextHub';
 
 
+import { buildFloatingOriginMetaRecord, deriveFloatingGroupRestoreHint } from '../floatingPanelInterop';
+
 import { buildDockviewContext } from './buildDockviewContext';
 import { useDockviewContext } from './DockviewIdContext';
 
@@ -142,16 +144,18 @@ export function CustomTabComponent(props: IDockviewPanelHeaderProps) {
       const resolvedPanelId = resolveDockviewPanelDefinitionId(panel) ?? candidate.panelId;
 
       try {
+        const sourceGroupRestoreHint = deriveFloatingGroupRestoreHint(containerApi, candidate.groupId);
         floatPanelHandler(candidate.panelId, panel, {
           width: 600,
           height: 400,
           context: {
-            __floatingMeta: {
+            ...buildFloatingOriginMetaRecord({
               sourceDockviewId: currentDockviewId ?? null,
               sourceGroupId: candidate.groupId ?? null,
               sourceDockPanelId: candidate.panelId,
               sourcePanelId: resolvedPanelId,
-            },
+              sourceGroupRestoreHint,
+            }),
           },
         });
         (containerApi as any)?.removePanel?.(panel);

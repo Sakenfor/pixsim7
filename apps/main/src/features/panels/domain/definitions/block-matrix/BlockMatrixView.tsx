@@ -15,11 +15,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   getBlockMatrix,
   getBlockTagDictionary,
+  normalizeBlockTags,
   type BlockMatrixQuery,
   type BlockMatrixResponse,
   type BlockMatrixCell,
   type BlockMatrixCellSample,
   type BlockTagDictionaryResponse,
+  type BlockTagNormalizeResponse,
 } from '@lib/api/blockTemplates';
 import { Icon } from '@lib/icons';
 
@@ -69,6 +71,33 @@ const DEFAULT_QUERY: BlockMatrixQuery = {
   limit: 5000,
 };
 
+function parseTagCsv(tagsCsv?: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!tagsCsv) return out;
+  for (const part of tagsCsv.split(',')) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const idx = trimmed.indexOf(':');
+    if (idx <= 0) continue;
+    const key = trimmed.slice(0, idx).trim();
+    const value = trimmed.slice(idx + 1).trim();
+    if (!key || !value) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+function stringifyTagCsv(tags: Record<string, unknown>): string {
+  return Object.entries(tags)
+    .map(([k, v]) => {
+      if (Array.isArray(v)) {
+        return `${k}:${v.join('|')}`;
+      }
+      return `${k}:${String(v)}`;
+    })
+    .join(', ');
+}
+
 // ── Heatmap color helper ───────────────────────────────────────────────────
 
 function heatmapClass(count: number, maxCount: number): string {
@@ -103,6 +132,8 @@ export function BlockMatrixView({
   const [tagDictionary, setTagDictionary] = useState<BlockTagDictionaryResponse | null>(null);
   const [dataQuerySnapshot, setDataQuerySnapshot] = useState<BlockMatrixQuery | null>(null);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied-query' | 'copied-json' | 'error'>('idle');
+  const [normalizeStatus, setNormalizeStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [normalizeResult, setNormalizeResult] = useState<BlockTagNormalizeResponse | null>(null);
   const fetchIdRef = useRef(0);
   const tagDictFetchIdRef = useRef(0);
   const copyTimerRef = useRef<number | null>(null);
@@ -296,6 +327,30 @@ export function BlockMatrixView({
     copyTimerRef.current = window.setTimeout(() => setCopyStatus('idle'), 1500);
   }, [data, dataQuerySnapshot, query]);
 
+  const normalizeTagsFilter = useCallback(async () => {
+    const currentCsv = query.tags?.trim();
+    if (!currentCsv) {
+      setNormalizeResult(null);
+      setNormalizeStatus('idle');
+      return;
+    }
+    setNormalizeStatus('running');
+    try {
+      const parsed = parseTagCsv(currentCsv);
+      const result = await normalizeBlockTags({
+        tags: parsed,
+        apply_value_aliases: true,
+      });
+      setNormalizeResult(result);
+      setNormalizeStatus('done');
+      if (result.changed) {
+        updateField('tags', stringifyTagCsv(result.normalized_tags));
+      }
+    } catch {
+      setNormalizeStatus('error');
+    }
+  }, [query.tags]);
+
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
@@ -392,13 +447,28 @@ export function BlockMatrixView({
             />
           )}
           {!isLocked('tags') && (
-            <input
-              type="text"
-              value={query.tags ?? ''}
-              onChange={(e) => updateField('tags', e.target.value || undefined)}
-              placeholder="tags (key:val,...)"
-              className="px-1.5 py-0.5 rounded border border-neutral-700 bg-neutral-800 text-[11px] text-neutral-200 outline-none placeholder:text-neutral-600 w-36"
-            />
+            <div className="flex items-center gap-1">
+              <input
+                type="text"
+                value={query.tags ?? ''}
+                onChange={(e) => {
+                  setNormalizeResult(null);
+                  setNormalizeStatus('idle');
+                  updateField('tags', e.target.value || undefined);
+                }}
+                placeholder="tags (key:val,...)"
+                className="px-1.5 py-0.5 rounded border border-neutral-700 bg-neutral-800 text-[11px] text-neutral-200 outline-none placeholder:text-neutral-600 w-36"
+              />
+              <button
+                type="button"
+                onClick={() => void normalizeTagsFilter()}
+                disabled={!query.tags || normalizeStatus === 'running'}
+                className="px-1.5 py-0.5 rounded border border-neutral-700 text-[10px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+                title="Canonicalize tag aliases/values using the tag dictionary"
+              >
+                {normalizeStatus === 'running' ? '...' : 'Normalize Tags'}
+              </button>
+            </div>
           )}
           {!isLocked('q') && (
             <input
@@ -460,6 +530,47 @@ export function BlockMatrixView({
               </button>
             ))}
           </div>
+        )}
+
+        {normalizeResult && (
+          <div className="flex items-center gap-2 flex-wrap text-[10px]">
+            <span className="text-neutral-500">
+              tag normalize:
+            </span>
+            <span className={clsx(normalizeResult.changed ? 'text-emerald-300' : 'text-neutral-400')}>
+              {normalizeResult.changed ? 'updated' : 'no changes'}
+            </span>
+            {normalizeResult.key_changes.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded border border-cyan-700/40 text-cyan-300">
+                {normalizeResult.key_changes.length} key alias{normalizeResult.key_changes.length === 1 ? '' : 'es'}
+              </span>
+            )}
+            {normalizeResult.value_changes.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded border border-emerald-700/40 text-emerald-300">
+                {normalizeResult.value_changes.length} value alias{normalizeResult.value_changes.length === 1 ? '' : 'es'}
+              </span>
+            )}
+            {normalizeResult.unknown_keys.length > 0 && (
+              <span
+                className="px-1.5 py-0.5 rounded border border-amber-700/40 text-amber-300"
+                title={normalizeResult.unknown_keys.join(', ')}
+              >
+                unknown: {normalizeResult.unknown_keys.join(', ')}
+              </span>
+            )}
+            {normalizeResult.warnings.slice(0, 2).map((w, idx) => (
+              <span
+                key={`${w.kind}:${idx}`}
+                className="px-1.5 py-0.5 rounded border border-amber-700/40 text-amber-300"
+                title={w.message}
+              >
+                {w.kind}
+              </span>
+            ))}
+          </div>
+        )}
+        {normalizeStatus === 'error' && !normalizeResult && (
+          <div className="text-[10px] text-amber-300">tag normalize failed</div>
         )}
 
         <div className="flex items-center gap-2 flex-wrap text-[10px]">

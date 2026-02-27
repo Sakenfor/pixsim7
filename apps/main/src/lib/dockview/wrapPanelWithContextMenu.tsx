@@ -18,6 +18,7 @@ import {
   contextDataRegistry,
 } from './contextMenu';
 import { buildDockviewContext } from './contextMenu/buildDockviewContext';
+import { setFloatingHostContextPayload } from './floatingPanelInterop';
 
 export interface PanelWrapOptions {
   /** Panel definition ID (e.g., "info", "quickGenerate") */
@@ -134,7 +135,7 @@ export function wrapPanelWithContextMenu(
 
     // Expose a runtime-only, sanitized host context snapshot for float actions.
     // Do not store this in panel params (those are persisted by dockview layouts).
-    (panelProps.api as any).__pixsimFloatingContextPayload = floatingContextPayload;
+    setFloatingHostContextPayload(panelProps.api, floatingContextPayload);
 
     const handleContextMenu = (event: React.MouseEvent) => {
       if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;
