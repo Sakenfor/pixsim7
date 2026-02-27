@@ -18,6 +18,8 @@ import { SmartFilterEditor } from './SmartFilterEditor';
 
 // ── Inline search for adding assets to manual sets ─────────────────────
 
+const USE_OVERLAY_HOVER_ACTIONS = () => null;
+
 function AssetSearchAdder({ onAdd }: { onAdd: (asset: AssetModel) => void }) {
   const [query, setQuery] = useState('');
   const { items, loading } = useAssets({
@@ -200,6 +202,7 @@ export function SetEditView({
                 pageSize={12}
                 showFilters={false}
                 emptyMessage="No assets in this set."
+                renderItemActions={USE_OVERLAY_HOVER_ACTIONS}
                 renderItemWidgets={renderItemWidgets}
               />
             </div>
@@ -234,10 +237,13 @@ export function SetEditView({
           <div className="flex-1 min-h-0">
             <MiniGallery
               initialFilters={set.filters}
+              syncInitialFilters
+              maxItems={set.maxResults}
               paginationMode="page"
               pageSize={12}
               showFilters={false}
               showSearch={false}
+              renderItemActions={USE_OVERLAY_HOVER_ACTIONS}
               emptyMessage="No matching assets."
             />
           </div>
@@ -247,10 +253,17 @@ export function SetEditView({
       {/* Delete */}
       <button
         type="button"
-        onClick={() => { deleteSet(set.id); onBack(); }}
-        className="mt-2 flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+        onClick={() => {
+          const confirmed = window.confirm(
+            `Delete set "${set.name}"? This cannot be undone.`,
+          );
+          if (!confirmed) return;
+          deleteSet(set.id);
+          onBack();
+        }}
+        className="mt-2 self-start inline-flex items-center gap-1 px-1.5 py-1 text-[10px] font-medium rounded-md text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
       >
-        <Icon name="trash" size={12} />
+        <Icon name="trash" size={10} />
         Delete set
       </button>
     </div>

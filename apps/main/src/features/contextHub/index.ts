@@ -20,6 +20,8 @@ export {
   CAP_GENERATION_SOURCE,
   CAP_SCENE_VIEW,
   CAP_CHARACTER_CONTEXT,
+  CAP_CHARACTER_INGEST_ACTION,
+  CAP_CHARACTER_SCENE_PREP_PREFILL,
 } from "./domain/capabilities";
 export {
   APP_ACTION_KEY_PREFIX,
@@ -42,6 +44,8 @@ export type {
   GenerationSourceMode,
   GenerationSourceContext,
   CharacterContextSummary,
+  CharacterIngestActionContext,
+  CharacterScenePrepPrefillContext,
 } from "./domain/capabilities";
 export type {
   SceneViewOffer as SceneViewCapabilityOffer,

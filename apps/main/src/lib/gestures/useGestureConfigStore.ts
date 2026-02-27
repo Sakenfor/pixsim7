@@ -66,7 +66,7 @@ export const useGestureConfigStore = create<GestureConfigState>()(
       threshold: 30,
       edgeInset: 0.2,
       gestureUp: 'upload',
-      gestureDown: 'none',
+      gestureDown: 'archive',
       gestureLeft: 'none',
       gestureRight: 'quickGenerate',
       chainUp: 'none',

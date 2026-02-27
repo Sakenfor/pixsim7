@@ -1,16 +1,16 @@
-import { Button } from '@pixsim7/shared.ui';
-import { useNodeEditor } from './useNodeEditor';
+import { Button, useToast } from '@pixsim7/shared.ui';
+
+import type { SelectionStrategy, PlaybackMode } from '@lib/registries';
+
+import { useGalleryAssetPicker } from '@features/assets/components/pickers';
+
 import type { NodeEditorProps, VideoConfig } from './editorTypes';
 import { validateVideoConfig, logValidationError } from './editorValidation';
-import type { SelectionStrategy, PlaybackMode } from '@lib/registries';
-import { useAssetPickerStore, type SelectedAsset } from '@features/assets';
-import { useWorkspaceStore } from '@features/workspace';
-import { useToast } from '@pixsim7/shared.ui';
+import { useNodeEditor } from './useNodeEditor';
 
 export function VideoNodeEditor({ node, onUpdate }: NodeEditorProps) {
   const toast = useToast();
-  const enterSelectionMode = useAssetPickerStore((s) => s.enterSelectionMode);
-  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+  const { pick } = useGalleryAssetPicker();
 
   const { formState, setFormState, handleApply } = useNodeEditor<VideoConfig>({
     node,
@@ -125,11 +125,10 @@ export function VideoNodeEditor({ node, onUpdate }: NodeEditorProps) {
 
   // Handle browsing assets
   const handleBrowseAssets = () => {
-    openFloatingPanel('gallery', 100, 100, 800, 600);
-    enterSelectionMode((asset: SelectedAsset) => {
+    pick((asset) => {
       setFormState({
         ...formState,
-        selectedAssetIds: [...formState.selectedAssetIds, asset.id]
+        selectedAssetIds: [...formState.selectedAssetIds, String(asset.id)],
       });
       toast.success(`Added asset: ${asset.id}`);
     });

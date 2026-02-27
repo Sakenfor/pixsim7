@@ -109,6 +109,10 @@ export interface VideoScrubWidgetRendererProps {
   /** Tooltip for the dot */
   dotTooltip?: string;
   data?: any;
+  /** Current gesture phase from the parent gesture system */
+  gesturePhase?: 'idle' | 'pending' | 'committed';
+  /** Edge inset fraction (0–0.5) for the gesture center zone */
+  gestureEdgeInset?: number;
 }
 
 const DRAG_THRESHOLD = 5; // pixels before considered a drag
@@ -138,6 +142,8 @@ export function VideoScrubWidgetRenderer({
   dotActive = false,
   dotTooltip,
   data,
+  gesturePhase = 'idle',
+  gestureEdgeInset = 0.2,
 }: VideoScrubWidgetRendererProps) {
   const { src: authenticatedSrc } = useAuthenticatedMedia(url, { active: isHovering });
   const resolvedUrl = authenticatedSrc || url;
@@ -327,9 +333,56 @@ export function VideoScrubWidgetRenderer({
     [videoDuration]
   );
 
+  const gestureActive = gesturePhase !== 'idle';
+
+  // Forward pointer events from the gesture center zone to the thumbnail
+  // so the gesture system can intercept drags that start over the video overlay.
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+
+      const el = event.currentTarget;
+      const rect = el.getBoundingClientRect();
+      const marginX = rect.width * gestureEdgeInset;
+      const marginY = rect.height * gestureEdgeInset;
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      const inCenter = x >= marginX && x <= rect.width - marginX
+        && y >= marginY && y <= rect.height - marginY;
+
+      if (inCenter) {
+        // Suppress the VideoScrubWidget's own mousedown for this interaction
+        event.preventDefault();
+        event.stopPropagation();
+
+        // Find the thumbnail element and forward the pointer event to it
+        const card = el.closest('[data-pixsim7="media-card"]');
+        const thumbnail = card?.querySelector<HTMLElement>('[data-pixsim7="media-thumbnail"]');
+        if (thumbnail) {
+          const synth = new PointerEvent('pointerdown', {
+            bubbles: true,
+            cancelable: true,
+            pointerId: event.pointerId,
+            pointerType: event.pointerType,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            screenX: event.screenX,
+            screenY: event.screenY,
+            button: event.button,
+            buttons: event.buttons,
+            isPrimary: event.isPrimary,
+          });
+          thumbnail.dispatchEvent(synth);
+        }
+      }
+    },
+    [gestureEdgeInset],
+  );
+
   // Handle mouse down - mark potential drag start (don't start drag yet)
   const handleMouseDown = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      if (gestureActive) return;
       if (!containerRef.current || videoDuration === 0) return;
 
       const targetTime = getTimeFromX(event.clientX);
@@ -338,7 +391,7 @@ export function VideoScrubWidgetRenderer({
       isPotentialDragRef.current = true;
       // Don't set isDragging yet - wait for mouse to move past threshold
     },
-    [videoDuration, getTimeFromX]
+    [gestureActive, videoDuration, getTimeFromX]
   );
 
   // Handle mouse up - finalize loop range, add marks, or handle double-click
@@ -440,6 +493,7 @@ export function VideoScrubWidgetRenderer({
   // Handle mouse move over container
   const handleMouseMove = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      if (gestureActive) return;
       if (!containerRef.current || !videoRef.current || videoDuration === 0) return;
 
       const rect = containerRef.current.getBoundingClientRect();
@@ -523,7 +577,7 @@ export function VideoScrubWidgetRenderer({
         }, 500);
       }
     },
-    [videoDuration, throttle, isVideoLoaded, isPlaying, isDragging, pauseVideo, startPlaying, onScrub, data]
+    [gestureActive, videoDuration, throttle, isVideoLoaded, isPlaying, isDragging, pauseVideo, startPlaying, onScrub, data]
   );
 
   // Handle loop range during playback
@@ -723,12 +777,14 @@ export function VideoScrubWidgetRenderer({
   return (
     <div
       ref={containerRef}
+      onPointerDown={handlePointerDown}
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       onContextMenu={handleContextMenu}
       className={`absolute inset-0 cursor-pointer ${className}`}
+      style={gestureActive ? { pointerEvents: 'none' } : undefined}
     >
       {/* Video element for scrubbing - shown when hovering */}
       {/* Use crossOrigin="anonymous" for external URLs (CDN), omit for local paths */}
@@ -975,6 +1031,8 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
       const resolvedDuration = resolveDataBinding(durationBinding, data);
       // Use container hover state since our onMouseEnter won't fire when we appear under cursor
       const isHovering = context?.isHovered ?? false;
+      const gesturePhase = context?.customState?.gesturePhase ?? 'idle';
+      const gestureEdgeInset = context?.customState?.edgeInset;
 
       return (
         <VideoScrubWidgetRenderer
@@ -993,6 +1051,8 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
           onClick={onClick}
           onExtractFrame={onExtractFrame}
           onExtractLastFrame={onExtractLastFrame}
+          gesturePhase={gesturePhase}
+          gestureEdgeInset={gestureEdgeInset}
           data={data}
         />
       );

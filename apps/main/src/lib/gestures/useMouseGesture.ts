@@ -165,11 +165,36 @@ export function useMouseGesture({
       setActiveGesture(pendingGesture);
       emitPhase('pending', pendingGesture);
 
+      const cleanup = () => {
+        el.removeEventListener('pointermove', handleMove);
+        el.removeEventListener('pointerup', handleUp);
+        el.removeEventListener('pointercancel', handleUp);
+        document.removeEventListener('keydown', handleKeyDown);
+      };
+
       const handleMove = (ev: PointerEvent) => {
         const state = stateRef.current;
         const dx = ev.clientX - state.startX;
         const dy = ev.clientY - state.startY;
         const distance = Math.hypot(dx, dy);
+
+        // Sub-threshold return: if committed but dragged back close to start,
+        // revert to pending (hysteresis at 0.7× threshold prevents oscillation)
+        if (state.committed && distance <= threshold * 0.7) {
+          state.committed = false;
+          state.lockedDirection = null;
+          const gesture: ActiveGesture = {
+            type: 'swipe',
+            phase: 'pending',
+            direction: resolveDirection(dx, dy),
+            distance,
+            dx,
+            dy,
+          };
+          setActiveGesture(gesture);
+          emitPhase('pending', gesture);
+          return;
+        }
 
         const wasCommitted = state.committed;
         if (!state.committed && distance > threshold) {
@@ -197,9 +222,7 @@ export function useMouseGesture({
 
       const handleUp = (ev: PointerEvent) => {
         el.releasePointerCapture(ev.pointerId);
-        el.removeEventListener('pointermove', handleMove);
-        el.removeEventListener('pointerup', handleUp);
-        el.removeEventListener('pointercancel', handleUp);
+        cleanup();
 
         if (stateRef.current.committed) {
           const dx = ev.clientX - stateRef.current.startX;
@@ -225,9 +248,26 @@ export function useMouseGesture({
         emitPhase('idle', null);
       };
 
+      const handleKeyDown = (ev: KeyboardEvent) => {
+        if (ev.key === 'Escape') {
+          el.releasePointerCapture(stateRef.current.pointerId);
+          cleanup();
+
+          stateRef.current.committed = false;
+          stateRef.current.pointerId = -1;
+          setActiveGesture(null);
+          emitPhase('idle', null);
+
+          // Suppress the click that would follow the cancelled gesture
+          gestureConsumed.current = true;
+          requestAnimationFrame(() => { gestureConsumed.current = false; });
+        }
+      };
+
       el.addEventListener('pointermove', handleMove);
       el.addEventListener('pointerup', handleUp);
       el.addEventListener('pointercancel', handleUp);
+      document.addEventListener('keydown', handleKeyDown);
     },
     [enabled, threshold, edgeInset, emitPhase],
   );

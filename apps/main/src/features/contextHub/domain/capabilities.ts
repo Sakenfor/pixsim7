@@ -25,6 +25,8 @@ import {
   CAP_GENERATION_SOURCE,
   CAP_SCENE_VIEW,
   CAP_CHARACTER_CONTEXT,
+  CAP_CHARACTER_INGEST_ACTION,
+  CAP_CHARACTER_SCENE_PREP_PREFILL,
 } from "./capabilityKeys";
 import { assetInputContract } from "./contracts/assetInput";
 import { sceneViewContract } from "./contracts/sceneView";
@@ -46,6 +48,8 @@ export {
   CAP_GENERATION_SOURCE,
   CAP_SCENE_VIEW,
   CAP_CHARACTER_CONTEXT,
+  CAP_CHARACTER_INGEST_ACTION,
+  CAP_CHARACTER_SCENE_PREP_PREFILL,
 };
 
 registerCapabilityDescriptor({
@@ -159,6 +163,20 @@ registerCapabilityDescriptor({
   key: CAP_CHARACTER_CONTEXT,
   label: "Character Context",
   description: "Selected character from the Character Creator panel.",
+  kind: "context",
+  source: "contextHub",
+});
+registerCapabilityDescriptor({
+  key: CAP_CHARACTER_INGEST_ACTION,
+  label: "Character Ingest Action",
+  description: "Adds assets to the active character's reference ingest queue.",
+  kind: "action",
+  source: "contextHub",
+});
+registerCapabilityDescriptor({
+  key: CAP_CHARACTER_SCENE_PREP_PREFILL,
+  label: "Character Scene Prep Prefill",
+  description: "Provides scene-prep cast/guidance defaults from the active character and curated slots.",
   kind: "context",
   source: "contextHub",
 });
@@ -357,3 +375,26 @@ export interface CharacterContextSummary {
   gameNpcId: number | null;
 }
 
+export interface CharacterIngestActionContext {
+  characterId: string;
+  characterLabel: string;
+  addAssetsToIngest: (assetIds: Array<number | string>) => void | Promise<void>;
+}
+
+export interface CharacterScenePrepPrefillContext {
+  characterId: string;
+  characterLabel: string;
+  sceneName: string;
+  basePrompt: string;
+  sourceAssetId?: string | number | null;
+  cast: Array<{ role: string; character_id: string }>;
+  guidanceRefs: Array<{
+    key: string;
+    asset_id: string | number;
+    kind?: string;
+    label?: string;
+    priority?: number;
+  }>;
+  matrixQuery?: string;
+  discoveryNotes?: string;
+}

@@ -18,6 +18,8 @@ export interface ClientFilterDef<T> {
   label: string;
   icon?: string;
   type: 'enum' | 'boolean' | 'search';
+  /** Enum selection behavior (default 'multi'). */
+  selectionMode?: 'single' | 'multi';
   order?: number;
   overflow?: boolean;
   isVisible?: (filterState: ClientFilterState) => boolean;

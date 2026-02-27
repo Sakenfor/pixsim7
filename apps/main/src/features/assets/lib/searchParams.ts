@@ -14,6 +14,7 @@ const KNOWN_FILTER_KEYS = new Set([
   'q',
   'tag',
   'provider_id',
+  'effective_provider_id',
   'sort',
   'media_type',
   'upload_method',
@@ -77,6 +78,9 @@ export function buildAssetSearchRequest(
   const registryFilters: Record<string, RegistryFilterValue> = {};
   if (filters.provider_id) {
     registryFilters.provider_id = filters.provider_id as RegistryFilterValue;
+  }
+  if (filters.effective_provider_id) {
+    registryFilters.effective_provider_id = filters.effective_provider_id as RegistryFilterValue;
   }
   if (filters.media_type) {
     registryFilters.media_type = filters.media_type as RegistryFilterValue;

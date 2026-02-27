@@ -105,6 +105,57 @@ interface WorldTime {
   hour: number;
 }
 
+function readNpcExpressionSurfaceType(expression: NpcExpressionDTO): string | null {
+  const meta = expression.meta;
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
+    return null;
+  }
+  const value = (meta as Record<string, unknown>).surfaceType;
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+  return value.trim();
+}
+
+function selectNpcExpressionForPhase(
+  expressions: NpcExpressionDTO[],
+  phase: ScenePlaybackPhase,
+): NpcExpressionDTO | null {
+  if (expressions.length === 0) return null;
+
+  const desiredState =
+    phase === 'awaiting_input'
+      ? 'waiting_for_player'
+      : phase === 'playing'
+        ? 'talking'
+        : 'idle';
+
+  const desiredSurfaceType = phase === 'playing' ? 'dialogue' : 'portrait';
+
+  return (
+    expressions.find(
+      (entry) =>
+        entry.state === desiredState &&
+        readNpcExpressionSurfaceType(entry) === desiredSurfaceType,
+    ) ||
+    expressions.find((entry) => entry.state === desiredState) ||
+    expressions.find(
+      (entry) => readNpcExpressionSurfaceType(entry) === desiredSurfaceType,
+    ) ||
+    expressions.find(
+      (entry) =>
+        entry.state === 'idle' &&
+        readNpcExpressionSurfaceType(entry) === desiredSurfaceType,
+    ) ||
+    expressions.find((entry) => entry.state === 'idle') ||
+    expressions.find(
+      (entry) => readNpcExpressionSurfaceType(entry) === 'portrait',
+    ) ||
+    expressions[0] ||
+    null
+  );
+}
+
 export function Game2D() {
   const [searchParams] = useSearchParams();
 
@@ -684,20 +735,7 @@ export function Game2D() {
       return;
     }
 
-    let desiredState: string = 'idle';
-    if (scenePhase === 'awaiting_input') {
-      // Prefer an explicit "waiting_for_player" expression if it exists.
-      desiredState = 'waiting_for_player';
-    } else if (scenePhase === 'playing') {
-      desiredState = 'talking';
-    } else if (scenePhase === 'completed') {
-      desiredState = 'idle';
-    }
-
-    const match =
-      npcExpressions.find((e) => e.state === desiredState) ||
-      npcExpressions.find((e) => e.state === 'idle') ||
-      npcExpressions[0];
+    const match = selectNpcExpressionForPhase(npcExpressions, scenePhase);
 
     if (!match) {
       setNpcPortraitAsset(null);

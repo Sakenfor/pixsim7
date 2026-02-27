@@ -1,15 +1,17 @@
-import { Button, Panel, Input } from '@pixsim7/shared.ui';
-import { useEffect, useState } from 'react';
+import { Button, Panel, Input, Select } from '@pixsim7/shared.ui';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 
 import {
   listGameNpcs,
   getNpcExpressions,
   saveNpcExpressions,
+  listNpcSurfacePackages,
   getNpcDetail,
   saveNpcMeta,
   type GameNpcSummary,
   type GameNpcDetail,
   type NpcExpressionDTO,
+  type NpcSurfacePackage,
 } from '@lib/api/game';
 
 import { useWorkspaceStore } from '@features/workspace';
@@ -18,11 +20,25 @@ import { NpcPreferencesEditor } from '../components/NpcPreferencesEditor';
 
 type TabType = 'expressions' | 'preferences';
 
+interface SurfaceTypeOption {
+  id: string;
+  packageId: string;
+  usage: string;
+  category: string;
+}
+
+function readExpressionSurfaceType(meta: unknown): string {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return '';
+  const value = (meta as Record<string, unknown>).surfaceType;
+  return typeof value === 'string' ? value : '';
+}
+
 export function NpcPortraits() {
   const [npcs, setNpcs] = useState<GameNpcSummary[]>([]);
   const [selectedNpcId, setSelectedNpcId] = useState<number | null>(null);
   const [selectedNpc, setSelectedNpc] = useState<GameNpcDetail | null>(null);
   const [expressions, setExpressions] = useState<NpcExpressionDTO[]>([]);
+  const [surfacePackages, setSurfacePackages] = useState<NpcSurfacePackage[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('expressions');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +58,44 @@ export function NpcPortraits() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const packages = await listNpcSurfacePackages();
+        if (!cancelled) {
+          setSurfacePackages(packages);
+        }
+      } catch (e) {
+        console.error('Failed to load NPC surface packages', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const surfaceTypeOptions = useMemo<SurfaceTypeOption[]>(() => {
+    const byId = new Map<string, SurfaceTypeOption>();
+    for (const pkg of surfacePackages) {
+      const entries = Object.entries(pkg.surface_types ?? {});
+      for (const [surfaceType, rawMeta] of entries) {
+        if (byId.has(surfaceType)) continue;
+        const usage =
+          rawMeta && typeof rawMeta === 'object' && !Array.isArray(rawMeta)
+            ? String((rawMeta as Record<string, unknown>).usage ?? '').trim()
+            : '';
+        byId.set(surfaceType, {
+          id: surfaceType,
+          packageId: pkg.id,
+          usage,
+          category: pkg.category ?? '',
+        });
+      }
+    }
+    return Array.from(byId.values()).sort((a, b) => a.id.localeCompare(b.id));
+  }, [surfacePackages]);
 
   useEffect(() => {
     if (!selectedNpcId) {
@@ -71,6 +125,29 @@ export function NpcPortraits() {
   const handleChange = (idx: number, patch: Partial<NpcExpressionDTO>) => {
     setExpressions((prev) =>
       prev.map((row, i) => (i === idx ? { ...row, ...patch } : row)),
+    );
+  };
+
+  const handleSurfaceTypeChange = (idx: number, nextSurfaceType: string) => {
+    setExpressions((prev) =>
+      prev.map((row, i) => {
+        if (i !== idx) return row;
+        const currentMeta =
+          row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta)
+            ? { ...(row.meta as Record<string, unknown>) }
+            : {};
+
+        if (nextSurfaceType.trim()) {
+          currentMeta.surfaceType = nextSurfaceType.trim();
+        } else {
+          delete currentMeta.surfaceType;
+        }
+
+        return {
+          ...row,
+          meta: Object.keys(currentMeta).length > 0 ? currentMeta : undefined,
+        };
+      }),
     );
   };
 
@@ -206,6 +283,9 @@ export function NpcPortraits() {
                   Add Expression
                 </Button>
               </div>
+              <p className="text-xs text-neutral-500">
+                Surface packages loaded: {surfacePackages.length} · surface types: {surfaceTypeOptions.length}
+              </p>
               {!selectedNpcId && (
                 <p className="text-xs text-neutral-500">Select an NPC to edit expressions.</p>
               )}
@@ -217,7 +297,7 @@ export function NpcPortraits() {
                     </p>
                   )}
                   {expressions.map((expr, idx) => (
-                <div key={idx} className="grid grid-cols-4 gap-2 items-center text-xs">
+                <div key={idx} className="grid grid-cols-5 gap-2 items-center text-xs">
                   <div className="flex flex-col gap-1">
                     <span className="text-[10px] text-neutral-500">State</span>
                     <Input
@@ -236,6 +316,21 @@ export function NpcPortraits() {
                         handleChange(idx, { asset_id: v ? Number(v) : 0 });
                       }}
                     />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] text-neutral-500">Surface Type</span>
+                    <Select
+                      size="sm"
+                      value={readExpressionSurfaceType(expr.meta)}
+                      onChange={(e: ChangeEvent<HTMLSelectElement>) => handleSurfaceTypeChange(idx, e.target.value)}
+                    >
+                      <option value="">(none)</option>
+                      {surfaceTypeOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.id}{option.usage ? ` — ${option.usage}` : ''}
+                        </option>
+                      ))}
+                    </Select>
                   </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-[10px] text-neutral-500">Crop JSON</span>

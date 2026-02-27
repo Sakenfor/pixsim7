@@ -7,6 +7,7 @@
  * This is a simplified version focused on browsing within the Plugin Workspace.
  */
 
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import type { ExtendedPluginMetadata } from '@lib/plugins/pluginSystem';
 import type { UnifiedPluginDescriptor, UnifiedPluginFamily } from '@lib/plugins/types';
 
@@ -55,6 +56,13 @@ const PLUGIN_FAMILY_ICONS: Record<UnifiedPluginFamily, string> = {
   'generation-ui': '✨',
   'brain-tool': '??',
   'gallery-surface': '???',
+};
+
+const DOCK_SCOPE_LABELS: Record<string, string> = {
+  workspace: 'Workspace',
+  'control-center': 'Control Center',
+  'asset-viewer': 'Asset Viewer',
+  'gizmo-lab': 'Gizmo Lab',
 };
 
 interface PluginBrowserProps {
@@ -342,6 +350,8 @@ function WorkspacePanelListItem({
 }) {
   const isActive = panel.activationState === 'active';
   const canToggle = panel.canDisable;
+  const panelDef = panel.panelId ? panelSelectors.get(panel.panelId) : undefined;
+  const dockScopes = panelDef?.availableIn ?? [];
 
   return (
     <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-4">
@@ -397,6 +407,15 @@ function WorkspacePanelListItem({
                 Tags: {panel.tags.join(', ')}
               </span>
             )}
+            {dockScopes.map((scope) => (
+              <span
+                key={`${panel.id}:scope:${scope}`}
+                className="px-2 py-0.5 text-xs rounded bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300"
+                title={`Available in ${DOCK_SCOPE_LABELS[scope] ?? scope}`}
+              >
+                {DOCK_SCOPE_LABELS[scope] ?? scope}
+              </span>
+            ))}
           </div>
         </div>
 

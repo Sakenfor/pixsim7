@@ -17,6 +17,7 @@ export type AssetFilters = {
   q?: string;
   tag?: string | string[];
   provider_id?: string | string[] | null;
+  effective_provider_id?: string | string[] | null;
   sort?: 'new' | 'old' | 'size';  // Removed 'alpha' - Asset has no name field
   media_type?: 'video' | 'image' | 'audio' | '3d_model' | Array<'video' | 'image' | 'audio' | '3d_model'>;
   upload_method?: string | string[];

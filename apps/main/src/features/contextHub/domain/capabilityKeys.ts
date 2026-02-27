@@ -14,3 +14,5 @@ export const CAP_GENERATION_WIDGET = "generationWidget" as const;
 export const CAP_GENERATION_SOURCE = "generationSource" as const;
 export const CAP_SCENE_VIEW = "sceneView" as const;
 export const CAP_CHARACTER_CONTEXT = "characterContext" as const;
+export const CAP_CHARACTER_INGEST_ACTION = "characterIngestAction" as const;
+export const CAP_CHARACTER_SCENE_PREP_PREFILL = "characterScenePrepPrefill" as const;

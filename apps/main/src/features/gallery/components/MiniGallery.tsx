@@ -7,16 +7,16 @@ import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import type { OverlayContextId } from '@lib/widgets';
 
-import { PaginationStrip } from '@features/assets/components/shared';
 
 import type { AssetModel } from '@features/assets';
 import { useAssetViewerStore, selectIsViewerOpen, toViewerAsset, toViewerAssets } from '@features/assets';
-import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrateAssetModel';
-import { useViewerScopeSync } from '@features/assets/hooks/useAssetViewer';
+import { PaginationStrip } from '@features/assets/components/shared';
 import { CompactAssetCard } from '@features/assets/components/shared';
 import { GalleryFilters } from '@features/assets/components/shared/GalleryFilters';
 import type { AssetFilters } from '@features/assets/hooks/useAssets';
 import { useAssets } from '@features/assets/hooks/useAssets';
+import { useViewerScopeSync } from '@features/assets/hooks/useAssetViewer';
+import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrateAssetModel';
 import { GenerationScopeProvider, useGenerationScopeStores } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 import { useOperationSpec, useProviderIdForModel } from '@features/providers';
@@ -32,6 +32,10 @@ import { OPERATION_METADATA, isMultiAssetOperation } from '@/types/operations';
 export interface MiniGalleryProps {
   /** Initial filter state (user can change via UI) */
   initialFilters?: AssetFilters;
+  /** When true, re-apply `initialFilters`/`context.initialFilters` when they change. */
+  syncInitialFilters?: boolean;
+  /** Optional cap on total results shown in this gallery (across pages). */
+  maxItems?: number;
 
   // Which filter controls to show (only when using useAssets data source)
   showSearch?: boolean;
@@ -254,6 +258,8 @@ const MAX_CARD_SIZE = 200;
 
 function MiniGalleryContent({
   initialFilters: propInitialFilters,
+  syncInitialFilters = false,
+  maxItems,
   showSearch = true,
   showMediaType = true,
   showSort = true,
@@ -273,6 +279,10 @@ function MiniGalleryContent({
   const useExternalData = externalItems !== undefined;
   const showFilters = showFiltersProp ?? !useExternalData;
   const usePaging = paginationMode === 'page';
+  const resultCap =
+    typeof maxItems === 'number' && Number.isFinite(maxItems) && maxItems > 0
+      ? Math.floor(maxItems)
+      : undefined;
   const [cardSize, setCardSize] = useState(DEFAULT_CARD_SIZE);
 
   // Resolve operation type: controller > prop > context
@@ -280,20 +290,28 @@ function MiniGalleryContent({
   const operationType =
     controller.operationType ?? propOperationType ?? context?.operationType;
 
-  // Merge initial filters from props and context
+  // Merge initial filters from props and context (default behavior is still
+  // "seed once", but callers can opt into syncing via `syncInitialFilters`).
   const mergedInitialFilters = useMemo<AssetFilters>(
     () => ({
       sort: 'new' as const,
       ...context?.initialFilters,
       ...propInitialFilters,
     }),
-    // Only compute once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [context?.initialFilters, propInitialFilters],
+  );
+  const mergedInitialFiltersKey = useMemo(
+    () => JSON.stringify(mergedInitialFilters ?? {}),
+    [mergedInitialFilters],
   );
 
   // Internal filter state (only used when fetching via useAssets)
   const [filters, setFilters] = useState<AssetFilters>(mergedInitialFilters);
+
+  useEffect(() => {
+    if (!syncInitialFilters || useExternalData) return;
+    setFilters(mergedInitialFilters);
+  }, [syncInitialFilters, useExternalData, mergedInitialFiltersKey, mergedInitialFilters]);
 
   const handleFiltersChange = useCallback((updates: Partial<AssetFilters>) => {
     setFilters((prev) => ({ ...prev, ...updates }));
@@ -318,18 +336,43 @@ function MiniGalleryContent({
   }, [useExternalData, externalItems?.length]);
 
   const allItems = useExternalData ? externalItems : assetsHook.items;
-  const displayItems = usePaging && useExternalData
-    ? allItems.slice((clientPage - 1) * pageSize, clientPage * pageSize)
-    : allItems;
   const loading = useExternalData ? false : assetsHook.loading;
   const error = useExternalData ? null : assetsHook.error;
-  const hasMore = useExternalData ? false : assetsHook.hasMore;
+  const rawHasMore = useExternalData ? false : assetsHook.hasMore;
   const loadMore = assetsHook.loadMore;
 
   // Pagination state (unified for both data sources)
   const currentPage = useExternalData ? clientPage : assetsHook.currentPage;
-  const totalPages = useExternalData ? clientTotalPages : assetsHook.totalPages;
+  const rawTotalPages = useExternalData ? clientTotalPages : assetsHook.totalPages;
   const goToPage = useExternalData ? setClientPage : assetsHook.goToPage;
+  const cappedTotalPages = resultCap && usePaging
+    ? Math.max(1, Math.ceil(resultCap / pageSize))
+    : null;
+  const totalPages = cappedTotalPages
+    ? Math.min(rawTotalPages, cappedTotalPages)
+    : rawTotalPages;
+  const pageStartIndex = usePaging ? (currentPage - 1) * pageSize : 0;
+  const pageCapRemaining = resultCap !== undefined ? resultCap - pageStartIndex : undefined;
+  const baseDisplayItems = usePaging && useExternalData
+    ? allItems.slice(pageStartIndex, pageStartIndex + pageSize)
+    : allItems;
+  const displayItems =
+    pageCapRemaining === undefined
+      ? baseDisplayItems
+      : pageCapRemaining <= 0
+        ? []
+        : baseDisplayItems.slice(0, pageCapRemaining);
+  const hasMore = resultCap !== undefined && usePaging
+    ? rawHasMore && currentPage < (cappedTotalPages ?? totalPages)
+    : resultCap !== undefined && !usePaging
+      ? rawHasMore && allItems.length < resultCap
+      : rawHasMore;
+
+  useEffect(() => {
+    if (!usePaging) return;
+    if (currentPage <= totalPages) return;
+    goToPage(Math.max(1, totalPages));
+  }, [usePaging, currentPage, totalPages, goToPage]);
 
   // Infinite scroll via intersection observer (only for useAssets mode + infinite)
   const sentinelRef = useRef<HTMLDivElement | null>(null);

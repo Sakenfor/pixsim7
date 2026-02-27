@@ -126,19 +126,34 @@ export function LocalFoldersContent({
   // --- Drill-down state for group navigation ---
   const [drilledGroupKey, setDrilledGroupKey] = useState<string | null>(null);
 
-  // Reset drill-down when groupBy changes, filters change, or folder scope changes
-  const groupResetKeyRef = useRef({ localGroupBy, filterState, hasFolderScope });
+  // Reset drill-down when grouping mode, folder scope, filters, or tree selection changes.
+  // Tree folder navigation can change the active asset scope without touching filterState.
+  const groupResetKeyRef = useRef({
+    localGroupBy,
+    filterState,
+    hasFolderScope,
+    selectedFolderPath: controller.selectedFolderPath,
+    viewMode: controller.viewMode,
+  });
   useEffect(() => {
     const prev = groupResetKeyRef.current;
     if (
       prev.localGroupBy !== localGroupBy ||
       prev.filterState !== filterState ||
-      prev.hasFolderScope !== hasFolderScope
+      prev.hasFolderScope !== hasFolderScope ||
+      prev.selectedFolderPath !== controller.selectedFolderPath ||
+      prev.viewMode !== controller.viewMode
     ) {
       setDrilledGroupKey(null);
-      groupResetKeyRef.current = { localGroupBy, filterState, hasFolderScope };
+      groupResetKeyRef.current = {
+        localGroupBy,
+        filterState,
+        hasFolderScope,
+        selectedFolderPath: controller.selectedFolderPath,
+        viewMode: controller.viewMode,
+      };
     }
-  }, [localGroupBy, filterState, hasFolderScope]);
+  }, [localGroupBy, filterState, hasFolderScope, controller.selectedFolderPath, controller.viewMode]);
 
   // --- Group overview: compute groups from all filteredItems ---
   const groups = useMemo(() => {
@@ -166,6 +181,14 @@ export function LocalFoldersContent({
   const showGroupOverview = hasActiveGrouping && drilledGroupKey === null;
   const showDrilledView = hasActiveGrouping && drilledGroupKey !== null;
 
+  // Safety valve: if the active drill-down key no longer exists after a fast scope/filter
+  // transition, return to the group overview instead of staying on a stale group.
+  useEffect(() => {
+    if (!showDrilledView) return;
+    if (drilledItems.length > 0) return;
+    setDrilledGroupKey(null);
+  }, [showDrilledView, drilledItems.length]);
+
   // --- Favorite groups: partition to top ---
   const favoriteGroupSet = useMemo(
     () => new Set(favoriteGroups),
@@ -190,7 +213,13 @@ export function LocalFoldersContent({
 
   // --- Group overview pagination ---
   const [groupPage, setGroupPage] = useState(1);
-  useEffect(() => { setGroupPage(1); }, [localGroupBy, localGroupSort, filterState]);
+  useEffect(() => { setGroupPage(1); }, [
+    localGroupBy,
+    localGroupSort,
+    filterState,
+    controller.selectedFolderPath,
+    controller.viewMode,
+  ]);
 
   const groupTotalPages = Math.max(1, Math.ceil(favoriteSortedGroups.length / GROUP_PAGE_SIZE));
   const pagedGroups = useMemo(() => {
@@ -205,20 +234,25 @@ export function LocalFoldersContent({
     // Current page + one page lookahead so page transitions are instant
     const start = (groupPage - 1) * GROUP_PAGE_SIZE;
     const end = Math.min(start + GROUP_PAGE_SIZE * 2, favoriteSortedGroups.length);
-    const keys: string[] = [];
+    const keysSet = new Set<string>();
     for (let i = start; i < end; i++) {
       for (const pa of favoriteSortedGroups[i].previewAssets) {
-        if (pa.providerAssetId) keys.push(pa.providerAssetId);
+        if (pa.providerAssetId) keysSet.add(pa.providerAssetId);
       }
     }
-    return keys;
+    return Array.from(keysSet);
   }, [showGroupOverview, favoriteSortedGroups, groupPage]);
 
   useEffect(() => {
     if (groupPreviewKeys.length === 0) return;
-    for (const key of groupPreviewKeys) {
-      controller.loadPreview(key);
-    }
+    // Debounce eager preloads so quick drill-in / back / next-group navigation
+    // doesn't enqueue a large backlog for a transient group overview.
+    const timer = setTimeout(() => {
+      for (const key of groupPreviewKeys) {
+        controller.loadPreview(key);
+      }
+    }, 150);
+    return () => clearTimeout(timer);
   }, [groupPreviewKeys, controller]);
 
   // --- Pagination (persisted) — used for flat view and drilled-in view ---
@@ -498,7 +532,7 @@ export function LocalFoldersContent({
                       title={isFav ? 'Unpin group' : 'Pin group'}
                       onClick={(e) => { e.stopPropagation(); toggleFavoriteGroup(compositeKey); }}
                     >
-                      <Icon name="star" size={14} className={isFav ? 'fill-current' : ''} />
+                      <Icon name="pin" size={14} />
                     </button>
                   </div>
                 );
@@ -526,7 +560,7 @@ export function LocalFoldersContent({
                       title={isFav ? 'Unpin group' : 'Pin group'}
                       onClick={(e) => { e.stopPropagation(); toggleFavoriteGroup(compositeKey); }}
                     >
-                      <Icon name="star" size={14} className={isFav ? 'fill-current' : ''} />
+                      <Icon name="pin" size={14} />
                     </button>
                   </div>
                 );

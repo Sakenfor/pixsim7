@@ -190,6 +190,15 @@ export { applyQuickTag } from './lib/quickTag';
 
 export { useAssetContextMenu, useRegisterAssetContext } from './lib/assetContextResolver';
 
+// ============================================================================
+// Pickers - Shared asset picker primitives
+// ============================================================================
+
+export type { PickedAsset } from './components/pickers';
+export { InlineAssetSearchPicker, type InlineAssetSearchPickerProps } from './components/pickers';
+export { useGalleryAssetPicker, type GalleryAssetPickerOptions } from './components/pickers';
+export { AssetPickerField, type AssetPickerFieldProps } from './components/pickers';
+
 export {
   bulkDeleteAssets,
   deleteAsset,

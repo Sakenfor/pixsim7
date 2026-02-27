@@ -8,6 +8,7 @@ export type FilterRuleType =
   | 'tags'
   | 'mediaType'
   | 'search'
+  | 'provider'
   | 'dateRange'
   | 'dimensions'
   | 'operationType'
@@ -31,6 +32,7 @@ export const RULE_DEFINITIONS: Record<FilterRuleType, RuleDefinition> = {
   tags:            { label: 'Tags',             icon: 'tag',         filterKeys: ['tag', 'tag__mode' as keyof AssetFilters] },
   mediaType:       { label: 'Media Type',       icon: 'image',       filterKeys: ['media_type'] },
   search:          { label: 'Search',           icon: 'search',      filterKeys: ['q'] },
+  provider:        { label: 'Provider',         icon: 'globe',       filterKeys: ['effective_provider_id' as keyof AssetFilters, 'provider_id'] },
   dateRange:       { label: 'Date Range',       icon: 'clock',       filterKeys: ['created_from', 'created_to'] },
   dimensions:      { label: 'Dimensions',       icon: 'maximize2',   filterKeys: ['min_width', 'max_width', 'min_height', 'max_height'] },
   operationType:   { label: 'Operation Type',   icon: 'layers',      filterKeys: ['operation_type'] },
@@ -46,7 +48,7 @@ export const RULE_DEFINITIONS: Record<FilterRuleType, RuleDefinition> = {
 };
 
 export const RULE_ORDER: FilterRuleType[] = [
-  'tags', 'mediaType', 'search', 'uploadSource', 'sourceFolder',
+  'tags', 'mediaType', 'search', 'provider', 'uploadSource', 'sourceFolder',
   'dateRange', 'dimensions', 'operationType', 'lineage',
   'analysisTags', 'providerStatus', 'missingMetadata',
   'sortOrder', 'maxResults', 'includeArchived',
@@ -59,7 +61,7 @@ export const PRIMARY_RULES: FilterRuleType[] = [
 
 /** Overflow chips — shown in the "..." menu. */
 export const OVERFLOW_RULES: FilterRuleType[] = [
-  'dimensions', 'operationType', 'lineage', 'analysisTags', 'providerStatus',
+  'provider', 'dimensions', 'operationType', 'lineage', 'analysisTags', 'providerStatus',
   'missingMetadata', 'sortOrder', 'maxResults', 'includeArchived',
 ];
 
@@ -77,11 +79,20 @@ export function getActiveCount(
       return Array.isArray(tags) ? tags.length : 1;
     }
     case 'mediaType':
-      return filters.media_type ? 1 : 0;
+      return filters.media_type
+        ? (Array.isArray(filters.media_type) ? filters.media_type.length : 1)
+        : 0;
     case 'search':
       return filters.q ? 1 : 0;
+    case 'provider': {
+      const provider = (filters as Record<string, unknown>).effective_provider_id ?? filters.provider_id;
+      if (!provider) return 0;
+      return Array.isArray(provider) ? provider.length : 1;
+    }
     case 'uploadSource':
-      return rec.upload_method ? 1 : 0;
+      return rec.upload_method
+        ? (Array.isArray(rec.upload_method) ? rec.upload_method.length : 1)
+        : 0;
     case 'sourceFolder':
       return rec.source_path ? 1 : 0;
     case 'dateRange': {
