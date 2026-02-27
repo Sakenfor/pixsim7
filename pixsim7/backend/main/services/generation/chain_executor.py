@@ -35,6 +35,69 @@ from pixsim7.backend.main.shared.datetime_utils import utcnow
 logger = logging.getLogger(__name__)
 
 
+def _coerce_operation_type(value: Any) -> OperationType:
+    """Accept canonical enum values plus common quick aliases."""
+    if isinstance(value, OperationType):
+        return value
+
+    raw = str(value or "").strip().lower()
+    aliases = {
+        "txt2img": "text_to_image",
+        "t2i": "text_to_image",
+        "img2img": "image_to_image",
+        "i2i": "image_to_image",
+        "txt2vid": "text_to_video",
+        "t2v": "text_to_video",
+        "img2vid": "image_to_video",
+        "i2v": "image_to_video",
+    }
+    normalized = aliases.get(raw, raw)
+    try:
+        return OperationType(normalized)
+    except ValueError as exc:
+        raise RuntimeError(f"Unsupported step operation '{value}'") from exc
+
+
+def _coerce_repeat_count(value: Any) -> int:
+    if value is None:
+        return 1
+    try:
+        count = int(value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"Invalid repeat_count '{value}'") from exc
+    if count < 1:
+        raise RuntimeError(f"repeat_count must be >= 1 (got {count})")
+    return count
+
+
+def _coerce_optional_int(value: Any, field_name: str) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"Invalid {field_name} '{value}'") from exc
+
+
+def _coerce_mapping(value: Any, field_name: str) -> Dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise RuntimeError(f"{field_name} must be an object/dict")
+    return dict(value)
+
+
+def _deep_merge_dict(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
+    merged: Dict[str, Any] = dict(base)
+    for key, value in patch.items():
+        existing = merged.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merged[key] = _deep_merge_dict(existing, value)
+        else:
+            merged[key] = value
+    return merged
+
+
 # ---------------------------------------------------------------------------
 # Execution result
 # ---------------------------------------------------------------------------
@@ -172,36 +235,80 @@ class ChainExecutor:
         step_results: Dict[str, StepResult] = {}
         previous_asset_id = initial_asset_id
         previous_compiled_guidance: Optional[Dict[str, Any]] = None
+        previous_settings_params: Dict[str, Any] = {}
         final_asset_id = None
         chain_error = None
 
         for i, step in enumerate(chain.steps):
             step_id = step.get("id", f"step_{i}")
+            repeat_count = _coerce_repeat_count(step.get("repeat_count"))
             execution.current_step_index = i
-            self._update_step_state(execution, step_id, status="rolling")
+            self._update_step_state(
+                execution,
+                step_id,
+                status="rolling",
+                repeat_count=repeat_count,
+                repeat_index=1,
+                iterations_completed=0,
+            )
             await self.db.commit()
 
             try:
-                result, compiled_guidance = await self._execute_single_step(
-                    step=step,
-                    step_index=i,
-                    chain=chain,
-                    user=user,
-                    provider_id=provider_id,
-                    previous_asset_id=previous_asset_id,
-                    previous_compiled_guidance=previous_compiled_guidance,
-                    step_results=step_results,
-                    default_operation=default_operation,
-                    workspace_id=workspace_id,
-                    preferred_account_id=preferred_account_id,
-                    step_timeout=step_timeout,
-                    step_poll_interval=step_poll_interval,
-                    execution=execution,
-                )
+                result: Optional[StepResult] = None
+                compiled_guidance: Optional[Dict[str, Any]] = None
+                iteration_summaries: List[Dict[str, Any]] = []
+                iteration_previous_asset_id = previous_asset_id
+                iteration_previous_compiled_guidance = previous_compiled_guidance
+                iteration_previous_settings_params = dict(previous_settings_params)
+                effective_settings_params: Dict[str, Any] = dict(iteration_previous_settings_params)
 
-                step_results[step_id] = result
+                for repeat_index in range(repeat_count):
+                    self._update_step_state(
+                        execution,
+                        step_id,
+                        status="rolling",
+                        repeat_count=repeat_count,
+                        repeat_index=repeat_index + 1,
+                        iterations_completed=repeat_index,
+                    )
+                    await self.db.commit()
+
+                    result, compiled_guidance, effective_settings_params = await self._execute_single_step(
+                        step=step,
+                        step_index=i,
+                        chain=chain,
+                        user=user,
+                        provider_id=provider_id,
+                        previous_asset_id=iteration_previous_asset_id,
+                        previous_compiled_guidance=iteration_previous_compiled_guidance,
+                        previous_settings_params=iteration_previous_settings_params,
+                        step_results=step_results,
+                        default_operation=default_operation,
+                        workspace_id=workspace_id,
+                        preferred_account_id=preferred_account_id,
+                        step_timeout=step_timeout,
+                        step_poll_interval=step_poll_interval,
+                        execution=execution,
+                    )
+
+                    step_results[step_id] = result
+                    iteration_previous_asset_id = result.asset_id
+                    iteration_previous_compiled_guidance = compiled_guidance
+                    iteration_previous_settings_params = dict(effective_settings_params)
+                    iteration_summaries.append({
+                        "repeat_index": repeat_index + 1,
+                        "generation_id": result.generation_id,
+                        "asset_id": result.asset_id,
+                        "status": str(result.status.value if hasattr(result.status, "value") else result.status),
+                        "duration_seconds": result.duration_seconds,
+                    })
+
+                if result is None:
+                    raise RuntimeError(f"Step '{step_id}' produced no result")
+
                 previous_asset_id = result.asset_id
                 previous_compiled_guidance = compiled_guidance
+                previous_settings_params = dict(iteration_previous_settings_params)
                 final_asset_id = result.asset_id
 
                 self._update_step_state(
@@ -213,6 +320,10 @@ class ChainExecutor:
                     completed_at=utcnow().isoformat(),
                     duration_seconds=result.duration_seconds,
                     compiled_guidance=compiled_guidance,
+                    repeat_count=repeat_count,
+                    repeat_index=repeat_count,
+                    iterations_completed=repeat_count,
+                    iteration_results=iteration_summaries if repeat_count > 1 else None,
                 )
                 await self.db.commit()
 
@@ -223,6 +334,7 @@ class ChainExecutor:
                         "step_id": step_id,
                         "step_index": i,
                         "asset_id": result.asset_id,
+                        "repeat_count": repeat_count,
                         "has_guidance": compiled_guidance is not None,
                     },
                 )
@@ -230,14 +342,22 @@ class ChainExecutor:
             except StepTimeoutError as e:
                 chain_error = f"Step '{step_id}' timed out: {e}"
                 self._update_step_state(
-                    execution, step_id, status="failed", error=chain_error,
+                    execution,
+                    step_id,
+                    status="failed",
+                    error=chain_error,
+                    repeat_count=repeat_count,
                 )
                 break
 
             except Exception as e:
                 chain_error = f"Step '{step_id}' failed: {e}"
                 self._update_step_state(
-                    execution, step_id, status="failed", error=str(e),
+                    execution,
+                    step_id,
+                    status="failed",
+                    error=str(e),
+                    repeat_count=repeat_count,
                 )
                 logger.error(
                     "chain_executor.step_failed",
@@ -283,6 +403,7 @@ class ChainExecutor:
         provider_id: str,
         previous_asset_id: Optional[int],
         previous_compiled_guidance: Optional[Dict[str, Any]],
+        previous_settings_params: Optional[Dict[str, Any]],
         step_results: Dict[str, StepResult],
         default_operation: str,
         workspace_id: Optional[int],
@@ -290,17 +411,41 @@ class ChainExecutor:
         step_timeout: float,
         step_poll_interval: float,
         execution: ChainExecution,
-    ) -> tuple[StepResult, Optional[Dict[str, Any]]]:
+    ) -> tuple[StepResult, Optional[Dict[str, Any]], Dict[str, Any]]:
         """Execute one step: compile guidance → roll template → build params → submit → await.
 
         Returns:
-            ``(step_result, compiled_guidance_dict)`` — the generation result
-            and the compiled guidance plan dict (for passing to next step).
+            ``(step_result, compiled_guidance_dict, effective_settings_params)`` —
+            the generation result, compiled guidance plan dict (for passing to
+            next step), and the effective QuickGen-style settings params used
+            for this step (for inheritance by later steps).
         """
 
         step_id = step.get("id", f"step_{step_index}")
         template_id = step.get("template_id")
+        inline_prompt = (step.get("prompt") or "").strip() or None
         operation = step.get("operation", default_operation)
+        step_provider_override = (step.get("provider_id") or "").strip() or None
+        step_preferred_account_override = _coerce_optional_int(
+            step.get("preferred_account_id"),
+            "preferred_account_id",
+        )
+        inherit_previous_settings = (
+            True if step.get("inherit_previous_settings") is None
+            else bool(step.get("inherit_previous_settings"))
+        )
+        params_overrides = _coerce_mapping(step.get("params_overrides"), "params_overrides")
+        inherited_settings_params = (
+            _coerce_mapping(previous_settings_params, "previous_settings_params")
+            if inherit_previous_settings else {}
+        )
+        effective_settings_params = _deep_merge_dict(inherited_settings_params, params_overrides)
+        effective_provider_id = step_provider_override or provider_id
+        effective_preferred_account_id = (
+            step_preferred_account_override
+            if step_preferred_account_override is not None
+            else preferred_account_id
+        )
 
         # --- Compile guidance (inheritance + step-local) ---
         step_guidance = step.get("guidance")
@@ -340,8 +485,9 @@ class ChainExecutor:
             control_overrides = step.get("control_overrides")
             char_overrides = step.get("character_binding_overrides")
 
+            template_uuid = UUID(template_id) if isinstance(template_id, str) else template_id
             roll_result = await self._template_service.roll_template(
-                UUID(template_id) if isinstance(template_id, str) else template_id,
+                template_uuid,
                 control_values=control_overrides,
                 character_bindings=char_overrides,
             )
@@ -355,15 +501,22 @@ class ChainExecutor:
             prompt = roll_result["assembled_prompt"]
             roll_metadata = {
                 "assembled_prompt": prompt,
-                "selected_block_ids": [
-                    sr.get("block_id")
-                    for sr in roll_result.get("slot_results", [])
-                    if sr.get("block_id")
+                "selected_block_ids": roll_result.get("metadata", {}).get("selected_block_ids") or [
+                    sr.get("selected_block_id")
+                    for sr in (roll_result.get("slot_results") or [])
+                    if isinstance(sr, dict) and sr.get("selected_block_id")
                 ],
                 "roll_seed": roll_result.get("metadata", {}).get("seed"),
                 "slot_results": roll_result.get("slot_results"),
                 "warnings": roll_result.get("warnings"),
             }
+        elif inline_prompt:
+            prompt = inline_prompt
+
+        if not prompt:
+            raise RuntimeError(
+                f"Chain step '{step_id}' must provide template_id or prompt"
+            )
 
         # Update step state with roll + guidance info
         self._update_step_state(
@@ -383,7 +536,7 @@ class ChainExecutor:
         await self.db.commit()
 
         # --- Build structured generation params ---
-        operation_type = OperationType(operation)
+        operation_type = _coerce_operation_type(operation)
 
         # run_context carries chain provenance + guidance
         run_context: Dict[str, Any] = {
@@ -393,12 +546,29 @@ class ChainExecutor:
             "step_id": step_id,
             "step_index": step_index,
         }
+        # Manifest keys expected by asset provenance tracking.
+        run_context["run_id"] = str(execution.id)
+        run_context["item_index"] = step_index
         if compiled_guidance_dict:
             run_context["guidance_plan"] = compiled_guidance_dict
 
-        gen_config: Dict[str, Any] = {
-            "run_context": run_context,
-        }
+        if template_id and roll_metadata:
+            run_context["block_template_id"] = str(template_uuid)
+            run_context["template_slug"] = step.get("template_slug")  # optional caller hint
+            run_context["roll_seed"] = roll_metadata.get("roll_seed")
+            run_context["slot_results"] = roll_metadata.get("slot_results") or []
+            run_context["selected_block_ids"] = roll_metadata.get("selected_block_ids") or []
+            run_context["assembled_prompt"] = roll_metadata.get("assembled_prompt")
+            if control_overrides is not None:
+                run_context["control_overrides"] = control_overrides
+            if char_overrides is not None:
+                run_context["character_binding_overrides"] = char_overrides
+        elif inline_prompt:
+            run_context["inline_prompt"] = inline_prompt
+            run_context["assembled_prompt"] = inline_prompt
+
+        gen_config: Dict[str, Any] = dict(effective_settings_params)
+        gen_config["run_context"] = run_context
         if prompt:
             gen_config["prompt"] = prompt
         if source_asset_id:
@@ -418,10 +588,10 @@ class ChainExecutor:
         result = await self._step_executor.execute_step(
             user=user,
             operation_type=operation_type,
-            provider_id=provider_id,
+            provider_id=effective_provider_id,
             params=params,
             workspace_id=workspace_id,
-            preferred_account_id=preferred_account_id,
+            preferred_account_id=effective_preferred_account_id,
             force_new=True,  # Chain steps should always generate fresh
             poll_interval=step_poll_interval,
             timeout=step_timeout,
@@ -436,7 +606,7 @@ class ChainExecutor:
         if result.status == GenerationStatus.CANCELLED:
             raise RuntimeError("Generation was cancelled")
 
-        return result, compiled_guidance_dict
+        return result, compiled_guidance_dict, effective_settings_params
 
     # ------------------------------------------------------------------
     # Input resolution

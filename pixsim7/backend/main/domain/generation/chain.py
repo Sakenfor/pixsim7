@@ -2,7 +2,7 @@
 GenerationChain model - First-class orchestration entity.
 
 A GenerationChain defines a sequential pipeline of generation steps, where each
-step references a BlockTemplate for prompt rolling and specifies operation type,
+step references a BlockTemplate (or provides an inline prompt) and specifies operation type,
 input wiring, control overrides, and guidance inheritance rules.
 
 Design boundaries:
@@ -31,7 +31,8 @@ from pixsim7.backend.main.shared.datetime_utils import utcnow
 class GenerationChain(SQLModel, table=True):
     """
     Orchestration plan: an ordered sequence of generation steps that pipe
-    results from one to the next. Each step references a BlockTemplate by ID.
+    results from one to the next. Each step references a BlockTemplate by ID
+    or provides an inline prompt.
     """
 
     __tablename__ = "generation_chains"
@@ -59,7 +60,8 @@ class GenerationChain(SQLModel, table=True):
         sa_column=Column(JSON),
         description=(
             "Ordered step definitions. Each step: "
-            "{id, label?, template_id, operation?, input_from?, "
+            "{id, label?, template_id?, prompt?, repeat_count?, provider_id?, preferred_account_id?, "
+            "inherit_previous_settings?, params_overrides?, operation?, input_from?, "
             "control_overrides?, character_binding_overrides?, "
             "guidance?, guidance_inherit?}"
         ),

@@ -38,7 +38,7 @@ def extract_flat_provider_params(canonical_params: dict) -> dict:
             flat.update(provider_style)
 
     # Pick explicit top-level scalars (seed, negative_prompt)
-    for key in ("seed", "negative_prompt"):
+    for key in ("seed", "negative_prompt", "aspect_ratio", "aspectRatio", "resolution", "output_resolution", "outputResolution"):
         val = gen_config.get(key)
         if val is not None and key not in flat:
             flat[key] = val
@@ -128,6 +128,10 @@ def build_generation_context_from_generation(generation) -> Dict[str, Any]:
     # Extract flat provider params from canonical_params
     canonical_params = getattr(generation, "canonical_params", None) or {}
     flat_params = extract_flat_provider_params(canonical_params)
+
+    preferred_account_id = getattr(generation, "preferred_account_id", None)
+    if preferred_account_id is not None:
+        flat_params.setdefault("preferred_account_id", preferred_account_id)
 
     # Extract source asset IDs from inputs
     inputs = getattr(generation, "inputs", None) or []
