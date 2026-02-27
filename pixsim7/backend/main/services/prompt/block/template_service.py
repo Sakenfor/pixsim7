@@ -20,6 +20,7 @@ from pixsim7.backend.main.services.prompt.block.composition_engine import (
 )
 from pixsim7.backend.main.services.prompt.block.block_query import (
     build_prompt_block_query,
+    normalize_tag_query,
 )
 from pixsim7.backend.main.services.prompt.block.character_expander import (
     CharacterBindingExpander,
@@ -221,6 +222,135 @@ class BlockTemplateService:
         rows = [(pkg, int(count or 0)) for pkg, count in result.all()]
         rows.sort(key=lambda item: (-item[1], item[0] or ""))
         return rows
+
+    async def _list_distinct_tag_values_for_slot(
+        self,
+        *,
+        slot: Dict[str, Any],
+        tag_key: str,
+    ) -> List[str]:
+        """Return sorted distinct tag values for a tag key within a slot's candidate space."""
+        tag_key = (tag_key or "").strip()
+        if not tag_key:
+            return []
+        base = self._build_slot_query(slot).subquery()
+        extracted = func.jsonb_extract_path_text(base.c.tags, str(tag_key))
+        result = await self.db.execute(
+            select(extracted)
+            .where(extracted.isnot(None))
+            .distinct()
+            .order_by(extracted)
+        )
+        values: List[str] = []
+        for (value,) in result.all():
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                values.append(text)
+        return values
+
+    @staticmethod
+    def _slot_constraints_for_control_resolution(slot: Dict[str, Any]) -> Dict[str, Any]:
+        """Best-effort flat tag constraints map for lazy control option discovery."""
+        if isinstance(slot.get("tag_constraints"), dict):
+            return dict(slot["tag_constraints"])
+        groups = normalize_tag_query(
+            tag_constraints=slot.get("tag_constraints"),
+            tag_query=slot.get("tags"),
+        )
+        all_group = groups.get("all") or {}
+        return dict(all_group) if isinstance(all_group, dict) else {}
+
+    async def resolve_template_controls(
+        self,
+        *,
+        slots: List[Dict[str, Any]],
+        template_metadata: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Resolve lazy template controls (e.g. tag_select) to runtime controls."""
+        controls = template_metadata.get("controls")
+        if not isinstance(controls, list) or not controls:
+            return []
+
+        try:
+            from pixsim7.backend.main.services.prompt.block.control_resolver import (
+                resolve_control,
+            )
+            from pixsim7.backend.main.services.prompt.block.tag_dictionary import (
+                get_canonical_block_tag_dictionary,
+            )
+        except Exception:
+            return list(controls)
+
+        canonical = get_canonical_block_tag_dictionary()
+        slots_by_label: Dict[str, Dict[str, Any]] = {}
+        slots_by_key: Dict[str, Dict[str, Any]] = {}
+        for slot in slots:
+            label = slot.get("label")
+            if isinstance(label, str) and label.strip() and label.strip() not in slots_by_label:
+                slots_by_label[label.strip()] = slot
+            key = slot.get("key")
+            if isinstance(key, str) and key.strip() and key.strip() not in slots_by_key:
+                slots_by_key[key.strip()] = slot
+
+        resolved_controls: List[Dict[str, Any]] = []
+        for control in controls:
+            if not isinstance(control, dict):
+                continue
+
+            ctrl_type = str(control.get("type") or "").strip()
+            if ctrl_type != "tag_select":
+                resolved_controls.append(control)
+                continue
+
+            target_slot_label = str(control.get("target_slot") or "").strip()
+            target_slot_key = str(control.get("target_slot_key") or "").strip()
+            target_slot = (
+                slots_by_key.get(target_slot_key)
+                if target_slot_key
+                else None
+            ) or slots_by_label.get(target_slot_label)
+            slot_constraints = (
+                self._slot_constraints_for_control_resolution(target_slot)
+                if isinstance(target_slot, dict)
+                else {}
+            )
+            precomputed_values_by_tag: Dict[str, List[str]] = {}
+
+            def _block_query_fn(tag: str, constraints: Dict[str, Any]) -> List[str]:
+                tag = str(tag or "").strip()
+                if not tag:
+                    return []
+                return list(precomputed_values_by_tag.get(tag, []))
+
+            # Precompute catalog fallback values for open-vocab tags before calling sync resolver.
+            target_tag = str(control.get("target_tag") or "").strip()
+            if target_tag:
+                try:
+                    query_slot = target_slot if isinstance(target_slot, dict) else {"tag_constraints": slot_constraints}
+                    precomputed = await self._list_distinct_tag_values_for_slot(slot=query_slot, tag_key=target_tag)
+                    precomputed_values_by_tag[target_tag] = precomputed
+                except Exception:
+                    pass
+
+            try:
+                resolved = resolve_control(
+                    control,
+                    vocab=canonical,
+                    block_query_fn=_block_query_fn,
+                    slot_constraints_by_label={
+                        target_slot_label: slot_constraints,
+                    } if target_slot_label else None,
+                    slot_constraints_by_key={
+                        target_slot_key: slot_constraints,
+                    } if target_slot_key else None,
+                )
+            except Exception:
+                resolved = control
+            resolved_controls.append(resolved)
+
+        return resolved_controls
 
     async def diagnose_template(self, template_id: UUID) -> Dict[str, Any]:
         """Return package-focused slot diagnostics for a template."""
@@ -671,61 +801,126 @@ class BlockTemplateService:
     def _apply_control_effects(
         slots: List[Dict[str, Any]],
         template_metadata: Dict[str, Any],
-        control_values: Optional[Dict[str, float]],
+        control_values: Optional[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
-        """Apply template control slider effects to slot preferences.
+        """Apply template control effects to slot preferences.
 
-        For each slider control, resolves its current value (from control_values
+        Supports:
+        - ``slider`` controls (numeric value + thresholded effects)
+        - ``select`` controls (selected option effects)
+
+        For each control, resolves its current value (from control_values
         or defaultValue) and applies effects:
         - slot_tag_boost: merges boost/avoid tags into slot preferences
-          (highest-threshold winner per slot label)
+          (highest-threshold winner per slot for sliders; selected option effects for selects)
         - slot_intensity: sets slot intensity to the control's current value
         """
         controls = template_metadata.get("controls") or []
         if not controls:
             return slots
 
-        # Build slot lookup by label
+        # Build slot lookups by key (preferred) and label (legacy).
+        slots_by_key: Dict[str, List[Dict[str, Any]]] = {}
         slots_by_label: Dict[str, List[Dict[str, Any]]] = {}
         for slot in slots:
             label = slot.get("label", "")
             if label:
                 slots_by_label.setdefault(label, []).append(slot)
+            key = slot.get("key")
+            if isinstance(key, str) and key.strip():
+                slots_by_key.setdefault(key.strip(), []).append(slot)
 
         for control in controls:
-            if control.get("type") != "slider":
-                continue
+            control_type = control.get("type")
             control_id = control.get("id", "")
-            value = (control_values or {}).get(
+            raw_value = (control_values or {}).get(
                 control_id, control.get("defaultValue", 0)
             )
-            effects = control.get("effects") or []
+            effects: List[Dict[str, Any]] = []
+            value_num: Optional[float] = None
+
+            if control_type == "slider":
+                effects = [e for e in (control.get("effects") or []) if isinstance(e, dict)]
+                try:
+                    value_num = float(raw_value)
+                except (TypeError, ValueError):
+                    value_num = float(control.get("defaultValue", 0) or 0)
+            elif control_type == "select":
+                selected_id = None if raw_value is None else str(raw_value)
+                options = control.get("options") or []
+                selected_option = None
+                for option in options:
+                    if not isinstance(option, dict):
+                        continue
+                    option_id = option.get("id")
+                    if selected_id is not None and str(option_id) == selected_id:
+                        selected_option = option
+                        break
+                if selected_option is None and isinstance(control.get("defaultValue"), str):
+                    default_id = str(control.get("defaultValue"))
+                    for option in options:
+                        if isinstance(option, dict) and str(option.get("id")) == default_id:
+                            selected_option = option
+                            break
+                if selected_option is None and options:
+                    first = options[0]
+                    selected_option = first if isinstance(first, dict) else None
+                effects = [e for e in ((selected_option or {}).get("effects") or []) if isinstance(e, dict)]
+            else:
+                continue
 
             # Apply slot_intensity effects
             for effect in effects:
                 if effect.get("kind") != "slot_intensity":
                     continue
-                slot_label = effect.get("slotLabel", "")
-                for target_slot in slots_by_label.get(slot_label, []):
-                    target_slot["intensity"] = round(value)
+                slot_key = effect.get("slotKey")
+                slot_label = effect.get("slotLabel")
+                targets: List[Dict[str, Any]] = []
+                if isinstance(slot_key, str) and slot_key.strip():
+                    targets = slots_by_key.get(slot_key.strip(), [])
+                elif isinstance(slot_label, str) and slot_label.strip():
+                    targets = slots_by_label.get(slot_label.strip(), [])
+                for target_slot in targets:
+                    if value_num is None:
+                        continue
+                    target_slot["intensity"] = round(value_num)
 
             # Collect winning slot_tag_boost per slot label
-            # (highest enabledAt that is still active)
+            # (highest enabledAt that is still active), keyed by stable slotKey when provided.
             winners: Dict[str, Dict[str, Any]] = {}
             for effect in effects:
                 if effect.get("kind") != "slot_tag_boost":
                     continue
                 threshold = effect.get("enabledAt", 0)
-                if value < threshold:
+                if control_type == "slider":
+                    if value_num is None or value_num < threshold:
+                        continue
+                slot_key = effect.get("slotKey")
+                slot_label = effect.get("slotLabel")
+                target_id = None
+                if isinstance(slot_key, str) and slot_key.strip():
+                    target_id = f"key:{slot_key.strip()}"
+                elif isinstance(slot_label, str) and slot_label.strip():
+                    target_id = f"label:{slot_label.strip()}"
+                else:
                     continue
-                slot_label = effect.get("slotLabel", "")
-                prev = winners.get(slot_label)
+                prev = winners.get(target_id)
+                if control_type != "slider":
+                    winners[target_id] = effect
+                    continue
                 if prev is None or threshold >= prev.get("enabledAt", 0):
-                    winners[slot_label] = effect
+                    winners[target_id] = effect
 
             # Patch slot preferences
-            for slot_label, effect in winners.items():
-                for target_slot in slots_by_label.get(slot_label, []):
+            for target_id, effect in winners.items():
+                slot_key = effect.get("slotKey")
+                slot_label = effect.get("slotLabel")
+                targets: List[Dict[str, Any]] = []
+                if isinstance(slot_key, str) and slot_key.strip():
+                    targets = slots_by_key.get(slot_key.strip(), [])
+                elif isinstance(slot_label, str) and slot_label.strip():
+                    targets = slots_by_label.get(slot_label.strip(), [])
+                for target_slot in targets:
                     prefs = target_slot.get("preferences") or {}
                     if effect.get("boostTags"):
                         prefs["boost_tags"] = _merge_tag_maps(
@@ -746,7 +941,7 @@ class BlockTemplateService:
         seed: Optional[int] = None,
         exclude_block_ids: Optional[List[UUID]] = None,
         character_bindings: Optional[Dict[str, Any]] = None,
-        control_values: Optional[Dict[str, float]] = None,
+        control_values: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Roll a template: select random blocks per slot and compose a prompt."""
         template = await self.get_template(template_id)
@@ -766,8 +961,11 @@ class BlockTemplateService:
             }
         global_excludes = set(exclude_block_ids or [])
 
-        # Apply control slider effects to slot preferences
+        # Resolve lazy controls (e.g. tag_select) for runtime and apply control effects.
         metadata = template.template_metadata if isinstance(template.template_metadata, dict) else {}
+        resolved_controls = await self.resolve_template_controls(slots=slots, template_metadata=metadata)
+        if resolved_controls:
+            metadata = {**metadata, "controls": resolved_controls}
         slots = self._apply_control_effects(slots, metadata, control_values)
 
         selected_blocks: List[PromptBlock] = []
@@ -876,11 +1074,17 @@ class BlockTemplateService:
         assembled_prompt = ""
         derived_analysis = None
 
-        # Respect explicit roll-time override, including {} to disable template defaults.
+        # Merge roll-time overrides onto template defaults so partial overrides do not
+        # accidentally drop required placeholders like {{subject}}. Preserve explicit
+        # empty dict as a way to disable template defaults entirely.
+        template_bindings = template.character_bindings or {}
         if character_bindings is not None:
-            effective_bindings = character_bindings
+            if character_bindings == {}:
+                effective_bindings = {}
+            else:
+                effective_bindings = {**template_bindings, **character_bindings}
         else:
-            effective_bindings = template.character_bindings or {}
+            effective_bindings = template_bindings
         characters_resolved: Dict[str, str] = {}
 
         # Prepare expander once (caches character lookups across calls)
@@ -954,6 +1158,9 @@ class BlockTemplateService:
         template.roll_count = (template.roll_count or 0) + 1
         await self.db.commit()
 
+        selected_block_ids = [str(b.id) for b in selected_blocks]
+        selected_block_string_ids = [str(b.block_id) for b in selected_blocks if getattr(b, "block_id", None)]
+
         return {
             "success": True,
             "assembled_prompt": assembled_prompt,
@@ -972,6 +1179,9 @@ class BlockTemplateService:
                 "composition_strategy_applied": composition_strategy_applied,
                 "seed": seed,
                 "roll_count": template.roll_count,
+                # Tracking/provenance: stable IDs for downstream manifest & UI debugging.
+                "selected_block_ids": selected_block_ids,
+                "selected_block_string_ids": selected_block_string_ids,
                 "character_bindings": effective_bindings if effective_bindings else None,
                 "characters_resolved": characters_resolved if characters_resolved else None,
             },

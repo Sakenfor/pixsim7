@@ -1,4 +1,4 @@
-"""Template control presets — reusable control definitions for template authoring.
+"""Template control presets - reusable control definitions for template authoring.
 
 Control presets work analogously to SLOT_PRESETS in template_slots.py:
 a control entry ``{"preset": "name"}`` in template_metadata.controls is expanded
@@ -13,18 +13,89 @@ import copy
 from typing import Any, Dict, List
 
 
-CONTROL_PRESETS: Dict[str, List[Dict[str, Any]]] = {
-    # ── Allure wardrobe modifier slider ─────────────────────────────────────
-    # Steers selection among the generic wardrobe_modifier blocks in the
-    # theme_modifiers pack.  Pairs with the wardrobe_allure_modifier slot
-    # preset defined in template_slots.py.
-    #
-    # Step mapping:
-    #   0  → preserve existing fit
-    #   4  → subtle confidence / fitted tailoring
-    #   6  → medium allure / tight (body-conforming)
-    #   8  → high allure / skin_tight (form-fitting, daring)
-    "allure_wardrobe_modifier": [
+# Shared "allure core" progression. This stays domain-agnostic: it defines step
+# thresholds and semantic tiers, while adapters (wardrobe, pose, lighting)
+# translate tiers into slot-specific tags/effects.
+ALLURE_CORE_TIER_PROFILES: List[Dict[str, Any]] = [
+    {
+        "enabledAt": 0,
+        "tierKey": "preserve",
+        "label": "Preserve",
+        "description": "Preserve existing fit/presentation bias.",
+    },
+    {
+        "enabledAt": 4,
+        "tierKey": "subtle",
+        "label": "Subtle",
+        "description": "Subtle confidence / fitted tailoring.",
+    },
+    {
+        "enabledAt": 6,
+        "tierKey": "medium",
+        "label": "Medium",
+        "description": "Body-conforming emphasis.",
+    },
+    {
+        "enabledAt": 8,
+        "tierKey": "high",
+        "label": "High",
+        "description": "Form-fitting / daring emphasis.",
+    },
+]
+
+
+_WARDROBE_ALLURE_EFFECTS_BY_TIER: Dict[str, Dict[str, Any]] = {
+    "preserve": {
+        "boostTags": {
+            "allure_level": "preserve",
+            "modesty_level": "balanced",
+        },
+        "avoidTags": {"allure_level": ["high"]},
+    },
+    "subtle": {
+        "boostTags": {
+            "allure_level": "subtle",
+            "modesty_level": "balanced",
+            "tightness": "fitted",
+        },
+        "avoidTags": {"allure_level": ["preserve"]},
+    },
+    "medium": {
+        "boostTags": {
+            "allure_level": "medium",
+            "modesty_level": "balanced",
+            "tightness": "tight",
+        },
+        "avoidTags": {"allure_level": ["preserve"]},
+    },
+    "high": {
+        "boostTags": {
+            "allure_level": "high",
+            "modesty_level": "daring",
+            "tightness": "skin_tight",
+        },
+        "avoidTags": {"allure_level": ["preserve"]},
+    },
+}
+
+
+def _build_allure_wardrobe_modifier_controls() -> List[Dict[str, Any]]:
+    """Build the wardrobe adapter control from the shared allure core tiers."""
+    effects: List[Dict[str, Any]] = []
+    for tier in ALLURE_CORE_TIER_PROFILES:
+        tier_key = tier["tierKey"]
+        mapping = _WARDROBE_ALLURE_EFFECTS_BY_TIER[tier_key]
+        effect: Dict[str, Any] = {
+            "kind": "slot_tag_boost",
+            "slotLabel": "Wardrobe modifier",
+            "enabledAt": tier["enabledAt"],
+            "boostTags": copy.deepcopy(mapping["boostTags"]),
+        }
+        if "avoidTags" in mapping:
+            effect["avoidTags"] = copy.deepcopy(mapping["avoidTags"])
+        effects.append(effect)
+
+    return [
         {
             "id": "allure",
             "type": "slider",
@@ -33,72 +104,49 @@ CONTROL_PRESETS: Dict[str, List[Dict[str, Any]]] = {
             "max": 10,
             "step": 1,
             "defaultValue": 2,
-            "effects": [
-                {
-                    "kind": "slot_tag_boost",
-                    "slotLabel": "Wardrobe modifier",
-                    "enabledAt": 0,
-                    "boostTags": {
-                        "allure_level": "preserve",
-                        "modesty_level": "balanced",
-                    },
-                    "avoidTags": {"allure_level": ["high"]},
-                },
-                {
-                    "kind": "slot_tag_boost",
-                    "slotLabel": "Wardrobe modifier",
-                    "enabledAt": 4,
-                    "boostTags": {
-                        "allure_level": "subtle",
-                        "modesty_level": "balanced",
-                        "tightness": "fitted",
-                    },
-                    "avoidTags": {"allure_level": ["preserve"]},
-                },
-                {
-                    "kind": "slot_tag_boost",
-                    "slotLabel": "Wardrobe modifier",
-                    "enabledAt": 6,
-                    "boostTags": {
-                        "allure_level": "medium",
-                        "modesty_level": "balanced",
-                        "tightness": "tight",
-                    },
-                    "avoidTags": {"allure_level": ["preserve"]},
-                },
-                {
-                    "kind": "slot_tag_boost",
-                    "slotLabel": "Wardrobe modifier",
-                    "enabledAt": 8,
-                    "boostTags": {
-                        "allure_level": "high",
-                        "modesty_level": "daring",
-                        "tightness": "skin_tight",
-                    },
-                    "avoidTags": {"allure_level": ["preserve"]},
-                },
-            ],
+            "effects": effects,
         }
-    ],
+    ]
+
+
+CONTROL_PRESETS: Dict[str, List[Dict[str, Any]]] = {
+    # Wardrobe adapter over the shared allure core tiers.
+    "allure_wardrobe_modifier": _build_allure_wardrobe_modifier_controls(),
 }
 
 
-_TAG_SELECT_REQUIRED: frozenset[str] = frozenset({"id", "label", "target_tag", "target_slot"})
+_TAG_SELECT_REQUIRED_BASE: frozenset[str] = frozenset({"id", "label", "target_tag"})
 
 
 def _validate_tag_select_control(ctrl: Dict[str, Any]) -> None:
     """Raise ``ValueError`` if a ``tag_select`` control is missing required fields."""
-    missing = _TAG_SELECT_REQUIRED - set(ctrl.keys())
+    missing = _TAG_SELECT_REQUIRED_BASE - set(ctrl.keys())
     if missing:
         raise ValueError(
             f"tag_select control missing required fields: {sorted(missing)}"
         )
-    for field in _TAG_SELECT_REQUIRED:
+    for field in _TAG_SELECT_REQUIRED_BASE:
         v = ctrl.get(field)
         if not isinstance(v, str) or not v.strip():
             raise ValueError(
                 f"tag_select control field {field!r} must be a non-empty string"
             )
+    target_slot = ctrl.get("target_slot")
+    target_slot_key = ctrl.get("target_slot_key")
+    has_label = isinstance(target_slot, str) and bool(target_slot.strip())
+    has_key = isinstance(target_slot_key, str) and bool(target_slot_key.strip())
+    if not (has_label or has_key):
+        raise ValueError(
+            "tag_select control must include non-empty 'target_slot' or 'target_slot_key'"
+        )
+    if target_slot is not None and not has_label:
+        raise ValueError(
+            "tag_select control field 'target_slot' must be a non-empty string"
+        )
+    if target_slot_key is not None and not has_key:
+        raise ValueError(
+            "tag_select control field 'target_slot_key' must be a non-empty string"
+        )
 
 
 def expand_control_presets(raw_controls: List[Any]) -> List[Any]:

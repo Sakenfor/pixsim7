@@ -13,6 +13,7 @@ from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
     parse_templates,
 )
 from pixsim7.backend.main.services.prompt.block.template_controls import (
+    ALLURE_CORE_TIER_PROFILES,
     CONTROL_PRESETS,
     expand_control_presets,
 )
@@ -42,6 +43,23 @@ def test_expand_allure_preset_has_four_effects() -> None:
     effects = ctrl["effects"]
     assert len(effects) == 4
     assert [e["enabledAt"] for e in effects] == [0, 4, 6, 8]
+
+
+def test_allure_core_tier_profiles_define_expected_thresholds() -> None:
+    assert [t["enabledAt"] for t in ALLURE_CORE_TIER_PROFILES] == [0, 4, 6, 8]
+    assert [t["tierKey"] for t in ALLURE_CORE_TIER_PROFILES] == [
+        "preserve",
+        "subtle",
+        "medium",
+        "high",
+    ]
+
+
+def test_allure_wardrobe_preset_thresholds_follow_allure_core_profiles() -> None:
+    [ctrl] = expand_control_presets([{"preset": "allure_wardrobe_modifier"}])
+    assert [e["enabledAt"] for e in ctrl["effects"]] == [
+        t["enabledAt"] for t in ALLURE_CORE_TIER_PROFILES
+    ]
 
 
 def test_expand_allure_preset_effect_tags() -> None:

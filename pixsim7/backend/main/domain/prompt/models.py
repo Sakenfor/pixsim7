@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, ForeignKey, Index
 from sqlalchemy import JSON, Text, String
+from sqlalchemy.dialects.postgresql import JSONB
 from uuid import UUID, uuid4
 import hashlib
 from pgvector.sqlalchemy import Vector
@@ -357,7 +358,7 @@ class PromptBlock(SQLModel, table=True):
     # Structured Tags
     tags: Dict[str, Any] = Field(
         default_factory=dict,
-        sa_column=Column(JSON),
+        sa_column=Column(JSONB),
         description="Structured tags: {location, pose, intimacy_level, mood, intensity, etc}"
     )
 
@@ -557,6 +558,7 @@ class PromptBlock(SQLModel, table=True):
     __table_args__ = (
         Index("idx_prompt_block_kind_complexity", "kind", "complexity_level"),
         Index("idx_prompt_block_package_public", "package_name", "is_public"),
+        Index("idx_prompt_block_pkg_role_cat_public", "package_name", "role", "category", "is_public"),
         Index("idx_prompt_block_source_type", "source_type"),
         Index("idx_prompt_block_created", "created_at"),
         Index("idx_prompt_block_role_category_status", "role", "category", "curation_status"),

@@ -35,6 +35,9 @@ from sqlmodel import SQLModel
 from pixsim7.backend.main.services.prompt.block.template_controls import (
     expand_control_presets,
 )
+from pixsim7.backend.main.services.prompt.block.template_features import (
+    expand_template_feature_presets,
+)
 from pixsim7.backend.main.services.prompt.block.template_slots import (
     TEMPLATE_SLOT_SCHEMA_VERSION,
     normalize_template_slots,
@@ -786,6 +789,15 @@ def parse_templates(content_dir: Path) -> List[Dict[str, Any]]:
                 index=index,
                 field="template_metadata",
             )
+            try:
+                slots, raw_metadata = expand_template_feature_presets(
+                    raw_slots=slots,
+                    template_metadata=raw_metadata,
+                )
+            except ValueError as exc:
+                raise ContentPackValidationError(
+                    f"{src}: templates[{index}].template_metadata.features invalid: {exc}"
+                ) from exc
             slot_schema_version = raw_metadata.get("slot_schema_version")
             raw_controls = raw_metadata.get("controls")
             if isinstance(raw_controls, list):

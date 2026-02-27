@@ -49,7 +49,8 @@ async def _watch_content_dirs() -> None:
             step=500,
         ):
             # Determine which packs were affected
-            # Layout: content_packs/prompt/<pack_name>/blocks.yaml
+            # Layout: content_packs/prompt/<pack_name>/(blocks|templates|characters).yaml
+            # or content_packs/prompt/<pack_name>/(blocks|templates|characters)/*.yaml
             affected_packs: set[str] = set()
             for change_type, path_str in changes:
                 path = Path(path_str)

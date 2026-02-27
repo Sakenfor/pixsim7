@@ -54,6 +54,11 @@ def test_is_lazy_tag_select() -> None:
                              "target_tag": "variant", "target_slot": "Aesthetic style"})
 
 
+def test_is_lazy_tag_select_with_target_slot_key() -> None:
+    assert is_lazy_control({"type": "tag_select", "id": "x", "label": "X",
+                             "target_tag": "variant", "target_slot_key": "aesthetic_style"})
+
+
 def test_is_lazy_slider_false() -> None:
     assert not is_lazy_control({"type": "slider", "id": "x"})
 
@@ -141,6 +146,13 @@ class TestResolveTagSelectVocabDriven:
         for opt in result["options"]:
             assert opt["effects"][0]["slotLabel"] == "Aesthetic theme"
 
+    def test_effect_targets_slot_key_when_provided(self) -> None:
+        ctrl = {**_THEME_VARIANT_CONTROL, "target_slot_key": "aesthetic_theme"}
+        result = resolve_tag_select_control(ctrl, vocab=_VOCAB_WITH_ALLOWED)
+        for opt in result["options"]:
+            assert opt["effects"][0]["slotKey"] == "aesthetic_theme"
+            assert opt["effects"][0]["slotLabel"] == "Aesthetic theme"
+
     def test_default_value_preserved_when_set(self) -> None:
         ctrl = {**_THEME_VARIANT_CONTROL, "defaultValue": "desert"}
         result = resolve_tag_select_control(ctrl, vocab=_VOCAB_WITH_ALLOWED)
@@ -164,6 +176,7 @@ class TestResolveTagSelectVocabDriven:
         result = resolve_tag_select_control(_THEME_VARIANT_CONTROL, vocab=_VOCAB_WITH_ALLOWED)
         assert "target_tag" not in result
         assert "target_slot" not in result
+        assert "target_slot_key" not in result
 
     def test_extra_authoring_fields_forwarded(self) -> None:
         ctrl = {**_THEME_VARIANT_CONTROL, "description": "Pick a sub-genre"}
@@ -261,6 +274,30 @@ def test_resolve_control_uses_slot_constraints_by_label() -> None:
     assert captured[0] == {"aesthetic": "medieval_thief"}
 
 
+def test_resolve_control_uses_slot_constraints_by_key() -> None:
+    captured: list[dict] = []
+
+    def fn(tag: str, constraints: dict) -> list[str]:
+        captured.append(constraints)
+        return ["x"]
+
+    vocab = {"variant": {"allowed_values": []}}
+    ctrl = {
+        "id": "v",
+        "type": "tag_select",
+        "label": "V",
+        "target_tag": "variant",
+        "target_slot_key": "uniform_aesthetic",
+    }
+    resolve_control(
+        ctrl,
+        vocab=vocab,
+        block_query_fn=fn,
+        slot_constraints_by_key={"uniform_aesthetic": {"aesthetic": "police_uniform"}},
+    )
+    assert captured[0] == {"aesthetic": "police_uniform"}
+
+
 # ── resolve_controls (list helper) ───────────────────────────────────────────
 
 def test_resolve_controls_empty() -> None:
@@ -295,7 +332,20 @@ def test_expand_valid_tag_select_passes_through() -> None:
     assert result == [ctrl]
 
 
-@pytest.mark.parametrize("missing_field", ["id", "label", "target_tag", "target_slot"])
+def test_expand_valid_tag_select_with_target_slot_key_only_passes_through() -> None:
+    ctrl = {
+        "id": "style_variant",
+        "type": "tag_select",
+        "label": "Style Variant",
+        "defaultValue": "utility",
+        "target_tag": "variant",
+        "target_slot_key": "aesthetic_style",
+    }
+    result = expand_control_presets([ctrl])
+    assert result == [ctrl]
+
+
+@pytest.mark.parametrize("missing_field", ["id", "label", "target_tag"])
 def test_expand_tag_select_missing_required_field_raises(missing_field: str) -> None:
     ctrl = {
         "id": "x", "type": "tag_select", "label": "X",
@@ -303,6 +353,17 @@ def test_expand_tag_select_missing_required_field_raises(missing_field: str) -> 
     }
     del ctrl[missing_field]
     with pytest.raises(ValueError, match="tag_select control"):
+        expand_control_presets([ctrl])
+
+
+def test_expand_tag_select_missing_both_target_slot_fields_raises() -> None:
+    ctrl = {
+        "id": "x",
+        "type": "tag_select",
+        "label": "X",
+        "target_tag": "variant",
+    }
+    with pytest.raises(ValueError, match="target_slot"):
         expand_control_presets([ctrl])
 
 

@@ -127,3 +127,16 @@ def test_normalize_template_slot_accepts_typed_preferences_and_selection_config(
         "model": "gpt-5-mini",
         "weights": {"rating": 0.2, "diversity": 0.5},
     }
+
+
+def test_normalize_template_slot_allows_zero_intensity() -> None:
+    slot = normalize_template_slot(
+        {
+            "label": "Pose lock",
+            "role": "subject",
+            "category": "pose_lock",
+            "intensity": 0,
+        }
+    )
+
+    assert slot["intensity"] == 0

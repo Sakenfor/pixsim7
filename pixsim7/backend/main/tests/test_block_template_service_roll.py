@@ -94,6 +94,64 @@ def _block(*, block_id: str, text: str, role: str, tags: Dict[str, Any]) -> Prom
     )
 
 
+def test_apply_control_effects_applies_select_option_slot_tag_boosts() -> None:
+    slots = [
+        {
+            "label": "Uniform aesthetic",
+            "key": "uniform_aesthetic",
+            "preferences": {},
+        }
+    ]
+    metadata = {
+        "controls": [
+            {
+                "id": "uniform_variant",
+                "type": "select",
+                "label": "Uniform Variant",
+                "defaultValue": "duty",
+                "options": [
+                    {
+                        "id": "duty",
+                        "label": "Duty",
+                        "effects": [
+                            {
+                                "kind": "slot_tag_boost",
+                                "slotKey": "uniform_aesthetic",
+                                "slotLabel": "Uniform aesthetic",
+                                "boostTags": {"variant": "duty"},
+                                "avoidTags": {"variant": ["sleek", "tailored"]},
+                            }
+                        ],
+                    },
+                    {
+                        "id": "sleek",
+                        "label": "Sleek",
+                        "effects": [
+                            {
+                                "kind": "slot_tag_boost",
+                                "slotKey": "uniform_aesthetic",
+                                "slotLabel": "Uniform aesthetic",
+                                "boostTags": {"variant": "sleek"},
+                                "avoidTags": {"variant": ["duty", "tailored"]},
+                            }
+                        ],
+                    },
+                ],
+            }
+        ]
+    }
+
+    result = BlockTemplateService._apply_control_effects(
+        slots=[dict(slots[0])],
+        template_metadata=metadata,
+        control_values={"uniform_variant": "sleek"},
+    )
+
+    prefs = result[0]["preferences"]
+    assert prefs["boost_tags"]["variant"] == "sleek"
+    assert set(prefs["avoid_tags"]["variant"]) == {"duty", "tailored"}
+
+
 @pytest.mark.asyncio
 async def test_roll_template_respects_tags_any_and_not(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
@@ -148,6 +206,8 @@ async def test_roll_template_respects_tags_any_and_not(monkeypatch: pytest.Monke
     assert result["slot_results"][0]["match_count"] == 1
     assert result["slot_results"][0]["selected_block_string_id"] == "cam_low_ok"
     assert result["metadata"]["slots_filled"] == 1
+    assert result["metadata"]["selected_block_string_ids"] == ["cam_low_ok"]
+    assert len(result["metadata"]["selected_block_ids"]) == 1
     assert result["warnings"] == []
     service.db.commit.assert_awaited_once()
 

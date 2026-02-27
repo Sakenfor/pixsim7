@@ -129,7 +129,8 @@ def resolve_tag_select_control(
         ``description``) are forwarded unchanged.
     """
     tag = str(control["target_tag"]).strip()
-    slot_label = str(control["target_slot"]).strip()
+    slot_label = str(control.get("target_slot") or "").strip()
+    slot_key = str(control.get("target_slot_key") or "").strip()
     tag_meta: Dict[str, Any] = vocab.get(tag) or {}
 
     values = _resolve_option_values(
@@ -144,9 +145,12 @@ def resolve_tag_select_control(
         avoid = [v for v in values if v != value]
         effect: Dict[str, Any] = {
             "kind": "slot_tag_boost",
-            "slotLabel": slot_label,
             "boostTags": {tag: value},
         }
+        if slot_key:
+            effect["slotKey"] = slot_key
+        if slot_label:
+            effect["slotLabel"] = slot_label
         if avoid:
             effect["avoidTags"] = {tag: avoid}
         options.append({
@@ -161,7 +165,7 @@ def resolve_tag_select_control(
 
     # Preserve any extra authoring fields (e.g. description, notes) but drop
     # the lazy-control-specific fields that have been consumed.
-    _consumed = {"id", "type", "label", "defaultValue", "target_tag", "target_slot"}
+    _consumed = {"id", "type", "label", "defaultValue", "target_tag", "target_slot", "target_slot_key"}
     forwarded = {k: v for k, v in control.items() if k not in _consumed}
 
     return {
@@ -191,6 +195,7 @@ def resolve_control(
     vocab: Dict[str, Dict[str, Any]],
     block_query_fn: Optional[BlockQueryFn] = None,
     slot_constraints_by_label: Optional[Dict[str, Dict[str, Any]]] = None,
+    slot_constraints_by_key: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Resolve a single control spec.
 
@@ -207,8 +212,11 @@ def resolve_control(
     ctrl_type = control.get("type")
     if ctrl_type == "tag_select":
         target_slot = str(control.get("target_slot") or "")
+        target_slot_key = str(control.get("target_slot_key") or "")
         slot_constraints = None
-        if slot_constraints_by_label and target_slot:
+        if slot_constraints_by_key and target_slot_key:
+            slot_constraints = slot_constraints_by_key.get(target_slot_key)
+        if slot_constraints is None and slot_constraints_by_label and target_slot:
             slot_constraints = slot_constraints_by_label.get(target_slot)
         return resolve_tag_select_control(
             control,
@@ -227,6 +235,7 @@ def resolve_controls(
     vocab: Dict[str, Dict[str, Any]],
     block_query_fn: Optional[BlockQueryFn] = None,
     slot_constraints_by_label: Optional[Dict[str, Dict[str, Any]]] = None,
+    slot_constraints_by_key: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """Resolve a list of control specs. See :func:`resolve_control`."""
     return [
@@ -235,6 +244,7 @@ def resolve_controls(
             vocab=vocab,
             block_query_fn=block_query_fn,
             slot_constraints_by_label=slot_constraints_by_label,
+            slot_constraints_by_key=slot_constraints_by_key,
         )
         for c in controls
     ]

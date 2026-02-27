@@ -178,3 +178,61 @@ class TestCreateGenerationTemplateRollViaRunContext:
         assert run_context["roll_seed"] == 98765
         assert run_context["selected_block_ids"] == [str(v) for v in selected_block_ids]
         assert run_context["assembled_prompt"] == "rolled prompt from template"
+
+    @pytest.mark.asyncio
+    async def test_invalid_guidance_plan_validation_errors_return_400(self, monkeypatch):
+        user_id = 42
+
+        local_service = SimpleNamespace(
+            db=SimpleNamespace(),
+            create_generation=AsyncMock(return_value=_fake_generation_response(user_id=user_id)),
+        )
+        gateway = SimpleNamespace(
+            proxy=AsyncMock(return_value=SimpleNamespace(called=False, data=None)),
+            local=local_service,
+        )
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1")
+        app.dependency_overrides[get_current_user] = lambda: _mock_user(user_id)
+        app.dependency_overrides[get_generation_gateway] = lambda: gateway
+
+        monkeypatch.setattr(generations_api, "get_client_identifier", AsyncMock(return_value="test-client"))
+        monkeypatch.setattr(generations_api.job_create_limiter, "check", AsyncMock())
+
+        request_payload = {
+            "config": {
+                "generationType": "text_to_video",
+                "purpose": "gap_fill",
+                "style": {},
+                "duration": {},
+                "constraints": {},
+                "strategy": "once",
+                "fallback": {"mode": "skip"},
+                "enabled": True,
+                "version": 1,
+                "prompt": "client prompt",
+                "run_context": {
+                    "mode": "quickgen_single",
+                    "run_id": "run-abc",
+                    "guidance_plan": {
+                        "version": 1,
+                        "references": {
+                            "woman": {
+                                "asset_id": "",
+                                "kind": "identity",
+                            }
+                        },
+                    },
+                },
+            },
+            "provider_id": "pixverse",
+            "priority": 5,
+        }
+
+        async with _client(app) as c:
+            response = await c.post("/api/v1/generations", json=request_payload)
+
+        assert response.status_code == 400
+        assert "Invalid guidance_plan" in response.text
+        local_service.create_generation.assert_not_awaited()
