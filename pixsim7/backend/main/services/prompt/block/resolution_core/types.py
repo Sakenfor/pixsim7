@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Optional
 
 
-ResolverId = Literal["legacy_v1", "next_v1"]
+ResolverId = str
 
 
 # ---------------------------------------------------------------------------

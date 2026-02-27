@@ -25,4 +25,5 @@ class BlockCompiler(Protocol):
         template: Any,
         candidate_limit: int,
         control_values: Optional[Dict[str, Any]],
+        resolver_id: Optional[str] = None,
     ) -> ResolutionRequest: ...

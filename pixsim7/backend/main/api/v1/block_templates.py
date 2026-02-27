@@ -33,7 +33,7 @@ from pixsim7.backend.main.services.prompt.block.tag_dictionary import (
     get_block_tag_alias_key_map,
 )
 from pixsim7.backend.main.services.prompt.block.compiler_core import (
-    CompilerV1,
+    build_default_compiler_registry,
     slot_tag_constraint_groups as _slot_tag_constraint_groups,
 )
 from pixsim7.backend.main.services.prompt.block.resolution_core import (
@@ -203,6 +203,7 @@ class CompileWorkbenchTemplateRequest(BaseModel):
         None,
         description="Optional template control overrides applied before compiling intent/candidates",
     )
+    compiler_id: str = Field("compiler_v1", description="Compiler to use (default: compiler_v1)")
 
 
 # ===== CRUD Endpoints =====
@@ -422,8 +423,8 @@ def _coerce_resolution_request(request: ResolveWorkbenchRequest) -> ResolverReso
     )
 
 
-# Compiler v1 instance — used by compile-template endpoint.
-_compiler_v1 = CompilerV1()
+# Compiler registry — used by compile-template endpoint.
+_compiler_registry = build_default_compiler_registry()
 
 
 async def _compile_template_to_resolution_request(
@@ -432,9 +433,11 @@ async def _compile_template_to_resolution_request(
     template: Any,
     candidate_limit: int,
     control_values: Optional[Dict[str, Any]],
+    compiler_id: str = "compiler_v1",
 ) -> ResolverResolutionRequest:
-    """Delegate to CompilerV1. Thin wrapper kept for endpoint call-site clarity."""
-    return await _compiler_v1.compile(
+    """Look up a compiler by id and compile the template."""
+    compiler = _compiler_registry.get(compiler_id)
+    return await compiler.compile(
         service=service,
         template=template,
         candidate_limit=candidate_limit,
@@ -488,6 +491,7 @@ async def compile_template_for_resolver_workbench(
             template=template,
             candidate_limit=int(request.candidate_limit),
             control_values=dict(request.control_values or {}),
+            compiler_id=request.compiler_id,
         )
         return asdict(compiled)
     except Exception as exc:

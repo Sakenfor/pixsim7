@@ -105,6 +105,7 @@ class CompilerV1:
         template: Any,
         candidate_limit: int,
         control_values: Optional[Dict[str, Any]],
+        resolver_id: Optional[str] = None,
     ) -> ResolutionRequest:
         slots = normalize_template_slots(
             template.slots,
@@ -213,7 +214,7 @@ class CompilerV1:
                 avoid_tags_by_target[target_key] = dict(avoid_tags)
 
         return ResolutionRequest(
-            resolver_id="next_v1",
+            resolver_id=resolver_id or "next_v1",
             seed=None,
             intent=ResolutionIntent(
                 control_values=dict(control_values or {}),
