@@ -18,7 +18,6 @@ import { ContextHubHost } from '@features/contextHub';
 import { ContextHubRootProviders } from '@features/contextHub/components/ContextHubRootProviders';
 import { ControlCenterManager } from '@features/controlCenter';
 import { CubeWidgetOverlay } from '@features/cubes';
-
 import { FloatingPanelsManager } from '@features/panels/components/shared/FloatingPanelsManager';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
@@ -27,6 +26,7 @@ import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
 
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { DevToolQuickAccess } from './components/dev/DevToolQuickAccess';
+import { ExternalMediaViewer } from './components/ExternalMediaViewer';
 import { ActivityBar } from './components/navigation/ActivityBar';
 import { PluginOverlays } from './components/PluginOverlays';
 import { useActionShortcuts } from './hooks/useActionShortcuts';
@@ -53,6 +53,9 @@ function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const initializePlugins = usePluginCatalogStore((s) => s.initialize);
   const leftInset = useContentInset('left');
+  const rightInset = useContentInset('right');
+  const topInset = useContentInset('top');
+  const bottomInset = useContentInset('bottom');
 
   // Get dynamic routes reactively from module registry
   const dynamicRoutes = useModuleRoutes({ includeHidden: true });
@@ -95,7 +98,12 @@ function App() {
           {isAuthenticated && <ActivityBar />}
           <div
             className="min-h-screen flex flex-col transition-[margin] duration-200"
-            style={{ marginLeft: isAuthenticated ? leftInset : 0 }}
+            style={isAuthenticated ? {
+              marginLeft: leftInset,
+              marginRight: rightInset,
+              marginTop: topInset,
+              marginBottom: bottomInset,
+            } : undefined}
           >
             <Suspense fallback={<RouteLoadingFallback />}>
               <Routes>
@@ -141,6 +149,8 @@ function App() {
               <CubeWidgetOverlay />
             </ErrorBoundary>
           )}
+          {/* External media viewer (extension → frontend, no auth needed) */}
+          <ExternalMediaViewer />
           {/* Global toast notifications */}
           <ToastContainer />
           {/* Plugin overlays (only when authenticated) */}
