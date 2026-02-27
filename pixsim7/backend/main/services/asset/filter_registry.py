@@ -21,6 +21,65 @@ from pixsim_logging import get_logger
 
 logger = get_logger()
 
+EFFECTIVE_PROVIDER_BY_UPLOAD_METHOD: dict[str, str] = {
+    "pixverse_sync": "pixverse",
+}
+
+
+def _effective_provider_upload_methods(provider_id: str) -> list[str]:
+    target = str(provider_id or "").strip()
+    if not target:
+        return []
+    return [
+        upload_method
+        for upload_method, mapped_provider in EFFECTIVE_PROVIDER_BY_UPLOAD_METHOD.items()
+        if mapped_provider == target
+    ]
+
+
+def _build_effective_provider_expr() -> Any:
+    mapped_provider = case(
+        *[
+            (Asset.upload_method == upload_method, literal(provider_id))
+            for upload_method, provider_id in EFFECTIVE_PROVIDER_BY_UPLOAD_METHOD.items()
+        ],
+        else_=None,
+    )
+    # Prefer explicit provider_id, fall back to provider inferred from upload route.
+    return func.coalesce(Asset.provider_id, mapped_provider)
+
+
+def _effective_provider_condition(value: Any) -> Any | None:
+    if value is None:
+        return None
+
+    if isinstance(value, (list, tuple, set)):
+        selected = [
+            str(v).strip()
+            for v in value
+            if v is not None and str(v).strip()
+        ]
+        if not selected:
+            return None
+        upload_methods = [
+            upload_method
+            for provider_id in selected
+            for upload_method in _effective_provider_upload_methods(provider_id)
+        ]
+        clauses: list[Any] = [Asset.provider_id.in_(selected)]
+        if upload_methods:
+            clauses.append(Asset.upload_method.in_(list(set(upload_methods))))
+        return or_(*clauses)
+
+    provider_id = str(value).strip()
+    if not provider_id:
+        return None
+    upload_methods = _effective_provider_upload_methods(provider_id)
+    clauses: list[Any] = [Asset.provider_id == provider_id]
+    if upload_methods:
+        clauses.append(Asset.upload_method.in_(upload_methods))
+    return or_(*clauses)
+
 
 # ===== MAIN FILTER SPECS =====
 
@@ -503,6 +562,17 @@ def register_default_asset_filters() -> None:
             option_source="distinct",
             column=Asset.provider_id,
             multi=True,
+        )
+    )
+    asset_filter_registry.register(
+        FilterSpec(
+            key="effective_provider_id",
+            type="enum",
+            label="Upload Provider",
+            option_source="distinct",
+            column=_build_effective_provider_expr(),
+            multi=True,
+            condition_builder=_effective_provider_condition,
         )
     )
     asset_filter_registry.register(

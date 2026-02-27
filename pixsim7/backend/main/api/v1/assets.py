@@ -117,15 +117,50 @@ async def get_asset_generation_context(
     meta = asset.media_metadata or {}
     gen_ctx = meta.get("generation_context") if isinstance(meta, dict) else None
     if gen_ctx and isinstance(gen_ctx, dict):
+        canonical_params = gen_ctx.get("params", {})
+        if not isinstance(canonical_params, dict):
+            canonical_params = {}
+
+        source_asset_ids = gen_ctx.get("source_asset_ids", [])
+        if not isinstance(source_asset_ids, list):
+            source_asset_ids = []
+
+        # Backward-compat: older stamped contexts may be missing params like aspect_ratio
+        # (or even source_asset_ids). When we have a Generation record reference, supplement
+        # missing fields from the Generation record without overwriting stamped values.
+        if asset.source_generation_id and (
+            ("aspect_ratio" not in canonical_params and "aspectRatio" not in canonical_params)
+            or ("preferred_account_id" not in canonical_params and "preferredAccountId" not in canonical_params)
+            or len(source_asset_ids) == 0
+        ):
+            try:
+                from pixsim7.backend.main.domain import Generation
+                generation = await db.get(Generation, asset.source_generation_id)
+                if generation:
+                    supplement = extract_flat_provider_params(generation.canonical_params or {})
+                    if supplement:
+                        canonical_params = {**supplement, **canonical_params}
+                    if generation.preferred_account_id is not None:
+                        canonical_params.setdefault("preferred_account_id", generation.preferred_account_id)
+                    if len(source_asset_ids) == 0:
+                        source_asset_ids = extract_source_asset_ids(generation.inputs or [])
+            except Exception as e:
+                logger.warning(
+                    "generation_context_supplement_failed",
+                    asset_id=asset_id,
+                    generation_id=asset.source_generation_id,
+                    error=str(e),
+                )
+
         return AssetGenerationContext(
             source="metadata",
             operation_type=gen_ctx.get("operation_type", "text_to_image"),
             provider_id=gen_ctx.get("provider_id", asset.provider_id),
             final_prompt=asset.prompt or gen_ctx.get("prompt"),
-            canonical_params=gen_ctx.get("params", {}),
+            canonical_params=canonical_params,
             raw_params={},
             inputs=[],
-            source_asset_ids=gen_ctx.get("source_asset_ids", []),
+            source_asset_ids=source_asset_ids,
         )
 
     # ── Legacy: Try metadata resolution (synced assets without stamped context) ──
@@ -178,6 +213,8 @@ async def get_asset_generation_context(
 
             # Extract flat provider params from the canonical_params wrapper
             flat_params = extract_flat_provider_params(generation.canonical_params or {})
+            if generation.preferred_account_id is not None:
+                flat_params.setdefault("preferred_account_id", generation.preferred_account_id)
 
             return AssetGenerationContext(
                 source="generation",

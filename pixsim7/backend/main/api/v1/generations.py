@@ -75,6 +75,36 @@ async def _get_latest_submission_payloads(
     return payloads
 
 
+async def _get_latest_submission_provider_job_ids(
+    db: DatabaseSession,
+    generation_ids: List[int],
+) -> Dict[int, Optional[str]]:
+    """Return provider_job_id from the latest provider submission per generation ID."""
+    from sqlmodel import select
+    from pixsim7.backend.main.domain.providers import ProviderSubmission
+
+    if not generation_ids:
+        return {}
+
+    result = await db.execute(
+        select(ProviderSubmission.generation_id, ProviderSubmission.provider_job_id)
+        .where(ProviderSubmission.generation_id.in_(generation_ids))
+        .where(ProviderSubmission.analysis_id.is_(None))
+        .order_by(
+            ProviderSubmission.generation_id.asc(),
+            ProviderSubmission.retry_attempt.desc(),
+            ProviderSubmission.id.desc(),
+        )
+    )
+
+    job_ids: Dict[int, Optional[str]] = {}
+    for generation_id, provider_job_id in result.fetchall():
+        if generation_id in job_ids:
+            continue
+        job_ids[generation_id] = provider_job_id
+    return job_ids
+
+
 async def _get_generation_attempt_counts(
     db: DatabaseSession,
     generation_ids: List[int],
@@ -174,9 +204,14 @@ async def create_generation(
                 updated_run_context = dict(run_context)
                 updated_run_context["block_template_id"] = str(block_template_id)
                 updated_run_context["roll_seed"] = roll_result.get("metadata", {}).get("seed")
-                updated_run_context["selected_block_ids"] = [
-                    str(bid) for bid in roll_result.get("metadata", {}).get("selected_block_ids", [])
+                # Prefer the service-provided selection list, fall back to slot_results if needed.
+                selected_block_ids = roll_result.get("metadata", {}).get("selected_block_ids") or [
+                    sr.get("selected_block_id")
+                    for sr in (roll_result.get("slot_results") or [])
+                    if isinstance(sr, dict) and sr.get("selected_block_id")
                 ]
+                updated_run_context["selected_block_ids"] = [str(v) for v in selected_block_ids if v is not None]
+                updated_run_context["slot_results"] = roll_result.get("slot_results") or []
                 updated_run_context["assembled_prompt"] = roll_result["assembled_prompt"]
                 if request.config.__pydantic_extra__ is None:
                     request.config.__pydantic_extra__ = {}
@@ -185,35 +220,40 @@ async def create_generation(
         # === Guidance plan extraction & validation ===
         raw_guidance_plan = run_context.get("guidance_plan")
         if isinstance(raw_guidance_plan, dict):
-            try:
-                from pixsim7.backend.main.shared.schemas.guidance_plan import GuidancePlanV1
-                from pixsim7.backend.main.services.guidance import validate_guidance_plan
+            from pixsim7.backend.main.shared.schemas.guidance_plan import GuidancePlanV1
+            from pixsim7.backend.main.services.guidance import validate_guidance_plan
 
+            try:
                 parsed_plan = GuidancePlanV1.model_validate(raw_guidance_plan)
-                gv = validate_guidance_plan(parsed_plan)
-                if gv.errors:
-                    logger.warning(
-                        "guidance_plan_validation_errors",
-                        errors=gv.errors,
-                    )
-                if gv.warnings:
-                    logger.info(
-                        "guidance_plan_validation_warnings",
-                        warnings=gv.warnings,
-                    )
-                # Stash validated plan back (round-tripped through Pydantic)
-                updated_run_context = dict(
-                    (request.config.__pydantic_extra__ or {}).get("run_context") or run_context
-                )
-                updated_run_context["guidance_plan"] = parsed_plan.model_dump()
-                if request.config.__pydantic_extra__ is None:
-                    request.config.__pydantic_extra__ = {}
-                request.config.__pydantic_extra__["run_context"] = updated_run_context
             except Exception as exc:
                 logger.warning(
                     "guidance_plan_parse_failed",
                     error=str(exc),
                 )
+                raise ValueError(f"Invalid guidance_plan: {exc}")
+
+            gv = validate_guidance_plan(parsed_plan)
+            if gv.errors:
+                logger.warning(
+                    "guidance_plan_validation_errors",
+                    extra={"errors": gv.errors},
+                )
+                raise ValueError(
+                    "Invalid guidance_plan: " + "; ".join(gv.errors)
+                )
+            if gv.warnings:
+                logger.info(
+                    "guidance_plan_validation_warnings",
+                    extra={"warnings": gv.warnings},
+                )
+            # Stash validated plan back (round-tripped through Pydantic)
+            updated_run_context = dict(
+                (request.config.__pydantic_extra__ or {}).get("run_context") or run_context
+            )
+            updated_run_context["guidance_plan"] = parsed_plan.model_dump()
+            if request.config.__pydantic_extra__ is None:
+                request.config.__pydantic_extra__ = {}
+            request.config.__pydantic_extra__["run_context"] = updated_run_context
 
         # Build canonical params from generation config after any server-side mutations
         canonical_params = {
@@ -527,8 +567,10 @@ async def get_generation(
         generation = await generation_service.get_generation_for_user(generation_id, user)
         response = GenerationResponse.model_validate(generation)
         latest_payloads = await _get_latest_submission_payloads(db, [generation.id])
+        latest_provider_job_ids = await _get_latest_submission_provider_job_ids(db, [generation.id])
         attempt_counts = await _get_generation_attempt_counts(db, [generation.id])
         response.latest_submission_payload = latest_payloads.get(generation.id)
+        response.latest_submission_provider_job_id = latest_provider_job_ids.get(generation.id)
         response.attempt_count = attempt_counts.get(generation.id, 0)
 
         # Populate account_email for UI display (same as list endpoint)
@@ -629,6 +671,10 @@ async def list_generations(
             db,
             [g.id for g in generations],
         )
+        latest_provider_job_ids = await _get_latest_submission_provider_job_ids(
+            db,
+            [g.id for g in generations],
+        )
         attempt_counts = await _get_generation_attempt_counts(
             db,
             [g.id for g in generations],
@@ -641,6 +687,7 @@ async def list_generations(
             if g.account_id and g.account_id in account_emails:
                 resp.account_email = account_emails[g.account_id]
             resp.latest_submission_payload = latest_payloads.get(g.id)
+            resp.latest_submission_provider_job_id = latest_provider_job_ids.get(g.id)
             resp.attempt_count = attempt_counts.get(g.id, 0)
             responses.append(resp)
 

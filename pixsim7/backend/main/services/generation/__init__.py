@@ -13,6 +13,7 @@ Services:
 - GenerationTrackingService: Read-only facade for unified generation provenance
 - GenerationStepExecutor: Submit + await completion (reusable atom for sequential execution)
 - ChainExecutor: Sequential execution of GenerationChain pipelines
+- FanoutExecutor: Tracked backend fanout execution for independent items
 """
 
 # Main service (backward compatibility)
@@ -27,6 +28,12 @@ from .billing import GenerationBillingService
 from .tracking import GenerationTrackingService
 from .step_executor import GenerationStepExecutor, StepResult, StepTimeoutError, StepFailedError
 from .chain_executor import ChainExecutor, ChainExecutionResult
+from .fanout_executor import FanoutExecutor, FanoutExecutionResult
+from .execution_policy import (
+    ExecutionPolicyV1,
+    normalize_chain_execution_policy,
+    normalize_fanout_execution_policy,
+)
 
 __all__ = [
     "GenerationService",  # Main service (backward compatible)
@@ -42,4 +49,9 @@ __all__ = [
     "StepFailedError",
     "ChainExecutor",
     "ChainExecutionResult",
+    "FanoutExecutor",
+    "FanoutExecutionResult",
+    "ExecutionPolicyV1",
+    "normalize_chain_execution_policy",
+    "normalize_fanout_execution_policy",
 ]

@@ -7,7 +7,7 @@ content blob cleanup, and provider-side deletion.
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 
 from sqlalchemy import select, func
 
@@ -29,7 +29,7 @@ class AssetDeletionMixin:
     db: AsyncSession
     users: UserService
 
-    async def delete_asset(self, asset_id: int, user: User, delete_from_provider: bool = True) -> None:
+    async def delete_asset(self, asset_id: int, user: User, delete_from_provider: bool = True) -> Dict[str, Any]:
         """
         Delete an asset owned by the user (or any asset if admin).
 
@@ -123,9 +123,11 @@ class AssetDeletionMixin:
 
         await self.db.commit()
 
+        provider_delete_result = None
+
         # Best-effort remote/provider cleanup AFTER commit to avoid rollback/file mismatch.
         if delete_from_provider and asset.provider_asset_id and asset.provider_id:
-            await self._delete_from_provider(asset)
+            provider_delete_result = await self._delete_from_provider(asset)
 
         if should_delete_local_file and local_path:
             try:
@@ -152,7 +154,13 @@ class AssetDeletionMixin:
             "deleted_by_user_id": user.id,
         })
 
-    async def _delete_from_provider(self, asset: Asset) -> None:
+        return {
+            "asset_id": asset_id,
+            "local_deleted": True,
+            "provider_delete": provider_delete_result,
+        }
+
+    async def _delete_from_provider(self, asset: Asset) -> Dict[str, Any]:
         """
         Attempt to delete asset from provider (best effort).
 
@@ -172,7 +180,13 @@ class AssetDeletionMixin:
                     provider_id=asset.provider_id,
                     asset_id=asset.id,
                 )
-                return
+                return {
+                    "status": "skipped",
+                    "reason": "provider_delete_not_supported",
+                    "provider_id": asset.provider_id,
+                    "asset_id": asset.id,
+                    "provider_asset_id": asset.provider_asset_id,
+                }
 
             # Get provider account
             if not asset.provider_account_id:
@@ -181,7 +195,13 @@ class AssetDeletionMixin:
                     provider_id=asset.provider_id,
                     asset_id=asset.id,
                 )
-                return
+                return {
+                    "status": "skipped",
+                    "reason": "provider_delete_no_account",
+                    "provider_id": asset.provider_id,
+                    "asset_id": asset.id,
+                    "provider_asset_id": asset.provider_asset_id,
+                }
 
             account = await self.db.get(ProviderAccount, asset.provider_account_id)
             if not account:
@@ -190,7 +210,14 @@ class AssetDeletionMixin:
                     asset_id=asset.id,
                     provider_account_id=asset.provider_account_id,
                 )
-                return
+                return {
+                    "status": "skipped",
+                    "reason": "provider_delete_account_not_found",
+                    "provider_id": asset.provider_id,
+                    "asset_id": asset.id,
+                    "provider_asset_id": asset.provider_asset_id,
+                    "provider_account_id": asset.provider_account_id,
+                }
 
             # Call provider delete
             await provider.delete_asset(
@@ -206,6 +233,12 @@ class AssetDeletionMixin:
                 asset_id=asset.id,
                 provider_asset_id=asset.provider_asset_id,
             )
+            return {
+                "status": "success",
+                "provider_id": asset.provider_id,
+                "asset_id": asset.id,
+                "provider_asset_id": asset.provider_asset_id,
+            }
 
         except Exception as e:
             # Log error but don't fail - local deletion should proceed
@@ -218,4 +251,12 @@ class AssetDeletionMixin:
                 error_type=e.__class__.__name__,
                 exc_info=True,
             )
-            # Note: Could emit event here for UI notification if needed
+            return {
+                "status": "failed",
+                "reason": "provider_delete_failed",
+                "provider_id": asset.provider_id,
+                "asset_id": asset.id,
+                "provider_asset_id": asset.provider_asset_id,
+                "error": str(e),
+                "error_type": e.__class__.__name__,
+            }

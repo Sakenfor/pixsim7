@@ -42,7 +42,7 @@ class VersionFamilyProtocol(Protocol):
     Implementations: AssetVersionFamily, PromptFamily
     """
     id: UUID
-    user_id: int
+    user_id: Optional[int]
     created_at: datetime
     updated_at: datetime
 
@@ -275,10 +275,11 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
         Computed at query time to avoid concurrency issues.
         """
         EntityModel = self.get_entity_model()
+        id_col = getattr(EntityModel, self.entity_id_attr)
         version_col = getattr(EntityModel, self.version_number_attr)
         result = await self.db.execute(
             select(
-                func.count(EntityModel.id).label("version_count"),
+                func.count(id_col).label("version_count"),
                 func.max(version_col).label("max_version"),
                 func.min(version_col).label("min_version"),
             ).where(self.build_family_id_filter(family_id))
