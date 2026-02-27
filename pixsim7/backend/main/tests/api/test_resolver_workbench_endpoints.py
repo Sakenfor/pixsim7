@@ -274,6 +274,69 @@ async def test_resolve_required_capabilities_filters_candidates():
     )
 
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="httpx/fastapi not available")
+async def test_resolve_pairwise_bonus_shifts_selection():
+    """pairwise_bonuses in the payload shift selection toward compatible candidate."""
+    payload = {
+        "resolver_id": "next_v1",
+        "seed": 1,
+        "intent": {
+            "targets": [
+                {"key": "base", "kind": "slot"},
+                {"key": "modifier", "kind": "slot"},
+            ],
+        },
+        "candidates_by_target": {
+            "base": [
+                {
+                    "block_id": "tribal_base",
+                    "text": "tribal base",
+                    "tags": {"aesthetic": "tribal"},
+                    "avg_rating": 3.0,
+                },
+            ],
+            "modifier": [
+                {
+                    "block_id": "mod_urban",
+                    "text": "urban modifier",
+                    "tags": {"style": "urban"},
+                    "avg_rating": 4.5,
+                },
+                {
+                    "block_id": "mod_tribal",
+                    "text": "tribal modifier",
+                    "tags": {"style": "tribal"},
+                    "avg_rating": 3.0,
+                },
+            ],
+        },
+        "constraints": [],
+        "pairwise_bonuses": [
+            {
+                "id": "tribal-compat",
+                "source_target": "base",
+                "target_key": "modifier",
+                "source_tags": {"aesthetic": "tribal"},
+                "candidate_tags": {"style": "tribal"},
+                "bonus": 3.0,
+            },
+        ],
+        "debug": {"include_trace": True, "include_candidate_scores": True},
+    }
+    app = _app()
+    async with _client(app) as client:
+        resp = await client.post(
+            "/api/v1/block-templates/dev/resolver-workbench/resolve",
+            json=payload,
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["selected_by_target"]["modifier"]["block_id"] == "mod_tribal"
+    events = data["trace"]["events"]
+    assert any(ev["kind"] == "pairwise_bonus" for ev in events)
+
+
 # ---------------------------------------------------------------------------
 # Compiler helper unit tests (no HTTP, test enrichment logic directly)
 # ---------------------------------------------------------------------------

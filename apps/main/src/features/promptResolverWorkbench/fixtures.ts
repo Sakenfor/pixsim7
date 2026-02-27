@@ -338,6 +338,73 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
 
   // -----------------------------------------------------------------------
   {
+    id: 'pairwise-bonus-tribal-compat',
+    name: 'Pairwise Bonus (Tribal Compatibility)',
+    description:
+      'Demonstrates pairwise_bonuses: when the tribal base aesthetic is selected, the tribal-compatible modifier gets a score boost over the higher-rated urban modifier.',
+    request: {
+      resolver_id: 'next_v1',
+      seed: 5,
+      intent: {
+        targets: [
+          { key: 'base_aesthetic', kind: 'slot', label: 'Base aesthetic', category: 'aesthetic' },
+          { key: 'wardrobe_modifier', kind: 'slot', label: 'Wardrobe modifier', category: 'wardrobe_modifier' },
+        ],
+        desired_tags_by_target: {
+          base_aesthetic: { theme_family: 'tribal_handcrafted' },
+        },
+        required_capabilities_by_target: {
+          wardrobe_modifier: ['wardrobe_modifier'],
+        },
+      },
+      candidates_by_target: {
+        base_aesthetic: [
+          {
+            block_id: 'tribal_earthy_base',
+            text: 'handcrafted tribal garments with earthy woven textures',
+            tags: { theme_family: 'tribal_handcrafted', theme_variant: 'earthy' },
+            capabilities: ['aesthetic_base'],
+            avg_rating: 4.2,
+          },
+        ],
+        wardrobe_modifier: [
+          {
+            block_id: 'mod_urban_sleek',
+            text: 'sleek urban-cut modifier with modern tailoring',
+            tags: { modifier_family: 'allure', style_compat: 'urban', tightness: 'fitted' },
+            capabilities: ['wardrobe_modifier'],
+            avg_rating: 4.8,
+          },
+          {
+            block_id: 'mod_tribal_woven',
+            text: 'body-conforming woven modifier preserving handcrafted silhouette',
+            tags: { modifier_family: 'allure', style_compat: 'tribal', tightness: 'fitted' },
+            capabilities: ['wardrobe_modifier'],
+            avg_rating: 3.5,
+          },
+        ],
+      },
+      constraints: [],
+      pairwise_bonuses: [
+        {
+          id: 'tribal-modifier-compat',
+          source_target: 'base_aesthetic',
+          target_key: 'wardrobe_modifier',
+          source_tags: { theme_family: 'tribal_handcrafted' },
+          candidate_tags: { style_compat: 'tribal' },
+          bonus: 3.0,
+        },
+      ],
+      debug: { include_trace: true, include_candidate_scores: true },
+      context: {
+        template_slug: 'tribal-theme-woman',
+        resolver_experiment: 'next_v1_pairwise_fixture',
+      },
+    },
+  },
+
+  // -----------------------------------------------------------------------
+  {
     id: 'editorial-mood-scoring-only',
     name: 'Editorial Mood (Scoring Only)',
     description:

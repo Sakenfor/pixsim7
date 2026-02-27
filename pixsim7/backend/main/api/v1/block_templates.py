@@ -19,7 +19,6 @@ from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.services.prompt.block.template_service import BlockTemplateService
 from pixsim7.backend.main.services.prompt.block.block_query import (
     build_prompt_block_query,
-    normalize_tag_query,
 )
 from pixsim7.backend.main.services.prompt.block.template_slots import (
     TemplateSlotSpec,
@@ -33,8 +32,13 @@ from pixsim7.backend.main.services.prompt.block.tag_dictionary import (
     get_canonical_block_tag_dictionary,
     get_block_tag_alias_key_map,
 )
+from pixsim7.backend.main.services.prompt.block.compiler_core import (
+    CompilerV1,
+    slot_tag_constraint_groups as _slot_tag_constraint_groups,
+)
 from pixsim7.backend.main.services.prompt.block.resolution_core import (
     CandidateBlock as ResolverCandidateBlock,
+    PairwiseBonus as ResolverPairwiseBonus,
     ResolutionConstraint as ResolverResolutionConstraint,
     ResolutionDebugOptions as ResolverDebugOptions,
     ResolutionIntent as ResolverResolutionIntent,
@@ -186,6 +190,7 @@ class ResolveWorkbenchRequest(BaseModel):
     intent: Dict[str, Any] = Field(default_factory=dict)
     candidates_by_target: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
     constraints: List[Dict[str, Any]] = Field(default_factory=list)
+    pairwise_bonuses: List[Dict[str, Any]] = Field(default_factory=list)
     debug: Dict[str, Any] = Field(default_factory=dict)
     context: Dict[str, Any] = Field(default_factory=dict)
 
@@ -369,6 +374,27 @@ def _coerce_resolution_request(request: ResolveWorkbenchRequest) -> ResolverReso
             )
         )
 
+    pairwise_bonuses: List[ResolverPairwiseBonus] = []
+    for row in request.pairwise_bonuses or []:
+        if not isinstance(row, dict):
+            continue
+        bonus_id = str(row.get("id") or "").strip()
+        source_target = str(row.get("source_target") or "").strip()
+        target_key = str(row.get("target_key") or "").strip()
+        if not bonus_id or not source_target or not target_key:
+            continue
+        bonus_val = row.get("bonus", 1.0)
+        pairwise_bonuses.append(
+            ResolverPairwiseBonus(
+                id=bonus_id,
+                source_target=source_target,
+                target_key=target_key,
+                source_tags=dict(row.get("source_tags") or {}),
+                candidate_tags=dict(row.get("candidate_tags") or {}),
+                bonus=float(bonus_val) if isinstance(bonus_val, (int, float)) else 1.0,
+            )
+        )
+
     debug_raw = request.debug if isinstance(request.debug, dict) else {}
     debug = ResolverDebugOptions(
         include_trace=bool(debug_raw.get("include_trace", True)),
@@ -390,62 +416,14 @@ def _coerce_resolution_request(request: ResolveWorkbenchRequest) -> ResolverReso
         intent=intent,
         candidates_by_target=candidates_by_target,
         constraints=constraints,
+        pairwise_bonuses=pairwise_bonuses,
         debug=debug,
         context=dict(request.context or {}),
     )
 
 
-def _slot_target_key(slot: Dict[str, Any], index: int) -> str:
-    key = slot.get("key")
-    if isinstance(key, str) and key.strip():
-        return key.strip()
-    label = slot.get("label")
-    if isinstance(label, str) and label.strip():
-        slug = "".join(ch.lower() if ch.isalnum() else "_" for ch in label.strip())
-        slug = "_".join(part for part in slug.split("_") if part)
-        if slug:
-            return slug
-    return f"slot_{index}"
-
-
-def _slot_tag_constraint_groups(slot: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    """Return normalized tag constraint groups: {all, any, not}."""
-    groups = normalize_tag_query(
-        tag_constraints=slot.get("tag_constraints"),
-        tag_query=slot.get("tags"),
-    )
-    return {
-        "all": dict(groups.get("all") or {}) if isinstance(groups.get("all"), dict) else {},
-        "any": dict(groups.get("any") or {}) if isinstance(groups.get("any"), dict) else {},
-        "not": dict(groups.get("not") or {}) if isinstance(groups.get("not"), dict) else {},
-    }
-
-
-def _prompt_block_to_resolver_candidate(block: Any) -> ResolverCandidateBlock:
-    tags = block.tags if isinstance(getattr(block, "tags", None), dict) else {}
-    capabilities: List[str] = []
-    category = getattr(block, "category", None)
-    if isinstance(category, str) and category.strip():
-        capabilities.append(category.strip())
-        if category.strip().endswith("_modifier"):
-            capabilities.append("wardrobe_modifier" if category.strip() == "wardrobe_modifier" else category.strip())
-    role = getattr(block, "role", None)
-    if isinstance(role, str) and role.strip():
-        capabilities.append(f"role:{role.strip()}")
-    # Preserve existing authorable tags; typed features can be added later.
-    return ResolverCandidateBlock(
-        block_id=str(getattr(block, "block_id", "") or ""),
-        text=str(getattr(block, "text", "") or ""),
-        package_name=(str(block.package_name) if getattr(block, "package_name", None) is not None else None),
-        tags=dict(tags),
-        category=(str(category) if category is not None else None),
-        avg_rating=(float(block.avg_rating) if isinstance(getattr(block, "avg_rating", None), (int, float)) else None),
-        features={},
-        capabilities=sorted(set(capabilities)),
-        metadata={
-            "db_id": str(getattr(block, "id", "")) if getattr(block, "id", None) is not None else None,
-        },
-    )
+# Compiler v1 instance — used by compile-template endpoint.
+_compiler_v1 = CompilerV1()
 
 
 async def _compile_template_to_resolution_request(
@@ -455,135 +433,12 @@ async def _compile_template_to_resolution_request(
     candidate_limit: int,
     control_values: Optional[Dict[str, Any]],
 ) -> ResolverResolutionRequest:
-    slots = normalize_template_slots(
-        template.slots,
-        schema_version=service._get_slot_schema_version(template),
-    )
-
-    metadata = template.template_metadata if isinstance(template.template_metadata, dict) else {}
-    resolved_controls = await service.resolve_template_controls(slots=slots, template_metadata=metadata)
-    if resolved_controls:
-        metadata = {**metadata, "controls": resolved_controls}
-    slots = service._apply_control_effects(slots, metadata, control_values)
-
-    targets: List[ResolverResolutionTarget] = []
-    candidates_by_target: Dict[str, List[ResolverCandidateBlock]] = {}
-    desired_tags_by_target: Dict[str, Dict[str, Any]] = {}
-    avoid_tags_by_target: Dict[str, Dict[str, Any]] = {}
-    required_capabilities_by_target: Dict[str, List[str]] = {}
-    constraints: List[ResolverResolutionConstraint] = []
-
-    for idx, slot in enumerate(slots):
-        kind = str(slot.get("kind") or "").strip()
-        if kind in {"reinforcement", "audio_cue"}:
-            continue
-
-        target_key = _slot_target_key(slot, idx)
-        label = str(slot.get("label") or target_key)
-        target_category = (str(slot.get("category")) if slot.get("category") is not None else None)
-        target_role = (str(slot.get("role")) if slot.get("role") is not None else None)
-
-        # -- Target capabilities: what we expect from candidates for this target
-        target_caps: List[str] = []
-        if target_category:
-            target_caps.append(target_category)
-        if target_role:
-            target_caps.append(f"role:{target_role}")
-
-        targets.append(
-            ResolverResolutionTarget(
-                key=target_key,
-                kind="slot",
-                label=label,
-                category=target_category,
-                capabilities=target_caps,
-                metadata={
-                    "slot_index": int(slot.get("slot_index", idx)),
-                    "selection_strategy": str(slot.get("selection_strategy") or "uniform"),
-                    "optional": bool(slot.get("optional", False)),
-                    **({"role": target_role} if target_role else {}),
-                    **({"intensity": slot["intensity"]} if "intensity" in slot else {}),
-                },
-            )
-        )
-
-        # -- Required capabilities: filter candidates missing these
-        if target_category:
-            required_capabilities_by_target[target_key] = [target_category]
-
-        # -- Candidates
-        slot_with_excludes = dict(slot)
-        if not slot_with_excludes.get("exclude_block_ids"):
-            slot_with_excludes["exclude_block_ids"] = None
-        candidates = await service.find_candidates(slot_with_excludes, limit=candidate_limit)
-        candidates_by_target[target_key] = [
-            _prompt_block_to_resolver_candidate(block)
-            for block in candidates
-            if str(getattr(block, "block_id", "") or "").strip()
-        ]
-
-        # -- Soft preferences from slot (includes control effects already merged)
-        prefs = slot.get("preferences") if isinstance(slot.get("preferences"), dict) else {}
-        boost_tags = prefs.get("boost_tags") if isinstance(prefs.get("boost_tags"), dict) else {}
-        avoid_tags = prefs.get("avoid_tags") if isinstance(prefs.get("avoid_tags"), dict) else {}
-
-        # -- Tag constraint groups → constraints + soft boosts
-        tag_groups = _slot_tag_constraint_groups(slot)
-
-        # `all` group → requires_tag hard constraints
-        for tag_key, tag_value in tag_groups["all"].items():
-            constraints.append(
-                ResolverResolutionConstraint(
-                    id=f"{target_key}:requires:{tag_key}",
-                    kind="requires_tag",
-                    target_key=target_key,
-                    payload={"tag": tag_key, "value": tag_value},
-                    severity="error",
-                )
-            )
-
-        # `not` group → forbid_tag hard constraints
-        for tag_key, tag_value in tag_groups["not"].items():
-            constraints.append(
-                ResolverResolutionConstraint(
-                    id=f"{target_key}:forbids:{tag_key}",
-                    kind="forbid_tag",
-                    target_key=target_key,
-                    payload={"tag": tag_key, "value": tag_value},
-                    severity="error",
-                )
-            )
-
-        # `any` group → merge as soft desired tags (no requires_any_tag constraint yet)
-        for tag_key, tag_value in tag_groups["any"].items():
-            boost_tags = {**boost_tags, tag_key: tag_value}
-
-        if boost_tags:
-            desired_tags_by_target[target_key] = dict(boost_tags)
-        if avoid_tags:
-            avoid_tags_by_target[target_key] = dict(avoid_tags)
-
-    return ResolverResolutionRequest(
-        resolver_id="next_v1",
-        seed=None,
-        intent=ResolverResolutionIntent(
-            control_values=dict(control_values or {}),
-            desired_tags_by_target=desired_tags_by_target,
-            avoid_tags_by_target=avoid_tags_by_target,
-            desired_features_by_target={},
-            required_capabilities_by_target=required_capabilities_by_target,
-            targets=targets,
-        ),
-        candidates_by_target=candidates_by_target,
-        constraints=constraints,
-        debug=ResolverDebugOptions(include_trace=True, include_candidate_scores=True),
-        context={
-            "template_id": str(template.id),
-            "template_slug": str(template.slug),
-            "template_name": str(template.name),
-            "compiler": "block_templates.dev.resolver_workbench.compiler_v1",
-            "candidate_limit": int(candidate_limit),
-        },
+    """Delegate to CompilerV1. Thin wrapper kept for endpoint call-site clarity."""
+    return await _compiler_v1.compile(
+        service=service,
+        template=template,
+        candidate_limit=candidate_limit,
+        control_values=control_values,
     )
 
 

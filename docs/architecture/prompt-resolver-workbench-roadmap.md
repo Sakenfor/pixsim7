@@ -324,55 +324,38 @@ Remaining:
 Acceptance criteria:
 - trace list can be narrowed without mutating result data
 
-### Iteration 3 (RECOMMENDED NEXT): Compiler enrichment
+### ~~Iteration 3~~: Compiler enrichment ✓ DONE
 
-Track 1. Highest priority for `next_v1` development — the engine is underfed without this.
+Delivered:
+- `required_capabilities_by_target` populated from slot category
+- `not` tag constraint group → `forbid_tag` constraints
+- `any` tag constraint group → merged into desired_tags as soft boosts
+- target metadata includes `role` and `intensity`
+- context tagged as `compiler_v1`
+- 3 new tests (required_capabilities, tag constraint groups)
 
-Scope:
-- populate `required_capabilities_by_target` reliably from slot category and role
-- emit typed `features` from at least slot-level metadata (even if sparse initially)
-- improve hard constraint generation from slot tag constraints
-- carry slot index, strategy, optional flag into target metadata
+### ~~Iteration 3b~~: Compiler formalization (`compiler_v1`) ✓ DONE
 
-Acceptance criteria:
-- compiled request from a real template has non-empty `required_capabilities_by_target`
-- hard constraints reflect slot tag requirements without manual fixture authoring
-- existing workbench runs are not broken
+Delivered:
+- `BlockCompiler` protocol in `compiler_core/interfaces.py`
+- `CompilerV1` class in `compiler_core/compiler_v1.py` with extracted helpers:
+  `slot_target_key`, `slot_tag_constraint_groups`, `prompt_block_to_candidate`
+- `_compile_template_to_resolution_request` now delegates to `CompilerV1.compile()`
+- `ConstraintKind` constants class with documented payload schemas
+- `ScoringConfig` dataclass — explicit weights for desired_tag, avoid_tag, desired_feature, rating
+- Resolver uses `ConstraintKind` constants and `ScoringConfig` instead of magic strings/numbers
 
-Validation:
-- `python -m py_compile pixsim7/backend/main/api/v1/block_templates.py`
-- `pnpm -C apps/main exec tsc --noEmit`
-- targeted pytest for endpoint tests + resolution_core tests
+### ~~Iteration 4~~: `next_v1` relational scoring ✓ DONE
 
-### Iteration 3b (or 4a): Compiler formalization (`compiler_v1`)
-
-Track 0. Convert the current implicit compiler into a first-class/versioned entity.
-
-Scope:
-- introduce `BlockCompiler` protocol + compiler registry
-- move endpoint-local compile helpers into `compiler_v1`
-- keep `/compile-template` endpoint behavior unchanged (just dispatch through registry)
-- document `compiler_v1` in code comments / module docs
-
-Acceptance criteria:
-- no workbench behavior regression
-- compile endpoint returns same request shape for existing templates
-- compiler is selectable by ID internally (even if endpoint still defaults to `compiler_v1`)
-
-### Iteration 4: `next_v1` relational scoring
-
-Track 2. First real differentiator — prerequisite: Iteration 3 done so compiler gives `next_v1` real signal.
-
-Scope:
-- implement pairwise compatibility bonus: soft score boost between compatible selected blocks
-- implement deterministic seeded tie-breaking
-- optionally: target ordering policy (high-constraint targets resolved first)
-- all behavior observable in trace
-
-Acceptance criteria:
-- trace shows cross-target scoring events
-- same seed produces same result deterministically
-- behavior differs meaningfully from per-slot independent selection
+Delivered:
+- `PairwiseBonus` type: cross-target soft scoring signal (source_target → target_key with tag conditions)
+- pairwise compatibility bonus scoring in `next_v1_resolver.py`
+- deterministic seeded tie-breaking via `hashlib.md5(seed:target:block_id)`
+- dependency-aware target ordering (topo-sort from `requires_other_selected` + `pairwise_bonuses`)
+- `target_order` trace event, `pairwise_bonus` trace events
+- `pairwise_bonuses` field wired through endpoint hydration
+- `PairwiseBonus` TS type + new fixture (`pairwise-bonus-tribal-compat`)
+- 7 new tests (seeded determinism, trace reason, pairwise boost, pairwise no-match, dependency ordering ×2, target_order trace)
 
 ### Iteration 5: Trace filters
 
