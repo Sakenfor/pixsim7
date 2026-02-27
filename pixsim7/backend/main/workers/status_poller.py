@@ -181,7 +181,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         logger.warning("no_submission", generation_id=generation.id)
                         await generation_service.mark_failed(
                             generation.id,
-                            "No provider submission found"
+                            "No provider submission found",
+                            error_code=GenerationErrorCode.PROVIDER_UNAVAILABLE.value,
                         )
                         # Decrement counter using generation.account_id if available
                         # (counter was incremented at selection, before submission created)
@@ -967,9 +968,11 @@ async def requeue_pending_generations(ctx: dict) -> dict:
             # First pass: capacity-aware dispatch for pinned waiting generations.
             # This is an early-admission fallback that dispatches only when the
             # preferred account currently has room.
+            # Include EXHAUSTED accounts: pinned generations skip credit checks,
+            # and process_generation allows exhausted accounts for preferred use.
             capacity_accounts_result = await db.execute(
                 select(ProviderAccount).where(
-                    ProviderAccount.status == AccountStatus.ACTIVE,
+                    ProviderAccount.status.in_([AccountStatus.ACTIVE, AccountStatus.EXHAUSTED]),
                     ProviderAccount.max_concurrent_jobs > ProviderAccount.current_processing_jobs,
                     (
                         (ProviderAccount.cooldown_until == None)
@@ -1074,6 +1077,36 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                 .limit(MAX_REQUEUE_PER_RUN)
             )
             stuck_generations = list(result.scalars().all())
+
+            # Third pass: catch stale PINNED generations that Pass 1 missed.
+            # Pass 1 only dispatches pinned gens whose preferred account has
+            # capacity and is ACTIVE/EXHAUSTED.  If the account is disabled,
+            # at full capacity, or on cooldown, the pinned gen is invisible
+            # to both Pass 1 and Pass 2 and can get stuck forever.
+            # Use a longer threshold (3 minutes) since pinned gens have
+            # intentional short defers via _defer_pinned_generation.
+            PINNED_STALE_THRESHOLD_SECONDS = 180
+            pinned_threshold = now - timedelta(seconds=PINNED_STALE_THRESHOLD_SECONDS)
+            pinned_stale_result = await db.execute(
+                select(Generation)
+                .where(Generation.status == GenerationStatus.PENDING)
+                .where(Generation.preferred_account_id != None)
+                .where(Generation.updated_at < pinned_threshold)
+                .where(
+                    (Generation.scheduled_at == None) |
+                    (Generation.scheduled_at <= now)
+                )
+                .order_by(Generation.created_at)
+                .limit(MAX_REQUEUE_PER_RUN)
+            )
+            stale_pinned = list(pinned_stale_result.scalars().all())
+            if stale_pinned:
+                stuck_generations.extend(stale_pinned)
+                logger.info(
+                    "requeue_found_stale_pinned",
+                    count=len(stale_pinned),
+                    generation_ids=[g.id for g in stale_pinned],
+                )
 
             if not stuck_generations:
                 logger.debug("requeue_idle", msg="No stuck pending generations found")

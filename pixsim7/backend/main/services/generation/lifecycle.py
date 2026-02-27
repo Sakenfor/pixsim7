@@ -71,6 +71,13 @@ class GenerationLifecycleService:
         generation = await self._get_generation_for_update(generation_id)
 
         if generation.status == status:
+            # If another worker already transitioned to PROCESSING, this is a
+            # duplicate pickup — abort so the caller doesn't double-submit.
+            if status == GenerationStatus.PROCESSING:
+                raise InvalidOperationError(
+                    f"Generation {generation_id} is already PROCESSING "
+                    f"(likely picked up by another worker)"
+                )
             if error_message and error_message != generation.error_message:
                 generation.error_message = error_message
                 if error_code:

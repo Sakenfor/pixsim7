@@ -10,6 +10,7 @@ import asyncio
 import os
 import random
 from datetime import datetime, timezone, timedelta
+from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.domain import Generation
 from pixsim7.backend.main.domain.providers import ProviderAccount
@@ -29,6 +30,7 @@ from pixsim7.backend.main.shared.errors import (
     NoAccountAvailableError,
     AccountCooldownError,
     AccountExhaustedError,
+    InvalidOperationError,
     ProviderError,
     ProviderAuthenticationError,
     ProviderQuotaExceededError,
@@ -40,15 +42,39 @@ from pixsim7.backend.main.shared.policies import (
     with_fallback,
     FallbackExhaustedError,
 )
+from pixsim7.backend.main.shared.config import settings
+from pixsim7.backend.main.workers.worker_concurrency import (
+    # Settings helpers (authoritative copies live in worker_concurrency)
+    _settings_int,
+    _settings_float,
+    _settings_bool,
+    _pinned_wait_padding_seconds,
+    _get_operation_value,
+    _get_concurrent_limit_cooldown_seconds,
+    # Constants
+    CONCURRENT_COOLDOWN_SECONDS,
+    MAX_PINNED_CONCURRENT_RETRIES,
+    PINNED_YIELD_THRESHOLD_RATIO,
+    PINNED_YIELD_DEFER_MULTIPLIER,
+    # Adaptive concurrency
+    _adaptive_provider_concurrency_pre_submit_gate,
+    _adaptive_provider_concurrency_record_limit_error,
+    _adaptive_provider_concurrency_record_submit_success,
+    # Pinned generation helpers
+    _get_pinned_concurrent_wait_count,
+    _clear_pinned_concurrent_wait_count,
+    _plan_pinned_concurrent_defer,
+    _count_runnable_pinned_siblings,
+    _normalize_positive_int,
+)
 from pixsim7.backend.main.shared.policies.content_filter_retry import (
-    MAX_SUBMIT_CONTENT_FILTER_RETRIES,
+    max_submit_content_filter_retries,
     should_rotate_content_filter_account,
     should_yield_pinned_content_filter_retry,
     content_filter_yield_defer_seconds,
     content_filter_yield_counts_as_retry,
     content_filter_max_yields,
     try_acquire_content_filter_yield,
-    reset_content_filter_yield_counter,
 )
 
 # Expected errors that don't need stack traces - these are business logic, not bugs
@@ -82,29 +108,19 @@ NON_RETRYABLE_ERROR_PATTERNS = (
 # This gives a chance for manual re-auth while allowing other accounts to run.
 AUTH_FAILURE_COOLDOWN_SECONDS = 300
 
-# Cooldown applied when an account hits its concurrent job limit.
-CONCURRENT_COOLDOWN_SECONDS = 30
-PIXVERSE_CONCURRENT_COOLDOWN_SECONDS = int(
-    os.getenv("PIXVERSE_CONCURRENT_COOLDOWN_SECONDS", "6")
-)
-PIXVERSE_I2I_CONCURRENT_COOLDOWN_SECONDS = int(
-    os.getenv("PIXVERSE_I2I_CONCURRENT_COOLDOWN_SECONDS", "2")
-)
 NO_ACCOUNT_AVAILABLE_DEFER_SECONDS = 10
-DISPATCH_STAGGER_PER_SLOT_SECONDS = float(os.getenv("DISPATCH_STAGGER_PER_SLOT_SECONDS", "1.5"))
-MAX_DISPATCH_STAGGER_SECONDS = float(os.getenv("DISPATCH_STAGGER_MAX_SECONDS", "12"))
-PINNED_WAIT_PADDING_SECONDS = int(os.getenv("PINNED_WAIT_PADDING_SECONDS", "1"))
-MIN_PINNED_COOLDOWN_DEFER_SECONDS = int(os.getenv("MIN_PINNED_COOLDOWN_DEFER_SECONDS", "2"))
 
-# Max times a pinned-account generation will be deferred waiting for a
-# concurrent slot before giving up.
-MAX_PINNED_CONCURRENT_RETRIES = 12
 
-# After this fraction of MAX_PINNED_CONCURRENT_RETRIES, a generation will
-# check for siblings (other pending generations targeting the same account)
-# and yield by using a longer defer if any exist.
-PINNED_YIELD_THRESHOLD_RATIO = 0.5
-PINNED_YIELD_DEFER_MULTIPLIER = 3
+def _dispatch_stagger_per_slot_seconds() -> float:
+    return _settings_float("dispatch_stagger_per_slot_seconds", 1.5, minimum=0.0)
+
+
+def _max_dispatch_stagger_seconds() -> float:
+    return _settings_float("dispatch_stagger_max_seconds", 12.0, minimum=0.0)
+
+
+def _min_pinned_cooldown_defer_seconds() -> int:
+    return _settings_int("min_pinned_cooldown_defer_seconds", 2, minimum=1)
 
 
 def _is_non_retryable_error(error: Exception) -> bool:
@@ -165,28 +181,6 @@ def _is_pinned_account(generation: Generation, account: ProviderAccount) -> bool
     pref = getattr(generation, 'preferred_account_id', None)
     return pref is not None and pref == account.id
 
-
-def _get_operation_value(generation: Generation) -> str | None:
-    op = getattr(generation, "operation_type", None)
-    if op is None:
-        return None
-    return getattr(op, "value", str(op))
-
-
-def _get_concurrent_limit_cooldown_seconds(
-    generation: Generation,
-    account: ProviderAccount,
-) -> int:
-    """Return provider/operation-specific cooldown after concurrent-limit submit failures."""
-    provider_id = str(getattr(account, "provider_id", "") or "").lower()
-    operation_type = (_get_operation_value(generation) or "").lower()
-
-    if provider_id == "pixverse" and operation_type == "image_to_image":
-        return max(1, PIXVERSE_I2I_CONCURRENT_COOLDOWN_SECONDS)
-    if provider_id == "pixverse":
-        return max(1, PIXVERSE_CONCURRENT_COOLDOWN_SECONDS)
-
-    return CONCURRENT_COOLDOWN_SECONDS
 
 
 def _get_max_tries() -> int:
@@ -317,6 +311,37 @@ def has_sufficient_credits(credits_data: dict, min_credits: int = 1) -> bool:
     return False
 
 
+def _required_generation_credit_hint(
+    generation: Generation,
+    params: dict[str, Any] | None = None,
+) -> int | None:
+    """Best-effort required credit estimate for pre-submit account filtering.
+
+    Prefer the normalized billing field computed at creation time, and fall back
+    to provider-param hints when available.
+    """
+    estimated = getattr(generation, "estimated_credits", None)
+    if estimated is not None:
+        try:
+            return max(0, int(estimated))
+        except Exception:
+            pass
+
+    if isinstance(params, dict):
+        raw_hint = params.get("credit_change")
+        if raw_hint is not None:
+            try:
+                # `credit_change` is a delta hint; normalize to positive cost.
+                return max(0, abs(int(raw_hint)))
+            except Exception:
+                try:
+                    return max(0, abs(int(float(raw_hint))))
+                except Exception:
+                    pass
+
+    return None
+
+
 def is_unlimited_model(account: ProviderAccount, model: str | None) -> bool:
     """Check if the model is in the account's unlimited image models list.
 
@@ -325,7 +350,7 @@ def is_unlimited_model(account: ProviderAccount, model: str | None) -> bool:
     """
     if not model or not account.provider_metadata:
         return False
-    unlimited = account.provider_metadata.get("plan_unlimited_image_models", [])
+    unlimited = account.provider_metadata.get("plan_unlimited_image_models") or []
     return model in unlimited
 
 
@@ -570,20 +595,14 @@ async def _count_pending_pinned_siblings(
     preferred_account_id: int,
     exclude_generation_id: int,
 ) -> int:
-    """Count other PENDING generations targeting the same preferred account."""
-    from sqlalchemy import select, func
-    from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
-
-    count = await db.scalar(
-        select(func.count())
-        .select_from(Generation)
-        .where(
-            Generation.preferred_account_id == preferred_account_id,
-            Generation.status == GenStatus.PENDING,
-            Generation.id != exclude_generation_id,
-        )
+    """Backward-compatible wrapper: count runnable pending siblings."""
+    counts = await _count_runnable_pinned_siblings(
+        db=db,
+        preferred_account_id=preferred_account_id,
+        exclude_generation_id=exclude_generation_id,
+        current_generation_created_at=None,
     )
-    return count or 0
+    return int(counts.get("total_runnable", 0))
 
 
 async def process_generation(ctx: dict, generation_id: int) -> dict:
@@ -641,6 +660,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     await clear_generation_wait_metadata(arq_pool, generation_id)
                 except Exception:
                     pass
+                await _clear_pinned_concurrent_wait_count(generation_id, gen_logger=gen_logger)
                 gen_logger.warning("generation_not_pending", status=generation.status)
                 return {"status": "skipped", "reason": f"Generation status is {generation.status}"}
 
@@ -664,6 +684,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             # If generation already has an account_id (from previous attempt), try to reuse it
             MAX_ACCOUNT_RETRIES = 10
             account = None
+            adaptive_submit_gate: dict[str, Any] | None = None
 
             # Try preferred account first (user-selected).
             # When the user explicitly selects an account, honor that choice
@@ -698,6 +719,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             # Resolve model name for unlimited-model credit bypass
             gen_params = generation.canonical_params or generation.raw_params or {}
             gen_model = gen_params.get("model")
+            required_credit_hint = _required_generation_credit_hint(generation, gen_params)
 
             # Try to reuse previous account on retry.
             # Skip credit checks — the generation already had a slot on this
@@ -741,8 +763,8 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         _pref_acct.cooldown_until - datetime.now(timezone.utc)
                     ).total_seconds()
                     defer_seconds = max(
-                        int(remaining) + PINNED_WAIT_PADDING_SECONDS,
-                        MIN_PINNED_COOLDOWN_DEFER_SECONDS,
+                        int(remaining) + _pinned_wait_padding_seconds(),
+                        _min_pinned_cooldown_defer_seconds(),
                     )
                     gen_logger.info(
                         "preferred_account_cooldown_defer",
@@ -772,7 +794,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     base_cooldown = _get_concurrent_limit_cooldown_seconds(
                         generation, _pref_acct
                     )
-                    defer_seconds = base_cooldown + PINNED_WAIT_PADDING_SECONDS
+                    defer_seconds = base_cooldown + _pinned_wait_padding_seconds()
                     gen_logger.info(
                         "preferred_account_capacity_defer",
                         account_id=pref_id,
@@ -836,8 +858,20 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     """Check if account has sufficient credits (skip for unlimited models)."""
                     if is_unlimited_model(acct, gen_model):
                         return True
+                    if required_credit_hint == 0:
+                        return True
                     credits_data = await refresh_account_credits(acct, account_service, gen_logger)
-                    return not (credits_data and not has_sufficient_credits(credits_data))
+                    if not credits_data:
+                        # Credit fetch failed or returned empty — reject so we
+                        # try another account rather than submitting blind.
+                        gen_logger.warning(
+                            "credits_fetch_empty",
+                            account_id=acct.id,
+                            msg="credit check returned no data, rejecting account",
+                        )
+                        return False
+                    min_credits = required_credit_hint if required_credit_hint and required_credit_hint > 0 else 1
+                    return has_sufficient_credits(credits_data, min_credits=min_credits)
 
                 async def reject_account(acct: ProviderAccount) -> None:
                     """Release and mark exhausted."""
@@ -884,15 +918,131 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 await db.commit()
                 await db.refresh(generation)
 
-            # Mark generation as started
-            await generation_service.mark_started(generation_id)
+            # Adaptive provider concurrency guard for pinned accounts: learn
+            # a lower effective cap when the provider starts rejecting submits
+            # below the configured account cap, and only probe above that cap
+            # periodically to see if the provider limit increased again.
+            if _is_pinned_account(generation, account):
+                adaptive_submit_gate = await _adaptive_provider_concurrency_pre_submit_gate(
+                    generation=generation,
+                    account=account,
+                    model=gen_model,
+                    gen_logger=gen_logger,
+                )
+                if adaptive_submit_gate.get("action") == "defer":
+                    concurrent_plan = await _plan_pinned_concurrent_defer(
+                        db=db,
+                        generation=generation,
+                        account=account,
+                        concurrent_cooldown_seconds=_get_concurrent_limit_cooldown_seconds(generation, account),
+                        current_retry_count=getattr(generation, "retry_count", 0) or 0,
+                        gen_logger=gen_logger,
+                        adaptive_recommended_defer_seconds=int(adaptive_submit_gate.get("defer_seconds") or 1),
+                    )
+                    await _release_account_reservation(
+                        account_service=account_service,
+                        account_id=account.id,
+                        gen_logger=gen_logger,
+                    )
+                    if concurrent_plan.get("action") == "stop":
+                        await _clear_pinned_concurrent_wait_count(generation.id, gen_logger=gen_logger)
+                        await generation_service.mark_failed(
+                            generation_id,
+                            (
+                                f"Pinned account #{account.id} exceeded max concurrent wait defers "
+                                f"({concurrent_plan.get('max_waits')}) while provider concurrency was limited"
+                            ),
+                        )
+                        gen_logger.warning(
+                            "pinned_concurrent_max_waits_exceeded",
+                            generation_id=generation.id,
+                            account_id=account.id,
+                            concurrent_wait_count=concurrent_plan.get("wait_count"),
+                            max_waits=concurrent_plan.get("max_waits"),
+                            phase="pre_submit_gate",
+                        )
+                        get_health_tracker().increment_failed()
+                        return {
+                            "status": "failed",
+                            "reason": "pinned_concurrent_max_waits",
+                            "generation_id": generation_id,
+                        }
+                    gen_logger.info(
+                        "adaptive_concurrency_defer_before_submit",
+                        generation_id=generation.id,
+                        account_id=account.id,
+                        provider_id=account.provider_id,
+                        operation_type=_get_operation_value(generation),
+                        model=gen_model,
+                        local_concurrency=adaptive_submit_gate.get("local_concurrency"),
+                        effective_cap=adaptive_submit_gate.get("effective_cap"),
+                        configured_cap=adaptive_submit_gate.get("configured_cap"),
+                        defer_seconds=concurrent_plan.get("defer_seconds"),
+                        seconds_until_probe=adaptive_submit_gate.get("seconds_until_probe"),
+                        concurrent_wait_count=concurrent_plan.get("concurrent_wait_count"),
+                    )
+                    defer_result = await _defer_pinned_generation(
+                        db=db,
+                        generation=generation,
+                        generation_id=generation_id,
+                        account_id=account.id,
+                        defer_seconds=int(concurrent_plan.get("defer_seconds") or 1),
+                        reason=str(concurrent_plan.get("reason") or "pinned_account_adaptive_concurrent_wait"),
+                        gen_logger=gen_logger,
+                        increment_retry=bool(concurrent_plan.get("increment_retry")),
+                    )
+                    if defer_result:
+                        return defer_result
+                    # Fall through if defer fails unexpectedly.
+                elif adaptive_submit_gate.get("action") == "allow_probe":
+                    gen_logger.info(
+                        "adaptive_concurrency_probe_allowed",
+                        generation_id=generation.id,
+                        account_id=account.id,
+                        provider_id=account.provider_id,
+                        operation_type=_get_operation_value(generation),
+                        model=gen_model,
+                        local_concurrency=adaptive_submit_gate.get("local_concurrency"),
+                        effective_cap=adaptive_submit_gate.get("effective_cap"),
+                        configured_cap=adaptive_submit_gate.get("configured_cap"),
+                        next_probe_delay_seconds=adaptive_submit_gate.get("next_probe_delay_seconds"),
+                    )
+
+            # Mark generation as started (atomically guarded by SELECT FOR UPDATE)
+            try:
+                await generation_service.mark_started(generation_id)
+            except InvalidOperationError:
+                # Another worker already transitioned this generation to
+                # PROCESSING — abort to avoid double-submission.
+                gen_logger.warning(
+                    "generation_already_processing",
+                    generation_id=generation_id,
+                    msg="aborting duplicate pickup",
+                )
+                if account and not account_released:
+                    await _release_account_reservation(
+                        account_service=account_service,
+                        account_id=account.id,
+                        gen_logger=gen_logger,
+                    )
+                return {
+                    "status": "skipped",
+                    "reason": "already_processing",
+                    "generation_id": generation_id,
+                }
             gen_logger.info("generation_started")
             debug.worker("generation_started", generation_id=generation_id)
 
             # Stagger concurrent dispatches to avoid thundering-herd on provider API
             concurrent = account.current_processing_jobs or 0
             if concurrent > 1:
-                stagger = random.uniform(0, min(concurrent * DISPATCH_STAGGER_PER_SLOT_SECONDS, MAX_DISPATCH_STAGGER_SECONDS))
+                stagger = random.uniform(
+                    0,
+                    min(
+                        concurrent * _dispatch_stagger_per_slot_seconds(),
+                        _max_dispatch_stagger_seconds(),
+                    ),
+                )
                 if stagger > 0.1:
                     gen_logger.info("dispatch_stagger", stagger_seconds=round(stagger, 2), concurrent_jobs=concurrent)
                     await asyncio.sleep(stagger)
@@ -928,6 +1078,20 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
                 # Track successful generation
                 get_health_tracker().increment_processed()
+                await _clear_pinned_concurrent_wait_count(generation.id, gen_logger=gen_logger)
+
+                await _adaptive_provider_concurrency_record_submit_success(
+                    generation=generation,
+                    account=account,
+                    model=gen_model,
+                    local_concurrency=getattr(account, "current_processing_jobs", None),
+                    attempted_level_hint=(
+                        int(adaptive_submit_gate.get("attempted_level"))
+                        if adaptive_submit_gate and adaptive_submit_gate.get("attempted_level")
+                        else None
+                    ),
+                    gen_logger=gen_logger,
+                )
 
                 return {
                     "status": "submitted",
@@ -968,25 +1132,63 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         gen_logger=gen_logger,
                     )
                     account_released = True
-                    # Don't rotate away from a pinned account — let standard
-                    # retry/failure handling inform the user.
-                    if not _is_pinned_account(generation, account):
-                        requeue_result = await _requeue_generation_for_account_rotation(
-                            db=db,
-                            generation=generation,
-                            generation_id=generation_id,
-                            failed_account_id=account.id,
-                            reason="account_quota_exhausted",
-                            log_event="generation_requeued_for_different_account",
-                            account_log_field="exhausted_account_id",
-                            gen_logger=gen_logger,
-                        )
-                        if requeue_result:
-                            return requeue_result
-                    # Fall through to mark as failed if requeue fails or pinned
+                    # Quota exhaustion is a hard account-level failure for this
+                    # attempt; rotate even for pinned generations by clearing the
+                    # preferred account if it matches the exhausted account.
+                    requeue_result = await _requeue_generation_for_account_rotation(
+                        db=db,
+                        generation=generation,
+                        generation_id=generation_id,
+                        failed_account_id=account.id,
+                        reason="account_quota_exhausted",
+                        log_event="generation_requeued_for_different_account",
+                        account_log_field="exhausted_account_id",
+                        gen_logger=gen_logger,
+                        clear_preferred_on_account_match=True,
+                    )
+                    if requeue_result:
+                        return requeue_result
+                    # Fall through to mark as failed if requeue fails
 
                 # Concurrent limit reached - put account in short cooldown and try different account
                 elif isinstance(e, ProviderConcurrentLimitError):
+                    adaptive_concurrency = await _adaptive_provider_concurrency_record_limit_error(
+                        generation=generation,
+                        account=account,
+                        model=gen_model,
+                        local_concurrency=getattr(account, "current_processing_jobs", None),
+                        attempted_level_hint=(
+                            int(adaptive_submit_gate.get("attempted_level"))
+                            if adaptive_submit_gate and adaptive_submit_gate.get("attempted_level")
+                            else None
+                        ),
+                        gen_logger=gen_logger,
+                    )
+                    if adaptive_concurrency:
+                        gen_logger.info(
+                            "adaptive_concurrency_cap_updated",
+                            generation_id=generation.id,
+                            account_id=account.id,
+                            provider_id=account.provider_id,
+                            operation_type=_get_operation_value(generation),
+                            model=gen_model,
+                            attempted_level=adaptive_concurrency.get("attempted_level"),
+                            observed_local_concurrency=adaptive_concurrency.get("observed_local_concurrency"),
+                            observed_cap=adaptive_concurrency.get("observed_cap"),
+                            is_probe_level_reject=adaptive_concurrency.get("is_probe_level_reject"),
+                            previous_effective_cap=adaptive_concurrency.get("previous_effective_cap"),
+                            effective_cap=adaptive_concurrency.get("effective_cap"),
+                            configured_cap=adaptive_concurrency.get("configured_cap"),
+                            consecutive_limit_rejects=adaptive_concurrency.get("consecutive_limit_rejects"),
+                            consecutive_in_cap_limit_rejects=adaptive_concurrency.get(
+                                "consecutive_in_cap_limit_rejects"
+                            ),
+                            lower_after_consecutive_rejects=adaptive_concurrency.get(
+                                "lower_after_consecutive_rejects"
+                            ),
+                            cap_lowered=adaptive_concurrency.get("cap_lowered"),
+                            next_probe_delay_seconds=adaptive_concurrency.get("next_probe_delay_seconds"),
+                        )
                     concurrent_cooldown_seconds = _get_concurrent_limit_cooldown_seconds(
                         generation, account
                     )
@@ -1007,52 +1209,56 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         # Pinned account at capacity — wait for a slot to free
                         # up instead of rotating to a different account.
                         current_retries = getattr(generation, 'retry_count', 0) or 0
-                        if current_retries < MAX_PINNED_CONCURRENT_RETRIES:
-                            base_defer = concurrent_cooldown_seconds + PINNED_WAIT_PADDING_SECONDS
-                            defer_seconds = base_defer
-                            reason = "pinned_account_concurrent_wait"
-
-                            # Fairness: once past the yield threshold, check if
-                            # other generations are queued for the same account.
-                            # If so, back off with a longer delay so fresher
-                            # generations get a turn at the available slots.
-                            yield_threshold = int(
-                                MAX_PINNED_CONCURRENT_RETRIES * PINNED_YIELD_THRESHOLD_RATIO
-                            )
-                            if current_retries >= yield_threshold:
-                                siblings = await _count_pending_pinned_siblings(
-                                    db, generation.preferred_account_id, generation.id,
-                                )
-                                if siblings > 0:
-                                    defer_seconds = base_defer * PINNED_YIELD_DEFER_MULTIPLIER
-                                    reason = "pinned_account_concurrent_yield"
-                                    gen_logger.info(
-                                        "pinned_concurrent_yielding",
-                                        generation_id=generation.id,
-                                        retry_count=current_retries,
-                                        siblings_pending=siblings,
-                                        defer_seconds=defer_seconds,
-                                    )
-
+                        concurrent_plan = await _plan_pinned_concurrent_defer(
+                            db=db,
+                            generation=generation,
+                            account=account,
+                            concurrent_cooldown_seconds=concurrent_cooldown_seconds,
+                            current_retry_count=current_retries,
+                            gen_logger=gen_logger,
+                            adaptive_recommended_defer_seconds=(
+                                int(adaptive_concurrency.get("recommended_defer_seconds"))
+                                if adaptive_concurrency and adaptive_concurrency.get("adaptive_active")
+                                else None
+                            ),
+                        )
+                        if concurrent_plan.get("action") == "defer":
                             defer_result = await _defer_pinned_generation(
                                 db=db,
                                 generation=generation,
                                 generation_id=generation_id,
                                 account_id=account.id,
-                                defer_seconds=defer_seconds,
-                                reason=reason,
+                                defer_seconds=int(concurrent_plan.get("defer_seconds") or 1),
+                                reason=str(concurrent_plan.get("reason") or "pinned_account_concurrent_wait"),
                                 gen_logger=gen_logger,
+                                increment_retry=bool(concurrent_plan.get("increment_retry")),
                             )
                             if defer_result:
                                 return defer_result
                             # Fall through to standard failure if defer fails
                         else:
+                            await _clear_pinned_concurrent_wait_count(generation.id, gen_logger=gen_logger)
                             gen_logger.warning(
-                                "pinned_concurrent_max_retries",
+                                "pinned_concurrent_max_waits",
                                 generation_id=generation.id,
                                 retry_count=current_retries,
+                                concurrent_wait_count=concurrent_plan.get("wait_count"),
+                                max_waits=concurrent_plan.get("max_waits"),
                             )
-                            # Fall through to standard failure
+                            await generation_service.mark_failed(
+                                generation_id,
+                                (
+                                    f"Pinned account #{account.id} exceeded max concurrent wait defers "
+                                    f"({concurrent_plan.get('max_waits')}) while provider concurrency was limited"
+                                ),
+                            )
+                            failed_marked = True
+                            get_health_tracker().increment_failed()
+                            return {
+                                "status": "failed",
+                                "reason": "pinned_concurrent_max_waits",
+                                "generation_id": generation_id,
+                            }
                     else:
                         requeue_result = await _requeue_generation_for_account_rotation(
                             db=db,
@@ -1085,9 +1291,28 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         gen_logger=gen_logger,
                     )
                     account_released = True
-                    # Don't rotate away from a pinned account — the user
-                    # needs to fix auth on their chosen account.
-                    if not _is_pinned_account(generation, account):
+                    if _is_pinned_account(generation, account):
+                        # Pinned account auth failure — fail immediately with a
+                        # clear message instead of deferring in a loop for hours.
+                        gen_logger.warning(
+                            "pinned_account_auth_failed",
+                            account_id=account.id,
+                            error=str(e),
+                            msg="pinned account authentication failed, failing generation",
+                        )
+                        await generation_service.mark_failed(
+                            generation_id,
+                            error_message=f"Pinned account authentication failed ({account.email}). Re-authenticate the account and retry.",
+                            error_code=error_code or "pinned_account_auth_failure",
+                        )
+                        failed_marked = True
+                        return {
+                            "status": "failed",
+                            "reason": "pinned_account_auth_failure",
+                            "account_id": account.id,
+                            "generation_id": generation_id,
+                        }
+                    else:
                         requeue_result = await _requeue_generation_for_account_rotation(
                             db=db,
                             generation=generation,
@@ -1102,7 +1327,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         )
                         if requeue_result:
                             return requeue_result
-                    # Fall through to mark as failed if requeue fails or pinned
+                    # Fall through to mark as failed if requeue fails
 
                 # Content filtered - retry only if retryable (output rejection, not prompt rejection)
                 elif isinstance(e, ProviderContentFilteredError):
@@ -1142,7 +1367,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         gen_logger.warning("account_release_failed", error=str(release_err))
 
                     # Check retry count - don't retry forever
-                    MAX_CONTENT_FILTER_RETRIES = MAX_SUBMIT_CONTENT_FILTER_RETRIES
+                    MAX_CONTENT_FILTER_RETRIES = max_submit_content_filter_retries()
                     current_retries = getattr(generation, 'retry_count', 0) or 0
 
                     if current_retries < MAX_CONTENT_FILTER_RETRIES:
@@ -1197,7 +1422,6 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                                 not is_pinned
                                 and should_rotate_content_filter_account(current_retries)
                             ):
-                                await reset_content_filter_yield_counter(generation.id)
                                 requeue_result = await _requeue_generation_for_account_rotation(
                                     db=db,
                                     generation=generation,
@@ -1217,7 +1441,6 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             from pixsim7.backend.main.infrastructure.redis import get_arq_pool
                             from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
 
-                            await reset_content_filter_yield_counter(generation.id)
                             # Increment retry count and reset to pending on the same account
                             generation.retry_count = (generation.retry_count or 0) + 1
                             generation.status = GenStatus.PENDING

@@ -133,7 +133,10 @@ async def _apply_extracted_account_data(
 
     provider_metadata = extracted.get('provider_metadata')
     if provider_metadata:
-        account.provider_metadata = provider_metadata
+        # Merge new metadata into existing, preserving plan_* keys from plan sync
+        existing_meta: Dict[str, Any] = account.provider_metadata or {}
+        existing_meta.update(provider_metadata)
+        account.provider_metadata = existing_meta
         updated_fields.append("provider_metadata")
 
     extracted_max_concurrent = extracted.get("max_concurrent_jobs")
@@ -555,12 +558,12 @@ async def import_cookies(
                         if "provider_metadata" not in updated_fields:
                             updated_fields.append("provider_metadata")
                         logger.info(
-                            "pixverse_auth_method_upgraded",
-                            account_id=existing.id,
-                            email=email,
-                            old_auth=old_auth,
-                            new_auth=PixverseAuthMethod.PASSWORD.value,
-                            reason="password_provided",
+                            "pixverse_auth_method_upgraded account_id=%s email=%s old_auth=%s new_auth=%s reason=%s",
+                            existing.id,
+                            email,
+                            old_auth,
+                            PixverseAuthMethod.PASSWORD.value,
+                            "password_provided",
                         )
 
             # Update metadata fields
@@ -594,7 +597,10 @@ async def import_cookies(
                     elif not new_auth:
                         new_meta["auth_method"] = PixverseAuthMethod.PASSWORD.value
 
-                existing.provider_metadata = new_meta
+                # Merge new profile data into existing, preserving plan_* keys
+                # from plan sync that aren't in the Pixverse profile response
+                existing_meta.update(new_meta)
+                existing.provider_metadata = existing_meta
                 updated_fields.append("provider_metadata")
 
             extracted_max_concurrent = extracted.get("max_concurrent_jobs")
@@ -659,19 +665,19 @@ async def import_cookies(
                         await db.commit()
                         await db.refresh(existing)
                         logger.info(
-                            "pixverse_plan_synced_on_update",
-                            account_id=existing.id,
-                            email=email,
-                            plan_name=plan_details.get("plan_name"),
-                            max_concurrent_jobs=existing.max_concurrent_jobs,
+                            "pixverse_plan_synced_on_update account_id=%s email=%s plan_name=%s max_concurrent_jobs=%s",
+                            existing.id,
+                            email,
+                            plan_details.get("plan_name"),
+                            existing.max_concurrent_jobs,
                         )
                 except Exception as e:
                     # Plan detection failure should not block account update
                     logger.warning(
-                        "pixverse_plan_sync_failed_on_update",
-                        account_id=existing.id,
-                        email=email,
-                        error=str(e),
+                        "pixverse_plan_sync_failed_on_update account_id=%s email=%s error=%s",
+                        existing.id,
+                        email,
+                        str(e),
                     )
 
             return CookieImportResponse(
@@ -740,19 +746,19 @@ async def import_cookies(
                         await db.commit()
                         await db.refresh(account)
                         logger.info(
-                            "pixverse_plan_synced_on_import",
-                            account_id=account.id,
-                            email=email,
-                            plan_name=plan_details.get("plan_name"),
-                            max_concurrent_jobs=account.max_concurrent_jobs,
+                            "pixverse_plan_synced_on_import account_id=%s email=%s plan_name=%s max_concurrent_jobs=%s",
+                            account.id,
+                            email,
+                            plan_details.get("plan_name"),
+                            account.max_concurrent_jobs,
                         )
                 except Exception as e:
                     # Plan detection failure should not block account creation
                     logger.warning(
-                        "pixverse_plan_sync_failed_on_import",
-                        account_id=account.id,
-                        email=email,
-                        error=str(e),
+                        "pixverse_plan_sync_failed_on_import account_id=%s email=%s error=%s",
+                        account.id,
+                        email,
+                        str(e),
                     )
 
             # Final credit sync (fresh extraction already done above, but ensure it's reflected)
