@@ -13,7 +13,9 @@
  */
 
 import type { ReactNode } from 'react';
+
 import type { AssetFilters } from '../../hooks/useAssets';
+
 import { GalleryFilters, type FilterOption } from './GalleryFilters';
 import { LoadMoreSection, type LoadMoreSectionProps } from './LoadMoreSection';
 
@@ -139,7 +141,7 @@ export function GallerySurfaceShell({
   const showLoading = loading && itemCount === 0 && loadingContent;
 
   return (
-    <div className={`p-6 space-y-4 content-with-dock min-h-screen ${className}`}>
+    <div className={`p-6 space-y-4 min-h-screen ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

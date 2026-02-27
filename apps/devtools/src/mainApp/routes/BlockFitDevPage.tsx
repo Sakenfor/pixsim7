@@ -274,7 +274,7 @@ export function BlockFitDev() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl p-6 space-y-6 content-with-dock min-h-screen">
+    <div className="mx-auto max-w-7xl p-6 space-y-6 min-h-screen">
       {/* Header */}
       <header className="border-b border-neutral-200 dark:border-neutral-800 pb-6">
         <div className="flex items-center justify-between">

@@ -25,7 +25,3 @@ body {
   flex-direction: column;
 }
 
-/* Prevent content from being hidden behind the control center dock */
-.content-with-dock {
-  padding-bottom: 240px;
-}

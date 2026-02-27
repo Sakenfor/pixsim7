@@ -1,9 +1,11 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useAuthStore } from '../stores/authStore';
-import { moduleRegistry, PAGE_CATEGORIES, type PageCategory } from '@app/modules';
 import { Button, Panel, ThemeToggle } from '@pixsim7/shared.ui';
-import { Icon } from '../lib/icons';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+
+import { moduleRegistry, PAGE_CATEGORIES, type PageCategory } from '@app/modules';
+
 import { usePageTracking } from '../hooks/usePageTracking';
+import { Icon } from '../lib/icons';
+import { useAuthStore } from '../stores/authStore';
 
 /**
  * Category display configuration
@@ -117,15 +119,6 @@ export function Home() {
     () => moduleRegistry.getPages({ includeHidden: false }),
     [registryVersion]
   );
-  const featuredPages = useMemo(
-    () => moduleRegistry.getPages({ featured: true }),
-    [registryVersion]
-  );
-  const pagesByCategory = useMemo(
-    () => moduleRegistry.getPagesByCategory(),
-    [registryVersion]
-  );
-
   // Filter pages by search query
   const filteredPages = useMemo(() => {
     let pages = allPages;
@@ -197,7 +190,7 @@ export function Home() {
   const categories = Object.keys(CATEGORY_LABELS) as PageCategory[];
 
   return (
-    <div className="mx-auto max-w-7xl p-6 space-y-8 content-with-dock min-h-screen">
+    <div className="mx-auto max-w-7xl p-6 space-y-8 min-h-screen">
       {/* Header */}
       <header className="border-b border-neutral-200 dark:border-neutral-800 pb-6 flex items-center justify-between">
         <div className="space-y-2">

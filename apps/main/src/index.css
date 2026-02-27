@@ -25,11 +25,6 @@ body {
   flex-direction: column;
 }
 
-/* Prevent content from being hidden behind the control center dock */
-.content-with-dock {
-  padding-bottom: 240px;
-}
-
 /* React Mosaic theme customization */
 .mosaic-blueprint-theme {
   --mosaic-border-color: rgb(229 231 235);
@@ -308,6 +303,16 @@ button {
 .quickgen-asset-selected *,
 .quickgen-asset-selected *::before,
 .quickgen-asset-selected *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Quick-gen action controls (Go / Each / burst stepper): opt out of inherited
+   motion so queue-progress updates don't trigger layout animation effects. */
+.quickgen-actions-no-motion,
+.quickgen-actions-no-motion *,
+.quickgen-actions-no-motion *::before,
+.quickgen-actions-no-motion *::after {
   animation: none !important;
   transition: none !important;
 }

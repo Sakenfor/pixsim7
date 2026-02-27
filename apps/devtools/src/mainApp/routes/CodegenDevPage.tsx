@@ -138,7 +138,7 @@ export function CodegenDev() {
 
   if (!canAccessCodegen) {
     return (
-      <div className="mx-auto max-w-5xl p-6 space-y-4 content-with-dock min-h-screen">
+      <div className="mx-auto max-w-5xl p-6 space-y-4 min-h-screen">
         <header className="border-b border-neutral-200 dark:border-neutral-800 pb-4">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <Icon name="code" size={22} className="text-amber-500" />
@@ -153,7 +153,7 @@ export function CodegenDev() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-6 space-y-6 content-with-dock min-h-screen">
+    <div className="mx-auto max-w-6xl p-6 space-y-6 min-h-screen">
       <header className="border-b border-neutral-200 dark:border-neutral-800 pb-6">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">

@@ -54,7 +54,7 @@ export function WorkspaceRoute() {
   useOpenPanelFromQuery();
 
   return (
-    <div className="h-screen flex flex-col pb-60 bg-neutral-100 dark:bg-neutral-950">
+    <div className="h-screen flex flex-col bg-neutral-100 dark:bg-neutral-950">
       <WorkspaceToolbar />
       <div className="flex-1 min-h-0">
         <DockviewWorkspace />

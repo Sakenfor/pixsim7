@@ -729,7 +729,7 @@ export function Game2D() {
   }, [currentScene, isSceneOpen, scenePhase, npcExpressions, npcPortraitAssetId, npcPortraitAsset]);
 
   return (
-    <div className="p-6 space-y-4 content-with-dock min-h-screen">
+    <div className="p-6 space-y-4 min-h-screen">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">PixSim7 2D Game</h1>

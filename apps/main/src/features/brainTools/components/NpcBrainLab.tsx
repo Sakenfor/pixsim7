@@ -168,7 +168,7 @@ export function NpcBrainLab({ npcId: contextNpcId, sessionId: contextSessionId }
   };
 
   return (
-    <div className="p-6 space-y-4 content-with-dock min-h-screen">
+    <div className="p-6 space-y-4 min-h-screen">
       {/* Header */}
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
