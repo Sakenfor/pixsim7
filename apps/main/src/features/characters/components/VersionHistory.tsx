@@ -30,7 +30,7 @@ export function VersionHistory({ characterId, onEvolved }: VersionHistoryProps) 
     if (!evolveNotes.trim()) return;
     setIsEvolving(true);
     try {
-      const req: UpdateCharacterRequest = { version_notes: evolveNotes };
+      const req: UpdateCharacterRequest = { version_message: evolveNotes };
       await evolveCharacter(characterId, req);
       setEvolveNotes('');
       onEvolved();
@@ -61,7 +61,7 @@ export function VersionHistory({ characterId, onEvolved }: VersionHistoryProps) 
               key={ver.id}
               className="flex items-baseline gap-2 text-xs"
             >
-              <span className="font-mono text-blue-400">v{ver.version}</span>
+              <span className="font-mono text-blue-400">v{ver.version_number ?? '?'}</span>
               <span className="text-neutral-500">
                 {new Date(ver.created_at).toLocaleDateString()}
               </span>

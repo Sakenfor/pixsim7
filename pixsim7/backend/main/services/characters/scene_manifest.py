@@ -165,9 +165,10 @@ class SceneCharacterManifestService:
                 min_version = requirements.get("min_version")
                 if min_version:
                     character = await self.character_service.get_character_by_id(char_id)
-                    if character and character.version < min_version:
+                    char_version = character.version_number or 1 if character else 0
+                    if character and char_version < min_version:
                         errors.append(
-                            f"Character '{char_id}' version {character.version} < "
+                            f"Character '{char_id}' version {char_version} < "
                             f"required version {min_version}"
                         )
 

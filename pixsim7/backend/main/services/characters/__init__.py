@@ -20,6 +20,7 @@ from pixsim7.backend.main.services.characters.template_engine import CharacterTe
 from pixsim7.backend.main.services.characters.instance import CharacterInstanceService
 from pixsim7.backend.main.services.characters.capability import CharacterCapabilityService
 from pixsim7.backend.main.services.characters.scene_manifest import SceneCharacterManifestService
+from pixsim7.backend.main.services.characters.versioning import CharacterVersioningService
 
 __all__ = [
     'CharacterService',
@@ -27,4 +28,5 @@ __all__ = [
     'CharacterInstanceService',
     'CharacterCapabilityService',
     'SceneCharacterManifestService',
+    'CharacterVersioningService',
 ]

@@ -6,6 +6,10 @@ from .character import (
     CharacterUsage,
 )
 
+from .character_versioning import (
+    CharacterVersionFamily,
+)
+
 from .character_integrations import (
     CharacterInstance,
     CharacterCapability,
@@ -67,6 +71,7 @@ __all__ = [
     "Character",
     "CharacterRelationship",
     "CharacterUsage",
+    "CharacterVersionFamily",
     # Character integrations
     "CharacterInstance",
     "CharacterCapability",

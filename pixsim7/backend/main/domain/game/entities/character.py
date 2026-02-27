@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from uuid import UUID, uuid4
 from sqlmodel import SQLModel, Field, Column, JSON, Text, Relationship
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
@@ -22,7 +22,7 @@ class Character(SQLModel, table=True):
 
     # Identity
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    character_id: str = Field(unique=True, index=True, max_length=200)  # "gorilla_01", "sarah_dancer"
+    character_id: str = Field(index=True, max_length=200)  # "gorilla_01", "sarah_dancer"
     name: Optional[str] = Field(None, max_length=200)  # "Koba", "Sarah"
     display_name: Optional[str] = Field(None, max_length=200)  # "Koba the Gorilla"
 
@@ -110,11 +110,14 @@ class Character(SQLModel, table=True):
         sa_column=Column(JSONB)
     )
 
-    # Version control - character evolution over time
-    version: int = Field(default=1)
-    previous_version_id: Optional[UUID] = Field(None, foreign_key="characters.id")
-    version_notes: Optional[str] = Field(None, sa_column=Column(Text))
-    # "Added scar after battle scene in prompt_v3"
+    # Version control — plugs into VersioningServiceBase
+    version_family_id: Optional[UUID] = Field(
+        default=None,
+        sa_column=Column(PG_UUID(as_uuid=True), index=True, nullable=True),
+    )
+    version_number: Optional[int] = Field(default=None)
+    parent_character_id: Optional[UUID] = Field(default=None, index=True)
+    version_message: Optional[str] = Field(default=None, max_length=500)
 
     # Usage tracking
     usage_count: int = Field(default=0)  # How many prompts/blocks use this character

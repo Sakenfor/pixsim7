@@ -17,7 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.api.dependencies import get_db, CurrentGamePrincipal
 from pixsim7.backend.main.services.characters import (
     CharacterService,
-    CharacterTemplateEngine
+    CharacterTemplateEngine,
+    CharacterVersioningService,
 )
 from pixsim7.backend.main.domain.game.entities import Character
 
@@ -56,7 +57,7 @@ class CreateCharacterRequest(BaseModel):
     reference_images: List[str] = Field(default_factory=list, description="Reference image URLs")
     reference_assets: List[Dict[str, Any]] = Field(default_factory=list, description="Structured reference assets")
 
-    game_npc_id: Optional[UUID] = Field(None, description="Link to game NPC")
+    game_npc_id: Optional[int] = Field(None, description="Link to game NPC")
     sync_with_game: bool = Field(default=False, description="Auto-sync with game")
 
     tags: Dict[str, Any] = Field(default_factory=dict, description="Custom tags")
@@ -77,7 +78,7 @@ class UpdateCharacterRequest(BaseModel):
     game_npc_id: Optional[int] = None
     sync_with_game: Optional[bool] = None
     create_version: bool = Field(default=False, description="Create new version instead of updating")
-    version_notes: Optional[str] = Field(None, description="Notes about this version")
+    version_message: Optional[str] = Field(None, description="Message about what changed in this version")
 
 
 class ExpandTemplateRequest(BaseModel):
@@ -98,7 +99,7 @@ class CharacterResponse(BaseModel):
     personality_traits: Dict[str, Any]
     behavioral_patterns: Dict[str, Any]
     render_style: Optional[str]
-    version: int
+    version_number: Optional[int] = None
     usage_count: int
     created_at: datetime
     updated_at: datetime
@@ -113,11 +114,12 @@ class CharacterDetailResponse(CharacterResponse):
     reference_images: List[str]
     reference_assets: List[Dict[str, Any]]
     surface_assets: List[Dict[str, Any]]
-    game_npc_id: Optional[UUID]
+    game_npc_id: Optional[int] = None
     sync_with_game: bool
     game_metadata: Dict[str, Any]
-    previous_version_id: Optional[UUID]
-    version_notes: Optional[str]
+    version_family_id: Optional[UUID] = None
+    parent_character_id: Optional[UUID] = None
+    version_message: Optional[str] = None
     last_used_at: Optional[datetime]
     tags: Dict[str, Any]
     character_metadata: Dict[str, Any]
@@ -197,6 +199,7 @@ async def list_characters(
         limit=limit,
         offset=offset
     )
+    await service.apply_template_usage_counts(characters)
     return characters
 
 
@@ -209,6 +212,7 @@ async def search_characters(
     """Search characters by name, species, or traits"""
     service = CharacterService(db)
     characters = await service.search_characters(q, limit)
+    await service.apply_template_usage_counts(characters)
     return characters
 
 
@@ -234,6 +238,7 @@ async def get_character(
     if not character:
         raise HTTPException(404, f"Character '{character_id}' not found")
 
+    await service.apply_template_usage_count(character)
     return character
 
 
@@ -252,14 +257,16 @@ async def update_character(
     service = CharacterService(db)
 
     try:
-        updates = {k: v for k, v in request.model_dump().items() if v is not None and k not in ['create_version', 'version_notes']}
-        if request.version_notes:
-            updates['version_notes'] = request.version_notes
+        updates = {
+            k: v for k, v in request.model_dump().items()
+            if v is not None and k not in ['create_version', 'version_message']
+        }
 
         character = await service.update_character(
             character_id=character_id,
             updates=updates,
-            create_version=request.create_version
+            create_version=request.create_version,
+            version_message=request.version_message,
         )
         return character
     except ValueError as e:
@@ -297,6 +304,7 @@ async def get_character_history(
     if not history:
         raise HTTPException(404, f"Character '{character_id}' not found")
 
+    await service.apply_template_usage_counts(history)
     return history
 
 
@@ -311,21 +319,68 @@ async def evolve_character(
 
     Example use case: Character gets scars after battle, or changes appearance over time.
     """
-    # Force create_version to True
-    request.create_version = True
-
     service = CharacterService(db)
 
     try:
-        updates = {k: v for k, v in request.model_dump().items() if v is not None and k != 'create_version'}
+        updates = {
+            k: v for k, v in request.model_dump().items()
+            if v is not None and k not in ['create_version', 'version_message']
+        }
         character = await service.update_character(
             character_id=character_id,
             updates=updates,
-            create_version=True
+            create_version=True,
+            version_message=request.version_message,
         )
         return character
     except ValueError as e:
         raise HTTPException(404, str(e))
+
+
+@router.get("/{character_id}/versions", response_model=List[Dict[str, Any]])
+async def get_character_versions(
+    character_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get version timeline for a character (list of TimelineEntry dicts)"""
+    versioning = CharacterVersioningService(db)
+    family = await versioning.get_family_for_character_slug(character_id)
+    if not family:
+        raise HTTPException(404, f"No version family for character '{character_id}'")
+
+    return await versioning.get_version_timeline(family.id)
+
+
+@router.post(
+    "/{character_id}/versions/{version_uuid}/set-head",
+    response_model=CharacterDetailResponse,
+)
+async def set_character_head(
+    character_id: str,
+    version_uuid: UUID,
+    current_user: CurrentGamePrincipal,
+    db: AsyncSession = Depends(get_db),
+):
+    """Change the HEAD pointer for a character's version family"""
+    versioning = CharacterVersioningService(db)
+    family = await versioning.get_family_for_character_slug(character_id)
+    if not family:
+        raise HTTPException(404, f"No version family for character '{character_id}'")
+
+    try:
+        await versioning.set_head(family.id, version_uuid)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    await db.commit()
+
+    service = CharacterService(db)
+    character = await service.get_character(version_uuid)
+    if not character:
+        raise HTTPException(404, "Character version not found")
+
+    await service.apply_template_usage_count(character)
+    return character
 
 
 # ===== Template Expansion =====

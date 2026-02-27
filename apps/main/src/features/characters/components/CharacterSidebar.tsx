@@ -1,4 +1,5 @@
 import { Badge, Button, Input, Select } from '@pixsim7/shared.ui';
+import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
@@ -20,6 +21,8 @@ export interface CharacterSidebarProps {
   onSelect: (characterId: string) => void;
   onCreateNew: () => void;
   onSearchResults: (results: CharacterSummary[] | null) => void;
+  embedded?: boolean;
+  className?: string;
 }
 
 export function CharacterSidebar({
@@ -28,6 +31,8 @@ export function CharacterSidebar({
   onSelect,
   onCreateNew,
   onSearchResults,
+  embedded = false,
+  className,
 }: CharacterSidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -61,7 +66,13 @@ export function CharacterSidebar({
     : characters;
 
   return (
-    <div className="flex h-full w-64 shrink-0 flex-col border-r border-neutral-800">
+    <div
+      className={clsx(
+        'flex h-full flex-col',
+        embedded ? 'w-full' : 'w-64 shrink-0 border-r border-neutral-800',
+        className,
+      )}
+    >
       <div className="space-y-2 p-3">
         <Input
           size="sm"

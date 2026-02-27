@@ -29,7 +29,7 @@ export interface CharacterSummary {
   personality_traits: Record<string, unknown>;
   behavioral_patterns: Record<string, unknown>;
   render_style: string | null;
-  version: number;
+  version_number: number | null;
   usage_count: number;
   created_at: string;
   updated_at: string;
@@ -44,8 +44,9 @@ export interface CharacterDetail extends CharacterSummary {
   game_npc_id: number | null;
   sync_with_game: boolean;
   game_metadata: Record<string, unknown>;
-  previous_version_id: string | null;
-  version_notes: string | null;
+  version_family_id: string | null;
+  parent_character_id: string | null;
+  version_message: string | null;
   last_used_at: string | null;
   tags: Record<string, unknown>;
   character_metadata: Record<string, unknown>;
@@ -89,7 +90,7 @@ export interface UpdateCharacterRequest {
   game_npc_id?: number | null;
   sync_with_game?: boolean;
   create_version?: boolean;
-  version_notes?: string;
+  version_message?: string;
 }
 
 export interface ListCharactersQuery {

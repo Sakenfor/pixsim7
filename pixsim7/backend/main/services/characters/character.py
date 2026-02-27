@@ -11,6 +11,13 @@ from pixsim7.backend.main.domain.game.entities import (
     CharacterRelationship,
     CharacterUsage
 )
+from pixsim7.backend.main.domain.game.entities.character_versioning import (
+    CharacterVersionFamily,
+)
+from pixsim7.backend.main.domain.prompt.models import BlockTemplate
+from pixsim7.backend.main.services.characters.versioning import (
+    CharacterVersioningService,
+)
 
 
 class CharacterService:
@@ -105,16 +112,14 @@ class CharacterService:
         return result.scalar_one_or_none()
 
     async def get_character_by_id(self, character_id: str) -> Optional[Character]:
-        """Get character by character_id (e.g., 'gorilla_01')"""
-        result = await self.db.execute(
-            select(Character).where(
-                and_(
-                    Character.character_id == character_id,
-                    Character.is_active == True
-                )
-            )
-        )
-        return result.scalar_one_or_none()
+        """Get character by character_id slug.
+
+        If multiple versions share the same character_id, returns the HEAD
+        of the version family. For standalone (unversioned) characters, returns
+        the character directly.
+        """
+        versioning = CharacterVersioningService(self.db)
+        return await versioning.get_head_character(character_id)
 
     async def list_characters(
         self,
@@ -137,11 +142,81 @@ class CharacterService:
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
+    async def get_template_binding_usage_counts(
+        self,
+        character_ids: List[str],
+    ) -> Dict[str, int]:
+        """
+        Count how many template character bindings reference each character_id.
+
+        This complements ``Character.usage_count`` (which tracks explicit
+        registry usage events) with prompt block template bindings so UI lists
+        reflect actual template usage.
+        """
+        targets = {str(cid) for cid in (character_ids or []) if cid}
+        if not targets:
+            return {}
+
+        result = await self.db.execute(select(BlockTemplate.character_bindings))
+        counts: Dict[str, int] = {cid: 0 for cid in targets}
+
+        for bindings in result.scalars().all():
+            if not isinstance(bindings, dict):
+                continue
+            for binding in bindings.values():
+                if not isinstance(binding, dict):
+                    continue
+                char_id = binding.get("character_id")
+                if not char_id:
+                    continue
+                key = str(char_id)
+                if key in counts:
+                    counts[key] += 1
+
+        return counts
+
+    async def apply_template_usage_counts(
+        self,
+        characters: List[Character],
+    ) -> List[Character]:
+        """
+        Overlay template-binding usage onto ``usage_count`` for display/API use.
+
+        Mutates the in-memory model instances returned by the current session
+        without persisting changes.
+        """
+        if not characters:
+            return characters
+
+        counts = await self.get_template_binding_usage_counts(
+            [c.character_id for c in characters if getattr(c, "character_id", None)]
+        )
+        if not counts:
+            return characters
+
+        for character in characters:
+            template_uses = counts.get(str(character.character_id), 0)
+            if template_uses:
+                base = int(character.usage_count or 0)
+                character.usage_count = base + template_uses
+        return characters
+
+    async def apply_template_usage_count(
+        self,
+        character: Optional[Character],
+    ) -> Optional[Character]:
+        """Single-character helper for detail/history endpoints."""
+        if character is None:
+            return None
+        await self.apply_template_usage_counts([character])
+        return character
+
     async def update_character(
         self,
         character_id: str,
         updates: Dict[str, Any],
-        create_version: bool = False
+        create_version: bool = False,
+        version_message: Optional[str] = None,
     ) -> Character:
         """Update character
 
@@ -149,6 +224,7 @@ class CharacterService:
             character_id: Character to update
             updates: Fields to update
             create_version: If True, create new version instead of updating
+            version_message: Message describing what changed (for versioned updates)
 
         Returns:
             Updated or new Character
@@ -158,8 +234,13 @@ class CharacterService:
             raise ValueError(f"Character '{character_id}' not found")
 
         if create_version:
-            # Create new version
-            return await self._create_character_version(character, updates)
+            versioning = CharacterVersioningService(self.db)
+            new_char = await versioning.evolve(
+                character, updates, message=version_message
+            )
+            await self.db.commit()
+            await self.db.refresh(new_char)
+            return new_char
         else:
             # Update in place
             for key, value in updates.items():
@@ -171,49 +252,6 @@ class CharacterService:
             await self.db.refresh(character)
 
             return character
-
-    async def _create_character_version(
-        self,
-        old_character: Character,
-        updates: Dict[str, Any]
-    ) -> Character:
-        """Create new version of character"""
-        # Create new character with updated fields
-        new_character = Character(
-            id=uuid4(),
-            character_id=old_character.character_id,
-            name=updates.get('name', old_character.name),
-            display_name=updates.get('display_name', old_character.display_name),
-            category=updates.get('category', old_character.category),
-            species=updates.get('species', old_character.species),
-            archetype=updates.get('archetype', old_character.archetype),
-            visual_traits=updates.get('visual_traits', old_character.visual_traits.copy()),
-            personality_traits=updates.get('personality_traits', old_character.personality_traits.copy()),
-            behavioral_patterns=updates.get('behavioral_patterns', old_character.behavioral_patterns.copy()),
-            voice_profile=updates.get('voice_profile', old_character.voice_profile.copy()),
-            render_style=updates.get('render_style', old_character.render_style),
-            render_instructions=updates.get('render_instructions', old_character.render_instructions),
-            reference_images=updates.get('reference_images', old_character.reference_images.copy()),
-            reference_assets=updates.get('reference_assets', old_character.reference_assets.copy()),
-            surface_assets=updates.get('surface_assets', old_character.surface_assets.copy()),
-            game_npc_id=updates.get('game_npc_id', old_character.game_npc_id),
-            sync_with_game=updates.get('sync_with_game', old_character.sync_with_game),
-            game_metadata=updates.get('game_metadata', old_character.game_metadata.copy()),
-            version=old_character.version + 1,
-            previous_version_id=old_character.id,
-            version_notes=updates.get('version_notes'),
-            tags=updates.get('tags', old_character.tags.copy()),
-            character_metadata=updates.get('character_metadata', old_character.character_metadata.copy()),
-            created_by=old_character.created_by,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc)
-        )
-
-        self.db.add(new_character)
-        await self.db.commit()
-        await self.db.refresh(new_character)
-
-        return new_character
 
     async def delete_character(self, character_id: str, soft: bool = True) -> bool:
         """Delete character (soft delete by default)"""
@@ -232,28 +270,15 @@ class CharacterService:
         return True
 
     async def get_character_history(self, character_id: str) -> List[Character]:
-        """Get all versions of a character"""
-        # Get current version
-        current = await self.get_character_by_id(character_id)
-        if not current:
-            return []
+        """Get all versions of a character, ordered by version number."""
+        versioning = CharacterVersioningService(self.db)
+        family = await versioning.get_family_for_character_slug(character_id)
+        if not family:
+            # Standalone character — return just the one
+            current = await self.get_character_by_id(character_id)
+            return [current] if current else []
 
-        versions = [current]
-
-        # Walk back through previous versions
-        prev_id = current.previous_version_id
-        while prev_id:
-            result = await self.db.execute(
-                select(Character).where(Character.id == prev_id)
-            )
-            prev = result.scalar_one_or_none()
-            if prev:
-                versions.append(prev)
-                prev_id = prev.previous_version_id
-            else:
-                break
-
-        return versions
+        return await versioning.get_versions(family.id, order_asc=True)
 
     async def track_usage(
         self,

@@ -59,7 +59,7 @@ class CharacterInstanceService:
 
         # Use latest version if not specified
         if character_version is None:
-            character_version = character.version
+            character_version = character.version_number or 1
 
         # Create instance
         instance = CharacterInstance(
