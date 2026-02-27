@@ -25,14 +25,3 @@ matrix_presets:
       expected_tag_keys: "intent,aesthetic,genre,variant,palette"
       required_tag_keys: "aesthetic"
 
-  - label: "Backgrounds (location × setting_style)"
-    query:
-      row_key: "tag:location"
-      col_key: "tag:setting_style"
-      role: "environment"
-      category: "scene_build"
-      package_name: "image_edit_scenes"
-      include_empty: true
-      include_drift_report: true
-      expected_tag_keys: "intent,layer,location,setting_style"
-      required_tag_keys: "location"

@@ -1,0 +1,26 @@
+id: ie_environment
+title: "IE Environment"
+description: "Block Matrix presets for the ie_environment pack — reusable location and scene background blocks for image-edit scenes."
+
+matrix_presets:
+  - label: "Locations (location × setting_style)"
+    query:
+      row_key: "tag:location"
+      col_key: "tag:setting_style"
+      role: "environment"
+      category: "scene_build"
+      package_name: "ie_environment"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent,layer,location,setting_style"
+      required_tag_keys: "location"
+
+  - label: "Genre environments (genre × location)"
+    query:
+      row_key: "tag:genre"
+      col_key: "tag:location"
+      role: "environment"
+      category: "scene_build"
+      package_name: "ie_environment"
+      include_empty: true
+      include_drift_report: false

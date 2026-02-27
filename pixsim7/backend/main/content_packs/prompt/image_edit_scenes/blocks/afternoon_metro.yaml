@@ -7,52 +7,6 @@ blocks:
   # placement, character descriptions, action, mood
   # ═══════════════════════════════════════════════════════════════════
 
-  # ── environment — metro car afternoon variants ─────────────────
-
-  - block_id: ie_bg_metro_afternoon_01
-    role: environment
-    category: scene_build
-    kind: single_state
-    text: >-
-      Transform the surrounding space into the interior of an afternoon metro
-      car. Brushed-steel grab poles run floor to ceiling, moulded plastic seats
-      line both sides, a strip of route map sits above the windows. Warm
-      afternoon sunlight pours through large windows on one side, casting long
-      gold bars across the aisle floor. The car is moderately occupied —
-      standing passengers visible at comfortable intervals without crowding.
-      Her position reads as a natural standing pause near a centre pole.
-    tags:
-      intent: modify
-      layer: background
-      location: metro_car
-      time_of_day: afternoon
-      occupancy: moderate
-      passenger_state: standing
-      setting_style: urban_transit
-    complexity_level: complex
-
-  - block_id: ie_bg_metro_afternoon_02
-    role: environment
-    category: scene_build
-    kind: single_state
-    text: >-
-      Place her inside a modern city metro carriage in afternoon light.
-      Ribbed aluminium walls, rubber-edged doors sealed shut between stops,
-      overhead handles swaying gently. Sunlight enters at a low angle through
-      the right-side windows, warming the neutral grey interior with amber
-      tones. A handful of seated passengers read or scroll phones in the
-      background. The aisle around her is clear enough for a small standing
-      group but narrow enough that proximity is architectural.
-    tags:
-      intent: modify
-      layer: background
-      location: metro_car
-      time_of_day: afternoon
-      occupancy: moderate
-      passenger_state: standing
-      setting_style: urban_transit
-    complexity_level: complex
-
   # ── lighting — metro window sun key ────────────────────────────
 
   - block_id: ie_key_metro_window_sun_01

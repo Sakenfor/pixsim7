@@ -3,63 +3,6 @@ version: "1.0.0"
 blocks:
 
   # ═══════════════════════════════════════════════════════════════════
-  # ENVIRONMENT — Victorian study variants
-  # ═══════════════════════════════════════════════════════════════════
-
-  - block_id: ie_bg_victorian_study_01
-    role: environment
-    category: scene_build
-    kind: single_state
-    text: >-
-      Place her inside a worn Victorian study. Heavy wooden desk cluttered
-      with scattered case papers, maps, and handwritten notes. The desk
-      aligns naturally with her current posture so she appears leaned
-      slightly forward over it without changing her pose. Bookshelves line
-      the walls, leather-bound volumes packed tight, a globe on a side table.
-    tags:
-      intent: modify
-      layer: background
-      location: victorian_study
-      setting_style: period
-      genre: detective
-    complexity_level: complex
-
-  - block_id: ie_bg_victorian_study_02
-    role: environment
-    category: scene_build
-    kind: single_state
-    text: >-
-      Place her in a cluttered detective's study. Oak-panelled walls,
-      a broad writing desk covered in open folders, magnifying glass,
-      ink bottles, and a half-rolled map pinned at the corners. A worn
-      armchair sits beside the desk. Curtains are drawn, sealing the
-      room from the outside world.
-    tags:
-      intent: modify
-      layer: background
-      location: victorian_study
-      setting_style: period
-      genre: detective
-    complexity_level: complex
-
-  - block_id: ie_bg_victorian_study_03
-    role: environment
-    category: scene_build
-    kind: single_state
-    text: >-
-      Place her in a small private study off a larger library. The desk
-      is narrower, papers stacked in precarious columns, a brass desk
-      lamp unlit, a coat draped over the chair behind her. The walls
-      close in — the space is intimate by architecture, not choice.
-    tags:
-      intent: modify
-      layer: background
-      location: victorian_study
-      setting_style: period
-      genre: detective
-    complexity_level: complex
-
-  # ═══════════════════════════════════════════════════════════════════
   # STYLE — wardrobe accents (subtle modification)
   # ═══════════════════════════════════════════════════════════════════
 

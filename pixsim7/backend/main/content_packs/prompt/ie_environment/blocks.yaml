@@ -1,0 +1,344 @@
+version: "1.0.0"
+package_name: ie_environment
+
+defaults:
+  source_type: library
+  curation_status: curated
+  is_public: true
+  style: photorealistic
+  created_by: content_pack
+  default_intent: modify
+
+blocks:
+
+  # ═══════════════════════════════════════════════════════════════════
+  # GENERIC FALLBACKS — preserve existing scene
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_scene_generic_real_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Preserve the existing setting as shown in the source image.
+      Maintain architectural lines, surface textures, and ambient
+      lighting of the original environment.
+    tags:
+      scene_scope: generic_real_world
+      edit_mode: image_edit
+      intent: preserve
+    complexity_level: simple
+
+  - block_id: ie_scene_generic_real_02
+    role: environment
+    category: scene_build
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Keep the real-world environment from the source image intact.
+      Background elements, spatial depth, and natural lighting
+      conditions remain unaltered.
+    tags:
+      scene_scope: generic_real_world
+      edit_mode: image_edit
+      intent: preserve
+    complexity_level: simple
+
+  # ═══════════════════════════════════════════════════════════════════
+  # MODERN — contemporary interiors and exteriors
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_bg_hotel_lobby
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Modern hotel lobby behind {{subject}}'s current position.
+      Polished floors, reception desk in background, warm ambient light.
+    tags:
+      intent: modify
+      layer: background
+      location: hotel_lobby
+      setting_style: modern
+    complexity_level: moderate
+
+  - block_id: ie_bg_office
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Sleek corporate office behind {{subject}}'s current position.
+      Glass walls, city skyline visible through windows.
+    tags:
+      intent: modify
+      layer: background
+      location: office
+      setting_style: modern
+    complexity_level: moderate
+
+  - block_id: ie_bg_nightclub
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Dimly lit nightclub interior behind {{subject}}'s current position.
+      Ambient colored lighting, bar area visible, silhouettes of other patrons.
+    tags:
+      intent: modify
+      layer: background
+      location: nightclub
+      setting_style: atmospheric
+    complexity_level: moderate
+
+  - block_id: ie_bg_park_daylight
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Sunlit park behind {{subject}}'s current position.
+      Trees, open grass, benches, natural daylight.
+    tags:
+      intent: modify
+      layer: background
+      location: park
+      setting_style: natural
+    complexity_level: moderate
+
+  # ═══════════════════════════════════════════════════════════════════
+  # URBAN TRANSIT
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_bg_metro_afternoon_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Transform the surrounding space into the interior of an afternoon metro
+      car. Brushed-steel grab poles run floor to ceiling, moulded plastic seats
+      line both sides, a strip of route map sits above the windows. Warm
+      afternoon sunlight pours through large windows on one side, casting long
+      gold bars across the aisle floor. The car is moderately occupied —
+      standing passengers visible at comfortable intervals without crowding.
+      Her position reads as a natural standing pause near a centre pole.
+    tags:
+      intent: modify
+      layer: background
+      location: metro_car
+      time_of_day: afternoon
+      occupancy: moderate
+      passenger_state: standing
+      setting_style: urban_transit
+    complexity_level: complex
+
+  - block_id: ie_bg_metro_afternoon_02
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Place her inside a modern city metro carriage in afternoon light.
+      Ribbed aluminium walls, rubber-edged doors sealed shut between stops,
+      overhead handles swaying gently. Sunlight enters at a low angle through
+      the right-side windows, warming the neutral grey interior with amber
+      tones. A handful of seated passengers read or scroll phones in the
+      background. The aisle around her is clear enough for a small standing
+      group but narrow enough that proximity is architectural.
+    tags:
+      intent: modify
+      layer: background
+      location: metro_car
+      time_of_day: afternoon
+      occupancy: moderate
+      passenger_state: standing
+      setting_style: urban_transit
+    complexity_level: complex
+
+  - block_id: ie_bg_undercity_corridor
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Narrow undercity bar corridor with rough stone walls close on both
+      sides and low timber beams overhead. Depth recedes diagonally into
+      shadow rather than forming a corner.
+    tags:
+      intent: modify
+      layer: background
+      location: undercity_corridor
+      setting_style: medieval_dark
+    complexity_level: moderate
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PERIOD / VINTAGE
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_bg_night_train_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Transform the surrounding space into the interior of an older luxury
+      night train. Polished dark wood paneling lines the walls, slightly
+      dulled brass rails run along overhead luggage racks. Deep upholstered
+      seating in faded burgundy flanks the narrow aisle. Dim yellow wall
+      lamps cast warm, low pools of light along the carriage walls.
+    tags:
+      intent: modify
+      layer: background
+      location: night_train
+      setting_style: vintage_luxury
+    complexity_level: complex
+
+  - block_id: ie_bg_night_train_02
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      The interior of a pre-war sleeper carriage. Walnut veneer panels
+      with hairline cracks in the lacquer, brass fittings tarnished to a
+      dull gold, heavy curtains half-drawn across compartment doorways.
+      The aisle is barely wide enough for two people to pass. Overhead
+      fixtures cast downward cones of amber light between stretches of
+      warm shadow. The carpet underfoot is patterned and slightly worn.
+    tags:
+      intent: modify
+      layer: background
+      location: night_train
+      setting_style: vintage_luxury
+    complexity_level: complex
+
+  - block_id: ie_bg_night_train_03
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      The corridor of a faded Orient Express-era carriage. Narrow passage,
+      polished wood dado rail at hip height, etched glass panels in
+      compartment doors, brass handles reflecting warm lamp-light. The
+      ceiling is low, upholstered in quilted fabric. Shallow alcoves
+      between compartments compress the space further. Near a vestibule
+      junction the corridor narrows, the carriage's gentle sway implied
+      by the slight blur of objects at the frame edges.
+    tags:
+      intent: modify
+      layer: background
+      location: night_train
+      setting_style: vintage_luxury
+    complexity_level: complex
+
+  - block_id: ie_bg_victorian_study_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Place her inside a worn Victorian study. Heavy wooden desk cluttered
+      with scattered case papers, maps, and handwritten notes. The desk
+      aligns naturally with her current posture so she appears leaned
+      slightly forward over it without changing her pose. Bookshelves line
+      the walls, leather-bound volumes packed tight, a globe on a side table.
+    tags:
+      intent: modify
+      layer: background
+      location: victorian_study
+      setting_style: period
+      genre: detective
+    complexity_level: complex
+
+  - block_id: ie_bg_victorian_study_02
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Place her in a cluttered detective's study. Oak-panelled walls,
+      a broad writing desk covered in open folders, magnifying glass,
+      ink bottles, and a half-rolled map pinned at the corners. A worn
+      armchair sits beside the desk. Curtains are drawn, sealing the
+      room from the outside world.
+    tags:
+      intent: modify
+      layer: background
+      location: victorian_study
+      setting_style: period
+      genre: detective
+    complexity_level: complex
+
+  - block_id: ie_bg_victorian_study_03
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Place her in a small private study off a larger library. The desk
+      is narrower, papers stacked in precarious columns, a brass desk
+      lamp unlit, a coat draped over the chair behind her. The walls
+      close in — the space is intimate by architecture, not choice.
+    tags:
+      intent: modify
+      layer: background
+      location: victorian_study
+      setting_style: period
+      genre: detective
+    complexity_level: complex
+
+  # ═══════════════════════════════════════════════════════════════════
+  # INSTITUTIONAL
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_bg_police_break_room_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Transform the surrounding space into a modern police precinct break area.
+      A brushed-steel coffee machine sits on a narrow counter, its position
+      aligned naturally with her current hand placement. Institutional walls
+      in muted grey-blue, scuffed linoleum, a corkboard with shift rosters
+      pinned to it. The space is functional and confined — counters on both
+      sides create a corridor-like compression that forces anyone present into
+      close proximity. Desks and equipment visible through an open doorway
+      remain understated so she stays the absolute visual focus.
+    tags:
+      intent: modify
+      layer: background
+      location: police_break_room
+      setting_style: modern_institutional
+      genre: police
+    complexity_level: complex
+
+  - block_id: ie_bg_police_break_room_02
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Place her in the narrow kitchenette alcove of a precinct station.
+      A commercial coffee maker sits on the counter at the height of her
+      hands. Overhead strip lighting, pale institutional tile, a small
+      fridge humming in the corner. The alcove is barely wide enough for
+      two people — anyone approaching the machine must press past whoever
+      is already standing there. Through a glass-panelled door at the far
+      end, a hallway stretches toward the lobby.
+    tags:
+      intent: modify
+      layer: background
+      location: police_break_room
+      setting_style: modern_institutional
+      genre: police
+    complexity_level: complex
+
+  - block_id: ie_bg_police_break_room_03
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      A utilitarian precinct break room forms around her. Coffee station
+      built into the wall, drip tray, stack of ceramic mugs. Filing cabinets
+      line one side, a wall-mounted TV plays muted news footage. The room
+      is small enough that every movement registers — brushing past someone
+      is unavoidable. A reinforced glass partition separates the break area
+      from the public-facing corridor beyond.
+    tags:
+      intent: modify
+      layer: background
+      location: police_break_room
+      setting_style: modern_institutional
+      genre: police
+    complexity_level: complex
