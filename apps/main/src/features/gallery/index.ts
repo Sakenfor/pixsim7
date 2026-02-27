@@ -59,4 +59,14 @@ export * from './lib/core';
 // ============================================================================
 
 export { useClientFilters, type ClientFilterDef, type ClientFilterValue } from './lib/useClientFilters';
-export { ClientFilterBar } from './components/ClientFilterBar';
+export { toMultiFilterValue, fromMultiFilterValue, dedupeOptions } from './lib/filterValueHelpers';
+export { useFilterChipState, type UseFilterChipStateResult } from './lib/useFilterChipState';
+export {
+  ClientFilterBar,
+  FilterChip,
+  FilterDropdown,
+  FilterContent,
+  type FilterChipProps,
+  type FilterDropdownProps,
+  type FilterContentProps,
+} from './components/ClientFilterBar';

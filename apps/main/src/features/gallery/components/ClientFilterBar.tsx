@@ -11,8 +11,10 @@ import {
 import { createPortal } from 'react-dom';
 
 import { Icon } from '@lib/icons';
+import type { IconName } from '@lib/icons';
 
 import type { ClientFilterDef, ClientFilterValue } from '../lib/useClientFilters';
+import { useFilterChipState } from '../lib/useFilterChipState';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -24,6 +26,7 @@ export interface ClientFilterBarProps<T> {
   derivedOptions: Record<string, Array<{ value: string; label: string; count?: number }>>;
   onFilterChange: (key: string, value: ClientFilterValue) => void;
   onReset?: () => void;
+  popoverMode?: 'portal' | 'inline';
 }
 
 // ---------------------------------------------------------------------------
@@ -36,11 +39,10 @@ export function ClientFilterBar<T>({
   derivedOptions,
   onFilterChange,
   onReset,
+  popoverMode = 'portal',
 }: ClientFilterBarProps<T>) {
-  const [openFilters, setOpenFilters] = useState<Set<string>>(new Set());
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const chipState = useFilterChipState();
   const triggerRefs = useRef(new Map<string, HTMLButtonElement | null>());
-  const hoverTimeoutRef = useRef<number | null>(null);
   const filterScrollCache = useRef(new Map<string, number>());
 
   const { primaryFilters, overflowFilters } = useMemo(() => {
@@ -64,23 +66,6 @@ export function ClientFilterBar<T>({
     [],
   );
 
-  const openHover = useCallback((key: string) => {
-    if (hoverTimeoutRef.current !== null) {
-      window.clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
-    }
-    setHoveredKey(key);
-  }, []);
-
-  const closeHover = useCallback((key: string) => {
-    if (hoverTimeoutRef.current !== null) {
-      window.clearTimeout(hoverTimeoutRef.current);
-    }
-    hoverTimeoutRef.current = window.setTimeout(() => {
-      setHoveredKey((prev) => (prev === key ? null : prev));
-    }, 120);
-  }, []);
-
   const hasOverflowSelection = overflowFilters.some((f) => {
     const val = filterState[f.key];
     return val !== undefined && val !== '' && val !== false;
@@ -95,24 +80,43 @@ export function ClientFilterBar<T>({
 
   return (
     <div className="relative flex flex-nowrap items-start gap-1.5 min-w-0 flex-1 pb-1">
-      {primaryFilters.map((filter) => (
-        <FilterChip
-          key={filter.key}
-          filter={filter}
-          filterState={filterState}
-          derivedOptions={derivedOptions}
-          openFilters={openFilters}
-          setOpenFilters={setOpenFilters}
-          hoveredKey={hoveredKey}
-          openHover={openHover}
-          closeHover={closeHover}
-          setTriggerRef={setTriggerRef}
-          triggerRefs={triggerRefs}
-          onFilterChange={onFilterChange}
-          scrollCache={filterScrollCache}
-          expandedKeys={expandedKeys}
-        />
-      ))}
+      {primaryFilters.map((filter) => {
+        const selectedValue = filterState[filter.key];
+        const selectedCount = Array.isArray(selectedValue)
+          ? selectedValue.length
+          : selectedValue
+            ? 1
+            : 0;
+
+        return (
+          <FilterChip
+            key={filter.key}
+            chipKey={filter.key}
+            label={filter.label}
+            icon={filter.icon ?? 'sliders'}
+            count={selectedCount}
+            isOpen={chipState.openFilters.has(filter.key)}
+            isHovered={chipState.hoveredKey === filter.key}
+            onToggleOpen={() => chipState.toggleOpen(filter.key)}
+            onClose={() => chipState.closeChip(filter.key)}
+            onMouseEnter={() => chipState.openHover(filter.key)}
+            onMouseLeave={() => chipState.closeHover(filter.key)}
+            popoverMode={popoverMode}
+            wide={(filter.columns ?? 1) > 1}
+            triggerRef={setTriggerRef(filter.key)}
+            anchorEl={triggerRefs.current.get(filter.key) || null}
+            triggerElRef={{ current: triggerRefs.current.get(filter.key) || null }}
+          >
+            <FilterContent
+              filter={filter}
+              value={filterState[filter.key]}
+              options={derivedOptions[filter.key] || []}
+              onChange={(value) => onFilterChange(filter.key, value)}
+              scrollCache={filterScrollCache}
+            />
+          </FilterChip>
+        );
+      })}
       {overflowFilters.length > 0 && (
         <OverflowMenu
           filters={overflowFilters}
@@ -120,6 +124,7 @@ export function ClientFilterBar<T>({
           derivedOptions={derivedOptions}
           onChange={onFilterChange}
           hasSelection={hasOverflowSelection}
+          popoverMode={popoverMode}
         />
       )}
       {hasAnySelection && onReset && (
@@ -137,71 +142,123 @@ export function ClientFilterBar<T>({
 }
 
 // ---------------------------------------------------------------------------
-// FilterChip — single chip in the bar
+// FilterChip — single chip, exported for reuse
 // ---------------------------------------------------------------------------
 
-function FilterChip<T>({
-  filter,
-  filterState,
-  derivedOptions,
-  openFilters,
-  setOpenFilters,
-  hoveredKey,
-  openHover,
-  closeHover,
-  setTriggerRef,
-  triggerRefs,
-  onFilterChange,
-  scrollCache,
-  expandedKeys,
-}: {
-  filter: ClientFilterDef<T>;
-  filterState: Record<string, ClientFilterValue>;
-  derivedOptions: Record<string, Array<{ value: string; label: string; count?: number }>>;
-  openFilters: Set<string>;
-  setOpenFilters: React.Dispatch<React.SetStateAction<Set<string>>>;
-  hoveredKey: string | null;
-  openHover: (key: string) => void;
-  closeHover: (key: string) => void;
-  setTriggerRef: (key: string) => (node: HTMLButtonElement | null) => void;
-  triggerRefs: React.MutableRefObject<Map<string, HTMLButtonElement | null>>;
-  onFilterChange: (key: string, value: ClientFilterValue) => void;
-  scrollCache: React.MutableRefObject<Map<string, number>>;
-  expandedKeys: ReadonlySet<string>;
-}) {
-  const isOpen = openFilters.has(filter.key);
-  const isHovered = hoveredKey === filter.key;
-  const isVisible = isOpen || isHovered;
-  const selectedValue = filterState[filter.key];
-  const selectedCount = Array.isArray(selectedValue)
-    ? selectedValue.length
-    : selectedValue
-      ? 1
-      : 0;
-  const hasSelection = selectedCount > 0;
-  const resolvedIcon = filter.icon ?? 'sliders';
-  const showLabel = hasSelection || isOpen || isHovered || expandedKeys.has(filter.key);
+export interface FilterChipProps {
+  chipKey: string;
+  label: string;
+  icon: IconName;
+  count: number;
+  isOpen: boolean;
+  isHovered: boolean;
+  onToggleOpen: () => void;
+  onClose: () => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+  popoverMode?: 'portal' | 'inline';
+  wide?: boolean;
+  /** When true, holds the dropdown open while an input/select/textarea inside is focused. */
+  holdOpenOnFocus?: boolean;
+  children: ReactNode;
+  /** Ref callback for the trigger button (used internally by ClientFilterBar). */
+  triggerRef?: (node: HTMLButtonElement | null) => void;
+  /** Anchor element for portal positioning (used internally by ClientFilterBar). */
+  anchorEl?: HTMLElement | null;
+  /** Ref object to the trigger element for Dropdown's triggerRef (used internally). */
+  triggerElRef?: React.RefObject<HTMLElement | null>;
+}
+
+export function FilterChip(props: FilterChipProps) {
+  const {
+    label,
+    icon,
+    count,
+    isOpen,
+    isHovered,
+    onToggleOpen,
+    onClose,
+    onMouseEnter,
+    onMouseLeave,
+    popoverMode = 'portal',
+    wide,
+    holdOpenOnFocus,
+    children,
+    triggerRef: externalTriggerRef,
+    anchorEl: externalAnchorEl,
+    triggerElRef: externalTriggerElRef,
+  } = props;
+  const internalButtonRef = useRef<HTMLButtonElement>(null);
+  const [isInteracting, setIsInteracting] = useState(false);
+
+  const hasSelection = count > 0;
+  const isVisible = isOpen || isHovered || (holdOpenOnFocus ? isInteracting : false);
+  const showLabel = hasSelection || isOpen || isHovered;
+
+  // Use external anchor/ref when provided (ClientFilterBar passes these for portal mode),
+  // otherwise fall back to the internal button ref.
+  const anchorEl = externalAnchorEl ?? internalButtonRef.current;
+  const triggerElRef = externalTriggerElRef ?? internalButtonRef;
+
+  const shouldHoldOpenOnFocus = (target: EventTarget | null) => {
+    if (!holdOpenOnFocus) return false;
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return true;
+    if (target.tagName !== 'INPUT') return false;
+    const input = target as HTMLInputElement;
+    return !['checkbox', 'radio', 'button', 'submit', 'reset'].includes(input.type);
+  };
+
+  const handleFocusCapture: React.FocusEventHandler<HTMLDivElement> | undefined =
+    holdOpenOnFocus
+      ? (e) => {
+          if (shouldHoldOpenOnFocus(e.target)) {
+            setIsInteracting(true);
+          }
+        }
+      : undefined;
+
+  const handleBlurCapture: React.FocusEventHandler<HTMLDivElement> | undefined =
+    holdOpenOnFocus
+      ? (e) => {
+          const container = e.currentTarget;
+          const buttonEl = internalButtonRef.current;
+          window.setTimeout(() => {
+            const active = document.activeElement;
+            if (
+              active &&
+              active !== document.body &&
+              (container.contains(active) || buttonEl?.contains(active))
+            ) {
+              return;
+            }
+            setIsInteracting(false);
+          }, 0);
+        }
+      : undefined;
+
+  // Combine external ref callback with internal ref
+  const setButtonRef = useCallback(
+    (node: HTMLButtonElement | null) => {
+      (internalButtonRef as React.MutableRefObject<HTMLButtonElement | null>).current = node;
+      externalTriggerRef?.(node);
+    },
+    [externalTriggerRef],
+  );
 
   return (
     <div
       className="relative flex-none"
-      onMouseEnter={() => openHover(filter.key)}
-      onMouseLeave={() => closeHover(filter.key)}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       <button
         type="button"
-        title={filter.label}
+        title={label}
         aria-expanded={isOpen}
-        ref={setTriggerRef(filter.key)}
-        onClick={() =>
-          setOpenFilters((prev) => {
-            const next = new Set(prev);
-            if (next.has(filter.key)) next.delete(filter.key);
-            else next.add(filter.key);
-            return next;
-          })
-        }
-        className={`relative z-20 inline-flex items-center gap-1.5 h-7 px-1.5 rounded border text-xs transition-[background-color,border-color] duration-200 ${
+        ref={setButtonRef}
+        onClick={onToggleOpen}
+        className={`relative z-20 inline-flex items-center h-7 px-1.5 rounded border text-xs transition-[background-color,border-color] duration-200 ${
           hasSelection
             ? 'border-accent/50 bg-accent/10 text-neutral-800 dark:text-neutral-100'
             : isOpen
@@ -210,40 +267,37 @@ function FilterChip<T>({
         }`}
       >
         <span className="relative flex-shrink-0">
-          <Icon name={resolvedIcon} size={14} className="w-3.5 h-3.5" />
+          <Icon name={icon} size={14} className="w-3.5 h-3.5" />
           {hasSelection && (
             <span className="absolute -top-1.5 -right-1.5 text-[8px] leading-none px-0.5 min-w-[12px] text-center rounded-full bg-accent text-accent-text">
-              {selectedCount}
+              {count}
             </span>
           )}
         </span>
-        {showLabel && (
-          <span className="font-medium whitespace-nowrap">{filter.label}</span>
-        )}
+        <span
+          className="grid transition-[grid-template-columns] duration-200 ease-out"
+          style={{ gridTemplateColumns: showLabel ? '1fr' : '0fr' }}
+        >
+          <span className="overflow-hidden min-w-0">
+            <span className="ml-1.5 font-medium whitespace-nowrap">{label}</span>
+          </span>
+        </span>
       </button>
       <FilterDropdown
-        anchorEl={triggerRefs.current.get(filter.key) || null}
+        anchorEl={anchorEl}
+        triggerRef={triggerElRef}
         visible={isVisible}
-        wide={(filter.columns ?? 1) > 1}
+        wide={wide}
+        mode={popoverMode}
         onClose={() => {
-          setOpenFilters((prev) => {
-            if (!prev.has(filter.key)) return prev;
-            const next = new Set(prev);
-            next.delete(filter.key);
-            return next;
-          });
-          setHoveredKey((prev) => (prev === filter.key ? null : prev));
+          onClose();
         }}
-        onMouseEnter={() => openHover(filter.key)}
-        onMouseLeave={() => closeHover(filter.key)}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        onFocusCapture={handleFocusCapture}
+        onBlurCapture={handleBlurCapture}
       >
-        <FilterContent
-          filter={filter}
-          value={filterState[filter.key]}
-          options={derivedOptions[filter.key] || []}
-          onChange={(value) => onFilterChange(filter.key, value)}
-          scrollCache={scrollCache}
-        />
+        {children}
       </FilterDropdown>
     </div>
   );
@@ -253,23 +307,33 @@ function FilterChip<T>({
 // FilterDropdown — portal-based dropdown anchored to trigger
 // ---------------------------------------------------------------------------
 
-function FilterDropdown({
-  anchorEl,
-  visible,
-  wide,
-  onClose,
-  onMouseEnter,
-  onMouseLeave,
-  children,
-}: {
+export interface FilterDropdownProps {
   anchorEl: HTMLElement | null;
+  triggerRef?: React.RefObject<HTMLElement | null>;
   visible: boolean;
   wide?: boolean;
+  mode?: 'portal' | 'inline';
   onClose?: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
+  onFocusCapture?: React.FocusEventHandler<HTMLDivElement>;
+  onBlurCapture?: React.FocusEventHandler<HTMLDivElement>;
   children: ReactNode;
-}) {
+}
+
+export function FilterDropdown({
+  anchorEl,
+  triggerRef,
+  visible,
+  wide,
+  mode = 'portal',
+  onClose,
+  onMouseEnter,
+  onMouseLeave,
+  onFocusCapture,
+  onBlurCapture,
+  children,
+}: FilterDropdownProps) {
   const [rect, setRect] = useState<DOMRect | null>(null);
 
   useLayoutEffect(() => {
@@ -297,22 +361,52 @@ function FilterDropdown({
   const top = rect.bottom + spacing;
   const maxHeight = Math.max(120, window.innerHeight - top - 16);
 
+  const content = (
+    <Dropdown
+      isOpen={visible}
+      onClose={onClose || (() => undefined)}
+      positionMode="static"
+      minWidth={`${width}px`}
+      className={wide ? 'max-w-[520px]' : 'max-w-[360px]'}
+      triggerRef={triggerRef}
+    >
+      {children}
+    </Dropdown>
+  );
+
+  if (mode === 'inline') {
+    const availableBelow = Math.max(0, window.innerHeight - rect.bottom - 8);
+    const availableAbove = Math.max(0, rect.top - 8);
+    const openUp = availableBelow < 180 && availableAbove > availableBelow;
+    return (
+      <div
+        className="absolute z-[9998]"
+        style={{
+          left: 0,
+          top: openUp ? undefined : `calc(100% + ${spacing}px)`,
+          bottom: openUp ? `calc(100% + ${spacing}px)` : undefined,
+          maxHeight,
+        }}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+        onFocusCapture={onFocusCapture}
+        onBlurCapture={onBlurCapture}
+      >
+        {content}
+      </div>
+    );
+  }
+
   return createPortal(
     <div
       className="z-popover"
       style={{ position: 'fixed', left, top, maxHeight }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      onFocusCapture={onFocusCapture}
+      onBlurCapture={onBlurCapture}
     >
-      <Dropdown
-        isOpen={visible}
-        onClose={onClose || (() => undefined)}
-        positionMode="static"
-        minWidth={`${width}px`}
-        className={wide ? 'max-w-[520px]' : 'max-w-[360px]'}
-      >
-        {children}
-      </Dropdown>
+      {content}
     </div>,
     document.body,
   );
@@ -322,19 +416,21 @@ function FilterDropdown({
 // FilterContent — renders the appropriate control for a filter type
 // ---------------------------------------------------------------------------
 
-function FilterContent<T>({
-  filter,
-  value,
-  options,
-  onChange,
-  scrollCache,
-}: {
+export interface FilterContentProps<T> {
   filter: ClientFilterDef<T>;
   value: ClientFilterValue;
   options: Array<{ value: string; label: string; count?: number }>;
   onChange: (value: ClientFilterValue) => void;
   scrollCache?: React.MutableRefObject<Map<string, number>>;
-}) {
+}
+
+export function FilterContent<T>({
+  filter,
+  value,
+  options,
+  onChange,
+  scrollCache,
+}: FilterContentProps<T>) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // Restore scroll position when the enum list mounts
@@ -351,8 +447,8 @@ function FilterContent<T>({
   useEffect(() => {
     const cache = scrollCache;
     const key = filter.key;
+    const el = scrollRef.current;
     return () => {
-      const el = scrollRef.current;
       if (el && cache) {
         cache.current.set(key, el.scrollTop);
       }
@@ -389,6 +485,7 @@ function FilterContent<T>({
 
     case 'enum': {
       const cols = filter.columns ?? 1;
+      const selectionMode = filter.selectionMode ?? 'multi';
       return (
         <div
           ref={scrollRef}
@@ -412,6 +509,10 @@ function FilterContent<T>({
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => {
+                      if (selectionMode === 'single') {
+                        onChange(isSelected ? undefined : opt.value);
+                        return;
+                      }
                       const next = new Set(selectedValues);
                       if (next.has(opt.value)) next.delete(opt.value);
                       else next.add(opt.value);
@@ -464,12 +565,14 @@ function OverflowMenu<T>({
   derivedOptions,
   onChange,
   hasSelection,
+  popoverMode = 'portal',
 }: {
   filters: ClientFilterDef<T>[];
   filterState: Record<string, ClientFilterValue>;
   derivedOptions: Record<string, Array<{ value: string; label: string; count?: number }>>;
   onChange: (key: string, value: ClientFilterValue) => void;
   hasSelection: boolean;
+  popoverMode?: 'portal' | 'inline';
 }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLButtonElement | null>(null);
@@ -507,21 +610,15 @@ function OverflowMenu<T>({
       </button>
       {open &&
         rect &&
-        createPortal(
-          <div
-            className="z-popover"
-            style={{
-              position: 'fixed',
-              left: Math.max(8, Math.min(rect.left, window.innerWidth - 240 - 8)),
-              top: rect.bottom + 6,
-            }}
-          >
+        (() => {
+          const content = (
             <Dropdown
               isOpen={open}
               onClose={() => setOpen(false)}
               positionMode="static"
               minWidth="200px"
               className="max-w-[280px]"
+              triggerRef={anchorRef}
             >
               <div className="space-y-2">
                 {filters.map((filter) => (
@@ -535,9 +632,40 @@ function OverflowMenu<T>({
                 ))}
               </div>
             </Dropdown>
-          </div>,
-          document.body,
-        )}
+          );
+
+          if (popoverMode === 'inline') {
+            const availableBelow = Math.max(0, window.innerHeight - rect.bottom - 8);
+            const availableAbove = Math.max(0, rect.top - 8);
+            const openUp = availableBelow < 220 && availableAbove > availableBelow;
+            return (
+              <div
+                className="absolute z-[9998]"
+                style={{
+                  right: 0,
+                  top: openUp ? undefined : 'calc(100% + 6px)',
+                  bottom: openUp ? 'calc(100% + 6px)' : undefined,
+                }}
+              >
+                {content}
+              </div>
+            );
+          }
+
+          return createPortal(
+            <div
+              className="z-popover"
+              style={{
+                position: 'fixed',
+                left: Math.max(8, Math.min(rect.left, window.innerWidth - 240 - 8)),
+                top: rect.bottom + 6,
+              }}
+            >
+              {content}
+            </div>,
+            document.body,
+          );
+        })()}
     </div>
   );
 }
