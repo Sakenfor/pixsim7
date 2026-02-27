@@ -1,0 +1,27 @@
+id: ie_camera
+title: "IE Camera"
+description: "Block Matrix presets for the ie_camera pack — reusable camera lock, angle, and drift blocks for image-edit scenes."
+
+matrix_presets:
+  - label: "Camera blocks (category × angle)"
+    query:
+      row_key: "category"
+      col_key: "tag:camera_angle"
+      role: "camera"
+      package_name: "ie_camera"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent,camera_angle,camera,motion"
+      required_tag_keys: "intent"
+
+  - label: "Drift blocks (motion × temporal_position)"
+    query:
+      row_key: "tag:motion"
+      col_key: "tag:temporal_position"
+      role: "camera"
+      category: "drift"
+      package_name: "ie_camera"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "camera,motion,temporal_position"
+      required_tag_keys: "motion"

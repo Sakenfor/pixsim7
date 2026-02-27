@@ -1,0 +1,27 @@
+id: ie_placement
+title: "IE Placement"
+description: "Block Matrix presets for the ie_placement pack — reusable placement depth and character description blocks for image-edit scenes."
+
+matrix_presets:
+  - label: "Placement (category × depth)"
+    query:
+      row_key: "category"
+      col_key: "tag:depth"
+      role: "placement"
+      package_name: "ie_placement"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent,layer,depth,placement,visibility"
+      required_tag_keys: "depth"
+
+  - label: "Characters (type × posture)"
+    query:
+      row_key: "tag:character_type"
+      col_key: "tag:posture"
+      role: "placement"
+      category: "character_desc"
+      package_name: "ie_placement"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent,character_type,posture"
+      required_tag_keys: "character_type"

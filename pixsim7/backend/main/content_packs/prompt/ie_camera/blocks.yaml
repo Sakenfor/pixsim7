@@ -1,0 +1,176 @@
+version: "1.0.0"
+package_name: ie_camera
+
+defaults:
+  source_type: library
+  curation_status: curated
+  is_public: true
+  style: photorealistic
+  created_by: content_pack
+  default_intent: modify
+
+blocks:
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CAMERA LOCK — fixed observer
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_cam_lock_observer
+    role: camera
+    category: camera_lock
+    kind: single_state
+    text: >-
+      Camera remains a fixed observer throughout. The vantage holds
+      steady from start to finish, framing the scene from its
+      established position.
+    tags:
+      intent: preserve
+      camera: observer_lock
+      direction: lateral_or_receding
+    complexity_level: simple
+
+  - block_id: ie_cam_lock_observer_02
+    role: camera
+    category: camera_lock
+    kind: single_state
+    text: >-
+      The camera maintains a steady third-person vantage. The framing
+      stays consistent, observing rather than participating. The lens
+      holds its distance and angle throughout.
+    tags:
+      intent: preserve
+      camera: observer_lock
+      direction: lateral_or_receding
+    complexity_level: simple
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CAMERA ANGLE — over-shoulder
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_cam_over_shoulder_01
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Camera positioned behind and slightly above one figure's shoulder,
+      looking past them into the scene. The shoulder and upper arm form
+      a soft foreground frame on one side, giving depth and a voyeuristic
+      intimacy to the composition. Shallow depth of field keeps the
+      shoulder soft while the subject beyond stays sharp.
+    tags:
+      intent: modify
+      camera_angle: over_shoulder
+      depth: layered
+    complexity_level: moderate
+
+  - block_id: ie_cam_over_shoulder_02
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Over-the-shoulder framing from behind the rearmost figure. The
+      camera sits at their ear height, their silhouette occupying the
+      left or right third of the frame while the subject fills the
+      remaining space. The asymmetry creates natural tension between
+      the two focal planes.
+    tags:
+      intent: modify
+      camera_angle: over_shoulder
+      depth: layered
+    complexity_level: moderate
+
+  - block_id: ie_cam_over_shoulder_03
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Tight over-shoulder angle, the camera nearly resting on the
+      rearmost figure's collarbone. Their shoulder fills the lower
+      foreground, slightly out of focus, while the subject is framed
+      in sharp relief just beyond. The closeness of the camera to
+      the rear figure implies shared perspective — the viewer sees
+      what they see, from where they stand.
+    tags:
+      intent: modify
+      camera_angle: over_shoulder
+      depth: layered
+    complexity_level: moderate
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CAMERA DRIFT — generic opening moves
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: cam_drift_behind_01
+    role: camera
+    category: drift
+    kind: single_state
+    text: >-
+      The camera holds at a low angle directly at her re_a-r, her
+      posterior centered in frame, a slow subtle drift settles the
+      framing tighter on her hi_p-s and lower back, smooth cinematic
+      movement with no rotation of her body
+    tags:
+      camera: drift_behind
+      motion: drift
+      temporal_position: opening
+    complexity_level: simple
+
+  - block_id: cam_drift_behind_02
+    role: camera
+    category: drift
+    kind: single_state
+    text: >-
+      The camera drifts subtly from its starting position, easing
+      into a tighter framing without repositioning her body, the
+      existing composition preserved as the depth of field narrows
+      and the background softens into bokeh
+    tags:
+      camera: drift_behind
+      motion: drift
+      temporal_position: opening
+    complexity_level: moderate
+
+  - block_id: cam_drift_behind_03
+    role: camera
+    category: drift
+    kind: single_state
+    text: >-
+      A slow tracking shot at her re_a-r, the framing tilting
+      downward as it settles on a low three-quarter re_a-r angle, her
+      posterior sharp in focus, the shallow depth of field blurring the
+      background while her silhouette sharpens into crisp relief
+    tags:
+      camera: drift_behind
+      motion: drift
+      temporal_position: opening
+    complexity_level: moderate
+
+  - block_id: cam_drift_behind_04
+    role: camera
+    category: drift
+    kind: single_state
+    text: >-
+      Handheld-style camera floats at waist height, drifting laterally
+      and then curving around behind her in one unbroken take, the
+      slight motion blur lending immediacy, the final framing centered
+      on the small of her back
+    tags:
+      camera: drift_behind
+      motion: drift
+      temporal_position: opening
+    complexity_level: simple
+
+  - block_id: cam_drift_behind_05
+    role: camera
+    category: drift
+    kind: single_state
+    text: >-
+      The camera rises from floor level behind her, climbing in a
+      smooth crane-like arc, the low start emphasizing the ground
+      and her stance before settling at hip height, the wide angle
+      compressing the space between her and whatever is behind
+    tags:
+      camera: drift_behind
+      motion: drift
+      temporal_position: opening
+    complexity_level: moderate

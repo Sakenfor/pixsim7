@@ -321,83 +321,6 @@ blocks:
       genre: police
     complexity_level: complex
 
-  # ── placement — partner behind glass ────────────────────────────
-
-  - block_id: ie_place_behind_glass_01
-    role: placement
-    category: depth
-    kind: single_state
-    default_intent: add
-    text: >-
-      Through the glass door behind them, {{partner}} stands in the
-      public corridor at a clear remove — visually present but physically
-      separated by the partition. The reflective surface faintly layers
-      {{partner}}'s image over theirs, creating visual overlap without
-      connection.
-    tags:
-      intent: add
-      layer: background
-      depth: far
-      placement: behind_glass
-      visibility: full
-    complexity_level: moderate
-
-  - block_id: ie_place_behind_glass_02
-    role: placement
-    category: depth
-    kind: single_state
-    default_intent: add
-    text: >-
-      Beyond the reinforced glass partition, {{partner}} stands in the
-      corridor waiting area. The glass catches station light, ghosting
-      faint reflections of the two figures at the coffee machine across
-      its surface, merging foreground and background in a layered
-      transparency.
-    tags:
-      intent: add
-      layer: background
-      depth: far
-      placement: behind_glass
-      visibility: full
-    complexity_level: moderate
-
-  - block_id: ie_char_separated_partner_01
-    role: placement
-    category: character_desc
-    kind: single_state
-    default_intent: add
-    text: >-
-      {{partner}} waits in casual clothes — soft hoodie, jeans, sneakers —
-      absorbed in a phone, thumb scrolling idly. {{partner}} leans against
-      the corridor wall with easy patience, unaware of the scene unfolding
-      on the other side of the glass. {{partner}}'s relaxed posture
-      contrasts sharply with the tight proximity in the foreground.
-    tags:
-      intent: add
-      character_type: separated_partner
-      posture: distracted
-      awareness: oblivious
-    complexity_level: moderate
-
-  - block_id: ie_char_separated_partner_02
-    role: placement
-    category: character_desc
-    kind: single_state
-    default_intent: add
-    text: >-
-      {{partner}} stands beyond the glass in street clothes — jacket,
-      dark jeans — head bowed over a phone, earbuds in, fully
-      self-contained. {{partner}} glances up occasionally but sees only
-      {{partner}}'s own reflection layered over their silhouettes. A
-      visitor's pass lanyard hangs from a pocket. {{partner}} is present
-      and peripheral, separated by architecture and attention.
-    tags:
-      intent: add
-      character_type: separated_partner
-      posture: idle_waiting
-      awareness: oblivious
-    complexity_level: moderate
-
   # ── lighting — station overhead ─────────────────────────────────
 
   - block_id: ie_key_station_overhead_01
@@ -436,25 +359,6 @@ blocks:
       direction: overhead
       contrast: low
       genre: police
-    complexity_level: moderate
-
-  # ── lighting — glass reflection fill ────────────────────────────
-
-  - block_id: ie_fill_glass_reflection_01
-    role: lighting
-    category: fill
-    kind: single_state
-    text: >-
-      A glass partition bounces faint secondary fill back into the
-      foreground space, softening shadow edges on rear-facing surfaces.
-      The reflection carries a cooler tone than the primary key light,
-      adding dimensional separation. Silhouettes ghost faintly on the
-      glass surface, layering foreground and background visually.
-    tags:
-      intent: modify
-      fill_light: glass_reflection
-      warmth: cool
-      purpose: separation
     complexity_level: moderate
 
   # ── mood — restrained sensual tension ───────────────────────────

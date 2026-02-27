@@ -25,17 +25,6 @@ matrix_presets:
       expected_tag_keys: "intent,aesthetic,genre,variant,palette"
       required_tag_keys: "aesthetic"
 
-  - label: "Camera blocks (category × angle)"
-    query:
-      row_key: "category"
-      col_key: "tag:camera_angle"
-      role: "camera"
-      package_name: "image_edit_scenes"
-      include_empty: true
-      include_drift_report: true
-      expected_tag_keys: "intent,camera_angle,camera,motion"
-      required_tag_keys: "intent"
-
   - label: "Backgrounds (location × setting_style)"
     query:
       row_key: "tag:location"

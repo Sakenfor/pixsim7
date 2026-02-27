@@ -1,0 +1,194 @@
+version: "1.0.0"
+package_name: ie_placement
+
+defaults:
+  source_type: library
+  curation_status: curated
+  is_public: true
+  style: photorealistic
+  created_by: content_pack
+  default_intent: modify
+
+blocks:
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PLACEMENT — generic close-behind depth (spatial only)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_place_close_behind_01
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      A figure stands directly behind her, separated by inches. The
+      space they share is narrow enough that proximity is imposed by
+      architecture rather than intention — neither has room to step
+      aside without contact.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      visibility: full
+    complexity_level: simple
+
+  - block_id: ie_place_close_behind_02
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      He stands immediately behind and slightly offset, his body
+      angled toward hers. The gap between them is a single breath
+      wide — close enough that any shift in weight from either side
+      would erase it entirely.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      visibility: full
+    complexity_level: simple
+
+  - block_id: ie_place_close_behind_03
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      A figure positioned directly behind her, their front aligned
+      with her back, the vertical lines of both silhouettes nearly
+      overlapping in the frame. The tight clearance reads as
+      deliberate stillness rather than casual proximity.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      visibility: full
+    complexity_level: simple
+
+  - block_id: ie_place_behind_glass_01
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      Through the glass door behind them, {{partner}} stands in the
+      public corridor at a clear remove — visually present but physically
+      separated by the partition. The reflective surface faintly layers
+      {{partner}}'s image over theirs, creating visual overlap without
+      connection.
+    tags:
+      intent: add
+      layer: background
+      depth: far
+      placement: behind_glass
+      visibility: full
+    complexity_level: moderate
+
+  - block_id: ie_place_behind_glass_02
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      Beyond the reinforced glass partition, {{partner}} stands in the
+      corridor waiting area. The glass catches station light, ghosting
+      faint reflections of the two figures at the coffee machine across
+      its surface, merging foreground and background in a layered
+      transparency.
+    tags:
+      intent: add
+      layer: background
+      depth: far
+      placement: behind_glass
+      visibility: full
+    complexity_level: moderate
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CHARACTER DESCRIPTIONS — generic and separated partner
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_char_male_presence
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      A male figure, partially visible. Angled toward {{subject}}.
+      Integrated into the scene lighting. Physical presence without
+      narrative specificity.
+    tags:
+      intent: add
+      character_type: male_presence
+      posture: angled
+    complexity_level: simple
+
+  - block_id: ie_char_distracted_man
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      He is facing away from {{subject}}, looking at his phone.
+      Casual posture, visibly absorbed in the screen, unaware of
+      his surroundings.
+    tags:
+      intent: add
+      character_type: bystander
+      posture: distracted
+    complexity_level: moderate
+
+  - block_id: ie_char_porter_uniform
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      He wears a hotel porter uniform and stands attentively.
+      One hand rests lightly near {{subject}}'s side as if assisting
+      or steadying something.
+    tags:
+      intent: add
+      character_type: porter
+      attire: uniform
+    complexity_level: moderate
+
+  - block_id: ie_char_separated_partner_01
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{partner}} waits in casual clothes — soft hoodie, jeans, sneakers —
+      absorbed in a phone, thumb scrolling idly. {{partner}} leans against
+      the corridor wall with easy patience, unaware of the scene unfolding
+      on the other side of the glass. {{partner}}'s relaxed posture
+      contrasts sharply with the tight proximity in the foreground.
+    tags:
+      intent: add
+      character_type: separated_partner
+      posture: distracted
+      awareness: oblivious
+    complexity_level: moderate
+
+  - block_id: ie_char_separated_partner_02
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{partner}} stands beyond the glass in street clothes — jacket,
+      dark jeans — head bowed over a phone, earbuds in, fully
+      self-contained. {{partner}} glances up occasionally but sees only
+      {{partner}}'s own reflection layered over their silhouettes. A
+      visitor's pass lanyard hangs from a pocket. {{partner}} is present
+      and peripheral, separated by architecture and attention.
+    tags:
+      intent: add
+      character_type: separated_partner
+      posture: idle_waiting
+      awareness: oblivious
+    complexity_level: moderate
