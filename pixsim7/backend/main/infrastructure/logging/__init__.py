@@ -1,6 +1,5 @@
 """
-Logging infrastructure
-"""
-from .config import setup_logging, get_logger, LogContext
+Logging infrastructure (legacy)
 
-__all__ = ["setup_logging", "get_logger", "LogContext"]
+Active logging is provided by the ``pixsim_logging`` package.
+"""

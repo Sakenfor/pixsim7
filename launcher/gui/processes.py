@@ -396,11 +396,44 @@ class ServiceProcess:
             self._buffer_char_count -= len(removed)
         return sanitized
 
+    def _truncate_open_log_file(self):
+        """Truncate a log file that can't be renamed (subprocess holds it open on Windows).
+
+        Reads the last LOG_FILE_MAX_BYTES // 2 bytes and rewrites the file in-place.
+        """
+        try:
+            keep_bytes = LOG_FILE_MAX_BYTES // 2
+            with open(self.log_file_path, 'r+', encoding='utf-8', errors='replace') as f:
+                f.seek(0, 2)  # seek to end
+                size = f.tell()
+                if size <= keep_bytes:
+                    return
+                f.seek(size - keep_bytes)
+                f.readline()  # skip partial line
+                tail = f.read()
+                f.seek(0)
+                f.write(tail)
+                f.truncate()
+            self._log_file_position = 0
+        except Exception:
+            pass
+
     def _read_new_log_lines(self):
         """Read new lines from log file (for detached processes)."""
         try:
             if not os.path.exists(self.log_file_path):
                 return
+
+            # Rotate if file exceeds max size (detached processes write directly)
+            try:
+                if os.path.getsize(self.log_file_path) > LOG_FILE_MAX_BYTES:
+                    rotated = rotate_file(self.log_file_path, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT)
+                    if rotated:
+                        self._log_file_position = 0
+            except (PermissionError, OSError):
+                # Windows: can't rename file while subprocess holds it open.
+                # Truncate by rewriting last portion of the file.
+                self._truncate_open_log_file()
 
             with open(self.log_file_path, 'r', encoding='utf-8', errors='replace') as f:
                 # Seek to last known position
@@ -567,6 +600,9 @@ class ServiceProcess:
              args=self.defn.args, cwd=self.defn.cwd)
 
         try:
+            # Rotate log file before opening (no subprocess has it open yet)
+            rotate_file(self.log_file_path, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT)
+
             # Open log file for writing (append mode)
             log_file = open(self.log_file_path, 'a', encoding='utf-8', buffering=1)  # Line buffered
 

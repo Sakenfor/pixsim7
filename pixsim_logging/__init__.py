@@ -14,13 +14,14 @@ Environment overrides:
 
 This package keeps zero dependencies on application domain models.
 """
-from .config import configure_logging, get_logger
+from .config import configure_logging, configure_stdlib_root_logger, get_logger
 from .spec import COMMON_FIELDS, STAGES, redact_sensitive, bind_job_context, bind_artifact_context
 from .file_rotation import rotate_file, append_line
 from .console_renderer import CleanConsoleRenderer
 
 __all__ = [
     "configure_logging",
+    "configure_stdlib_root_logger",
     "get_logger",
     "COMMON_FIELDS",
     "STAGES",

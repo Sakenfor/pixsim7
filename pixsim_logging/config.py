@@ -174,6 +174,36 @@ def configure_logging(service_name: str, *, json: bool | None = None) -> structl
     return logger
 
 
+def configure_stdlib_root_logger() -> None:
+    """Configure the stdlib root logger so libraries using ``logging.getLogger()`` emit to stdout.
+
+    Reads PIXSIM_LOG_FORMAT and LOG_LEVEL from the environment.
+    Safe to call multiple times — skips if handlers are already attached.
+    """
+    root = logging.getLogger()
+    if root.handlers:
+        return
+
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.DEBUG)
+
+    if os.getenv("PIXSIM_LOG_FORMAT", "json").lower() == "human":
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%H:%M:%S',
+        )
+    else:
+        formatter = logging.Formatter('%(message)s')
+
+    handler.setFormatter(formatter)
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+
+    level_env = os.getenv("LOG_LEVEL", "INFO").upper()
+    if level_env in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+        root.setLevel(getattr(logging, level_env))
+
+
 def get_logger() -> structlog.stdlib.BoundLogger:
     return structlog.get_logger()
 
