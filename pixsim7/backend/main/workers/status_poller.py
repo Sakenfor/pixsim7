@@ -503,6 +503,14 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                         # Handle status
                         if status_result.status == ProviderStatus.COMPLETED:
+                            # Re-check: generation may have been cancelled while we polled
+                            await db.refresh(generation)
+                            if generation.status == GenerationStatus.CANCELLED:
+                                logger.info("generation_cancelled_during_poll", generation_id=generation.id)
+                                account = await account_service.release_account(account.id)
+                                completed += 1
+                                continue
+
                             # Refresh submission to get updated response from check_status
                             await db.refresh(submission)
                             # Create asset from submission
@@ -560,6 +568,14 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             ProviderStatus.FILTERED,
                             ProviderStatus.CANCELLED,
                         }:
+                            # Re-check: generation may have been cancelled while we polled
+                            await db.refresh(generation)
+                            if generation.status == GenerationStatus.CANCELLED:
+                                logger.info("generation_cancelled_during_poll", generation_id=generation.id)
+                                account = await account_service.release_account(account.id)
+                                failed += 1
+                                continue
+
                             # Mark this attempt as failed
                             logger.warning(
                                 "generation_failed_provider",

@@ -382,6 +382,19 @@ class WebSocketManager {
             }).catch(err => {
               console.error('[WebSocket] Failed to fetch generation:', generationId, err);
             });
+          } else if (message.type === 'job:cancelled') {
+            debugFlags.log('websocket', 'Job cancelled');
+            // Update generation status in store
+            pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
+              addOrUpdateGeneration(fromGenerationResponse(data));
+
+              // Trigger account cleanup to fix job counters
+              pixsimClient.post('/accounts/cleanup').catch(err => {
+                debugFlags.log('websocket', 'Account cleanup after job cancellation failed:', err);
+              });
+            }).catch(err => {
+              console.error('[WebSocket] Failed to fetch generation:', generationId, err);
+            });
           }
         } else if (message.type === 'asset:created') {
           // Handle asset creation events (from any source: generation, upload, paused frame)

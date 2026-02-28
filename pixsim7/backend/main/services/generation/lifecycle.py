@@ -70,6 +70,19 @@ class GenerationLifecycleService:
         """
         generation = await self._get_generation_for_update(generation_id)
 
+        # Guard: prevent overwriting a terminal state with a different terminal state.
+        # This stops the poller from writing COMPLETED/FAILED over CANCELLED (or vice versa).
+        if generation.is_terminal and status != generation.status:
+            TERMINAL = {GenerationStatus.COMPLETED, GenerationStatus.FAILED, GenerationStatus.CANCELLED}
+            if status in TERMINAL:
+                logger.warning(
+                    "update_status_skipped_terminal",
+                    generation_id=generation_id,
+                    current_status=generation.status.value,
+                    requested_status=status.value,
+                )
+                return generation
+
         if generation.status == status:
             # If another worker already transitioned to PROCESSING, this is a
             # duplicate pickup — abort so the caller doesn't double-submit.
