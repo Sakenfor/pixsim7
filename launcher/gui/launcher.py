@@ -339,6 +339,11 @@ class LauncherWindow(QWidget):
         # Connect health check signal (for any manual triggers if added later)
         self.health_check_signal.connect(self._update_service_health)
 
+        # Schedule deferred init for worker services (expensive orphan
+        # recovery scan runs after the first paint, not during __init__).
+        for sp in self.processes.values():
+            sp.schedule_deferred_init()
+
         self.update_ports_label()
 
     def _build_left_panel(self):
@@ -1427,6 +1432,10 @@ class LauncherWindow(QWidget):
         self.health_worker.health_update.connect(self._on_health_update)
         self.health_worker.start()
 
+        # Schedule deferred init for new worker processes
+        for sp in self.processes.values():
+            sp.schedule_deferred_init()
+
         # Update UI (cards will be updated via health_update signals)
         self._refresh_db_logs()
 
@@ -1842,6 +1851,11 @@ class LauncherWindow(QWidget):
         self._setup_connections()
         if hasattr(self, "console_refresh_timer"):
             self.console_refresh_timer.start(1000)
+
+        # Schedule deferred init for reloaded worker processes
+        for sp in self.processes.values():
+            sp.schedule_deferred_init()
+
         self._notify_ui_reloaded()
 
     def _open_db_browser(self):

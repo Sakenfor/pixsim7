@@ -138,28 +138,17 @@ def get_all_pids() -> Dict[str, int]:
 
 
 def is_pid_running(pid: int) -> bool:
-    """Check if a PID is still running."""
+    """Check if a PID is still running.
+
+    Delegates to process_utils.is_process_alive for the actual check.
+    """
     if not pid:
         return False
     try:
-        if os.name == 'nt':
-            import subprocess
-            result = subprocess.run(
-                ['tasklist', '/FI', f'PID eq {pid}', '/NH'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            # tasklist returns the process if it exists
-            return str(pid) in result.stdout
-        else:
-            # Unix: signal 0 checks if process exists
-            os.kill(pid, 0)
-            return True
-    except (ProcessLookupError, PermissionError):
-        return False
-    except Exception:
-        return False
+        from .process_utils import is_process_alive
+    except ImportError:
+        from process_utils import is_process_alive
+    return is_process_alive(pid)
 
 
 def cleanup_stale_pids():

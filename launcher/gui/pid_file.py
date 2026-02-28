@@ -18,31 +18,17 @@ def get_pid_file_path() -> Path:
 
 
 def is_process_running(pid: int) -> bool:
-    """Check if a process with given PID is running."""
+    """Check if a process with given PID is running.
+
+    Delegates to process_utils.is_process_alive for the actual check.
+    """
     if not pid or pid <= 0:
         return False
-
     try:
-        if os.name == 'nt':
-            # Windows: Use tasklist to check if PID exists
-            import subprocess
-            result = subprocess.run(
-                ['tasklist', '/FI', f'PID eq {pid}', '/NH'],
-                capture_output=True,
-                text=True,
-                timeout=2,
-                creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
-            )
-            # If PID exists, tasklist will output a line with the PID
-            return str(pid) in result.stdout
-        else:
-            # Unix: Send signal 0 to check if process exists
-            os.kill(pid, 0)
-            return True
-    except (ProcessLookupError, PermissionError, subprocess.TimeoutExpired):
-        return False
-    except Exception:
-        return False
+        from .process_utils import is_process_alive
+    except ImportError:
+        from process_utils import is_process_alive
+    return is_process_alive(pid)
 
 
 def read_pid_file() -> tuple[bool, int | None]:

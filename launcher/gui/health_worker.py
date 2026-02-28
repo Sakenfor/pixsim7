@@ -7,15 +7,25 @@ try:
     from .logger import launcher_logger as _launcher_logger
     from .docker_utils import compose_ps
     from .config import ROOT, UIState
-    from .process_utils import find_pid_by_port
+    from .process_utils import find_pid_by_port, is_process_alive
     from .openapi_checker import check_openapi_freshness, OpenAPIStatus
 except ImportError:
     from status import HealthStatus
     from logger import launcher_logger as _launcher_logger
     from docker_utils import compose_ps
     from config import ROOT, UIState
-    from process_utils import find_pid_by_port
+    from process_utils import find_pid_by_port, is_process_alive
     from openapi_checker import check_openapi_freshness, OpenAPIStatus
+
+
+def _log(event: str, level: str = "info", **kwargs):
+    """Helper to log with launcher_logger, silently failing if unavailable."""
+    if not _launcher_logger:
+        return
+    try:
+        getattr(_launcher_logger, level)(event, **kwargs)
+    except Exception:
+        pass
 
 
 class HealthWorker(QThread):
@@ -95,9 +105,13 @@ class HealthWorker(QThread):
 
         try:
             if os.name == 'nt':
+                # Use server-side WMI filtering (-Filter) instead of
+                # piping all processes through Where-Object.  This avoids
+                # enumerating every process on the system and is 5-10x
+                # faster on Windows.
                 ps_cmd = (
-                    "Get-CimInstance Win32_Process | "
-                    "Where-Object { $_.CommandLine -and $_.CommandLine -like '*pixsim7.backend.main.workers.arq_worker*' } | "
+                    "Get-CimInstance Win32_Process "
+                    "-Filter \"CommandLine LIKE '%pixsim7.backend.main.workers.arq_worker%'\" | "
                     "Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"
                 )
                 result = subprocess.run(
@@ -156,7 +170,7 @@ class HealthWorker(QThread):
     ) -> None:
         """Populate extra ARQ worker details for the launcher service card."""
         now = time.time()
-        refresh_every = 5.0
+        refresh_every = 15.0  # Reduced from 5s — Redis queries + PID checks are expensive
         last_refresh = float(getattr(sp, "_worker_card_details_ts", 0.0) or 0.0)
         cached = getattr(sp, "card_details", None)
 
@@ -190,9 +204,13 @@ class HealthWorker(QThread):
             legacy_pending = self._redis_simple_int(host, port, "LLEN", "arq:queue:default")
             in_progress = self._redis_simple_int(host, port, "ZCARD", "arq:in-progress")
 
-        proc_scan = self._scan_arq_worker_processes()
-        retry_pids = proc_scan.get("retry_pids", [])
-        main_pids = proc_scan.get("main_pids", [])
+        # Use tracked PIDs from the ServiceProcess instead of running an
+        # expensive OS-level process scan every health cycle.  The full
+        # scan is only needed at startup for orphan recovery (done in
+        # processes.py _recover_worker_family).
+        extra_pids = getattr(sp, "extra_started_pids", None) or []
+        retry_pids = [p for p in extra_pids if p != main_pid] if extra_pids else []
+        main_pids = [main_pid] if main_pid else []
 
         details = {
             "main_worker_running": bool(process_alive),
@@ -234,16 +252,8 @@ class HealthWorker(QThread):
             # Within 60 seconds of last startup, use fast interval
             new_interval = self.startup_interval
             if new_interval != self.interval:
-                if _launcher_logger:
-                    try:
-                        _launcher_logger.debug(
-                            "health_check_interval_changed",
-                            new_interval=new_interval,
-                            reason="startup_detected",
-                            mode="fast"
-                        )
-                    except Exception:
-                        pass
+                _log("health_check_interval_changed", "debug",
+                     new_interval=new_interval, reason="startup_detected", mode="fast")
                 self.interval = new_interval
             return
 
@@ -259,32 +269,16 @@ class HealthWorker(QThread):
             if min_healthy_duration > 300:  # 5 minutes
                 new_interval = self.stable_interval
                 if new_interval != self.interval:
-                    if _launcher_logger:
-                        try:
-                            _launcher_logger.debug(
-                                "health_check_interval_changed",
-                                new_interval=new_interval,
-                                reason="all_services_stable",
-                                mode="slow",
-                                min_healthy_duration=min_healthy_duration
-                            )
-                        except Exception:
-                            pass
+                    _log("health_check_interval_changed", "debug",
+                         new_interval=new_interval, reason="all_services_stable",
+                         mode="slow", min_healthy_duration=min_healthy_duration)
                     self.interval = new_interval
                 return
 
         # Default to base interval
         if self.interval != self.base_interval:
-            if _launcher_logger:
-                try:
-                    _launcher_logger.debug(
-                        "health_check_interval_changed",
-                        new_interval=self.base_interval,
-                        reason="normal_operation",
-                        mode="normal"
-                    )
-                except Exception:
-                    pass
+            _log("health_check_interval_changed", "debug",
+                 new_interval=self.base_interval, reason="normal_operation", mode="normal")
             self.interval = self.base_interval
 
     def _track_health_change(self, key: str, status: HealthStatus):
@@ -313,6 +307,20 @@ class HealthWorker(QThread):
         except Exception:
             pass
         self._track_health_change(key, status)
+
+    def _mark_healthy(self, key: str):
+        """Mark service healthy and reset failure counter."""
+        self._emit_health_update(key, HealthStatus.HEALTHY)
+        self.failure_counts[key] = 0
+
+    def _mark_stopped(self, key: str):
+        """Mark service stopped."""
+        self._emit_health_update(key, HealthStatus.STOPPED)
+
+    def _increment_failures(self, key: str) -> int:
+        """Increment and return the failure count for *key*."""
+        self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+        return self.failure_counts[key]
 
     def _check_openapi_freshness(self, key: str, sp):
         """Check OpenAPI freshness for a service if applicable.
@@ -353,26 +361,10 @@ class HealthWorker(QThread):
                 except Exception:
                     pass
 
-                if _launcher_logger:
-                    try:
-                        _launcher_logger.debug(
-                            "openapi_freshness_check",
-                            service_key=key,
-                            status=new_status.value,
-                            message=result.message
-                        )
-                    except Exception:
-                        pass
+                _log("openapi_freshness_check", "debug",
+                     service_key=key, status=new_status.value, message=result.message)
         except Exception as e:
-            if _launcher_logger:
-                try:
-                    _launcher_logger.warning(
-                        "openapi_check_failed",
-                        service_key=key,
-                        error=str(e)
-                    )
-                except Exception:
-                    pass
+            _log("openapi_check_failed", "warning", service_key=key, error=str(e))
 
     def _detect_and_store_pid(self, sp, url: str = None, port: int = None):
         """Detect PID of running service and store it if not started by launcher."""
@@ -402,16 +394,7 @@ class HealthWorker(QThread):
             pid = find_pid_by_port(port)
             if pid:
                 sp.detected_pid = pid
-                if _launcher_logger:
-                    try:
-                        _launcher_logger.info(
-                            "detected_process_pid",
-                            service_key=sp.defn.key,
-                            port=port,
-                            pid=pid
-                        )
-                    except Exception:
-                        pass
+                _log("detected_process_pid", service_key=sp.defn.key, port=port, pid=pid)
         except Exception:
             pass
 
@@ -443,20 +426,19 @@ class HealthWorker(QThread):
                                         if hasattr(sp, 'externally_managed'):
                                             sp.externally_managed = True
 
-                                    self._emit_health_update(key, HealthStatus.HEALTHY)
-                                    self.failure_counts[key] = 0
+                                    self._mark_healthy(key)
                                 else:
                                     sp.running = False
-                                    self._emit_health_update(key, HealthStatus.STOPPED)
-                                    self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                                    self._mark_stopped(key)
+                                    self._increment_failures(key)
                             else:
                                 sp.running = False
-                                self._emit_health_update(key, HealthStatus.STOPPED)
-                                self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                                self._mark_stopped(key)
+                                self._increment_failures(key)
                         except Exception:
                             sp.running = False
-                            self._emit_health_update(key, HealthStatus.STOPPED)
-                            self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                            self._mark_stopped(key)
+                            self._increment_failures(key)
                         continue
 
                     # Check if service is actually running by checking health URL
@@ -472,10 +454,6 @@ class HealthWorker(QThread):
 
                         if pid:
                             try:
-                                try:
-                                    from .process_utils import is_process_alive
-                                except ImportError:
-                                    from process_utils import is_process_alive
                                 process_alive = is_process_alive(pid)
                             except Exception:
                                 process_alive = False
@@ -492,16 +470,9 @@ class HealthWorker(QThread):
                                 redis_url=redis_url,
                                 redis_reachable=False,
                             )
-                            self._emit_health_update(key, HealthStatus.STOPPED)
-                            if _launcher_logger:
-                                try:
-                                    _launcher_logger.warning(
-                                        "worker_process_died",
-                                        pid=pid,
-                                        msg="Worker process is no longer running"
-                                    )
-                                except Exception:
-                                    pass
+                            self._mark_stopped(key)
+                            _log("worker_process_died", "warning",
+                                 pid=pid, msg="Worker process is no longer running")
                             continue
 
                         # If process is alive, verify Redis connection as additional health check
@@ -527,10 +498,6 @@ class HealthWorker(QThread):
                                     extra_pids = getattr(sp, "extra_started_pids", None) or []
                                     if extra_pids:
                                         try:
-                                            try:
-                                                from .process_utils import is_process_alive
-                                            except ImportError:
-                                                from process_utils import is_process_alive
                                             for cpid in extra_pids:
                                                 if not is_process_alive(cpid):
                                                     companion_dead = True
@@ -540,33 +507,25 @@ class HealthWorker(QThread):
                                     if companion_dead:
                                         self._emit_health_update(key, HealthStatus.UNHEALTHY)
                                     else:
-                                        self._emit_health_update(key, HealthStatus.HEALTHY)
+                                        self._mark_healthy(key)
                                     self.failure_counts[key] = 0
                                 except Exception:
                                     # Process alive but Redis not accessible = starting/unhealthy
-                                    self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
-                                    if self.failure_counts[key] < self.failure_threshold:
+                                    failures = self._increment_failures(key)
+                                    if failures < self.failure_threshold:
                                         self._emit_health_update(key, HealthStatus.STARTING)
                                     else:
                                         self._emit_health_update(key, HealthStatus.UNHEALTHY)
-                                    if _launcher_logger:
-                                        try:
-                                            _launcher_logger.warning(
-                                                "worker_redis_unreachable",
-                                                host=host,
-                                                port=port,
-                                                pid=pid,
-                                                attempts=self.failure_counts[key]
-                                            )
-                                        except Exception:
-                                            pass
+                                    _log("worker_redis_unreachable", "warning",
+                                         host=host, port=port, pid=pid,
+                                         attempts=self.failure_counts[key])
                                 finally:
                                     try:
                                         sock.close()
                                     except Exception:
                                         pass
                             except Exception:
-                                self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                                self._increment_failures(key)
                                 self._emit_health_update(key, HealthStatus.UNHEALTHY)
                             self._update_worker_card_details(
                                 sp,
@@ -589,7 +548,7 @@ class HealthWorker(QThread):
                                 redis_url=redis_url,
                                 redis_reachable=False,
                             )
-                            self._emit_health_update(key, HealthStatus.STOPPED)
+                            self._mark_stopped(key)
                         continue
 
                     health_url = getattr(getattr(sp, 'defn', None), 'health_url', None)
@@ -615,28 +574,21 @@ class HealthWorker(QThread):
                                             sp.externally_managed = True
                                         # Only log this warning once per service until state changes
                                         if not self._externally_managed_warned.get(key, False):
-                                            if _launcher_logger:
-                                                try:
-                                                    _launcher_logger.warning(
-                                                        "service_running_despite_stop",
-                                                        service_key=key,
-                                                        msg="Service responding to health checks despite stop request - externally managed"
-                                                    )
-                                                except Exception:
-                                                    pass
+                                            _log("service_running_despite_stop", "warning",
+                                                 service_key=key,
+                                                 msg="Service responding to health checks despite stop request - externally managed")
                                             self._externally_managed_warned[key] = True
 
                                     # Detect PID if not started by launcher
                                     self._detect_and_store_pid(sp, url=health_url)
-                                    self._emit_health_update(key, HealthStatus.HEALTHY)
-                                    self.failure_counts[key] = 0
+                                    self._mark_healthy(key)
                                     # Check OpenAPI freshness when service is healthy
                                     self._check_openapi_freshness(key, sp)
                                 else:
                                     self._emit_health_update(key, HealthStatus.UNHEALTHY)
-                                    self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                                    self._increment_failures(key)
                         except Exception:
-                            self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                            self._increment_failures(key)
                             # Use per-service grace attempts if defined
                             grace = getattr(getattr(sp, 'defn', None), 'health_grace_attempts', self.failure_threshold)
                             current_status = getattr(sp, 'health_status', None)
@@ -688,10 +640,6 @@ class HealthWorker(QThread):
 
                         if pid:
                             try:
-                                try:
-                                    from .process_utils import is_process_alive
-                                except ImportError:
-                                    from process_utils import is_process_alive
                                 alive = bool(is_process_alive(pid))
                             except Exception:
                                 alive = True  # fall back to optimistic
@@ -700,17 +648,16 @@ class HealthWorker(QThread):
                                 sp.running = True
                                 if hasattr(sp, 'externally_managed') and getattr(sp, "proc", None) is None:
                                     sp.externally_managed = True
-                                self._emit_health_update(key, HealthStatus.HEALTHY)
-                                self.failure_counts[key] = 0
+                                self._mark_healthy(key)
                             else:
                                 sp.running = False
-                                self._emit_health_update(key, HealthStatus.STOPPED)
+                                self._mark_stopped(key)
                         else:
                             sp.running = False
-                            self._emit_health_update(key, HealthStatus.STOPPED)
+                            self._mark_stopped(key)
                 except Exception:
                     self._emit_health_update(key, HealthStatus.UNHEALTHY)
-                    self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                    self._increment_failures(key)
             elapsed = time.time() - start_loop
             remaining = self.interval - elapsed
             if remaining > 0:

@@ -7,6 +7,27 @@ from typing import Optional, Dict, Any
 import json
 
 
+# Command-line substrings that identify a pixsim7 backend process.
+_BACKEND_CMD_PATTERNS = (
+    'uvicorn',
+    'pixsim7.backend.main',
+    'pixsim7.backend.generation',
+    'pixsim7_backend.main',
+    'pixsim7\\backend\\main\\main.py',
+    'pixsim7/backend/main/main.py',
+    'pixsim7\\backend\\generation\\main.py',
+    'pixsim7/backend/generation/main.py',
+    'pixsim7_backend\\main.py',
+    'pixsim7_backend/main.py',
+)
+
+
+def _is_backend_cmdline(cmdline: str) -> bool:
+    """Return True if *cmdline* looks like a pixsim7 backend process."""
+    cl = cmdline.lower()
+    return any(p in cl for p in _BACKEND_CMD_PATTERNS)
+
+
 def find_pid_by_port(port: int) -> Optional[int]:
     """
     Find the PID of a process listening on the given port.
@@ -358,18 +379,7 @@ def find_uvicorn_root_pid_windows(child_pid: int) -> Optional[int]:
         name = (info.get('Name') or '').lower()
 
         # Heuristics: uvicorn in command line, or python running any backend-style service
-        if (
-            'uvicorn' in cmd
-            or 'pixsim7.backend.main' in cmd
-            or 'pixsim7.backend.generation' in cmd  # generation-api
-            or 'pixsim7_backend.main' in cmd  # Legacy compatibility
-            or 'pixsim7\\backend\\main\\main.py' in cmd
-            or 'pixsim7/backend/main/main.py' in cmd
-            or 'pixsim7\\backend\\generation\\main.py' in cmd  # generation-api
-            or 'pixsim7/backend/generation/main.py' in cmd  # generation-api
-            or 'pixsim7_backend\\main.py' in cmd  # Legacy compatibility
-            or 'pixsim7_backend/main.py' in cmd  # Legacy compatibility
-        ):
+        if _is_backend_cmdline(cmd):
             uvicorn_root = info.get('ProcessId')
             # Keep walking to find the highest matching ancestor (if any)
 
@@ -392,12 +402,14 @@ def find_backend_candidate_pids_windows(port: Optional[int] = None) -> list[int]
         return []
     candidates: list[int] = []
     try:
-        # Fetch processes with command lines
+        # Fetch processes with command lines — use server-side WMI
+        # filtering to avoid enumerating every process.
         cmd = [
             'powershell', '-NoProfile', '-Command',
             (
-                "Get-CimInstance Win32_Process | "
-                "Where-Object { $_.Name -match 'python|uvicorn' -and $_.CommandLine } | "
+                "Get-CimInstance Win32_Process "
+                "-Filter \"Name LIKE '%python%' OR Name LIKE '%uvicorn%'\" | "
+                "Where-Object { $_.CommandLine } | "
                 "Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress"
             )
         ]
@@ -437,18 +449,7 @@ def find_backend_candidate_pids_windows(port: Optional[int] = None) -> list[int]
             try:
                 pid = int(item.get('ProcessId'))
                 cmdl = (item.get('CommandLine') or '').lower()
-                if (
-                    'uvicorn' in cmdl
-                    or 'pixsim7.backend.main' in cmdl
-                    or 'pixsim7.backend.generation' in cmdl  # generation-api
-                    or 'pixsim7_backend.main:app' in cmdl  # Legacy compatibility
-                    or 'pixsim7\\backend\\main\\main.py' in cmdl
-                    or 'pixsim7/backend/main/main.py' in cmdl
-                    or 'pixsim7\\backend\\generation\\main.py' in cmdl  # generation-api
-                    or 'pixsim7/backend/generation/main.py' in cmdl  # generation-api
-                    or 'pixsim7_backend\\main.py' in cmdl  # Legacy compatibility
-                    or 'pixsim7_backend/main.py' in cmdl  # Legacy compatibility
-                ):
+                if _is_backend_cmdline(cmdl):
                     # If port provided and pid matches, prioritize by placing first
                     if port and pid in pids_by_port:
                         candidates.insert(0, pid)
