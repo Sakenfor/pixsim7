@@ -359,10 +359,11 @@ async def _release_account_reservation(
     account_service: AccountService,
     account_id: int,
     gen_logger,
+    skip_wake: bool = False,
 ) -> None:
     """Best-effort account release helper used across failure paths."""
     try:
-        await account_service.release_account(account_id)
+        await account_service.release_account(account_id, skip_wake=skip_wake)
     except Exception as release_err:
         gen_logger.warning("account_release_failed", error=str(release_err))
 
@@ -939,12 +940,14 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         gen_logger=gen_logger,
                         adaptive_recommended_defer_seconds=int(adaptive_submit_gate.get("defer_seconds") or 1),
                     )
-                    await _release_account_reservation(
-                        account_service=account_service,
-                        account_id=account.id,
-                        gen_logger=gen_logger,
-                    )
                     if concurrent_plan.get("action") == "stop":
+                        # Generation giving up — allow wake so the freed slot
+                        # can be used by another pinned generation.
+                        await _release_account_reservation(
+                            account_service=account_service,
+                            account_id=account.id,
+                            gen_logger=gen_logger,
+                        )
                         await _clear_pinned_concurrent_wait_count(generation.id, gen_logger=gen_logger)
                         await generation_service.mark_failed(
                             generation_id,
@@ -967,6 +970,15 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             "reason": "pinned_concurrent_max_waits",
                             "generation_id": generation_id,
                         }
+                    # Defer path — suppress wake because other pinned
+                    # generations would hit the same adaptive cap and
+                    # cascade through wasted reserve+release cycles.
+                    await _release_account_reservation(
+                        account_service=account_service,
+                        account_id=account.id,
+                        gen_logger=gen_logger,
+                        skip_wake=True,
+                    )
                     gen_logger.info(
                         "adaptive_concurrency_defer_before_submit",
                         generation_id=generation.id,
@@ -1199,12 +1211,6 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         gen_logger=gen_logger,
                         event_name="account_cooldown_concurrent_limit",
                     )
-                    await _release_account_reservation(
-                        account_service=account_service,
-                        account_id=account.id,
-                        gen_logger=gen_logger,
-                    )
-                    account_released = True
                     if _is_pinned_account(generation, account):
                         # Pinned account at capacity — wait for a slot to free
                         # up instead of rotating to a different account.
@@ -1223,6 +1229,16 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             ),
                         )
                         if concurrent_plan.get("action") == "defer":
+                            # Suppress wake — other pinned generations would
+                            # hit the same provider limit and cascade through
+                            # wasted reserve+release cycles.
+                            await _release_account_reservation(
+                                account_service=account_service,
+                                account_id=account.id,
+                                gen_logger=gen_logger,
+                                skip_wake=True,
+                            )
+                            account_released = True
                             defer_result = await _defer_pinned_generation(
                                 db=db,
                                 generation=generation,
@@ -1237,6 +1253,14 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                                 return defer_result
                             # Fall through to standard failure if defer fails
                         else:
+                            # Generation giving up — allow wake so the freed
+                            # slot can be used by another pinned generation.
+                            await _release_account_reservation(
+                                account_service=account_service,
+                                account_id=account.id,
+                                gen_logger=gen_logger,
+                            )
+                            account_released = True
                             await _clear_pinned_concurrent_wait_count(generation.id, gen_logger=gen_logger)
                             gen_logger.warning(
                                 "pinned_concurrent_max_waits",
@@ -1260,6 +1284,12 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                                 "generation_id": generation_id,
                             }
                     else:
+                        await _release_account_reservation(
+                            account_service=account_service,
+                            account_id=account.id,
+                            gen_logger=gen_logger,
+                        )
+                        account_released = True
                         requeue_result = await _requeue_generation_for_account_rotation(
                             db=db,
                             generation=generation,

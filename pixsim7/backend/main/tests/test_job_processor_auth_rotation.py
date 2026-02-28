@@ -151,7 +151,7 @@ async def test_process_generation_requeues_and_clears_preferred_on_auth_failure(
             self.reserved.append(account_id)
             return preferred_account
 
-        async def release_account(self, account_id: int):
+        async def release_account(self, account_id: int, **kwargs):
             self.released.append(account_id)
             return preferred_account
 

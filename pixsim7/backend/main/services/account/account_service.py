@@ -26,6 +26,12 @@ from pixsim7.backend.main.infrastructure.queue import (
 
 logger = get_logger()
 
+# Maximum concurrent-limit cooldown (matches CONCURRENT_COOLDOWN_SECONDS in
+# worker_concurrency.py).  Any remaining cooldown at or below this threshold
+# was set by a concurrent-limit rejection and is stale once a slot frees.
+# Auth cooldowns (300 s) are well above this and preserved.
+_MAX_CONCURRENT_COOLDOWN_SECONDS = 30
+
 
 class AccountService:
     """
@@ -311,14 +317,19 @@ class AccountService:
 
         return account
 
-    async def release_account(self, account_id: int) -> ProviderAccount:
+    async def release_account(self, account_id: int, *, skip_wake: bool = False) -> ProviderAccount:
         """
         Release account after job (decrement concurrency counter)
-        
+
         Uses SELECT FOR UPDATE to ensure atomic decrement.
 
         Args:
             account_id: Account ID
+            skip_wake: If True, skip the best-effort wake trigger for pinned
+                       generations.  Used when the release is from an adaptive
+                       concurrency defer — the slot is not truly available from
+                       the provider's perspective, so waking another pinned
+                       generation would just repeat the defer cycle.
 
         Returns:
             Updated account
@@ -344,11 +355,32 @@ class AccountService:
         await self.db.commit()
         await self.db.refresh(account)
 
+        if skip_wake:
+            return account
+
         # Best-effort wake trigger: if a slot just opened, dispatch one ready
         # pinned generation waiting on this account (early-pipeline admission).
         try:
             now = datetime.now(timezone.utc)
             cooldown_active = bool(account.cooldown_until and account.cooldown_until > now)
+
+            # Clear short concurrent-limit cooldowns now that a slot freed.
+            # The provider rejected because it was at capacity, but a job just
+            # completed so the condition no longer holds.  Auth cooldowns
+            # (300 s) are well above the threshold and are preserved.
+            if cooldown_active:
+                remaining = (account.cooldown_until - now).total_seconds()
+                if remaining <= _MAX_CONCURRENT_COOLDOWN_SECONDS:
+                    account.cooldown_until = None
+                    await self.db.commit()
+                    await self.db.refresh(account)
+                    cooldown_active = False
+                    logger.debug(
+                        "account_release_cleared_concurrent_cooldown",
+                        account_id=account.id,
+                        remaining_seconds=round(remaining, 1),
+                    )
+
             if (
                 account.status == AccountStatus.ACTIVE
                 and int(account.max_concurrent_jobs or 0) > 0
