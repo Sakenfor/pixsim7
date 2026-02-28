@@ -7,11 +7,9 @@ import type { WidgetConfig } from '@lib/ui/overlay';
 
 import { CompactAssetCard } from '@features/assets/components/shared';
 import { needsUploadToProvider } from '@features/assets/lib/resolveUploadTarget';
-import type { AssetSetSlotRef, InputItem } from '@features/generation';
+import type { InputItem } from '@features/generation';
 
 import type { OperationType } from '@/types/operations';
-
-import { SetSlotPopover } from './SetSlotPopover';
 
 export interface AssetPanelGridProps {
   slotItems: Array<InputItem | null>;
@@ -37,18 +35,7 @@ export interface AssetPanelGridProps {
 
   // Widget builders
   buildFusionRoleOverlay: (item: InputItem, slotIdx: number) => React.ReactNode | undefined;
-  buildSlotIndexWidget: (slotIdx: number) => WidgetConfig;
-  buildWarningWidget: (tooltip: string) => WidgetConfig;
-  buildSetBadgeWidget: (item: InputItem, slotIdx: number) => WidgetConfig | null;
-  buildSetLinkWidget: (slotIdx: number) => WidgetConfig;
-
-  // Asset set popover
-  activeSetPopover: { slotIdx: number; anchorRect: DOMRect } | null;
-  onSetPopoverClose: () => void;
-  onSetLink: (operationType: OperationType, inputId: string, setId: string) => void;
-  onSetUnlink: (operationType: OperationType, inputId: string) => void;
-  onSetModeChange: (operationType: OperationType, inputId: string, mode: AssetSetSlotRef['mode']) => void;
-  onSetReroll: (operationType: OperationType, inputId: string) => void;
+  buildSlotExtraWidgets: (item: InputItem, slotIdx: number) => WidgetConfig[];
 
   // Display settings
   enableHoverPreview: boolean;
@@ -81,16 +68,7 @@ export function AssetPanelGrid({
   removeInput,
   updateLockedTimestamp,
   buildFusionRoleOverlay,
-  buildSlotIndexWidget,
-  buildWarningWidget,
-  buildSetBadgeWidget,
-  buildSetLinkWidget,
-  activeSetPopover,
-  onSetPopoverClose,
-  onSetLink,
-  onSetUnlink,
-  onSetModeChange,
-  onSetReroll,
+  buildSlotExtraWidgets,
   enableHoverPreview,
   showPlayOverlay,
   clickToPlay,
@@ -204,13 +182,7 @@ export function AssetPanelGrid({
               disableMotion={isSelected}
               overlay={buildFusionRoleOverlay(inputItem, idx)}
               className={`${isSelected ? 'ring-2 ring-accent' : ''} ${isClamped ? '!border-amber-500/70' : ''}`}
-              extraWidgets={[
-                buildSlotIndexWidget(idx),
-                ...(inputItem.assetSetRef
-                  ? [buildSetBadgeWidget(inputItem, idx)].filter(Boolean)
-                  : [buildSetLinkWidget(idx)]),
-                ...(isClamped ? [buildWarningWidget(`Over limit — only the first ${maxAssetItems} assets will be used`)] : []),
-              ]}
+              extraWidgets={buildSlotExtraWidgets(inputItem, idx)}
               {...(needsUploadToProvider(inputItem.asset, effectiveProviderId) && !uploadedAssetIds.has(inputItem.asset.id) ? {
                 onUploadToProvider: () => handleUploadToProvider(inputItem.asset.id),
                 uploadingToProvider: uploadingAssetIds.has(inputItem.asset.id),
@@ -218,22 +190,6 @@ export function AssetPanelGrid({
           </div>
         );
       })}
-      {activeSetPopover && (() => {
-        const popoverItem = slotItems[activeSetPopover.slotIdx];
-        if (!popoverItem) return null;
-        return (
-          <SetSlotPopover
-            anchorRect={activeSetPopover.anchorRect}
-            inputItem={popoverItem}
-            operationType={operationType}
-            onSetLink={onSetLink}
-            onSetUnlink={onSetUnlink}
-            onSetModeChange={onSetModeChange}
-            onReroll={onSetReroll}
-            onClose={onSetPopoverClose}
-          />
-        );
-      })()}
     </div>
   );
 }

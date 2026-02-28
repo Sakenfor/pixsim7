@@ -720,6 +720,29 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     [handleSetPopoverOpen],
   );
 
+  // Unified widget assembly for any slot — replaces per-path duplication
+  const buildSlotExtraWidgets = useCallback(
+    (item: InputItem | null, slotIdx: number, opts?: { includeSlotIndex?: boolean }) => {
+      if (!item) return [];
+      const isClamped = clampedSlotIndices.has(slotIdx);
+      const widgets = [];
+      if (opts?.includeSlotIndex) {
+        widgets.push(buildSlotIndexWidget(slotIdx));
+      }
+      if (item.assetSetRef) {
+        const badge = buildSetBadgeWidget(item, slotIdx);
+        if (badge) widgets.push(badge);
+      } else {
+        widgets.push(buildSetLinkWidget(slotIdx));
+      }
+      if (isClamped) {
+        widgets.push(buildWarningWidget(`Over limit — only the first ${maxAssetItems} assets will be used`));
+      }
+      return widgets;
+    },
+    [clampedSlotIndices, maxAssetItems, buildSlotIndexWidget, buildSetBadgeWidget, buildSetLinkWidget, buildWarningWidget],
+  );
+
   return {
     // Identity / context
     controller,
@@ -788,6 +811,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     buildSlotIndexWidget,
     buildSetBadgeWidget,
     buildSetLinkWidget,
+    buildSlotExtraWidgets,
 
     // Asset set slot ref
     activeSetPopover,
