@@ -1,4 +1,4 @@
-import { Dropdown } from '@pixsim7/shared.ui';
+import { Dropdown, GroupByPillBar, GroupMenuTrigger, SegmentedControl, ToolbarSelect, type GroupByOption } from '@pixsim7/shared.ui';
 import type { RefObject } from 'react';
 
 import { Icon } from '@lib/icons';
@@ -13,6 +13,11 @@ import type {
 import { GROUP_BY_LABELS, GROUP_BY_UI_VALUES } from '../lib/groupBy';
 
 import { GROUP_SORT_OPTIONS, type GroupSortKey } from './groupHelpers';
+
+const GALLERY_GROUP_OPTIONS: GroupByOption<GalleryGroupBy>[] = GROUP_BY_UI_VALUES.map(v => ({
+  value: v,
+  label: GROUP_BY_LABELS[v],
+}));
 
 export interface GroupingMenuDropdownProps {
   groupMenuAnchorRef: RefObject<HTMLButtonElement | null>;
@@ -54,29 +59,14 @@ export function GroupingMenuDropdown({
 
   return (
     <div className="flex items-center gap-2">
-      <button
+      <GroupMenuTrigger
         ref={groupMenuAnchorRef}
-        type="button"
+        icon={<Icon name="layers" size={14} className={hasGrouping ? 'text-accent' : ''} />}
+        active={hasGrouping}
+        count={groupByStack.length}
         onClick={() => setGroupMenuOpen(!groupMenuOpen)}
         title={groupSummary}
-        aria-label={groupSummary}
-        className={`relative inline-flex h-7 w-7 items-center justify-center rounded border transition-colors ${
-          hasGrouping
-            ? 'bg-accent/10 border-accent/50 text-accent'
-            : 'bg-white dark:bg-neutral-900/60 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200'
-        }`}
-      >
-        <Icon
-          name="layers"
-          size={14}
-          className={hasGrouping ? 'text-accent' : ''}
-        />
-        {groupByStack.length > 0 && (
-          <span className="absolute -top-1.5 -right-1.5 text-[8px] leading-none px-0.5 min-w-[12px] text-center rounded-full bg-accent text-accent-text">
-            {groupByStack.length}
-          </span>
-        )}
-      </button>
+      />
       {groupMenuOpen && groupMenuRect && (
         <Dropdown
           isOpen={groupMenuOpen}
@@ -109,121 +99,51 @@ export function GroupingMenuDropdown({
               </button>
             </div>
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                  Mode
-                </span>
-                <div className="flex items-center gap-1">
-                  {(['single', 'multi'] as GalleryGroupMode[]).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => handleGroupModeChange(mode)}
-                      className={`px-2 py-1 text-xs rounded border transition-colors ${
-                        groupMode === mode
-                          ? 'bg-neutral-900 border-neutral-900 text-white dark:bg-neutral-100 dark:border-neutral-100 dark:text-neutral-900'
-                          : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:border-accent-muted'
-                      }`}
-                    >
-                      {mode === 'single' ? 'Single' : 'Multi'}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <SegmentedControl<GalleryGroupMode>
+                label="Mode"
+                value={groupMode}
+                onChange={handleGroupModeChange}
+                options={[
+                  { value: 'single', label: 'Single' },
+                  { value: 'multi', label: 'Multi' },
+                ]}
+              />
               {groupMode === 'multi' && groupByStack.length > 1 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                    Layout
-                  </span>
-                  <div className="flex items-center gap-1">
-                    {(['stack', 'parallel'] as GalleryGroupMultiLayout[]).map((layoutOpt) => (
-                      <button
-                        key={layoutOpt}
-                        type="button"
-                        onClick={() => onMultiLayoutChange(layoutOpt)}
-                        className={`px-2 py-1 text-xs rounded border transition-colors ${
-                          groupMultiLayout === layoutOpt
-                            ? 'bg-neutral-900 border-neutral-900 text-white dark:bg-neutral-100 dark:border-neutral-100 dark:text-neutral-900'
-                            : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:border-accent-muted'
-                        }`}
-                      >
-                        {layoutOpt === 'stack' ? 'Stack' : 'Parallel'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <SegmentedControl<GalleryGroupMultiLayout>
+                  label="Layout"
+                  value={groupMultiLayout}
+                  onChange={onMultiLayoutChange}
+                  options={[
+                    { value: 'stack', label: 'Stack' },
+                    { value: 'parallel', label: 'Parallel' },
+                  ]}
+                />
               )}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => toggleGroupBy('none')}
-                  className={`px-2 py-1 text-xs rounded border transition-colors ${
-                    groupByStack.length === 0
-                      ? 'bg-accent border-accent text-accent-text'
-                      : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:border-accent-muted'
-                  }`}
-                >
-                  None
-                </button>
-                {GROUP_BY_UI_VALUES.map((value) => {
-                  const index = groupByStack.indexOf(value);
-                  const selected = index >= 0;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => toggleGroupBy(value)}
-                      className={`px-2 py-1 text-xs rounded border transition-colors inline-flex items-center gap-1 ${
-                        selected
-                          ? 'bg-accent border-accent text-accent-text'
-                          : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:border-accent-muted'
-                      }`}
-                    >
-                      <span>{GROUP_BY_LABELS[value]}</span>
-                      {groupMode === 'multi' && selected && (
-                        <span className="text-[10px] px-1 rounded-full bg-white/20">
-                          {index + 1}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              <GroupByPillBar
+                options={GALLERY_GROUP_OPTIONS}
+                selected={groupByStack}
+                onToggle={toggleGroupBy}
+                onClear={() => toggleGroupBy('none')}
+              />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                View
-              </span>
-              <select
-                className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-accent"
-                value={groupView}
-                onChange={(e) => handleGroupViewChange(e.target.value as GalleryGroupView)}
-                disabled={!hasGrouping}
-              >
-                <option value="inline">List</option>
-                <option value="folders">Folders</option>
-                <option value="panel" disabled>
-                  Panel (soon)
-                </option>
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                Sort
-              </span>
-              <select
-                className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-accent"
-                value={groupSort}
-                onChange={(e) => setGroupSort(e.target.value as GroupSortKey)}
-                disabled={!hasGrouping}
-              >
-                {GROUP_SORT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <ToolbarSelect<GalleryGroupView>
+              label="View"
+              value={groupView}
+              onChange={handleGroupViewChange}
+              disabled={!hasGrouping}
+              options={[
+                { value: 'inline', label: 'List' },
+                { value: 'folders', label: 'Folders' },
+                { value: 'panel', label: 'Panel (soon)', disabled: true },
+              ]}
+            />
+            <ToolbarSelect<GroupSortKey>
+              label="Sort"
+              value={groupSort}
+              onChange={setGroupSort}
+              disabled={!hasGrouping}
+              options={GROUP_SORT_OPTIONS}
+            />
           </div>
         </Dropdown>
       )}

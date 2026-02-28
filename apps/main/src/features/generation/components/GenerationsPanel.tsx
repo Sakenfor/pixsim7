@@ -2,34 +2,45 @@
  * Generations Panel
  *
  * Dedicated panel for tracking and managing generation jobs.
- * Shows status, allows filtering, and provides retry/open actions.
+ * Shows status, allows filtering, grouping, and batch cancel.
  */
-import { DisclosureSection, FoldableJson } from '@pixsim7/shared.ui';
+import { DisclosureSection, FoldableJson, GroupByPillBar, ToolbarToggleButton, toggleInStack, clearStack } from '@pixsim7/shared.ui';
 import { useMemo, useState, useCallback } from 'react';
 
 import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
 import { Icons, Icon } from '@lib/icons';
 
+import { useAsset, getAssetDisplayUrls } from '@features/assets';
+import { ClientFilterBar } from '@features/gallery/components/ClientFilterBar';
+import { useClientFilterPersistence } from '@features/gallery/lib/useClientFilterPersistence';
+import { useClientFilters } from '@features/gallery/lib/useClientFilters';
 import { getGenerationStatusDisplay } from '@features/generation/lib/core/generationAssetMapping';
 import { getGenerationSessionStore } from '@features/generation/stores/generationScopeStores';
 import { useGenerationSettingsStore } from '@features/generation/stores/generationSettingsStore';
 
+import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+
+import { useBatchCancelGenerations } from '../hooks/useBatchCancelGenerations';
 import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
+import { GENERATION_FILTER_DEFS } from '../lib/generationFilterDefs';
+import {
+  groupGenerations,
+  GROUP_BY_OPTIONS,
+  type GenerationGroupBy,
+  type GenerationGroup,
+} from '../lib/generationGrouping';
 import { fromGenerationResponse, type GenerationModel } from '../models';
 import { useGenerationsStore, isGenerationActive } from '../stores/generationsStore';
-
-type StatusFilter = 'all' | 'active' | 'failed' | 'completed';
-type ProviderFilter = 'all' | string;
 
 export interface GenerationsPanelProps {
   onOpenAsset?: (assetId: number) => void;
 }
 
 export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [providerFilter, setProviderFilter] = useState<ProviderFilter>('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [groupByStack, setGroupByStack] = useState<GenerationGroupBy[]>([]);
+  const [showGroupPreviews, setShowGroupPreviews] = useState(false);
+  const [folderView, setFolderView] = useState(false);
 
   // WebSocket for real-time updates
   const { isConnected: wsConnected } = useGenerationWebSocket();
@@ -46,55 +57,41 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
     [generationsMap]
   );
 
-  // Get unique providers
-  const providers = useMemo(() => {
-    const providerSet = new Set(allGenerations.map(g => g.providerId));
-    return Array.from(providerSet).sort();
-  }, [allGenerations]);
+  // Reusable filter system
+  const persistenceOptions = useClientFilterPersistence('generations-panel-filters');
+  const {
+    filteredItems,
+    filterState,
+    visibleDefs,
+    setFilter,
+    resetFilters,
+    derivedOptions,
+  } = useClientFilters(allGenerations, GENERATION_FILTER_DEFS, persistenceOptions);
 
-  // Filter generations
-  const filteredGenerations = useMemo(() => {
-    let filtered = allGenerations;
-
-    // Status filter
-    if (statusFilter === 'active') {
-      filtered = filtered.filter(g => isGenerationActive(g.status));
-    } else if (statusFilter === 'failed') {
-      filtered = filtered.filter(g => g.status === 'failed');
-    } else if (statusFilter === 'completed') {
-      filtered = filtered.filter(g => g.status === 'completed');
-    }
-
-    // Provider filter
-    if (providerFilter !== 'all') {
-      filtered = filtered.filter(g => g.providerId === providerFilter);
-    }
-
-    // Search filter (search in prompt)
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(g =>
-        g.finalPrompt?.toLowerCase().includes(query) ||
-        g.name?.toLowerCase().includes(query) ||
-        g.description?.toLowerCase().includes(query)
-      );
-    }
-
-    // Sort by createdAt descending (most recent first)
-    return filtered.sort((a, b) =>
+  // Sort filtered results by newest first
+  const sortedGenerations = useMemo(
+    () => [...filteredItems].sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-  }, [allGenerations, statusFilter, providerFilter, searchQuery]);
+    ),
+    [filteredItems]
+  );
 
-  // Count by status
-  const statusCounts = useMemo(() => {
-    return {
-      all: allGenerations.length,
-      active: allGenerations.filter(g => isGenerationActive(g.status)).length,
-      failed: allGenerations.filter(g => g.status === 'failed').length,
-      completed: allGenerations.filter(g => g.status === 'completed').length,
-    };
-  }, [allGenerations]);
+  // Grouping
+  const groups = useMemo(
+    () => groupGenerations(sortedGenerations, groupByStack),
+    [sortedGenerations, groupByStack]
+  );
+
+  // Batch cancel
+  const { batchCancel, isCancelling: isBatchCancelling } = useBatchCancelGenerations();
+
+  const handleBatchCancel = useCallback(async (ids: number[]) => {
+    if (!confirm(`Cancel ${ids.length} active generation(s)?`)) return;
+    const result = await batchCancel(ids);
+    if (result.failed > 0) {
+      alert(`Cancelled ${result.succeeded}, failed ${result.failed}:\n${result.errors.join('\n')}`);
+    }
+  }, [batchCancel]);
 
   const handleRetry = useCallback(async (id: number) => {
     try {
@@ -198,50 +195,38 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
 
         {/* Filters row */}
         <div className="flex gap-2 items-center flex-wrap">
-          {/* Status filter */}
-          <div className="flex gap-1 bg-neutral-100 dark:bg-neutral-800 p-1 rounded-lg">
-            {(['all', 'active', 'failed', 'completed'] as const).map(status => (
-              <button
-                key={status}
-                onClick={() => setStatusFilter(status)}
-                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                  statusFilter === status
-                    ? 'bg-white dark:bg-neutral-700 shadow-sm'
-                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
-                }`}
-              >
-                {status.charAt(0).toUpperCase() + status.slice(1)}
-                <span className="ml-1.5 text-neutral-500 dark:text-neutral-500">
-                  {statusCounts[status]}
-                </span>
-              </button>
-            ))}
-          </div>
+          <ClientFilterBar
+            defs={visibleDefs}
+            filterState={filterState}
+            derivedOptions={derivedOptions}
+            onFilterChange={setFilter}
+            onReset={resetFilters}
+            popoverMode="inline"
+          />
 
-          {/* Provider filter */}
-          {providers.length > 1 && (
-            <select
-              value={providerFilter}
-              onChange={(e) => setProviderFilter(e.target.value)}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
-            >
-              <option value="all">All Providers</option>
-              {providers.map(provider => (
-                <option key={provider} value={provider}>{provider}</option>
-              ))}
-            </select>
+          {/* Group by pill bar */}
+          <GroupByPillBar
+            options={GROUP_BY_OPTIONS}
+            selected={groupByStack}
+            onToggle={(v) => setGroupByStack(prev => toggleInStack(prev, v))}
+            onClear={() => setGroupByStack(clearStack())}
+          />
+          {groupByStack.length > 0 && (
+            <>
+              <ToolbarToggleButton
+                active={showGroupPreviews}
+                onClick={() => setShowGroupPreviews(prev => !prev)}
+                icon={<Icon name={showGroupPreviews ? 'eye' : 'eyeOff'} size={14} />}
+                title={showGroupPreviews ? 'Hide group previews' : 'Show group previews'}
+              />
+              <ToolbarToggleButton
+                active={folderView}
+                onClick={() => setFolderView(prev => !prev)}
+                icon={<Icon name={folderView ? 'folderTree' : 'rows'} size={14} />}
+                title={folderView ? 'Switch to card view' : 'Switch to folder view'}
+              />
+            </>
           )}
-
-          {/* Search */}
-          <div className="flex-1 min-w-[200px]">
-            <input
-              type="text"
-              placeholder="Search prompts..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-3 py-1.5 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500"
-            />
-          </div>
         </div>
       </div>
 
@@ -256,7 +241,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
               Loading generations...
             </p>
           </div>
-        ) : filteredGenerations.length === 0 ? (
+        ) : sortedGenerations.length === 0 ? (
           <div className="text-center py-16">
             <div className="mb-4 flex justify-center">
               <Icons.zap size={48} className="text-neutral-400" />
@@ -267,9 +252,27 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
                 : 'No generations match the selected filters'}
             </p>
           </div>
+        ) : groups ? (
+          <div className="space-y-3">
+            {groups.map(group => (
+              <GenerationGroupSection
+                key={group.key}
+                group={group}
+                showPreview={showGroupPreviews}
+                folderView={folderView}
+                onRetry={handleRetry}
+                onCancel={handleCancel}
+                onDelete={handleDelete}
+                onOpenAsset={handleOpenAsset}
+                onLoadToQuickGen={handleLoadToQuickGen}
+                onBatchCancel={handleBatchCancel}
+                isBatchCancelling={isBatchCancelling}
+              />
+            ))}
+          </div>
         ) : (
           <div className="space-y-2">
-            {filteredGenerations.map(generation => (
+            {sortedGenerations.map(generation => (
               <GenerationItem
                 key={generation.id}
                 generation={generation}
@@ -287,8 +290,178 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
   );
 }
 
+// ============================================================================
+// GenerationGroupSection
+// ============================================================================
+
+interface GenerationGroupSectionProps {
+  group: GenerationGroup;
+  showPreview?: boolean;
+  depth?: number;
+  folderView?: boolean;
+  onRetry: (id: number) => void;
+  onCancel: (id: number) => void;
+  onDelete: (id: number) => void;
+  onOpenAsset: (assetId: number) => void;
+  onLoadToQuickGen: (generation: GenerationModel) => void;
+  onBatchCancel: (ids: number[]) => void;
+  isBatchCancelling: boolean;
+}
+
+/** Inline 28×28 asset thumbnail for group headers. */
+function GroupAssetPreview({ assetId }: { assetId: number }) {
+  const { asset, loading } = useAsset(assetId);
+  const urls = asset ? getAssetDisplayUrls(asset) : undefined;
+  const { thumbSrc, thumbLoading } = useResolvedAssetMedia({
+    thumbUrl: urls?.thumbnailUrl,
+    previewUrl: urls?.previewUrl,
+  });
+
+  if (!loading && !asset) return null;
+
+  if (loading || thumbLoading) {
+    return (
+      <div className="w-7 h-7 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse flex-shrink-0" />
+    );
+  }
+
+  if (!thumbSrc) return null;
+
+  return (
+    <img
+      src={thumbSrc}
+      alt=""
+      className="w-7 h-7 rounded object-cover flex-shrink-0"
+    />
+  );
+}
+
+/** Collect all active generation IDs from a group, including nested subgroups. */
+function collectActiveIds(group: { items: GenerationModel[]; subgroups?: Array<{ items: GenerationModel[]; subgroups?: any }> }): number[] {
+  const ids: number[] = [];
+  if (group.subgroups) {
+    for (const sub of group.subgroups) ids.push(...collectActiveIds(sub));
+  } else {
+    for (const g of group.items) {
+      if (isGenerationActive(g.status)) ids.push(g.id);
+    }
+  }
+  return ids;
+}
+
+function GenerationGroupSection({
+  group,
+  showPreview,
+  depth = 0,
+  folderView,
+  onRetry,
+  onCancel,
+  onDelete,
+  onOpenAsset,
+  onLoadToQuickGen,
+  onBatchCancel,
+  isBatchCancelling,
+}: GenerationGroupSectionProps) {
+  const activeIds = useMemo(() => collectActiveIds(group), [group]);
+  const isNested = depth > 0;
+  const sectionSize = folderView || isNested ? 'sm' : 'md';
+  const useBorder = folderView || isNested;
+
+  // Parse asset ID for thumbnail preview (only when dimension is 'asset')
+  const assetId = showPreview && group.dimension === 'asset' && group.key !== '__no_asset__'
+    ? Number(group.key)
+    : null;
+
+  const groupLabel = (
+    <span className="flex items-center gap-2">
+      {assetId != null && <GroupAssetPreview assetId={assetId} />}
+      <span>{group.label}</span>
+      <span className="text-neutral-500 dark:text-neutral-500">
+        ({group.items.length})
+      </span>
+      {group.activeCount > 0 && (
+        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+          {group.activeCount} active
+        </span>
+      )}
+    </span>
+  );
+
+  // Full prompt preview block (shown inside expanded content for prompt groups)
+  const promptPreviewBlock = showPreview && group.dimension === 'prompt' && group.items[0]?.finalPrompt ? (
+    <div className="mb-2 px-3 py-2 text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800/50 border-l-2 border-neutral-300 dark:border-neutral-600 rounded-r whitespace-pre-wrap">
+      {group.items[0].finalPrompt}
+    </div>
+  ) : null;
+
+  const batchCancelAction = activeIds.length >= 2 ? (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onBatchCancel(activeIds);
+      }}
+      disabled={isBatchCancelling}
+      className="px-2 py-0.5 text-[10px] font-medium rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
+      title={`Cancel all ${activeIds.length} active generations`}
+    >
+      {isBatchCancelling ? 'Cancelling...' : `Cancel ${activeIds.length}`}
+    </button>
+  ) : null;
+
+  return (
+    <DisclosureSection
+      label={groupLabel}
+      defaultOpen
+      size={sectionSize}
+      iconStyle="chevron"
+      bordered={useBorder}
+      actions={batchCancelAction}
+    >
+      {promptPreviewBlock}
+      <div className="space-y-2 mt-1">
+        {group.subgroups ? (
+          group.subgroups.map(sub => (
+            <GenerationGroupSection
+              key={sub.key}
+              group={sub}
+              showPreview={showPreview}
+              depth={depth + 1}
+              folderView={folderView}
+              onRetry={onRetry}
+              onCancel={onCancel}
+              onDelete={onDelete}
+              onOpenAsset={onOpenAsset}
+              onLoadToQuickGen={onLoadToQuickGen}
+              onBatchCancel={onBatchCancel}
+              isBatchCancelling={isBatchCancelling}
+            />
+          ))
+        ) : (
+          group.items.map(generation => (
+            <GenerationItem
+              key={generation.id}
+              generation={generation}
+              folderView={folderView}
+              onRetry={onRetry}
+              onCancel={onCancel}
+              onDelete={onDelete}
+              onOpenAsset={onOpenAsset}
+              onLoadToQuickGen={onLoadToQuickGen}
+            />
+          ))
+        )}
+      </div>
+    </DisclosureSection>
+  );
+}
+
+// ============================================================================
+// GenerationItem
+// ============================================================================
+
 interface GenerationItemProps {
   generation: GenerationModel;
+  folderView?: boolean;
   onRetry: (id: number) => void;
   onCancel: (id: number) => void;
   onDelete: (id: number) => void;
@@ -298,7 +471,7 @@ interface GenerationItemProps {
 
 type ParamTab = 'raw' | 'canonical' | 'submitted';
 
-function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, onLoadToQuickGen }: GenerationItemProps) {
+function GenerationItem({ generation, folderView, onRetry, onCancel, onDelete, onOpenAsset, onLoadToQuickGen }: GenerationItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -445,6 +618,51 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
     if (minutes > 0) return `${minutes}m ago`;
     return 'just now';
   }, [generation.createdAt]);
+
+  // Compact single-line rendering for folder view
+  if (folderView) {
+    return (
+      <div className="flex items-center gap-2 py-1 px-1 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800/50 rounded transition-colors group/compact">
+        <Icon name={statusDisplay.icon} size={14} className={`flex-shrink-0 ${statusDisplay.color}`} />
+        <span className="truncate flex-1 min-w-0 text-neutral-800 dark:text-neutral-200">
+          {promptPreview}
+        </span>
+        <span className="text-neutral-500 dark:text-neutral-500 shrink-0">{timeAgo}</span>
+        <div className="flex gap-0.5 shrink-0 opacity-0 group-hover/compact:opacity-100 transition-opacity">
+          {canCancel && (
+            <button
+              onClick={handleCancelClick}
+              disabled={isCancelling}
+              className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors disabled:opacity-50"
+              title="Cancel"
+            >
+              <Icon name="x" size={12} className="text-red-600 dark:text-red-400" />
+            </button>
+          )}
+          {canRetry && (
+            <button
+              onClick={handleRetryClick}
+              disabled={isRetrying}
+              className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors disabled:opacity-50"
+              title="Retry"
+            >
+              <Icon name="refreshCw" size={12} className={`text-blue-600 dark:text-blue-400 ${isRetrying ? 'animate-spin' : ''}`} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={handleDeleteClick}
+              disabled={isDeleting}
+              className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors disabled:opacity-50"
+              title="Delete"
+            >
+              <Icon name="trash" size={12} className="text-neutral-500" />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors">
