@@ -14,6 +14,7 @@ import { needsUploadToProvider } from '@features/assets/lib/resolveUploadTarget'
 import { AssetPanelGrid } from './AssetPanelGrid';
 import { AssetPanelHeader } from './AssetPanelHeader';
 import type { QuickGenPanelProps } from './quickGenPanelTypes';
+import { SetSlotPopover } from './SetSlotPopover';
 import { useAssetPanelState } from './useAssetPanelState';
 
 export function AssetPanel(props: QuickGenPanelProps) {
@@ -172,8 +173,27 @@ export function AssetPanel(props: QuickGenPanelProps) {
             clickToPlay={state.clickToPlay}
             overlay={state.currentInput ? state.buildFusionRoleOverlay(state.currentInput, currentSlotIndex ?? 0) : undefined}
             className={isCurrentClamped ? '!border-amber-500/70' : ''}
-            extraWidgets={isCurrentClamped ? [state.buildWarningWidget(`Over limit — only the first ${state.maxAssetItems} assets will be used`)] : undefined}
+            extraWidgets={[
+              ...(state.currentInput?.assetSetRef
+                ? [state.buildSetBadgeWidget(state.currentInput, currentSlotIndex ?? 0)].filter(Boolean)
+                : state.currentInput
+                  ? [state.buildSetLinkWidget(currentSlotIndex ?? 0)]
+                  : []),
+              ...(isCurrentClamped ? [state.buildWarningWidget(`Over limit — only the first ${state.maxAssetItems} assets will be used`)] : []),
+            ]}
           />
+          {state.activeSetPopover && state.currentInput && (
+            <SetSlotPopover
+              anchorRect={state.activeSetPopover.anchorRect}
+              inputItem={state.currentInput}
+              operationType={state.operationType}
+              onSetLink={state.handleSetLink}
+              onSetUnlink={state.handleSetUnlink}
+              onSetModeChange={state.handleSetModeChange}
+              onReroll={state.handleSetReroll}
+              onClose={state.handleSetPopoverClose}
+            />
+          )}
         </div>
       </div>
     </div>
