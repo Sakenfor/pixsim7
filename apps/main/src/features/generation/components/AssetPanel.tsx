@@ -85,6 +85,14 @@ export function AssetPanel(props: QuickGenPanelProps) {
             buildFusionRoleOverlay={state.buildFusionRoleOverlay}
             buildSlotIndexWidget={state.buildSlotIndexWidget}
             buildWarningWidget={state.buildWarningWidget}
+            buildSetBadgeWidget={state.buildSetBadgeWidget}
+            buildSetLinkWidget={state.buildSetLinkWidget}
+            activeSetPopover={state.activeSetPopover}
+            onSetPopoverClose={state.handleSetPopoverClose}
+            onSetLink={state.handleSetLink}
+            onSetUnlink={state.handleSetUnlink}
+            onSetModeChange={state.handleSetModeChange}
+            onSetReroll={state.handleSetReroll}
             enableHoverPreview={state.enableHoverPreview}
             showPlayOverlay={state.showPlayOverlay}
             clickToPlay={state.clickToPlay}

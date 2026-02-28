@@ -12,7 +12,7 @@ function createBaseContext(partial: Partial<QuickGenerateContext> = {}): QuickGe
   };
 }
 
-describe('buildGenerationRequest', async () => {
+describe('buildGenerationRequest', () => {
   it('requires a prompt for text-based operations', async () => {
     const result = await buildGenerationRequest(createBaseContext());
 

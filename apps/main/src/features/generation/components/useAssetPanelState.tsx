@@ -16,8 +16,10 @@ import { Icon } from '@lib/icons';
 import { createBadgeWidget } from '@lib/ui/overlay';
 
 import { uploadAssetToProvider, type AssetModel } from '@features/assets';
+import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
 import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrateAssetModel';
 import { notifyGalleryOfUpdatedAsset } from '@features/assets/lib/uploadActions';
+import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import {
   CAP_ASSET_INPUT,
   useProvideCapability,
@@ -28,11 +30,13 @@ import {
   useGenerationScopeStores,
   useGenerationWorkbench,
   resolveDisplayAssets,
+  buildFallbackAsset,
 } from '@features/generation';
 import {
   QUICKGEN_ASSET_COMPONENT_ID,
   QUICKGEN_ASSET_DEFAULTS,
 } from '@features/generation/lib/quickGenerateComponentSettings';
+import type { AssetSetSlotRef } from '@features/generation/stores/generationInputStore';
 import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId, usePanelInstanceSettingsStore, GENERATION_SCOPE_ID } from '@features/panels';
 import { useQuickGenerateController } from '@features/prompts';
 import { useProviderIdForModel } from '@features/providers';
@@ -218,15 +222,36 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     clearComponentSettings(instanceId, QUICKGEN_ASSET_COMPONENT_ID);
   }, [clearComponentSettings, instanceId]);
 
+  // Persisted source_asset_id survives refresh even when lastSelectedAsset doesn't.
+  // Used as fallback so the asset card isn't empty after a page reload.
+  const sourceAssetId = Number(controller.dynamicParams?.source_asset_id);
+  const hasSourceAssetId = Number.isFinite(sourceAssetId) && sourceAssetId > 0;
+
   const rawDisplayAssets = useMemo(() => {
     if (ctx?.displayAssets) return ctx.displayAssets;
-    return resolveDisplayAssets({
+    const resolved = resolveDisplayAssets({
       operationType,
       inputs: controller.operationInputs,
       currentIndex: controller.operationInputIndex,
       lastSelectedAsset: controller.lastSelectedAsset,
       allowAnySelected,
     });
+    // Replace stubs synchronously with cached hydrated versions to avoid
+    // a two-phase render (stub → hydrated) flash on re-select.
+    const cache = hydratedDisplayAssetCacheRef.current;
+    const withCache = cache.size > 0
+      ? resolved.map((asset) => (isStubAssetModel(asset) ? cache.get(asset.id) ?? asset : asset))
+      : resolved;
+    if (withCache.length > 0) return withCache;
+    // Fallback: source_asset_id is persisted but lastSelectedAsset is not.
+    // Create a stub so the hydration effect can fetch the real asset.
+    if (hasSourceAssetId) {
+      const mediaType = operationType === 'video_extend' ? 'video' : 'image';
+      const cached = cache.get(sourceAssetId);
+      if (cached) return [cached];
+      return [buildFallbackAsset({ id: sourceAssetId, type: mediaType, url: '' })];
+    }
+    return withCache;
   }, [
     ctx?.displayAssets,
     operationType,
@@ -234,6 +259,8 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     controller.operationInputIndex,
     controller.lastSelectedAsset,
     allowAnySelected,
+    hasSourceAssetId,
+    sourceAssetId,
   ]);
 
   useEffect(() => {
@@ -521,6 +548,178 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const currentInput = orderedInputs[currentInputIdx];
   const currentInputId = currentInput?.id;
 
+  // ─── Asset Set Slot Ref ───
+
+  const storeSetAssetSetRef = useInputStore(s => s.setAssetSetRef);
+  const storeUpdateAssetSetMode = useInputStore(s => s.updateAssetSetMode);
+  const storeLockAssetSetPick = useInputStore(s => s.lockAssetSetPick);
+
+  // Popover state for set linking
+  const [activeSetPopover, setActiveSetPopover] = useState<{ slotIdx: number; anchorRect: DOMRect } | null>(null);
+
+  const handleSetPopoverOpen = useCallback((slotIdx: number, rect: DOMRect) => {
+    setActiveSetPopover((prev) =>
+      prev?.slotIdx === slotIdx ? null : { slotIdx, anchorRect: rect },
+    );
+  }, []);
+
+  const handleSetPopoverClose = useCallback(() => {
+    setActiveSetPopover(null);
+  }, []);
+
+  const handleSetLink = useCallback(async (opType: typeof operationType, inputId: string, setId: string) => {
+    // Link set and pick initial preview asset
+    const set = useAssetSetStore.getState().getSet(setId);
+    if (!set) return;
+    const resolved = await resolveAssetSet(set);
+    const pick = resolved.length > 0 ? resolved[0] : undefined;
+    storeSetAssetSetRef(opType, inputId, { setId, mode: 'random_each' });
+    if (pick) {
+      useInputStore.getState().updateAssetModel(pick.id, pick);
+      // Update the slot's display asset to the first set asset
+      const items = useInputStore.getState().inputsByOperation[opType]?.items ?? [];
+      const item = items.find(i => i.id === inputId);
+      if (item) {
+        // Update via the generic updateAssetModel won't work for different asset IDs.
+        // Instead, use setAssetSetRef which we already called, and update the item's asset directly.
+        const state = useInputStore.getState();
+        const existing = state.inputsByOperation[opType];
+        if (existing) {
+          (useInputStore as any).setState({
+            inputsByOperation: {
+              ...state.inputsByOperation,
+              [opType]: {
+                ...existing,
+                items: existing.items.map(i =>
+                  i.id === inputId ? { ...i, asset: pick } : i
+                ),
+              },
+            },
+          });
+        }
+      }
+    }
+  }, [operationType, storeSetAssetSetRef, useInputStore]);
+
+  const handleSetUnlink = useCallback((opType: typeof operationType, inputId: string) => {
+    storeSetAssetSetRef(opType, inputId, undefined);
+    setActiveSetPopover(null);
+  }, [storeSetAssetSetRef]);
+
+  const handleSetModeChange = useCallback(async (opType: typeof operationType, inputId: string, mode: AssetSetSlotRef['mode']) => {
+    storeUpdateAssetSetMode(opType, inputId, mode);
+    if (mode === 'locked') {
+      // Pick a random asset and lock it
+      const items = useInputStore.getState().inputsByOperation[opType]?.items ?? [];
+      const item = items.find(i => i.id === inputId);
+      if (item?.assetSetRef) {
+        const set = useAssetSetStore.getState().getSet(item.assetSetRef.setId);
+        if (set) {
+          const resolved = await resolveAssetSet(set);
+          if (resolved.length > 0) {
+            const pick = resolved[Math.floor(Math.random() * resolved.length)];
+            storeLockAssetSetPick(opType, inputId, pick.id);
+            // Update display asset
+            const state = useInputStore.getState();
+            const existing = state.inputsByOperation[opType];
+            if (existing) {
+              (useInputStore as any).setState({
+                inputsByOperation: {
+                  ...state.inputsByOperation,
+                  [opType]: {
+                    ...existing,
+                    items: existing.items.map(i =>
+                      i.id === inputId ? { ...i, asset: pick } : i
+                    ),
+                  },
+                },
+              });
+            }
+          }
+        }
+      }
+    }
+  }, [storeUpdateAssetSetMode, storeLockAssetSetPick, useInputStore]);
+
+  const handleSetReroll = useCallback(async (opType: typeof operationType, inputId: string) => {
+    const items = useInputStore.getState().inputsByOperation[opType]?.items ?? [];
+    const item = items.find(i => i.id === inputId);
+    if (!item?.assetSetRef) return;
+    const set = useAssetSetStore.getState().getSet(item.assetSetRef.setId);
+    if (!set) return;
+    const resolved = await resolveAssetSet(set);
+    if (resolved.length === 0) return;
+    const pick = resolved[Math.floor(Math.random() * resolved.length)];
+    storeLockAssetSetPick(opType, inputId, pick.id);
+    // Update display asset
+    const state = useInputStore.getState();
+    const existing = state.inputsByOperation[opType];
+    if (existing) {
+      (useInputStore as any).setState({
+        inputsByOperation: {
+          ...state.inputsByOperation,
+          [opType]: {
+            ...existing,
+            items: existing.items.map(i =>
+              i.id === inputId ? { ...i, asset: pick } : i
+            ),
+          },
+        },
+      });
+    }
+  }, [storeLockAssetSetPick, useInputStore]);
+
+  // Badge widget for slots WITH a set linked (always visible)
+  const buildSetBadgeWidget = useCallback(
+    (item: InputItem, slotIdx: number) => {
+      if (!item.assetSetRef) return null;
+      const set = useAssetSetStore.getState().getSet(item.assetSetRef.setId);
+      return createBadgeWidget({
+        id: 'asset-set-ref',
+        position: { anchor: 'top-left', offset: { x: 4, y: 22 } },
+        visibility: { trigger: 'always', transition: 'none' },
+        variant: 'icon',
+        icon: item.assetSetRef.mode === 'random_each' ? 'shuffle' : 'lock',
+        color: 'purple',
+        shape: 'circle',
+        tooltip: `Set: ${set?.name ?? 'Unknown'} (${item.assetSetRef.mode === 'random_each' ? 'random' : 'locked'})`,
+        priority: 21,
+        onClick: (e: any) => {
+          const target = e?.currentTarget ?? e?.target;
+          if (target) {
+            const rect = target.getBoundingClientRect();
+            handleSetPopoverOpen(slotIdx, rect);
+          }
+        },
+      });
+    },
+    [handleSetPopoverOpen],
+  );
+
+  // Badge widget for slots WITHOUT a set linked (hover-only, to allow linking)
+  const buildSetLinkWidget = useCallback(
+    (slotIdx: number) => createBadgeWidget({
+      id: 'asset-set-link',
+      position: { anchor: 'top-left', offset: { x: 4, y: 22 } },
+      visibility: { trigger: 'hover-container', transition: 'fade' },
+      variant: 'icon',
+      icon: 'shuffle',
+      color: 'gray',
+      shape: 'circle',
+      tooltip: 'Link asset set',
+      priority: 21,
+      className: 'opacity-50 hover:opacity-100',
+      onClick: (e: any) => {
+        const target = e?.currentTarget ?? e?.target;
+        if (target) {
+          const rect = target.getBoundingClientRect();
+          handleSetPopoverOpen(slotIdx, rect);
+        }
+      },
+    }),
+    [handleSetPopoverOpen],
+  );
+
   return {
     // Identity / context
     controller,
@@ -587,6 +786,17 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     buildFusionRoleOverlay,
     buildWarningWidget,
     buildSlotIndexWidget,
+    buildSetBadgeWidget,
+    buildSetLinkWidget,
+
+    // Asset set slot ref
+    activeSetPopover,
+    handleSetPopoverOpen,
+    handleSetPopoverClose,
+    handleSetLink,
+    handleSetUnlink,
+    handleSetModeChange,
+    handleSetReroll,
 
     // Source label
     sourceLabel: ctx?.sourceLabel,

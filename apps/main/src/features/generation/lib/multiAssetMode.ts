@@ -25,12 +25,20 @@ export interface DisplayAssetsParams {
   allowAnySelected?: boolean;
 }
 
+// Cache fallback assets by ID so re-selecting the same gallery asset
+// returns a stable reference instead of creating a new object each time.
+const fallbackCache = new Map<number, AssetModel>();
+
 /**
  * Builds a fallback AssetModel from a selected asset reference.
  * Used when no inputs are available but an asset is selected in the gallery.
  */
 export function buildFallbackAsset(asset: SelectedAssetLike): AssetModel {
-  return {
+  const cached = fallbackCache.get(asset.id);
+  if (cached && cached.previewUrl === asset.url && cached.mediaType === asset.type) {
+    return cached;
+  }
+  const model: AssetModel = {
     id: asset.id,
     createdAt: new Date().toISOString(),
     description: null,
@@ -58,6 +66,8 @@ export function buildFallbackAsset(asset: SelectedAssetLike): AssetModel {
     userId: 0,
     width: null,
   };
+  fallbackCache.set(asset.id, model);
+  return model;
 }
 
 /**
