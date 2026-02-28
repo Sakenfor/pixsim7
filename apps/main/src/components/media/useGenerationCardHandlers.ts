@@ -332,7 +332,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
         opSpec,
       );
 
-      const buildResult = buildGenerationRequest({
+      const buildResult = await buildGenerationRequest({
         operationType: 'video_extend',
         prompt: prompt || '',
         dynamicParams: extendParams,

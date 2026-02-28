@@ -14,14 +14,14 @@ function createBaseContext(partial: Partial<QuickGenerateContext> = {}): QuickGe
 
 describe('buildGenerationRequest', () => {
   it('requires a prompt for text-based operations', () => {
-    const result = buildGenerationRequest(createBaseContext());
+    const result = await buildGenerationRequest(createBaseContext());
 
     expect(result.error).toBeTruthy();
     expect(result.error).toContain('Please enter a prompt');
   });
 
   it('accepts a prompt and trims whitespace for text operations', () => {
-    const result = buildGenerationRequest(
+    const result = await buildGenerationRequest(
       createBaseContext({
         prompt: '   cinematic dusk skyline   ',
       })
@@ -33,7 +33,7 @@ describe('buildGenerationRequest', () => {
   });
 
   it('clamps prompt to maxChars in payload', () => {
-    const result = buildGenerationRequest(
+    const result = await buildGenerationRequest(
       createBaseContext({
         prompt: '   cinematic dusk skyline   ',
         maxChars: 9,
@@ -47,7 +47,7 @@ describe('buildGenerationRequest', () => {
 
   it('keeps 50 chars of headroom when clamping larger prompt limits', () => {
     const overlongPrompt = 'x'.repeat(160);
-    const result = buildGenerationRequest(
+    const result = await buildGenerationRequest(
       createBaseContext({
         prompt: overlongPrompt,
         maxChars: 100,
@@ -61,7 +61,7 @@ describe('buildGenerationRequest', () => {
   });
 
   it('does not let dynamicParams.prompt override clamped prompt', () => {
-    const result = buildGenerationRequest(
+    const result = await buildGenerationRequest(
       createBaseContext({
         prompt: '  hero in storm  ',
         dynamicParams: {
@@ -85,7 +85,7 @@ describe('buildGenerationRequest', () => {
       dynamicParams: { source_asset_id: 42 },
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toContain('Please enter a prompt');
   });
 
@@ -96,7 +96,7 @@ describe('buildGenerationRequest', () => {
       dynamicParams: {},  // No source_asset_id
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toContain('No image selected');
   });
 
@@ -107,7 +107,7 @@ describe('buildGenerationRequest', () => {
       dynamicParams: { source_asset_id: 42 },
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params).toMatchObject({
       prompt: 'Add neon rim light',
@@ -128,7 +128,7 @@ describe('buildGenerationRequest', () => {
       dynamicParams: {},
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params).toMatchObject({
       composition_assets: [
@@ -152,7 +152,7 @@ describe('buildGenerationRequest', () => {
       dynamicParams: {},
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params?.composition_assets).toEqual([
       { url: 'blob:local-image-1', layer: 0, role: 'environment', media_type: 'image' },
@@ -171,7 +171,7 @@ describe('buildGenerationRequest', () => {
       dynamicParams: {},
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params?.composition_assets).toEqual([
       { asset: 'asset:1', layer: 0, role: 'environment', media_type: 'image' },
@@ -216,7 +216,7 @@ describe('buildGenerationRequest', () => {
       dynamicParams: {},
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     // char:hero -> main_character
     // bg -> environment
@@ -255,7 +255,7 @@ describe('buildGenerationRequest', () => {
       dynamicParams: {},
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     // First gets default environment, second gets default main_character
     expect(result.params?.composition_assets).toEqual([
@@ -274,7 +274,7 @@ describe('buildGenerationRequest', () => {
       },
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params).toMatchObject({
       audio: 1,
@@ -291,7 +291,7 @@ describe('buildGenerationRequest', () => {
       },
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params?.duration).toBe(13);
   });
@@ -305,7 +305,7 @@ describe('buildGenerationRequest', () => {
       transitionDurations: [1.2, 9],
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params?.durations).toEqual([1, 5]);
   });
@@ -318,7 +318,7 @@ describe('buildGenerationRequest', () => {
       prompts: ['fade', 'sparkle'],
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params).toMatchObject({
       composition_assets: [
@@ -337,7 +337,7 @@ describe('buildGenerationRequest', () => {
       dynamicParams: { source_asset_id: 7, image_url: 'img_id:legacy' },
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params?.composition_assets).toMatchObject([
       { asset: 'asset:7', role: 'source_image', media_type: 'image' },
@@ -359,7 +359,7 @@ describe('buildGenerationRequest', () => {
       ] as any,
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params?.composition_assets).toEqual([
       { url: 'blob:local-i2v', layer: 0, role: 'source_image', media_type: 'image' },
@@ -380,7 +380,7 @@ describe('buildGenerationRequest', () => {
       ] as any,
     });
 
-    const result = buildGenerationRequest(context);
+    const result = await buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params?.composition_assets).toEqual([
       { url: 'blob:local-video', layer: 0, role: 'source_video', media_type: 'video' },

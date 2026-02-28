@@ -1,6 +1,11 @@
 import { normalizeProviderParams } from '@pixsim7/shared.generation.core';
 
+import { getAsset } from '@lib/api/assets';
+
+import { fromAssetResponse, type AssetModel } from '@features/assets';
+import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
 import type { SelectedAsset } from '@features/assets/stores/assetSelectionStore';
+import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import type { InputItem } from '@features/generation';
 
 import { useCompositionPackageStore } from '@/stores/compositionPackageStore';
@@ -143,7 +148,7 @@ export function buildCompositionAssetsFromAssetIds(
  * - Better handling of queued assets and local-only states
  * - Auto-recovery from common validation issues
  */
-export function buildGenerationRequest(context: QuickGenerateContext): BuildGenerationResult {
+export async function buildGenerationRequest(context: QuickGenerateContext): Promise<BuildGenerationResult> {
   const {
     operationType,
     prompt,
@@ -198,24 +203,46 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       .filter(Boolean);
   };
 
-  const resolveCompositionAssetsFromInputs = (
+  const resolveCompositionAssetsFromInputs = async (
     inputs: InputItem[] | undefined,
     options: { mediaType?: 'image' | 'video' } = {},
-  ): Array<{ asset?: string; url?: string; layer: number; role: string; media_type?: string }> | undefined => {
+  ): Promise<Array<{ asset?: string; url?: string; layer: number; role: string; media_type?: string }> | undefined> => {
     if (!inputs || inputs.length === 0) return undefined;
     const overrideMediaType = options.mediaType;
-    const resolved = inputs.map((item, index) => {
+    const resolved = await Promise.all(inputs.map(async (item, index) => {
+      // Resolve asset set reference if present
+      let resolvedAsset: AssetModel = item.asset;
+      if (item.assetSetRef) {
+        const set = useAssetSetStore.getState().getSet(item.assetSetRef.setId);
+        if (set) {
+          if (item.assetSetRef.mode === 'locked' && item.assetSetRef.lockedAssetId) {
+            try {
+              const fetched = await getAsset(item.assetSetRef.lockedAssetId);
+              resolvedAsset = fromAssetResponse(fetched);
+            } catch {
+              // Fall back to current display asset
+            }
+          } else {
+            // random_each — resolve set, pick random
+            const setAssets = await resolveAssetSet(set);
+            if (setAssets.length > 0) {
+              resolvedAsset = setAssets[Math.floor(Math.random() * setAssets.length)];
+            }
+          }
+        }
+      }
+
       let role: string;
       if (item.roleOverride) {
         role = item.roleOverride;
       } else {
-        const tags = getTagStrings(item.asset);
+        const tags = getTagStrings(resolvedAsset);
         const inferredRole = useCompositionPackageStore.getState().inferRoleFromTags(tags);
         role = inferredRole ?? (index === 0 ? 'environment' : 'main_character');
       }
-      const mediaType = overrideMediaType ?? item.asset.mediaType ?? 'image';
-      const assetId = asPositiveAssetId(item.asset.id);
-      const url = assetId ? undefined : resolveAssetUrlFromInput(item.asset);
+      const mediaType = overrideMediaType ?? resolvedAsset.mediaType ?? 'image';
+      const assetId = asPositiveAssetId(resolvedAsset.id);
+      const url = assetId ? undefined : resolveAssetUrlFromInput(resolvedAsset);
       if (!assetId && !url) {
         return null;
       }
@@ -226,15 +253,15 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
         role,
         media_type: mediaType,
       };
-    });
+    }));
     const nonEmpty = resolved.filter(
       (entry): entry is { asset?: string; url?: string; layer: number; role: string; media_type?: string } => !!entry,
     );
     return nonEmpty.length > 0 ? nonEmpty : undefined;
   };
 
-  const queuedImageCompositionAssets = resolveCompositionAssetsFromInputs(operationInputs, { mediaType: 'image' });
-  const queuedVideoCompositionAssets = resolveCompositionAssetsFromInputs(operationInputs, { mediaType: 'video' });
+  const queuedImageCompositionAssets = await resolveCompositionAssetsFromInputs(operationInputs, { mediaType: 'image' });
+  const queuedVideoCompositionAssets = await resolveCompositionAssetsFromInputs(operationInputs, { mediaType: 'video' });
 
   if ((operationType === 'text_to_video' || operationType === 'text_to_image') && !trimmedPrompt) {
     return {

@@ -9,9 +9,15 @@ import { create } from 'zustand';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-import type { AssetModel } from '@features/assets';
+import { assetEvents, fromAssetResponse, type AssetModel } from '@features/assets';
 
 import type { OperationType } from '@/types/operations';
+
+export interface AssetSetSlotRef {
+  setId: string;                        // references AssetSet.id
+  mode: 'random_each' | 'locked';       // pick timing
+  lockedAssetId?: number;               // for 'locked' mode — the pinned pick
+}
 
 export interface InputItem {
   id: string;
@@ -20,6 +26,7 @@ export interface InputItem {
   slotIndex?: number;
   lockedTimestamp?: number; // Locked frame timestamp in seconds (for video assets)
   roleOverride?: string; // e.g. 'environment' or 'main_character'
+  assetSetRef?: AssetSetSlotRef; // optional set linkage for variety picks
 }
 
 export interface OperationInputs {
@@ -52,6 +59,10 @@ export interface GenerationInputsState {
   setInputIndex: (operationType: OperationType, index: number) => void;
   setArmedSlot: (operationType: OperationType, slotIndex?: number | null) => void;
   reorderInput: (operationType: OperationType, fromSlotIndex: number, toSlotIndex: number) => void;
+  updateAssetModel: (assetId: number, updatedAsset: AssetModel) => void;
+  setAssetSetRef: (operationType: OperationType, inputId: string, ref: AssetSetSlotRef | undefined) => void;
+  updateAssetSetMode: (operationType: OperationType, inputId: string, mode: AssetSetSlotRef['mode']) => void;
+  lockAssetSetPick: (operationType: OperationType, inputId: string, assetId: number) => void;
 
   getCurrentInput: (operationType: OperationType) => InputItem | null;
   getInputs: (operationType: OperationType) => InputItem[];
@@ -444,6 +455,97 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
           });
         },
 
+        updateAssetModel: (assetId, updatedAsset) => {
+          set((state) => {
+            let changed = false;
+            const nextMap: Partial<Record<OperationType, OperationInputs>> = {};
+
+            (Object.keys(state.inputsByOperation) as OperationType[]).forEach((opType) => {
+              const existing = state.inputsByOperation[opType];
+              if (!existing) return;
+
+              const hasMatch = existing.items.some((item) => item.asset.id === assetId);
+              if (!hasMatch) {
+                nextMap[opType] = existing;
+                return;
+              }
+
+              changed = true;
+              nextMap[opType] = {
+                ...existing,
+                items: existing.items.map((item) =>
+                  item.asset.id === assetId ? { ...item, asset: updatedAsset } : item
+                ),
+              };
+            });
+
+            return changed ? { inputsByOperation: nextMap } : {};
+          });
+        },
+
+        setAssetSetRef: (operationType, inputId, ref) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) =>
+                    item.id === inputId ? { ...item, assetSetRef: ref } : item
+                  ),
+                },
+              },
+            };
+          });
+        },
+
+        updateAssetSetMode: (operationType, inputId, mode) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) => {
+                    if (item.id !== inputId || !item.assetSetRef) return item;
+                    return {
+                      ...item,
+                      assetSetRef: { ...item.assetSetRef, mode },
+                    };
+                  }),
+                },
+              },
+            };
+          });
+        },
+
+        lockAssetSetPick: (operationType, inputId, assetId) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) => {
+                    if (item.id !== inputId || !item.assetSetRef) return item;
+                    return {
+                      ...item,
+                      assetSetRef: {
+                        ...item.assetSetRef,
+                        mode: 'locked' as const,
+                        lockedAssetId: assetId,
+                      },
+                    };
+                  }),
+                },
+              },
+            };
+          });
+        },
+
         getCurrentInput: (operationType) => {
           const existing = getOperationInputs(get().inputsByOperation, operationType);
           if (existing.items.length === 0) return null;
@@ -487,6 +589,12 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
 }
 
 export const useGenerationInputStore = createGenerationInputStore('generation_inputs_v1');
+
+// Keep asset snapshots fresh: any surface that updates an asset (gallery upload,
+// gesture swipe, compact card button, etc.) emits assetUpdated — patch in place.
+assetEvents.subscribeToUpdates((response) => {
+  useGenerationInputStore.getState().updateAssetModel(response.id, fromAssetResponse(response));
+});
 
 export function getInputsForOperation(operationType: OperationType): InputItem[] {
   const state = useGenerationInputStore.getState();

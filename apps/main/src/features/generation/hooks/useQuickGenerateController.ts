@@ -248,12 +248,12 @@ export function useQuickGenerateController() {
   }
 
   /** Build and validate a generation request, resolving the effective operation type */
-  function buildRequest(
+  async function buildRequest(
     dynamicParams: Record<string, any>,
     operationInputs: any[],
     currentInput: any,
     overrides?: { activeAsset?: ReturnType<typeof toSelectedAsset>; promptOverride?: string | null },
-  ): { error: string } | { finalPrompt: string; params: any; effectiveOperationType: string } {
+  ): Promise<{ error: string } | { finalPrompt: string; params: any; effectiveOperationType: string }> {
     // Resolve prompt limit so buildGenerationRequest can clamp the prompt
     const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', operationType);
     const model = dynamicParams?.model as string | undefined;
@@ -266,7 +266,7 @@ export function useQuickGenerateController() {
       ? operationInputs.slice(0, maxSlots)
       : operationInputs;
 
-    const buildResult = buildGenerationRequest({
+    const buildResult = await buildGenerationRequest({
       operationType,
       prompt: overrides?.promptOverride ?? prompt,
       dynamicParams,
@@ -368,7 +368,7 @@ export function useQuickGenerateController() {
       prepareItem: async ({ index: i, total, group, primaryInput }) => {
         const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
         await applyFrameExtraction(dynamicParams, primaryInput, []);
-        const request = buildRequest(dynamicParams, group, primaryInput, { promptOverride: rolledOnce });
+        const request = await buildRequest(dynamicParams, group, primaryInput, { promptOverride: rolledOnce });
         if ('error' in request) {
           return { kind: 'skip', reason: request.error };
         }
@@ -469,7 +469,7 @@ export function useQuickGenerateController() {
       // - 'once' mode: roll once client-side and pass prompt override
       const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
       const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
-      const request = buildRequest(dynamicParams, effectiveInputs, currentInput, { promptOverride: rolledOnce });
+      const request = await buildRequest(dynamicParams, effectiveInputs, currentInput, { promptOverride: rolledOnce });
       if ('error' in request) {
         setError(request.error);
         setGenerating(false);
@@ -529,7 +529,7 @@ export function useQuickGenerateController() {
       // - 'once' mode: roll once client-side, pass prompt override for all items
       const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
       const rollOnce = !useServerRolling ? await maybeRollTemplate() : null;
-      const baseRequest = buildRequest(dynamicParams, currentInputs, currentInput, { promptOverride: rollOnce });
+      const baseRequest = await buildRequest(dynamicParams, currentInputs, currentInput, { promptOverride: rollOnce });
       if ('error' in baseRequest) {
         setError(baseRequest.error);
         setGenerating(false);
@@ -647,7 +647,7 @@ export function useQuickGenerateController() {
             currentInputForStep = undefined;
           }
 
-          const request = buildRequest(
+          const request = await buildRequest(
             dynamicParams,
             operationInputsForStep,
             currentInputForStep,
@@ -901,7 +901,7 @@ export function useQuickGenerateController() {
       const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
       const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
 
-      const request = buildRequest(
+      const request = await buildRequest(
         dynamicParams,
         [inputItem],
         inputItem,

@@ -8,7 +8,7 @@ import type { AssetUploadState } from '@/components/media/AssetGallery';
 import type { MediaCardActions } from '@/components/media/MediaCard';
 import type { LocalFoldersController } from '@/types/localSources';
 
-import { extractUploadError, notifyGalleryOfNewAsset, resolveProviderLabel } from '../../lib/uploadActions';
+import { extractUploadError, notifyGalleryOfUpdatedAsset, resolveProviderLabel } from '../../lib/uploadActions';
 import type { AssetModel } from '../../models/asset';
 import type { LocalAsset } from '../../stores/localFoldersStore';
 
@@ -207,10 +207,10 @@ export function useLocalFolderCallbacks({
           assetId = result?.asset_id;
           toast.success(`Uploaded to ${resolveProviderLabel(providerId)}`);
         }
-        // Notify gallery so the new/updated asset appears without a page refresh
+        // Notify gallery so the updated asset reflects the new provider upload status
         if (assetId) {
           try {
-            await notifyGalleryOfNewAsset(assetId);
+            await notifyGalleryOfUpdatedAsset(assetId);
           } catch { /* best-effort */ }
         }
       } catch (e: unknown) {
