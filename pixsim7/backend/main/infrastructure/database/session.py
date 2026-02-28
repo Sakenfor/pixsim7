@@ -64,6 +64,27 @@ AsyncLogSessionLocal = async_sessionmaker(
 )
 
 
+# ===== ASYNC ENGINE (Blocks - Block Primitives) =====
+# Separate database for composable prompt blocks
+async_blocks_engine = create_async_engine(
+    settings.async_blocks_database_url,
+    echo=_sql_logging_enabled,
+    pool_size=10,
+    max_overflow=20,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)
+
+# Async blocks session factory
+AsyncBlocksSessionLocal = async_sessionmaker(
+    async_blocks_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
+)
+
+
 # ===== SYNC ENGINE (Secondary) =====
 # For Alembic migrations and background workers
 sync_engine = create_engine(
@@ -144,7 +165,6 @@ def _naive_datetimes(params):
     )
 
 
-@event.listens_for(async_engine.sync_engine, "before_cursor_execute", retval=True)
 def _strip_tz_from_params(conn, cursor, statement, parameters, context, executemany):
     """Ensure all datetime query parameters are naive (UTC) for asyncpg."""
     if parameters:
@@ -161,6 +181,11 @@ def _strip_tz_from_params(conn, cursor, statement, parameters, context, executem
         else:
             parameters = _naive_datetimes(parameters)
     return statement, parameters
+
+
+# Register tz-stripping on all async engines
+for _engine in (async_engine, async_blocks_engine):
+    event.listen(_engine.sync_engine, "before_cursor_execute", _strip_tz_from_params, retval=True)
 
 
 # ===== DEPENDENCY INJECTION =====
@@ -246,6 +271,27 @@ async def get_async_log_session() -> AsyncGenerator[AsyncSession, None]:
             logs = result.scalars().all()
     """
     async with AsyncLogSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
+# ===== BLOCKS DATABASE SESSIONS =====
+
+async def get_blocks_db() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI dependency for blocks database sessions."""
+    async with AsyncBlocksSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
+@asynccontextmanager
+async def get_async_blocks_session() -> AsyncGenerator[AsyncSession, None]:
+    """Context manager for async blocks database sessions."""
+    async with AsyncBlocksSessionLocal() as session:
         try:
             yield session
         finally:
@@ -346,5 +392,6 @@ async def close_database():
     """
     await async_engine.dispose()
     await async_log_engine.dispose()
+    await async_blocks_engine.dispose()
     sync_engine.dispose()
     logger.info("✅ Database connections closed")

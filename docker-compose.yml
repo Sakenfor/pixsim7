@@ -51,6 +51,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://pixsim:${DB_PASSWORD:-pixsim123}@postgres:5432/pixsim7
+      BLOCKS_DATABASE_URL: postgresql://pixsim:${DB_PASSWORD:-pixsim123}@postgres:5432/pixsim7_blocks
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       DEBUG: ${DEBUG:-true}
@@ -90,6 +91,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://pixsim:${DB_PASSWORD:-pixsim123}@postgres:5432/pixsim7
+      BLOCKS_DATABASE_URL: postgresql://pixsim:${DB_PASSWORD:-pixsim123}@postgres:5432/pixsim7_blocks
       REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app
       ARQ_MAX_JOBS: ${ARQ_MAX_JOBS:-10}

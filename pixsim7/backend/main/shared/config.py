@@ -39,6 +39,11 @@ class Settings(BaseSettings):
         description="Separate database URL for logs (TimescaleDB). Falls back to database_url if not set."
     )
 
+    blocks_database_url: str | None = Field(
+        default=None,
+        description="Separate database URL for block primitives. Falls back to database_url if not set."
+    )
+
     # ===== REDIS =====
     redis_url: str = Field(
         default="redis://localhost:6380/0",
@@ -538,6 +543,21 @@ class Settings(BaseSettings):
     def log_database_url_resolved(self) -> str:
         """Get sync log database URL (for migrations)."""
         return self.log_database_url or self.database_url
+
+    @property
+    def async_blocks_database_url(self) -> str:
+        """Get async blocks database URL. Falls back to main database."""
+        if self.blocks_database_url:
+            return self.blocks_database_url.replace(
+                "postgresql://",
+                "postgresql+asyncpg://"
+            )
+        return self.async_database_url
+
+    @property
+    def blocks_database_url_resolved(self) -> str:
+        """Get sync blocks database URL (for migrations)."""
+        return self.blocks_database_url or self.database_url
 
 
 def _resolve_repo_root() -> Path:
