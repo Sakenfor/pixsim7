@@ -12,15 +12,15 @@ function createBaseContext(partial: Partial<QuickGenerateContext> = {}): QuickGe
   };
 }
 
-describe('buildGenerationRequest', () => {
-  it('requires a prompt for text-based operations', () => {
+describe('buildGenerationRequest', async () => {
+  it('requires a prompt for text-based operations', async () => {
     const result = await buildGenerationRequest(createBaseContext());
 
     expect(result.error).toBeTruthy();
     expect(result.error).toContain('Please enter a prompt');
   });
 
-  it('accepts a prompt and trims whitespace for text operations', () => {
+  it('accepts a prompt and trims whitespace for text operations', async () => {
     const result = await buildGenerationRequest(
       createBaseContext({
         prompt: '   cinematic dusk skyline   ',
@@ -32,7 +32,7 @@ describe('buildGenerationRequest', () => {
     expect(result?.params?.prompt).toBe('cinematic dusk skyline');
   });
 
-  it('clamps prompt to maxChars in payload', () => {
+  it('clamps prompt to maxChars in payload', async () => {
     const result = await buildGenerationRequest(
       createBaseContext({
         prompt: '   cinematic dusk skyline   ',
@@ -45,7 +45,7 @@ describe('buildGenerationRequest', () => {
     expect(result?.params?.prompt).toBe('cinematic');
   });
 
-  it('keeps 50 chars of headroom when clamping larger prompt limits', () => {
+  it('keeps 50 chars of headroom when clamping larger prompt limits', async () => {
     const overlongPrompt = 'x'.repeat(160);
     const result = await buildGenerationRequest(
       createBaseContext({
@@ -60,7 +60,7 @@ describe('buildGenerationRequest', () => {
     expect(result.finalPrompt).toBe(overlongPrompt.slice(0, 50));
   });
 
-  it('does not let dynamicParams.prompt override clamped prompt', () => {
+  it('does not let dynamicParams.prompt override clamped prompt', async () => {
     const result = await buildGenerationRequest(
       createBaseContext({
         prompt: '  hero in storm  ',
@@ -78,7 +78,7 @@ describe('buildGenerationRequest', () => {
     expect(result?.params?.model).toBe('seedream_4');
   });
 
-  it('requires a prompt for image_to_image even when an image is provided', () => {
+  it('requires a prompt for image_to_image even when an image is provided', async () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: '   ',
@@ -89,7 +89,7 @@ describe('buildGenerationRequest', () => {
     expect(result.error).toContain('Please enter a prompt');
   });
 
-  it('requires a source image for image_to_image', () => {
+  it('requires a source image for image_to_image', async () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Add neon rim light',
@@ -100,7 +100,7 @@ describe('buildGenerationRequest', () => {
     expect(result.error).toContain('No image selected');
   });
 
-  it('passes validation when image_to_image uses composition_assets', () => {
+  it('passes validation when image_to_image uses composition_assets', async () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Add neon rim light',
@@ -117,7 +117,7 @@ describe('buildGenerationRequest', () => {
     });
   });
 
-  it('builds composition_assets from multi-queue assets for image_to_image', () => {
+  it('builds composition_assets from multi-queue assets for image_to_image', async () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Blend the characters',
@@ -138,7 +138,7 @@ describe('buildGenerationRequest', () => {
     });
   });
 
-  it('builds composition_assets from queued local URLs when backend IDs are unavailable', () => {
+  it('builds composition_assets from queued local URLs when backend IDs are unavailable', async () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Blend these',
@@ -159,7 +159,7 @@ describe('buildGenerationRequest', () => {
     ]);
   });
 
-  it('assigns default roles to composition_assets (first=environment, others=main_character)', () => {
+  it('assigns default roles to composition_assets (first=environment, others=main_character)', async () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Combine these images',
@@ -180,7 +180,7 @@ describe('buildGenerationRequest', () => {
     ]);
   });
 
-  it('infers roles from asset tags when available', () => {
+  it('infers roles from asset tags when available', async () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Combine these images',
@@ -228,7 +228,7 @@ describe('buildGenerationRequest', () => {
     ]);
   });
 
-  it('falls back to default role when tags do not map', () => {
+  it('falls back to default role when tags do not map', async () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Combine these images',
@@ -264,7 +264,7 @@ describe('buildGenerationRequest', () => {
     ]);
   });
 
-  it('normalizes toggle params to ints and drops disabled ones', () => {
+  it('normalizes toggle params to ints and drops disabled ones', async () => {
     const context = createBaseContext({
       prompt: 'waves',
       dynamicParams: {
@@ -283,7 +283,7 @@ describe('buildGenerationRequest', () => {
     expect(result.params).not.toHaveProperty('off_peak');
   });
 
-  it('rounds duration values to integers', () => {
+  it('rounds duration values to integers', async () => {
     const context = createBaseContext({
       prompt: 'waves',
       dynamicParams: {
@@ -296,7 +296,7 @@ describe('buildGenerationRequest', () => {
     expect(result.params?.duration).toBe(13);
   });
 
-  it('includes sanitized transition durations per segment', () => {
+  it('includes sanitized transition durations per segment', async () => {
     const context = createBaseContext({
       operationType: 'video_transition',
       prompt: 'make it seamless',
@@ -310,7 +310,7 @@ describe('buildGenerationRequest', () => {
     expect(result.params?.durations).toEqual([1, 5]);
   });
 
-  it('accepts source_asset_ids for video_transition without imageUrls', () => {
+  it('accepts source_asset_ids for video_transition without imageUrls', async () => {
     const context = createBaseContext({
       operationType: 'video_transition',
       prompt: 'make it seamless',
@@ -330,7 +330,7 @@ describe('buildGenerationRequest', () => {
     });
   });
 
-  it('prefers source_asset_id and strips legacy image_url for image_to_video', () => {
+  it('prefers source_asset_id and strips legacy image_url for image_to_video', async () => {
     const context = createBaseContext({
       operationType: 'image_to_video',
       prompt: 'animate this',
@@ -345,7 +345,7 @@ describe('buildGenerationRequest', () => {
     expect(result.params).not.toHaveProperty('image_url');
   });
 
-  it('uses queued local URLs as source_image composition assets for image_to_video', () => {
+  it('uses queued local URLs as source_image composition assets for image_to_video', async () => {
     const context = createBaseContext({
       operationType: 'image_to_video',
       prompt: 'animate this',
@@ -366,7 +366,7 @@ describe('buildGenerationRequest', () => {
     ]);
   });
 
-  it('accepts queued local URLs for video_extend without requiring backend IDs', () => {
+  it('accepts queued local URLs for video_extend without requiring backend IDs', async () => {
     const context = createBaseContext({
       operationType: 'video_extend',
       prompt: '',
