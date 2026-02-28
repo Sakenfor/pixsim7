@@ -87,6 +87,9 @@ class ServiceProcess:
         # Load persisted PID from disk (survives launcher restarts)
         self._load_persisted_pid()
 
+        # For worker service: recover orphaned companion processes via OS scan
+        self._recover_worker_family()
+
         # Console log file persistence
         self.log_file_path = os.path.join(ROOT, 'data', 'logs', 'console', f'{defn.key}.log')
         self._ensure_log_dir()
@@ -151,6 +154,17 @@ class ServiceProcess:
                     self.externally_managed = True
                     self.health_status = HealthStatus.STARTING
                     _log("loaded_persisted_pid", service_key=self.defn.key, pid=stored_pid)
+                    # Recover companion PIDs (e.g. retry worker)
+                    companion = entry.get("companion_pids", [])
+                    if companion:
+                        alive = [int(p) for p in companion if pid_store.is_pid_running(int(p))]
+                        self.extra_started_pids = alive
+                        _log(
+                            "loaded_companion_pids",
+                            service_key=self.defn.key,
+                            persisted=companion,
+                            alive=alive,
+                        )
                 else:
                     pid_store.clear_pid(self.defn.key)
             elif stored_pid:
@@ -159,8 +173,41 @@ class ServiceProcess:
         except Exception:
             pass
 
+    def _recover_worker_family(self):
+        """Recover orphaned worker-family processes via OS scan (worker service only).
+
+        Catches companions that survived a launcher crash where PIDs were never
+        persisted to disk.  Only runs for the 'worker' service key.
+        """
+        if self.defn.key != "worker":
+            return
+        if not self.running:
+            return
+        try:
+            tracked = set()
+            main_pid = self.get_effective_pid()
+            if main_pid:
+                tracked.add(main_pid)
+            tracked.update(self.extra_started_pids)
+
+            scanned = self._scan_worker_family_pids()
+            for pid in scanned:
+                if pid not in tracked and pid_store.is_pid_running(pid):
+                    self.extra_started_pids.append(pid)
+                    _log(
+                        "recovered_orphan_companion",
+                        service_key=self.defn.key,
+                        pid=pid,
+                    )
+            if self.extra_started_pids:
+                # Re-persist so the newly found companions are on disk
+                if main_pid:
+                    self._save_persisted_pid(main_pid)
+        except Exception:
+            pass
+
     def _save_persisted_pid(self, pid: int):
-        """Save PID to persistent storage."""
+        """Save PID to persistent storage (includes companion PIDs)."""
         if pid:
             try:
                 port = self._get_port_from_health_url()
@@ -170,7 +217,10 @@ class ServiceProcess:
                     metadata = pu.build_pid_fingerprint(pid, port=port, cmdline_hint=cmdline_hint)
                 except Exception:
                     metadata = {"port": port, "cmdline": cmdline_hint} if port or cmdline_hint else {}
-                pid_store.save_pid(self.defn.key, pid, metadata=metadata)
+                pid_store.save_pid(
+                    self.defn.key, pid, metadata=metadata,
+                    companion_pids=self.extra_started_pids or None,
+                )
                 self.persisted_pid = pid
             except Exception:
                 pass
@@ -621,6 +671,12 @@ class ServiceProcess:
             # Worker service companion: start retry queue consumer under the same launcher card.
             companion_cmd = self._build_companion_worker_cmd(cmd)
             if companion_cmd:
+                # Kill any stale retry workers left over from a previous session
+                # to prevent duplicate retry workers.
+                self._kill_worker_family_processes(
+                    graceful=False,
+                    exclude_pids={self.started_pid},
+                )
                 try:
                     companion_proc = self._spawn_detached_subprocess(companion_cmd, env, log_file)
                     self.extra_started_pids.append(companion_proc.pid)

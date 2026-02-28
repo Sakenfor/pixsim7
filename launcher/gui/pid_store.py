@@ -36,6 +36,10 @@ def _normalize_pid_entry(value) -> Optional[Dict[str, object]]:
         for key in ("port", "cmdline", "start_time", "started_at"):
             if key in value and value[key]:
                 entry[key] = value[key]
+        # Preserve companion_pids list (e.g. retry worker PIDs)
+        companion = value.get("companion_pids")
+        if isinstance(companion, list) and companion:
+            entry["companion_pids"] = [int(p) for p in companion]
         return entry
     try:
         return {"pid": int(value)}
@@ -70,7 +74,8 @@ def _save_pids(pids: Dict[str, Dict[str, object]]):
         pass
 
 
-def save_pid(service_key: str, pid: int, metadata: Optional[Dict[str, object]] = None):
+def save_pid(service_key: str, pid: int, metadata: Optional[Dict[str, object]] = None,
+             companion_pids: Optional[list] = None):
     """Save a service PID to persistent storage."""
     if not pid:
         return
@@ -80,6 +85,8 @@ def save_pid(service_key: str, pid: int, metadata: Optional[Dict[str, object]] =
             for key in ("port", "cmdline", "start_time", "started_at"):
                 if key in metadata and metadata[key] is not None:
                     entry[key] = metadata[key]
+        if companion_pids:
+            entry["companion_pids"] = [int(p) for p in companion_pids]
         pids = _load_pids()
         pids[service_key] = entry
         _save_pids(pids)
@@ -103,6 +110,14 @@ def get_pid_entry(service_key: str) -> Optional[Dict[str, object]]:
     """Get the persisted PID entry (pid + metadata) for a service."""
     pids = _load_pids()
     return pids.get(service_key)
+
+
+def get_companion_pids(service_key: str) -> list:
+    """Get persisted companion PIDs for a service (e.g. retry worker)."""
+    entry = get_pid_entry(service_key)
+    if not entry:
+        return []
+    return entry.get("companion_pids", [])
 
 
 def clear_pid(service_key: str):

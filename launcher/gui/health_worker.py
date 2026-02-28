@@ -506,6 +506,7 @@ class HealthWorker(QThread):
 
                         # If process is alive, verify Redis connection as additional health check
                         if sp.running and process_alive:
+                            companion_dead = False
                             try:
                                 # Parse host:port
                                 host_port = redis_url.split('://', 1)[-1].split('/', 1)[0]
@@ -522,8 +523,24 @@ class HealthWorker(QThread):
                                     except Exception:
                                         pass
                                     redis_reachable = True
-                                    # Process alive and Redis accessible = healthy
-                                    self._emit_health_update(key, HealthStatus.HEALTHY)
+                                    # Process alive and Redis accessible — check companions
+                                    extra_pids = getattr(sp, "extra_started_pids", None) or []
+                                    if extra_pids:
+                                        try:
+                                            try:
+                                                from .process_utils import is_process_alive
+                                            except ImportError:
+                                                from process_utils import is_process_alive
+                                            for cpid in extra_pids:
+                                                if not is_process_alive(cpid):
+                                                    companion_dead = True
+                                                    break
+                                        except Exception:
+                                            pass
+                                    if companion_dead:
+                                        self._emit_health_update(key, HealthStatus.UNHEALTHY)
+                                    else:
+                                        self._emit_health_update(key, HealthStatus.HEALTHY)
                                     self.failure_counts[key] = 0
                                 except Exception:
                                     # Process alive but Redis not accessible = starting/unhealthy
@@ -558,6 +575,10 @@ class HealthWorker(QThread):
                                 redis_url=redis_url,
                                 redis_reachable=redis_reachable,
                             )
+                            # Overlay companion_dead note on card details
+                            if companion_dead and hasattr(sp, "card_details") and sp.card_details:
+                                sp.card_details["companion_dead"] = True
+                                sp.card_details["note"] = "Retry worker process died — restart worker to recover"
                         else:
                             # Not running or no PID - mark as stopped
                             sp.running = False
