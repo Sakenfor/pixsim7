@@ -1,0 +1,15 @@
+blocks:
+  - block_id: env.urban_alley
+    category: environment
+    text: "narrow urban alleyway, brick walls, wet pavement, scattered neon reflections"
+    tags: { setting: urban, mood: gritty }
+
+  - block_id: env.open_field
+    category: environment
+    text: "wide open grass field, distant treeline, expansive sky"
+    tags: { setting: rural, mood: serene }
+
+  - block_id: env.studio
+    category: environment
+    text: "clean studio backdrop, seamless neutral background"
+    tags: { setting: studio, mood: neutral }

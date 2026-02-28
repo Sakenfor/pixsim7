@@ -1,0 +1,10 @@
+blocks:
+  - block_id: pose.standing_relaxed
+    category: character_pose
+    text: "standing with relaxed posture, weight shifted to one hip, arms loose"
+    tags: { stance: standing, energy: relaxed }
+
+  - block_id: pose.seated_casual
+    category: character_pose
+    text: "seated casually, one leg crossed, leaning back slightly"
+    tags: { stance: seated, energy: relaxed }

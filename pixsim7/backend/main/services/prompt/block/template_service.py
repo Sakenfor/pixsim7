@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from pixsim7.backend.main.domain.prompt import PromptBlock, BlockTemplate
+from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.services.prompt.block.composition_engine import (
     derive_analysis_from_blocks,
 )
@@ -22,6 +23,10 @@ from pixsim7.backend.main.services.prompt.block.block_query import (
     build_prompt_block_query,
     normalize_tag_query,
 )
+from pixsim7.backend.main.services.prompt.block.block_primitive_query import (
+    build_block_primitive_query,
+)
+from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.services.prompt.block.character_expander import (
     CharacterBindingExpander,
 )
@@ -192,16 +197,44 @@ class BlockTemplateService:
         slot: Dict[str, Any],
         *,
         limit: Optional[int] = None,
-    ) -> List[PromptBlock]:
-        """Find prompt blocks matching a slot's constraints.
+    ) -> List[Any]:
+        """Find blocks matching a slot's constraints.
+
+        Routes to block_primitives (pixsim7_blocks DB) when
+        ``block_source == "primitives"``, otherwise queries the legacy
+        action_blocks table.
 
         Override this method to swap SQL for vector / hybrid retrieval.
         """
+        block_source = slot.get("block_source", "action_blocks")
+        if block_source == "primitives":
+            return await self._find_primitive_candidates(slot, limit)
         query = self._build_slot_query(slot)
         if limit is not None:
             query = query.limit(limit)
         result = await self.db.execute(query)
         return list(result.scalars().all())
+
+    async def _find_primitive_candidates(
+        self,
+        slot: Dict[str, Any],
+        limit: Optional[int] = None,
+    ) -> List[BlockPrimitive]:
+        """Query block_primitives in the blocks DB for a slot."""
+        slot = normalize_template_slot(slot)
+        query = build_block_primitive_query(
+            category=slot.get("category"),
+            tag_query=slot.get("tags"),
+            tag_constraints=slot.get("tag_constraints"),
+            min_rating=slot.get("min_rating"),
+            exclude_block_ids=slot.get("exclude_block_ids"),
+            is_public=True,
+        )
+        if limit is not None:
+            query = query.limit(limit)
+        async with get_async_blocks_session() as blocks_db:
+            result = await blocks_db.execute(query)
+            return list(result.scalars().all())
 
     async def count_candidates(self, slot: Dict[str, Any]) -> int:
         """Count prompt blocks matching a slot's constraints.
@@ -968,7 +1001,7 @@ class BlockTemplateService:
             metadata = {**metadata, "controls": resolved_controls}
         slots = self._apply_control_effects(slots, metadata, control_values)
 
-        selected_blocks: List[PromptBlock] = []
+        selected_blocks: List[Any] = []
         slot_results: List[Dict[str, Any]] = []
         warnings: List[str] = []
 
@@ -1035,18 +1068,23 @@ class BlockTemplateService:
             warnings.extend(selector_warnings)
 
             selected_blocks.append(chosen)
-            slot_results.append({
+            sr_entry: Dict[str, Any] = {
                 "label": label,
                 "status": "selected",
                 "match_count": len(candidates),
                 "selected_block_id": str(chosen.id),
                 "selected_block_string_id": chosen.block_id,
-                "selected_block_role": chosen.role,
+                "selected_block_role": getattr(chosen, "role", None),
                 "selected_block_category": chosen.category,
                 "prompt_preview": chosen.text[:120] if chosen.text else "",
                 "selector_strategy": selector_debug.get("strategy", strategy),
                 "selector_debug": selector_debug,
-            })
+            }
+            # Carry slot frame for composition
+            frame = slot.get("frame")
+            if isinstance(frame, str) and "{text}" in frame:
+                sr_entry["frame"] = frame
+            slot_results.append(sr_entry)
 
         # ── Slot-order-aware composition ──────────────────────────────────
         # Walk slot_results in order, pulling block text from selected_blocks
@@ -1097,13 +1135,18 @@ class BlockTemplateService:
         if strategy == "sequential" or not composition_strategy_applied:
             block_iter = iter(selected_blocks)
             prompt_parts: List[str] = []
-            last_block: Optional[PromptBlock] = None
+            last_block: Optional[Any] = None
 
             for sr in slot_results:
                 if sr["status"] == "selected":
                     block = next(block_iter, None)
                     if block and block.text:
-                        prompt_parts.append(block.text)
+                        text = block.text
+                        # Apply slot frame (spatial/relational wrapping)
+                        frame = sr.get("frame")
+                        if frame:
+                            text = frame.replace("{text}", text)
+                        prompt_parts.append(text)
                         last_block = block
                 elif sr["status"] == "fallback":
                     prompt_parts.append(sr["fallback_text"])

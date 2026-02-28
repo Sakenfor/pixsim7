@@ -1,0 +1,40 @@
+blocks:
+  - block_id: loc.left
+    category: location
+    text: "on the left side"
+    tags: { axis: lateral, side: left }
+
+  - block_id: loc.right
+    category: location
+    text: "on the right side"
+    tags: { axis: lateral, side: right }
+
+  - block_id: loc.above
+    category: location
+    text: "from above"
+    tags: { axis: vertical, side: top }
+
+  - block_id: loc.below
+    category: location
+    text: "from below"
+    tags: { axis: vertical, side: bottom }
+
+  - block_id: loc.foreground
+    category: location
+    text: "in the foreground"
+    tags: { depth: near }
+
+  - block_id: loc.background
+    category: location
+    text: "in the background"
+    tags: { depth: far }
+
+  - block_id: loc.center
+    category: location
+    text: "in the center"
+    tags: { alignment: center }
+
+  - block_id: loc.behind_subject
+    category: location
+    text: "behind the subject"
+    tags: { relation: behind }

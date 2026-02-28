@@ -1,0 +1,15 @@
+blocks:
+  - block_id: light.soft_diffused
+    category: light
+    text: "soft diffused light, gentle gradients with subtle highlights"
+    tags: { hardness: soft, contrast: low }
+
+  - block_id: light.harsh_specular
+    category: light
+    text: "harsh specular light, crisp shadows with razor-sharp edges, high contrast"
+    tags: { hardness: hard, contrast: high }
+
+  - block_id: light.golden_hour
+    category: light
+    text: "warm golden hour glow, long amber rays, rich warm highlights"
+    tags: { hardness: soft, warmth: warm, time_of_day: golden_hour }

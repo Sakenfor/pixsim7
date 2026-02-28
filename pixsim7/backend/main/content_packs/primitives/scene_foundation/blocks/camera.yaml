@@ -1,0 +1,15 @@
+blocks:
+  - block_id: camera.low_angle
+    category: camera
+    text: "low angle perspective, looking upward, imposing viewpoint"
+    tags: { angle: low, effect: imposing }
+
+  - block_id: camera.eye_level
+    category: camera
+    text: "eye-level framing, natural conversational perspective"
+    tags: { angle: eye_level, effect: neutral }
+
+  - block_id: camera.overhead
+    category: camera
+    text: "overhead bird's-eye view, looking straight down"
+    tags: { angle: overhead, effect: detached }

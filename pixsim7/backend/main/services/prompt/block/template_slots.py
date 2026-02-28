@@ -182,6 +182,15 @@ class TemplateSlotSpec(BaseModel):
     intensity: Optional[int] = Field(default=None, ge=0, le=10)
     inherit_intensity: bool = False
     exclude_block_ids: Optional[List[UUID]] = None
+    # Primitive composition fields
+    block_source: Optional[str] = Field(
+        default=None,
+        description='Block source: "action_blocks" (default/legacy) or "primitives" (blocks DB)',
+    )
+    frame: Optional[str] = Field(
+        default=None,
+        description='Spatial frame template wrapping block text, e.g. "{text} from camera-left"',
+    )
 
 
 def _normalize_tag_group(group: Any) -> Dict[str, Any]:

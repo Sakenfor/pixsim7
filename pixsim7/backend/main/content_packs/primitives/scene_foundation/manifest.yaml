@@ -1,0 +1,11 @@
+id: scene_foundation
+version: "1.0.0"
+description: "Core scene composition primitives"
+
+categories:
+  - light
+  - color
+  - camera
+  - environment
+  - location
+  - character_pose

@@ -1,0 +1,62 @@
+version: "1.0.0"
+
+templates:
+  - slug: test-scene-composition
+    name: "Test Scene Composition"
+    description: "Validates primitive-based prompt composition"
+    composition_strategy: sequential
+    package_name: scene_foundation
+    is_public: true
+
+    slots:
+      - label: Environment
+        category: environment
+        block_source: primitives
+        tags:
+          all: { setting: urban }
+        selection_strategy: uniform
+        optional: false
+
+      - label: Light color
+        category: color
+        block_source: primitives
+        selection_strategy: uniform
+        optional: true
+
+      - label: Lighting
+        category: light
+        block_source: primitives
+        tags:
+          all: { hardness: soft }
+        selection_strategy: uniform
+        optional: false
+
+      - label: Light position
+        category: location
+        block_source: primitives
+        tags:
+          all: { axis: lateral }
+        selection_strategy: uniform
+        optional: true
+
+      - label: Camera
+        category: camera
+        block_source: primitives
+        tags:
+          all: { angle: low }
+        selection_strategy: uniform
+        optional: false
+
+      - label: Character pose
+        category: character_pose
+        block_source: primitives
+        selection_strategy: uniform
+        optional: false
+
+      - label: Character position
+        category: location
+        block_source: primitives
+        tags:
+          all: { depth: near }
+        selection_strategy: uniform
+        optional: true

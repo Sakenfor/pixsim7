@@ -1,0 +1,15 @@
+blocks:
+  - block_id: color.amber
+    category: color
+    text: "amber tones, warm golden color palette"
+    tags: { hue: amber, warmth: warm }
+
+  - block_id: color.cool_blue
+    category: color
+    text: "cool blue tones, steel-blue color cast"
+    tags: { hue: cool_blue, warmth: cool }
+
+  - block_id: color.neutral
+    category: color
+    text: "neutral white balance, clean uncolored tones"
+    tags: { hue: neutral, warmth: neutral }
