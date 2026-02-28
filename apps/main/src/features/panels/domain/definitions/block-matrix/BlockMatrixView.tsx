@@ -46,7 +46,12 @@ export interface BlockMatrixViewProps {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const AXIS_OPTIONS = [
+const AXIS_OPTIONS_PRIMITIVES = [
+  { value: 'category', label: 'Category' },
+  { value: 'source', label: 'Source' },
+];
+
+const AXIS_OPTIONS_LEGACY = [
   { value: 'role', label: 'Role' },
   { value: 'category', label: 'Category' },
   { value: 'package_name', label: 'Package' },
@@ -55,8 +60,12 @@ const AXIS_OPTIONS = [
   { value: 'complexity_level', label: 'Complexity' },
 ];
 
-function baseAxisOptionsWithCurrent(current?: string): Array<{ value: string; label: string }> {
-  const options = [...AXIS_OPTIONS];
+function baseAxisOptionsWithCurrent(
+  current?: string,
+  source?: string,
+): Array<{ value: string; label: string }> {
+  const base = source === 'action_blocks' ? AXIS_OPTIONS_LEGACY : AXIS_OPTIONS_PRIMITIVES;
+  const options = [...base];
   if (current && !options.some((o) => o.value === current)) {
     options.push({ value: current, label: current.startsWith('tag:') ? `Tag: ${current.slice(4)}` : current });
   }
@@ -64,8 +73,9 @@ function baseAxisOptionsWithCurrent(current?: string): Array<{ value: string; la
 }
 
 const DEFAULT_QUERY: BlockMatrixQuery = {
-  row_key: 'role',
-  col_key: 'category',
+  row_key: 'category',
+  col_key: 'tag:hardness',
+  source: 'primitives',
   include_empty: false,
   sample_per_cell: 3,
   limit: 5000,
@@ -194,6 +204,8 @@ export function BlockMatrixView({
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
+  const isPrimitives = (query.source ?? 'primitives') === 'primitives';
+
   const cellMap = useMemo(() => {
     if (!data) return new Map<string, BlockMatrixCell>();
     const map = new Map<string, BlockMatrixCell>();
@@ -246,16 +258,16 @@ export function BlockMatrixView({
   }, [aliasTagKeyMap, query.col_key, query.row_key]);
 
   const rowAxisOptions = useMemo(() => {
-    const base = baseAxisOptionsWithCurrent(query.row_key);
+    const base = baseAxisOptionsWithCurrent(query.row_key, query.source);
     const seen = new Set(base.map((o) => o.value));
     for (const opt of canonicalTagAxisOptions) {
       if (!seen.has(opt.value)) base.push(opt);
     }
     return base;
-  }, [canonicalTagAxisOptions, query.row_key]);
+  }, [canonicalTagAxisOptions, query.row_key, query.source]);
 
   const colAxisOptions = useMemo(() => {
-    const base = baseAxisOptionsWithCurrent(query.col_key);
+    const base = baseAxisOptionsWithCurrent(query.col_key, query.source);
     const seen = new Set(base.map((o) => o.value));
     for (const opt of canonicalTagAxisOptions) {
       if (!seen.has(opt.value)) base.push(opt);
@@ -419,7 +431,17 @@ export function BlockMatrixView({
 
         {/* Filters */}
         <div className="flex items-center gap-2 flex-wrap">
-          {!isLocked('package_name') && (
+          {isPrimitives && !isLocked('source') && (
+            <select
+              value={query.source ?? 'primitives'}
+              onChange={(e) => updateField('source', e.target.value as 'primitives' | 'action_blocks')}
+              className="px-1.5 py-0.5 rounded border border-neutral-700 bg-neutral-800 text-[11px] text-neutral-200 outline-none w-24"
+            >
+              <option value="primitives">Primitives</option>
+              <option value="action_blocks">Legacy</option>
+            </select>
+          )}
+          {!isPrimitives && !isLocked('package_name') && (
             <input
               type="text"
               value={query.package_name ?? ''}
@@ -428,7 +450,7 @@ export function BlockMatrixView({
               className="px-1.5 py-0.5 rounded border border-neutral-700 bg-neutral-800 text-[11px] text-neutral-200 outline-none placeholder:text-neutral-600 w-24"
             />
           )}
-          {!isLocked('role') && (
+          {!isPrimitives && !isLocked('role') && (
             <input
               type="text"
               value={query.role ?? ''}
@@ -809,9 +831,9 @@ function SampleRow({
     >
       <div className="text-[10px] text-neutral-200 font-mono truncate">{sample.block_id}</div>
       <div className="text-[9px] text-neutral-500 truncate">
-        {sample.package_name ?? 'no pkg'}
+        {sample.category ?? 'no cat'}
         {sample.role && ` | ${sample.role}`}
-        {sample.category && ` / ${sample.category}`}
+        {sample.package_name && ` | ${sample.package_name}`}
       </div>
     </button>
   );

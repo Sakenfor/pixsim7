@@ -96,6 +96,7 @@ export interface BlockCatalogQuery {
 export interface BlockMatrixQuery {
   row_key: string;
   col_key: string;
+  source?: 'primitives' | 'action_blocks';
   role?: string;
   category?: string;
   kind?: string;
