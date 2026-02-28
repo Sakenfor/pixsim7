@@ -394,6 +394,12 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // This prevents destroying the live dockview layout on hot-reload.
   const hadPanelsRef = useRef(false);
 
+  // ── Stable per-panel component cache (HMR resilience) ──────────────
+  // Each panel gets: implRef (mutable) → proxy (stable) → wrapped (stable)
+  // During HMR, only implRef.current is updated — wrapper identity never changes.
+  const panelImplRefs = useRef<Record<string, { current: React.ComponentType<any> }>>({});
+  const panelWrappedCache = useRef<Record<string, React.ComponentType<IDockviewPanelProps>>>({});
+
   const hasNoPanels =
     resolvedPanelDefs.length === 0 &&
     !registryMode &&
@@ -503,7 +509,9 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     const map: Record<string, React.ComponentType<IDockviewPanelProps>> = {};
     const seen = new Set<string>();
 
-    // Helper to register a panel definition (used by registry and panels modes)
+    // Helper to register a panel definition (used by registry and panels modes).
+    // Uses a stable proxy/cache chain so wrapper identities never change during HMR:
+    //   implRef (mutable) → PanelProxy (stable) → wrapped (stable)
     const registerPanel = (
       id: string,
       component: React.ComponentType<any>,
@@ -511,18 +519,39 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     ) => {
       if (seen.has(id)) return;
       seen.add(id);
-      map[id] = wrapPanelWithContextMenu(
-        component,
-        {
-          ...baseWrapOptions,
-          panelId: id,
-          declaredScopes: meta?.settingScopes ?? meta?.scopes,
-          tags: meta?.tags,
-          category: meta?.category,
-        },
-        contextRef,
-        PanelContextProvider,
-      );
+
+      if (!panelWrappedCache.current[id]) {
+        // First time: create ref → proxy → wrapped chain
+        const implRef = { current: component };
+        panelImplRefs.current[id] = implRef;
+
+        // Proxy has stable identity, reads implementation from ref at render time
+        const PanelProxy = (props: any) => {
+          const Impl = implRef.current;
+          if (!Impl) return null;
+          return <Impl {...props} />;
+        };
+        PanelProxy.displayName = `PanelProxy(${id})`;
+
+        // Wrap the proxy (not the actual component) — wrapper identity is stable
+        panelWrappedCache.current[id] = wrapPanelWithContextMenu(
+          PanelProxy,
+          {
+            ...baseWrapOptions,
+            panelId: id,
+            declaredScopes: meta?.settingScopes ?? meta?.scopes,
+            tags: meta?.tags,
+            category: meta?.category,
+          },
+          contextRef,
+          PanelContextProvider,
+        );
+      } else {
+        // Subsequent: just update the ref — wrapper identity stays the same
+        panelImplRefs.current[id].current = component;
+      }
+
+      map[id] = panelWrappedCache.current[id];
     };
 
     // Direct components mode - raw dockview components (no metadata)
@@ -553,16 +582,6 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     directComponents,
     baseWrapOptions,
   ]);
-
-  // During HMR the catalog briefly empties, producing an empty components map.
-  // Keep the last non-empty map so existing panels don't flash blank.
-  const stableComponentsRef = useRef(components);
-  if (Object.keys(components).length > 0) {
-    stableComponentsRef.current = components;
-  }
-  const stableComponents = Object.keys(components).length > 0
-    ? components
-    : stableComponentsRef.current;
 
   // Handle dockview ready - uses refs for props to stabilize callback
   const handleReady = useCallback(
@@ -656,7 +675,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       >
         <ContextHubHost hostId={scopeHostId}>
           <SmartDockviewBase
-            components={stableComponents as unknown as Record<string, React.FunctionComponent<IDockviewPanelProps>>}
+            components={components as unknown as Record<string, React.FunctionComponent<IDockviewPanelProps>>}
             tabComponents={tabComponents as unknown as Record<string, React.FunctionComponent<IDockviewPanelHeaderProps>>}
             defaultTabComponent={defaultTabComponent as unknown as React.FunctionComponent<IDockviewPanelHeaderProps>}
             watermarkComponent={watermarkComponent as unknown as React.FunctionComponent}
