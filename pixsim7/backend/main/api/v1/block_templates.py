@@ -17,6 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.services.prompt.block.template_service import BlockTemplateService
+from pixsim7.backend.main.services.prompt.block.block_primitive_query import (
+    build_block_primitive_query,
+)
+from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.services.prompt.block.block_query import (
     build_prompt_block_query,
 )
@@ -808,14 +812,17 @@ def _resolve_block_matrix_value(
 
     Rules:
     - `tag:<key>` explicitly targets tags
-    - known top-level keys use block attrs
+    - known top-level keys use block attrs (via getattr, safe for both models)
     - unknown keys fall back to tags[key]
     """
     key = (key or "").strip()
     if not key:
         return missing_label
 
-    top_level_keys = {"role", "category", "package_name", "kind", "default_intent", "complexity_level"}
+    top_level_keys = {
+        "role", "category", "package_name", "kind",
+        "default_intent", "complexity_level", "source",
+    }
     tags = getattr(block, "tags", None)
     tags_dict: Dict[str, Any] = tags if isinstance(tags, dict) else {}
 
@@ -1315,10 +1322,11 @@ async def get_block_catalog(
 async def get_block_matrix(
     row_key: str = Query(..., description="Matrix row axis key (tag key or top-level field; use tag:<key> for tags)"),
     col_key: str = Query(..., description="Matrix column axis key (tag key or top-level field; use tag:<key> for tags)"),
-    role: Optional[str] = Query(None, description="Filter by role"),
+    source: str = Query("primitives", description='Block source: "primitives" (default) or "action_blocks" (legacy)'),
+    role: Optional[str] = Query(None, description="Filter by role (action_blocks only)"),
     category: Optional[str] = Query(None, description="Filter by category"),
-    kind: Optional[str] = Query(None, description="Filter by kind"),
-    package_name: Optional[str] = Query(None, description="Filter by package"),
+    kind: Optional[str] = Query(None, description="Filter by kind (action_blocks only)"),
+    package_name: Optional[str] = Query(None, description="Filter by package (action_blocks only)"),
     q: Optional[str] = Query(None, description="Text search in block_id and text"),
     tags: Optional[str] = Query(None, description="Tag filters as comma-separated key:value pairs"),
     limit: int = Query(5000, ge=1, le=20000, description="Max blocks scanned for matrix"),
@@ -1336,9 +1344,37 @@ async def get_block_matrix(
     db: AsyncSession = Depends(get_db),
 ):
     """Build a block coverage matrix from DB-loaded blocks (AI + UI friendly)."""
-    from pixsim7.backend.main.domain.prompt import PromptBlock
-
     tag_constraints = _parse_tag_csv(tags) or None
+
+    # --- Fetch blocks from the selected source ---
+    if source == "primitives":
+        from pixsim7.backend.main.domain.blocks import BlockPrimitive
+
+        query = build_block_primitive_query(
+            category=category,
+            tag_query=tag_constraints,
+            text_query=q,
+        )
+        query = query.order_by(BlockPrimitive.block_id).limit(limit)
+        async with get_async_blocks_session() as blocks_db:
+            result = await blocks_db.execute(query)
+            blocks = list(result.scalars().all())
+    else:
+        from pixsim7.backend.main.domain.prompt import PromptBlock
+
+        query = build_prompt_block_query(
+            role=role,
+            category=category,
+            kind=kind,
+            package_name=package_name,
+            text_query=q,
+            tag_constraints=tag_constraints,
+        )
+        query = query.order_by(PromptBlock.block_id).limit(limit)
+        result = await db.execute(query)
+        blocks = list(result.scalars().all())
+
+    # --- Auto-expected values from family schema (legacy only) ---
     family_schema = _get_prompt_block_family_schema((tag_constraints or {}).get("sequence_family"))
     auto_expected_row_values = _family_expected_values_for_matrix_axis(
         family_schema,
@@ -1356,18 +1392,6 @@ async def get_block_matrix(
     effective_expected_col_values = expected_col_values or (
         ",".join(auto_expected_col_values) if auto_expected_col_values else None
     )
-
-    query = build_prompt_block_query(
-        role=role,
-        category=category,
-        kind=kind,
-        package_name=package_name,
-        text_query=q,
-        tag_constraints=tag_constraints,
-    )
-    query = query.order_by(PromptBlock.block_id).limit(limit)
-    result = await db.execute(query)
-    blocks = result.scalars().all()
 
     matrix_counts: Dict[tuple[str, str], int] = {}
     matrix_samples: Dict[tuple[str, str], List[Any]] = {}
@@ -1416,8 +1440,8 @@ async def get_block_matrix(
             BlockMatrixCellSampleResponse(
                 id=b.id,
                 block_id=b.block_id,
-                package_name=b.package_name,
-                role=b.role,
+                package_name=getattr(b, "package_name", None),
+                role=getattr(b, "role", None),
                 category=b.category,
             )
             for b in matrix_samples.get((r, c), [])
@@ -1438,6 +1462,7 @@ async def get_block_matrix(
         col_values=sorted_cols,
         total_blocks=len(blocks),
         filters={
+            "source": source,
             "role": role,
             "category": category,
             "kind": kind,
