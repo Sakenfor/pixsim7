@@ -1,4 +1,7 @@
-"""Infer ImageCompositionRole leaf from prompt-block (role, category, tags).
+"""Infer ImageCompositionRole leaf from block metadata (role, category, tags).
+
+Supports both legacy PromptBlock (role + category) and BlockPrimitive
+(category only) via the category-only fallback table.
 
 Pure function — no DB, no async, no side-effects.
 """
@@ -105,6 +108,18 @@ _ROLE_WILDCARD: dict[str, str] = {
     "romance": "materials:romance",
 }
 
+# ── Category-only fallback (primitives — no role field) ────────────────────
+
+_CATEGORY_FALLBACK: dict[str, str] = {
+    "light": "lighting:key",
+    "color": "materials:atmosphere",
+    "camera": "camera:angle",
+    "environment": "world:environment",
+    "location": "world:environment",
+    "character_pose": "entities:subject",
+    "pose": "entities:subject",
+}
+
 # ── Role-only fallback ──────────────────────────────────────────────────────
 
 _ROLE_FALLBACK: dict[str, str] = {
@@ -129,13 +144,14 @@ def infer_composition_role(
     category: str | None,
     tags: Mapping[str, Any] | None = None,
 ) -> CompositionRoleInference:
-    """Infer a composition role leaf from prompt-block metadata.
+    """Infer a composition role leaf from block metadata.
 
     Priority chain (strict precedence):
-    1. Tag-based exact match  → confidence "exact"
-    2. (role, category) pair  → confidence "heuristic"
-    3. Role-only fallback     → confidence "heuristic" (weaker reason)
-    4. Unknown                → confidence "unknown", role_id=None
+    1. Tag-based exact match   → confidence "exact"
+    2. (role, category) pair   → confidence "heuristic"
+    3. Role-only fallback      → confidence "heuristic" (weaker reason)
+    4. Category-only fallback  → confidence "heuristic" (primitives)
+    5. Unknown                 → confidence "unknown", role_id=None
     """
     norm_role = role.strip().lower() if role else None
     norm_cat = category.strip().lower() if category else None
@@ -203,7 +219,16 @@ def infer_composition_role(
             reason=f"role-only: {norm_role} → {hit}",
         )
 
-    # ── 4. Unknown ──────────────────────────────────────────────────────
+    # ── 4. Category-only fallback (primitives) ─────────────────────────
+    if norm_cat and norm_cat in _CATEGORY_FALLBACK:
+        hit = _CATEGORY_FALLBACK[norm_cat]
+        return CompositionRoleInference(
+            role_id=hit,
+            confidence="heuristic",
+            reason=f"category-only: {norm_cat} → {hit}",
+        )
+
+    # ── 5. Unknown ──────────────────────────────────────────────────────
     parts = []
     if norm_role:
         parts.append(f"role={norm_role}")
