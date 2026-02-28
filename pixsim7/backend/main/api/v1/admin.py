@@ -725,6 +725,7 @@ async def update_generation_config(
 
 class GenerationWorkerConfigResponse(BaseModel):
     """Current generation worker runtime config (backoff/dispatch tuning)."""
+    arq_max_jobs: int
     content_filter_submit_max_retries: int
     content_filter_rotate_after_retries: int
     content_filter_pinned_yield_after_retries: int
@@ -753,6 +754,7 @@ class GenerationWorkerConfigResponse(BaseModel):
 
 class GenerationWorkerConfigUpdate(BaseModel):
     """Partial update for generation worker runtime config."""
+    arq_max_jobs: int | None = Field(None, ge=1, le=100)
     content_filter_submit_max_retries: int | None = Field(None, ge=1, le=20)
     content_filter_rotate_after_retries: int | None = Field(None, ge=0, le=20)
     content_filter_pinned_yield_after_retries: int | None = Field(None, ge=0, le=20)
@@ -783,6 +785,7 @@ def _generation_worker_config_response_from_settings():
     from pixsim7.backend.main.shared.config import settings
 
     return GenerationWorkerConfigResponse(
+        arq_max_jobs=settings.arq_max_jobs,
         content_filter_submit_max_retries=settings.content_filter_submit_max_retries,
         content_filter_rotate_after_retries=settings.content_filter_rotate_after_retries,
         content_filter_pinned_yield_after_retries=settings.content_filter_pinned_yield_after_retries,

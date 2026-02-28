@@ -319,7 +319,7 @@ class Settings(BaseSettings):
 
     # ===== WORKER (ARQ) =====
     arq_max_jobs: int = Field(
-        default=10,
+        default=30,
         description="Max concurrent jobs per worker"
     )
     arq_job_timeout: int = Field(

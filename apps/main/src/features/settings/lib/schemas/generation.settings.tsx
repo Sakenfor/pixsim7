@@ -44,6 +44,7 @@ async function updateGenerationServerConfig(
 // ===== Server generation worker config (runtime backoff/dispatch tuning) =====
 
 interface GenerationWorkerServerConfig {
+  arq_max_jobs: number;
   content_filter_submit_max_retries: number;
   content_filter_rotate_after_retries: number;
   content_filter_pinned_yield_after_retries: number;
@@ -416,6 +417,16 @@ const generationGroups: SettingGroup[] = [
     adminGroup: true,
     fields: [
       {
+        id: 'serverWorker_arqMaxJobs',
+        type: 'number',
+        label: 'Worker Max Concurrent Jobs',
+        description: 'Max generations processed in parallel per worker. Requires worker restart.',
+        min: 1,
+        max: 100,
+        step: 1,
+        defaultValue: 30,
+      },
+      {
         id: 'serverWorker_contentFilterSubmitMaxRetries',
         type: 'number',
         label: 'Content Filter Submit Max Retries',
@@ -688,6 +699,7 @@ const GENERATION_FIELD_MAP: Record<string, keyof GenerationServerConfig> = {
 
 // Field ID -> server config key mapping (generation_worker namespace)
 const GENERATION_WORKER_FIELD_MAP: Record<string, keyof GenerationWorkerServerConfig> = {
+  serverWorker_arqMaxJobs: 'arq_max_jobs',
   serverWorker_contentFilterSubmitMaxRetries: 'content_filter_submit_max_retries',
   serverWorker_contentFilterRotateAfterRetries: 'content_filter_rotate_after_retries',
   serverWorker_contentFilterPinnedYieldAfterRetries: 'content_filter_pinned_yield_after_retries',
@@ -1000,6 +1012,7 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
       server_maxJobsPerUser: generationConfig?.max_jobs_per_user,
       server_maxAccountsPerUser: generationConfig?.max_accounts_per_user,
       // Server config fields — generation_worker
+      serverWorker_arqMaxJobs: generationWorkerConfig?.arq_max_jobs,
       serverWorker_contentFilterSubmitMaxRetries: generationWorkerConfig?.content_filter_submit_max_retries,
       serverWorker_contentFilterRotateAfterRetries: generationWorkerConfig?.content_filter_rotate_after_retries,
       serverWorker_contentFilterPinnedYieldAfterRetries: generationWorkerConfig?.content_filter_pinned_yield_after_retries,

@@ -45,6 +45,7 @@ def _apply_generation_worker_config(data: dict) -> None:
     from pixsim7.backend.main.shared.config import settings
 
     worker_keys = (
+        "arq_max_jobs",
         "content_filter_submit_max_retries",
         "content_filter_rotate_after_retries",
         "content_filter_pinned_yield_after_retries",

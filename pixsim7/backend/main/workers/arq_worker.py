@@ -75,6 +75,17 @@ _event_bridge = None
 _retry_event_bridge = None
 
 
+def _sync_preload_system_config() -> None:
+    """Pre-load DB-persisted config so class-level attributes see updated values."""
+    import asyncio
+    try:
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(_load_persisted_system_config_for_worker())
+        loop.close()
+    except Exception:
+        pass  # Falls back to env var / Pydantic default
+
+
 async def _load_persisted_system_config_for_worker() -> None:
     """Best-effort load of persisted system config into worker process memory."""
     try:
@@ -141,6 +152,11 @@ async def startup(ctx: dict) -> None:
     else:
         logger.info("worker_simulation_disabled", msg="World simulation disabled (set SIMULATION_ENABLED=true to enable)")
 
+    logger.info(
+        "worker_effective_config",
+        arq_max_jobs=settings.arq_max_jobs,
+    )
+
     # Reconcile account counters on startup (fixes counter drift from crashes)
     try:
         reconcile_result = await reconcile_account_counters(ctx)
@@ -199,6 +215,9 @@ async def retry_shutdown(ctx: dict) -> None:
     if _retry_event_bridge:
         await stop_event_bus_bridge()
         _retry_event_bridge = None
+
+
+_sync_preload_system_config()
 
 
 class WorkerSettings:
@@ -297,7 +316,7 @@ class WorkerSettings:
     on_shutdown = shutdown
 
     # Worker configuration
-    max_jobs = int(os.getenv("ARQ_MAX_JOBS", "10"))  # Max concurrent jobs
+    max_jobs = settings.arq_max_jobs  # Max concurrent jobs (DB-persisted or env ARQ_MAX_JOBS)
     job_timeout = int(os.getenv("ARQ_JOB_TIMEOUT", "3600"))  # 1 hour timeout
     max_tries = int(os.getenv("ARQ_MAX_TRIES", "3"))  # Retry failed jobs 3 times
     retry_jobs = True
@@ -324,7 +343,7 @@ class GenerationRetryWorkerSettings:
     on_startup = retry_startup
     on_shutdown = retry_shutdown
 
-    max_jobs = int(os.getenv("ARQ_GENERATION_RETRY_MAX_JOBS", os.getenv("ARQ_MAX_JOBS", "10")))
+    max_jobs = settings.arq_max_jobs
     job_timeout = int(os.getenv("ARQ_JOB_TIMEOUT", "3600"))
     max_tries = int(os.getenv("ARQ_MAX_TRIES", "3"))
     retry_jobs = True
