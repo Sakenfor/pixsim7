@@ -1,4 +1,14 @@
+import { resolveUploadTarget } from '@features/assets/lib/resolveUploadTarget';
+
 import type { MediaCardActions } from '@/components/media/MediaCard';
+
+export interface GestureResolverContext {
+  actions?: MediaCardActions;
+  onToggleFavorite?: () => void;
+  onUploadClick?: (id: number) => Promise<unknown> | void;
+  onUploadToProvider?: (id: number, providerId: string) => Promise<void> | void;
+  defaultUploadProviderId?: string | null;
+}
 
 export interface GestureActionDef {
   readonly id: string;
@@ -81,18 +91,46 @@ export function isChainDurationAction(chainActionId: string): boolean {
 /**
  * Resolve a gesture action ID to a callable handler.
  * Returns undefined if the action is 'none', not found, or the handler isn't provided.
+ *
+ * Handles all special-case action mappings centrally:
+ * - `toggleFavorite` → context.onToggleFavorite (no id param)
+ * - `quickGenerate` → falls back to actions.onQuickAdd when onQuickGenerate missing
+ * - `upload` → resolves via context.onUploadClick / context.onUploadToProvider
  */
 export function resolveGestureHandler(
   actionId: string,
-  actions: MediaCardActions | undefined,
-  extra?: { onToggleFavorite?: () => void },
+  context: GestureResolverContext,
 ): ((id: number, count?: number, overrides?: { duration?: number }) => void) | undefined {
-  if (actionId === 'none' || !actions) return undefined;
+  const { actions } = context;
+  if (actionId === 'none') return undefined;
 
   // Special case: toggleFavorite doesn't take an id
-  if (actionId === 'toggleFavorite' && extra?.onToggleFavorite) {
-    return () => extra.onToggleFavorite!();
+  if (actionId === 'toggleFavorite' && context.onToggleFavorite) {
+    return () => context.onToggleFavorite!();
   }
+
+  // Special case: upload — actions.onUploadToProvider is rarely populated by
+  // the action factory, so resolve via runtime upload props.
+  // Priority: provider-aware path first (respects user's chosen default
+  // provider in the upload button group), then fall back to onUploadClick
+  // which is typically a library-only upload.
+  if (actionId === 'upload') {
+    if (actions?.onUploadToProvider) {
+      return actions.onUploadToProvider as (id: number) => void;
+    }
+    if (context.onUploadToProvider) {
+      const target = resolveUploadTarget(context.defaultUploadProviderId ?? null);
+      if (target) {
+        return (id: number) => context.onUploadToProvider!(id, target.providerId);
+      }
+    }
+    if (context.onUploadClick) {
+      return (id: number) => context.onUploadClick!(id);
+    }
+    return undefined;
+  }
+
+  if (!actions) return undefined;
 
   // Back-compat: many surfaces expose quick generation via onQuickAdd only.
   // Let the "quickGenerate" gesture trigger that path when a dedicated

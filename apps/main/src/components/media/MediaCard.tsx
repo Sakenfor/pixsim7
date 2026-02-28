@@ -26,19 +26,10 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 
 import { useContextMenuOptional } from '@lib/dockview';
 import {
-  useMouseGesture,
-  useGestureConfigStore,
-  getActionForDirection,
-  getChainActionForDirection,
-  resolveGestureHandler,
+  useCardGestures,
   getGestureActionLabel,
-  computeGestureCount,
   isScalableAction,
-  isChainDurationAction,
-  useGestureSecondaryStore,
-  resolveDurationFromDy,
   type GestureDirection,
-  type GestureEvent,
 } from '@lib/gestures';
 import { Icon } from '@lib/icons';
 import {
@@ -371,75 +362,17 @@ export function MediaCard(props: MediaCardProps) {
   const tagSlugs = useMemo(() => tags?.map(t => t.slug) || [], [tags]);
 
   // ── Gesture support ────────────────────────────────────────────────────
-  const gestureEnabled = useGestureConfigStore((s) => s.enabled);
-  const gestureThreshold = useGestureConfigStore((s) => s.threshold);
-  const gestureEdgeInset = useGestureConfigStore((s) => s.edgeInset);
-  const gestureUp = useGestureConfigStore((s) => s.gestureUp);
-  const gestureDown = useGestureConfigStore((s) => s.gestureDown);
-  const gestureLeft = useGestureConfigStore((s) => s.gestureLeft);
-  const gestureRight = useGestureConfigStore((s) => s.gestureRight);
-  const chainUp = useGestureConfigStore((s) => s.chainUp);
-  const chainDown = useGestureConfigStore((s) => s.chainDown);
-  const chainLeft = useGestureConfigStore((s) => s.chainLeft);
-  const chainRight = useGestureConfigStore((s) => s.chainRight);
-
-  const gestureDirections = useMemo(
-    () => ({ gestureUp, gestureDown, gestureLeft, gestureRight }),
-    [gestureUp, gestureDown, gestureLeft, gestureRight],
-  );
-
-  const chainDirections = useMemo(
-    () => ({ chainUp, chainDown, chainLeft, chainRight }),
-    [chainUp, chainDown, chainLeft, chainRight],
-  );
-
-  const { gestureHandlers, activeGesture, gestureConsumed } = useMouseGesture({
-    enabled: gestureEnabled,
-    threshold: gestureThreshold,
-    edgeInset: gestureEdgeInset,
-    onGesture: useCallback(
-      (event: GestureEvent) => {
-        if (event.type !== 'swipe') return;
-        const actionId = getActionForDirection(gestureDirections, event.direction);
-        const handler = resolveGestureHandler(actionId, resolved.actions, {
-          onToggleFavorite: resolved.onToggleFavorite,
-        });
-        const count = isScalableAction(actionId)
-          ? computeGestureCount(Math.abs(event.dx), gestureThreshold)
-          : undefined;
-        const chainAction = getChainActionForDirection(chainDirections, event.direction);
-        const duration = isChainDurationAction(chainAction)
-          ? resolveDurationFromDy(event.dy, useGestureSecondaryStore.getState())
-          : undefined;
-        handler?.(id, count, duration !== undefined ? { duration } : undefined);
-      },
-      [gestureDirections, chainDirections, gestureThreshold, resolved.actions, resolved.onToggleFavorite, id],
-    ),
+  const gesture = useCardGestures({
+    id,
+    actions: resolved.actions,
+    onToggleFavorite: resolved.onToggleFavorite,
+    onUploadClick: resolved.onUploadClick,
+    onUploadToProvider: resolved.onUploadToProvider,
   });
-
-  const isGestureCommitted = activeGesture?.phase === 'committed';
-
-  const gestureActiveActionId = isGestureCommitted
-    ? getActionForDirection(gestureDirections, activeGesture.direction)
-    : null;
-
-  const gestureActiveCount = isGestureCommitted && gestureActiveActionId
-    ? computeGestureCount(Math.abs(activeGesture.dx), gestureThreshold)
-    : undefined;
-
-  const secondaryState = useGestureSecondaryStore();
-  const gestureActiveChainAction = isGestureCommitted
-    ? getChainActionForDirection(chainDirections, activeGesture.direction)
-    : 'none';
-  const gestureActiveDuration = isGestureCommitted
-    && isChainDurationAction(gestureActiveChainAction)
-    && secondaryState.options.length > 0
-    ? resolveDurationFromDy(activeGesture.dy, secondaryState)
-    : undefined;
 
   const handleOpen = () => {
     // Suppress open when gesture just completed (click fires after pointerup)
-    if (gestureConsumed.current) return;
+    if (gesture.gestureConsumed.current) return;
     if (onOpen) {
       onOpen(id);
     }
@@ -605,9 +538,9 @@ export function MediaCard(props: MediaCardProps) {
         configuration={overlayConfig}
         data={overlayData}
         customState={useMemo(() => ({
-          gesturePhase: activeGesture?.phase ?? 'idle',
-          edgeInset: gestureEdgeInset,
-        }), [activeGesture?.phase, gestureEdgeInset])}
+          gesturePhase: gesture.phase,
+          edgeInset: gesture.edgeInset,
+        }), [gesture.phase, gesture.edgeInset])}
         onWidgetClick={(widgetId) => {
           console.log('Widget clicked:', widgetId);
         }}
@@ -618,8 +551,8 @@ export function MediaCard(props: MediaCardProps) {
           }`}
           data-pixsim7="media-thumbnail"
           onClick={handleOpen}
-          onDragStart={gestureEnabled ? (e) => e.preventDefault() : undefined}
-          {...gestureHandlers}
+          onDragStart={gesture.enabled ? (e) => e.preventDefault() : undefined}
+          {...gesture.gestureHandlers}
           style={mediaType === 'video' && videoAspectRatio ? { aspectRatio: `${videoAspectRatio}` } : undefined}
         >
           {videoSrc || thumbSrc ? (
@@ -678,13 +611,13 @@ export function MediaCard(props: MediaCardProps) {
               <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />
             </div>
           )}
-          {isGestureCommitted && gestureActiveActionId && (
+          {gesture.isCommitted && gesture.actionId && gesture.direction && (
             <GestureOverlay
-              direction={activeGesture.direction}
-              actionId={gestureActiveActionId}
-              count={gestureActiveCount}
-              duration={gestureActiveDuration}
-              durationUnit={secondaryState.unit}
+              direction={gesture.direction}
+              actionId={gesture.actionId}
+              count={gesture.count}
+              duration={gesture.duration}
+              durationUnit={gesture.durationUnit}
             />
           )}
         </div>
