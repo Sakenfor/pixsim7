@@ -42,7 +42,9 @@ import { useQuickGenerateController } from '@features/prompts';
 import { useProviderIdForModel } from '@features/providers';
 
 import {
+  COMPACT_TOP_LEFT_BADGE_OFFSET,
   COMPACT_TOP_RIGHT_BADGE_OFFSET,
+  TOP_LEFT_BADGE_STACK_GROUP,
   TOP_RIGHT_BADGE_STACK_GROUP,
 } from '@/components/media/assetCardLocalWidgets';
 import { OPERATION_METADATA } from '@/types/operations';
@@ -531,7 +533,8 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const buildSlotIndexWidget = useCallback(
     (slotIdx: number) => createBadgeWidget({
       id: 'slot-index',
-      position: { anchor: 'top-left', offset: { x: 4, y: 4 } },
+      position: { anchor: 'top-left', offset: COMPACT_TOP_LEFT_BADGE_OFFSET },
+      stackGroup: TOP_LEFT_BADGE_STACK_GROUP,
       visibility: { trigger: 'always', transition: 'none' },
       variant: 'text',
       labelBinding: { id: 'label', resolve: () => String(slotIdx + 1) },
@@ -710,7 +713,8 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
       const set = useAssetSetStore.getState().getSet(item.assetSetRef.setId);
       return createBadgeWidget({
         id: 'asset-set-ref',
-        position: { anchor: 'top-left', offset: { x: 4, y: 4 } },
+        position: { anchor: 'top-left', offset: COMPACT_TOP_LEFT_BADGE_OFFSET },
+        stackGroup: TOP_LEFT_BADGE_STACK_GROUP,
         visibility: { trigger: 'always', transition: 'none' },
         variant: 'icon',
         icon: isRandom ? 'shuffle' : 'lock',
@@ -735,7 +739,8 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const buildSetLinkWidget = useCallback(
     (slotIdx: number) => createBadgeWidget({
       id: 'asset-set-link',
-      position: { anchor: 'top-left', offset: { x: 4, y: 4 } },
+      position: { anchor: 'top-left', offset: COMPACT_TOP_LEFT_BADGE_OFFSET },
+      stackGroup: TOP_LEFT_BADGE_STACK_GROUP,
       visibility: { trigger: 'hover-container', transition: 'fade' },
       variant: 'icon',
       icon: 'shuffle',

@@ -4,6 +4,9 @@ import { createBadgeWidget, type OverlayWidget } from '@lib/ui/overlay';
 export const TOP_RIGHT_BADGE_STACK_GROUP = 'badges-tr';
 export const COMPACT_TOP_RIGHT_BADGE_OFFSET = { x: -4, y: 4 } as const;
 
+export const TOP_LEFT_BADGE_STACK_GROUP = 'badges-tl';
+export const COMPACT_TOP_LEFT_BADGE_OFFSET = { x: 4, y: 4 } as const;
+
 export interface CompactAssetCardLocalWidgetsOptions {
   showRemoveButton: boolean;
   isLocalOnly: boolean;
@@ -73,7 +76,8 @@ export function buildCompactAssetCardLocalWidgets({
     widgets.push({
       id: 'locked-frame',
       type: 'custom',
-      position: { anchor: 'top-left', offset: { x: 4, y: 4 } },
+      position: { anchor: 'top-left', offset: COMPACT_TOP_LEFT_BADGE_OFFSET },
+      stackGroup: TOP_LEFT_BADGE_STACK_GROUP,
       visibility: { trigger: 'always', transition: 'none' },
       priority: 15,
       render: () => (
