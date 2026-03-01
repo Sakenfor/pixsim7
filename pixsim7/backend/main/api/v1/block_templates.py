@@ -5,12 +5,12 @@ REST API for managing block templates and rolling prompts:
 - Roll: randomly compose a prompt from template slot constraints
 - Preview: count/sample matching blocks for a slot definition
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import Counter
 from dataclasses import asdict
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -690,6 +690,26 @@ class BlockResponse(BaseModel):
         from_attributes = True
 
 
+class UpsertPrimitiveBlockRequest(BaseModel):
+    category: str = Field(..., min_length=1, max_length=64)
+    text: str = Field(..., min_length=1)
+    tags: Dict[str, Any] = Field(default_factory=dict)
+    source: Literal["system", "user", "imported"] = "imported"
+    is_public: bool = True
+    avg_rating: Optional[float] = None
+    usage_count: Optional[int] = Field(default=None, ge=0)
+
+
+class UpsertPrimitiveBlockResponse(BaseModel):
+    status: Literal["created", "updated"]
+    block: BlockResponse
+
+
+class DeletePrimitiveBlockResponse(BaseModel):
+    success: bool = True
+    deleted_block_id: str
+
+
 class BlockCatalogRowResponse(BaseModel):
     id: UUID
     block_id: str
@@ -1304,6 +1324,116 @@ async def search_blocks(
         ]
 
     return [_to_block_response(b) for b in blocks]
+
+
+@router.put("/blocks/by-block-id/{block_id}", response_model=UpsertPrimitiveBlockResponse)
+async def upsert_block_by_block_id(
+    block_id: str,
+    request: UpsertPrimitiveBlockRequest,
+    response: Response = None,
+    create_if_missing: bool = Query(
+        True,
+        description="Create block when missing; otherwise return 404 for unknown block_id.",
+    ),
+    current_user: User = Depends(get_current_user),
+):
+    """Create or update a primitive block by block_id.
+
+    This endpoint writes to the separate block primitives database.
+    """
+    del current_user  # Auth enforced by dependency; user ownership not yet modeled for primitives.
+
+    normalized_block_id = str(block_id or "").strip()
+    if not normalized_block_id:
+        raise HTTPException(status_code=400, detail="block_id_required")
+
+    category = str(request.category or "").strip()
+    text = str(request.text or "").strip()
+    if not category:
+        raise HTTPException(status_code=400, detail="category_required")
+    if not text:
+        raise HTTPException(status_code=400, detail="text_required")
+
+    tags = dict(request.tags or {})
+    now = datetime.now(timezone.utc)
+
+    from pixsim7.backend.main.domain.blocks import BlockPrimitive
+
+    async with get_async_blocks_session() as blocks_db:
+        result = await blocks_db.execute(
+            select(BlockPrimitive).where(BlockPrimitive.block_id == normalized_block_id)
+        )
+        block = result.scalars().first()
+        if block is None:
+            if not create_if_missing:
+                raise HTTPException(status_code=404, detail="block_not_found")
+
+            block = BlockPrimitive(
+                block_id=normalized_block_id,
+                category=category,
+                text=text,
+                tags=tags,
+                source=request.source,
+                is_public=request.is_public,
+                avg_rating=request.avg_rating,
+                usage_count=request.usage_count or 0,
+                created_at=now,
+                updated_at=now,
+            )
+            blocks_db.add(block)
+            await blocks_db.commit()
+            await blocks_db.refresh(block)
+            if response is not None:
+                response.status_code = 201
+            return UpsertPrimitiveBlockResponse(
+                status="created",
+                block=_to_block_response(block),
+            )
+
+        block.category = category
+        block.text = text
+        block.tags = tags
+        block.source = request.source
+        block.is_public = request.is_public
+        if request.avg_rating is not None:
+            block.avg_rating = request.avg_rating
+        if request.usage_count is not None:
+            block.usage_count = request.usage_count
+        block.updated_at = now
+        blocks_db.add(block)
+        await blocks_db.commit()
+        await blocks_db.refresh(block)
+        return UpsertPrimitiveBlockResponse(
+            status="updated",
+            block=_to_block_response(block),
+        )
+
+
+@router.delete("/blocks/by-block-id/{block_id}", response_model=DeletePrimitiveBlockResponse)
+async def delete_block_by_block_id(
+    block_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a primitive block by block_id."""
+    del current_user  # Auth enforced by dependency; user ownership not yet modeled for primitives.
+
+    normalized_block_id = str(block_id or "").strip()
+    if not normalized_block_id:
+        raise HTTPException(status_code=400, detail="block_id_required")
+
+    from pixsim7.backend.main.domain.blocks import BlockPrimitive
+
+    async with get_async_blocks_session() as blocks_db:
+        result = await blocks_db.execute(
+            select(BlockPrimitive).where(BlockPrimitive.block_id == normalized_block_id)
+        )
+        block = result.scalars().first()
+        if block is None:
+            raise HTTPException(status_code=404, detail="block_not_found")
+        await blocks_db.delete(block)
+        await blocks_db.commit()
+
+    return DeletePrimitiveBlockResponse(deleted_block_id=normalized_block_id)
 
 
 @router.get("/meta/blocks/catalog", response_model=List[BlockCatalogRowResponse])
