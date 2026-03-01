@@ -129,12 +129,10 @@ export function SmartDockviewBase<TContext = any>({
       map[key] = wrappers[key];
     }
 
-    // Clean up wrappers for removed panels
-    for (const key of Object.keys(wrappers)) {
-      if (!(key in components)) {
-        delete wrappers[key];
-      }
-    }
+    // Note: stale entries in `wrappers` for removed panel IDs are intentionally
+    // kept. They're harmless (never used) and deleting them would create new
+    // wrapper identities if the panel reappears, causing DockviewReact to
+    // unmount/remount the panel content.
 
     return map;
   }, [components]);

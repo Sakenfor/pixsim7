@@ -505,6 +505,8 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     defaultPanelScopes,
   }), [contextMenuActive, enablePanelContentContextMenu, resetDockviewLayout, defaultPanelScopes]);
 
+  const prevComponentsRef = useRef<Record<string, React.ComponentType<IDockviewPanelProps>>>({});
+
   const components = useMemo(() => {
     const map: Record<string, React.ComponentType<IDockviewPanelProps>> = {};
     const seen = new Set<string>();
@@ -559,11 +561,8 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       Object.entries(directComponents).forEach(([id, component]) => {
         registerPanel(id, component);
       });
-      return map;
-    }
-
-    // Registry mode - LocalPanelRegistry with embedded components
-    if (registry) {
+    } else if (registry) {
+      // Registry mode - LocalPanelRegistry with embedded components
       registry.getAll().forEach((def) => {
         registerPanel(def.id, def.component, def);
       });
@@ -575,6 +574,25 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       });
     }
 
+    // During HMR the catalog briefly empties, so registerPanel is never called
+    // and map would be {}. Backfill from the cache so SmartDockviewBase's stable
+    // wrappers still find an implementation and don't render empty panels.
+    for (const id in panelWrappedCache.current) {
+      if (!map[id]) {
+        map[id] = panelWrappedCache.current[id];
+      }
+    }
+
+    // Stabilize the object reference: if keys and values are identical to the
+    // previous result, return the same object. This prevents DockviewReact from
+    // seeing a components change and calling updateOptions({ createComponent }),
+    // which can blank existing panel portals during HMR.
+    const prev = prevComponentsRef.current;
+    const keys = Object.keys(map);
+    if (keys.length === Object.keys(prev).length && keys.every(k => prev[k] === map[k])) {
+      return prev;
+    }
+    prevComponentsRef.current = map;
     return map;
   }, [
     registry,
