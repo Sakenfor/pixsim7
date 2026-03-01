@@ -718,7 +718,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
         shape: 'circle',
         tooltip: `Set: ${set?.name ?? 'Unknown'} (${isRandom ? 'random each' : 'locked'})`,
         priority: 21,
-        className: isRandom ? 'ring-2 ring-purple-400/60 ring-offset-1 ring-offset-black/50' : '',
+        className: isRandom ? 'animate-pulse-badge' : '',
         onClick: (_data: any, e?: any) => {
           const target = e?.currentTarget ?? e?.target;
           if (target) {
