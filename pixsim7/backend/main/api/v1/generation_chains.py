@@ -179,7 +179,10 @@ class ExecuteEphemeralFanoutRequest(BaseModel):
     execution_metadata: Optional[Dict[str, Any]] = None
     name: Optional[str] = Field(None, description="Optional display name for execution tracking")
     description: Optional[str] = Field(None, description="Optional description")
-    steps: List[ChainStepInput] = Field(..., min_length=1)
+    steps: List[ChainStepInput] = Field(
+        default_factory=list,
+        description="Optional chain steps snapshot (not used by fanout executor, kept for metadata/logging)",
+    )
     chain_metadata: Optional[Dict[str, Any]] = Field(
         None,
         description="Optional metadata snapshot for the ephemeral chain payload",

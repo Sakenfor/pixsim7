@@ -220,3 +220,33 @@ export function DropdownItem({
 export function DropdownDivider() {
   return <div className="border-t dark:border-neutral-700 my-1" />;
 }
+
+/**
+ * DropdownSectionHeader — small uppercase label for grouping dropdown items.
+ *
+ * Usage:
+ * <DropdownSectionHeader>Strategy</DropdownSectionHeader>
+ * <DropdownItem .../>
+ */
+export function DropdownSectionHeader({
+  children,
+  className,
+  first,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  /** True for the first header in the dropdown (extra top padding). */
+  first?: boolean;
+}) {
+  return (
+    <div
+      className={clsx(
+        'px-2 pb-0.5 text-[9px] font-semibold text-neutral-400 uppercase tracking-wider select-none',
+        first ? 'pt-1.5' : 'pt-0.5',
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}

@@ -1,4 +1,4 @@
-import { Dropdown, DropdownItem } from '@pixsim7/shared.ui';
+import { Dropdown, DropdownItem, DropdownSectionHeader } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useMemo, useRef, useState } from 'react';
 
@@ -228,7 +228,7 @@ export function EachSplitButton({
         triggerRef={triggerRef}
         className="!p-0"
       >
-        <div className="px-2 pt-1.5 pb-0.5 text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">Built-in Presets</div>
+        <DropdownSectionHeader first>Built-in Presets</DropdownSectionHeader>
         {builtinBasicPresets.map((preset) => (
           <DropdownItem
             key={preset.id}
@@ -247,9 +247,7 @@ export function EachSplitButton({
         ))}
         {builtinOvernightPresets.length > 0 && (
           <>
-            <div className="px-2 pt-0.5 pb-0.5 text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">
-              Overnight / Long Runs
-            </div>
+            <DropdownSectionHeader>Overnight / Long Runs</DropdownSectionHeader>
             {builtinOvernightPresets.map((preset) => (
               <DropdownItem
                 key={preset.id}
@@ -270,7 +268,7 @@ export function EachSplitButton({
             ))}
           </>
         )}
-        <div className="px-2 pt-0.5 pb-0.5 text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">Custom Presets</div>
+        <DropdownSectionHeader>Custom Presets</DropdownSectionHeader>
         {(customPresets || []).map((preset) => (
           <DropdownItem
             key={preset.id}
@@ -280,7 +278,7 @@ export function EachSplitButton({
             }}
             className="text-[11px]"
             icon={<Icon name="sparkles" size={10} />}
-            rightAdornment={
+            rightSlot={
               preset.id.startsWith('custom-') ? (
                 <button
                   type="button"
@@ -332,13 +330,13 @@ export function EachSplitButton({
         </div>
 
         <div className="my-1 border-t border-neutral-200 dark:border-neutral-700" />
-        <div className="px-2 pt-0.5 pb-0.5 text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">Strategy</div>
+        <DropdownSectionHeader>Strategy</DropdownSectionHeader>
         {EACH_STRATEGIES.map((s) => (
           <DropdownItem
             key={s.id}
             onClick={() => {
-              setSelectedStrategy(s.id);
-              setSelectedSetId(null);
+              setDraftPatch({ strategy: s.id, setId: undefined });
+              setOpen(false);
             }}
             className={clsx(selectedStrategy === s.id && 'font-semibold')}
           >
@@ -348,11 +346,14 @@ export function EachSplitButton({
             </div>
           </DropdownItem>
         ))}
-        <div className="px-2 pt-0.5 pb-0.5 text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">Asset Set</div>
+        <DropdownSectionHeader>Asset Set</DropdownSectionHeader>
         {SET_STRATEGIES.map((s) => (
           <DropdownItem
             key={s.id}
-            onClick={() => setSelectedStrategy(s.id)}
+            onClick={() => {
+              setDraftPatch({ strategy: s.id });
+              setOpen(false);
+            }}
             className={clsx(selectedStrategy === s.id && 'font-semibold')}
           >
             <div className="flex flex-col items-start">
