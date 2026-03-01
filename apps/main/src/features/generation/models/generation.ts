@@ -92,6 +92,44 @@ export interface GenerationModel {
 // Helpers
 // ============================================================================
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function asModelName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function getModelFromRecord(
+  record: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!record) return null;
+
+  const directModel = asModelName(record.model);
+  if (directModel) return directModel;
+
+  const nestedKeys = ['generation_config', 'params', 'options', 'request', 'payload', 'data'];
+  for (const key of nestedKeys) {
+    const nested = record[key];
+    if (!isRecord(nested)) continue;
+    const nestedModel = asModelName(nested.model);
+    if (nestedModel) return nestedModel;
+  }
+
+  const style = record.style;
+  if (isRecord(style)) {
+    for (const providerStyle of Object.values(style)) {
+      if (!isRecord(providerStyle)) continue;
+      const styleModel = asModelName(providerStyle.model);
+      if (styleModel) return styleModel;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Ensure an ISO timestamp is interpreted as UTC.
  * Backend stores UTC but may omit the 'Z' suffix on older records.
@@ -104,6 +142,22 @@ function ensureUtc(ts: string | null | undefined): string | null | undefined {
   // Already has timezone info
   if (ts.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(ts)) return ts;
   return ts + 'Z';
+}
+
+/**
+ * Resolve provider model name from canonical/raw params or latest submission payload.
+ */
+export function getGenerationModelName(
+  generation: Pick<
+    GenerationModel,
+    'canonicalParams' | 'rawParams' | 'latestSubmissionPayload'
+  >,
+): string | null {
+  return (
+    getModelFromRecord(generation.canonicalParams) ??
+    getModelFromRecord(generation.rawParams) ??
+    getModelFromRecord(generation.latestSubmissionPayload)
+  );
 }
 
 // ============================================================================

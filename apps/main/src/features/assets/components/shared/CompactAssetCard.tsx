@@ -407,28 +407,37 @@ export function CompactAssetCard({
                 transform: 'translateX(-50%)',
               }}
             >
-              {queueItems.map((item, idx) => (
-                <button
-                  key={item.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelectIndex(idx);
-                    setShowQueueGrid(false);
-                    setPopupPosition(null);
-                  }}
-                  style={{ width: 80, height: 80, transition: 'none', animation: 'none' }}
-                  className={`relative rounded-md overflow-hidden ${
-                    idx === (currentIndex ?? 1) - 1
-                      ? 'ring-2 ring-accent'
-                      : 'hover:ring-1 hover:ring-white/50'
-                  }`}
-                >
-                  <QueueThumbnail url={item.thumbnailUrl} alt={`Asset ${idx + 1}`} />
-                  <span className="absolute bottom-0 right-0 bg-black/80 text-white text-[11px] px-1.5 py-0.5 rounded-tl font-medium">
-                    {idx + 1}
-                  </span>
-                </button>
-              ))}
+              {queueItems.map((item, idx) => {
+                const isVirtualSlot = !item.thumbnailUrl;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectIndex(idx);
+                      setShowQueueGrid(false);
+                      setPopupPosition(null);
+                    }}
+                    style={{ width: 80, height: 80, transition: 'none', animation: 'none' }}
+                    className={`relative rounded-md overflow-hidden ${
+                      idx === (currentIndex ?? 1) - 1
+                        ? 'ring-2 ring-accent'
+                        : 'hover:ring-1 hover:ring-white/50'
+                    } ${isVirtualSlot ? 'border border-dashed border-neutral-600 flex items-center justify-center' : ''}`}
+                  >
+                    {isVirtualSlot ? (
+                      <span className="text-neutral-400 text-lg font-light">+</span>
+                    ) : (
+                      <>
+                        <QueueThumbnail url={item.thumbnailUrl} alt={`Asset ${idx + 1}`} />
+                        <span className="absolute bottom-0 right-0 bg-black/80 text-white text-[11px] px-1.5 py-0.5 rounded-tl font-medium">
+                          {idx + 1}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </>,
           document.body

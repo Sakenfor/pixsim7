@@ -10,6 +10,7 @@ Runs periodically to:
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, func, distinct
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain import Generation
@@ -49,6 +50,212 @@ from pixsim7.backend.main.infrastructure.events.redis_bridge import (
 
 logger = configure_logging("worker").bind(channel="pipeline")
 _poller_debug_initialized = False
+
+
+def _normalize_for_attempt_compare(value: datetime) -> datetime:
+    """Normalize timestamps to naive UTC for robust equality checks."""
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _parse_submission_attempt_started_at(submission: ProviderSubmission) -> datetime | None:
+    """Parse internal attempt ownership marker from submission.response when present."""
+    if not isinstance(submission.response, dict):
+        return None
+    raw = submission.response.get("generation_attempt_started_at")
+    if not raw or not isinstance(raw, str):
+        return None
+    try:
+        return datetime.fromisoformat(raw)
+    except Exception:
+        return None
+
+
+def _submission_matches_generation_attempt(
+    generation: Generation,
+    submission: ProviderSubmission,
+) -> bool | None:
+    """
+    Check whether submission belongs to generation's current processing attempt.
+
+    Returns:
+      - True: marker exists and matches current attempt
+      - False: marker exists and does not match current attempt
+      - None: marker unavailable (fallback to timestamp heuristic)
+    """
+    generation_started_at = getattr(generation, "started_at", None)
+    if generation_started_at is None:
+        return None
+
+    submission_attempt_started_at = _parse_submission_attempt_started_at(submission)
+    if submission_attempt_started_at is None:
+        return None
+
+    return (
+        _normalize_for_attempt_compare(submission_attempt_started_at)
+        == _normalize_for_attempt_compare(generation_started_at)
+    )
+
+
+def _submission_matches_generation_attempt_id(
+    generation: Generation,
+    submission: ProviderSubmission,
+) -> bool | None:
+    """Compare numeric generation/submission attempt IDs when both are present."""
+    try:
+        generation_attempt_id = int(getattr(generation, "attempt_id", 0) or 0)
+    except Exception:
+        generation_attempt_id = 0
+
+    if generation_attempt_id <= 0:
+        return None
+
+    submission_attempt_id = getattr(submission, "generation_attempt_id", None)
+    if submission_attempt_id is None:
+        return None
+
+    try:
+        return int(submission_attempt_id) == generation_attempt_id
+    except Exception:
+        return None
+
+
+def _submission_is_likely_current_attempt(
+    generation: Generation,
+    submission: ProviderSubmission,
+) -> bool:
+    """
+    Best-effort attempt ownership match for mixed-schema deployments.
+
+    Priority:
+      1) generation_attempt_id exact match
+      2) internal started-at marker match
+      3) timestamp heuristic (submission created/responded after current attempt start)
+    """
+    by_attempt_id = _submission_matches_generation_attempt_id(generation, submission)
+    if by_attempt_id is not None:
+        return by_attempt_id
+
+    by_marker = _submission_matches_generation_attempt(generation, submission)
+    if by_marker is not None:
+        return by_marker
+
+    generation_started_at = getattr(generation, "started_at", None)
+    if generation_started_at is None:
+        return False
+    generation_started_norm = _normalize_for_attempt_compare(generation_started_at)
+
+    submission_submitted_at = getattr(submission, "submitted_at", None)
+    if submission_submitted_at is not None:
+        if _normalize_for_attempt_compare(submission_submitted_at) >= generation_started_norm:
+            return True
+
+    submission_responded_at = getattr(submission, "responded_at", None)
+    if submission_responded_at is not None:
+        if _normalize_for_attempt_compare(submission_responded_at) >= generation_started_norm:
+            return True
+
+    return False
+
+
+async def _select_current_attempt_submission(
+    db: AsyncSession,
+    generation: Generation,
+) -> tuple[ProviderSubmission | None, ProviderSubmission | None, int]:
+    """
+    Select submission owned by generation's active attempt.
+
+    Returns:
+      - selected_submission: submission for current attempt (or None)
+      - latest_submission_any_attempt: latest submission regardless of attempt (or None)
+      - current_attempt_id: generation.attempt_id normalized to int>=0
+    """
+    try:
+        current_attempt_id = int(getattr(generation, "attempt_id", 0) or 0)
+    except Exception:
+        current_attempt_id = 0
+
+    if current_attempt_id > 0:
+        attempt_result = await db.execute(
+            select(ProviderSubmission)
+            .where(ProviderSubmission.generation_id == generation.id)
+            .where(ProviderSubmission.generation_attempt_id == current_attempt_id)
+            .order_by(ProviderSubmission.submitted_at.desc())
+            .limit(1)
+        )
+        attempt_submission = attempt_result.scalars().first()
+        if attempt_submission is not None:
+            return attempt_submission, attempt_submission, current_attempt_id
+
+    latest_result = await db.execute(
+        select(ProviderSubmission)
+        .where(ProviderSubmission.generation_id == generation.id)
+        .order_by(ProviderSubmission.submitted_at.desc())
+        .limit(1)
+    )
+    latest_submission = latest_result.scalars().first()
+    if latest_submission is None:
+        return None, None, current_attempt_id
+
+    if _submission_is_likely_current_attempt(generation, latest_submission):
+        return latest_submission, latest_submission, current_attempt_id
+
+    return None, latest_submission, current_attempt_id
+
+
+def _map_submit_error_to_generation_error_code(submission: ProviderSubmission) -> str | None:
+    """Best-effort mapping from submit-time ProviderError type to GenerationErrorCode."""
+    if not isinstance(submission.response, dict):
+        return None
+
+    error_type = str(submission.response.get("error_type") or "").strip()
+    error_text = str(
+        submission.response.get("error_message")
+        or submission.response.get("error")
+        or ""
+    ).lower()
+
+    by_type = {
+        "ProviderConcurrentLimitError": GenerationErrorCode.PROVIDER_CONCURRENT_LIMIT.value,
+        "ProviderRateLimitError": GenerationErrorCode.PROVIDER_RATE_LIMIT.value,
+        "ProviderAuthenticationError": GenerationErrorCode.PROVIDER_AUTH.value,
+        "ProviderQuotaExceededError": GenerationErrorCode.PROVIDER_QUOTA.value,
+    }
+    if error_type in by_type:
+        return by_type[error_type]
+
+    # Fallback for legacy payloads without explicit error_type.
+    if "concurrent generation limit" in error_text or "concurrent limit" in error_text:
+        return GenerationErrorCode.PROVIDER_CONCURRENT_LIMIT.value
+    if "rate limit" in error_text:
+        return GenerationErrorCode.PROVIDER_RATE_LIMIT.value
+    if "authentication failed" in error_text or "unauthorized" in error_text:
+        return GenerationErrorCode.PROVIDER_AUTH.value
+    if "insufficient balance" in error_text or "quota" in error_text:
+        return GenerationErrorCode.PROVIDER_QUOTA.value
+
+    return None
+
+
+def _is_stale_unsubmitted_error_submission(
+    generation: Generation,
+    submission: ProviderSubmission,
+) -> bool:
+    """Return True when this no-job-id error submission predates current processing attempt."""
+    generation_started_at = getattr(generation, "started_at", None)
+    if generation_started_at is None:
+        return False
+
+    submission_responded_at = getattr(submission, "responded_at", None)
+    if submission_responded_at is not None and generation_started_at > submission_responded_at:
+        return True
+
+    submission_submitted_at = getattr(submission, "submitted_at", None)
+    if submission_submitted_at is not None and generation_started_at > submission_submitted_at:
+        return True
+
+    return False
 
 
 def _processing_generations_snapshot(processing_generations: list[Generation]) -> dict:
@@ -169,33 +376,67 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                 try:
                     latest_error_submission_without_job_id = None
-                    submission_result = await db.execute(
-                        select(ProviderSubmission)
-                        .where(ProviderSubmission.generation_id == generation.id)
-                        .order_by(ProviderSubmission.submitted_at.desc())
-                        .limit(1)
+                    (
+                        submission,
+                        latest_submission_any_attempt,
+                        current_attempt_id,
+                    ) = await _select_current_attempt_submission(
+                        db,
+                        generation,
                     )
-                    submission = submission_result.scalars().first()
 
                     if not submission:
-                        logger.warning("no_submission", generation_id=generation.id)
-                        await generation_service.mark_failed(
-                            generation.id,
-                            "No provider submission found",
-                            error_code=GenerationErrorCode.PROVIDER_UNAVAILABLE.value,
+                        logger.warning(
+                            "no_current_attempt_submission",
+                            generation_id=generation.id,
+                            attempt_id=current_attempt_id,
+                            has_latest_submission_any_attempt=latest_submission_any_attempt is not None,
+                            latest_submission_id=(
+                                latest_submission_any_attempt.id
+                                if latest_submission_any_attempt
+                                else None
+                            ),
+                            latest_submission_attempt_id=(
+                                latest_submission_any_attempt.generation_attempt_id
+                                if latest_submission_any_attempt
+                                else None
+                            ),
+                            generation_started_at=(
+                                str(generation.started_at) if generation.started_at else None
+                            ),
                         )
-                        # Decrement counter using generation.account_id if available
-                        # (counter was incremented at selection, before submission created)
-                        if generation.account_id:
-                            orphan_account = await db.get(ProviderAccount, generation.account_id)
-                            if orphan_account and orphan_account.current_processing_jobs > 0:
-                                orphan_account.current_processing_jobs -= 1
-                                logger.info(
-                                    "counter_decremented_no_submission",
-                                    account_id=generation.account_id,
-                                    generation_id=generation.id,
-                                )
-                        failed += 1
+
+                        if generation.started_at and generation.started_at < unsubmitted_timeout_threshold:
+                            await generation_service.mark_failed(
+                                generation.id,
+                                (
+                                    "Generation failed: no submission found for current attempt "
+                                    f"(timed out after {UNSUBMITTED_TIMEOUT_MINUTES} minutes)"
+                                ),
+                                error_code=GenerationErrorCode.PROVIDER_UNAVAILABLE.value,
+                            )
+
+                            timeout_account_id = generation.account_id
+                            if (
+                                timeout_account_id is None
+                                and latest_submission_any_attempt is not None
+                            ):
+                                timeout_account_id = latest_submission_any_attempt.account_id
+                            if timeout_account_id:
+                                orphan_account = await db.get(ProviderAccount, timeout_account_id)
+                                if orphan_account and orphan_account.current_processing_jobs > 0:
+                                    orphan_account.current_processing_jobs -= 1
+                                    logger.info(
+                                        "counter_decremented_no_current_attempt_submission",
+                                        account_id=timeout_account_id,
+                                        generation_id=generation.id,
+                                    )
+
+                            failed += 1
+                            continue
+
+                        still_processing += 1
+                        still_processing_ids.append(generation.id)
                         continue
 
                     account = await db.get(ProviderAccount, submission.account_id)
@@ -218,17 +459,27 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 datetime.now(timezone.utc) - generation.started_at
                             ).total_seconds()
 
-                        submission_count_result = await db.execute(
-                            select(func.count(ProviderSubmission.id)).where(
-                                ProviderSubmission.generation_id == generation.id
-                            )
+                        submission_count_query = select(func.count(ProviderSubmission.id)).where(
+                            ProviderSubmission.generation_id == generation.id
                         )
-                        submission_count = submission_count_result.scalar() or 0
-
-                        previous_valid_result = await db.execute(
+                        previous_valid_query = (
                             select(ProviderSubmission)
                             .where(ProviderSubmission.generation_id == generation.id)
                             .where(ProviderSubmission.provider_job_id.is_not(None))
+                        )
+                        if current_attempt_id > 0 and submission.generation_attempt_id is not None:
+                            submission_count_query = submission_count_query.where(
+                                ProviderSubmission.generation_attempt_id == current_attempt_id
+                            )
+                            previous_valid_query = previous_valid_query.where(
+                                ProviderSubmission.generation_attempt_id == current_attempt_id
+                            )
+
+                        submission_count_result = await db.execute(submission_count_query)
+                        submission_count = submission_count_result.scalar() or 0
+
+                        previous_valid_result = await db.execute(
+                            previous_valid_query
                             .order_by(ProviderSubmission.submitted_at.desc())
                             .limit(1)
                         )
@@ -247,6 +498,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             generation_started_age_seconds=generation_started_age_seconds,
                             submitted_at=str(submission.submitted_at) if submission.submitted_at else None,
                             responded_at=str(submission.responded_at) if submission.responded_at else None,
+                            submission_attempt_id=submission.generation_attempt_id,
+                            generation_attempt_id=current_attempt_id,
                             response_keys=response_keys,
                             submission_count=submission_count,
                             has_previous_valid_submission=previous_valid_submission is not None,
@@ -268,12 +521,60 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         # Terminal submit failure: provider submit already responded
                         # with an error and no job id. Do not keep polling forever.
                         if submission.status == "error" and previous_valid_submission is None:
+                            if not _submission_is_likely_current_attempt(generation, submission):
+                                logger.info(
+                                    "generation_skip_non_current_attempt_submission_error",
+                                    generation_id=generation.id,
+                                    submission_id=submission.id,
+                                    generation_attempt_id=current_attempt_id,
+                                    submission_attempt_id=submission.generation_attempt_id,
+                                    generation_started_at=(
+                                        str(generation.started_at) if generation.started_at else None
+                                    ),
+                                    submission_attempt_started_at=(
+                                        submission.response.get("generation_attempt_started_at")
+                                        if isinstance(submission.response, dict)
+                                        else None
+                                    ),
+                                )
+                                still_processing += 1
+                                still_processing_ids.append(generation.id)
+                                continue
+
+                            # Guard against stale no-job-id submissions from a prior
+                            # attempt. A newer attempt may already be PROCESSING but
+                            # still in dispatch stagger before creating its next
+                            # ProviderSubmission row.
+                            latest_submission_is_stale = _is_stale_unsubmitted_error_submission(
+                                generation,
+                                submission,
+                            )
+                            if latest_submission_is_stale:
+                                logger.info(
+                                    "generation_skip_stale_unsubmitted_submission_error",
+                                    generation_id=generation.id,
+                                    submission_id=submission.id,
+                                    generation_started_at=(
+                                        str(generation.started_at) if generation.started_at else None
+                                    ),
+                                    submission_submitted_at=(
+                                        str(submission.submitted_at) if submission.submitted_at else None
+                                    ),
+                                    submission_responded_at=(
+                                        str(submission.responded_at) if submission.responded_at else None
+                                    ),
+                                )
+                                still_processing += 1
+                                still_processing_ids.append(generation.id)
+                                continue
+
                             submit_error = None
                             if isinstance(submission.response, dict):
                                 submit_error = (
                                     submission.response.get("error_message")
                                     or submission.response.get("error")
                                 )
+                            error_code = _map_submit_error_to_generation_error_code(submission)
                             final_error = (
                                 str(submit_error)
                                 if submit_error
@@ -285,8 +586,13 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 submission_id=submission.id,
                                 submission_status=submission.status,
                                 error=final_error,
+                                error_code=error_code,
                             )
-                            await generation_service.mark_failed(generation.id, final_error)
+                            await generation_service.mark_failed(
+                                generation.id,
+                                final_error,
+                                error_code=error_code,
+                            )
 
                             try:
                                 billing_service = GenerationBillingService(db)

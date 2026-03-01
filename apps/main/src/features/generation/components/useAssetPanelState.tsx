@@ -433,15 +433,27 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   // Stable callback for wheel handler
   const handleWheelRef = useRef<(e: WheelEvent) => void>();
   handleWheelRef.current = (e: WheelEvent) => {
-    if (operationInputs.length <= 1) return;
+    if (operationInputs.length <= 1 && !showVirtualEmptySlot) return;
 
     e.preventDefault();
 
     // Scroll up = next, scroll down = prev (reversed for natural feel)
-    if (e.deltaY < 0) {
-      cycleInputs?.(operationType, 'next');
-    } else if (e.deltaY > 0) {
-      cycleInputs?.(operationType, 'prev');
+    if (showVirtualEmptySlot) {
+      // Virtual-slot-aware cycling: delegate to setOperationInputIndex
+      const total = orderedInputs.length + 1; // includes virtual slot
+      if (e.deltaY < 0) {
+        const next = operationInputIndex >= total ? 1 : operationInputIndex + 1;
+        setOperationInputIndex(next);
+      } else if (e.deltaY > 0) {
+        const prev = operationInputIndex <= 1 ? total : operationInputIndex - 1;
+        setOperationInputIndex(prev);
+      }
+    } else {
+      if (e.deltaY < 0) {
+        cycleInputs?.(operationType, 'next');
+      } else if (e.deltaY > 0) {
+        cycleInputs?.(operationType, 'prev');
+      }
     }
   };
 
@@ -537,7 +549,17 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
 
   const hasAsset = displayAssets.length > 0;
   const isMultiAssetDisplay = displayAssets.length > 1;
-  const currentInputIdx = Math.max(0, Math.min(operationInputIndex - 1, orderedInputs.length - 1));
+
+  // ─── Virtual empty slot (carousel-only) ────────────────────────────
+  const supportsMultiAsset = isFlexibleOperation || operationMeta?.multiAssetMode === 'required';
+  const hasRoomForMore = maxAssetItems === null || orderedInputs.length < maxAssetItems;
+  const showVirtualEmptySlot = resolvedDisplayMode === 'carousel' && supportsMultiAsset && hasRoomForMore && hasAsset;
+  const carouselTotalCount = orderedInputs.length + (showVirtualEmptySlot ? 1 : 0);
+  const isOnVirtualSlot = showVirtualEmptySlot && operationInputIndex > orderedInputs.length;
+
+  const currentInputIdx = isOnVirtualSlot
+    ? orderedInputs.length  // clamp to last real item for safe fallback
+    : Math.max(0, Math.min(operationInputIndex - 1, orderedInputs.length - 1));
   const currentInput = orderedInputs[currentInputIdx];
   const currentInputId = currentInput?.id;
 
@@ -814,6 +836,11 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     currentInputIdx,
     currentInput,
     currentInputId,
+
+    // Virtual empty slot (carousel)
+    showVirtualEmptySlot,
+    carouselTotalCount,
+    isOnVirtualSlot,
 
     // History
     sortedHistory,

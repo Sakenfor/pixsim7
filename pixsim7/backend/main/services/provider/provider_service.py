@@ -39,6 +39,51 @@ from pixsim7.backend.main.services.provider.provider_logging import (
 logger = configure_logging("provider_service").bind(channel="pipeline")
 
 
+def _extract_provider_error_code(error: ProviderError) -> str | None:
+    """Extract structured error_code from ProviderError when available."""
+    value = getattr(error, "error_code", None)
+    if isinstance(value, str):
+        value = value.strip()
+        if value:
+            return value
+    return None
+
+
+def _generation_attempt_started_marker(generation: Generation) -> str | None:
+    """Serialize current generation attempt start timestamp for submission ownership."""
+    started_at = getattr(generation, "started_at", None)
+    if started_at is None:
+        return None
+    try:
+        return started_at.isoformat()
+    except Exception:
+        return None
+
+
+def _generation_attempt_id(generation: Generation) -> int | None:
+    """Return current generation attempt_id when it is a positive integer."""
+    value = getattr(generation, "attempt_id", None)
+    try:
+        attempt_id = int(value)
+    except Exception:
+        return None
+    if attempt_id > 0:
+        return attempt_id
+    return None
+
+
+def _build_submission_response(
+    base: Dict[str, Any],
+    *,
+    attempt_started_at: str | None,
+) -> Dict[str, Any]:
+    """Attach internal submission ownership metadata to provider response payload."""
+    out = dict(base)
+    if attempt_started_at:
+        out["generation_attempt_started_at"] = attempt_started_at
+    return out
+
+
 class ProviderService:
     """
     Provider orchestration service
@@ -78,6 +123,7 @@ class ProviderService:
         """
         # Get provider from registry
         provider = registry.get(generation.provider_id)
+        attempt_started_at = _generation_attempt_started_marker(generation)
 
         # === Use cached resolved_params if available (for retries) ===
         # This avoids re-resolving assets which can fail intermittently.
@@ -90,10 +136,11 @@ class ProviderService:
             # Create submission and execute directly with cached params
             submission = ProviderSubmission(
                 generation_id=generation.id,
+                generation_attempt_id=_generation_attempt_id(generation),
                 account_id=account.id,
                 provider_id=generation.provider_id,
                 payload=generation.resolved_params,
-                response={},
+                response=_build_submission_response({}, attempt_started_at=attempt_started_at),
                 retry_attempt=generation.retry_count,
                 submitted_at=datetime.now(timezone.utc),
                 status="pending",
@@ -193,10 +240,11 @@ class ProviderService:
         # Record submission start
         submission = ProviderSubmission(
             generation_id=generation.id,
+            generation_attempt_id=_generation_attempt_id(generation),
             account_id=account.id,
             provider_id=generation.provider_id,
             payload=mapped_params,
-            response={},
+            response=_build_submission_response({}, attempt_started_at=attempt_started_at),
             retry_attempt=generation.retry_count,
             submitted_at=datetime.now(timezone.utc),
             status="pending",
@@ -298,6 +346,10 @@ class ProviderService:
                     "thumbnail_url": result.thumbnail_url,
                     "metadata": result.metadata or {},
                 }
+            submission.response = _build_submission_response(
+                submission.response,
+                attempt_started_at=attempt_started_at,
+            )
             # Validate provider_job_id before saving
             if not result.provider_job_id:
                 logger.error(
@@ -340,6 +392,7 @@ class ProviderService:
             return submission
 
         except ProviderError as e:
+            error_code = _extract_provider_error_code(e)
             logger.error(
                 "provider_execute_failed",
                 generation_id=generation.id,
@@ -354,6 +407,12 @@ class ProviderService:
                 "error": str(e),
                 "error_type": e.__class__.__name__,
             }
+            if error_code:
+                submission.response["error_code"] = error_code
+            submission.response = _build_submission_response(
+                submission.response,
+                attempt_started_at=attempt_started_at,
+            )
             submission.responded_at = datetime.now(timezone.utc)
             submission.status = "error"
             submission.calculate_duration()
@@ -376,6 +435,7 @@ class ProviderService:
                 "submission_id": submission.id,
                 "error": str(e),
                 "error_type": e.__class__.__name__,
+                "error_code": error_code,
                 "execute_params_summary": summarize_provider_params_for_log(execute_params),
                 "provider_id": generation.provider_id,
                 "operation_type": generation.operation_type.value,
@@ -455,6 +515,10 @@ class ProviderService:
                     "thumbnail_url": result.thumbnail_url,
                     "metadata": result.metadata or {},
                 }
+            submission.response = _build_submission_response(
+                submission.response,
+                attempt_started_at=_generation_attempt_started_marker(generation),
+            )
 
             if not result.provider_job_id:
                 raise ProviderError(
@@ -487,6 +551,7 @@ class ProviderService:
             return submission
 
         except ProviderError as e:
+            error_code = _extract_provider_error_code(e)
             # Expected operational errors (quota, content filter, concurrent
             # limit) → WARNING; unexpected errors → ERROR.
             from pixsim7.backend.main.shared.errors import (
@@ -506,6 +571,12 @@ class ProviderService:
                 "error": str(e),
                 "error_type": e.__class__.__name__,
             }
+            if error_code:
+                submission.response["error_code"] = error_code
+            submission.response = _build_submission_response(
+                submission.response,
+                attempt_started_at=_generation_attempt_started_marker(generation),
+            )
             submission.responded_at = datetime.now(timezone.utc)
             submission.status = "error"
             submission.calculate_duration()
@@ -527,6 +598,7 @@ class ProviderService:
                 "submission_id": submission.id,
                 "error": str(e),
                 "error_type": e.__class__.__name__,
+                "error_code": error_code,
                 "provider_id": generation.provider_id,
                 "operation_type": generation.operation_type.value,
             })

@@ -11,6 +11,10 @@ export interface ClientEnumFilterOption {
   value: string;
   label?: string;
   count?: number;
+  /** Optional category key for grouped enum rendering in filter dropdowns. */
+  groupKey?: string;
+  /** Optional category label shown above grouped enum options. */
+  groupLabel?: string;
 }
 
 export interface ClientFilterDef<T> {
@@ -38,7 +42,7 @@ export interface UseClientFiltersResult<T> {
   visibleDefs: ClientFilterDef<T>[];
   setFilter: (key: string, value: ClientFilterValue) => void;
   resetFilters: () => void;
-  derivedOptions: Record<string, Array<{ value: string; label: string; count?: number }>>;
+  derivedOptions: Record<string, ClientEnumFilterOption[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,7 +107,7 @@ export function useClientFilters<T>(
 
   // Derive options from full unfiltered items so counts stay stable
   const derivedOptions = useMemo(() => {
-    const result: Record<string, Array<{ value: string; label: string; count?: number }>> = {};
+    const result: Record<string, ClientEnumFilterOption[]> = {};
     for (const def of visibleDefs) {
       if (def.type !== 'enum') continue;
 
@@ -113,6 +117,8 @@ export function useClientFilters<T>(
           value: opt.value,
           label: opt.label || opt.value,
           ...(typeof opt.count === 'number' ? { count: opt.count } : {}),
+          ...(opt.groupKey ? { groupKey: opt.groupKey } : {}),
+          ...(opt.groupLabel ? { groupLabel: opt.groupLabel } : {}),
         }));
         continue;
       }
@@ -123,7 +129,13 @@ export function useClientFilters<T>(
         const count = items.filter((item) =>
           def.predicate(item, [opt.value]),
         ).length;
-        return { value: opt.value, label: opt.label || opt.value, count };
+        return {
+          value: opt.value,
+          label: opt.label || opt.value,
+          count,
+          ...(opt.groupKey ? { groupKey: opt.groupKey } : {}),
+          ...(opt.groupLabel ? { groupLabel: opt.groupLabel } : {}),
+        };
       });
     }
     return result;

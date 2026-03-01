@@ -188,23 +188,33 @@ export const useAssetViewerStore = create<AssetViewerState>()(
       },
 
       navigatePrev: () => {
-        const { assetList, currentIndex } = get();
-        if (currentIndex > 0) {
-          const newIndex = currentIndex - 1;
+        const { scopes, activeScopeId, assetList, currentAsset } = get();
+        // Use the active scope's list (may be fresher than the top-level assetList)
+        const list = (activeScopeId && scopes[activeScopeId]?.assets) || assetList;
+        const idx = currentAsset ? list.findIndex((a) => a.id === currentAsset.id) : 0;
+        const currentIdx = idx >= 0 ? idx : 0;
+        if (currentIdx > 0) {
+          const newIndex = currentIdx - 1;
           set({
+            assetList: list,
             currentIndex: newIndex,
-            currentAsset: assetList[newIndex],
+            currentAsset: list[newIndex],
           });
         }
       },
 
       navigateNext: () => {
-        const { assetList, currentIndex } = get();
-        if (currentIndex < assetList.length - 1) {
-          const newIndex = currentIndex + 1;
+        const { scopes, activeScopeId, assetList, currentAsset } = get();
+        // Use the active scope's list (may be fresher than the top-level assetList)
+        const list = (activeScopeId && scopes[activeScopeId]?.assets) || assetList;
+        const idx = currentAsset ? list.findIndex((a) => a.id === currentAsset.id) : 0;
+        const currentIdx = idx >= 0 ? idx : 0;
+        if (currentIdx < list.length - 1) {
+          const newIndex = currentIdx + 1;
           set({
+            assetList: list,
             currentIndex: newIndex,
-            currentAsset: assetList[newIndex],
+            currentAsset: list[newIndex],
           });
         }
       },
@@ -244,11 +254,26 @@ export const useAssetViewerStore = create<AssetViewerState>()(
 
       registerScope: (id, label, assets) => {
         const { scopes, activeScopeId, currentAsset } = get();
+        const isActiveScope = id === activeScopeId;
+
+        // Fast-path: when the active scope's list changes but the currently
+        // viewed asset is still present, only update the scope registry.
+        // This prevents viewer/quickgen re-renders when the gallery prepends
+        // a new asset that doesn't affect the currently displayed item.
+        // Navigation (prev/next) lazily reads the fresh list from the scope.
+        if (isActiveScope && currentAsset) {
+          const stillPresent = assets.some((a) => a.id === currentAsset.id);
+          if (stillPresent) {
+            set({ scopes: { ...scopes, [id]: { label, assets } } });
+            return;
+          }
+        }
+
         const nextScopes = { ...scopes, [id]: { label, assets } };
         const updates: Partial<AssetViewerState> = { scopes: nextScopes };
 
         // If this is the active scope, sync the asset list
-        if (id === activeScopeId) {
+        if (isActiveScope) {
           updates.assetList = assets;
           if (currentAsset) {
             const idx = assets.findIndex((a) => a.id === currentAsset.id);

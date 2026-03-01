@@ -40,6 +40,7 @@ export const PARAM_ICON_CONFIG: Record<string, Record<string, React.ReactNode>> 
     // Resolution levels
     '360p': <span className="text-[9px] font-bold">360p</span>,
     '480p': <span className="text-[9px] font-bold">480p</span>,
+    '512p': <span className="text-[9px] font-bold">512p</span>,
     '540p': <span className="text-[9px] font-bold">540p</span>,
     '720p': <span className="text-[9px] font-bold">HD</span>,
     hd: <span className="text-[9px] font-bold">HD</span>,

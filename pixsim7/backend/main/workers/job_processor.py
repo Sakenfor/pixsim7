@@ -1032,7 +1032,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
             # Mark generation as started (atomically guarded by SELECT FOR UPDATE)
             try:
-                await generation_service.mark_started(generation_id)
+                generation = await generation_service.mark_started(generation_id)
             except InvalidOperationError:
                 # Another worker already transitioned this generation to
                 # PROCESSING — abort to avoid double-submission.

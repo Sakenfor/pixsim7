@@ -67,6 +67,8 @@ RETRYABLE_CONTENT_FILTER_PATTERNS = [
 RETRYABLE_TEMPORARY_ERROR_PATTERNS = [
     "timeout",
     "rate limit",
+    "concurrent generation limit",
+    "concurrent limit",
     "temporarily unavailable",
     "try again",
     "service unavailable",

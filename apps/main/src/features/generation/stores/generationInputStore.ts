@@ -174,8 +174,13 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
               targetSlotIndex = Math.max(0, Math.floor(preferredSlot));
             } else if (inputMode === 'replace' && existing.items.length > 0) {
               const currentIdx = Math.max(0, existing.currentIndex - 1);
-              const currentItem = existing.items[currentIdx];
-              targetSlotIndex = currentItem ? getSlotIndex(currentItem, 0) : getNextSlotIndex(nextItems);
+              if (currentIdx >= existing.items.length) {
+                // On virtual empty slot — append instead of replace
+                targetSlotIndex = getNextSlotIndex(nextItems);
+              } else {
+                const currentItem = existing.items[currentIdx];
+                targetSlotIndex = currentItem ? getSlotIndex(currentItem, 0) : getNextSlotIndex(nextItems);
+              }
             } else {
               targetSlotIndex = getNextSlotIndex(nextItems);
             }
@@ -404,12 +409,16 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
             const length = existing.items.length;
             if (length === 0) return {};
 
+            // Allow index = length + 1 for virtual empty slot in carousel mode.
+            // The UI layer is responsible for only setting this when appropriate.
+            const clamped = Math.max(1, Math.min(index, length + 1));
+
             return {
               inputsByOperation: {
                 ...state.inputsByOperation,
                 [operationType]: {
                   ...existing,
-                  currentIndex: normalizeIndex(index, length),
+                  currentIndex: clamped,
                 },
               },
             };

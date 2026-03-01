@@ -96,6 +96,10 @@ export function createGenerationsApi(client: PixSimApiClient) {
       await client.delete<void>(`/generations/${id}?_=delete`);
     },
 
+    async patchGenerationPrompt(id: number, prompt: string): Promise<GenerationResponse> {
+      return client.patch<GenerationResponse>(`/generations/${id}/prompt`, { prompt });
+    },
+
     async validateGenerationConfig(
       request: CreateGenerationRequest
     ): Promise<{ valid: boolean; errors: string[]; warnings: string[]; suggestions: string[] }> {

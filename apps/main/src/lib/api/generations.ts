@@ -96,6 +96,15 @@ export async function deleteGeneration(id: number): Promise<void> {
 }
 
 /**
+ * Patch a generation's prompt text.
+ *
+ * Updates final_prompt, raw_params.prompt, and canonical_params.prompt on the server.
+ */
+export async function patchGenerationPrompt(id: number, prompt: string): Promise<GenerationResponse> {
+  return generationsApi.patchGenerationPrompt(id, prompt);
+}
+
+/**
  * Validate a generation config without creating it
  */
 export async function validateGenerationConfig(

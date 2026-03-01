@@ -84,6 +84,11 @@ export interface MiniGalleryProps {
   /** Items per page when paginationMode='page'. Default 20. */
   pageSize?: number;
 
+  // --- Hover action suppression ---
+  /** When true, skip hover actions entirely (zap + viewer buttons). Useful
+   *  when overlay widgets or generation button groups handle interactions. */
+  suppressHoverActions?: boolean;
+
   // --- Asset resolution ---
   /** Called before addInput / openViewer when asset data may be incomplete
    *  (e.g. history entries that only carry a thumbnail). Return the full
@@ -106,6 +111,7 @@ interface MiniGalleryItemProps {
   maxSlots?: number;
   isReplaceMode?: boolean;
   extraOverlay?: ReactNode;
+  suppressHoverActions?: boolean;
   renderActions?: (asset: AssetModel, defaultActions: ReactNode) => ReactNode | null;
   extraWidgets?: OverlayWidget[];
   overlayContext?: OverlayContextId;
@@ -122,6 +128,7 @@ function MiniGalleryItem({
   maxSlots,
   isReplaceMode,
   extraOverlay,
+  suppressHoverActions,
   renderActions,
   extraWidgets,
   overlayContext,
@@ -199,6 +206,7 @@ function MiniGalleryItem({
   );
 
   const hoverActions = useMemo(() => {
+    if (suppressHoverActions) return null;
     const content = renderActions ? renderActions(asset, defaultActions) : defaultActions;
     if (content === null) return null;
     return (
@@ -206,7 +214,7 @@ function MiniGalleryItem({
         {content}
       </div>
     );
-  }, [asset, defaultActions, renderActions]);
+  }, [suppressHoverActions, asset, defaultActions, renderActions]);
 
   return (
     <>
@@ -272,6 +280,7 @@ function MiniGalleryContent({
   renderItemOverlay,
   renderItemActions,
   renderItemWidgets,
+  suppressHoverActions,
   paginationMode = 'infinite',
   pageSize = 20,
   resolveAsset,
@@ -576,6 +585,7 @@ function MiniGalleryContent({
                 maxSlots={maxSlots}
                 isReplaceMode={isReplaceMode}
                 extraOverlay={renderItemOverlay?.(asset)}
+                suppressHoverActions={suppressHoverActions}
                 renderActions={renderItemActions}
                 extraWidgets={renderItemWidgets?.(asset)}
               />

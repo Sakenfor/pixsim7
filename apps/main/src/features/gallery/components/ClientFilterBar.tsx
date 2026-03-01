@@ -13,7 +13,11 @@ import { createPortal } from 'react-dom';
 import { Icon } from '@lib/icons';
 import type { IconName } from '@lib/icons';
 
-import type { ClientFilterDef, ClientFilterValue } from '../lib/useClientFilters';
+import type {
+  ClientEnumFilterOption,
+  ClientFilterDef,
+  ClientFilterValue,
+} from '../lib/useClientFilters';
 import { useFilterChipState } from '../lib/useFilterChipState';
 
 // ---------------------------------------------------------------------------
@@ -23,7 +27,7 @@ import { useFilterChipState } from '../lib/useFilterChipState';
 export interface ClientFilterBarProps<T> {
   defs: ClientFilterDef<T>[];
   filterState: Record<string, ClientFilterValue>;
-  derivedOptions: Record<string, Array<{ value: string; label: string; count?: number }>>;
+  derivedOptions: Record<string, ClientEnumFilterOption[]>;
   onFilterChange: (key: string, value: ClientFilterValue) => void;
   onReset?: () => void;
   popoverMode?: 'portal' | 'inline';
@@ -419,7 +423,7 @@ export function FilterDropdown({
 export interface FilterContentProps<T> {
   filter: ClientFilterDef<T>;
   value: ClientFilterValue;
-  options: Array<{ value: string; label: string; count?: number }>;
+  options: ClientEnumFilterOption[];
   onChange: (value: ClientFilterValue) => void;
   scrollCache?: React.MutableRefObject<Map<string, number>>;
 }
@@ -486,6 +490,67 @@ export function FilterContent<T>({
     case 'enum': {
       const cols = filter.columns ?? 1;
       const selectionMode = filter.selectionMode ?? 'multi';
+      const hasOptionGroups = cols === 1 && options.some((opt) => opt.groupKey);
+      const groupedOptions = hasOptionGroups
+        ? (() => {
+            const groups = new Map<
+              string,
+              { key: string; label: string; options: ClientEnumFilterOption[] }
+            >();
+            for (const opt of options) {
+              const key = opt.groupKey ?? '__ungrouped__';
+              const label = opt.groupLabel ?? key;
+              const existing = groups.get(key);
+              if (existing) {
+                existing.options.push(opt);
+                continue;
+              }
+              groups.set(key, { key, label, options: [opt] });
+            }
+            return Array.from(groups.values()).sort((a, b) =>
+              a.label.localeCompare(b.label),
+            );
+          })()
+        : [];
+      const shouldRenderGroupHeaders = groupedOptions.length > 1;
+
+      const renderOption = (opt: ClientEnumFilterOption) => {
+        const isSelected = selectedValues.includes(opt.value);
+        const extra = filter.renderOptionExtra?.(opt.value);
+        return (
+          <div key={opt.value} className="group/opt flex items-center gap-1">
+            <label
+              className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer flex-1 min-w-0"
+            >
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => {
+                  if (selectionMode === 'single') {
+                    onChange(isSelected ? undefined : opt.value);
+                    return;
+                  }
+                  const next = new Set(selectedValues);
+                  if (next.has(opt.value)) next.delete(opt.value);
+                  else next.add(opt.value);
+                  onChange(Array.from(next));
+                }}
+                className="accent-accent flex-shrink-0"
+              />
+              <span className="truncate">
+                {opt.label}
+                {opt.count !== undefined ? ` (${opt.count})` : ''}
+              </span>
+            </label>
+            {extra && (
+              <span className="flex-shrink-0 flex items-center opacity-0 group-hover/opt:opacity-100 transition-opacity">
+                {extra}
+              </span>
+            )}
+          </div>
+        );
+      };
+
       return (
         <div
           ref={scrollRef}
@@ -497,42 +562,19 @@ export function FilterContent<T>({
               No options available.
             </div>
           )}
-          {options.map((opt) => {
-            const isSelected = selectedValues.includes(opt.value);
-            const extra = filter.renderOptionExtra?.(opt.value);
-            return (
-              <div key={opt.value} className="group/opt flex items-center gap-1">
-                <label
-                  className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer flex-1 min-w-0"
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => {
-                      if (selectionMode === 'single') {
-                        onChange(isSelected ? undefined : opt.value);
-                        return;
-                      }
-                      const next = new Set(selectedValues);
-                      if (next.has(opt.value)) next.delete(opt.value);
-                      else next.add(opt.value);
-                      onChange(Array.from(next));
-                    }}
-                    className="accent-accent flex-shrink-0"
-                  />
-                  <span className="truncate">
-                    {opt.label}
-                    {opt.count !== undefined ? ` (${opt.count})` : ''}
-                  </span>
-                </label>
-                {extra && (
-                  <span className="flex-shrink-0 flex items-center opacity-0 group-hover/opt:opacity-100 transition-opacity">
-                    {extra}
-                  </span>
+          {!hasOptionGroups &&
+            options.map((opt) => renderOption(opt))}
+          {hasOptionGroups &&
+            groupedOptions.map((group) => (
+              <div key={group.key} className="space-y-1">
+                {shouldRenderGroupHeaders && (
+                  <div className="pt-1 first:pt-0 text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400 font-semibold">
+                    {group.label}
+                  </div>
                 )}
+                {group.options.map((opt) => renderOption(opt))}
               </div>
-            );
-          })}
+            ))}
         </div>
       );
     }
@@ -569,7 +611,7 @@ function OverflowMenu<T>({
 }: {
   filters: ClientFilterDef<T>[];
   filterState: Record<string, ClientFilterValue>;
-  derivedOptions: Record<string, Array<{ value: string; label: string; count?: number }>>;
+  derivedOptions: Record<string, ClientEnumFilterOption[]>;
   onChange: (key: string, value: ClientFilterValue) => void;
   hasSelection: boolean;
   popoverMode?: 'portal' | 'inline';

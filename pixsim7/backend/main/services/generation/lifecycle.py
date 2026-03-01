@@ -102,13 +102,16 @@ class GenerationLifecycleService:
 
         # Update status
         generation.status = status
-        generation.updated_at = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        generation.updated_at = now
 
         # Update timestamps
-        if status == GenerationStatus.PROCESSING and not generation.started_at:
-            generation.started_at = datetime.now(timezone.utc)
+        if status == GenerationStatus.PROCESSING:
+            generation.attempt_id = (generation.attempt_id or 0) + 1
+            generation.started_at = now
+            generation.completed_at = None
         elif status in {GenerationStatus.COMPLETED, GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
-            generation.completed_at = datetime.now(timezone.utc)
+            generation.completed_at = now
 
         # Update error message and code
         if error_message:

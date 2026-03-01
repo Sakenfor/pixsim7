@@ -4,13 +4,14 @@
  * Dedicated panel for tracking and managing generation jobs.
  * Shows status, allows filtering, grouping, and batch cancel.
  */
-import { DisclosureSection, FoldableJson, GroupByPillBar, ToolbarToggleButton, toggleInStack, clearStack } from '@pixsim7/shared.ui';
-import { useMemo, useState, useCallback } from 'react';
+import { DisclosureSection, Dropdown, DropdownItem, DropdownDivider, FoldableJson, GroupByPillBar, ToolbarToggleButton, toggleInStack, clearStack } from '@pixsim7/shared.ui';
+import { useMemo, useState, useCallback, useRef } from 'react';
 
-import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
+import { patchGenerationPrompt, retryGeneration, cancelGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
 import { Icons, Icon } from '@lib/icons';
 
 import { useAsset, getAssetDisplayUrls } from '@features/assets';
+import { CompactAssetCard, AssetGrid } from '@features/assets/components/shared';
 import { ClientFilterBar } from '@features/gallery/components/ClientFilterBar';
 import { useClientFilterPersistence } from '@features/gallery/lib/useClientFilterPersistence';
 import { useClientFilters } from '@features/gallery/lib/useClientFilters';
@@ -30,7 +31,7 @@ import {
   type GenerationGroupBy,
   type GenerationGroup,
 } from '../lib/generationGrouping';
-import { fromGenerationResponse, type GenerationModel } from '../models';
+import { fromGenerationResponse, getGenerationModelName, type GenerationModel } from '../models';
 import { useGenerationsStore, isGenerationActive } from '../stores/generationsStore';
 
 export interface GenerationsPanelProps {
@@ -39,8 +40,7 @@ export interface GenerationsPanelProps {
 
 export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
   const [groupByStack, setGroupByStack] = useState<GenerationGroupBy[]>([]);
-  const [showGroupPreviews, setShowGroupPreviews] = useState(false);
-  const [folderView, setFolderView] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
   // WebSocket for real-time updates
   const { isConnected: wsConnected } = useGenerationWebSocket();
@@ -161,6 +161,23 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
     }
   }, []);
 
+  const handleReplacePrompt = useCallback(async (generations: GenerationModel[], newPrompt: string) => {
+    const results = { succeeded: 0, failed: 0, errors: [] as string[] };
+    for (const gen of generations) {
+      try {
+        const updated = await patchGenerationPrompt(gen.id, newPrompt);
+        useGenerationsStore.getState().addOrUpdate(fromGenerationResponse(updated));
+        results.succeeded++;
+      } catch (error) {
+        results.failed++;
+        results.errors.push(`#${gen.id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    if (results.failed > 0) {
+      alert(`Updated ${results.succeeded}, failed ${results.failed}:\n${results.errors.join('\n')}`);
+    }
+  }, []);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
@@ -212,20 +229,12 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
             onClear={() => setGroupByStack(clearStack())}
           />
           {groupByStack.length > 0 && (
-            <>
-              <ToolbarToggleButton
-                active={showGroupPreviews}
-                onClick={() => setShowGroupPreviews(prev => !prev)}
-                icon={<Icon name={showGroupPreviews ? 'eye' : 'eyeOff'} size={14} />}
-                title={showGroupPreviews ? 'Hide group previews' : 'Show group previews'}
-              />
-              <ToolbarToggleButton
-                active={folderView}
-                onClick={() => setFolderView(prev => !prev)}
-                icon={<Icon name={folderView ? 'folderTree' : 'rows'} size={14} />}
-                title={folderView ? 'Switch to card view' : 'Switch to folder view'}
-              />
-            </>
+            <ToolbarToggleButton
+              active={viewMode === 'grid'}
+              onClick={() => setViewMode(prev => prev === 'grid' ? 'list' : 'grid')}
+              icon={<Icon name={viewMode === 'grid' ? 'layoutGrid' : 'rows'} size={14} />}
+              title={viewMode === 'grid' ? 'Switch to list view' : 'Switch to grid view'}
+            />
           )}
         </div>
       </div>
@@ -258,14 +267,14 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
               <GenerationGroupSection
                 key={group.key}
                 group={group}
-                showPreview={showGroupPreviews}
-                folderView={folderView}
+                viewMode={viewMode}
                 onRetry={handleRetry}
                 onCancel={handleCancel}
                 onDelete={handleDelete}
                 onOpenAsset={handleOpenAsset}
                 onLoadToQuickGen={handleLoadToQuickGen}
                 onBatchCancel={handleBatchCancel}
+                onReplacePrompt={handleReplacePrompt}
                 isBatchCancelling={isBatchCancelling}
               />
             ))}
@@ -296,15 +305,15 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
 
 interface GenerationGroupSectionProps {
   group: GenerationGroup;
-  showPreview?: boolean;
+  viewMode: 'list' | 'grid';
   depth?: number;
-  folderView?: boolean;
   onRetry: (id: number) => void;
   onCancel: (id: number) => void;
   onDelete: (id: number) => void;
   onOpenAsset: (assetId: number) => void;
   onLoadToQuickGen: (generation: GenerationModel) => void;
   onBatchCancel: (ids: number[]) => void;
+  onReplacePrompt: (generations: GenerationModel[], newPrompt: string) => void;
   isBatchCancelling: boolean;
 }
 
@@ -349,28 +358,130 @@ function collectActiveIds(group: { items: GenerationModel[]; subgroups?: Array<{
   return ids;
 }
 
+/** Collect generation IDs that can be retried (failed / cancelled). */
+function collectRetryableIds(group: { items: GenerationModel[]; subgroups?: Array<{ items: GenerationModel[]; subgroups?: any }> }): number[] {
+  const ids: number[] = [];
+  if (group.subgroups) {
+    for (const sub of group.subgroups) ids.push(...collectRetryableIds(sub));
+  } else {
+    for (const g of group.items) {
+      if (g.status === 'failed' || g.status === 'cancelled') ids.push(g.id);
+    }
+  }
+  return ids;
+}
+
+/** Collect generation IDs in a terminal state (completed / failed / cancelled). */
+function collectTerminalIds(group: { items: GenerationModel[]; subgroups?: Array<{ items: GenerationModel[]; subgroups?: any }> }): number[] {
+  const ids: number[] = [];
+  if (group.subgroups) {
+    for (const sub of group.subgroups) ids.push(...collectTerminalIds(sub));
+  } else {
+    for (const g of group.items) {
+      if (g.status === 'completed' || g.status === 'failed' || g.status === 'cancelled') ids.push(g.id);
+    }
+  }
+  return ids;
+}
+
+/** Grid card for a completed generation with an asset. */
+function GenerationAssetGridCard({ assetId, onClick }: { assetId: number; onClick?: (assetId: number) => void }) {
+  const { asset, loading } = useAsset(assetId);
+
+  if (loading || !asset) {
+    return (
+      <div className="aspect-square rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
+    );
+  }
+
+  return (
+    <CompactAssetCard
+      asset={asset}
+      hideFooter
+      aspectSquare
+      enableHoverPreview
+      onClick={onClick ? () => onClick(assetId) : undefined}
+    />
+  );
+}
+
+/** Grid content for a leaf group — shows completed items as media cards, with a status summary for the rest. */
+function GenerationGroupGridContent({
+  items,
+  onOpenAsset,
+}: {
+  items: GenerationModel[];
+  onOpenAsset: (assetId: number) => void;
+}) {
+  const completedWithAsset = items.filter(g => g.status === 'completed' && (g.asset?.id ?? g.assetId));
+  const others = items.filter(g => !(g.status === 'completed' && (g.asset?.id ?? g.assetId)));
+
+  // Summarise non-completed items by status
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const g of others) {
+      counts[g.status] = (counts[g.status] || 0) + 1;
+    }
+    return Object.entries(counts);
+  }, [others]);
+
+  return (
+    <div className="space-y-2">
+      {completedWithAsset.length > 0 && (
+        <AssetGrid preset="compact" gap={2}>
+          {completedWithAsset.map(g => (
+            <GenerationAssetGridCard
+              key={g.id}
+              assetId={(g.asset?.id ?? g.assetId)!}
+              onClick={onOpenAsset}
+            />
+          ))}
+        </AssetGrid>
+      )}
+      {statusCounts.length > 0 && (
+        <div className="text-xs text-neutral-500 dark:text-neutral-500 px-1">
+          {statusCounts.map(([status, count], i) => (
+            <span key={status}>
+              {i > 0 && ', '}
+              {count} {status}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GenerationGroupSection({
   group,
-  showPreview,
+  viewMode,
   depth = 0,
-  folderView,
   onRetry,
   onCancel,
   onDelete,
   onOpenAsset,
   onLoadToQuickGen,
   onBatchCancel,
+  onReplacePrompt,
   isBatchCancelling,
 }: GenerationGroupSectionProps) {
   const activeIds = useMemo(() => collectActiveIds(group), [group]);
+  const retryableIds = useMemo(() => collectRetryableIds(group), [group]);
+  const terminalIds = useMemo(() => collectTerminalIds(group), [group]);
   const isNested = depth > 0;
-  const sectionSize = folderView || isNested ? 'sm' : 'md';
-  const useBorder = folderView || isNested;
+  const sectionSize = isNested ? 'sm' : 'md';
+  const useBorder = isNested;
 
-  // Parse asset ID for thumbnail preview (only when dimension is 'asset')
-  const assetId = showPreview && group.dimension === 'asset' && group.key !== '__no_asset__'
+  // Three-dots menu state
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+
+  // Show asset thumbnail in group header when dimension is 'asset'
+  const assetId = group.dimension === 'asset' && group.key !== '__no_asset__'
     ? Number(group.key)
     : null;
+
+  const fullPrompt = group.dimension === 'prompt' ? group.items[0]?.finalPrompt : null;
 
   const groupLabel = (
     <span className="flex items-center gap-2">
@@ -387,13 +498,6 @@ function GenerationGroupSection({
     </span>
   );
 
-  // Full prompt preview block (shown inside expanded content for prompt groups)
-  const promptPreviewBlock = showPreview && group.dimension === 'prompt' && group.items[0]?.finalPrompt ? (
-    <div className="mb-2 px-3 py-2 text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-800/50 border-l-2 border-neutral-300 dark:border-neutral-600 rounded-r whitespace-pre-wrap">
-      {group.items[0].finalPrompt}
-    </div>
-  ) : null;
-
   const batchCancelAction = activeIds.length >= 2 ? (
     <button
       onClick={(e) => {
@@ -408,6 +512,110 @@ function GenerationGroupSection({
     </button>
   ) : null;
 
+  const handleCopyPrompt = () => {
+    if (fullPrompt) navigator.clipboard.writeText(fullPrompt);
+    setMenuOpen(false);
+  };
+
+  const handleLoadToQuickGenGroup = () => {
+    const sample = group.items[0];
+    if (sample) onLoadToQuickGen(sample);
+    setMenuOpen(false);
+  };
+
+  const handleRetryAllFailed = async () => {
+    setMenuOpen(false);
+    if (retryableIds.length === 0) return;
+    if (!confirm(`Retry ${retryableIds.length} failed/cancelled generation(s)?`)) return;
+    for (const id of retryableIds) onRetry(id);
+  };
+
+  const handleDeleteAllTerminal = async () => {
+    setMenuOpen(false);
+    if (terminalIds.length === 0) return;
+    if (!confirm(`Delete ${terminalIds.length} completed/failed/cancelled generation(s)?`)) return;
+    for (const id of terminalIds) onDelete(id);
+  };
+
+  const handleReplacePromptInGroup = () => {
+    setMenuOpen(false);
+    const currentPrompt = fullPrompt ?? group.items[0]?.finalPrompt ?? '';
+    const newPrompt = window.prompt('Replace prompt for all generations in this group:', currentPrompt);
+    if (newPrompt == null || newPrompt.trim() === '' || newPrompt === currentPrompt) return;
+    onReplacePrompt(group.items, newPrompt.trim());
+  };
+
+  const groupActions = (
+    <span className="flex items-center gap-1">
+      {batchCancelAction}
+      <span className="relative">
+        <button
+          ref={menuTriggerRef}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen((o) => !o);
+          }}
+          className="p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+          title="Group actions"
+        >
+          <Icon name="moreVertical" size={14} className="text-neutral-500" />
+        </button>
+        <Dropdown
+          isOpen={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          position="bottom-right"
+          minWidth="180px"
+          triggerRef={menuTriggerRef}
+        >
+          {fullPrompt && (
+            <DropdownItem
+              icon={<Icon name="clipboard" size={12} />}
+              onClick={handleCopyPrompt}
+            >
+              Copy prompt
+            </DropdownItem>
+          )}
+          <DropdownItem
+            icon={<Icon name="edit" size={12} />}
+            onClick={handleLoadToQuickGenGroup}
+          >
+            Load to Quick Generate
+          </DropdownItem>
+          <DropdownDivider />
+          <DropdownItem
+            icon={<Icon name="pencil" size={12} />}
+            onClick={handleReplacePromptInGroup}
+          >
+            Replace prompt ({group.items.length})
+          </DropdownItem>
+          {retryableIds.length > 0 && (
+            <>
+              <DropdownDivider />
+              <DropdownItem
+                icon={<Icon name="refreshCw" size={12} />}
+                onClick={handleRetryAllFailed}
+              >
+                Retry failed ({retryableIds.length})
+              </DropdownItem>
+            </>
+          )}
+          {terminalIds.length > 0 && (
+            <>
+              <DropdownDivider />
+              <DropdownItem
+                variant="danger"
+                icon={<Icon name="trash" size={12} />}
+                onClick={handleDeleteAllTerminal}
+              >
+                Delete all finished ({terminalIds.length})
+              </DropdownItem>
+            </>
+          )}
+        </Dropdown>
+      </span>
+    </span>
+  );
+
   return (
     <DisclosureSection
       label={groupLabel}
@@ -415,33 +623,33 @@ function GenerationGroupSection({
       size={sectionSize}
       iconStyle="chevron"
       bordered={useBorder}
-      actions={batchCancelAction}
+      actions={groupActions}
     >
-      {promptPreviewBlock}
       <div className="space-y-2 mt-1">
         {group.subgroups ? (
           group.subgroups.map(sub => (
             <GenerationGroupSection
               key={sub.key}
               group={sub}
-              showPreview={showPreview}
+              viewMode={viewMode}
               depth={depth + 1}
-              folderView={folderView}
               onRetry={onRetry}
               onCancel={onCancel}
               onDelete={onDelete}
               onOpenAsset={onOpenAsset}
               onLoadToQuickGen={onLoadToQuickGen}
               onBatchCancel={onBatchCancel}
+              onReplacePrompt={onReplacePrompt}
               isBatchCancelling={isBatchCancelling}
             />
           ))
+        ) : viewMode === 'grid' ? (
+          <GenerationGroupGridContent items={group.items} onOpenAsset={onOpenAsset} />
         ) : (
           group.items.map(generation => (
             <GenerationItem
               key={generation.id}
               generation={generation}
-              folderView={folderView}
               onRetry={onRetry}
               onCancel={onCancel}
               onDelete={onDelete}
@@ -461,7 +669,6 @@ function GenerationGroupSection({
 
 interface GenerationItemProps {
   generation: GenerationModel;
-  folderView?: boolean;
   onRetry: (id: number) => void;
   onCancel: (id: number) => void;
   onDelete: (id: number) => void;
@@ -471,7 +678,7 @@ interface GenerationItemProps {
 
 type ParamTab = 'raw' | 'canonical' | 'submitted';
 
-function GenerationItem({ generation, folderView, onRetry, onCancel, onDelete, onOpenAsset, onLoadToQuickGen }: GenerationItemProps) {
+function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, onLoadToQuickGen }: GenerationItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -603,6 +810,7 @@ function GenerationItem({ generation, folderView, onRetry, onCancel, onDelete, o
       ? generation.finalPrompt.substring(0, 80) + '...'
       : generation.finalPrompt
     : generation.name || 'Untitled generation';
+  const modelName = getGenerationModelName(generation);
 
   // Format time
   const timeAgo = useMemo(() => {
@@ -618,51 +826,6 @@ function GenerationItem({ generation, folderView, onRetry, onCancel, onDelete, o
     if (minutes > 0) return `${minutes}m ago`;
     return 'just now';
   }, [generation.createdAt]);
-
-  // Compact single-line rendering for folder view
-  if (folderView) {
-    return (
-      <div className="flex items-center gap-2 py-1 px-1 text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800/50 rounded transition-colors group/compact">
-        <Icon name={statusDisplay.icon} size={14} className={`flex-shrink-0 ${statusDisplay.color}`} />
-        <span className="truncate flex-1 min-w-0 text-neutral-800 dark:text-neutral-200">
-          {promptPreview}
-        </span>
-        <span className="text-neutral-500 dark:text-neutral-500 shrink-0">{timeAgo}</span>
-        <div className="flex gap-0.5 shrink-0 opacity-0 group-hover/compact:opacity-100 transition-opacity">
-          {canCancel && (
-            <button
-              onClick={handleCancelClick}
-              disabled={isCancelling}
-              className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors disabled:opacity-50"
-              title="Cancel"
-            >
-              <Icon name="x" size={12} className="text-red-600 dark:text-red-400" />
-            </button>
-          )}
-          {canRetry && (
-            <button
-              onClick={handleRetryClick}
-              disabled={isRetrying}
-              className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors disabled:opacity-50"
-              title="Retry"
-            >
-              <Icon name="refreshCw" size={12} className={`text-blue-600 dark:text-blue-400 ${isRetrying ? 'animate-spin' : ''}`} />
-            </button>
-          )}
-          {canDelete && (
-            <button
-              onClick={handleDeleteClick}
-              disabled={isDeleting}
-              className="p-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors disabled:opacity-50"
-              title="Delete"
-            >
-              <Icon name="trash" size={12} className="text-neutral-500" />
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors">
@@ -695,6 +858,14 @@ function GenerationItem({ generation, folderView, onRetry, onCancel, onDelete, o
             <span className="font-medium">{generation.providerId}</span>
             <span className="text-neutral-400 dark:text-neutral-600">•</span>
             <span>{generation.operationType}</span>
+            {modelName && (
+              <>
+                <span className="text-neutral-400 dark:text-neutral-600">&bull;</span>
+                <span className="font-mono text-neutral-700 dark:text-neutral-300" title={`Model: ${modelName}`}>
+                  {modelName}
+                </span>
+              </>
+            )}
             {generation.accountEmail && (
               <>
                 <span className="text-neutral-400 dark:text-neutral-600">•</span>

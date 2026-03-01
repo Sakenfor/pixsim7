@@ -141,6 +141,11 @@ class Generation(SQLModel, table=True):
         description="Structured error code from GenerationErrorCode enum (e.g. 'content_prompt_rejected')",
     )
     retry_count: int = Field(default=0)
+    attempt_id: int = Field(
+        default=0,
+        index=True,
+        description="Monotonic generation attempt number (increments on each PROCESSING transition).",
+    )
     parent_generation_id: Optional[int] = Field(
         default=None,
         foreign_key="generations.id",

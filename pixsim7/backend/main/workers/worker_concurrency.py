@@ -182,6 +182,44 @@ def _adaptive_probe_delay_seconds() -> int:
     return random.randint(lo, hi)
 
 
+def _adaptive_probe_delay_seconds_for_gap(
+    *,
+    configured_cap: int,
+    effective_cap: int,
+) -> int:
+    """
+    Shorten probe delay when learned cap is far below configured cap.
+
+    This helps pinned queues recover throughput faster after temporary provider
+    pressure instead of waiting 2-3 minutes between every probe step.
+    """
+    delay = _adaptive_probe_delay_seconds()
+    cap_gap = max(0, int(configured_cap) - int(effective_cap))
+    if cap_gap >= 4:
+        return min(delay, 45)
+    if cap_gap >= 2:
+        return min(delay, 75)
+    return delay
+
+
+def _adaptive_probe_successes_required_for_gap(
+    *,
+    configured_cap: int,
+    effective_cap: int,
+) -> int:
+    """
+    Probe-success evidence required before raising effective cap.
+
+    When cap is heavily clamped (large gap), raise one step on a single probe
+    success to recover capacity faster.
+    """
+    base_required = _adaptive_provider_concurrency_raise_after_consecutive_probe_successes()
+    cap_gap = max(0, int(configured_cap) - int(effective_cap))
+    if cap_gap >= 4:
+        return 1
+    return base_required
+
+
 def _adaptive_defer_jitter_seconds() -> int:
     hi = max(0, _adaptive_provider_concurrency_defer_jitter_max_seconds())
     return random.randint(0, hi) if hi > 0 else 0
@@ -448,12 +486,15 @@ async def _adaptive_provider_concurrency_pre_submit_gate(
         return decision
 
     can_probe = (
-        local_concurrency == (effective_cap + 1)
+        local_concurrency >= (effective_cap + 1)
         and now_ts >= next_probe_at_ts
         and await _acquire_adaptive_provider_probe_lock(state["state_key"], gen_logger=gen_logger)
     )
     if can_probe:
-        next_probe_delay = _adaptive_probe_delay_seconds()
+        next_probe_delay = _adaptive_probe_delay_seconds_for_gap(
+            configured_cap=configured_cap,
+            effective_cap=effective_cap,
+        )
         await _save_adaptive_provider_concurrency_state(
             state["state_key"],
             {
@@ -476,11 +517,22 @@ async def _adaptive_provider_concurrency_pre_submit_gate(
         )
         return decision
 
-    seconds_until_probe = max(1, next_probe_at_ts - now_ts) if next_probe_at_ts > now_ts else _adaptive_probe_delay_seconds()
-    defer_seconds = max(
-        _get_concurrent_limit_cooldown_seconds(generation, account) + _pinned_wait_padding_seconds(),
-        seconds_until_probe + _adaptive_defer_jitter_seconds(),
+    seconds_until_probe = (
+        max(1, next_probe_at_ts - now_ts)
+        if next_probe_at_ts > now_ts
+        else _adaptive_probe_delay_seconds_for_gap(
+            configured_cap=configured_cap,
+            effective_cap=effective_cap,
+        )
     )
+    base_defer = _get_concurrent_limit_cooldown_seconds(generation, account) + _pinned_wait_padding_seconds()
+    probe_wait_with_jitter = seconds_until_probe + _adaptive_defer_jitter_seconds()
+    if local_concurrency < configured_cap:
+        # When the account still has global headroom, re-check sooner instead of
+        # idling until the full probe window elapses.
+        defer_seconds = max(base_defer, min(probe_wait_with_jitter, base_defer * 3))
+    else:
+        defer_seconds = max(base_defer, probe_wait_with_jitter)
     decision.update(
         {
             "action": "defer",
@@ -538,7 +590,10 @@ async def _adaptive_provider_concurrency_record_limit_error(
     )
     new_effective = existing_effective - 1 if should_lower else existing_effective
     now_ts = int(datetime.now(timezone.utc).timestamp())
-    probe_delay = _adaptive_probe_delay_seconds()
+    probe_delay = _adaptive_probe_delay_seconds_for_gap(
+        configured_cap=configured_cap,
+        effective_cap=new_effective,
+    )
     next_probe_at_ts = now_ts + probe_delay
 
     await _save_adaptive_provider_concurrency_state(
@@ -618,10 +673,14 @@ async def _adaptive_provider_concurrency_record_submit_success(
             consecutive_probe_successes = max(0, int(state.get("consecutive_probe_successes") or 0)) + 1
         else:
             consecutive_probe_successes = 1
-        raise_after_probe_successes = (
-            _adaptive_provider_concurrency_raise_after_consecutive_probe_successes()
+        raise_after_probe_successes = _adaptive_probe_successes_required_for_gap(
+            configured_cap=configured_cap,
+            effective_cap=current_effective,
         )
-        next_probe_delay = _adaptive_probe_delay_seconds()
+        next_probe_delay = _adaptive_probe_delay_seconds_for_gap(
+            configured_cap=configured_cap,
+            effective_cap=current_effective,
+        )
         if consecutive_probe_successes < raise_after_probe_successes:
             await _save_adaptive_provider_concurrency_state(
                 state["state_key"],

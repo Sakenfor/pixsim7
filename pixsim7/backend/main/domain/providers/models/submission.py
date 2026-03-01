@@ -39,6 +39,10 @@ class ProviderSubmission(SQLModel, table=True):
         sa_column=Column(Integer, ForeignKey("generations.id", ondelete="CASCADE"), index=True),
         description="Link to generation (mutually exclusive with analysis_id)"
     )
+    generation_attempt_id: Optional[int] = Field(
+        default=None,
+        description="Generation attempt ownership marker (matches generations.attempt_id for generation submissions)",
+    )
     analysis_id: Optional[int] = Field(
         default=None,
         foreign_key="asset_analyses.id",
@@ -97,7 +101,7 @@ class ProviderSubmission(SQLModel, table=True):
     )
     previous_submission_id: Optional[int] = Field(
         default=None,
-        foreign_key="provider_submissions.id",
+        sa_column=Column(Integer, ForeignKey("provider_submissions.id"), index=True, nullable=True),
         description="Previous submission if this is a retry"
     )
 
@@ -122,6 +126,12 @@ class ProviderSubmission(SQLModel, table=True):
     # ===== INDEXES =====
     __table_args__ = (
         Index("idx_submission_generation_attempt", "generation_id", "retry_attempt"),
+        Index(
+            "idx_submission_generation_attempt_id_submitted",
+            "generation_id",
+            "generation_attempt_id",
+            "submitted_at",
+        ),
         Index("idx_submission_status_submitted", "status", "submitted_at"),
         Index("idx_submission_provider_job", "provider_id", "provider_job_id"),
     )

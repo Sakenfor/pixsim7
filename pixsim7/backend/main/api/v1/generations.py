@@ -967,6 +967,66 @@ async def retry_generation(
         raise HTTPException(status_code=500, detail=f"Failed to retry generation: {str(e)}")
 
 
+# ===== PATCH GENERATION PROMPT =====
+
+
+class PatchGenerationPromptRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=50000, description="New prompt text")
+
+
+@router.patch("/generations/{generation_id}/prompt", response_model=GenerationResponse)
+async def patch_generation_prompt(
+    generation_id: int,
+    request: PatchGenerationPromptRequest,
+    user: CurrentUser,
+    generation_gateway: GenerationGatewaySvc,
+    db: DatabaseSession,
+):
+    """
+    Update the prompt on an existing generation.
+
+    Updates final_prompt and the prompt key inside raw_params / canonical_params.
+    Only the generation owner or admin can patch.
+    """
+    from datetime import timezone
+
+    try:
+        generation_service = generation_gateway.local
+        generation = await generation_service.get_generation_for_user(generation_id, user)
+
+        new_prompt = request.prompt.strip()
+        generation.final_prompt = new_prompt
+
+        # Patch prompt inside raw_params and canonical_params
+        if generation.raw_params is not None:
+            updated_raw = {**generation.raw_params, "prompt": new_prompt}
+            generation.raw_params = updated_raw
+        if generation.canonical_params is not None:
+            updated_canonical = {**generation.canonical_params, "prompt": new_prompt}
+            generation.canonical_params = updated_canonical
+
+        # Clear resolved_params so the worker re-resolves with the new prompt
+        generation.resolved_params = None
+        generation.updated_at = datetime.now(timezone.utc)
+
+        await db.commit()
+        await db.refresh(generation)
+
+        logger.info(
+            "generation_prompt_patched",
+            generation_id=generation.id,
+            prompt_length=len(new_prompt),
+        )
+
+        return GenerationResponse.model_validate(generation)
+
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to patch generation {generation_id} prompt: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to patch prompt: {str(e)}")
+
+
 # ===== DELETE GENERATION =====
 
 @router.delete("/generations/{generation_id}", status_code=204)

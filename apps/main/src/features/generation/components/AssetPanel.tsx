@@ -136,9 +136,38 @@ export function AssetPanel(props: QuickGenPanelProps) {
       thumbnailUrl: thumbUrl,
     }];
   });
+  // Append virtual empty slot entry for grid popup
+  if (state.showVirtualEmptySlot) {
+    queueItems.push({ id: 'virtual-empty', thumbnailUrl: '' });
+  }
+
+  // ── Carousel navigation with virtual slot awareness ───────────────
+  const handleCarouselPrev = () => {
+    if (state.isOnVirtualSlot) {
+      // Virtual slot → last real item
+      state.setOperationInputIndex(state.orderedInputs.length);
+    } else if (state.operationInputIndex <= 1 && state.showVirtualEmptySlot) {
+      // First item, wrap to virtual slot
+      state.setOperationInputIndex(state.orderedInputs.length + 1);
+    } else {
+      state.cycleInputs?.(state.operationType, 'prev');
+    }
+  };
+
+  const handleCarouselNext = () => {
+    if (state.operationInputIndex >= state.orderedInputs.length && state.showVirtualEmptySlot && !state.isOnVirtualSlot) {
+      // Last real item → virtual slot
+      state.setOperationInputIndex(state.orderedInputs.length + 1);
+    } else if (state.isOnVirtualSlot) {
+      // Virtual slot → wrap to first item
+      state.setOperationInputIndex(1);
+    } else {
+      state.cycleInputs?.(state.operationType, 'next');
+    }
+  };
 
   const currentAsset = state.currentInput?.asset ?? state.displayAssets[0];
-  const singleNeedsUpload = needsUploadToProvider(currentAsset, state.effectiveProviderId) && !state.uploadedAssetIds.has(currentAsset.id);
+  const singleNeedsUpload = !state.isOnVirtualSlot && needsUploadToProvider(currentAsset, state.effectiveProviderId) && !state.uploadedAssetIds.has(currentAsset.id);
 
   return (
     <>
@@ -146,48 +175,77 @@ export function AssetPanel(props: QuickGenPanelProps) {
         {header}
         <div ref={state.containerRef} className="flex-1 p-2 pt-0">
           <div className="relative h-full">
-            <CompactAssetCard
-              asset={currentAsset}
-              showRemoveButton={state.orderedInputs.length > 0}
-              onRemove={() => {
-                if (state.currentInputId) {
-                  state.removeInput?.(state.operationType, state.currentInputId);
+            {state.isOnVirtualSlot ? (
+              // ── Virtual empty slot placeholder ──────────────────────
+              <div className="h-full border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-md flex flex-col items-center justify-center">
+                <div className="text-xs text-neutral-500 italic text-center">
+                  + Add asset
+                </div>
+                {/* Nav pill for virtual slot */}
+                {state.carouselTotalCount > 1 && (
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-0 bg-black/70 backdrop-blur-sm rounded-full px-1.5 py-0.5 z-20">
+                    <button
+                      onClick={handleCarouselPrev}
+                      className="text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
+                      title="Previous"
+                    >
+                      {state.operationInputIndex}
+                    </button>
+                    <span className="text-white/60 text-[10px]">/</span>
+                    <button
+                      onClick={handleCarouselNext}
+                      className="text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
+                      title="Next"
+                    >
+                      {state.carouselTotalCount}
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <CompactAssetCard
+                asset={currentAsset}
+                showRemoveButton={state.orderedInputs.length > 0}
+                onRemove={() => {
+                  if (state.currentInputId) {
+                    state.removeInput?.(state.operationType, state.currentInputId);
+                  }
+                }}
+                lockedTimestamp={state.currentInput?.lockedTimestamp}
+                onLockTimestamp={
+                  state.currentInputId
+                    ? (timestamp) =>
+                        state.updateLockedTimestamp?.(state.operationType, state.currentInputId!, timestamp)
+                    : undefined
                 }
-              }}
-              lockedTimestamp={state.currentInput?.lockedTimestamp}
-              onLockTimestamp={
-                state.currentInputId
-                  ? (timestamp) =>
-                      state.updateLockedTimestamp?.(state.operationType, state.currentInputId!, timestamp)
-                  : undefined
-              }
-              {...(singleNeedsUpload
-                ? {
-                    onUploadToProvider: () => state.handleUploadToProvider(currentAsset.id),
-                    uploadingToProvider: state.uploadingAssetIds.has(currentAsset.id),
-                  }
-                : {
-                    onGenerate: () => state.controller.generate(
-                      state.currentInput ? { overrideOperationInputs: [state.currentInput] } : undefined
-                    ),
-                    generating: state.controller.generating,
-                  }
-              )}
-              hideFooter
-              fillHeight
-              currentIndex={state.operationInputIndex}
-              totalCount={state.orderedInputs.length}
-              onNavigatePrev={() => state.cycleInputs?.(state.operationType, 'prev')}
-              onNavigateNext={() => state.cycleInputs?.(state.operationType, 'next')}
-              queueItems={queueItems}
-              onSelectIndex={(idx) => state.setOperationInputIndex?.(idx + 1)}
-              enableHoverPreview={state.enableHoverPreview}
-              showPlayOverlay={state.showPlayOverlay}
-              clickToPlay={state.clickToPlay}
-              overlay={state.currentInput ? state.buildFusionRoleOverlay(state.currentInput, currentSlotIndex ?? 0) : undefined}
-              className={isCurrentClamped ? '!border-amber-500/70' : ''}
-              extraWidgets={state.buildSlotExtraWidgets(state.currentInput ?? null, currentSlotIndex ?? 0)}
-            />
+                {...(singleNeedsUpload
+                  ? {
+                      onUploadToProvider: () => state.handleUploadToProvider(currentAsset.id),
+                      uploadingToProvider: state.uploadingAssetIds.has(currentAsset.id),
+                    }
+                  : {
+                      onGenerate: () => state.controller.generate(
+                        state.currentInput ? { overrideOperationInputs: [state.currentInput] } : undefined
+                      ),
+                      generating: state.controller.generating,
+                    }
+                )}
+                hideFooter
+                fillHeight
+                currentIndex={state.operationInputIndex}
+                totalCount={state.carouselTotalCount}
+                onNavigatePrev={handleCarouselPrev}
+                onNavigateNext={handleCarouselNext}
+                queueItems={queueItems}
+                onSelectIndex={(idx) => state.setOperationInputIndex(idx + 1)}
+                enableHoverPreview={state.enableHoverPreview}
+                showPlayOverlay={state.showPlayOverlay}
+                clickToPlay={state.clickToPlay}
+                overlay={state.currentInput ? state.buildFusionRoleOverlay(state.currentInput, currentSlotIndex ?? 0) : undefined}
+                className={isCurrentClamped ? '!border-amber-500/70' : ''}
+                extraWidgets={state.buildSlotExtraWidgets(state.currentInput ?? null, currentSlotIndex ?? 0)}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -13,9 +13,6 @@ export interface RecentGenerationsPanelProps {
   };
 }
 
-/** Suppress default hover actions so the overlay generation button group takes over. */
-const SUPPRESS_HOVER_ACTIONS = () => null;
-
 export function RecentGenerationsPanel(props: RecentGenerationsPanelProps) {
   return (
     <MiniGallery
@@ -25,7 +22,7 @@ export function RecentGenerationsPanel(props: RecentGenerationsPanelProps) {
       context={props.context}
       paginationMode="page"
       pageSize={20}
-      renderItemActions={SUPPRESS_HOVER_ACTIONS}
+      suppressHoverActions
     />
   );
 }
