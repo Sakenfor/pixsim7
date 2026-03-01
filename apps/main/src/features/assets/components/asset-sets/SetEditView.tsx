@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useState, useMemo, useCallback, useEffect } from 'react';
 
 import { Icon } from '@lib/icons';
-import { createBadgeWidget, type OverlayWidget } from '@lib/ui/overlay';
+import { buildRemoveWidget } from '@lib/ui/overlay';
 
 import { useAssets, type AssetFilters, type AssetModel } from '@features/assets';
 import { CompactAssetCard } from '@features/assets/components/shared/CompactAssetCard';
@@ -17,8 +17,6 @@ import { ruleInputClasses } from './filterRules';
 import { SmartFilterEditor } from './SmartFilterEditor';
 
 // ── Inline search for adding assets to manual sets ─────────────────────
-
-const USE_OVERLAY_HOVER_ACTIONS = () => null;
 
 function AssetSearchAdder({ onAdd }: { onAdd: (asset: AssetModel) => void }) {
   const [query, setQuery] = useState('');
@@ -56,25 +54,6 @@ function AssetSearchAdder({ onAdd }: { onAdd: (asset: AssetModel) => void }) {
       )}
     </div>
   );
-}
-
-// ── Remove badge widget builder ─────────────────────────────────────────
-
-function makeRemoveWidget(onRemove: () => void): OverlayWidget[] {
-  return [createBadgeWidget({
-    id: 'remove-from-set',
-    position: { anchor: 'top-right', offset: { x: -4, y: 4 } },
-    stackGroup: 'badges-tr',
-    visibility: { trigger: 'always', transition: 'none' },
-    variant: 'icon',
-    icon: 'close',
-    color: 'red',
-    shape: 'circle',
-    tooltip: 'Remove from set',
-    onClick: onRemove,
-    className: '!bg-red-600 hover:!bg-red-700 !text-white opacity-70 hover:opacity-100',
-    priority: 30,
-  })];
 }
 
 // ── Edit view for a single set ─────────────────────────────────────────
@@ -138,7 +117,10 @@ export function SetEditView({
   );
 
   const renderItemWidgets = useCallback(
-    (asset: AssetModel) => makeRemoveWidget(() => removeRef(asset)),
+    (asset: AssetModel) => [buildRemoveWidget(
+      () => removeRef(asset),
+      { id: 'remove-from-set', tooltip: 'Remove from set', visibility: { trigger: 'always', transition: 'none' }, className: '!bg-red-600 hover:!bg-red-700 !text-white opacity-70 hover:opacity-100' },
+    )],
     [removeRef],
   );
 
@@ -202,7 +184,7 @@ export function SetEditView({
                 pageSize={12}
                 showFilters={false}
                 emptyMessage="No assets in this set."
-                renderItemActions={USE_OVERLAY_HOVER_ACTIONS}
+                suppressHoverActions
                 renderItemWidgets={renderItemWidgets}
               />
             </div>
@@ -243,7 +225,7 @@ export function SetEditView({
               pageSize={12}
               showFilters={false}
               showSearch={false}
-              renderItemActions={USE_OVERLAY_HOVER_ACTIONS}
+              suppressHoverActions
               emptyMessage="No matching assets."
             />
           </div>
