@@ -848,6 +848,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             provider_id=generation.provider_id,
                             user_id=generation.user_id,
                             include_exhausted=include_exhausted_candidates,
+                            min_credits=required_credit_hint,
                         )
                         return acct
                     except (NoAccountAvailableError, AccountCooldownError) as e:
@@ -855,13 +856,18 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         debug.worker("no_account_available", error=str(e), error_type=e.__class__.__name__)
                         raise  # Propagate - no more accounts to try
 
+                _last_refreshed_credits: dict = {}
+
                 async def verify_credits(acct: ProviderAccount) -> bool:
                     """Check if account has sufficient credits (skip for unlimited models)."""
+                    nonlocal _last_refreshed_credits
+                    _last_refreshed_credits = {}
                     if is_unlimited_model(acct, gen_model):
                         return True
                     if required_credit_hint == 0:
                         return True
                     credits_data = await refresh_account_credits(acct, account_service, gen_logger)
+                    _last_refreshed_credits = credits_data or {}
                     if not credits_data:
                         # Credit fetch failed or returned empty — reject so we
                         # try another account rather than submitting blind.
@@ -875,11 +881,15 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     return has_sufficient_credits(credits_data, min_credits=min_credits)
 
                 async def reject_account(acct: ProviderAccount) -> None:
-                    """Release and mark exhausted."""
+                    """Release account; only mark exhausted if truly zero credits."""
                     gen_logger.warning("account_no_credits", account_id=acct.id)
                     debug.worker("account_no_credits", account_id=acct.id)
                     await account_service.release_account(acct.id)
-                    await account_service.mark_exhausted(acct.id)
+                    # Only mark exhausted if the account has zero credits across
+                    # all types.  If it has *some* credits (just not enough for
+                    # this job), leave it ACTIVE so cheaper operations can use it.
+                    if not any(v > 0 for v in _last_refreshed_credits.values()):
+                        await account_service.mark_exhausted(acct.id)
 
                 try:
                     account = await with_fallback(
@@ -900,7 +910,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         if isinstance(last_account_id, int)
                         else (generation.account_id if generation.account_id is not None else -1)
                     )
-                    gen_logger.error(
+                    gen_logger.warning(
                         "all_accounts_exhausted",
                         attempts=MAX_ACCOUNT_RETRIES,
                         last_account_id=last_account_id,

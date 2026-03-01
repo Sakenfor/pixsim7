@@ -210,6 +210,7 @@ class AccountService:
         provider_id: str,
         user_id: Optional[int] = None,
         include_exhausted: bool = False,
+        min_credits: Optional[int] = None,
     ) -> ProviderAccount:
         """
         Atomically select and reserve an account.
@@ -222,6 +223,9 @@ class AccountService:
             user_id: User ID (optional, for private accounts)
             include_exhausted: Also consider EXHAUSTED accounts (for unlimited
                 models that don't consume credits)
+            min_credits: If set, only consider accounts that have at least one
+                credit row with amount >= this value (pre-filters in SQL to
+                avoid picking accounts that can't afford the operation)
 
         Returns:
             Reserved account with incremented concurrency counter
@@ -252,6 +256,16 @@ class AccountService:
             )
         else:
             query = query.where(ProviderAccount.is_private == False)
+
+        # Pre-filter: skip accounts whose DB credits are already too low
+        if min_credits is not None and min_credits > 0:
+            query = query.where(
+                ProviderAccount.id.in_(
+                    select(ProviderCredit.account_id).where(
+                        ProviderCredit.amount >= min_credits
+                    )
+                )
+            )
 
         # Sort by priority, least recently used
         query = query.order_by(
