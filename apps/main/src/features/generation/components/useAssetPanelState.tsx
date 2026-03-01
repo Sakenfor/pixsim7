@@ -573,38 +573,66 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     if (!set) return;
     const resolved = await resolveAssetSet(set);
     const pick = resolved.length > 0 ? resolved[0] : undefined;
-    storeSetAssetSetRef(opType, inputId, { setId, mode: 'random_each' });
+    // Remember the original asset so we can restore it on unlink
+    const items = useInputStore.getState().inputsByOperation[opType]?.items ?? [];
+    const item = items.find(i => i.id === inputId);
+    const originalAssetId = item?.asset?.id;
+    storeSetAssetSetRef(opType, inputId, {
+      setId,
+      mode: 'random_each',
+      originalAssetId: typeof originalAssetId === 'number' ? originalAssetId : undefined,
+    });
     if (pick) {
       useInputStore.getState().updateAssetModel(pick.id, pick);
       // Update the slot's display asset to the first set asset
-      const items = useInputStore.getState().inputsByOperation[opType]?.items ?? [];
-      const item = items.find(i => i.id === inputId);
-      if (item) {
-        // Update via the generic updateAssetModel won't work for different asset IDs.
-        // Instead, use setAssetSetRef which we already called, and update the item's asset directly.
-        const state = useInputStore.getState();
-        const existing = state.inputsByOperation[opType];
-        if (existing) {
-          (useInputStore as any).setState({
-            inputsByOperation: {
-              ...state.inputsByOperation,
-              [opType]: {
-                ...existing,
-                items: existing.items.map(i =>
-                  i.id === inputId ? { ...i, asset: pick } : i
-                ),
-              },
+      const state = useInputStore.getState();
+      const existing = state.inputsByOperation[opType];
+      if (existing) {
+        (useInputStore as any).setState({
+          inputsByOperation: {
+            ...state.inputsByOperation,
+            [opType]: {
+              ...existing,
+              items: existing.items.map(i =>
+                i.id === inputId ? { ...i, asset: pick } : i
+              ),
             },
-          });
-        }
+          },
+        });
       }
     }
   }, [operationType, storeSetAssetSetRef, useInputStore]);
 
-  const handleSetUnlink = useCallback((opType: typeof operationType, inputId: string) => {
+  const handleSetUnlink = useCallback(async (opType: typeof operationType, inputId: string) => {
+    // Grab the original asset ID before clearing the ref
+    const items = useInputStore.getState().inputsByOperation[opType]?.items ?? [];
+    const item = items.find(i => i.id === inputId);
+    const originalId = item?.assetSetRef?.originalAssetId;
+
     storeSetAssetSetRef(opType, inputId, undefined);
     setActiveSetPopover(null);
-  }, [storeSetAssetSetRef]);
+
+    // Restore the original asset that was in the slot before linking
+    if (typeof originalId === 'number') {
+      const stub = buildFallbackAsset({ id: originalId, type: 'image', url: '' });
+      const restored = await hydrateAssetModel(stub);
+      const state = useInputStore.getState();
+      const existing = state.inputsByOperation[opType];
+      if (existing) {
+        (useInputStore as any).setState({
+          inputsByOperation: {
+            ...state.inputsByOperation,
+            [opType]: {
+              ...existing,
+              items: existing.items.map(i =>
+                i.id === inputId ? { ...i, asset: restored } : i
+              ),
+            },
+          },
+        });
+      }
+    }
+  }, [storeSetAssetSetRef, useInputStore]);
 
   const handleSetModeChange = useCallback(async (opType: typeof operationType, inputId: string, mode: AssetSetSlotRef['mode']) => {
     storeUpdateAssetSetMode(opType, inputId, mode);
@@ -649,7 +677,12 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     if (!set) return;
     const resolved = await resolveAssetSet(set);
     if (resolved.length === 0) return;
-    const pick = resolved[Math.floor(Math.random() * resolved.length)];
+    // Avoid picking the same asset that's currently displayed
+    const currentAssetId = item.asset?.id;
+    const candidates = resolved.length > 1
+      ? resolved.filter(a => a.id !== currentAssetId)
+      : resolved;
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
     storeLockAssetSetPick(opType, inputId, pick.id);
     // Update display asset
     const state = useInputStore.getState();
@@ -673,17 +706,19 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const buildSetBadgeWidget = useCallback(
     (item: InputItem, slotIdx: number) => {
       if (!item.assetSetRef) return null;
+      const isRandom = item.assetSetRef.mode === 'random_each';
       const set = useAssetSetStore.getState().getSet(item.assetSetRef.setId);
       return createBadgeWidget({
         id: 'asset-set-ref',
-        position: { anchor: 'top-left', offset: { x: 4, y: 22 } },
+        position: { anchor: 'top-left', offset: { x: 4, y: 4 } },
         visibility: { trigger: 'always', transition: 'none' },
         variant: 'icon',
-        icon: item.assetSetRef.mode === 'random_each' ? 'shuffle' : 'lock',
+        icon: isRandom ? 'shuffle' : 'lock',
         color: 'purple',
         shape: 'circle',
-        tooltip: `Set: ${set?.name ?? 'Unknown'} (${item.assetSetRef.mode === 'random_each' ? 'random' : 'locked'})`,
+        tooltip: `Set: ${set?.name ?? 'Unknown'} (${isRandom ? 'random each' : 'locked'})`,
         priority: 21,
+        className: isRandom ? 'ring-2 ring-purple-400/60 ring-offset-1 ring-offset-black/50' : '',
         onClick: (_data: any, e?: any) => {
           const target = e?.currentTarget ?? e?.target;
           if (target) {
@@ -700,7 +735,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const buildSetLinkWidget = useCallback(
     (slotIdx: number) => createBadgeWidget({
       id: 'asset-set-link',
-      position: { anchor: 'top-left', offset: { x: 4, y: 22 } },
+      position: { anchor: 'top-left', offset: { x: 4, y: 4 } },
       visibility: { trigger: 'hover-container', transition: 'fade' },
       variant: 'icon',
       icon: 'shuffle',

@@ -17,6 +17,7 @@ export interface AssetSetSlotRef {
   setId: string;                        // references AssetSet.id
   mode: 'random_each' | 'locked';       // pick timing
   lockedAssetId?: number;               // for 'locked' mode — the pinned pick
+  originalAssetId?: number;             // asset that was in the slot before linking
 }
 
 export interface InputItem {
