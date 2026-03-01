@@ -55,6 +55,19 @@ class _RawRowsResult:
         return _RowsResult([r[0] for r in self._rows])
 
 
+def _mock_db(**overrides) -> AsyncMock:
+    """Create an AsyncMock db session with db.add as a plain MagicMock.
+
+    Sync methods like db.add() must be MagicMock to avoid
+    'coroutine never awaited' warnings from AsyncMock.
+    """
+    db = AsyncMock()
+    db.add = MagicMock()
+    for key, value in overrides.items():
+        setattr(db, key, value)
+    return db
+
+
 def _make_npc(
     npc_id: int = 1,
     world_id: int = 10,
@@ -185,10 +198,11 @@ class TestSyncNpcExpressionProjection:
             _make_expression(expr_id=3, npc_id=5, state="idle", meta={"surfaceType": "portrait"}),
         ]
 
-        db = AsyncMock()
-        db.get = AsyncMock(return_value=npc)
-        db.execute = AsyncMock(return_value=_RowsResult(expressions))
-        db.commit = AsyncMock()
+        db = _mock_db(
+            get=AsyncMock(return_value=npc),
+            execute=AsyncMock(return_value=_RowsResult(expressions)),
+            commit=AsyncMock(),
+        )
 
         await sync_npc_expression_projection(db, 5)
 
@@ -205,8 +219,7 @@ class TestSyncNpcExpressionProjection:
             sync_npc_expression_projection,
         )
 
-        db = AsyncMock()
-        db.get = AsyncMock(return_value=None)
+        db = _mock_db(get=AsyncMock(return_value=None))
 
         await sync_npc_expression_projection(db, 999)
         db.execute.assert_not_called()
@@ -229,9 +242,10 @@ class TestSyncNpcExpressionProjection:
         )
         expressions = [_make_expression(expr_id=1, npc_id=5, state="idle", meta={})]
 
-        db = AsyncMock()
-        db.get = AsyncMock(return_value=npc)
-        db.execute = AsyncMock(return_value=_RowsResult(expressions))
+        db = _mock_db(
+            get=AsyncMock(return_value=npc),
+            execute=AsyncMock(return_value=_RowsResult(expressions)),
+        )
 
         await sync_npc_expression_projection(db, 5)
         db.commit.assert_not_awaited()
@@ -254,10 +268,11 @@ class TestSyncLocationHotspotProjection:
             _make_hotspot("door_exit", location_id=3, scene_id=None),
         ]
 
-        db = AsyncMock()
-        db.get = AsyncMock(return_value=location)
-        db.execute = AsyncMock(return_value=_RowsResult(hotspots))
-        db.commit = AsyncMock()
+        db = _mock_db(
+            get=AsyncMock(return_value=location),
+            execute=AsyncMock(return_value=_RowsResult(hotspots)),
+            commit=AsyncMock(),
+        )
 
         await sync_location_hotspot_projection(db, 3)
 
@@ -273,8 +288,7 @@ class TestSyncLocationHotspotProjection:
             sync_location_hotspot_projection,
         )
 
-        db = AsyncMock()
-        db.get = AsyncMock(return_value=None)
+        db = _mock_db(get=AsyncMock(return_value=None))
 
         await sync_location_hotspot_projection(db, 999)
         db.execute.assert_not_called()
@@ -295,12 +309,11 @@ class TestSyncSceneGraphProjection:
         nodes = [_make_scene_node(100, scene_id=7), _make_scene_node(101, scene_id=7)]
         edges = [_make_scene_edge(1, scene_id=7, from_node_id=100, to_node_id=101)]
 
-        db = AsyncMock()
-        db.get = AsyncMock(return_value=scene)
-        db.execute = AsyncMock(
-            side_effect=[_RowsResult(nodes), _RowsResult(edges)],
+        db = _mock_db(
+            get=AsyncMock(return_value=scene),
+            execute=AsyncMock(side_effect=[_RowsResult(nodes), _RowsResult(edges)]),
+            commit=AsyncMock(),
         )
-        db.commit = AsyncMock()
 
         await sync_scene_graph_projection(db, 7)
 
@@ -322,12 +335,11 @@ class TestSyncSceneGraphProjection:
         # Edge references node 999 which doesn't exist
         edges = [_make_scene_edge(1, scene_id=7, from_node_id=100, to_node_id=999)]
 
-        db = AsyncMock()
-        db.get = AsyncMock(return_value=scene)
-        db.execute = AsyncMock(
-            side_effect=[_RowsResult(nodes), _RowsResult(edges)],
+        db = _mock_db(
+            get=AsyncMock(return_value=scene),
+            execute=AsyncMock(side_effect=[_RowsResult(nodes), _RowsResult(edges)]),
+            commit=AsyncMock(),
         )
-        db.commit = AsyncMock()
 
         await sync_scene_graph_projection(db, 7)
 
@@ -344,12 +356,11 @@ class TestSyncSceneGraphProjection:
         scene = _make_scene(scene_id=7, entry_node_id=None)
         nodes = [_make_scene_node(50, scene_id=7), _make_scene_node(51, scene_id=7)]
 
-        db = AsyncMock()
-        db.get = AsyncMock(return_value=scene)
-        db.execute = AsyncMock(
-            side_effect=[_RowsResult(nodes), _RowsResult([])],
+        db = _mock_db(
+            get=AsyncMock(return_value=scene),
+            execute=AsyncMock(side_effect=[_RowsResult(nodes), _RowsResult([])]),
+            commit=AsyncMock(),
         )
-        db.commit = AsyncMock()
 
         await sync_scene_graph_projection(db, 7)
 
@@ -413,10 +424,11 @@ class TestSyncNpcScheduleProjection:
                 return _RowsResult([location])
             return _RowsResult([])
 
-        db = AsyncMock()
-        db.get = AsyncMock(side_effect=_mock_get)
-        db.execute = AsyncMock(side_effect=_mock_execute)
-        db.commit = AsyncMock()
+        db = _mock_db(
+            get=AsyncMock(side_effect=_mock_get),
+            execute=AsyncMock(side_effect=_mock_execute),
+            commit=AsyncMock(),
+        )
 
         await sync_npc_schedule_projection(db, 1)
 
@@ -473,10 +485,11 @@ class TestSyncNpcScheduleProjection:
                 return _RowsResult([])  # no schedules
             return _RowsResult([])
 
-        db = AsyncMock()
-        db.get = AsyncMock(side_effect=_mock_get)
-        db.execute = AsyncMock(side_effect=_mock_execute)
-        db.commit = AsyncMock()
+        db = _mock_db(
+            get=AsyncMock(side_effect=_mock_get),
+            execute=AsyncMock(side_effect=_mock_execute),
+            commit=AsyncMock(),
+        )
 
         await sync_npc_schedule_projection(db, 1)
 
@@ -576,7 +589,7 @@ class TestResyncWorldProjections:
 
         assert result.npcs_synced == 0
         assert len(result.warnings) == 1
-        assert "npc 1" in result.warnings[0]
+        assert "npc 1 schedule" in result.warnings[0]
 
     @pytest.mark.asyncio
     async def test_resync_is_idempotent(self) -> None:

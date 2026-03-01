@@ -3,7 +3,7 @@
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, GameWorldSvc
 from pixsim7.backend.main.domain.game.schemas import (
@@ -202,7 +202,7 @@ class ResyncProjectionsResponse(BaseModel):
     locations_synced: int
     scenes_synced: int
     elapsed_ms: float
-    warnings: List[str] = []
+    warnings: List[str] = Field(default_factory=list)
 
 
 @router.post("/{world_id}/projections/resync", response_model=ResyncProjectionsResponse)

@@ -202,13 +202,21 @@ async def resync_world_projections(db: AsyncSession, world_id: int) -> ResyncRes
     )
     npc_ids = [row[0] for row in npc_rows.all()]
     for npc_id in npc_ids:
+        npc_ok = True
         try:
             await sync_npc_schedule_projection(db, npc_id)
-            await sync_npc_expression_projection(db, npc_id)
-            result.npcs_synced += 1
         except Exception as exc:
-            result.warnings.append(f"npc {npc_id}: {exc}")
-            logger.warning("resync: npc %s failed: %s", npc_id, exc)
+            npc_ok = False
+            result.warnings.append(f"npc {npc_id} schedule: {exc}")
+            logger.warning("resync: npc %s schedule failed: %s", npc_id, exc)
+        try:
+            await sync_npc_expression_projection(db, npc_id)
+        except Exception as exc:
+            npc_ok = False
+            result.warnings.append(f"npc {npc_id} expression: {exc}")
+            logger.warning("resync: npc %s expression failed: %s", npc_id, exc)
+        if npc_ok:
+            result.npcs_synced += 1
 
     # --- Locations: hotspot projection ---
     loc_rows = await db.execute(

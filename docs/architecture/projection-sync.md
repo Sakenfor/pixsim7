@@ -180,8 +180,8 @@ nothing changed.
 |------|---------|
 | `services/game/derived_projections.py` | Expression, hotspot, scene graph sync + `resync_world_projections` |
 | `services/game/npc_schedule_projection.py` | Schedule → routine compilation |
-| `services/game/crud/default_specs.py` | Hook wiring (`after_change` on NestedEntitySpec) |
-| `services/game/crud/crud_service.py` | Hook invocation (`_run_after_change_hook`) |
+| `services/entity_crud/default_specs.py` | Hook wiring (`after_change` on NestedEntitySpec) |
+| `services/entity_crud/crud_service.py` | Hook invocation (`_run_after_change_hook`) |
 | `services/game/project_bundle.py` | Post-import sync calls |
 | `api/v1/game_worlds.py` | Resync API endpoint |
 | `tests/services/test_projection_sync.py` | Integration tests |
