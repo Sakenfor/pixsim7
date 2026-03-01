@@ -30,7 +30,6 @@ from pixsim7.backend.main.services.versioning import (
     VersioningServiceBase,
     TimelineEntry,
 )
-from pixsim7.backend.main.services.prompt.utils.diff import generate_inline_diff
 
 
 class PromptVersioningService(VersioningServiceBase[PromptFamily, PromptVersion]):
@@ -176,34 +175,12 @@ class PromptVersioningService(VersioningServiceBase[PromptFamily, PromptVersion]
         tags: Optional[List[str]] = None,
     ) -> PromptVersion:
         """
-        Create a new version in a family.
+        Disabled write path.
 
-        This is a convenience wrapper - for full version creation with
-        all options, use PromptFamilyService.create_version() directly.
+        Prompt version writes must go through PromptFamilyService to preserve
+        one canonical write entrypoint and allocator policy.
         """
-        # Get next version number with locking
-        next_version = await self.get_next_version_number(family_id, lock=True)
-
-        diff_from_parent = None
-        if parent_version_id:
-            parent = await self.get_entity(parent_version_id)
-            if parent:
-                diff_from_parent = generate_inline_diff(parent.prompt_text, prompt_text)
-
-        version = PromptVersion(
-            family_id=family_id,
-            version_number=next_version,
-            prompt_text=prompt_text,
-            commit_message=commit_message,
-            author=author,
-            parent_version_id=parent_version_id,
-            branch_name=branch_name,
-            variables=variables or {},
-            provider_hints=provider_hints or {},
-            tags=tags or [],
-            diff_from_parent=diff_from_parent,
+        raise RuntimeError(
+            "PromptVersioningService.create_version() is disabled. "
+            "Use PromptFamilyService.create_version() for prompt writes."
         )
-        self.db.add(version)
-        await self.db.commit()
-        await self.db.refresh(version)
-        return version

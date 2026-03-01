@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim7.backend.main.domain.prompt import PromptVersion, PromptFamily
+from pixsim7.backend.main.services.prompt.family import PromptFamilyService
 from pixsim7.backend.main.services.prompt.git.versioning_adapter import PromptVersioningService
 from pixsim7.backend.main.services.prompt.utils.diff import generate_unified_diff
 from pixsim7.backend.main.services.llm import LLMService, LLMRequest
@@ -25,6 +26,7 @@ class GitMergeService:
     def __init__(self, db: AsyncSession, llm_service: Optional[LLMService] = None):
         self.db = db
         self.version_service = PromptVersioningService(db)
+        self.family_service = PromptFamilyService(db)
         self.llm_service = llm_service
         self.ai_available = llm_service is not None
 
@@ -202,7 +204,7 @@ class GitMergeService:
     ) -> Dict[str, Any]:
         """Take-ours merge strategy (keep target version)"""
         # Create new version that's identical to target
-        merged_version = await self.version_service.create_version(
+        merged_version = await self.family_service.create_version(
             family_id=target.family_id,
             prompt_text=target.prompt_text,
             commit_message=commit_message or f"Merge (ours): keeping target version",
@@ -230,7 +232,7 @@ class GitMergeService:
     ) -> Dict[str, Any]:
         """Take-theirs merge strategy (keep source version)"""
         # Create new version using source content
-        merged_version = await self.version_service.create_version(
+        merged_version = await self.family_service.create_version(
             family_id=target.family_id,
             prompt_text=source.prompt_text,
             commit_message=commit_message or f"Merge (theirs): using source version",
@@ -276,7 +278,7 @@ class GitMergeService:
         merged_tags.append('strategy:three-way')
 
         # Create merged version
-        merged_version = await self.version_service.create_version(
+        merged_version = await self.family_service.create_version(
             family_id=target.family_id,
             prompt_text=merged_text,
             commit_message=commit_message or f"Merge: three-way merge",
@@ -373,7 +375,7 @@ Please create an intelligent merge that combines the best of both versions."""
             return await self._three_way_merge(source, target, common_ancestor, commit_message, author)
 
         # Create merged version
-        merged_version = await self.version_service.create_version(
+        merged_version = await self.family_service.create_version(
             family_id=target.family_id,
             prompt_text=merge_result['merged_prompt_text'],
             commit_message=commit_message or f"AI merge: {merge_result.get('merge_explanation', 'Intelligent merge')}",

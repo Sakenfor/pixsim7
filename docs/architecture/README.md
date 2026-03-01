@@ -11,6 +11,7 @@ This directory contains architectural documentation for PixSim7 — specs, desig
 - [Prompt Resolver Workbench Roadmap](./prompt-resolver-workbench-roadmap.md) - Multi-iteration implementation plan and handoff guide.
 - [Prompt Template Controls Backlog](./prompt-template-controls-backlog.md) - SlotKey migration, theme modifier packs.
 - [Parser/Vocab Authority Analysis](./parser-vocab-authority.md) - Keyword authority across parser/vocabulary/ontology systems.
+- [Versioning Systems Map](./versioning-systems-map.md) - Layered map of shared versioning core vs prompt git workflows.
 
 **Generation Pipeline**
 - [Generation Execution Backend Contract](./GENERATION_EXECUTION_BACKEND_CONTRACT.md) - Plan/policy/execution separation for generation orchestration.

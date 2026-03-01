@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
 
 from pixsim7.backend.main.domain.prompt import PromptVersion, PromptFamily
+from pixsim7.backend.main.services.prompt.family import PromptFamilyService
 from pixsim7.backend.main.services.prompt.git.versioning_adapter import PromptVersioningService
 
 
@@ -22,6 +23,7 @@ class GitBranchService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.version_service = PromptVersioningService(db)
+        self.family_service = PromptFamilyService(db)
 
     async def create_branch(
         self,
@@ -58,7 +60,7 @@ class GitBranchService:
                 raise ValueError("No versions found in family to branch from")
 
         # Create new version on branch
-        new_version = await self.version_service.create_version(
+        new_version = await self.family_service.create_version(
             family_id=family_id,
             prompt_text=source_version.prompt_text,
             commit_message=f"Branch '{branch_name}' from version {source_version.version_number}",

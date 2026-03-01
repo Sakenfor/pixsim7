@@ -5,12 +5,12 @@ Core CRUD operations for prompt families and versions.
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 from datetime import datetime
 import re
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from pixsim7.backend.main.domain.prompt import (
     PromptFamily,
@@ -142,13 +142,14 @@ class PromptFamilyService:
         Returns:
             Created PromptVersion
         """
-        # Get next version number for this family
-        result = await self.db.execute(
-            select(func.max(PromptVersion.version_number))
-            .where(PromptVersion.family_id == family_id)
+        # Use shared versioning allocator with row lock to avoid duplicate
+        # version numbers under concurrent writes.
+        from pixsim7.backend.main.services.prompt.git.versioning_adapter import (
+            PromptVersioningService,
         )
-        max_version = result.scalar()
-        next_version = (max_version or 0) + 1
+
+        versioning = PromptVersioningService(self.db)
+        next_version = await versioning.get_next_version_number(family_id, lock=True)
 
         # Auto-generate diff from parent if parent_version_id is provided
         diff_from_parent = None

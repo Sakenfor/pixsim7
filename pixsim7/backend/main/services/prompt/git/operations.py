@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
 
 from pixsim7.backend.main.domain.prompt import PromptVersion, PromptFamily
+from pixsim7.backend.main.services.prompt.family import PromptFamilyService
 from pixsim7.backend.main.services.prompt.git.versioning_adapter import PromptVersioningService
 
 
@@ -23,6 +24,7 @@ class GitOperationsService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.version_service = PromptVersioningService(db)
+        self.family_service = PromptFamilyService(db)
 
     # ===== HISTORY & TIMELINE =====
 
@@ -199,7 +201,7 @@ class GitOperationsService:
         current = await self.version_service.get_latest_version(family_id)
 
         # Create new version with target's content
-        rollback_version = await self.version_service.create_version(
+        rollback_version = await self.family_service.create_version(
             family_id=family_id,
             prompt_text=target.prompt_text,
             commit_message=commit_message or f"Rollback to version {target.version_number}",
@@ -242,7 +244,7 @@ class GitOperationsService:
         current = await self.version_service.get_latest_version(family_id)
 
         # Create new version with parent's content
-        revert_version = await self.version_service.create_version(
+        revert_version = await self.family_service.create_version(
             family_id=family_id,
             prompt_text=parent.prompt_text,
             commit_message=f"Revert version {version_to_revert.version_number}",
@@ -414,7 +416,7 @@ class GitOperationsService:
             raise ValueError("No current version found to cherry-pick onto")
 
         # Create new version with picked content
-        cherry_picked = await self.version_service.create_version(
+        cherry_picked = await self.family_service.create_version(
             family_id=family_id,
             prompt_text=version_to_pick.prompt_text,
             commit_message=f"Cherry-pick: {version_to_pick.commit_message or 'version ' + str(version_to_pick.version_number)}",

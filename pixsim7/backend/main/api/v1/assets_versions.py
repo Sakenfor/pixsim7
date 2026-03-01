@@ -91,8 +91,8 @@ async def _build_family_response(
         user_id=family.user_id,
         created_at=family.created_at,
         updated_at=family.updated_at,
-        version_count=stats["version_count"],
-        latest_version_number=stats["latest_version_number"]
+        version_count=stats.version_count,
+        latest_version_number=stats.latest_version_number,
     )
 
 
