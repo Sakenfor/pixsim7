@@ -5,6 +5,9 @@
 **Related:** IMAGE_TO_IMAGE operation type, Action Blocks Unified System
 **Replaces:** POSE_GRAPH_SYSTEM_PROPOSAL.md
 
+> Note (March 1, 2026): This proposal reflects legacy Action Blocks architecture. Active runtime/game dialogue flows now resolve via primitives-first composer pipeline.
+
+
 ## Problem
 
 Users want to create image variation workflows:

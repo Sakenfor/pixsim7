@@ -51,21 +51,10 @@ const AXIS_OPTIONS_PRIMITIVES = [
   { value: 'source', label: 'Source' },
 ];
 
-const AXIS_OPTIONS_LEGACY = [
-  { value: 'role', label: 'Role' },
-  { value: 'category', label: 'Category' },
-  { value: 'package_name', label: 'Package' },
-  { value: 'kind', label: 'Kind' },
-  { value: 'default_intent', label: 'Intent' },
-  { value: 'complexity_level', label: 'Complexity' },
-];
-
 function baseAxisOptionsWithCurrent(
   current?: string,
-  source?: string,
 ): Array<{ value: string; label: string }> {
-  const base = source === 'action_blocks' ? AXIS_OPTIONS_LEGACY : AXIS_OPTIONS_PRIMITIVES;
-  const options = [...base];
+  const options = [...AXIS_OPTIONS_PRIMITIVES];
   if (current && !options.some((o) => o.value === current)) {
     options.push({ value: current, label: current.startsWith('tag:') ? `Tag: ${current.slice(4)}` : current });
   }
@@ -134,6 +123,9 @@ export function BlockMatrixView({
   const [query, setQuery] = useState<BlockMatrixQuery>(() => ({
     ...DEFAULT_QUERY,
     ...initialQuery,
+    source: 'primitives',
+    role: undefined,
+    kind: undefined,
   }));
   const [data, setData] = useState<BlockMatrixResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -204,8 +196,6 @@ export function BlockMatrixView({
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
-  const isPrimitives = (query.source ?? 'primitives') === 'primitives';
-
   const cellMap = useMemo(() => {
     if (!data) return new Map<string, BlockMatrixCell>();
     const map = new Map<string, BlockMatrixCell>();
@@ -258,16 +248,16 @@ export function BlockMatrixView({
   }, [aliasTagKeyMap, query.col_key, query.row_key]);
 
   const rowAxisOptions = useMemo(() => {
-    const base = baseAxisOptionsWithCurrent(query.row_key, query.source);
+    const base = baseAxisOptionsWithCurrent(query.row_key);
     const seen = new Set(base.map((o) => o.value));
     for (const opt of canonicalTagAxisOptions) {
       if (!seen.has(opt.value)) base.push(opt);
     }
     return base;
-  }, [canonicalTagAxisOptions, query.row_key, query.source]);
+  }, [canonicalTagAxisOptions, query.row_key]);
 
   const colAxisOptions = useMemo(() => {
-    const base = baseAxisOptionsWithCurrent(query.col_key, query.source);
+    const base = baseAxisOptionsWithCurrent(query.col_key);
     const seen = new Set(base.map((o) => o.value));
     for (const opt of canonicalTagAxisOptions) {
       if (!seen.has(opt.value)) base.push(opt);
@@ -282,6 +272,10 @@ export function BlockMatrixView({
     value: BlockMatrixQuery[K],
   ) => {
     if (isLocked(field)) return;
+    if (field === 'source') {
+      setQuery((prev) => ({ ...prev, source: 'primitives' }));
+      return;
+    }
     setQuery((prev) => ({ ...prev, [field]: value || undefined }));
   };
 
@@ -295,6 +289,9 @@ export function BlockMatrixView({
           )
         : {}),
       ...preset.query,
+      source: 'primitives',
+      role: undefined,
+      kind: undefined,
     }));
   };
 
@@ -431,32 +428,13 @@ export function BlockMatrixView({
 
         {/* Filters */}
         <div className="flex items-center gap-2 flex-wrap">
-          {isPrimitives && !isLocked('source') && (
-            <select
-              value={query.source ?? 'primitives'}
-              onChange={(e) => updateField('source', e.target.value as 'primitives' | 'action_blocks')}
-              className="px-1.5 py-0.5 rounded border border-neutral-700 bg-neutral-800 text-[11px] text-neutral-200 outline-none w-24"
-            >
-              <option value="primitives">Primitives</option>
-              <option value="action_blocks">Legacy</option>
-            </select>
-          )}
-          {!isPrimitives && !isLocked('package_name') && (
+          {!isLocked('package_name') && (
             <input
               type="text"
               value={query.package_name ?? ''}
               onChange={(e) => updateField('package_name', e.target.value || undefined)}
-              placeholder="package"
+              placeholder="source pack"
               className="px-1.5 py-0.5 rounded border border-neutral-700 bg-neutral-800 text-[11px] text-neutral-200 outline-none placeholder:text-neutral-600 w-24"
-            />
-          )}
-          {!isPrimitives && !isLocked('role') && (
-            <input
-              type="text"
-              value={query.role ?? ''}
-              onChange={(e) => updateField('role', e.target.value || undefined)}
-              placeholder="role"
-              className="px-1.5 py-0.5 rounded border border-neutral-700 bg-neutral-800 text-[11px] text-neutral-200 outline-none placeholder:text-neutral-600 w-20"
             />
           )}
           {!isLocked('category') && (

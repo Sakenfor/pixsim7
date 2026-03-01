@@ -1,5 +1,4 @@
 from .interfaces import BlockResolver
-from .legacy_adapter import adapt_legacy_slot_results
 from .next_v1_resolver import NextV1Resolver
 from .registry import ResolverRegistry, build_default_resolver_registry
 from .types import (
@@ -23,7 +22,6 @@ __all__ = [
     "NextV1Resolver",
     "ResolverRegistry",
     "build_default_resolver_registry",
-    "adapt_legacy_slot_results",
     "CandidateBlock",
     "ConstraintKind",
     "PairwiseBonus",

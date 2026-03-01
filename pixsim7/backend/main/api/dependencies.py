@@ -40,7 +40,6 @@ from pixsim7.backend.main.shared.auth_claims import AuthPrincipal
 
 # Narrative engine imports (lazy-loaded)
 from pixsim7.backend.main.domain.narrative import NarrativeEngine
-from pixsim7.backend.main.domain.narrative.action_blocks import ActionEngine
 from pixsim7.backend.main.domain.narrative.action_blocks.generator import DynamicBlockGenerator
 from pixsim7.backend.main.services.llm import LLMService
 
@@ -189,12 +188,6 @@ def get_entity_ref_resolver(db: AsyncSession = Depends(get_database)) -> EntityR
 def get_narrative_engine() -> NarrativeEngine:
     """Get or create the narrative engine singleton (thread-safe via lru_cache)."""
     return NarrativeEngine()
-
-
-@lru_cache(maxsize=1)
-def get_action_engine() -> ActionEngine:
-    """Get or create the action engine singleton (thread-safe via lru_cache)."""
-    return ActionEngine(narrative_engine=get_narrative_engine())
 
 
 @lru_cache(maxsize=1)
@@ -463,6 +456,5 @@ EntityRefResolverSvc = Annotated[EntityRefResolver, Depends(get_entity_ref_resol
 
 # Narrative engine type aliases
 NarrativeEng = Annotated[NarrativeEngine, Depends(get_narrative_engine)]
-ActionEng = Annotated[ActionEngine, Depends(get_action_engine)]
 BlockGenerator = Annotated[DynamicBlockGenerator, Depends(get_block_generator)]
 LLMSvc = Annotated[LLMService, Depends(get_llm_service)]

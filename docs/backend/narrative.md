@@ -2,6 +2,8 @@
 
 The Narrative domain handles story execution, dialogue systems, narrative programs, and action blocks for creating interactive story experiences.
 
+> Update (March 1, 2026): Legacy `routes/action_blocks` and legacy selector-stack `ActionEngine` runtime wiring were removed. Runtime action selection now resolves through primitives-first composer flow.
+
 ## Entry Module
 
 ```python
@@ -30,12 +32,13 @@ pixsim7/backend/main/
 │   ├── schema.py              # Program/node definitions
 │   ├── ecs_helpers.py         # Narrative state ECS integration
 │   ├── action_block_resolver.py  # Action block resolution
+│   ├── runtime_action_assembly.py # Runtime prompt/segment assembly helpers
 │   ├── integration_helpers.py # Helper functions for launching
 │   ├── engine.py              # Legacy narrative engine
 │   └── action_blocks/         # Action block definitions
 ├── services/narrative/        # Runtime execution
 │   └── runtime.py             # NarrativeRuntimeEngine
-└── routes/action_blocks/      # Action block API
+└── plugins/game_dialogue/     # Game dialogue and action endpoints
 ```
 
 ## Key Concepts

@@ -31,13 +31,6 @@ _EXPORT_MAP = {
     "candidate_from_segment": ("candidates", "candidate_from_segment"),
     "candidate_from_suggested_action_block": ("candidates", "candidate_from_suggested_action_block"),
     "candidates_from_segments": ("candidates", "candidates_from_segments"),
-    # Block services
-    "PromptBlockService": ("block", "PromptBlockService"),
-    "BlockCompositionEngine": ("block", "BlockCompositionEngine"),
-    "AIBlockExtractor": ("block", "AIBlockExtractor"),
-    "ConceptRegistry": ("block", "ConceptRegistry"),
-    "ExtractionConfigService": ("block", "ExtractionConfigService"),
-    "ExtractionConfig": ("block", "ExtractionConfig"),
     # Parser
     "SimplePromptParser": ("parser", "SimplePromptParser"),
     "PromptParseResult": ("parser", "PromptParseResult"),
@@ -93,13 +86,6 @@ __all__ = [
     "candidate_from_segment",
     "candidate_from_suggested_action_block",
     "candidates_from_segments",
-    # Block services
-    "PromptBlockService",
-    "BlockCompositionEngine",
-    "AIBlockExtractor",
-    "ConceptRegistry",
-    "ExtractionConfigService",
-    "ExtractionConfig",
     # Parser
     "SimplePromptParser",
     "PromptParseResult",

@@ -357,7 +357,7 @@ GET /api/v1/prompts/families/uuid-123/versions
 
 ### Future (Phase 4+)
 
-⏳ **ActionEngine**: Use versioned prompts in ActionBlocks
+⏳ **Runtime Composer**: Use versioned prompts in primitives/template flows
 ⏳ **NarrativeEngine**: Link dialogue prompts to versions
 ⏳ **Game Integration**: World-specific prompt overrides
 ⏳ **A/B Testing**: Multi-variant testing framework
@@ -574,7 +574,7 @@ POST /api/v1/prompts/templates/render
 
 ### Phase 4: Game Integration & Advanced Features
 - [ ] Per-world prompt overrides (`prompt_world_override` table)
-- [ ] ActionEngine integration (use versioned prompts in blocks)
+- [ ] Runtime composer integration (use versioned prompts in primitives/template flows)
 - [ ] NarrativeEngine integration (dialogue prompt versions)
 - [ ] Automatic prompt selection based on game context
 - [ ] Multi-variant branching (A/B testing for prompts)
@@ -629,3 +629,4 @@ POST /api/v1/prompts/templates/render
 
 **Last Updated**: 2025-11-17
 **Next Review**: Before Phase 4 implementation
+

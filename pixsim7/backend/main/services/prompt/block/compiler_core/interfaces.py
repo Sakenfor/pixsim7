@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Protocol, runtime_checkable
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 from ..resolution_core.types import ResolutionRequest
 
@@ -25,5 +25,6 @@ class BlockCompiler(Protocol):
         template: Any,
         candidate_limit: int,
         control_values: Optional[Dict[str, Any]],
+        exclude_block_ids: Optional[List[Any]] = None,
         resolver_id: Optional[str] = None,
     ) -> ResolutionRequest: ...

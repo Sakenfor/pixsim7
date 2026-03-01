@@ -7,7 +7,6 @@ from pixsim7.backend.main.services.prompt.block.resolution_core import (
     ResolutionIntent,
     ResolutionRequest,
     ResolutionTarget,
-    adapt_legacy_slot_results,
     build_default_resolver_registry,
 )
 
@@ -112,32 +111,6 @@ def test_next_v1_requires_capabilities_per_target() -> None:
 
     result = registry.resolve(request)
     assert result.selected_by_target["lighting"].block_id == "lighting_mod"
-
-
-def test_adapt_legacy_slot_results_normalizes_selected_and_warnings() -> None:
-    slot_results = [
-        {
-            "label": "Uniform aesthetic",
-            "status": "selected",
-            "selected_block_string_id": "police_uniform_duty",
-            "prompt_preview": "duty uniform ...",
-            "selector_strategy": "weighted_tags",
-            "selector_debug": {"strategy": "weighted_tags"},
-        },
-        {
-            "label": "Wardrobe modifier",
-            "status": "fallback",
-            "fallback_text": "fallback text",
-        },
-    ]
-
-    result = adapt_legacy_slot_results(slot_results, seed=123)
-    assert result.resolver_id == "legacy_v1"
-    assert result.seed == 123
-    assert "Uniform aesthetic" in result.selected_by_target
-    assert result.selected_by_target["Uniform aesthetic"].block_id == "police_uniform_duty"
-    assert any("fallback" in w for w in result.warnings)
-    assert any(ev.kind == "legacy_slot_result" for ev in result.trace.events)
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,9 @@
 **Status**: ✅ All 4 Components Implemented
 **Branch**: claude/prompts-action-blocks-01JNhhKoqs17gDmz4CvHoW9B
 
+> Note (March 1, 2026): Historical implementation summary. Current runtime architecture has moved to primitives-first composition; legacy ActionEngine selector-stack and legacy action_blocks API route wiring are no longer active runtime paths.
+
+
 ---
 
 ## Overview

@@ -21,9 +21,6 @@ from pixsim7.backend.main.services.prompt.block.block_primitive_query import (
     build_block_primitive_query,
 )
 from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
-from pixsim7.backend.main.services.prompt.block.block_query import (
-    build_prompt_block_query,
-)
 from pixsim7.backend.main.services.prompt.block.template_slots import (
     TemplateSlotSpec,
     normalize_template_slots,
@@ -668,7 +665,7 @@ async def preview_slot(
 async def list_block_packages(
     db: AsyncSession = Depends(get_db),
 ):
-    """List distinct package names from prompt blocks."""
+    """List distinct package names (tags.source_pack) from primitive blocks."""
     service = BlockTemplateService(db)
     return await service.list_package_names()
 
@@ -1200,19 +1197,47 @@ def _build_block_matrix_drift_report(
 
 
 def _to_block_response(block: Any) -> BlockResponse:
+    tags = block.tags if isinstance(getattr(block, "tags", None), dict) else {}
+    raw_role = getattr(block, "role", None)
+    inferred = infer_composition_role(
+        role=raw_role,
+        category=getattr(block, "category", None),
+        tags=tags,
+    )
+    role = raw_role if isinstance(raw_role, str) and raw_role.strip() else inferred.role_id
+    package_name = getattr(block, "package_name", None)
+    if not package_name and isinstance(tags, dict):
+        source_pack = tags.get("source_pack")
+        if isinstance(source_pack, str) and source_pack.strip():
+            package_name = source_pack.strip()
+
+    text = str(getattr(block, "text", "") or "")
+    word_count = getattr(block, "word_count", None)
+    if not isinstance(word_count, int):
+        word_count = len([token for token in text.split() if token])
+
+    default_intent = getattr(block, "default_intent", None)
+    default_intent_text = None
+    if default_intent is not None:
+        default_intent_text = (
+            default_intent.value
+            if hasattr(default_intent, "value")
+            else str(default_intent)
+        )
+
     return BlockResponse(
         id=block.id,
         block_id=block.block_id,
-        role=block.role,
-        category=block.category,
-        kind=block.kind,
-        default_intent=block.default_intent.value if block.default_intent else None,
-        text=block.text,
-        tags=block.tags or {},
-        complexity_level=block.complexity_level,
-        package_name=block.package_name,
-        description=block.description,
-        word_count=block.word_count or 0,
+        role=role,
+        category=getattr(block, "category", None),
+        kind=str(getattr(block, "kind", "single_state") or "single_state"),
+        default_intent=default_intent_text,
+        text=text,
+        tags=tags,
+        complexity_level=getattr(block, "complexity_level", None),
+        package_name=package_name,
+        description=getattr(block, "description", None),
+        word_count=word_count,
     )
 
 
@@ -1234,84 +1259,124 @@ def _iter_scalar_tag_values(value: Any) -> List[str]:
 
 @router.get("/blocks", response_model=List[BlockResponse])
 async def search_blocks(
-    role: Optional[str] = Query(None, description="Filter by role"),
+    role: Optional[str] = Query(None, description="Filter by inferred role"),
     category: Optional[str] = Query(None, description="Filter by category"),
-    kind: Optional[str] = Query(None, description="Filter by kind"),
-    package_name: Optional[str] = Query(None, description="Filter by package"),
+    kind: Optional[str] = Query(None, description="Filter by kind (primitives are single_state)"),
+    package_name: Optional[str] = Query(None, description="Filter by package via tags.source_pack"),
     q: Optional[str] = Query(None, description="Text search in block_id and text"),
     tags: Optional[str] = Query(None, description="Tag filters as comma-separated key:value pairs"),
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db),
 ):
-    """Search prompt blocks with optional filters."""
-    from pixsim7.backend.main.domain.prompt import PromptBlock
+    """Search primitive blocks with optional filters."""
+    if kind and str(kind).strip() and str(kind).strip() != "single_state":
+        return []
 
-    tag_constraints = _parse_tag_csv(tags)
+    tag_constraints = _parse_tag_csv(tags) or None
+    if package_name:
+        merged = dict(tag_constraints or {})
+        merged.setdefault("source_pack", package_name)
+        tag_constraints = merged
 
-    query = build_prompt_block_query(
-        role=role,
+    from pixsim7.backend.main.domain.blocks import BlockPrimitive
+
+    query = build_block_primitive_query(
         category=category,
-        kind=kind,
-        package_name=package_name,
+        tag_query=tag_constraints,
         text_query=q,
-        tag_constraints=tag_constraints or None,
     )
-
-    query = query.order_by(PromptBlock.role, PromptBlock.category, PromptBlock.block_id)
+    query = query.order_by(BlockPrimitive.category, BlockPrimitive.block_id)
     query = query.offset(offset).limit(limit)
 
-    result = await db.execute(query)
-    blocks = result.scalars().all()
+    async with get_async_blocks_session() as blocks_db:
+        result = await blocks_db.execute(query)
+        blocks = list(result.scalars().all())
+
+    if role:
+        role_filter = role.strip()
+        blocks = [
+            b for b in blocks
+            if infer_composition_role(
+                role=None,
+                category=getattr(b, "category", None),
+                tags=getattr(b, "tags", None) if isinstance(getattr(b, "tags", None), dict) else None,
+            ).role_id == role_filter
+        ]
 
     return [_to_block_response(b) for b in blocks]
 
 
 @router.get("/meta/blocks/catalog", response_model=List[BlockCatalogRowResponse])
 async def get_block_catalog(
-    role: Optional[str] = Query(None, description="Filter by role"),
+    role: Optional[str] = Query(None, description="Filter by inferred role"),
     category: Optional[str] = Query(None, description="Filter by category"),
-    kind: Optional[str] = Query(None, description="Filter by kind"),
-    package_name: Optional[str] = Query(None, description="Filter by package"),
+    kind: Optional[str] = Query(None, description="Filter by kind (primitives are single_state)"),
+    package_name: Optional[str] = Query(None, description="Filter by package via tags.source_pack"),
     q: Optional[str] = Query(None, description="Text search in block_id and text"),
     tags: Optional[str] = Query(None, description="Tag filters as comma-separated key:value pairs"),
     limit: int = Query(500, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     preview_chars: int = Query(120, ge=20, le=500),
-    db: AsyncSession = Depends(get_db),
 ):
     """Return normalized block rows for matrix tools / analysis / export."""
-    from pixsim7.backend.main.domain.prompt import PromptBlock
+    if kind and str(kind).strip() and str(kind).strip() != "single_state":
+        return []
 
-    query = build_prompt_block_query(
-        role=role,
+    tag_constraints = _parse_tag_csv(tags) or None
+    if package_name:
+        merged = dict(tag_constraints or {})
+        merged.setdefault("source_pack", package_name)
+        tag_constraints = merged
+
+    from pixsim7.backend.main.domain.blocks import BlockPrimitive
+
+    query = build_block_primitive_query(
         category=category,
-        kind=kind,
-        package_name=package_name,
         text_query=q,
-        tag_constraints=_parse_tag_csv(tags) or None,
+        tag_query=tag_constraints,
     )
-    query = query.order_by(PromptBlock.role, PromptBlock.category, PromptBlock.block_id)
+    query = query.order_by(BlockPrimitive.category, BlockPrimitive.block_id)
     query = query.offset(offset).limit(limit)
-    result = await db.execute(query)
-    blocks = result.scalars().all()
+    async with get_async_blocks_session() as blocks_db:
+        result = await blocks_db.execute(query)
+        blocks = list(result.scalars().all())
+
+    if role:
+        role_filter = role.strip()
+        blocks = [
+            b for b in blocks
+            if infer_composition_role(
+                role=None,
+                category=getattr(b, "category", None),
+                tags=getattr(b, "tags", None) if isinstance(getattr(b, "tags", None), dict) else None,
+            ).role_id == role_filter
+        ]
 
     rows: List[BlockCatalogRowResponse] = []
     for b in blocks:
-        text = (b.text or "").strip()
-        if len(text) > preview_chars:
-            text = text[: max(0, preview_chars - 3)].rstrip() + "..."
+        full_text = (str(getattr(b, "text", "") or "")).strip()
+        text = full_text
+        if len(full_text) > preview_chars:
+            text = full_text[: max(0, preview_chars - 3)].rstrip() + "..."
+        tags_map = b.tags if isinstance(getattr(b, "tags", None), dict) else {}
+        inferred = infer_composition_role(
+            role=None,
+            category=getattr(b, "category", None),
+            tags=tags_map,
+        )
+        source_pack = tags_map.get("source_pack") if isinstance(tags_map, dict) else None
+        package = str(source_pack).strip() if isinstance(source_pack, str) and source_pack.strip() else None
         rows.append(
             BlockCatalogRowResponse(
                 id=b.id,
                 block_id=b.block_id,
-                role=b.role,
-                category=b.category,
-                package_name=b.package_name,
-                kind=b.kind,
-                default_intent=b.default_intent.value if b.default_intent else None,
-                tags=b.tags or {},
-                word_count=b.word_count or 0,
+                role=inferred.role_id,
+                category=getattr(b, "category", None),
+                package_name=package,
+                kind="single_state",
+                default_intent=None,
+                tags=tags_map,
+                word_count=len([token for token in full_text.split() if token]),
                 text_preview=text,
             )
         )
@@ -1322,11 +1387,11 @@ async def get_block_catalog(
 async def get_block_matrix(
     row_key: str = Query(..., description="Matrix row axis key (tag key or top-level field; use tag:<key> for tags)"),
     col_key: str = Query(..., description="Matrix column axis key (tag key or top-level field; use tag:<key> for tags)"),
-    source: str = Query("primitives", description='Block source: "primitives" (default) or "action_blocks" (legacy)'),
-    role: Optional[str] = Query(None, description="Filter by role (action_blocks only)"),
+    source: str = Query("primitives", description='Block source: "primitives"'),
+    role: Optional[str] = Query(None, description="Ignored for primitives matrix"),
     category: Optional[str] = Query(None, description="Filter by category"),
-    kind: Optional[str] = Query(None, description="Filter by kind (action_blocks only)"),
-    package_name: Optional[str] = Query(None, description="Filter by package (action_blocks only)"),
+    kind: Optional[str] = Query(None, description="Ignored for primitives matrix"),
+    package_name: Optional[str] = Query(None, description="Filter by package via tags.source_pack"),
     q: Optional[str] = Query(None, description="Text search in block_id and text"),
     tags: Optional[str] = Query(None, description="Tag filters as comma-separated key:value pairs"),
     limit: int = Query(5000, ge=1, le=20000, description="Max blocks scanned for matrix"),
@@ -1341,37 +1406,31 @@ async def get_block_matrix(
     required_tag_keys: Optional[str] = Query(None, description="Comma-separated tag keys required in scoped blocks (drift report)"),
     drift_max_entries: int = Query(50, ge=1, le=500, description="Max distinct drift items returned per section (drift report)"),
     drift_examples_per_entry: int = Query(5, ge=0, le=50, description="Max example block_ids returned per drift item (drift report)"),
-    db: AsyncSession = Depends(get_db),
 ):
     """Build a block coverage matrix from DB-loaded blocks (AI + UI friendly)."""
+    if source != "primitives":
+        raise HTTPException(
+            status_code=400,
+            detail="Legacy source is no longer supported. Use source='primitives'.",
+        )
+
     tag_constraints = _parse_tag_csv(tags) or None
+    if package_name:
+        merged = dict(tag_constraints or {})
+        merged.setdefault("source_pack", package_name)
+        tag_constraints = merged
 
-    # --- Fetch blocks from the selected source ---
-    if source == "primitives":
-        from pixsim7.backend.main.domain.blocks import BlockPrimitive
+    # --- Fetch blocks from primitives source ---
+    from pixsim7.backend.main.domain.blocks import BlockPrimitive
 
-        query = build_block_primitive_query(
-            category=category,
-            tag_query=tag_constraints,
-            text_query=q,
-        )
-        query = query.order_by(BlockPrimitive.block_id).limit(limit)
-        async with get_async_blocks_session() as blocks_db:
-            result = await blocks_db.execute(query)
-            blocks = list(result.scalars().all())
-    else:
-        from pixsim7.backend.main.domain.prompt import PromptBlock
-
-        query = build_prompt_block_query(
-            role=role,
-            category=category,
-            kind=kind,
-            package_name=package_name,
-            text_query=q,
-            tag_constraints=tag_constraints,
-        )
-        query = query.order_by(PromptBlock.block_id).limit(limit)
-        result = await db.execute(query)
+    query = build_block_primitive_query(
+        category=category,
+        tag_query=tag_constraints,
+        text_query=q,
+    )
+    query = query.order_by(BlockPrimitive.block_id).limit(limit)
+    async with get_async_blocks_session() as blocks_db:
+        result = await blocks_db.execute(query)
         blocks = list(result.scalars().all())
 
     # --- Auto-expected values from family schema (legacy only) ---
@@ -1436,16 +1495,25 @@ async def get_block_matrix(
         count = matrix_counts.get((r, c), 0)
         if not include_empty and count <= 0:
             continue
-        samples = [
-            BlockMatrixCellSampleResponse(
-                id=b.id,
-                block_id=b.block_id,
-                package_name=getattr(b, "package_name", None),
-                role=getattr(b, "role", None),
-                category=b.category,
+        samples: List[BlockMatrixCellSampleResponse] = []
+        for b in matrix_samples.get((r, c), []):
+            tags_map = b.tags if isinstance(getattr(b, "tags", None), dict) else {}
+            inferred = infer_composition_role(
+                role=None,
+                category=getattr(b, "category", None),
+                tags=tags_map,
             )
-            for b in matrix_samples.get((r, c), [])
-        ]
+            source_pack = tags_map.get("source_pack") if isinstance(tags_map, dict) else None
+            package = str(source_pack).strip() if isinstance(source_pack, str) and source_pack.strip() else None
+            samples.append(
+                BlockMatrixCellSampleResponse(
+                    id=b.id,
+                    block_id=b.block_id,
+                    package_name=package,
+                    role=inferred.role_id,
+                    category=b.category,
+                )
+            )
         cells.append(
             BlockMatrixCellResponse(
                 row_value=r,
@@ -1496,59 +1564,71 @@ async def get_block_matrix(
 @router.get("/blocks/roles", response_model=List[Dict[str, Any]])
 async def list_block_roles(
     package_name: Optional[str] = Query(None),
-    db: AsyncSession = Depends(get_db),
 ):
-    """List distinct role/category combinations with counts."""
-    from pixsim7.backend.main.domain.prompt import PromptBlock
+    """List inferred role/category combinations with counts from primitives."""
+    tag_query = {"all": {"source_pack": package_name}} if package_name else None
+    query = build_block_primitive_query(category=None, tag_query=tag_query)
+    async with get_async_blocks_session() as blocks_db:
+        result = await blocks_db.execute(query)
+        blocks = list(result.scalars().all())
 
-    query = (
-        select(
-            PromptBlock.role,
-            PromptBlock.category,
-            func.count(PromptBlock.id).label("count"),
+    counts: Dict[tuple[Optional[str], Optional[str]], int] = {}
+    for block in blocks:
+        tags_map = block.tags if isinstance(getattr(block, "tags", None), dict) else {}
+        inferred = infer_composition_role(
+            role=None,
+            category=getattr(block, "category", None),
+            tags=tags_map,
         )
-        .group_by(PromptBlock.role, PromptBlock.category)
-        .order_by(PromptBlock.role, PromptBlock.category)
-    )
-    if package_name:
-        query = query.where(PromptBlock.package_name == package_name)
+        key = (inferred.role_id, getattr(block, "category", None))
+        counts[key] = counts.get(key, 0) + 1
 
-    result = await db.execute(query)
-    return [
-        {"role": row.role, "category": row.category, "count": row.count}
-        for row in result.all()
+    rows = [
+        {"role": role, "category": category, "count": count}
+        for (role, category), count in counts.items()
     ]
+    rows.sort(key=lambda row: (str(row["role"] or ""), str(row["category"] or "")))
+    return rows
 
 
 @router.get("/blocks/tags", response_model=Dict[str, List[str]])
 async def list_block_tag_facets(
-    role: Optional[str] = Query(None, description="Filter by role"),
+    role: Optional[str] = Query(None, description="Filter by inferred role"),
     category: Optional[str] = Query(None, description="Filter by category"),
-    package_name: Optional[str] = Query(None, description="Filter by package"),
-    db: AsyncSession = Depends(get_db),
+    package_name: Optional[str] = Query(None, description="Filter by package via tags.source_pack"),
 ):
-    """List distinct tag keys and their distinct values from prompt blocks."""
-    from pixsim7.backend.main.domain.prompt import PromptBlock
+    """List distinct tag keys and values from primitive blocks."""
+    tag_query = {"all": {"source_pack": package_name}} if package_name else None
+    query = build_block_primitive_query(
+        category=category,
+        tag_query=tag_query,
+    )
+    async with get_async_blocks_session() as blocks_db:
+        result = await blocks_db.execute(query)
+        blocks = list(result.scalars().all())
 
-    query = select(PromptBlock.tags)
-    if role:
-        query = query.where(PromptBlock.role == role)
-    if category:
-        query = query.where(PromptBlock.category == category)
-    if package_name:
-        query = query.where(PromptBlock.package_name == package_name)
-
-    result = await db.execute(query)
-    all_tags = result.scalars().all()
-
-    facets: Dict[str, set] = {}
-    for tags_dict in all_tags:
-        if not tags_dict or not isinstance(tags_dict, dict):
+    role_filter = role.strip() if isinstance(role, str) and role.strip() else None
+    all_tags: List[Dict[str, Any]] = []
+    for block in blocks:
+        tags_map = block.tags if isinstance(getattr(block, "tags", None), dict) else {}
+        if not tags_map:
             continue
+        if role_filter:
+            inferred = infer_composition_role(
+                role=None,
+                category=getattr(block, "category", None),
+                tags=tags_map,
+            )
+            if inferred.role_id != role_filter:
+                continue
+        all_tags.append(tags_map)
+
+    facets: Dict[str, set[str]] = {}
+    for tags_dict in all_tags:
         for key, value in tags_dict.items():
-            if key not in facets:
-                facets[key] = set()
-            facets[key].add(str(value))
+            bucket = facets.setdefault(str(key), set())
+            for scalar in _iter_scalar_tag_values(value):
+                bucket.add(str(scalar))
 
     return {key: sorted(values) for key, values in sorted(facets.items())}
 
@@ -1563,33 +1643,36 @@ async def get_block_tag_dictionary(
     include_aliases: bool = Query(True),
     limit_values_per_key: int = Query(50, ge=1, le=500),
     limit_examples_per_key: int = Query(5, ge=0, le=50),
-    db: AsyncSession = Depends(get_db),
 ):
-    """Return canonical tag dictionary with scoped DB usage stats (Phase 1)."""
-    from pixsim7.backend.main.domain.prompt import PromptBlock
+    """Return canonical tag dictionary with scoped primitive usage stats."""
 
     canonical = get_canonical_block_tag_dictionary()
     alias_key_map = get_block_tag_alias_key_map()
     canonical_keys = set(canonical.keys())
     alias_keys = set(alias_key_map.keys())
 
-    query = select(
-        PromptBlock.id,
-        PromptBlock.block_id,
-        PromptBlock.package_name,
-        PromptBlock.role,
-        PromptBlock.category,
-        PromptBlock.tags,
+    tag_query = {"all": {"source_pack": package_name}} if package_name else None
+    query = build_block_primitive_query(
+        category=category,
+        tag_query=tag_query,
     )
-    if package_name:
-        query = query.where(PromptBlock.package_name == package_name)
-    if role:
-        query = query.where(PromptBlock.role == role)
-    if category:
-        query = query.where(PromptBlock.category == category)
+    async with get_async_blocks_session() as blocks_db:
+        result = await blocks_db.execute(query)
+        blocks = list(result.scalars().all())
 
-    result = await db.execute(query)
-    rows = result.all()
+    role_filter = role.strip() if isinstance(role, str) and role.strip() else None
+    if role_filter:
+        filtered_blocks: List[Any] = []
+        for block in blocks:
+            tags_map = block.tags if isinstance(getattr(block, "tags", None), dict) else {}
+            inferred = infer_composition_role(
+                role=None,
+                category=getattr(block, "category", None),
+                tags=tags_map,
+            )
+            if inferred.role_id == role_filter:
+                filtered_blocks.append(block)
+        blocks = filtered_blocks
 
     key_counts: Dict[str, int] = {}
     value_counts: Dict[str, Dict[str, int]] = {}
@@ -1597,11 +1680,19 @@ async def get_block_tag_dictionary(
     observed_unknown_keys: set[str] = set()
     observed_alias_keys: set[str] = set()
 
-    for row in rows:
-        tags = row.tags if isinstance(row.tags, dict) else {}
-        if not tags:
+    for block in blocks:
+        tags_map = block.tags if isinstance(getattr(block, "tags", None), dict) else {}
+        if not tags_map:
             continue
-        for tag_key, tag_value in tags.items():
+        inferred = infer_composition_role(
+            role=None,
+            category=getattr(block, "category", None),
+            tags=tags_map,
+        )
+        source_pack = tags_map.get("source_pack") if isinstance(tags_map, dict) else None
+        package = str(source_pack).strip() if isinstance(source_pack, str) and source_pack.strip() else None
+
+        for tag_key, tag_value in tags_map.items():
             tag_key = str(tag_key)
             key_counts[tag_key] = key_counts.get(tag_key, 0) + 1
             if tag_key in alias_keys:
@@ -1619,11 +1710,11 @@ async def get_block_tag_dictionary(
                 if len(ex_bucket) < limit_examples_per_key:
                     ex_bucket.append(
                         BlockTagDictionaryExampleResponse(
-                            id=row.id,
-                            block_id=row.block_id,
-                            package_name=row.package_name,
-                            role=row.role,
-                            category=row.category,
+                            id=block.id,
+                            block_id=block.block_id,
+                            package_name=package,
+                            role=inferred.role_id,
+                            category=getattr(block, "category", None),
                         )
                     )
 

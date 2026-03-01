@@ -164,8 +164,8 @@ Story execution, dialogue systems, narrative programs, and action blocks.
 | Layer | Current Location |
 |-------|------------------|
 | Domain Models | `pixsim7/backend/main/domain/narrative/` |
-| Services | `pixsim7/backend/main/services/narrative/`, `services/action_blocks/` |
-| API Routes | `pixsim7/backend/main/routes/action_blocks/`, `routes/interactions/` |
+| Services | `pixsim7/backend/main/services/narrative/`, `services/prompt/block/` |
+| API Routes | `pixsim7/backend/main/routes/interactions/` |
 | Plugins | `pixsim7/backend/main/plugins/game_dialogue/` |
 
 ### Key Components
@@ -179,7 +179,8 @@ Story execution, dialogue systems, narrative programs, and action blocks.
 
 **Services:**
 - `services/narrative/NarrativeRuntimeEngine` - Program execution
-- `services/action_blocks/` - Action block CRUD and resolution
+- `domain/narrative/action_block_resolver.py` - Primitives-first action block resolution
+- `services/prompt/block/` - Compiler/resolver/template composition pipeline
 
 ### Entry Module Exports
 

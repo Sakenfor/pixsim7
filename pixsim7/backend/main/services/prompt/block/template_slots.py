@@ -184,8 +184,8 @@ class TemplateSlotSpec(BaseModel):
     exclude_block_ids: Optional[List[UUID]] = None
     # Primitive composition fields
     block_source: Optional[str] = Field(
-        default=None,
-        description='Block source: "action_blocks" (default/legacy) or "primitives" (blocks DB)',
+        default="primitives",
+        description='Block source: "primitives" (blocks DB)',
     )
     frame: Optional[str] = Field(
         default=None,

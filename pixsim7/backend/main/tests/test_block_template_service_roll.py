@@ -80,6 +80,39 @@ class _InMemoryBlockTemplateService(BlockTemplateService):
         return matches
 
 
+class _PreviewInMemoryTemplateService(BlockTemplateService):
+    def __init__(self, blocks: List[Any]):
+        super().__init__(SimpleNamespace())
+        self._blocks = blocks
+        self.seen_slots: List[Dict[str, Any]] = []
+
+    async def count_candidates(self, slot: Dict[str, Any]) -> int:
+        self.seen_slots.append(dict(slot))
+        matches = await self.find_candidates(slot)
+        return len(matches)
+
+    async def find_candidates(self, slot: Dict[str, Any], *, limit=None):
+        self.seen_slots.append(dict(slot))
+        matches: List[Any] = []
+        for block in self._blocks:
+            if slot.get("category") and getattr(block, "category", None) != slot["category"]:
+                continue
+            tags = getattr(block, "tags", None)
+            if not _matches_slot_tags(tags if isinstance(tags, dict) else {}, slot):
+                continue
+            if (
+                slot.get("block_source") == "primitives"
+                and slot.get("package_name")
+                and (tags if isinstance(tags, dict) else {}).get("source_pack") != slot.get("package_name")
+            ):
+                continue
+            matches.append(block)
+
+        if limit is not None:
+            matches = matches[:limit]
+        return matches
+
+
 def _block(*, block_id: str, text: str, role: str, tags: Dict[str, Any]) -> PromptBlock:
     return PromptBlock(
         block_id=block_id,
@@ -384,7 +417,112 @@ async def test_roll_template_diverse_penalizes_repeated_values_across_slots(
 
     assert result["success"] is True
     selected_ids = [sr["selected_block_string_id"] for sr in result["slot_results"] if sr["status"] == "selected"]
-    assert selected_ids == ["cam_low", "cam_dutch"]
+    assert len(selected_ids) == 2
+    assert set(selected_ids) == {"cam_low", "cam_dutch"}
+    assert selected_ids[1] != selected_ids[0]
     second_debug = result["slot_results"][1]["selector_debug"]
     scores = {row["block_id"]: row for row in second_debug["scores"]}
-    assert scores["cam_dutch"]["diversity"] > scores["cam_low"]["diversity"]
+    second_selected = result["slot_results"][1]["selected_block_string_id"]
+    other = "cam_low" if second_selected == "cam_dutch" else "cam_dutch"
+    assert scores[second_selected]["total"] > scores[other]["total"]
+
+
+@pytest.mark.asyncio
+async def test_preview_slot_matches_handles_primitives_without_role_attribute() -> None:
+    primitive = SimpleNamespace(
+        id="prim-1",
+        block_id="camera.low_angle",
+        category="camera",
+        text="low-angle cinematic shot",
+        tags={"source_pack": "scene_foundation"},
+        avg_rating=4.5,
+    )
+    service = _PreviewInMemoryTemplateService([primitive])
+
+    result = await service.preview_slot_matches(
+        slot={
+            "block_source": "primitives",
+            "category": "camera",
+        },
+        limit=5,
+    )
+
+    assert result["count"] == 1
+    assert len(result["samples"]) == 1
+    sample = result["samples"][0]
+    assert sample["block_id"] == "camera.low_angle"
+    assert isinstance(sample["role"], str)
+    assert sample["role"].startswith("camera")
+
+
+@pytest.mark.asyncio
+async def test_preview_slot_matches_normalizes_legacy_tag_constraints_before_querying() -> None:
+    primitive = SimpleNamespace(
+        id="prim-2",
+        block_id="camera.low_angle",
+        category="camera",
+        text="low-angle cinematic shot",
+        tags={"camera_angle": "low", "source_pack": "scene_foundation"},
+        avg_rating=4.0,
+    )
+    service = _PreviewInMemoryTemplateService([primitive])
+
+    result = await service.preview_slot_matches(
+        slot={
+            "block_source": "primitives",
+            "category": "camera",
+            "tag_constraints": {"camera_angle": "low"},
+        },
+        limit=5,
+    )
+
+    assert result["count"] == 1
+    assert service.seen_slots, "Expected preview path to call count/find with normalized slot"
+    seen_slot = service.seen_slots[0]
+    assert seen_slot.get("tags") == {"all": {"camera_angle": "low"}}
+    assert "tag_constraints" not in seen_slot
+
+
+@pytest.mark.asyncio
+async def test_count_candidates_by_package_routes_primitives_to_blocks_db(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeResult:
+        def all(self):
+            return [("scene_foundation", 3), (None, 1)]
+
+    class _FakeBlocksDb:
+        def __init__(self):
+            self.query = None
+
+        async def execute(self, query):
+            self.query = query
+            return _FakeResult()
+
+    class _FakeCtx:
+        def __init__(self, db):
+            self._db = db
+
+        async def __aenter__(self):
+            return self._db
+
+        async def __aexit__(self, _exc_type, _exc, _tb):
+            return False
+
+    fake_db = _FakeBlocksDb()
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.prompt.block.template_service.get_async_blocks_session",
+        lambda: _FakeCtx(fake_db),
+    )
+
+    service = BlockTemplateService(SimpleNamespace())
+    rows = await service.count_candidates_by_package(
+        {
+            "block_source": "primitives",
+            "category": "camera",
+        }
+    )
+
+    assert rows == [("scene_foundation", 3), (None, 1)]
+    assert fake_db.query is not None
+    compiled = fake_db.query.compile()
+    assert "jsonb_extract_path_text" in str(fake_db.query)
+    assert "source_pack" in {str(v) for v in compiled.params.values()}

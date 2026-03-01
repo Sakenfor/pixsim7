@@ -1,4 +1,4 @@
-export type ResolverWorkbenchId = 'legacy_v1' | 'next_v1';
+export type ResolverWorkbenchId = 'next_v1';
 
 export interface ResolutionDebugOptions {
   include_trace?: boolean;

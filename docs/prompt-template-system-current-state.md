@@ -4,6 +4,12 @@
 > **Scope**: Read-only analysis of implemented code. No speculative redesign.
 > **Repo**: pixsim7 (monorepo — Python backend + TypeScript frontend)
 
+>
+> **Update (March 1, 2026)**: This document is partially historical. Since it was generated:
+> - Legacy `/api/v1/action_blocks` and `routes/action_blocks` were removed.
+> - Legacy ActionEngine selector stack is no longer used by runtime/game dialogue flows.
+> - Legacy prompt-block service modules were removed.
+> - Runtime block selection now resolves through planner/compiler/resolver over primitives.
 ---
 
 ## 1. Executive Summary
@@ -78,7 +84,7 @@ The prompt block/template system is **production-capable** with a complete verti
 │                     BACKEND SERVICES                                │
 │  BlockTemplateService — CRUD, roll, diagnostics, selection          │
 │  CharacterBindingExpander — {{role.attr}} expansion                 │
-│  BlockCompositionEngine — multi-block composition                   │
+│  composition_engine helpers — derived analysis only                   │
 │  PromptFamilyService — family/version CRUD                          │
 │  OwnershipService — access control policies                         │
 └────────────────────┬────────────────────────────────────────────────┘
@@ -205,7 +211,7 @@ File: `domain/prompt/enums.py`
 |---------|------|-----------------|
 | `BlockTemplateService` | `services/prompt/block/template_service.py` (~900 lines) | CRUD, roll_template, diagnostics, selection strategies, control effects, preview |
 | `CharacterBindingExpander` | `services/prompt/block/character_expander.py` | `{{role.attr}}` expansion with species vocabulary lookups |
-| `BlockCompositionEngine` | `services/prompt/block/composition_engine.py` | Multi-block assembly, derived analysis |
+| `composition_engine` helpers | `services/prompt/block/composition_engine.py` | Derived analysis from selected blocks (legacy class removed) |
 | `ContentPackLoader` | `services/prompt/block/content_pack_loader.py` (~530 lines) | YAML discovery, parsing, DB upsert, pruning, rehoming |
 | `ContentPackWatcher` | `services/prompt/block/content_pack_watcher.py` | watchfiles-based hot-reload with 1500ms debounce |
 | `PromptFamilyService` | `services/prompt/family.py` | Family/version CRUD, auto-increment, diff generation |
@@ -629,3 +635,5 @@ Zustand store with:
 ---
 
 *End of document.*
+
+

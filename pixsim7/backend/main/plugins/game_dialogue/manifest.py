@@ -15,21 +15,29 @@ from pixsim7.backend.main.api.dependencies import (
     CurrentUser,
     DatabaseSession,
     get_narrative_engine,
-    get_action_engine,
     get_block_generator,
-    NarrativeEng,
-    ActionEng,
-    BlockGenerator
 )
+from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.domain.game.core.models import (
     GameSession, GameWorld, GameNPC, GameLocation,
     GameScene, GameSceneNode
 )
-from pixsim7.backend.main.domain.narrative import NarrativeEngine
-from pixsim7.backend.main.domain.narrative.action_blocks import (
-    ActionEngine,
+from pixsim7.backend.main.domain.narrative import (
+    NarrativeEngine,
+    resolve_action_block_node,
+)
+from pixsim7.backend.main.domain.narrative.runtime_action_assembly import (
+    composition_assets_from_resolved_images,
+)
+from pixsim7.backend.main.domain.narrative.schema import ActionBlockNode
+from pixsim7.backend.main.domain.narrative.action_blocks.types_unified import (
     ActionSelectionContext,
-    BranchIntent
+    BranchIntent,
+    ContentRating,
+)
+from pixsim7.backend.main.domain.narrative.action_blocks.ontology import get_ontology
+from pixsim7.backend.main.domain.narrative.action_blocks.generated_store import (
+    GeneratedBlockStore,
 )
 from pixsim7.backend.main.domain.narrative.action_blocks.generator import (
     DynamicBlockGenerator,
@@ -37,8 +45,11 @@ from pixsim7.backend.main.domain.narrative.action_blocks.generator import (
     GenerationResult,
     PreviousSegmentSnapshot
 )
-from pixsim7.backend.main.domain.narrative.action_blocks import ContentRating
+from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
+from pixsim7.backend.main.services.prompt.block.block_primitive_query import (
+    build_block_primitive_query,
+)
 
 
 # ===== PLUGIN MANIFEST =====
@@ -62,6 +73,7 @@ manifest = PluginManifest(
 # ===== API ROUTER =====
 
 router = APIRouter(tags=["game-dialogue"])
+_generated_block_store = GeneratedBlockStore()
 
 
 # ===== HELPER FUNCTIONS =====
@@ -106,7 +118,6 @@ def _build_generation_request(req: 'GenerateActionBlockRequest') -> GenerationRe
 
 async def _persist_generated_block(
     db: DatabaseSession,
-    action_engine: ActionEngine,
     block_data: Dict[str, Any],
     *,
     source: str,
@@ -124,7 +135,7 @@ async def _persist_generated_block(
     if previous_segment:
         meta["previous_segment"] = previous_segment.dict()
 
-    await action_engine.generated_store.upsert_block(
+    await _generated_block_store.upsert_block(
         db,
         block_data,
         source=source,
@@ -132,7 +143,6 @@ async def _persist_generated_block(
         reference_asset_id=previous_segment.asset_id if previous_segment else None,
         meta=meta
     )
-    action_engine.register_block(block_data)
 
 
 class DialogueNextLineRequest(BaseModel):
@@ -570,13 +580,12 @@ async def _run_action_selection(
     req: ActionSelectionRequest,
     db: DatabaseSession,
     user: CurrentUser,
-    action_engine: ActionEngine,
-    narrative_engine: NarrativeEngine
 ) -> ActionSelectionResponse:
-    """Execute the selection flow and return a response."""
+    """Execute selection via primitives runtime resolver and return a response."""
     computed_intimacy_level = req.intimacy_level
     computed_mood = req.mood
     branch_intent_str = req.branch_intent
+    world_meta: Dict[str, Any] = {}
 
     if req.session_id and not req.intimacy_level:
         session = await db.get(GameSession, req.session_id)
@@ -586,6 +595,7 @@ async def _run_action_selection(
                 world = await db.get(GameWorld, req.world_id)
 
             if world:
+                world_meta = world.meta or {}
                 from pixsim7.backend.main.domain.game.stats import StatEngine
                 from pixsim7.backend.main.domain.game.stats.migration import (
                     get_default_relationship_definition,
@@ -605,7 +615,6 @@ async def _run_action_selection(
                 }
 
                 # Get or migrate stats config
-                world_meta = world.meta or {}
                 stats_config = resolve_stats_config(world_meta)
 
                 # Get relationship definition
@@ -631,12 +640,19 @@ async def _run_action_selection(
                 if mapped_branch:
                     branch_intent_str = mapped_branch.value
 
+    branch_intent = None
+    if branch_intent_str:
+        try:
+            branch_intent = BranchIntent(branch_intent_str)
+        except ValueError:
+            branch_intent = None
+
     context = ActionSelectionContext(
         locationTag=req.location_tag,
         pose=req.pose,
         intimacy_level=computed_intimacy_level,
         mood=computed_mood,
-        branchIntent=BranchIntent(branch_intent_str) if branch_intent_str else None,
+        branchIntent=branch_intent,
         previousBlockId=req.previous_block_id,
         leadNpcId=req.lead_npc_id,
         partnerNpcId=req.partner_npc_id,
@@ -645,18 +661,40 @@ async def _run_action_selection(
         maxDuration=req.max_duration
     )
 
-    result = await action_engine.select_actions(context, db)
-    blocks_data = [block.dict() for block in result.blocks]
+    node = ActionBlockNode(
+        id=f"plugin_action_select_{req.lead_npc_id}",
+        mode="query",
+        query={
+            "location": context.locationTag,
+            "pose": context.pose,
+            "intimacy_level": context.intimacy_level,
+            "mood": context.mood,
+            "branch_intent": context.branchIntent,
+            "requiredTags": list(context.requiredTags or []),
+            "excludeTags": list(context.excludeTags or []),
+            "maxDuration": context.maxDuration,
+        },
+        composition="sequential",
+    )
+    runtime_context: Dict[str, Any] = {
+        "npc": {"id": req.lead_npc_id},
+        "partner_npc": {"id": req.partner_npc_id} if req.partner_npc_id is not None else {},
+        "previous_block_id": req.previous_block_id,
+        "world": {"id": req.world_id, "meta": world_meta} if req.world_id is not None else {"meta": world_meta},
+    }
+    sequence = await resolve_action_block_node(node, runtime_context, db)
+    resolved_images: List[Dict[str, Any]] = []
+    composition_assets = composition_assets_from_resolved_images(resolved_images)
 
     return ActionSelectionResponse(
-        blocks=blocks_data,
-        total_duration=result.totalDuration,
-        resolved_images=result.resolvedImages,
-        composition_assets=result.compositionAssets,
-        compatibility_score=result.compatibilityScore,
-        fallback_reason=result.fallbackReason,
-        prompts=result.prompts,
-        segments=result.segments
+        blocks=sequence.blocks,
+        total_duration=sequence.total_duration,
+        resolved_images=resolved_images,
+        composition_assets=composition_assets,
+        compatibility_score=sequence.compatibility_score,
+        fallback_reason=sequence.fallback_reason,
+        prompts=sequence.prompts,
+        segments=sequence.segments,
     )
 
 
@@ -665,8 +703,6 @@ async def select_action_blocks(
     req: ActionSelectionRequest,
     db: DatabaseSession,
     user: CurrentUser,
-    action_engine: ActionEngine = Depends(get_action_engine),
-    narrative_engine: NarrativeEngine = Depends(get_narrative_engine)
 ) -> ActionSelectionResponse:
     """
     Select appropriate action blocks for visual generation.
@@ -678,7 +714,7 @@ async def select_action_blocks(
 
     This keeps the selector module pure and testable without DB dependencies.
     """
-    return await _run_action_selection(req, db, user, action_engine, narrative_engine)
+    return await _run_action_selection(req, db, user)
 
 
 @router.post("/actions/next", response_model=ActionNextResponse)
@@ -686,8 +722,6 @@ async def select_or_generate_action(
     req: ActionNextRequest,
     db: DatabaseSession,
     user: CurrentUser,
-    action_engine: ActionEngine = Depends(get_action_engine),
-    narrative_engine: NarrativeEngine = Depends(get_narrative_engine),
     generator: DynamicBlockGenerator = Depends(get_block_generator)
 ) -> ActionNextResponse:
     """
@@ -697,8 +731,6 @@ async def select_or_generate_action(
         req.selection,
         db,
         user,
-        action_engine,
-        narrative_engine
     )
 
     should_generate = (
@@ -725,7 +757,6 @@ async def select_or_generate_action(
 
     await _persist_generated_block(
         db,
-        action_engine,
         gen_result.action_block,
         source="api:actions/next",
         user_id=user.id,
@@ -752,32 +783,47 @@ async def list_action_blocks(
     intimacy_level: Optional[str] = None,
     mood: Optional[str] = None,
     user: CurrentUser = None,
-    action_engine: ActionEngine = Depends(get_action_engine)
 ) -> Dict[str, Any]:
     """
-    List available action blocks, optionally filtered by criteria.
+    List available primitive blocks, optionally filtered by criteria.
 
     This endpoint is useful for debugging and for UI tools that need
     to show available actions.
     """
-    blocks = []
+    tags_all: Dict[str, Any] = {}
+    if location:
+        tags_all["location"] = location
+    if intimacy_level:
+        tags_all["intimacy_level"] = intimacy_level
+    if mood:
+        tags_all["mood"] = mood
 
-    for block_id, block in action_engine.blocks.items():
-        # Apply filters
-        if location and block.tags.location != location:
-            continue
-        if intimacy_level and block.tags.intimacy_level != intimacy_level:
-            continue
-        if mood and block.tags.mood != mood:
-            continue
+    tag_query = {"all": tags_all} if tags_all else None
+    query = build_block_primitive_query(tag_query=tag_query)
+    query = query.order_by(BlockPrimitive.category, BlockPrimitive.block_id)
 
-        blocks.append({
-            "id": block.id,
-            "kind": block.kind,
-            "tags": block.tags.dict(),
-            "duration": block.durationSec,
-            "description": block.description
-        })
+    async with get_async_blocks_session() as blocks_db:
+        result = await blocks_db.execute(query)
+        rows = list(result.scalars().all())
+
+    blocks: List[Dict[str, Any]] = []
+    for block in rows:
+        tags = block.tags if isinstance(getattr(block, "tags", None), dict) else {}
+        duration = tags.get("duration_sec") or tags.get("duration_seconds") or tags.get("duration") or 6.0
+        try:
+            duration_value = float(duration)
+        except (TypeError, ValueError):
+            duration_value = 6.0
+        blocks.append(
+            {
+                "id": str(block.block_id),
+                "kind": "single_state",
+                "tags": tags,
+                "duration": duration_value,
+                "description": None,
+                "category": block.category,
+            }
+        )
 
     return {
         "blocks": blocks,
@@ -794,24 +840,32 @@ async def list_action_blocks(
 async def list_pose_taxonomy(
     category: Optional[str] = None,
     user: CurrentUser = None,
-    action_engine: ActionEngine = Depends(get_action_engine)
 ) -> Dict[str, Any]:
     """
-    Get the pose taxonomy used by the action engine.
+    Get the pose taxonomy from the shared ontology registry.
 
     This is useful for UI tools and for understanding pose compatibility.
     """
-    taxonomy = action_engine.pose_taxonomy
-
+    taxonomy = get_ontology()
     if category:
-        poses = taxonomy.get_poses_by_category(category)
-        poses_data = [pose.dict() for pose in poses]
+        pose_ids = taxonomy.poses_in_category(category)
+        poses = [taxonomy.get_pose(pose_id) for pose_id in pose_ids]
     else:
-        poses_data = [pose.dict() for pose in taxonomy.poses.values()]
+        poses = taxonomy.all_poses()
+
+    poses_data = [pose.model_dump() for pose in poses if pose is not None]
+    categories = sorted(
+        {
+            str(cat)
+            for pose in taxonomy.all_poses()
+            for cat in (getattr(pose, "categories", None) or [])
+            if cat
+        }
+    )
 
     return {
         "poses": poses_data,
-        "categories": list(taxonomy.category_index.keys()),
+        "categories": categories,
         "total": len(poses_data)
     }
 
@@ -855,8 +909,7 @@ async def generate_action_block(
     req: GenerateActionBlockRequest,
     db: DatabaseSession,
     user: CurrentUser,
-    generator: DynamicBlockGenerator = Depends(get_block_generator),
-    action_engine: ActionEngine = Depends(get_action_engine)
+    generator: DynamicBlockGenerator = Depends(get_block_generator)
 ) -> GenerateActionBlockResponse:
     """
     Generate a new action block dynamically using templates and concepts.
@@ -873,7 +926,6 @@ async def generate_action_block(
     if result.success and result.action_block:
         await _persist_generated_block(
             db,
-            action_engine,
             result.action_block,
             source="api:actions/generate",
             user_id=user.id,
@@ -894,8 +946,7 @@ async def generate_creature_interaction(
     req: GenerateCreatureInteractionRequest,
     db: DatabaseSession,
     user: CurrentUser,
-    generator: DynamicBlockGenerator = Depends(get_block_generator),
-    action_engine: ActionEngine = Depends(get_action_engine)
+    generator: DynamicBlockGenerator = Depends(get_block_generator)
 ) -> GenerateActionBlockResponse:
     """
     Generate a creature interaction action block.
@@ -933,7 +984,6 @@ async def generate_creature_interaction(
     if result.success and result.action_block:
         await _persist_generated_block(
             db,
-            action_engine,
             result.action_block,
             source="api:actions/generate/creature",
             user_id=user.id,
@@ -1124,7 +1174,6 @@ async def on_enable():
 
     # Initialize singletons
     get_narrative_engine()
-    get_action_engine()
     get_block_generator()
 
     logger.info("Game Dialogue plugin enabled - narrative engines initialized")

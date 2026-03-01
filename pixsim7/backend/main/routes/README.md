@@ -7,7 +7,7 @@ This directory contains core API route plugins that are auto-discovered and load
 Core routes are the fundamental API endpoints for PixSim7:
 - **Authentication & users** (auth, users)
 - **Assets & lineage** (assets, lineage, tags)
-- **Generation & prompts** (generations, prompts, semantic_packs, action_blocks)
+- **Generation & prompts** (generations, prompts, semantic_packs)
 - **Game systems** (characters, game_sessions, game_worlds, game_scenes, etc.)
 - **Admin & diagnostics** (admin, admin_plugins, logs, services, migrations, database)
 - **Dev tools** (dev_* routes for internal tooling)
@@ -145,7 +145,7 @@ Current core routes are defined by directory name under `routes/`.
 See each `manifest.py` for descriptions, tags, and dependencies.
 
 Core routes:
-`accounts`, `action_blocks`, `admin`, `admin_plugins`, `ai`, `analyses`, `analytics`,
+`accounts`, `admin`, `admin_plugins`, `ai`, `analyses`, `analytics`,
 `analyzers`, `assets`, `auth`, `automation`, `behavior_registry`, `character_graph`,
 `characters`, `database`, `device_agents`, `dialogue_analytics`, `game_behavior`,
 `game_inventory`, `game_locations`, `game_npc_mood_preview`, `game_quests`,

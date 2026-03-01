@@ -105,6 +105,7 @@ class CompilerV1:
         template: Any,
         candidate_limit: int,
         control_values: Optional[Dict[str, Any]],
+        exclude_block_ids: Optional[List[Any]] = None,
         resolver_id: Optional[str] = None,
     ) -> ResolutionRequest:
         slots = normalize_template_slots(
@@ -124,6 +125,8 @@ class CompilerV1:
         avoid_tags_by_target: Dict[str, Dict[str, Any]] = {}
         required_capabilities_by_target: Dict[str, List[str]] = {}
         constraints: List[ResolutionConstraint] = []
+
+        global_excludes = list(exclude_block_ids or [])
 
         for idx, slot in enumerate(slots):
             kind = str(slot.get("kind") or "").strip()
@@ -165,7 +168,21 @@ class CompilerV1:
 
             # -- Candidates
             slot_with_excludes = dict(slot)
-            if not slot_with_excludes.get("exclude_block_ids"):
+            merged_excludes = list(slot_with_excludes.get("exclude_block_ids") or [])
+            if global_excludes:
+                merged_excludes.extend(global_excludes)
+            if merged_excludes:
+                # Keep deterministic order while preserving values.
+                deduped: List[Any] = []
+                seen: set[str] = set()
+                for item in merged_excludes:
+                    key = str(item)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    deduped.append(item)
+                slot_with_excludes["exclude_block_ids"] = deduped
+            else:
                 slot_with_excludes["exclude_block_ids"] = None
             candidates = await service.find_candidates(slot_with_excludes, limit=candidate_limit)
             candidates_by_target[target_key] = [
