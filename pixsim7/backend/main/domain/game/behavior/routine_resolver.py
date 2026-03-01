@@ -156,9 +156,8 @@ def choose_npc_activity(
     Returns:
         Selected activity dict, or None if no activity could be chosen
     """
-    # Get NPC's routine
-    npc_meta = getattr(npc, "meta", {}) or {}
-    npc_behavior = npc_meta.get("behavior", {})
+    # Resolve behavior/personality from active sources (session component, model fields, legacy meta).
+    npc_behavior = _resolve_npc_behavior(session, npc)
     routine_id = npc_behavior.get("routineId")
 
     if not routine_id:
@@ -188,8 +187,8 @@ def choose_npc_activity(
         session_prefs,
     )
 
-    # Phase 1: Resolve NPC personality and archetype for scoring
-    npc_personality = npc_meta.get("personality", {})
+    # Phase 1: Resolve NPC personality and archetype for scoring.
+    npc_personality = _resolve_npc_personality(npc, npc_behavior)
     archetype = _resolve_npc_archetype(npc_personality, behavior_config)
     world_feature_flags = _get_world_feature_flags(behavior_config)
 
@@ -335,6 +334,74 @@ def finish_activity(
 # ==================
 # Helper Functions
 # ==================
+
+
+def _as_dict(value: Any) -> Dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _resolve_npc_entity_blob(session: Any, npc: Any) -> Dict[str, Any]:
+    flags = _as_dict(getattr(session, "flags", {}))
+    npcs_data = _as_dict(flags.get("npcs"))
+    return _as_dict(npcs_data.get(f"npc:{npc.id}"))
+
+
+def _resolve_npc_behavior(session: Any, npc: Any) -> Dict[str, Any]:
+    """
+    Resolve NPC behavior config with explicit precedence:
+    1) Legacy npc.meta.behavior
+    2) npc.personality.behavior
+    3) Session entity component `components.behavior` (runtime override)
+    """
+    behavior: Dict[str, Any] = {}
+
+    legacy_meta = _as_dict(getattr(npc, "meta", {}))
+    legacy_behavior = _as_dict(legacy_meta.get("behavior"))
+    if legacy_behavior:
+        behavior.update(legacy_behavior)
+
+    personality_blob = _as_dict(getattr(npc, "personality", {}))
+    personality_behavior = _as_dict(personality_blob.get("behavior"))
+    if personality_behavior:
+        behavior.update(personality_behavior)
+
+    # Accept routine/preferences directly on personality for convenience.
+    if "routineId" not in behavior and personality_blob.get("routineId"):
+        behavior["routineId"] = personality_blob.get("routineId")
+    if "preferences" not in behavior and isinstance(personality_blob.get("preferences"), dict):
+        behavior["preferences"] = dict(personality_blob["preferences"])
+
+    entity = _resolve_npc_entity_blob(session, npc)
+    components = _as_dict(entity.get("components"))
+    runtime_behavior = _as_dict(components.get("behavior"))
+    if runtime_behavior:
+        behavior.update(runtime_behavior)
+
+    return behavior
+
+
+def _resolve_npc_personality(npc: Any, npc_behavior: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Resolve NPC personality payload used by archetype scoring.
+    Supports both legacy npc.meta.personality and GameNPC.personality.
+    """
+    personality: Dict[str, Any] = {}
+
+    legacy_meta = _as_dict(getattr(npc, "meta", {}))
+    legacy_personality = _as_dict(legacy_meta.get("personality"))
+    if legacy_personality:
+        personality.update(legacy_personality)
+
+    model_personality = _as_dict(getattr(npc, "personality", {}))
+    if model_personality:
+        personality.update(model_personality)
+
+    # If behavior carries an archetype assignment, surface it for scoring.
+    archetype_id = npc_behavior.get("archetypeId")
+    if archetype_id and "archetypeId" not in personality:
+        personality["archetypeId"] = archetype_id
+
+    return personality
 
 
 def _get_behavior_config(world: Any) -> Dict[str, Any]:
