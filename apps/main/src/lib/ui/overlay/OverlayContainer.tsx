@@ -12,7 +12,6 @@ import { useWidgetData, type DataSourceBinding } from '@lib/dataBinding';
 
 import { OverlayWidget } from './OverlayWidget';
 import type { OverlayConfiguration, WidgetContext, WidgetPosition } from './types';
-import { SPACING_VALUES } from './types';
 import { handleCollisions } from './utils/collision';
 import { applyDefaults } from './utils/merge';
 import { positionToStyle } from './utils/position';
@@ -200,10 +199,10 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
 
   // Widget click handler
   const handleWidgetClick = useCallback(
-    (widgetId: string) => {
+    (widgetId: string, event?: React.MouseEvent) => {
       const widget = config.widgets.find((w) => w.id === widgetId);
       if (widget?.onClick) {
-        widget.onClick(data);
+        widget.onClick(data, event);
       }
       onWidgetClick?.(widgetId, data);
     },
