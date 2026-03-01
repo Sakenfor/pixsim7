@@ -781,6 +781,10 @@ class NestedEntityService(Generic[T]):
         self.world_id = world_id
         self.session_id = session_id
 
+    async def _run_after_change_hook(self) -> None:
+        if self.spec.after_change:
+            await self.spec.after_change(self.db, self.parsed_parent_id)
+
     async def list(self) -> List[T]:
         """List all nested entities under the parent."""
         parent_column = getattr(self.model, self.spec.parent_field)
@@ -811,7 +815,7 @@ class NestedEntityService(Generic[T]):
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
-    async def create(self, data: Dict[str, Any]) -> T:
+    async def create(self, data: Dict[str, Any], *, trigger_hook: bool = True) -> T:
         """Create a nested entity."""
         data[self.spec.parent_field] = self.parsed_parent_id
         if self.world_id is not None and hasattr(self.model, "world_id"):
@@ -822,9 +826,17 @@ class NestedEntityService(Generic[T]):
         self.db.add(entity)
         await self.db.commit()
         await self.db.refresh(entity)
+        if trigger_hook:
+            await self._run_after_change_hook()
         return entity
 
-    async def update(self, entity_id: Any, data: Dict[str, Any]) -> Optional[T]:
+    async def update(
+        self,
+        entity_id: Any,
+        data: Dict[str, Any],
+        *,
+        trigger_hook: bool = True,
+    ) -> Optional[T]:
         """Update a nested entity."""
         entity = await self.get(entity_id)
         if not entity:
@@ -841,9 +853,11 @@ class NestedEntityService(Generic[T]):
 
         await self.db.commit()
         await self.db.refresh(entity)
+        if trigger_hook:
+            await self._run_after_change_hook()
         return entity
 
-    async def delete(self, entity_id: Any) -> bool:
+    async def delete(self, entity_id: Any, *, trigger_hook: bool = True) -> bool:
         """Delete a nested entity."""
         entity = await self.get(entity_id)
         if not entity:
@@ -851,23 +865,29 @@ class NestedEntityService(Generic[T]):
 
         await self.db.delete(entity)
         await self.db.commit()
+        if trigger_hook:
+            await self._run_after_change_hook()
         return True
 
-    async def delete_all(self, hard: bool = False) -> int:
+    async def delete_all(self, hard: bool = False, *, trigger_hook: bool = True) -> int:
         """Delete all nested entities under the parent."""
         items = await self.list()
         count = 0
         for item in items:
             entity_id = getattr(item, self.spec.id_field)
-            if await self.delete(entity_id):
+            if await self.delete(entity_id, trigger_hook=False):
                 count += 1
+        if trigger_hook and count > 0:
+            await self._run_after_change_hook()
         return count
 
     async def replace_all(self, items: List[Dict[str, Any]]) -> List[T]:
         """Replace all nested entities with new ones."""
-        await self.delete_all(hard=True)
+        deleted_count = await self.delete_all(hard=True, trigger_hook=False)
         created = []
         for data in items:
-            entity = await self.create(data)
+            entity = await self.create(data, trigger_hook=False)
             created.append(entity)
+        if deleted_count > 0 or created:
+            await self._run_after_change_hook()
         return created

@@ -26,6 +26,7 @@ from pixsim7.backend.game import (
     GameSession,
     GameNPC,
     get_default_world_scheduler_config,
+    get_npc_entity,
     get_npc_component,
     update_npc_component,
 )
@@ -359,10 +360,19 @@ class WorldScheduler:
 
         # Get behavior component
         behavior_comp = get_npc_component(session, npc.id, "behavior", default={})
+        npc_entity = get_npc_entity(session, npc.id)
+        npc_state = npc_entity.get("state", {}) if isinstance(npc_entity, dict) else {}
+        if not isinstance(npc_state, dict):
+            npc_state = {}
 
         # Check if it's time for a new decision
-        next_decision_at = behavior_comp.get("nextDecisionAt", 0)
-        current_activity_id = behavior_comp.get("currentActivityId")
+        next_decision_at = (
+            behavior_comp.get("nextDecisionAtSeconds")
+            or behavior_comp.get("nextDecisionAt")
+            or npc_state.get("nextDecisionAtSeconds")
+            or 0
+        )
+        current_activity_id = behavior_comp.get("currentActivityId") or npc_state.get("currentActivityId")
 
         if world_time >= next_decision_at:
             # Time for a new activity decision
@@ -388,11 +398,25 @@ class WorldScheduler:
                     f"(tier: {tier})"
                 )
 
+                refreshed_entity = get_npc_entity(session, npc.id)
+                refreshed_state = refreshed_entity.get("state", {}) if isinstance(refreshed_entity, dict) else {}
+                if not isinstance(refreshed_state, dict):
+                    refreshed_state = {}
+                next_decision_at_seconds = refreshed_state.get("nextDecisionAtSeconds")
+                current_activity_id = refreshed_state.get("currentActivityId")
+
                 # Update behavior component with simulation metadata
-                update_npc_component(session, npc.id, "behavior", {
+                behavior_updates: Dict[str, Any] = {
                     "simulationTier": tier,
                     "lastSimulatedAt": world_time,
-                })
+                }
+                if isinstance(next_decision_at_seconds, (int, float)):
+                    behavior_updates["nextDecisionAtSeconds"] = float(next_decision_at_seconds)
+                    behavior_updates["nextDecisionAt"] = float(next_decision_at_seconds)
+                if isinstance(current_activity_id, str) and current_activity_id:
+                    behavior_updates["currentActivityId"] = current_activity_id
+
+                update_npc_component(session, npc.id, "behavior", behavior_updates)
             else:
                 # No activity chosen (no routine, or no valid activities)
                 # Schedule next decision based on tier
@@ -406,6 +430,7 @@ class WorldScheduler:
 
                 update_npc_component(session, npc.id, "behavior", {
                     "nextDecisionAt": world_time + interval,
+                    "nextDecisionAtSeconds": world_time + interval,
                     "simulationTier": tier,
                     "lastSimulatedAt": world_time,
                 })

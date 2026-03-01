@@ -38,6 +38,14 @@ from pixsim7.backend.main.domain.game.schemas.project_bundle import (
     ProjectImportIdMaps,
     ProjectImportMode,
 )
+from pixsim7.backend.main.services.game.npc_schedule_projection import (
+    sync_npc_schedule_projection,
+)
+from pixsim7.backend.main.services.game.derived_projections import (
+    sync_location_hotspot_projection,
+    sync_npc_expression_projection,
+    sync_scene_graph_projection,
+)
 
 
 @dataclass
@@ -483,6 +491,17 @@ class GameProjectBundleService:
 
         if world.id is None:
             raise ValueError("world_create_failed")
+
+        for imported_location_id in location_id_map.values():
+            await sync_location_hotspot_projection(self.db, imported_location_id)
+
+        for imported_scene_id in scene_id_map.values():
+            await sync_scene_graph_projection(self.db, imported_scene_id)
+
+        # Keep behavior routines in sync with imported schedule storage rows.
+        for imported_npc_id in npc_id_map.values():
+            await sync_npc_schedule_projection(self.db, imported_npc_id)
+            await sync_npc_expression_projection(self.db, imported_npc_id)
 
         return GameProjectImportResponse(
             world_id=world.id,

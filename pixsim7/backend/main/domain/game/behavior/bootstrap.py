@@ -110,6 +110,7 @@ def _register_builtin_conditions() -> int:
         _eval_energy_between,
         _eval_random_chance,
         _eval_time_of_day_in,
+        _eval_day_of_week_in,
         _eval_location_type_in,
         _eval_expression,
         _example_evaluator_is_raining,
@@ -133,6 +134,7 @@ def _register_builtin_conditions() -> int:
     BUILTIN_CONDITIONS["energy_between"] = _eval_energy_between
     BUILTIN_CONDITIONS["random_chance"] = _eval_random_chance
     BUILTIN_CONDITIONS["time_of_day_in"] = _eval_time_of_day_in
+    BUILTIN_CONDITIONS["day_of_week_in"] = _eval_day_of_week_in
     BUILTIN_CONDITIONS["location_type_in"] = _eval_location_type_in
     BUILTIN_CONDITIONS["expression"] = _eval_expression
 

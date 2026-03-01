@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import os
@@ -11,7 +12,6 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 from sqlalchemy import delete, select
-from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Allow direct execution via `python scripts/seed_bananza_boat_slice.py`.
@@ -32,13 +32,10 @@ from pixsim7.backend.main.infrastructure.database.session import (
     get_async_blocks_session,
     get_async_session,
 )
-from pixsim7.backend.main.domain.game.schemas.project_bundle import (
-    BundleLocationData,
-    BundleNpcData,
-    BundleNpcScheduleData,
-    BundleWorldData,
-    GameProjectBundle,
-    GameProjectCoreBundle,
+from pixsim7.backend.main.services.game.npc_schedule_projection import (
+    NPCScheduleProjection,
+    NPCScheduleSlot,
+    compile_routines_from_schedule_projections,
 )
 from pixsim7.backend.main.services.game.project_bundle import GameProjectBundleService
 from pixsim7.backend.main.services.game.project_storage import GameProjectStorageService
@@ -502,6 +499,57 @@ NPC_BEHAVIOR_BINDINGS: Dict[str, Dict[str, Any]] = {
 }
 
 
+def _build_behavior_config() -> Dict[str, Any]:
+    behavior_config = deepcopy(BEHAVIOR_TEMPLATE)
+    projections: List[NPCScheduleProjection] = []
+    for npc_seed in NPC_SEEDS:
+        binding = NPC_BEHAVIOR_BINDINGS.get(npc_seed.key, {})
+        routine_id = str(
+            binding.get("routineId") or f"bananza.routine.{npc_seed.key}.schedule_compiled"
+        )
+        default_preferences = (
+            dict(binding.get("preferences"))
+            if isinstance(binding.get("preferences"), dict)
+            else None
+        )
+
+        projections.append(
+            NPCScheduleProjection(
+                npc_key=npc_seed.key,
+                npc_name=npc_seed.name,
+                routine_id=routine_id,
+                default_preferences=default_preferences,
+                schedules=[
+                    NPCScheduleSlot(
+                        day_of_week=schedule.day_of_week,
+                        start_time=schedule.start_time,
+                        end_time=schedule.end_time,
+                        location_key=schedule.location_key,
+                        label=schedule.label,
+                    )
+                    for schedule in npc_seed.schedules
+                ],
+            )
+        )
+
+    compiled_routines = compile_routines_from_schedule_projections(
+        behavior_config,
+        projections,
+        source="compiled_from_npc_schedule",
+        seed_key=SEED_KEY,
+    )
+    if compiled_routines:
+        behavior_config["routines"] = compiled_routines
+
+    meta = behavior_config.get("meta")
+    if not isinstance(meta, dict):
+        meta = {}
+    meta["seed_key"] = SEED_KEY
+    meta["routine_source"] = "compiled_from_npc_schedules"
+    behavior_config["meta"] = meta
+    return behavior_config
+
+
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -698,8 +746,9 @@ async def _upsert_behavior_templates(
     if world is None:
         raise RuntimeError("world_not_found_for_behavior_seed")
 
+    behavior_config = _build_behavior_config()
     world_meta = dict(world.meta or {})
-    world_meta["behavior"] = dict(BEHAVIOR_TEMPLATE)
+    world_meta["behavior"] = behavior_config
 
     existing_simulation = world_meta.get("simulation")
     merged_simulation = dict(SIMULATION_TEMPLATE)
@@ -739,8 +788,8 @@ async def _upsert_behavior_templates(
 
     return {
         "world_id": world.id,
-        "routines": len(BEHAVIOR_TEMPLATE.get("routines", {})),
-        "activities": len(BEHAVIOR_TEMPLATE.get("activities", {})),
+        "routines": len(behavior_config.get("routines", {})),
+        "activities": len(behavior_config.get("activities", {})),
         "npcs_bound": updated_npcs,
     }
 
@@ -795,83 +844,6 @@ async def _upsert_primitives() -> Dict[str, int]:
     return {"created": created, "updated": updated, "total": len(PRIMITIVE_SEEDS)}
 
 
-async def _build_minimal_project_bundle(
-    db: AsyncSession,
-    *,
-    world_id: int,
-) -> GameProjectBundle:
-    world = await db.get(GameWorld, world_id)
-    if world is None:
-        raise ValueError("world_not_found_for_bundle")
-    state = await db.get(GameWorldState, world_id)
-
-    locations_result = await db.execute(
-        select(GameLocation).where(GameLocation.world_id == world_id).order_by(GameLocation.id)
-    )
-    locations = list(locations_result.scalars().all())
-
-    npcs_result = await db.execute(
-        select(GameNPC).where(GameNPC.world_id == world_id).order_by(GameNPC.id)
-    )
-    npcs = list(npcs_result.scalars().all())
-    npc_ids = [npc.id for npc in npcs if npc.id is not None]
-
-    schedules_by_npc: Dict[int, List[NPCSchedule]] = {nid: [] for nid in npc_ids}
-    if npc_ids:
-        schedules_result = await db.execute(
-            select(NPCSchedule).where(NPCSchedule.npc_id.in_(npc_ids)).order_by(NPCSchedule.id)
-        )
-        for schedule in schedules_result.scalars().all():
-            schedules_by_npc.setdefault(schedule.npc_id, []).append(schedule)
-
-    core = GameProjectCoreBundle(
-        world=BundleWorldData(
-            name=world.name,
-            meta=world.meta or {},
-            world_time=float(state.world_time if state is not None else 0.0),
-        ),
-        locations=[
-            BundleLocationData(
-                source_id=loc.id or 0,
-                name=loc.name,
-                x=loc.x,
-                y=loc.y,
-                asset_id=loc.asset_id,
-                default_spawn=loc.default_spawn,
-                meta=loc.meta,
-                stats=getattr(loc, "stats", {}) or {},
-                hotspots=[],
-            )
-            for loc in locations
-        ],
-        npcs=[
-            BundleNpcData(
-                source_id=npc.id or 0,
-                name=npc.name,
-                personality=npc.personality,
-                home_location_source_id=npc.home_location_id,
-                stats=getattr(npc, "stats", {}) or {},
-                schedules=[
-                    BundleNpcScheduleData(
-                        source_id=s.id or 0,
-                        day_of_week=s.day_of_week,
-                        start_time=s.start_time,
-                        end_time=s.end_time,
-                        location_source_id=s.location_id,
-                        rule=s.rule,
-                    )
-                    for s in schedules_by_npc.get(npc.id or 0, [])
-                ],
-                expressions=[],
-            )
-            for npc in npcs
-        ],
-        scenes=[],
-        items=[],
-    )
-    return GameProjectBundle(core=core)
-
-
 async def _upsert_project_snapshot(
     db: AsyncSession,
     *,
@@ -883,15 +855,7 @@ async def _upsert_project_snapshot(
     bundle_service = GameProjectBundleService(db)
     storage = GameProjectStorageService(db)
 
-    bundle_mode = "full_export"
-    bundle_warning: Optional[str] = None
-    try:
-        bundle = await bundle_service.export_world_bundle(world_id)
-    except ProgrammingError as exc:
-        await db.rollback()
-        bundle = await _build_minimal_project_bundle(db, world_id=world_id)
-        bundle_mode = "minimal_fallback"
-        bundle_warning = str(exc).splitlines()[0]
+    bundle = await bundle_service.export_world_bundle(world_id)
 
     existing: Optional[GameProjectSnapshot] = None
     if project_id is not None:
@@ -926,8 +890,7 @@ async def _upsert_project_snapshot(
         "name": saved.name,
         "source_world_id": saved.source_world_id,
         "overwritten": existing is not None,
-        "bundle_mode": bundle_mode,
-        "bundle_warning": bundle_warning,
+        "bundle_mode": "full_export",
     }
 
 
@@ -975,8 +938,6 @@ async def seed_bananza_boat_slice(
         f"overwritten={project_summary['overwritten']} "
         f"bundle_mode={project_summary['bundle_mode']}"
     )
-    if project_summary.get("bundle_warning"):
-        print(f"    note: {project_summary['bundle_warning']}")
     print("  locations:")
     for key in sorted(locations_by_key.keys()):
         loc = locations_by_key[key]
@@ -1400,6 +1361,7 @@ async def _api_apply_behavior(
     world_name: str,
     npcs_by_key: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Any]:
+    behavior_config = _build_behavior_config()
     world = await _api_get_json(
         client,
         f"/api/v1/game/worlds/{world_id}",
@@ -1426,7 +1388,7 @@ async def _api_apply_behavior(
     await _api_put_json(
         client,
         f"/api/v1/game/worlds/{world_id}/behavior",
-        body={"config": dict(BEHAVIOR_TEMPLATE)},
+        body={"config": behavior_config},
         context="update_world_behavior",
     )
 
@@ -1467,8 +1429,8 @@ async def _api_apply_behavior(
 
     return {
         "world_id": world_id,
-        "routines": len(BEHAVIOR_TEMPLATE.get("routines", {})),
-        "activities": len(BEHAVIOR_TEMPLATE.get("activities", {})),
+        "routines": len(behavior_config.get("routines", {})),
+        "activities": len(behavior_config.get("activities", {})),
         "npcs_bound": updated_npcs,
     }
 
@@ -1504,95 +1466,21 @@ async def _api_upsert_primitives(client: httpx.AsyncClient) -> Dict[str, int]:
     return {"created": created, "updated": updated, "total": len(PRIMITIVE_SEEDS)}
 
 
-def _build_minimal_project_bundle_payload_api(
-    *,
-    world: Dict[str, Any],
-    locations_by_key: Dict[str, Dict[str, Any]],
-    npcs_by_key: Dict[str, Dict[str, Any]],
-    schedules_by_npc: Dict[str, List[Dict[str, Any]]],
-) -> Dict[str, Any]:
-    core = GameProjectCoreBundle(
-        world=BundleWorldData(
-            name=str(world.get("name") or DEMO_WORLD_NAME),
-            meta=dict(world.get("meta") or {}),
-            world_time=float(world.get("world_time") or 0.0),
-        ),
-        locations=[
-            BundleLocationData(
-                source_id=int(location.get("id") or 0),
-                name=str(location.get("name") or ""),
-                x=float(location.get("x") or 0.0),
-                y=float(location.get("y") or 0.0),
-                asset_id=location.get("asset_id"),
-                default_spawn=location.get("default_spawn"),
-                meta=location.get("meta"),
-                stats=dict(location.get("stats") or {}),
-                hotspots=[],
-            )
-            for _, location in sorted(locations_by_key.items(), key=lambda item: item[0])
-        ],
-        npcs=[
-            BundleNpcData(
-                source_id=int(npc.get("id") or 0),
-                name=str(npc.get("name") or npc_key),
-                personality=npc.get("personality"),
-                home_location_source_id=npc.get("home_location_id"),
-                stats=dict(npc.get("stats") or {}),
-                schedules=[
-                    BundleNpcScheduleData(
-                        source_id=int(schedule.get("id") or 0),
-                        day_of_week=int(schedule.get("day_of_week") or 0),
-                        start_time=float(schedule.get("start_time") or 0.0),
-                        end_time=float(schedule.get("end_time") or 0.0),
-                        location_source_id=int(schedule.get("location_id") or 0),
-                        rule=schedule.get("rule"),
-                    )
-                    for schedule in schedules_by_npc.get(npc_key, [])
-                    if isinstance(schedule, dict)
-                ],
-                expressions=[],
-            )
-            for npc_key, npc in sorted(npcs_by_key.items(), key=lambda item: item[0])
-        ],
-        scenes=[],
-        items=[],
-    )
-    bundle = GameProjectBundle(core=core)
-    return bundle.model_dump(mode="json")
-
-
 async def _api_upsert_project_snapshot(
     client: httpx.AsyncClient,
     *,
-    world: Dict[str, Any],
-    world_name: str,
+    world_id: int,
     project_name: str,
     project_id: Optional[int],
-    locations_by_key: Dict[str, Dict[str, Any]],
-    npcs_by_key: Dict[str, Dict[str, Any]],
-    schedules_by_npc: Dict[str, List[Dict[str, Any]]],
 ) -> Dict[str, Any]:
-    world_id = int(world.get("id") or 0)
     if world_id <= 0:
         raise RuntimeError("world_id_missing_for_project_snapshot")
 
-    bundle_mode = "full_export"
-    bundle_warning: Optional[str] = None
-    try:
-        bundle = await _api_get_json(
-            client,
-            f"/api/v1/game/worlds/{world_id}/project/export",
-            context="export_world_project_bundle",
-        )
-    except RuntimeError as exc:
-        bundle = _build_minimal_project_bundle_payload_api(
-            world=world,
-            locations_by_key=locations_by_key,
-            npcs_by_key=npcs_by_key,
-            schedules_by_npc=schedules_by_npc,
-        )
-        bundle_mode = "minimal_fallback"
-        bundle_warning = str(exc)
+    bundle = await _api_get_json(
+        client,
+        f"/api/v1/game/worlds/{world_id}/project/export",
+        context="export_world_project_bundle",
+    )
 
     overwrite_project_id: Optional[int] = project_id
     if overwrite_project_id is None:
@@ -1634,8 +1522,7 @@ async def _api_upsert_project_snapshot(
         "name": str(saved.get("name") or project_name),
         "source_world_id": saved.get("source_world_id"),
         "overwritten": overwrite_project_id is not None,
-        "bundle_mode": bundle_mode,
-        "bundle_warning": bundle_warning,
+        "bundle_mode": "full_export",
     }
 
 
@@ -1687,23 +1574,11 @@ async def seed_bananza_boat_slice_via_api(
         )
         primitive_summary = await _api_upsert_primitives(client)
 
-        world = await _api_get_json(
-            client,
-            f"/api/v1/game/worlds/{world_id}",
-            context="refresh_world_after_seed",
-        )
-        if not isinstance(world, dict):
-            raise RuntimeError("unexpected_world_payload_after_seed")
-
         project_summary = await _api_upsert_project_snapshot(
             client,
-            world=world,
-            world_name=world_name,
+            world_id=world_id,
             project_name=project_name,
             project_id=project_id,
-            locations_by_key=locations_by_key,
-            npcs_by_key=npcs_by_key,
-            schedules_by_npc=schedules_by_npc,
         )
 
     print("Seed complete: Bananza Boat slice (API mode)")
@@ -1717,8 +1592,6 @@ async def seed_bananza_boat_slice_via_api(
         f"overwritten={project_summary['overwritten']} "
         f"bundle_mode={project_summary['bundle_mode']}"
     )
-    if project_summary.get("bundle_warning"):
-        print(f"    note: {project_summary['bundle_warning']}")
     print(
         "  locations: "
         f"created={location_summary['created']} "
@@ -1760,7 +1633,10 @@ async def seed_bananza_boat_slice_via_api(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Seed a Bananza Boat gameplay slice (world, NPCs, locations, primitives)."
+        description=(
+            "Seed a Bananza Boat gameplay slice (world, NPCs, locations, primitives). "
+            "Project snapshot bundles always come from the canonical project export contract."
+        )
     )
     parser.add_argument(
         "--mode",
@@ -1769,7 +1645,7 @@ def _parse_args() -> argparse.Namespace:
         help=(
             "Seeder mode. "
             "'api' uses HTTP endpoints (recommended). "
-            "'direct' writes DB rows directly."
+            "'direct' writes world rows directly, but snapshot bundles still use export format."
         ),
     )
     parser.add_argument(

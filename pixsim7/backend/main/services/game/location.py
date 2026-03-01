@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
 from pixsim7.backend.main.domain.game import GameLocation, GameHotspot
+from pixsim7.backend.main.services.game.derived_projections import (
+    sync_location_hotspot_projection,
+)
 
 
 class GameLocationService:
@@ -68,4 +71,5 @@ class GameLocationService:
         await self.db.commit()
         for h in created:
             await self.db.refresh(h)
+        await sync_location_hotspot_projection(self.db, location_id)
         return created

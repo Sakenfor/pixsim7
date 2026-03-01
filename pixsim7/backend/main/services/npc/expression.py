@@ -7,6 +7,9 @@ from sqlalchemy import select, delete
 
 from pixsim7.backend.main.domain.game import NpcExpression
 from pixsim7.backend.main.domain.game.entities.npc_surfaces import validate_expression_meta
+from pixsim7.backend.main.services.game.derived_projections import (
+    sync_npc_expression_projection,
+)
 
 
 class NpcExpressionService:
@@ -63,5 +66,5 @@ class NpcExpressionService:
         await self.db.commit()
         for expr in created:
             await self.db.refresh(expr)
+        await sync_npc_expression_projection(self.db, npc_id)
         return created
-

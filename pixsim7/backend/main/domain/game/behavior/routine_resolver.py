@@ -50,6 +50,7 @@ def find_active_routine_node(
     # Calculate time of day from world time (seconds in a day)
     seconds_per_day = 86400  # 24 hours
     time_of_day = world_time % seconds_per_day
+    day_of_week = int(world_time // seconds_per_day) % 7
 
     # Find all time_slot nodes that cover the current time
     candidate_nodes = []
@@ -58,6 +59,20 @@ def find_active_routine_node(
         node_type = node.get("nodeType")
 
         if node_type == "time_slot":
+            meta = node.get("meta") if isinstance(node.get("meta"), dict) else {}
+            node_day = meta.get("day_of_week", meta.get("dayOfWeek"))
+            if node_day is not None:
+                try:
+                    if int(node_day) != day_of_week:
+                        continue
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Ignoring time_slot node %s with invalid day_of_week meta: %s",
+                        node.get("id"),
+                        node_day,
+                    )
+                    continue
+
             time_range = node.get("timeRangeSeconds")
             if time_range:
                 start = time_range.get("start", 0)
@@ -663,7 +678,7 @@ def _build_context(
         "session": session,
         "flags": getattr(session, "flags", {}),
         "relationships": getattr(session, "relationships", {}),
-        "world_time": getattr(world, "world_time", 0),
+        "world_time": npc_state.get("world_time", getattr(world, "world_time", 0)),
         "npc_state": npc_state,
         # Phase 1: Archetype scoring support
         "archetype": archetype,

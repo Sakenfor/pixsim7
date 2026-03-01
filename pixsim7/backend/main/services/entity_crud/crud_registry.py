@@ -50,6 +50,7 @@ T = TypeVar("T", bound=SQLModel)
 CreateHook = Callable[[Any, Dict[str, Any]], Coroutine[Any, Any, Dict[str, Any]]]
 UpdateHook = Callable[[Any, Any, Dict[str, Any]], Coroutine[Any, Any, Dict[str, Any]]]
 DeleteHook = Callable[[Any, Any], Coroutine[Any, Any, bool]]
+NestedChangeHook = Callable[[Any, Any], Coroutine[Any, Any, None]]
 TransformHook = Callable[[Any], Any]  # Sync transform for response
 AsyncTransformHook = Callable[[Any, Any], Coroutine[Any, Any, Any]]  # Async transform (db, entity) -> response
 ValidateHook = Callable[[Dict[str, Any]], Coroutine[Any, Any, Tuple[bool, Optional[str]]]]  # (data) -> (valid, error_msg)
@@ -128,6 +129,7 @@ class NestedEntitySpec:
     enable_update: bool = True
     enable_delete: bool = True
     cascade_delete: bool = False  # Delete nested when parent is deleted
+    after_change: Optional[NestedChangeHook] = None
 
 
 @dataclass

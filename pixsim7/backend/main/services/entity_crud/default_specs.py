@@ -147,6 +147,7 @@ def register_default_template_specs() -> None:
                 enable_update=True,
                 enable_delete=True,
                 cascade_delete=True,
+                after_change=sync_location_hotspot_projection,
             ),
         ],
 
@@ -163,6 +164,14 @@ def register_default_template_specs() -> None:
         GameNPC, NPCSchedule, NpcExpression,
         GameWorld, GameWorldState,
         GameItem,
+    )
+    from pixsim7.backend.main.services.game.npc_schedule_projection import (
+        sync_npc_schedule_projection,
+    )
+    from pixsim7.backend.main.services.game.derived_projections import (
+        sync_location_hotspot_projection,
+        sync_npc_expression_projection,
+        sync_scene_graph_projection,
     )
 
     registry.register_spec(TemplateCRUDSpec(
@@ -208,6 +217,7 @@ def register_default_template_specs() -> None:
                 enable_update=True,
                 enable_delete=True,
                 cascade_delete=True,
+                after_change=sync_scene_graph_projection,
             ),
             NestedEntitySpec(
                 kind="edge",
@@ -222,6 +232,7 @@ def register_default_template_specs() -> None:
                 enable_update=True,
                 enable_delete=True,
                 cascade_delete=True,
+                after_change=sync_scene_graph_projection,
             ),
         ],
 
@@ -276,6 +287,7 @@ def register_default_template_specs() -> None:
                 enable_update=True,
                 enable_delete=True,
                 cascade_delete=True,
+                after_change=sync_npc_schedule_projection,
             ),
             NestedEntitySpec(
                 kind="expression",
@@ -290,6 +302,7 @@ def register_default_template_specs() -> None:
                 enable_update=True,
                 enable_delete=True,
                 cascade_delete=True,
+                after_change=sync_npc_expression_projection,
             ),
         ],
 

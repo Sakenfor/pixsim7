@@ -455,6 +455,30 @@ def _eval_time_of_day_in(condition: Dict[str, Any], context: Dict[str, Any]) -> 
     return current_time_of_day in times
 
 
+def _eval_day_of_week_in(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
+    """Evaluate day_of_week_in condition."""
+    days = condition.get("days")
+    if days is None:
+        single_day = condition.get("dayOfWeek", condition.get("day_of_week"))
+        days = [single_day] if single_day is not None else []
+    elif not isinstance(days, list):
+        days = [days]
+
+    normalized_days = set()
+    for value in days:
+        try:
+            normalized_days.add(int(value))
+        except (TypeError, ValueError):
+            continue
+
+    if not normalized_days:
+        return False
+
+    world_time = context.get("world_time", 0)
+    current_day = int(world_time // 86400) % 7
+    return current_day in normalized_days
+
+
 def _get_time_of_day(hour: int) -> str:
     """Convert hour (0-23) to time of day string."""
     if 6 <= hour < 12:
