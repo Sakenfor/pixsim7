@@ -268,6 +268,7 @@ def build_operation_parameter_spec() -> dict:
             "qwen-image": ["720p", "1080p"],
             "gemini-3.0": ["1080p", "1440p", "2160p"],
             "gemini-2.5-flash": ["1080p"],
+            "gemini-3.1-flash": ["512p", "1080p", "1440p", "2160p"],
             "seedream-4.0": ["1080p", "1440p", "2160p"],
             "seedream-4.5": ["1440p", "2160p"],
         }
@@ -276,7 +277,7 @@ def build_operation_parameter_spec() -> dict:
         "type": "enum",
         "required": False,
         "default": "1080p",
-        "enum": image_quality_enum or ["720p", "1080p", "1440p", "2160p"],
+        "enum": image_quality_enum or ["512p", "720p", "1080p", "1440p", "2160p"],
         "description": "Image quality preset",
         "group": "render",
         "metadata": {

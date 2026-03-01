@@ -190,6 +190,7 @@ RETRYABLE_ERROR_CODES: frozenset[GenerationErrorCode] = frozenset({
     GenerationErrorCode.CONTENT_OUTPUT_REJECTED,
     GenerationErrorCode.CONTENT_IMAGE_REJECTED,
     GenerationErrorCode.CONTENT_FILTERED,
+    GenerationErrorCode.PROVIDER_CONCURRENT_LIMIT,
     GenerationErrorCode.PROVIDER_RATE_LIMIT,
     GenerationErrorCode.PROVIDER_UNAVAILABLE,
     GenerationErrorCode.PROVIDER_TIMEOUT,

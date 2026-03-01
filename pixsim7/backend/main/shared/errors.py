@@ -239,6 +239,8 @@ class NoAccountAvailableError(AccountError):
 
 class AccountExhaustedError(AccountError):
     """Account has no credits remaining"""
+    retryable = False  # No credits left; retrying the same account won't help
+
     def __init__(self, account_id: int, provider_id: str):
         super().__init__(
             f"Account {account_id} ({provider_id}) has no credits remaining",
