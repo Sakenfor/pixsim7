@@ -36,6 +36,9 @@ class AssetDeletionMixin:
         Removes the database record and best-effort deletes the local file.
         Also deletes any generations and lineage that reference this asset.
 
+        Returns a dict with asset_id and a `post_commit_cleanup` coroutine that
+        should be run in a background task (provider deletion, file cleanup, event).
+
         Args:
             asset_id: Asset ID to delete
             user: User requesting deletion
@@ -67,6 +70,11 @@ class AssetDeletionMixin:
         local_path = asset.local_path
         stored_key = asset.stored_key
         content_id = asset.content_id
+        provider_asset_id = asset.provider_asset_id
+        provider_id = asset.provider_id
+        provider_account_id = asset.provider_account_id
+        media_type = asset.media_type
+        media_metadata = asset.media_metadata
         should_delete_stored_file = False
         should_delete_local_file = False
         local_path_managed_by_storage = False
@@ -123,140 +131,118 @@ class AssetDeletionMixin:
 
         await self.db.commit()
 
-        provider_delete_result = None
-
-        # Best-effort remote/provider cleanup AFTER commit to avoid rollback/file mismatch.
-        if delete_from_provider and asset.provider_asset_id and asset.provider_id:
-            provider_delete_result = await self._delete_from_provider(asset)
-
-        if should_delete_local_file and local_path:
-            try:
-                if os.path.exists(local_path):
-                    os.remove(local_path)
-            except Exception:
-                pass
-
-        if should_delete_stored_file and stored_key:
-            try:
-                from pixsim7.backend.main.services.storage import get_storage_service
-                storage = get_storage_service()
-                await storage.delete(stored_key)
-            except Exception:
-                logger.warning(
-                    "stored_key_delete_failed",
-                    stored_key=stored_key,
+        async def _post_commit_cleanup():
+            """Best-effort cleanup that runs after the response is sent."""
+            # Provider deletion
+            if delete_from_provider and provider_asset_id and provider_id:
+                await self._delete_from_provider_by_snapshot(
                     asset_id=asset_id,
+                    provider_id=provider_id,
+                    provider_asset_id=provider_asset_id,
+                    provider_account_id=provider_account_id,
+                    media_type=media_type,
+                    media_metadata=media_metadata,
                 )
 
-        await event_bus.publish(ASSET_DELETED, {
-            "asset_id": asset_id,
-            "user_id": asset_owner_id,
-            "deleted_by_user_id": user.id,
-        })
+            # Local file cleanup
+            if should_delete_local_file and local_path:
+                try:
+                    if os.path.exists(local_path):
+                        os.remove(local_path)
+                except Exception:
+                    pass
+
+            # Storage cleanup
+            if should_delete_stored_file and stored_key:
+                try:
+                    from pixsim7.backend.main.services.storage import get_storage_service
+                    storage = get_storage_service()
+                    await storage.delete(stored_key)
+                except Exception:
+                    logger.warning(
+                        "stored_key_delete_failed",
+                        stored_key=stored_key,
+                        asset_id=asset_id,
+                    )
+
+            await event_bus.publish(ASSET_DELETED, {
+                "asset_id": asset_id,
+                "user_id": asset_owner_id,
+                "deleted_by_user_id": user.id,
+            })
 
         return {
             "asset_id": asset_id,
-            "local_deleted": True,
-            "provider_delete": provider_delete_result,
+            "post_commit_cleanup": _post_commit_cleanup,
         }
 
-    async def _delete_from_provider(self, asset: Asset) -> Dict[str, Any]:
+    async def _delete_from_provider_by_snapshot(
+        self,
+        asset_id: int,
+        provider_id: str,
+        provider_asset_id: str,
+        provider_account_id: int | None,
+        media_type: str | None,
+        media_metadata: dict | None,
+    ) -> None:
         """
-        Attempt to delete asset from provider (best effort).
+        Attempt to delete asset from provider using snapshotted values (best effort).
 
-        Logs errors but does not raise - local deletion should always proceed.
+        Designed to run as a background task after the DB commit, so it uses
+        plain values instead of an ORM asset object.
         """
         from pixsim7.backend.main.domain.providers.models import ProviderAccount
 
         try:
-            # Get provider from registry
             from pixsim7.backend.main.services.provider.provider_service import registry
-            provider = registry.get(asset.provider_id)
+            provider = registry.get(provider_id)
 
-            # Check if provider supports deletion
             if not hasattr(provider, 'delete_asset'):
                 logger.info(
                     "provider_delete_not_supported",
-                    provider_id=asset.provider_id,
-                    asset_id=asset.id,
+                    provider_id=provider_id,
+                    asset_id=asset_id,
                 )
-                return {
-                    "status": "skipped",
-                    "reason": "provider_delete_not_supported",
-                    "provider_id": asset.provider_id,
-                    "asset_id": asset.id,
-                    "provider_asset_id": asset.provider_asset_id,
-                }
+                return
 
-            # Get provider account
-            if not asset.provider_account_id:
+            if not provider_account_id:
                 logger.warning(
                     "provider_delete_no_account",
-                    provider_id=asset.provider_id,
-                    asset_id=asset.id,
+                    provider_id=provider_id,
+                    asset_id=asset_id,
                 )
-                return {
-                    "status": "skipped",
-                    "reason": "provider_delete_no_account",
-                    "provider_id": asset.provider_id,
-                    "asset_id": asset.id,
-                    "provider_asset_id": asset.provider_asset_id,
-                }
+                return
 
-            account = await self.db.get(ProviderAccount, asset.provider_account_id)
+            account = await self.db.get(ProviderAccount, provider_account_id)
             if not account:
                 logger.warning(
                     "provider_delete_account_not_found",
-                    asset_id=asset.id,
-                    provider_account_id=asset.provider_account_id,
+                    asset_id=asset_id,
+                    provider_account_id=provider_account_id,
                 )
-                return {
-                    "status": "skipped",
-                    "reason": "provider_delete_account_not_found",
-                    "provider_id": asset.provider_id,
-                    "asset_id": asset.id,
-                    "provider_asset_id": asset.provider_asset_id,
-                    "provider_account_id": asset.provider_account_id,
-                }
+                return
 
-            # Call provider delete
             await provider.delete_asset(
                 account=account,
-                provider_asset_id=asset.provider_asset_id,
-                media_type=asset.media_type,
-                media_metadata=asset.media_metadata,
+                provider_asset_id=provider_asset_id,
+                media_type=media_type,
+                media_metadata=media_metadata,
             )
 
             logger.info(
                 "provider_delete_success",
-                provider_id=asset.provider_id,
-                asset_id=asset.id,
-                provider_asset_id=asset.provider_asset_id,
+                provider_id=provider_id,
+                asset_id=asset_id,
+                provider_asset_id=provider_asset_id,
             )
-            return {
-                "status": "success",
-                "provider_id": asset.provider_id,
-                "asset_id": asset.id,
-                "provider_asset_id": asset.provider_asset_id,
-            }
 
         except Exception as e:
-            # Log error but don't fail - local deletion should proceed
             logger.error(
                 "provider_delete_failed",
-                provider_id=asset.provider_id,
-                asset_id=asset.id,
-                provider_asset_id=asset.provider_asset_id,
+                provider_id=provider_id,
+                asset_id=asset_id,
+                provider_asset_id=provider_asset_id,
                 error=str(e),
                 error_type=e.__class__.__name__,
                 exc_info=True,
             )
-            return {
-                "status": "failed",
-                "reason": "provider_delete_failed",
-                "provider_id": asset.provider_id,
-                "asset_id": asset.id,
-                "provider_asset_id": asset.provider_asset_id,
-                "error": str(e),
-                "error_type": e.__class__.__name__,
-            }

@@ -339,6 +339,9 @@ class Asset(SQLModel, table=True):
         Index("idx_asset_sync_media", "sync_status", "media_type"),
         # Non-unique index for SHA256 lookups (multiple assets can share content)
         Index("idx_asset_user_sha256", "user_id", "sha256", unique=False, postgresql_where="sha256 IS NOT NULL"),
+        # Used by deletion sibling checks (stored_key/local_path dedup)
+        Index("idx_asset_stored_key", "stored_key", postgresql_where="stored_key IS NOT NULL"),
+        Index("idx_asset_local_path", "local_path", postgresql_where="local_path IS NOT NULL"),
     )
 
     def model_post_init(self, __context: Any) -> None:

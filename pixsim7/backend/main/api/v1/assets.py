@@ -10,7 +10,7 @@ Core CRUD operations. Additional endpoints split into:
 - assets_tags.py: Tag management
 - assets_upload_helper.py: Shared upload preparation logic
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi import status as http_status
 from fastapi.responses import FileResponse
 from pixsim7.backend.main.shared.errors import InvalidOperationError
@@ -419,6 +419,7 @@ async def delete_asset(
     asset_id: int,
     user: CurrentUser,
     asset_service: AssetSvc,
+    background_tasks: BackgroundTasks,
     delete_from_provider: bool = Query(
         default=True,
         description="Also delete asset from provider if it has a provider_asset_id"
@@ -433,7 +434,11 @@ async def delete_asset(
     Users can only delete their own assets.
     """
     try:
-        await asset_service.delete_asset(asset_id, user, delete_from_provider=delete_from_provider)
+        result = await asset_service.delete_asset(asset_id, user, delete_from_provider=delete_from_provider)
+        # Run provider deletion and file cleanup in background so the
+        # response returns immediately after the DB commit.
+        if cleanup := result.get("post_commit_cleanup"):
+            background_tasks.add_task(cleanup)
         return None
 
     except ResourceNotFoundError:

@@ -114,7 +114,9 @@ async def test_delete_asset_uses_owner_id_and_deletes_storage_after_commit() -> 
 
     with patch("pixsim7.backend.main.services.storage.get_storage_service", return_value=storage):
         with patch.object(event_bus, "publish", new=AsyncMock()) as publish_mock:
-            await service.delete_asset(asset_id=55, user=requester, delete_from_provider=False)
+            result = await service.delete_asset(asset_id=55, user=requester, delete_from_provider=False)
+            # Simulate what BackgroundTasks does — run post-commit cleanup
+            await result["post_commit_cleanup"]()
 
     storage.delete.assert_awaited_once_with("u/42/content/aa/hash.mp4")
     publish_mock.assert_awaited_once()

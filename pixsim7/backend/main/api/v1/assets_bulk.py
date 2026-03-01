@@ -10,7 +10,7 @@ import zipfile
 from pathlib import Path
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import List
@@ -91,6 +91,7 @@ async def bulk_delete_assets(
     request: BulkDeleteRequest,
     user: CurrentUser,
     asset_service: AssetSvc,
+    background_tasks: BackgroundTasks,
     delete_from_provider: bool = Query(
         default=True,
         description="Also delete assets from provider"
@@ -100,40 +101,17 @@ async def bulk_delete_assets(
     try:
         deleted_count = 0
         errors = []
-        warnings = []
 
         for asset_id in request.asset_ids:
             try:
-                delete_result = await asset_service.delete_asset(
+                result = await asset_service.delete_asset(
                     asset_id,
                     user,
                     delete_from_provider=delete_from_provider,
                 )
                 deleted_count += 1
-
-                provider_delete = (delete_result or {}).get("provider_delete") if isinstance(delete_result, dict) else None
-                if delete_from_provider and isinstance(provider_delete, dict):
-                    status = provider_delete.get("status")
-                    if status in {"failed", "skipped"}:
-                        provider_id = provider_delete.get("provider_id")
-                        if status == "failed":
-                            message = (
-                                f"Asset deleted locally, but provider delete failed"
-                                f"{f' ({provider_id})' if provider_id else ''}: "
-                                f"{provider_delete.get('error') or 'unknown error'}"
-                            )
-                        else:
-                            message = (
-                                f"Asset deleted locally, but provider delete was skipped"
-                                f"{f' ({provider_id})' if provider_id else ''}: "
-                                f"{provider_delete.get('reason') or 'unknown reason'}"
-                            )
-                        warnings.append({
-                            "asset_id": asset_id,
-                            "kind": "provider_delete",
-                            "message": message,
-                            "provider_delete": provider_delete,
-                        })
+                if cleanup := result.get("post_commit_cleanup"):
+                    background_tasks.add_task(cleanup)
             except Exception as e:
                 errors.append({
                     "asset_id": asset_id,
@@ -145,7 +123,6 @@ async def bulk_delete_assets(
             "deleted_count": deleted_count,
             "total_requested": len(request.asset_ids),
             "errors": errors if errors else None,
-            "warnings": warnings if warnings else None,
         }
 
     except Exception as e:
