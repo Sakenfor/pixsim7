@@ -139,6 +139,65 @@ Primary file:
 Notes:
 - This is context metadata only, not a persisted scene model
 
+## SceneArtifact vs ActionSelectionContext (Current Snapshot: March 2026)
+
+These two types are adjacent but not the same layer:
+
+- `SceneArtifact` is frontend prep persistence (saved Scene Prep draft state).
+- `ActionSelectionContext` is backend runtime selection input for primitives resolution.
+
+Current behavior in code:
+
+- Scene Prep launch compiles template fanout requests and executes generation batches.
+- Scene Prep launch writes `scene_prep_*` provenance into `run_context`.
+- Scene Prep launch does not call `/api/v1/game/dialogue/actions/select` automatically.
+- `ActionSelectionContext` is built in the game dialogue backend endpoint path and fed into `DynamicSlotPlanner -> compiler_v1 -> next_v1`.
+
+Practical interpretation:
+
+- `SceneArtifact` answers "what did the user prep and launch?"
+- `ActionSelectionContext` answers "what runtime constraints should select primitives now?"
+
+Bridge status:
+
+- No canonical direct mapper exists yet from `SceneArtifact.prep` to `ActionSelectionContext`.
+- Recommended bridge is a single deterministic mapper (not adapters everywhere) that projects:
+  - scene/cast/guidance choices -> runtime context fields
+  - stage/notes/candidates -> required or preferred tags
+  - selected lead/partner cast rows -> `leadNpcId`/`partnerNpcId`
+
+### Current Flow Diagram
+
+```text
+Scene Prep / Authoring Path (current)
+------------------------------------
+User -> ScenePrepPanel
+     -> Save/Load SceneArtifact (frontend store)
+     -> Launch Scene Prep Batch
+     -> compileTemplateFanoutRequest
+     -> executeTrackedTemplateFanoutRequest
+     -> generation queue / outputs
+        (run_context includes scene_prep_* provenance)
+
+
+Runtime Selection Path (current)
+--------------------------------
+Game/Narrative Runtime or API caller
+     -> POST /api/v1/game/dialogue/actions/select
+     -> build ActionSelectionContext
+     -> resolve_action_block_node(mode=query)
+     -> DynamicSlotPlanner -> compiler_v1 -> next_v1
+     -> selected primitive blocks/prompts/segments
+     -> downstream generation (when invoked)
+
+
+Bridge Status
+-------------
+SceneArtifact.prep
+     - - - no canonical mapper yet - - ->
+ActionSelectionContext
+```
+
 ## Where Scene Prep Fits
 
 `Scene Prep` should be treated as a separate pre-generation layer that can later bridge into scene systems.
