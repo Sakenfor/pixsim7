@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+
 import type {
   OverlayWidget as OverlayWidgetType,
   WidgetContext,
@@ -33,7 +34,7 @@ export interface OverlayWidgetProps {
   spacing: WidgetSpacing;
 
   /** Click handler callback */
-  onWidgetClick: (widgetId: string) => void;
+  onWidgetClick: (widgetId: string, event?: React.MouseEvent) => void;
 
   /** Ref callback for collision detection */
   onRef?: (el: HTMLDivElement | null) => void;
@@ -197,9 +198,9 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
   };
 
   // Handle click (only for wrapper-driven interaction)
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
     if (widget.interactive && !widget.handlesOwnInteraction) {
-      onWidgetClick(widget.id);
+      onWidgetClick(widget.id, e);
     }
   };
 

@@ -48,8 +48,8 @@ export interface BadgeWidgetConfig {
   /** Tooltip text */
   tooltip?: string;
 
-  /** Click handler */
-  onClick?: (data: any) => void;
+  /** Click handler — receives overlay data and the DOM event */
+  onClick?: (data: any, event?: React.MouseEvent) => void;
 
   /** Custom className */
   className?: string;

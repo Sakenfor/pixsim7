@@ -5,7 +5,7 @@
  * overlays, widgets) on container components throughout the application.
  */
 
-import type { ReactNode, RefObject } from 'react';
+import type { MouseEvent, ReactNode, RefObject } from 'react';
 
 // ============================================================================
 // Position System
@@ -229,7 +229,7 @@ export interface OverlayWidget<TData = any> {
   dismissible?: boolean;
 
   /** Click handler */
-  onClick?: (data: TData) => void;
+  onClick?: (data: TData, event?: MouseEvent) => void;
 
   // Accessibility
   /** ARIA label for screen readers */

@@ -684,7 +684,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
         shape: 'circle',
         tooltip: `Set: ${set?.name ?? 'Unknown'} (${item.assetSetRef.mode === 'random_each' ? 'random' : 'locked'})`,
         priority: 21,
-        onClick: (e: any) => {
+        onClick: (_data: any, e?: any) => {
           const target = e?.currentTarget ?? e?.target;
           if (target) {
             const rect = target.getBoundingClientRect();
@@ -709,7 +709,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
       tooltip: 'Link asset set',
       priority: 21,
       className: 'opacity-50 hover:opacity-100',
-      onClick: (e: any) => {
+      onClick: (_data: any, e?: any) => {
         const target = e?.currentTarget ?? e?.target;
         if (target) {
           const rect = target.getBoundingClientRect();
