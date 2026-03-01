@@ -27,6 +27,7 @@ from pixsim7.backend.main.domain.game.schemas.project_bundle import (
 )
 from pixsim7.backend.main.services.game.project_bundle import GameProjectBundleService
 from pixsim7.backend.main.services.game.project_storage import GameProjectStorageService
+from pixsim7.backend.main.services.game.derived_projections import resync_world_projections, ResyncResult
 
 
 router = APIRouter()
@@ -194,6 +195,40 @@ async def get_world(
     """
     world = await _get_owned_world(world_id, user, game_world_service)
     return await _build_world_detail(world, game_world_service)
+
+
+class ResyncProjectionsResponse(BaseModel):
+    npcs_synced: int
+    locations_synced: int
+    scenes_synced: int
+    elapsed_ms: float
+    warnings: List[str] = []
+
+
+@router.post("/{world_id}/projections/resync", response_model=ResyncProjectionsResponse)
+async def resync_projections(
+    world_id: int,
+    game_world_service: GameWorldSvc,
+    user: CurrentGamePrincipal,
+) -> ResyncProjectionsResponse:
+    """
+    Re-derive all projection read-models for a world.
+
+    Iterates every NPC (schedule + expression), location (hotspots), and
+    scene (graph) belonging to the world and re-runs the projection sync
+    functions.  Idempotent — unchanged projections are skipped.
+    """
+    await _get_owned_world(world_id, user, game_world_service)
+
+    result: ResyncResult = await resync_world_projections(game_world_service.db, world_id)
+
+    return ResyncProjectionsResponse(
+        npcs_synced=result.npcs_synced,
+        locations_synced=result.locations_synced,
+        scenes_synced=result.scenes_synced,
+        elapsed_ms=result.elapsed_ms,
+        warnings=result.warnings,
+    )
 
 
 @router.post("/{world_id}/advance", response_model=GameWorldDetail)

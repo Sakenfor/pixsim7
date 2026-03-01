@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import time
+from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 from sqlalchemy import select
@@ -167,3 +169,76 @@ async def sync_scene_graph_projection(db: AsyncSession, scene_id: int) -> None:
     db.add(scene)
     await db.commit()
     logger.debug("Synced scene graph projection for scene_id=%s", scene_id)
+
+
+@dataclass
+class ResyncResult:
+    npcs_synced: int = 0
+    locations_synced: int = 0
+    scenes_synced: int = 0
+    elapsed_ms: float = 0.0
+    warnings: List[str] = field(default_factory=list)
+
+
+async def resync_world_projections(db: AsyncSession, world_id: int) -> ResyncResult:
+    """
+    Resync all derived projections for a given world.
+
+    Iterates every NPC, location, and scene belonging to the world and
+    re-runs the projection sync functions.  Safe to call multiple times
+    (idempotent) — unchanged projections are skipped internally by each
+    sync function.
+    """
+    from pixsim7.backend.main.services.game.npc_schedule_projection import (
+        sync_npc_schedule_projection,
+    )
+
+    t0 = time.monotonic()
+    result = ResyncResult()
+
+    # --- NPCs: schedule + expression projections ---
+    npc_rows = await db.execute(
+        select(GameNPC.id).where(GameNPC.world_id == world_id).order_by(GameNPC.id)
+    )
+    npc_ids = [row[0] for row in npc_rows.all()]
+    for npc_id in npc_ids:
+        try:
+            await sync_npc_schedule_projection(db, npc_id)
+            await sync_npc_expression_projection(db, npc_id)
+            result.npcs_synced += 1
+        except Exception as exc:
+            result.warnings.append(f"npc {npc_id}: {exc}")
+            logger.warning("resync: npc %s failed: %s", npc_id, exc)
+
+    # --- Locations: hotspot projection ---
+    loc_rows = await db.execute(
+        select(GameLocation.id).where(GameLocation.world_id == world_id).order_by(GameLocation.id)
+    )
+    location_ids = [row[0] for row in loc_rows.all()]
+    for location_id in location_ids:
+        try:
+            await sync_location_hotspot_projection(db, location_id)
+            result.locations_synced += 1
+        except Exception as exc:
+            result.warnings.append(f"location {location_id}: {exc}")
+            logger.warning("resync: location %s failed: %s", location_id, exc)
+
+    # --- Scenes: scene graph projection ---
+    scene_rows = await db.execute(
+        select(GameScene.id).where(GameScene.world_id == world_id).order_by(GameScene.id)
+    )
+    scene_ids = [row[0] for row in scene_rows.all()]
+    for scene_id in scene_ids:
+        try:
+            await sync_scene_graph_projection(db, scene_id)
+            result.scenes_synced += 1
+        except Exception as exc:
+            result.warnings.append(f"scene {scene_id}: {exc}")
+            logger.warning("resync: scene %s failed: %s", scene_id, exc)
+
+    result.elapsed_ms = round((time.monotonic() - t0) * 1000, 2)
+    logger.info(
+        "resync_world_projections world_id=%s npcs=%d locations=%d scenes=%d elapsed=%.1fms",
+        world_id, result.npcs_synced, result.locations_synced, result.scenes_synced, result.elapsed_ms,
+    )
+    return result
