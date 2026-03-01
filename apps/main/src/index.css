@@ -234,50 +234,6 @@ button {
   transition-duration: var(--world-theme-motion-duration);
 }
 
-/* Custom animations that respect world theme motion */
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes scale-in {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes slide-in-from-bottom {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-fade-in {
-  animation: fade-in var(--world-theme-motion-duration) var(--world-theme-motion-easing);
-}
-
-.animate-scale-in {
-  animation: scale-in var(--world-theme-motion-duration) var(--world-theme-motion-easing);
-}
-
-.animate-slide-in-from-bottom {
-  animation: slide-in-from-bottom var(--world-theme-motion-duration) var(--world-theme-motion-easing);
-}
-
 /* Quick-gen: clamp motion on selected compact cards */
 .compact-asset-card--no-motion {
   animation: none !important;
