@@ -1,11 +1,5 @@
 import { Icon } from '@lib/icons';
-import { createBadgeWidget, type OverlayWidget } from '@lib/ui/overlay';
-
-export const TOP_RIGHT_BADGE_STACK_GROUP = 'badges-tr';
-export const COMPACT_TOP_RIGHT_BADGE_OFFSET = { x: -4, y: 4 } as const;
-
-export const TOP_LEFT_BADGE_STACK_GROUP = 'badges-tl';
-export const COMPACT_TOP_LEFT_BADGE_OFFSET = { x: 4, y: 4 } as const;
+import { createBadgeWidget, BADGE_SLOT, BADGE_PRIORITY, buildRemoveWidget, type OverlayWidget } from '@lib/ui/overlay';
 
 export interface CompactAssetCardLocalWidgetsOptions {
   showRemoveButton: boolean;
@@ -39,36 +33,26 @@ export function buildCompactAssetCardLocalWidgets({
 }: CompactAssetCardLocalWidgetsOptions): OverlayWidget[] {
   const widgets: OverlayWidget[] = [];
 
-  if (showRemoveButton) {
-    widgets.push(createBadgeWidget({
+  if (showRemoveButton && onRemove) {
+    widgets.push(buildRemoveWidget(onRemove, {
       id: 'remove-asset',
-      position: { anchor: 'top-right', offset: COMPACT_TOP_RIGHT_BADGE_OFFSET },
-      stackGroup: TOP_RIGHT_BADGE_STACK_GROUP,
-      visibility: { trigger: 'always', transition: 'none' },
-      variant: 'icon',
-      icon: 'close',
-      color: 'red',
-      shape: 'circle',
       tooltip: 'Remove',
-      onClick: onRemove,
+      visibility: { trigger: 'always' },
       className: '!bg-red-600 hover:!bg-red-700 !text-white opacity-70 hover:opacity-100',
-      priority: 30,
     }));
   }
 
   if (isLocalOnly) {
     widgets.push(createBadgeWidget({
       id: 'local-only-status',
-      position: { anchor: 'top-right', offset: COMPACT_TOP_RIGHT_BADGE_OFFSET },
-      stackGroup: TOP_RIGHT_BADGE_STACK_GROUP,
-      visibility: { trigger: 'always', transition: 'none' },
+      ...BADGE_SLOT.topRight,
       variant: 'icon',
       icon: 'alertTriangle',
       color: 'orange',
       shape: 'circle',
       tooltip: 'Local only - not synced to provider',
       className: 'cq-btn-md !bg-amber-500/80',
-      priority: 20,
+      priority: BADGE_PRIORITY.interactive,
     }));
   }
 
@@ -76,10 +60,8 @@ export function buildCompactAssetCardLocalWidgets({
     widgets.push({
       id: 'locked-frame',
       type: 'custom',
-      position: { anchor: 'top-left', offset: COMPACT_TOP_LEFT_BADGE_OFFSET },
-      stackGroup: TOP_LEFT_BADGE_STACK_GROUP,
-      visibility: { trigger: 'always', transition: 'none' },
-      priority: 15,
+      ...BADGE_SLOT.topLeft,
+      priority: BADGE_PRIORITY.status,
       render: () => (
         <div className="cq-badge-xs bg-accent/90 text-accent-text rounded whitespace-nowrap flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-white" />
@@ -93,11 +75,11 @@ export function buildCompactAssetCardLocalWidgets({
     widgets.push({
       id: 'generate-button',
       type: 'custom',
-      position: { anchor: 'bottom-left', offset: { x: 4, y: -4 } },
+      ...BADGE_SLOT.bottomLeft,
       visibility: { trigger: 'hover-container' },
       interactive: true,
       handlesOwnInteraction: true,
-      priority: 20,
+      priority: BADGE_PRIORITY.interactive,
       render: () => (
         <button
           onClick={(e) => { e.stopPropagation(); onGenerate(); }}

@@ -15,6 +15,8 @@ import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import {
   createBadgeWidget,
+  BADGE_SLOT,
+  BADGE_PRIORITY,
   createMenuWidget,
   createVideoScrubWidget,
   createTooltipWidget,
@@ -127,7 +129,6 @@ export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayW
   return createBadgeWidget({
     id: 'primary-icon',
     position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
-    visibility: { trigger: 'always' },
     variant: 'icon',
     icon: MEDIA_TYPE_ICON[mediaType],
     color: 'gray',
@@ -136,7 +137,7 @@ export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayW
     className: hasRing
       ? `!bg-white dark:!bg-neutral-800 ring-2 ${ringColor} ring-offset-1`
       : '!bg-white/95 dark:!bg-neutral-800/95 backdrop-blur-sm',
-    priority: 10,
+    priority: BADGE_PRIORITY.info,
   });
 }
 
@@ -257,7 +258,7 @@ export function createStatusWidget(props: MediaCardResolvedProps): OverlayWidget
       },
       triggerType: 'click',
       placement: 'bottom-right',
-      priority: 20,
+      priority: BADGE_PRIORITY.interactive,
     });
   }
 
@@ -266,7 +267,6 @@ export function createStatusWidget(props: MediaCardResolvedProps): OverlayWidget
     id: 'status-badge',
     position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
     stackGroup: 'badges-tr',
-    visibility: { trigger: 'always' },
     variant: 'icon',
     icon: statusMeta.icon,
     color: statusColor,
@@ -274,7 +274,7 @@ export function createStatusWidget(props: MediaCardResolvedProps): OverlayWidget
     tooltip: statusMeta.label,
     onClick: actions?.onOpenDetails ? () => actions.onOpenDetails!(id) : undefined,
     className: `${statusBgClass} backdrop-blur-md`,
-    priority: 20,
+    priority: BADGE_PRIORITY.interactive,
   });
 }
 
@@ -294,13 +294,12 @@ export function createDurationWidget(props: MediaCardResolvedProps): OverlayWidg
 
   return createBadgeWidget({
     id: 'duration',
-    position: { anchor: 'bottom-right', offset: { x: -4, y: -4 } },
-    visibility: { trigger: 'always' },
+    ...BADGE_SLOT.bottomRight,
     variant: 'text',
     labelBinding: createBindingFromValue('label', () => durationText),
     color: 'gray',
     className: '!bg-black/60 !text-white text-[10px]',
-    priority: 5,
+    priority: BADGE_PRIORITY.background,
   });
 }
 
@@ -515,7 +514,7 @@ export function createUploadButton(props: MediaCardResolvedProps): OverlayWidget
     type: 'custom',
     position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
     visibility: { trigger: 'hover-container' },
-    priority: 25,
+    priority: BADGE_PRIORITY.important,
     interactive: true,
     handlesOwnInteraction: true,
     render: (data: MediaCardOverlayData) => (
@@ -709,7 +708,7 @@ export function createInfoPopover(props: MediaCardResolvedProps): OverlayWidget<
     delay: settings.delay,
     maxWidth: 300,
     rich: true,
-    priority: 30,
+    priority: BADGE_PRIORITY.action,
   });
 }
 
@@ -722,7 +721,6 @@ export function createFavoriteWidget(props: MediaCardResolvedProps): OverlayWidg
     id: 'favorite-toggle',
     position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
     stackGroup: 'badges-tr',
-    visibility: { trigger: 'always' },
     variant: 'icon',
     icon: 'heart',
     color: 'gray',

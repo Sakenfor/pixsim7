@@ -13,7 +13,7 @@ import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { useDockviewId } from '@lib/dockview';
 import { getArrayParamLimits, type ParamSpec } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
-import { createBadgeWidget } from '@lib/ui/overlay';
+import { createBadgeWidget, BADGE_SLOT, BADGE_PRIORITY } from '@lib/ui/overlay';
 
 import { uploadAssetToProvider, type AssetModel } from '@features/assets';
 import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
@@ -41,12 +41,6 @@ import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolve
 import { useQuickGenerateController } from '@features/prompts';
 import { useProviderIdForModel } from '@features/providers';
 
-import {
-  COMPACT_TOP_LEFT_BADGE_OFFSET,
-  COMPACT_TOP_RIGHT_BADGE_OFFSET,
-  TOP_LEFT_BADGE_STACK_GROUP,
-  TOP_RIGHT_BADGE_STACK_GROUP,
-} from '@/components/media/assetCardLocalWidgets';
 import { OPERATION_METADATA } from '@/types/operations';
 
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
@@ -515,15 +509,13 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const buildWarningWidget = useCallback(
     (tooltip: string) => createBadgeWidget({
       id: 'card-warning',
-      position: { anchor: 'top-right', offset: COMPACT_TOP_RIGHT_BADGE_OFFSET },
-      stackGroup: TOP_RIGHT_BADGE_STACK_GROUP,
-      visibility: { trigger: 'always', transition: 'none' },
+      ...BADGE_SLOT.topRight,
       variant: 'icon',
       icon: 'alertTriangle',
       color: 'amber',
       shape: 'circle',
       tooltip,
-      priority: 25,
+      priority: BADGE_PRIORITY.important,
       className: '!bg-amber-500/90 !text-white',
     }),
     [],
@@ -533,14 +525,12 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const buildSlotIndexWidget = useCallback(
     (slotIdx: number) => createBadgeWidget({
       id: 'slot-index',
-      position: { anchor: 'top-left', offset: COMPACT_TOP_LEFT_BADGE_OFFSET },
-      stackGroup: TOP_LEFT_BADGE_STACK_GROUP,
-      visibility: { trigger: 'always', transition: 'none' },
+      ...BADGE_SLOT.topLeft,
       variant: 'text',
-      labelBinding: { id: 'label', resolve: () => String(slotIdx + 1) },
+      labelBinding: { kind: 'fn', target: 'label', fn: () => String(slotIdx + 1) },
       color: 'accent',
       className: 'cq-badge !bg-accent !text-accent-text font-medium',
-      priority: 22,
+      priority: BADGE_PRIORITY.slotIndex,
     }),
     [],
   );
@@ -713,9 +703,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
       const set = useAssetSetStore.getState().getSet(item.assetSetRef.setId);
       return createBadgeWidget({
         id: 'asset-set-ref',
-        position: { anchor: 'top-left', offset: COMPACT_TOP_LEFT_BADGE_OFFSET },
-        stackGroup: TOP_LEFT_BADGE_STACK_GROUP,
-        visibility: { trigger: 'always', transition: 'none' },
+        ...BADGE_SLOT.topLeft,
         variant: 'icon',
         icon: isRandom ? 'shuffle' : 'lock',
         color: 'purple',
@@ -739,8 +727,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const buildSetLinkWidget = useCallback(
     (slotIdx: number) => createBadgeWidget({
       id: 'asset-set-link',
-      position: { anchor: 'top-left', offset: COMPACT_TOP_LEFT_BADGE_OFFSET },
-      stackGroup: TOP_LEFT_BADGE_STACK_GROUP,
+      ...BADGE_SLOT.topLeft,
       visibility: { trigger: 'hover-container', transition: 'fade' },
       variant: 'icon',
       icon: 'shuffle',

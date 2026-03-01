@@ -1103,7 +1103,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
             createBadgeWidget({
               id: 'active-set-indicator',
               position: { anchor: 'top-left', offset: { x: 9, y: 36 } },
-              visibility: { trigger: 'always' },
               variant: 'icon',
               color: 'green',
               shape: 'circle',

@@ -14,6 +14,38 @@ import { Icon } from '@lib/icons';
 
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 
+// ---------------------------------------------------------------------------
+// Badge position + stackGroup presets
+// ---------------------------------------------------------------------------
+
+export const BADGE_SLOT = {
+  topLeft:     { position: { anchor: 'top-left',     offset: { x: 4, y: 4 } } as WidgetPosition,   stackGroup: 'badges-tl' },
+  topRight:    { position: { anchor: 'top-right',    offset: { x: -4, y: 4 } } as WidgetPosition,  stackGroup: 'badges-tr' },
+  bottomLeft:  { position: { anchor: 'bottom-left',  offset: { x: 4, y: -4 } } as WidgetPosition },
+  bottomRight: { position: { anchor: 'bottom-right', offset: { x: -4, y: -4 } } as WidgetPosition },
+} as const;
+
+// ---------------------------------------------------------------------------
+// Semantic priority constants
+// ---------------------------------------------------------------------------
+
+export const BADGE_PRIORITY = {
+  background:   5,   // use-count, passive info
+  info:        10,   // media-type icon, provider status
+  status:      15,   // locked-frame, upload status
+  interactive: 20,   // set-badge, set-link, action buttons
+  slotIndex:   22,   // slot numbering
+  important:   25,   // pin toggle, warnings
+  action:      30,   // remove button, primary actions
+  generation:  35,   // generate button (topmost)
+} as const;
+
+// ---------------------------------------------------------------------------
+// Default visibility (trigger: 'always', no transition)
+// ---------------------------------------------------------------------------
+
+const DEFAULT_VISIBILITY: VisibilityConfig = { trigger: 'always', transition: 'none' };
+
 export interface BadgeWidgetConfig {
   /** Widget ID */
   id: string;
@@ -21,8 +53,8 @@ export interface BadgeWidgetConfig {
   /** Position */
   position: WidgetPosition;
 
-  /** Visibility configuration */
-  visibility: VisibilityConfig;
+  /** Visibility configuration (defaults to { trigger: 'always', transition: 'none' }) */
+  visibility?: VisibilityConfig;
 
   /** Badge variant */
   variant: 'icon' | 'text' | 'icon-text';
@@ -68,7 +100,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
   const {
     id,
     position,
-    visibility,
+    visibility = DEFAULT_VISIBILITY,
     variant,
     icon,
     labelBinding,
@@ -173,7 +205,6 @@ export const BadgePresets = {
     createBadgeWidget({
       id,
       position,
-      visibility: { trigger: 'always' },
       variant: 'icon',
       icon: mediaTypeIcon,
       color: 'blue',
@@ -200,7 +231,6 @@ export const BadgePresets = {
     return createBadgeWidget({
       id,
       position,
-      visibility: { trigger: 'always' },
       variant: 'icon',
       icon: config.icon,
       color: config.color,
@@ -220,7 +250,6 @@ export const BadgePresets = {
     createBadgeWidget({
       id,
       position,
-      visibility: { trigger: 'always' },
       variant: 'text',
       labelBinding: {
         kind: 'fn',

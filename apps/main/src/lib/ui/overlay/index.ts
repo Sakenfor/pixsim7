@@ -73,6 +73,8 @@ export type { OverlayWidgetProps } from './OverlayWidget';
 export {
   createBadgeWidget,
   BadgePresets,
+  BADGE_SLOT,
+  BADGE_PRIORITY,
   createButtonWidget,
   createPanelWidget,
   createMenuWidget,
@@ -83,6 +85,18 @@ export {
   createTooltipWidget,
   createSceneViewHost,
 } from './widgets';
+
+// Widget presets
+export {
+  buildRemoveWidget,
+  buildPinToggleWidget,
+  buildCountBadgeWidget,
+} from './widgetPresets';
+
+export type {
+  RemoveWidgetOptions,
+  CountBadgeOptions,
+} from './widgetPresets';
 
 export type {
   BadgeWidgetConfig,

@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+ 
 /**
  * Media Card Overlay Presets
  *
@@ -9,7 +9,7 @@
 import { createBindingFromValue } from '@lib/editing-core';
 
 import type { OverlayPreset, OverlayConfiguration, OverlayWidget } from '../types';
-import { createBadgeWidget } from '../widgets/BadgeWidget';
+import { createBadgeWidget, BADGE_PRIORITY } from '../widgets/BadgeWidget';
 import { createButtonWidget } from '../widgets/ButtonWidget';
 import { createPanelWidget } from '../widgets/PanelWidget';
 
@@ -228,13 +228,12 @@ export const reviewPreset: OverlayPreset = {
         createBadgeWidget({
           id: 'review-status',
           position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
-          visibility: { trigger: 'always' },
           variant: 'icon-text',
           icon: 'eye',
           labelBinding: createBindingFromValue('label', 'Review'),
           color: 'orange',
           shape: 'rounded',
-          priority: 15,
+          priority: BADGE_PRIORITY.status,
         }),
       ),
 

@@ -268,7 +268,6 @@ export function createGenerationStatusWidget(props: MediaCardResolvedProps): Ove
     id: 'generation-status',
     position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
     stackGroup: 'badges-tr',
-    visibility: { trigger: 'always' },
     variant: 'icon',
     icon: config.icon,
     color: config.color,
