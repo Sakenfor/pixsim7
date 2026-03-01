@@ -197,6 +197,79 @@ export async function attemptSensualTouch(req: SensualTouchRequest): Promise<Sen
 }
 
 // =============================================================================
+// Dialogue Action Selection (behavior-driven)
+// =============================================================================
+
+export interface BuildActionSelectionRequestFromBehaviorRequest {
+  session_id: number;
+  world_id: number;
+  lead_npc_id: number;
+  partner_npc_id?: number | null;
+
+  world_time?: number | null;
+  include_scene_intent_tag?: boolean;
+
+  pose?: string | null;
+  mood?: string | null;
+  intimacy_level?: string | null;
+  branch_intent?: string | null;
+  previous_block_id?: string | null;
+  required_tags?: string[];
+  exclude_tags?: string[];
+  max_duration?: number | null;
+}
+
+export interface ActionSelectionRequestPayload {
+  location_tag?: string | null;
+  pose?: string | null;
+  intimacy_level?: string | null;
+  mood?: string | null;
+  branch_intent?: string | null;
+  previous_block_id?: string | null;
+  lead_npc_id: number;
+  partner_npc_id?: number | null;
+  required_tags: string[];
+  exclude_tags: string[];
+  max_duration?: number | null;
+  session_id?: number | null;
+  world_id?: number | null;
+}
+
+export interface ActionSelectionResponsePayload {
+  blocks: Array<Record<string, unknown>>;
+  total_duration: number;
+  resolved_images: Array<Record<string, unknown>>;
+  composition_assets: Record<string, unknown>;
+  compatibility_score: number;
+  fallback_reason?: string | null;
+  prompts: string[];
+  segments: Array<Record<string, unknown>>;
+}
+
+export interface BuildActionSelectionRequestFromBehaviorResponse {
+  request: ActionSelectionRequestPayload;
+  derived: Record<string, unknown>;
+}
+
+export async function buildActionSelectionRequestFromBehavior(
+  request: BuildActionSelectionRequestFromBehaviorRequest,
+): Promise<BuildActionSelectionRequestFromBehaviorResponse> {
+  return pixsimClient.post<BuildActionSelectionRequestFromBehaviorResponse>(
+    '/game/dialogue/actions/request-from-behavior',
+    request,
+  );
+}
+
+export async function selectActionBlocksFromBehavior(
+  request: BuildActionSelectionRequestFromBehaviorRequest,
+): Promise<ActionSelectionResponsePayload> {
+  return pixsimClient.post<ActionSelectionResponsePayload>(
+    '/game/dialogue/actions/select-from-behavior',
+    request,
+  );
+}
+
+// =============================================================================
 // Sessions API
 // =============================================================================
 

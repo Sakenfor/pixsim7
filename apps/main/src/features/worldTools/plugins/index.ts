@@ -5,17 +5,18 @@
  * Register your custom world tools here.
  */
 
-import { relationshipDashboardTool } from './relationshipDashboard';
-import { questLogTool } from './questLog';
+import { actionSelectionDebugTool } from './actionSelectionDebug';
 import { inventoryTool } from './inventory';
-import { worldInfoTool } from './worldInfo';
 import { moodDebugTool } from './moodDebug';
+import { npcBrainDebugTool } from './npcBrainDebug';
+import { npcPresenceDebugTool } from './npcPresenceDebug';
+import { questLogTool } from './questLog';
+import { relationshipDashboardTool } from './relationshipDashboard';
+import { relationshipDiffDebugTool } from './relationshipDiffDebug';
 import { sessionFlagsDebugTool } from './sessionFlagsDebug';
 import { turnHistoryDebugTool } from './turnHistoryDebug';
-import { npcBrainDebugTool } from './npcBrainDebug';
+import { worldInfoTool } from './worldInfo';
 import { worldManifestDebugTool } from './worldManifestDebug';
-import { npcPresenceDebugTool } from './npcPresenceDebug';
-import { relationshipDiffDebugTool } from './relationshipDiffDebug';
 import { worldThemeEditorTool } from './worldThemeEditor';
 
 // Export all plugins
@@ -32,6 +33,7 @@ export {
   npcPresenceDebugTool,
   relationshipDiffDebugTool,
   worldThemeEditorTool,
+  actionSelectionDebugTool,
 };
 
 // Export a helper to register all built-in tools
@@ -48,4 +50,5 @@ export const builtInWorldTools = [
   npcPresenceDebugTool,
   relationshipDiffDebugTool,
   worldThemeEditorTool,
+  actionSelectionDebugTool,
 ];

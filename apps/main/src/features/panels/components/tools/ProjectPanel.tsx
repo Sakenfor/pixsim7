@@ -11,6 +11,7 @@ import {
   renameSavedGameProject,
   saveGameProject,
 } from '@lib/api';
+import { useEditorContext } from '@lib/context/editorContext';
 import {
   clearAuthoringProjectBundleDirtyState,
   clearDraftAfterSave,
@@ -25,6 +26,7 @@ import {
 
 import { useProjectIndexStore, useProjectSessionStore, useWorldContextStore } from '@features/scene';
 
+import { ActionSelectionDebugSection } from '@/components/game/ActionSelectionDebugSection';
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
 
 import { PanelHeader } from '../shared/PanelHeader';
@@ -86,6 +88,7 @@ export function ProjectPanel() {
   const [lastAction, setLastAction] = useState<LastProjectAction | null>(null);
 
   const { worldId, setWorldId, setLocationId } = useWorldContextStore();
+  const editorContext = useEditorContext();
   const savedProjects = useProjectIndexStore((state) => state.projects);
   const selectedProjectId = useProjectIndexStore((state) => state.selectedProjectId);
   const setSavedProjects = useProjectIndexStore((state) => state.setProjects);
@@ -119,6 +122,11 @@ export function ProjectPanel() {
     () => savedProjects.find((entry) => entry.id === selectedProjectId) ?? null,
     [savedProjects, selectedProjectId],
   );
+  const runtimeSessionId = useMemo(() => {
+    const value = editorContext.runtime.sessionId;
+    const next = typeof value === 'number' ? value : Number(value ?? NaN);
+    return Number.isFinite(next) ? next : null;
+  }, [editorContext.runtime.sessionId]);
 
   const loadSavedProjects = async (opts?: { silent?: boolean }) => {
     try {
@@ -740,6 +748,13 @@ export function ProjectPanel() {
       </div>
 
       <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 text-xs">
+        <ActionSelectionDebugSection
+          defaultWorldId={worldId}
+          defaultSessionId={runtimeSessionId}
+        />
+      </div>
+
+      <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 text-xs">
         <div className="font-semibold mb-1">Registered Extensions</div>
         {registeredExtensions.length > 0 ? (
           <div className="text-neutral-600 dark:text-neutral-300">
@@ -820,5 +835,3 @@ export function ProjectPanel() {
     </div>
   );
 }
-
-
