@@ -4,6 +4,9 @@
 **Status:** 💡 DESIGN PROPOSAL
 **Related:** ACTION_BLOCKS_I2I_EXTENSION.md
 
+
+> Note (March 1, 2026): This proposal includes legacy Action Blocks service references. Active runtime/game flows now use primitives-first composition.
+
 ## Problem
 
 The MediaCard "Generate" button should intelligently suggest next actions based on the asset's existing metadata, rather than showing generic options.

@@ -44,7 +44,6 @@ export const arcGraphModule: Module = {
     appMap: {
       docs: ['docs/game/NPC_RESPONSE_GRAPH_DESIGN.md'],
       backend: [
-        'pixsim7.backend.main.api.v1.action_blocks',
         'pixsim7.backend.main.api.v1.game_scenes',
         'pixsim7.backend.main.api.v1.character_graph',
       ],
