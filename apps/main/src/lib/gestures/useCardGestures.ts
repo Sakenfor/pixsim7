@@ -10,11 +10,12 @@ import {
   computeGestureCount,
   isScalableAction,
   isChainDurationAction,
+  resolveCascadeAction,
   type GestureResolverContext,
 } from './gestureActions';
 import {
   useGestureConfigStore,
-  getActionForDirection,
+  getCascadeActionsForDirection,
   getChainActionForDirection,
 } from './useGestureConfigStore';
 import { useGestureSecondaryStore, resolveDurationFromDy } from './useGestureSecondaryStore';
@@ -54,6 +55,12 @@ export interface UseCardGesturesResult {
   edgeInset: number;
   /** Raw gesture phase string for OverlayContainer customState */
   phase: 'idle' | 'pending' | 'committed';
+  /** Current cascade tier index (0-based), undefined when not cascade */
+  tierIndex: number | undefined;
+  /** Total cascade tiers for current direction, undefined when not cascade */
+  totalTiers: number | undefined;
+  /** True when direction has multiple actions (cascade mode active) */
+  isCascade: boolean;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -69,6 +76,7 @@ export function useCardGestures({
   const gestureEnabled = useGestureConfigStore((s) => s.enabled);
   const gestureThreshold = useGestureConfigStore((s) => s.threshold);
   const gestureEdgeInset = useGestureConfigStore((s) => s.edgeInset);
+  const cascadeStepPixels = useGestureConfigStore((s) => s.cascadeStepPixels);
   const gestureUp = useGestureConfigStore((s) => s.gestureUp);
   const gestureDown = useGestureConfigStore((s) => s.gestureDown);
   const gestureLeft = useGestureConfigStore((s) => s.gestureLeft);
@@ -109,31 +117,45 @@ export function useCardGestures({
     onGesture: useCallback(
       (event: GestureEvent) => {
         if (event.type !== 'swipe') return;
-        const actionId = getActionForDirection(gestureDirections, event.direction);
-        const handler = resolveGestureHandler(actionId, resolverContext);
+        const cascadeActions = getCascadeActionsForDirection(gestureDirections, event.direction);
+        const cascade = resolveCascadeAction(
+          cascadeActions, event.distance, gestureThreshold, cascadeStepPixels,
+        );
+        const handler = resolveGestureHandler(cascade.actionId, resolverContext);
         if (!handler) return;
 
-        const count = isScalableAction(actionId)
+        // Scalable count only when not in cascade mode
+        const count = !cascade.isCascade && isScalableAction(cascade.actionId)
           ? computeGestureCount(Math.abs(event.dx), gestureThreshold)
           : undefined;
+
         const chainAction = getChainActionForDirection(chainDirections, event.direction);
         const duration = isChainDurationAction(chainAction)
           ? resolveDurationFromDy(event.dy, useGestureSecondaryStore.getState())
           : undefined;
         handler(id, count, duration !== undefined ? { duration } : undefined);
       },
-      [gestureDirections, chainDirections, gestureThreshold, resolverContext, id],
+      [gestureDirections, chainDirections, gestureThreshold, cascadeStepPixels, resolverContext, id],
     ),
   });
 
   // Visual feedback derivations
   const isCommitted = activeGesture?.phase === 'committed';
 
-  const activeActionId = isCommitted
-    ? getActionForDirection(gestureDirections, activeGesture.direction)
+  // Live cascade resolution — re-resolves on every pointermove
+  const activeCascade = isCommitted
+    ? resolveCascadeAction(
+        getCascadeActionsForDirection(gestureDirections, activeGesture.direction),
+        activeGesture.distance,
+        gestureThreshold,
+        cascadeStepPixels,
+      )
     : null;
 
-  const activeCount = isCommitted && activeActionId
+  const activeActionId = activeCascade?.actionId ?? null;
+
+  // Scalable count only in single-action (non-cascade) mode
+  const activeCount = isCommitted && activeActionId && activeCascade && !activeCascade.isCascade
     ? computeGestureCount(Math.abs(activeGesture.dx), gestureThreshold)
     : undefined;
 
@@ -160,5 +182,8 @@ export function useCardGestures({
     durationUnit: secondaryState.unit,
     edgeInset: gestureEdgeInset,
     phase: activeGesture?.phase ?? 'idle',
+    tierIndex: activeCascade?.isCascade ? activeCascade.tierIndex : undefined,
+    totalTiers: activeCascade?.isCascade ? activeCascade.totalTiers : undefined,
+    isCascade: activeCascade?.isCascade ?? false,
   };
 }

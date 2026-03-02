@@ -62,6 +62,50 @@ export function isScalableAction(actionId: string): boolean {
   return !!def && 'scalable' in def && !!def.scalable;
 }
 
+// ─── Distance-based action cascade ──────────────────────────────────────────
+
+export interface CascadeResolution {
+  actionId: string;
+  tierIndex: number;
+  totalTiers: number;
+  /** true when the direction has >1 action configured */
+  isCascade: boolean;
+}
+
+/**
+ * Resolve which action tier is active based on drag distance.
+ *
+ * - Tier 0 activates at the commit `threshold`
+ * - Each subsequent tier at `threshold + (tierIndex * stepPixels)`
+ * - Single-element arrays return `isCascade: false` (preserving scalable count behavior)
+ */
+export function resolveCascadeAction(
+  actions: string[],
+  distance: number,
+  threshold: number,
+  stepPixels: number,
+): CascadeResolution {
+  if (actions.length <= 1) {
+    return {
+      actionId: actions[0] ?? 'none',
+      tierIndex: 0,
+      totalTiers: actions.length,
+      isCascade: false,
+    };
+  }
+
+  // Distance past the commit threshold determines the tier
+  const pastThreshold = Math.max(0, distance - threshold);
+  const tierIndex = Math.min(actions.length - 1, Math.floor(pastThreshold / stepPixels));
+
+  return {
+    actionId: actions[tierIndex],
+    tierIndex,
+    totalTiers: actions.length,
+    isCascade: true,
+  };
+}
+
 // ─── Chain gesture actions (perpendicular axis after primary commit) ─────────
 
 export interface ChainGestureActionDef {

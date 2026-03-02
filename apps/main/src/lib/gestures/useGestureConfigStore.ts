@@ -7,10 +7,11 @@ export interface GestureConfigState {
   enabled: boolean;
   threshold: number;
   edgeInset: number;
-  gestureUp: string;
-  gestureDown: string;
-  gestureLeft: string;
-  gestureRight: string;
+  cascadeStepPixels: number;
+  gestureUp: string[];
+  gestureDown: string[];
+  gestureLeft: string[];
+  gestureRight: string[];
   /** Chain action for perpendicular axis after primary commit (per direction) */
   chainUp: string;
   chainDown: string;
@@ -19,7 +20,8 @@ export interface GestureConfigState {
   setEnabled: (v: boolean) => void;
   setThreshold: (v: number) => void;
   setEdgeInset: (v: number) => void;
-  setGestureAction: (direction: GestureDirection, actionId: string) => void;
+  setCascadeStepPixels: (v: number) => void;
+  setCascadeActions: (direction: GestureDirection, actions: string[]) => void;
   setChainAction: (direction: GestureDirection, chainActionId: string) => void;
 }
 
@@ -37,11 +39,11 @@ const chainKeys: Record<GestureDirection, keyof Pick<GestureConfigState, 'chainU
   right: 'chainRight',
 };
 
-export interface GestureDirectionMap {
-  gestureUp: string;
-  gestureDown: string;
-  gestureLeft: string;
-  gestureRight: string;
+export interface CascadeDirectionMap {
+  gestureUp: string[];
+  gestureDown: string[];
+  gestureLeft: string[];
+  gestureRight: string[];
 }
 
 export interface ChainDirectionMap {
@@ -51,7 +53,7 @@ export interface ChainDirectionMap {
   chainRight: string;
 }
 
-export function getActionForDirection(map: GestureDirectionMap, dir: GestureDirection): string {
+export function getCascadeActionsForDirection(map: CascadeDirectionMap, dir: GestureDirection): string[] {
   return map[directionKeys[dir]];
 }
 
@@ -65,10 +67,11 @@ export const useGestureConfigStore = create<GestureConfigState>()(
       enabled: true,
       threshold: 30,
       edgeInset: 0.2,
-      gestureUp: 'upload',
-      gestureDown: 'archive',
-      gestureLeft: 'none',
-      gestureRight: 'quickGenerate',
+      cascadeStepPixels: 50,
+      gestureUp: ['upload'],
+      gestureDown: ['archive'],
+      gestureLeft: ['none'],
+      gestureRight: ['quickGenerate'],
       chainUp: 'none',
       chainDown: 'none',
       chainLeft: 'none',
@@ -76,11 +79,31 @@ export const useGestureConfigStore = create<GestureConfigState>()(
       setEnabled: (v) => set({ enabled: v }),
       setThreshold: (v) => set({ threshold: v }),
       setEdgeInset: (v) => set({ edgeInset: v }),
-      setGestureAction: (direction, actionId) =>
-        set({ [directionKeys[direction]]: actionId }),
+      setCascadeStepPixels: (v) => set({ cascadeStepPixels: v }),
+      setCascadeActions: (direction, actions) =>
+        set({ [directionKeys[direction]]: actions }),
       setChainAction: (direction, chainActionId) =>
         set({ [chainKeys[direction]]: chainActionId }),
     }),
-    { name: 'gesture-config-v1' },
+    {
+      name: 'gesture-config-v1',
+      version: 2,
+      migrate: (persisted: any, version: number) => {
+        if (version < 2) {
+          // v1→v2: wrap single string direction values in arrays, add cascadeStepPixels
+          const state = persisted as Record<string, any>;
+          for (const key of ['gestureUp', 'gestureDown', 'gestureLeft', 'gestureRight'] as const) {
+            const val = state[key];
+            if (typeof val === 'string') {
+              state[key] = [val];
+            }
+          }
+          if (state.cascadeStepPixels == null) {
+            state.cascadeStepPixels = 50;
+          }
+        }
+        return persisted as GestureConfigState;
+      },
+    },
   ),
 );
