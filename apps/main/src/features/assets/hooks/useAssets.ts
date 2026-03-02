@@ -48,6 +48,9 @@ export type AssetFilters = {
   has_parent?: boolean;
   has_children?: boolean;
 
+  // Asset ID whitelist (for set-based filtering)
+  asset_ids?: number[];
+
   // Prompt analysis filters (dynamic)
   analysis_tags?: string | string[];
 
@@ -89,6 +92,8 @@ export function useAssets(options?: {
   const [totalPages, setTotalPages] = useState(1);
   const currentPageRef = useRef(currentPage);
   currentPageRef.current = currentPage;
+  const totalPagesRef = useRef(totalPages);
+  totalPagesRef.current = totalPages;
 
   // Guard to avoid duplicate initial loads in React StrictMode
   const initialLoadRequestedRef = useRef(false);
@@ -241,6 +246,8 @@ export function useAssets(options?: {
   }, [loading, hasMore, buildQueryParams]);
 
   // Page-based navigation (replaces content instead of appending)
+  // Handles overshoot: if the requested page is beyond available data,
+  // automatically clamps to the last valid page (or page 1).
   const goToPage = useCallback(async (page: number) => {
     if (loading || page < 1) return;
     setLoading(true);
@@ -250,6 +257,25 @@ export function useAssets(options?: {
     requestIdRef.current += 1;
     const thisRequestId = requestIdRef.current;
 
+    const applyResult = (models: AssetModel[], resultPage: number, gotFullPage: boolean) => {
+      setItems(models);
+      setCurrentPage(resultPage);
+      if (gotFullPage) {
+        setTotalPages(prev => Math.max(prev, resultPage + 1));
+        setHasMore(true);
+      } else if (models.length > 0) {
+        setTotalPages(resultPage);
+        setHasMore(false);
+      } else if (resultPage > 1) {
+        setTotalPages(resultPage - 1);
+        setHasMore(false);
+      } else {
+        setTotalPages(1);
+        setHasMore(false);
+      }
+      setCursor(null);
+    };
+
     try {
       const currentFilters = filtersRef.current;
       const offset = (page - 1) * limit;
@@ -258,38 +284,58 @@ export function useAssets(options?: {
       const data: AssetListResponse = await listAssets(queryParams);
 
       // Ignore stale response if filters changed during request
-      if (thisRequestId !== requestIdRef.current) {
+      if (thisRequestId !== requestIdRef.current) return;
+
+      const newModels = fromAssetResponses(data.assets);
+      const gotFullPage = newModels.length === limit;
+
+      // Overshoot detection: empty results on page > 1 means we went past the end.
+      // Compute the effective last page and fetch that instead.
+      if (newModels.length === 0 && page > 1) {
+        // The server told us this page is empty — figure out where the data ends.
+        // Best guess: totalPagesRef has the most recent known total from prior fetches.
+        const effectiveLastPage = Math.max(1, totalPagesRef.current);
+        const clampedPage = Math.min(page - 1, effectiveLastPage);
+
+        if (clampedPage >= page) {
+          // Can't clamp further, just show empty
+          applyResult(newModels, page, false);
+          return;
+        }
+
+        // Fetch the clamped page
+        const clampedOffset = (clampedPage - 1) * limit;
+        const clampedParams = buildQueryParams(currentFilters, clampedOffset);
+        const clampedData: AssetListResponse = await listAssets(clampedParams);
+
+        if (thisRequestId !== requestIdRef.current) return;
+
+        const clampedModels = fromAssetResponses(clampedData.assets);
+
+        if (clampedModels.length > 0) {
+          applyResult(clampedModels, clampedPage, clampedModels.length === limit);
+          return;
+        }
+
+        // Clamped page also empty (large overshoot) — fall back to page 1
+        if (clampedPage > 1) {
+          const fallbackParams = buildQueryParams(currentFilters, 0);
+          const fallbackData: AssetListResponse = await listAssets(fallbackParams);
+
+          if (thisRequestId !== requestIdRef.current) return;
+
+          const fallbackModels = fromAssetResponses(fallbackData.assets);
+          applyResult(fallbackModels, 1, fallbackModels.length === limit);
+          return;
+        }
+
+        // Already at page 1 and empty — no results at all
+        applyResult(clampedModels, 1, false);
         return;
       }
 
-      // Replace items (page mode)
-      const newModels = fromAssetResponses(data.assets);
-      setItems(newModels);
-      setCurrentPage(page);
-
-      // Estimate total pages based on heuristics
-      // If we got a full page, assume there are more
-      const gotFullPage = newModels.length === limit;
-      if (gotFullPage) {
-        // At least one more page exists
-        setTotalPages(prev => Math.max(prev, page + 1));
-        setHasMore(true);
-      } else if (newModels.length > 0) {
-        // Partial page = this is the last page
-        setTotalPages(page);
-        setHasMore(false);
-      } else if (page > 1) {
-        // Empty page and not first page = went too far
-        setTotalPages(page - 1);
-        setHasMore(false);
-      } else {
-        // Empty first page = no results
-        setTotalPages(1);
-        setHasMore(false);
-      }
-
-      // Clear cursor since we're in page mode
-      setCursor(null);
+      // Normal path — page has data
+      applyResult(newModels, page, gotFullPage);
     } catch (e: unknown) {
       // Ignore errors from stale requests
       if (thisRequestId !== requestIdRef.current) {

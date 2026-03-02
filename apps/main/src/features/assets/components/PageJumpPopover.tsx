@@ -43,10 +43,12 @@ export function PageJumpPopover({
   const submit = useCallback(() => {
     const page = parseInt(value, 10);
     if (!isNaN(page) && page >= 1) {
-      onGoToPage(page);
+      // When we know the exact total (hasMore=false), clamp client-side
+      const clamped = !hasMore && totalPages >= 1 ? Math.min(page, totalPages) : page;
+      onGoToPage(clamped);
     }
     setOpen(false);
-  }, [value, onGoToPage]);
+  }, [value, onGoToPage, hasMore, totalPages]);
 
   const appendDigit = useCallback((digit: string) => {
     setValue((prev) => prev + digit);

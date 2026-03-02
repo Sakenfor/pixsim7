@@ -940,10 +940,17 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
 
   useEffect(() => {
     if (controller.loading) return;
-    if (pageFromUrl !== controller.currentPage) {
-      controller.goToPage(pageFromUrl);
+    if (pageFromUrl === controller.currentPage) return;
+
+    // If the controller clamped the page (e.g. page 5 → 3 because only 3 pages exist),
+    // sync the URL down to the clamped value instead of fighting the clamp.
+    if (controller.currentPage < pageFromUrl && controller.totalPages < pageFromUrl) {
+      syncPageInUrl(controller.currentPage, true);
+      return;
     }
-  }, [controller.currentPage, controller.goToPage, controller.loading, pageFromUrl]);
+
+    controller.goToPage(pageFromUrl);
+  }, [controller.currentPage, controller.goToPage, controller.loading, controller.totalPages, pageFromUrl, syncPageInUrl]);
 
   // Convert selected IDs to GalleryAsset objects
   const selectedAssets: GalleryAsset[] = useMemo(() => {

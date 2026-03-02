@@ -377,12 +377,6 @@ function MiniGalleryContent({
       ? rawHasMore && allItems.length < resultCap
       : rawHasMore;
 
-  useEffect(() => {
-    if (!usePaging) return;
-    if (currentPage <= totalPages) return;
-    goToPage(Math.max(1, totalPages));
-  }, [usePaging, currentPage, totalPages, goToPage]);
-
   // Infinite scroll via intersection observer (only for useAssets mode + infinite)
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
