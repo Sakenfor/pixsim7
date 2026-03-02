@@ -3,7 +3,7 @@
  *
  * Manage default analyzer selection and advanced analyzer overrides.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 import {
   ASSET_ANALYZER_INTENT_KEYS,
@@ -36,6 +36,8 @@ import { pixsimClient } from '@/lib/api';
 import { useAuthStore } from '@/stores/authStore';
 
 import { settingsRegistry } from '../../lib/core/registry';
+
+import { AnalyzerCatalog } from './AnalyzerCatalog';
 
 type FormMode = 'create' | 'edit';
 
@@ -453,6 +455,7 @@ export function AnalyzersSettings() {
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
   const [isSavingDefaults, setIsSavingDefaults] = useState(false);
   const [defaultsError, setDefaultsError] = useState<string | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
 
   const defaultPromptAnalyzer = usePromptSettingsStore((s) => s.defaultAnalyzer);
   const setDefaultPromptAnalyzer = usePromptSettingsStore((s) => s.setDefaultAnalyzer);
@@ -645,6 +648,19 @@ export function AnalyzersSettings() {
     setEditingId(null);
     setFormError(null);
     setShowForm(true);
+  };
+
+  const handleAddInstanceFromCatalog = (analyzerId: string) => {
+    setFormMode('create');
+    setFormState({ ...INITIAL_FORM_STATE, analyzer_id: analyzerId });
+    setEditingId(null);
+    setFormError(null);
+    setShowAdvanced(true);
+    setShowForm(true);
+    // Scroll the form into view after it renders
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
   };
 
   const handleEdit = (instance: AnalyzerInstance) => {
@@ -1165,16 +1181,18 @@ export function AnalyzersSettings() {
             )}
 
             {showForm && (
-              <InstanceForm
-                mode={formMode}
-                formState={formState}
-                analyzers={analyzers}
-                isSubmitting={isSubmitting}
-                error={formError}
-                onChange={handleFormChange}
-                onSubmit={handleSubmit}
-                onCancel={handleCancel}
-              />
+              <div ref={formRef}>
+                <InstanceForm
+                  mode={formMode}
+                  formState={formState}
+                  analyzers={analyzers}
+                  isSubmitting={isSubmitting}
+                  error={formError}
+                  onChange={handleFormChange}
+                  onSubmit={handleSubmit}
+                  onCancel={handleCancel}
+                />
+              </div>
             )}
 
             {instances.length === 0 ? (
@@ -1224,46 +1242,20 @@ export function AnalyzersSettings() {
         )}
       </section>
 
-      {/* Info Section */}
+      {/* Analyzer Catalog — master-detail view */}
       <section className="space-y-2 pt-4 border-t border-neutral-200 dark:border-neutral-700">
         <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-          Available Analyzers
+          Analyzer Catalog
         </h3>
-        <div className="grid gap-2">
-          {analyzers.map(analyzer => (
-            <div
-              key={analyzer.id}
-              className="p-2 bg-neutral-50 dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-700 rounded text-[10px]"
-            >
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-neutral-800 dark:text-neutral-100">
-                  {analyzer.name}
-                </span>
-                <span className={`px-1.5 py-0.5 rounded ${
-                  analyzer.kind === 'llm'
-                    ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
-                    : analyzer.kind === 'vision'
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                    : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-                }`}>
-                  {analyzer.kind}
-                </span>
-                <span className="px-1.5 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400">
-                  {analyzer.target}
-                </span>
-                {analyzer.is_default && (
-                  <span className="px-1.5 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">
-                    default
-                  </span>
-                )}
-              </div>
-              <div className="text-neutral-500 dark:text-neutral-400 mt-1">
-                <span className="font-mono">{analyzer.id}</span>
-                {analyzer.description && <> — {analyzer.description}</>}
-              </div>
-            </div>
-          ))}
-        </div>
+        <AnalyzerCatalog
+          analyzers={analyzers}
+          instances={instances}
+          deletingIds={deletingIds}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onToggle={handleToggle}
+          onAddInstance={handleAddInstanceFromCatalog}
+        />
       </section>
 
     </div>
