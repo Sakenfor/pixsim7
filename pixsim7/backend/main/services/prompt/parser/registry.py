@@ -9,7 +9,7 @@ Analyzer ID convention:
 - asset:object-detection, asset:ocr            -> media analysis
 """
 
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -29,6 +29,31 @@ class AnalyzerTarget(str, Enum):
     ASSET = "asset"      # Media/asset analysis
 
 
+class InstanceOptionDescriptor(BaseModel):
+    """Describes a single instance-level option an analyzer exposes."""
+    id: str
+    type: str = "bool"
+    label: str
+    description: str = ""
+    default: Any = None
+    storage: str = "config"  # "config" or "column"
+
+
+SHARED_INSTANCE_OPTIONS: Dict[AnalyzerTarget, List[InstanceOptionDescriptor]] = {
+    AnalyzerTarget.ASSET: [
+        InstanceOptionDescriptor(
+            id="on_ingest",
+            type="bool",
+            label="Auto-run on ingest",
+            description="Automatically run this analyzer when assets are ingested",
+            default=False,
+            storage="column",
+        ),
+    ],
+    AnalyzerTarget.PROMPT: [],
+}
+
+
 class AnalyzerInfo(BaseModel):
     """Information about a registered analyzer."""
     id: str
@@ -43,6 +68,16 @@ class AnalyzerInfo(BaseModel):
     enabled: bool = True
     is_default: bool = False
     is_legacy: bool = False  # Legacy aliases
+    instance_options: List[InstanceOptionDescriptor] = Field(default_factory=list)
+
+
+def get_effective_instance_options(analyzer: AnalyzerInfo) -> List[InstanceOptionDescriptor]:
+    """Merge shared target-level options with analyzer-specific options."""
+    shared = SHARED_INSTANCE_OPTIONS.get(analyzer.target, [])
+    specific_ids = {opt.id for opt in analyzer.instance_options}
+    merged = [opt for opt in shared if opt.id not in specific_ids]
+    merged.extend(analyzer.instance_options)
+    return merged
 
 
 class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):

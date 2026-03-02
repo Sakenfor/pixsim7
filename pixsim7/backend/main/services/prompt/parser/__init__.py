@@ -22,6 +22,8 @@ from .registry import (
     AnalyzerInfo,
     AnalyzerKind,
     AnalyzerTarget,
+    InstanceOptionDescriptor,
+    get_effective_instance_options,
 )
 from .analyzer_plugins import setup_analyzer_plugin_hooks
 from .dsl_adapter import (
@@ -60,6 +62,8 @@ __all__ = [
     "AnalyzerInfo",
     "AnalyzerKind",
     "AnalyzerTarget",
+    "InstanceOptionDescriptor",
+    "get_effective_instance_options",
     "setup_analyzer_plugin_hooks",
     # DSL Adapter
     "analyze_prompt",

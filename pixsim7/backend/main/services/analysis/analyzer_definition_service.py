@@ -18,6 +18,7 @@ from pixsim7.backend.main.services.prompt.parser import (
     AnalyzerInfo,
     AnalyzerKind,
     AnalyzerTarget,
+    InstanceOptionDescriptor,
 )
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
@@ -80,6 +81,11 @@ def _definition_to_info(definition: AnalyzerDefinition) -> Optional[AnalyzerInfo
     if definition.preset_id:
         config = {**config, "preset_id": definition.preset_id}
 
+    instance_options = [
+        InstanceOptionDescriptor(**opt) if isinstance(opt, dict) else opt
+        for opt in (definition.instance_options or [])
+    ]
+
     return AnalyzerInfo(
         id=definition.analyzer_id,
         name=definition.name,
@@ -93,6 +99,7 @@ def _definition_to_info(definition: AnalyzerDefinition) -> Optional[AnalyzerInfo
         enabled=definition.enabled,
         is_default=definition.is_default,
         is_legacy=definition.is_legacy,
+        instance_options=instance_options,
     )
 
 
@@ -173,6 +180,7 @@ class AnalyzerDefinitionService:
         enabled: bool,
         is_default: bool,
         created_by_user_id: Optional[int],
+        instance_options: Optional[list] = None,
     ) -> AnalyzerDefinition:
         existing = await self.get_definition(analyzer_id)
         if existing:
@@ -201,6 +209,7 @@ class AnalyzerDefinitionService:
             provider_id=provider_id,
             model_id=model_id,
             config=config or {},
+            instance_options=instance_options or [],
             source_plugin_id="api",
             enabled=enabled,
             is_default=is_default,
@@ -240,6 +249,7 @@ class AnalyzerDefinitionService:
         preset_id: Optional[str] = None,
         enabled: Optional[bool] = None,
         is_default: Optional[bool] = None,
+        instance_options: Optional[list] = None,
     ) -> Optional[AnalyzerDefinition]:
         definition = await self.get_definition(analyzer_id)
         if not definition:
@@ -270,6 +280,8 @@ class AnalyzerDefinitionService:
             definition.base_analyzer_id = base_analyzer_id
         if preset_id is not None:
             definition.preset_id = preset_id
+        if instance_options is not None:
+            definition.instance_options = instance_options
         if enabled is not None:
             definition.enabled = enabled
             if enabled is False:

@@ -67,6 +67,12 @@ class AnalyzerDefinition(SQLModel, table=True):
         description="Analyzer-specific configuration defaults",
     )
 
+    instance_options: list = Field(
+        default_factory=list,
+        sa_column=Column(JSON, default=list),
+        description="Instance-level option descriptors for dynamic UI rendering",
+    )
+
     source_plugin_id: Optional[str] = Field(
         default="api",
         max_length=100,

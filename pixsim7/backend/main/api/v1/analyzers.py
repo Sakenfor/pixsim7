@@ -14,7 +14,12 @@ from pixsim7.backend.main.api.dependencies import (
     DatabaseSession,
     AnalysisGatewaySvc,
 )
-from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerTarget, AnalyzerKind
+from pixsim7.backend.main.services.prompt.parser import (
+    analyzer_registry,
+    AnalyzerTarget,
+    AnalyzerKind,
+    get_effective_instance_options,
+)
 from pixsim7.backend.main.infrastructure.services.gateway import ProxyResult
 from pixsim7.backend.main.services.analysis.analyzer_instance_service import (
     AnalyzerInstanceService,
@@ -51,6 +56,16 @@ async def _proxy_request(
     )
 
 
+class InstanceOptionResponse(BaseModel):
+    """Descriptor for a single instance-level option."""
+    id: str
+    type: str
+    label: str
+    description: str = ""
+    default: Optional[object] = None
+    storage: str = "config"
+
+
 class AnalyzerResponse(BaseModel):
     """Response schema for analyzer info."""
     id: str
@@ -63,6 +78,7 @@ class AnalyzerResponse(BaseModel):
     source_plugin_id: Optional[str] = None
     enabled: bool
     is_default: bool
+    instance_options: List[InstanceOptionResponse] = []
 
 
 class AnalyzersListResponse(BaseModel):
@@ -81,6 +97,7 @@ class AnalyzerInstanceCreate(BaseModel):
     config: dict = Field(default_factory=dict)
     enabled: bool = True
     priority: int = 0
+    on_ingest: bool = False
 
 
 class AnalyzerInstanceUpdate(BaseModel):
@@ -92,6 +109,7 @@ class AnalyzerInstanceUpdate(BaseModel):
     config: Optional[dict] = None
     enabled: Optional[bool] = None
     priority: Optional[int] = None
+    on_ingest: Optional[bool] = None
 
 
 class AnalyzerInstanceResponse(BaseModel):
@@ -105,6 +123,7 @@ class AnalyzerInstanceResponse(BaseModel):
     config: dict
     enabled: bool
     priority: int
+    on_ingest: bool
     created_at: str
     updated_at: str
 
@@ -138,6 +157,7 @@ class AnalyzerDefinitionCreate(BaseModel):
     provider_id: Optional[str] = Field(None, max_length=50)
     model_id: Optional[str] = Field(None, max_length=100)
     config: Optional[dict] = Field(default_factory=dict)
+    instance_options: List[dict] = Field(default_factory=list)
     enabled: bool = True
     is_default: bool = False
 
@@ -153,6 +173,7 @@ class AnalyzerDefinitionUpdate(BaseModel):
     base_analyzer_id: Optional[str] = Field(None, max_length=100)
     preset_id: Optional[str] = Field(None, max_length=100)
     config: Optional[dict] = None
+    instance_options: Optional[List[dict]] = None
     enabled: Optional[bool] = None
     is_default: Optional[bool] = None
 
@@ -328,6 +349,7 @@ async def create_analyzer(
             config=data.config,
             base_analyzer_id=data.base_analyzer_id,
             preset_id=data.preset_id,
+            instance_options=data.instance_options,
             enabled=data.enabled,
             is_default=data.is_default,
             created_by_user_id=admin.id,
@@ -747,6 +769,7 @@ async def list_analyzer_instances(
                 config=_mask_instance_config(instance.config),
                 enabled=instance.enabled,
                 priority=instance.priority,
+                on_ingest=instance.on_ingest,
                 created_at=instance.created_at.isoformat() if instance.created_at else "",
                 updated_at=instance.updated_at.isoformat() if instance.updated_at else "",
             )
@@ -788,6 +811,7 @@ async def create_analyzer_instance(
             config=data.config,
             enabled=data.enabled,
             priority=data.priority,
+            on_ingest=data.on_ingest,
         )
     except AnalyzerInstanceConfigError as e:
         raise HTTPException(status_code=400, detail=f"Invalid instance config: {e.message}")
@@ -951,6 +975,7 @@ def _mask_instance_config(config: dict) -> dict:
 
 
 def _build_analyzer_response(analyzer) -> AnalyzerResponse:
+    effective_options = get_effective_instance_options(analyzer)
     return AnalyzerResponse(
         id=analyzer.id,
         name=analyzer.name,
@@ -962,6 +987,17 @@ def _build_analyzer_response(analyzer) -> AnalyzerResponse:
         source_plugin_id=analyzer.source_plugin_id,
         enabled=analyzer.enabled,
         is_default=analyzer.is_default,
+        instance_options=[
+            InstanceOptionResponse(
+                id=opt.id,
+                type=opt.type,
+                label=opt.label,
+                description=opt.description,
+                default=opt.default,
+                storage=opt.storage,
+            )
+            for opt in effective_options
+        ],
     )
 
 
