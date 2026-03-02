@@ -8,6 +8,9 @@ export interface UseMediaPreviewSourceOptions {
   thumbUrl?: string;
   previewUrl?: string;
   remoteUrl?: string;
+  /** Override for video blob URL fetching. Defaults to true for video, meaning fetch immediately.
+   *  Pass `false` to defer the authenticated blob fetch until the video is actually needed. */
+  mediaActive?: boolean;
 }
 
 export interface UseMediaPreviewSourceResult {
@@ -22,7 +25,7 @@ export interface UseMediaPreviewSourceResult {
 export function useMediaPreviewSource(
   options: UseMediaPreviewSourceOptions,
 ): UseMediaPreviewSourceResult {
-  const { mediaType, thumbUrl, previewUrl, remoteUrl } = options;
+  const { mediaType, thumbUrl, previewUrl, remoteUrl, mediaActive } = options;
 
   const { thumbSrc, thumbLoading, thumbFailed, thumbRetry } = useResolvedAssetMedia({
     thumbUrl,
@@ -34,7 +37,7 @@ export function useMediaPreviewSource(
   const isBackendVideoSrc = rawVideoSrc ? isBackendUrl(rawVideoSrc, BACKEND_BASE) : false;
   const { mediaSrc: resolvedVideoSrc } = useResolvedAssetMedia({
     mediaUrl: isBackendVideoSrc ? rawVideoSrc : undefined,
-    mediaActive: mediaType === 'video',
+    mediaActive: mediaActive ?? (mediaType === 'video'),
   });
   const videoSrc = mediaType === 'video' ? (isBackendVideoSrc ? resolvedVideoSrc : rawVideoSrc) : undefined;
   const usePosterImage = mediaType === 'video' && !!thumbSrc && isBackendVideoSrc;

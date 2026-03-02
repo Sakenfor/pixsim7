@@ -21,7 +21,7 @@
  * - [ ] Multi-provider support in UI
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 
 import { useContextMenuOptional } from '@lib/dockview';
@@ -290,7 +290,7 @@ function GestureOverlay({ direction, actionId, count, duration, durationUnit, ti
 
 // ─── MediaCard ──────────────────────────────────────────────────────────────
 
-export function MediaCard(props: MediaCardProps) {
+export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   const resolved = resolveMediaCardProps(props);
   const {
     id,
@@ -663,4 +663,4 @@ export function MediaCard(props: MediaCardProps) {
       </OverlayContainer>
     </div>
   );
-}
+});

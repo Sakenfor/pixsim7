@@ -1,6 +1,5 @@
-import { Button, Dropdown } from '@pixsim7/shared.ui';
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { Button } from '@pixsim7/shared.ui';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 
@@ -8,8 +7,9 @@ import { listAssetGroups } from '@lib/api/assets';
 import type { AssetGroupListResponse, AssetGroupRequest } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { Icon } from '@lib/icons';
-import { createBadgeWidget, getMediaCardPreset } from '@lib/ui/overlay';
+import { buildSetIndicatorWidget, buildAddToSetWidget, getMediaCardPreset } from '@lib/ui/overlay';
 
+import { FilterChip, useFilterChipState } from '@features/gallery';
 import type { GalleryToolContext, GalleryAsset } from '@features/gallery/lib/core/types';
 import { galleryToolSelectors } from '@features/gallery/lib/registry';
 import {
@@ -72,174 +72,113 @@ import { PaginationStrip } from './shared/PaginationStrip';
 
 
 // ---------------------------------------------------------------------------
-// ActiveSetChip — compact chip for the DynamicFilters extra-chips slot
+// AssetSetChip — single chip for filter + target management per set
 // ---------------------------------------------------------------------------
 
-function ActiveSetChip({
+function AssetSetChip({
+  chipKey,
+  chipState,
   manualSets,
   activeManualSet,
   filterSetIds,
   onToggleFilter,
+  onSetTarget,
   selectedCount,
   onAddSelected,
 }: {
+  chipKey: string;
+  chipState: ReturnType<typeof useFilterChipState>;
   manualSets: ManualAssetSet[];
   activeManualSet: ManualAssetSet | undefined;
   filterSetIds: string[];
   onToggleFilter: (setId: string) => void;
+  onSetTarget: (setId?: string) => void;
   selectedCount: number;
   onAddSelected: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const anchorRef = useRef<HTMLButtonElement | null>(null);
-  const [rect, setRect] = useState<DOMRect | null>(null);
-  const hoverTimeout = useRef<number | null>(null);
-
-  const filterCount = filterSetIds.length;
-  const isFiltering = filterCount > 0;
-  const isVisible = open || hovered;
-  const isInFlow = isFiltering;
-
-  useLayoutEffect(() => {
-    if (!isVisible || !anchorRef.current) {
-      setRect(null);
-      return;
-    }
-    const update = () => setRect(anchorRef.current?.getBoundingClientRect() ?? null);
-    update();
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, [isVisible]);
-
-  const openHover = useCallback(() => {
-    if (hoverTimeout.current !== null) {
-      window.clearTimeout(hoverTimeout.current);
-      hoverTimeout.current = null;
-    }
-    setHovered(true);
-  }, []);
-
-  const closeHover = useCallback(() => {
-    if (hoverTimeout.current !== null) {
-      window.clearTimeout(hoverTimeout.current);
-    }
-    hoverTimeout.current = window.setTimeout(() => {
-      setHovered(false);
-    }, 120);
-  }, []);
-
   if (manualSets.length === 0) return null;
-
-  // Label for the chip when filtering
-  const chipLabel = filterCount === 1
-    ? manualSets.find((s) => s.id === filterSetIds[0])?.name ?? 'Set'
-    : `${filterCount} sets`;
-
+  const activeCount = filterSetIds.length + (activeManualSet ? 1 : 0);
   return (
-    <div
-      className={`relative group flex-none ${isInFlow ? '' : 'w-7 h-7'}`}
-      style={!isInFlow && isVisible ? { zIndex: 30 } : undefined}
-      onMouseEnter={openHover}
-      onMouseLeave={closeHover}
+    <FilterChip
+      chipKey={chipKey}
+      label="Sets"
+      icon="layers"
+      count={activeCount}
+      isOpen={chipState.openFilters.has(chipKey)}
+      isHovered={chipState.hoveredKey === chipKey}
+      onToggleOpen={() => chipState.toggleOpen(chipKey)}
+      onClose={() => chipState.closeChip(chipKey)}
+      onMouseEnter={() => chipState.openHover(chipKey)}
+      onMouseLeave={() => chipState.closeHover(chipKey)}
+      popoverMode="portal"
+      wide
     >
-      <button
-        type="button"
-        ref={anchorRef}
-        title="Asset Sets"
-        aria-expanded={open}
-        onClick={() => setOpen((prev) => !prev)}
-        className={`${isInFlow ? 'relative' : 'absolute left-0 top-0 w-7 justify-center'} z-20 inline-flex items-center gap-1.5 h-7 px-1.5 rounded border text-xs transition-[background-color,border-color] duration-200 ${
-          isFiltering
-            ? 'border-emerald-500/50 bg-emerald-500/10 text-neutral-800 dark:text-neutral-100'
-            : open
-              ? 'border-neutral-300 dark:border-neutral-600 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200'
-              : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200'
-        }`}
-      >
-        <span className="relative flex-shrink-0">
-          <Icon name={isFiltering ? 'filter' : 'target'} size={14} className="w-3.5 h-3.5" />
-        </span>
-        {isInFlow && (
-          <span className="font-medium whitespace-nowrap">{chipLabel}</span>
-        )}
-      </button>
-      {/* Floating label for idle state */}
-      {!isInFlow && (
-        <span
-          className={`absolute left-[27px] top-0 z-20 h-7 inline-flex items-center gap-1 pl-1 pr-1.5 rounded-r border border-l-0 text-xs font-medium whitespace-nowrap pointer-events-none transition-opacity duration-150 text-neutral-700 dark:text-neutral-200 ${
-            isVisible
-              ? 'opacity-100 border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900'
-              : 'opacity-0 border-transparent'
-          }`}
-        >
-          Asset Sets
-        </span>
-      )}
-      {/* Dropdown */}
-      {isVisible && rect && createPortal(
-        <div
-          className="z-popover"
-          style={{
-            position: 'fixed',
-            left: Math.max(8, Math.min(rect.left, window.innerWidth - 240 - 8)),
-            top: rect.bottom + 6,
-          }}
-          onMouseEnter={openHover}
-          onMouseLeave={closeHover}
-        >
-          <Dropdown
-            isOpen={isVisible}
-            onClose={() => { setOpen(false); setHovered(false); }}
-            positionMode="static"
-            minWidth="200px"
-            className="max-w-[280px]"
-          >
-            <div className="flex flex-col gap-0.5">
-              {manualSets.map((s) => {
-                const checked = filterSetIds.includes(s.id);
-                return (
-                  <label
-                    key={s.id}
-                    className="flex items-center gap-2 px-1.5 py-1 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => onToggleFilter(s.id)}
-                      className="accent-emerald-500"
-                    />
-                    <span className="flex-1 truncate">{s.name}</span>
-                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 tabular-nums">
-                      {s.assetIds.length}
-                    </span>
-                  </label>
-                );
-              })}
-              {/* Add selected action */}
-              {selectedCount > 0 && activeManualSet && (
-                <>
-                  <div className="border-t border-neutral-200 dark:border-neutral-700 my-1" />
-                  <button
-                    type="button"
-                    onClick={() => { onAddSelected(); setOpen(false); }}
-                    className="flex items-center gap-1.5 px-1.5 py-1 text-sm text-emerald-700 dark:text-emerald-300 rounded hover:bg-emerald-500/10 transition-colors"
-                  >
-                    <Icon name="plus" size={12} />
-                    <span>Add {selectedCount} to {activeManualSet.name}</span>
-                  </button>
-                </>
-              )}
+      <div className="flex flex-col gap-0.5 p-1">
+        {/* Column headers */}
+        <div className="flex items-center gap-2 px-1.5 pb-0.5 text-[10px] font-medium text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
+          <span className="w-4 text-center flex-shrink-0" title="Filter: show only assets in this set">F</span>
+          <span className="w-4 text-center flex-shrink-0" title="Target: add assets to this set">T</span>
+          <span className="flex-1">Set</span>
+        </div>
+        {manualSets.map((s) => {
+          const isFiltered = filterSetIds.includes(s.id);
+          const isTarget = activeManualSet?.id === s.id;
+          return (
+            <div
+              key={s.id}
+              className={`flex items-center gap-2 px-1.5 py-1 text-sm rounded transition-colors ${
+                isTarget
+                  ? 'bg-emerald-500/5'
+                  : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+              }`}
+            >
+              {/* Filter checkbox */}
+              <input
+                type="checkbox"
+                checked={isFiltered}
+                onChange={() => onToggleFilter(s.id)}
+                title={isFiltered ? 'Stop filtering by this set' : 'Filter gallery to this set'}
+                className="accent-blue-500 w-4 h-4 flex-shrink-0 cursor-pointer"
+              />
+              {/* Target toggle */}
+              <button
+                type="button"
+                onClick={() => onSetTarget(isTarget ? undefined : s.id)}
+                title={isTarget ? 'Clear add target' : 'Set as add target'}
+                className="flex-shrink-0 w-4 h-4 flex items-center justify-center"
+              >
+                <span className={`w-2.5 h-2.5 rounded-full transition-colors ${
+                  isTarget
+                    ? 'bg-emerald-500 ring-2 ring-emerald-500/30'
+                    : 'bg-neutral-300 dark:bg-neutral-600 hover:bg-emerald-400/60'
+                }`} />
+              </button>
+              {/* Set name & count */}
+              <span className={`flex-1 truncate ${
+                isTarget ? 'text-emerald-700 dark:text-emerald-300 font-medium' : 'text-neutral-700 dark:text-neutral-200'
+              }`}>{s.name}</span>
+              <span className="text-[10px] text-neutral-400 dark:text-neutral-500 tabular-nums">
+                {s.assetIds.length}
+              </span>
             </div>
-          </Dropdown>
-        </div>,
-        document.body,
-      )}
-    </div>
+          );
+        })}
+        {/* Add selected action */}
+        {selectedCount > 0 && activeManualSet && (
+          <>
+            <div className="border-t border-neutral-200 dark:border-neutral-700 my-1" />
+            <button
+              type="button"
+              onClick={() => { onAddSelected(); chipState.closeChip(chipKey); }}
+              className="flex items-center gap-1.5 px-1.5 py-1 text-sm text-emerald-700 dark:text-emerald-300 rounded hover:bg-emerald-500/10 transition-colors"
+            >
+              <Icon name="plus" size={12} />
+              <span>Add {selectedCount} to {activeManualSet.name}</span>
+            </button>
+          </>
+        )}
+      </div>
+    </FilterChip>
   );
 }
 
@@ -307,9 +246,11 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   );
   const addAssetsToSet = useAssetSetStore((s) => s.addAssetsToSet);
   const activeManualSetId = useGalleryApplyTargetStore((s) => s.activeManualSetId);
+  const setActiveManualSetId = useGalleryApplyTargetStore((s) => s.setActiveManualSetId);
   const clearActiveManualSetId = useGalleryApplyTargetStore((s) => s.clearActiveManualSetId);
   const filterSetIds = useGalleryApplyTargetStore((s) => s.filterSetIds);
   const toggleFilterSet = useGalleryApplyTargetStore((s) => s.toggleFilterSet);
+  const setChipState = useFilterChipState();
 
   const groupSearchOverrides = useMemo(() => {
     // Build union of asset IDs from checked filter sets
@@ -1054,21 +995,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           }
         }}
       >
-        {activeManualSet && !isInActiveManualSet && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              addAssetToActiveManualSet(a.id);
-            }}
-            className="absolute top-1.5 left-1.5 z-20 inline-flex items-center gap-1 px-1.5 h-6 rounded-md border text-[10px] font-medium shadow-sm transition-opacity opacity-0 group-hover:opacity-100 border-neutral-200 dark:border-neutral-700 bg-white/95 dark:bg-neutral-900/95 text-neutral-700 dark:text-neutral-200 hover:bg-accent/10 hover:border-accent/40"
-            title={`Add to active set: ${activeManualSet.name}`}
-          >
-            <Icon name="plus" size={10} />
-            <span>Add</span>
-          </button>
-        )}
         <MediaCard
           asset={a}
           onOpen={() => openGalleryAsset(a, controller.assets)}
@@ -1084,18 +1010,20 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
             refresh: resetAssets,
           })}
           contextMenuSelection={selectedAssets}
-          customWidgets={isInActiveManualSet ? [
-            createBadgeWidget({
-              id: 'active-set-indicator',
-              position: { anchor: 'top-left', offset: { x: 9, y: 36 } },
-              variant: 'icon',
-              color: 'green',
-              shape: 'circle',
-              tooltip: `In active set: ${activeManualSet?.name ?? 'Active Set'}`,
-              className: '!w-2.5 !h-2.5 !min-w-0 !min-h-0 !p-0 !bg-emerald-500 ring-2 ring-white/90 dark:ring-neutral-900/90 shadow-sm',
-              priority: 11,
-            }),
-          ] : undefined}
+          customWidgets={(() => {
+            const widgets = [];
+            if (isInActiveManualSet) {
+              widgets.push(buildSetIndicatorWidget({
+                tooltip: `In active set: ${activeManualSet?.name ?? 'Active Set'}`,
+              }));
+            } else if (activeManualSet) {
+              widgets.push(buildAddToSetWidget(
+                () => addAssetToActiveManualSet(a.id),
+                { tooltip: `Add to active set: ${activeManualSet.name}` },
+              ));
+            }
+            return widgets.length > 0 ? widgets : undefined;
+          })()}
           overlayConfig={overlayConfig}
           overlayPresetId={overlayPresetId}
         />
@@ -1194,11 +1122,14 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
               onFiltersChange={(f) => setFilters(f)}
               showCounts
               extraChips={
-                <ActiveSetChip
+                <AssetSetChip
+                  chipKey="asset-sets"
+                  chipState={setChipState}
                   manualSets={manualSets}
                   activeManualSet={activeManualSet}
                   filterSetIds={filterSetIds}
                   onToggleFilter={toggleFilterSet}
+                  onSetTarget={setActiveManualSetId}
                   selectedCount={controller.selectedAssetIds.size}
                   onAddSelected={addSelectedToActiveManualSet}
                 />
