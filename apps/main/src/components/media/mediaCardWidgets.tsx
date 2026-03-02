@@ -11,6 +11,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 
 import { createBindingFromValue } from '@lib/editing-core';
+import type { ModelFamilyInfo } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import {
@@ -33,7 +34,7 @@ import {
 import { applyQuickTag, normalizeTagInput } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
 import { useTagAutocomplete, TAG_NAMESPACES } from '@features/assets/lib/useTagAutocomplete';
-import { useProviders } from '@features/providers';
+import { useProviders, providerCapabilityRegistry } from '@features/providers';
 
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardResolvedProps } from './MediaCard';
@@ -129,6 +130,7 @@ export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayW
   return createBadgeWidget({
     id: 'primary-icon',
     position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
+    stackGroup: 'badges-tl',
     variant: 'icon',
     icon: MEDIA_TYPE_ICON[mediaType],
     color: 'gray',
@@ -1073,6 +1075,55 @@ import {
 } from './mediaCardGeneration';
 
 /**
+ * Look up model family info from the provider capability registry.
+ * Searches operation_specs for model params carrying model_families metadata.
+ */
+function resolveModelFamily(modelId: string, providerId: string): ModelFamilyInfo | null {
+  const cap = providerCapabilityRegistry.getCapability(providerId);
+  if (!cap?.operation_specs) return null;
+  for (const opSpec of Object.values(cap.operation_specs)) {
+    const modelParam = opSpec.parameters?.find((p) => p.name === 'model');
+    const families = modelParam?.metadata?.model_families as
+      | Record<string, ModelFamilyInfo>
+      | undefined;
+    if (families?.[modelId]) return families[modelId];
+  }
+  return null;
+}
+
+/**
+ * Create model family badge widget (top-left, stacked below primary icon)
+ * Shows a colored initials circle (e.g. "Qw", "Gm") when the asset's
+ * model belongs to a known family.
+ */
+export function createModelFamilyWidget(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _props: MediaCardResolvedProps,
+): OverlayWidget<MediaCardOverlayData> | null {
+  return {
+    id: 'model-family',
+    type: 'custom' as const,
+    ...BADGE_SLOT.topLeft,
+    visibility: { trigger: 'always' },
+    priority: BADGE_PRIORITY.background,
+    render: (data: MediaCardOverlayData) => {
+      if (!data.model || !data.providerId) return null;
+      const family = resolveModelFamily(data.model, data.providerId);
+      if (!family) return null;
+      return (
+        <div
+          className="inline-flex items-center justify-center cq-btn-md rounded-full shadow-md font-bold"
+          style={{ backgroundColor: family.color, color: family.textColor ?? '#fff' }}
+          title={family.label}
+        >
+          <span className="text-[0.55em] leading-none">{family.short}</span>
+        </div>
+      );
+    },
+  };
+}
+
+/**
  * Create default widget set for MediaCard
  */
 export function createDefaultMediaCardWidgets(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData>[] {
@@ -1089,6 +1140,7 @@ export function createDefaultMediaCardWidgets(props: MediaCardResolvedProps): Ov
     createInfoPopover,
     createGenerationButtonGroup,
     createGenerationActionModeBadge,
+    createModelFamilyWidget,
     createQuickTagWidget,
     createQuickAddButton,
   });

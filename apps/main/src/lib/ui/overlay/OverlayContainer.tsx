@@ -121,7 +121,8 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
     }
   }, [validate, configuration]);
 
-  // Handle collision detection
+  // Handle collision detection — only for ungrouped widgets (stacked widgets
+  // are already positioned by their flex container and don't need adjustment).
   useEffect(() => {
     if (!config.collisionDetection || !containerRef.current) {
       setAdjustedPositions(new Map());
@@ -129,15 +130,15 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
     }
 
     const containerEl = containerRef.current;
+    let debounceId: ReturnType<typeof setTimeout> | null = null;
 
-    // Run collision detection after render
     const checkCollisions = () => {
       if (!containerEl) return;
       const containerRect = containerEl.getBoundingClientRect();
-      // Skip if container hasn't laid out yet
       if (containerRect.width === 0 && containerRect.height === 0) return;
 
-      const result = handleCollisions(config.widgets, containerRect, widgetRefs.current);
+      // Only collision-check ungrouped widgets; stacked widgets are flex-laid-out.
+      const result = handleCollisions(ungrouped, containerRect, widgetRefs.current);
 
       if (result.hasCollisions) {
         setAdjustedPositions(result.adjustedPositions);
@@ -148,25 +149,31 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
           );
         }
       } else {
-        setAdjustedPositions(new Map());
+        setAdjustedPositions((prev) => (prev.size === 0 ? prev : new Map()));
       }
+    };
+
+    const debouncedCheck = () => {
+      if (debounceId !== null) clearTimeout(debounceId);
+      debounceId = setTimeout(checkCollisions, 150);
     };
 
     // Initial check after widgets mount
     const timeoutId = setTimeout(checkCollisions, 100);
 
-    // Re-check when container size settles (handles deferred layout)
+    // Re-check on resize, debounced to avoid per-frame work
     let observer: ResizeObserver | undefined;
     if (typeof ResizeObserver !== 'undefined') {
-      observer = new ResizeObserver(checkCollisions);
+      observer = new ResizeObserver(debouncedCheck);
       observer.observe(containerEl);
     }
 
     return () => {
       clearTimeout(timeoutId);
+      if (debounceId !== null) clearTimeout(debounceId);
       observer?.disconnect();
     };
-  }, [config.widgets, config.collisionDetection]);
+  }, [ungrouped, config.collisionDetection]);
 
   // Create widget context
   const context: WidgetContext = useMemo(

@@ -13,6 +13,7 @@ export interface OperationParameterSpec {
   min?: number;
   max?: number;
   step?: number;
+  metadata?: Record<string, any>;
 }
 
 export interface OperationSpec {

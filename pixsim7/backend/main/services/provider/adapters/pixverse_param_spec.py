@@ -5,6 +5,10 @@ Extracted from pixverse.py to reduce main adapter size.
 """
 from typing import Any
 
+from pixsim7.backend.main.domain.providers.model_families import (
+    build_model_families_metadata,
+)
+
 # Import pixverse-py SDK models (optional)
 try:
     from pixverse import get_video_operation_fields  # type: ignore[attr-defined]
@@ -166,6 +170,9 @@ def build_operation_parameter_spec() -> dict:
         "enum": video_model_enum,
         "description": "Pixverse video model version",
         "group": "core",
+        "metadata": {
+            "model_families": build_model_families_metadata(video_model_enum),
+        },
     }
     model_extend = {
         "name": "model", "type": "enum", "required": False,
@@ -173,6 +180,9 @@ def build_operation_parameter_spec() -> dict:
         "enum": video_extend_model_enum,
         "description": "Pixverse video model (extend-capable)",
         "group": "core",
+        "metadata": {
+            "model_families": build_model_families_metadata(video_extend_model_enum),
+        },
     }
     model_fusion = {
         "name": "model", "type": "enum", "required": False,
@@ -180,6 +190,9 @@ def build_operation_parameter_spec() -> dict:
         "enum": fusion_model_enum,
         "description": "Pixverse video model (fusion-capable)",
         "group": "core",
+        "metadata": {
+            "model_families": build_model_families_metadata(fusion_model_enum),
+        },
     }
     motion_mode = {
         "name": "motion_mode", "type": "enum", "required": False, "default": None,
@@ -260,6 +273,9 @@ def build_operation_parameter_spec() -> dict:
         "enum": image_model_enum or None,
         "description": "Image generation model",
         "group": "core",
+        "metadata": {
+            "model_families": build_model_families_metadata(image_model_enum),
+        },
     }
     # Per-model quality options for image generation (already built from SDK above)
     # Fallback only if SDK iteration didn't populate anything

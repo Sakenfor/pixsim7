@@ -5,9 +5,11 @@ import {
   COMMON_ASPECT_RATIOS,
   getAspectRatioLabel,
   getDurationOptions,
+  getModelFamilies,
   getParamIcon,
   getQualityOptions,
   isVisualParam,
+  ModelBadge,
   type ParamSpec,
 } from '@lib/generation-ui';
 
@@ -51,6 +53,11 @@ export function GenerationParamControls({
   const qualityOptionsForModel = useMemo(
     () => getQualityOptions(paramSpecs, values?.model),
     [paramSpecs, values?.model],
+  );
+
+  const modelFamilies = useMemo(
+    () => getModelFamilies(paramSpecs),
+    [paramSpecs],
   );
 
   useEffect(() => {
@@ -156,6 +163,9 @@ export function GenerationParamControls({
                     title={isFreeModel ? `${opt} (currently free)` : opt}
                   >
                     {icon}
+                    {!isIconOnly && param.name === 'model' && modelFamilies?.[opt] && (
+                      <ModelBadge family={modelFamilies[opt]} size={14} />
+                    )}
                     {!isIconOnly && <span>{opt}</span>}
                     {isFreeModel && (
                       <span
@@ -191,7 +201,9 @@ export function GenerationParamControls({
               title={param.name}
             >
               {options.map((opt: string) => {
-                const label = param.name === 'aspect_ratio' ? getAspectRatioLabel(opt) : opt;
+                const baseLabel = param.name === 'aspect_ratio' ? getAspectRatioLabel(opt) : opt;
+                const familyShort = param.name === 'model' && modelFamilies?.[opt]?.short;
+                const label = familyShort ? `[${familyShort}] ${baseLabel}` : baseLabel;
                 const isFree = param.name === 'model' && isModelInUnlimitedSet(unlimitedModels, opt);
                 return (
                   <option key={opt} value={opt}>

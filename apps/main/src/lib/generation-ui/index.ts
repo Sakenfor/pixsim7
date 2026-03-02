@@ -42,3 +42,12 @@ export {
   PARAM_ICON_CONFIG,
   type AspectRatioIconProps,
 } from './components/ParamIcons';
+
+// Model Families
+export {
+  getModelFamilies,
+  getModelFamily,
+  type ModelFamilyInfo,
+} from './utils/modelFamilies';
+
+export { ModelBadge } from './components/ModelBadge';
