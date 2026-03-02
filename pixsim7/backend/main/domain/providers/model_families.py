@@ -2,94 +2,170 @@
 Global model family registry.
 
 Maps provider-specific model IDs to canonical model families with display
-metadata (label, 2-char badge, color).  Consumed by the frontend to render
-consistent branding badges on model selector buttons.
+metadata (label, 2-char badge, color) and tier ordering for upgrade paths.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
+
+
+@dataclass(frozen=True)
+class ModelVariant:
+    """A specific model within a family, with its tier and display overrides."""
+    id: str           # provider model ID, e.g. "gemini-3.0"
+    family: str       # family key, e.g. "gemini"
+    tier: int         # rank within family (higher = better)
+    color: str | None = None       # badge bg override (None → family default)
+    text_color: str | None = None  # badge text override (None → white)
 
 
 @dataclass(frozen=True)
 class ModelFamily:
+    """A group of related models sharing branding."""
     id: str       # canonical key, e.g. "qwen"
     label: str    # human-readable, e.g. "Qwen"
     short: str    # 2-char badge text, e.g. "Qw"
-    color: str    # hex colour for badge background
+    color: str    # default hex colour for badge background
+    variants: tuple[ModelVariant, ...] = field(default_factory=tuple)
 
+    def variant(self, model_id: str) -> ModelVariant | None:
+        return next((v for v in self.variants if v.id == model_id), None)
+
+    def upgrade_from(self, model_id: str) -> ModelVariant | None:
+        """Return the next tier up from *model_id*, or None if already top."""
+        current = self.variant(model_id)
+        if current is None:
+            return None
+        candidates = sorted(
+            (v for v in self.variants if v.tier > current.tier),
+            key=lambda v: v.tier,
+        )
+        return candidates[0] if candidates else None
+
+    def downgrade_from(self, model_id: str) -> ModelVariant | None:
+        """Return the next tier down from *model_id*, or None if already bottom."""
+        current = self.variant(model_id)
+        if current is None:
+            return None
+        candidates = sorted(
+            (v for v in self.variants if v.tier < current.tier),
+            key=lambda v: v.tier,
+            reverse=True,
+        )
+        return candidates[0] if candidates else None
+
+    def top(self) -> ModelVariant | None:
+        return max(self.variants, key=lambda v: v.tier) if self.variants else None
+
+    def bottom(self) -> ModelVariant | None:
+        return min(self.variants, key=lambda v: v.tier) if self.variants else None
+
+
+# ---------------------------------------------------------------------------
+# Registry
+# ---------------------------------------------------------------------------
 
 MODEL_FAMILIES: dict[str, ModelFamily] = {
-    "qwen": ModelFamily(id="qwen", label="Qwen", short="Qw", color="#6366f1"),
-    "gemini": ModelFamily(id="gemini", label="Gemini", short="Gm", color="#1a73e8"),
-    "seedream": ModelFamily(id="seedream", label="Seedream", short="Sd", color="#e85d04"),
-    "pixverse": ModelFamily(id="pixverse", label="Pixverse", short="Px", color="#8b5cf6"),
+    "qwen": ModelFamily(
+        id="qwen", label="Qwen", short="Qw", color="#6366f1",
+        variants=(
+            ModelVariant("qwen-image", "qwen", tier=1),
+        ),
+    ),
+    "gemini": ModelFamily(
+        id="gemini", label="Gemini", short="Gm", color="#1a73e8",
+        variants=(
+            ModelVariant("gemini-2.5-flash", "gemini", tier=1, color="#6b7280"),
+            ModelVariant("gemini-3.1-flash", "gemini", tier=2),
+            ModelVariant("gemini-3.0",       "gemini", tier=3, color="#7c3aed"),
+        ),
+    ),
+    "seedream": ModelFamily(
+        id="seedream", label="Seedream", short="Sd", color="#e85d04",
+        variants=(
+            ModelVariant("seedream-4.0",      "seedream", tier=1, color="#d4d4d8", text_color="#374151"),
+            ModelVariant("seedream-4.5",      "seedream", tier=2),
+            ModelVariant("seedream-5.0-lite", "seedream", tier=3, color="#dc2626"),
+        ),
+    ),
+    "pixverse": ModelFamily(
+        id="pixverse", label="Pixverse", short="Px", color="#8b5cf6",
+        variants=(
+            ModelVariant("v5",      "pixverse", tier=1),
+            ModelVariant("v5-fast", "pixverse", tier=2),
+            ModelVariant("v5.5",    "pixverse", tier=3),
+            ModelVariant("v5.6",    "pixverse", tier=4),
+        ),
+    ),
 }
 
-# Provider model ID → family key
+# Flat lookup: model ID → family key (built from variants)
 MODEL_ID_TO_FAMILY: dict[str, str] = {
-    # Qwen
-    "qwen-image": "qwen",
-    # Gemini
-    "gemini-3.0": "gemini",
-    "gemini-2.5-flash": "gemini",
-    "gemini-3.1-flash": "gemini",
-    # Seedream
-    "seedream-4.0": "seedream",
-    "seedream-4.5": "seedream",
-    "seedream-5.0-lite": "seedream",
-    # Pixverse native
-    "v5": "pixverse",
-    "v5-fast": "pixverse",
-    "v5.5": "pixverse",
-    "v5.6": "pixverse",
+    v.id: fam.id
+    for fam in MODEL_FAMILIES.values()
+    for v in fam.variants
 }
 
-# Per-model colour overrides (takes precedence over family default).
-# Lets models within the same family have distinct badge colours.
-# Per-model colour overrides (takes precedence over family default).
-# Lets models within the same family have distinct badge colours.
-MODEL_COLOR_OVERRIDES: dict[str, str] = {
-    # Gemini tiers
-    "gemini-3.0": "#7c3aed",       # purple — premium
-    # gemini-3.1-flash keeps family default (#1a73e8 blue)
-    "gemini-2.5-flash": "#6b7280",  # grey  — older flash
-    # Seedream tiers
-    "seedream-5.0-lite": "#dc2626",  # red    — newest
-    # seedream-4.5 keeps family default (#e85d04 orange)
-    "seedream-4.0": "#d4d4d8",       # light grey — base
-}
 
-# Per-model text colour overrides (default is white).
-MODEL_TEXT_COLOR_OVERRIDES: dict[str, str] = {
-    "seedream-4.0": "#374151",  # dark grey text on light bg
-}
+def get_family(model_id: str) -> ModelFamily | None:
+    """Look up the family for a model ID."""
+    fam_key = MODEL_ID_TO_FAMILY.get(model_id)
+    return MODEL_FAMILIES.get(fam_key) if fam_key else None
 
+
+def get_upgrade(model_id: str) -> str | None:
+    """Return the model ID one tier up, or None if already top / unknown."""
+    fam = get_family(model_id)
+    if fam is None:
+        return None
+    up = fam.upgrade_from(model_id)
+    return up.id if up else None
+
+
+def get_downgrade(model_id: str) -> str | None:
+    """Return the model ID one tier down, or None if already bottom / unknown."""
+    fam = get_family(model_id)
+    if fam is None:
+        return None
+    down = fam.downgrade_from(model_id)
+    return down.id if down else None
+
+
+# ---------------------------------------------------------------------------
+# Frontend metadata builder
+# ---------------------------------------------------------------------------
 
 def build_model_families_metadata(
     model_ids: list[str],
-) -> dict[str, dict[str, str]]:
-    """Return a ``{ model_id: { family, label, short, color } }`` dict
+) -> dict[str, dict[str, Any]]:
+    """Return ``{ model_id: { family, label, short, color, tier, ... } }``
     for every *model_id* that has a known family mapping.
 
     Unknown IDs are silently skipped so new SDK models degrade gracefully.
     """
-    result: dict[str, dict[str, str]] = {}
+    result: dict[str, dict[str, Any]] = {}
     for mid in model_ids:
-        family_key = MODEL_ID_TO_FAMILY.get(mid)
-        if family_key is None:
-            continue
-        fam = MODEL_FAMILIES.get(family_key)
+        fam = get_family(mid)
         if fam is None:
             continue
-        entry: dict[str, str] = {
+        variant = fam.variant(mid)
+        entry: dict[str, Any] = {
             "family": fam.id,
             "label": fam.label,
             "short": fam.short,
-            "color": MODEL_COLOR_OVERRIDES.get(mid, fam.color),
+            "color": variant.color if variant and variant.color else fam.color,
+            "tier": variant.tier if variant else 0,
         }
-        text_color = MODEL_TEXT_COLOR_OVERRIDES.get(mid)
-        if text_color:
-            entry["textColor"] = text_color
+        if variant and variant.text_color:
+            entry["textColor"] = variant.text_color
+        # Include upgrade/downgrade hints so the frontend doesn't need the full graph
+        up = fam.upgrade_from(mid)
+        if up and up.id in model_ids:
+            entry["upgrade"] = up.id
+        down = fam.downgrade_from(mid)
+        if down and down.id in model_ids:
+            entry["downgrade"] = down.id
         result[mid] = entry
     return result
