@@ -69,6 +69,21 @@ import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
+// ── Global catalog epoch (HMR-resilient) ────────────────────────────
+// A single subscription that persists across module re-evaluations during HMR.
+// Stored on globalThis via a well-known symbol so re-evaluation of this module
+// finds the existing state + subscription instead of creating duplicates.
+// Components sync their local state from this counter on mount.
+type CatalogEpochState = { epoch: number; cbs: Set<(e: number) => void> };
+const _epochState: CatalogEpochState = ((globalThis as any)[Symbol.for('dockview:catalogEpoch')] ??= (() => {
+  const s: CatalogEpochState = { epoch: 0, cbs: new Set() };
+  panelSelectors.subscribe(() => {
+    s.epoch++;
+    for (const cb of s.cbs) cb(s.epoch);
+  });
+  return s;
+})());
+
 import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from '@features/contextHub';
 import { type PanelDefinition } from '@features/panels';
 
@@ -315,8 +330,10 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // Context menu (optional - returns null if no provider)
   const contextMenu = useContextMenuOptional();
 
-  // Track global panel registry changes so catalog-reading useMemos recompute
-  const [globalRegistryVersion, setGlobalRegistryVersion] = useState(0);
+  // Track global panel registry changes so catalog-reading useMemos recompute.
+  // Initialized from the global epoch so a remounted component starts
+  // with the current catalog state (not 0).
+  const [globalRegistryVersion, setGlobalRegistryVersion] = useState(() => _epochState.epoch);
 
   // Resolve panel IDs from new simplified API or legacy props
   // Priority: panels > scope
@@ -424,13 +441,33 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     }
   }, [context, isReady]);
 
-  // Subscribe to global panel registry - bump version on any change
+  // Sync with the global catalog epoch. The global subscription never
+  // unsubscribes, so it catches changes even during HMR when the component
+  // is unmounted. On mount we catch up, then listen for future changes.
   useEffect(() => {
-    const unsubscribe = panelSelectors.subscribe(() => {
-      setGlobalRegistryVersion((version) => version + 1);
-    });
-    return unsubscribe;
+    setGlobalRegistryVersion(_epochState.epoch);
+    const cb = (epoch: number) => setGlobalRegistryVersion(epoch);
+    _epochState.cbs.add(cb);
+    return () => { _epochState.cbs.delete(cb); };
   }, []);
+
+  // Recovery poll: if we mounted with no panels (HMR remount while catalog is
+  // still rebuilding), poll until the catalog is populated. This handles all
+  // edge cases where subscription-based notification is lost (module re-eval
+  // creates a new panelSelectors object, orphaning the old subscription).
+  useEffect(() => {
+    if (!hasNoPanels || hadPanelsRef.current) return;
+    const dockLabel = scope ?? panelManagerId ?? 'unknown';
+    console.log(`[SmartDockview:${dockLabel}] recovery poll STARTED`);
+    const timer = setInterval(() => {
+      const count = panelSelectors.getPublicPanels().length;
+      console.log(`[SmartDockview:${dockLabel}] poll: ${count} panels`);
+      if (count > 0) {
+        setGlobalRegistryVersion((v) => v + 1);
+      }
+    }, 50);
+    return () => clearInterval(timer);
+  }, [hasNoPanels, scope, panelManagerId]);
 
   const layoutController = useSmartDockview({
     storageKey,
@@ -530,7 +567,11 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
         // Proxy has stable identity, reads implementation from ref at render time
         const PanelProxy = (props: any) => {
           const Impl = implRef.current;
-          if (!Impl) return null;
+          if (!Impl) {
+            // DEBUG: temporary — remove after HMR issue is resolved
+            console.warn(`[PanelProxy(${id})] implRef.current is null — panel will render empty`);
+            return null;
+          }
           return <Impl {...props} />;
         };
         PanelProxy.displayName = `PanelProxy(${id})`;
@@ -589,7 +630,20 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     // which can blank existing panel portals during HMR.
     const prev = prevComponentsRef.current;
     const keys = Object.keys(map);
-    if (keys.length === Object.keys(prev).length && keys.every(k => prev[k] === map[k])) {
+    const isStable = keys.length === Object.keys(prev).length && keys.every(k => prev[k] === map[k]);
+
+    // DEBUG: temporary HMR diagnostics — remove after issue is resolved
+    // DEBUG: temporary HMR diagnostics — remove after issue is resolved
+    const dockLabel = scope ?? panelManagerId ?? 'unknown';
+    console.log(`[SmartDockview:${dockLabel}] components memo:`, {
+      availablePanelDefs: availablePanelDefs.length,
+      cacheSize: Object.keys(panelWrappedCache.current).length,
+      mapKeys: keys.length,
+      isStable,
+      globalRegistryVersion,
+    });
+
+    if (isStable) {
       return prev;
     }
     prevComponentsRef.current = map;

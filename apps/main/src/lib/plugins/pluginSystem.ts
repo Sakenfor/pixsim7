@@ -257,11 +257,21 @@ export class PluginDiscovery {
 // Singleton Instances
 // ============================================================================
 
+// Persist singletons across HMR module re-evaluations. Without this,
+// re-evaluation creates a fresh empty PluginCatalog while panel definitions
+// (which ran once at initial load) remain registered on the old instance.
+// The catalog becomes permanently empty and panels vanish.
+const _hmrKey = Symbol.for('pixsim7:pluginSystem');
+const _hmrState = ((globalThis as any)[_hmrKey] ??= {}) as {
+  catalog?: PluginCatalog;
+  activationManager?: PluginActivationManager;
+};
+
 /** Global plugin catalog */
-export const pluginCatalog = new PluginCatalog();
+export const pluginCatalog: PluginCatalog = (_hmrState.catalog ??= new PluginCatalog());
 
 /** Global activation manager — persists state changes and calls adapter lifecycle hooks */
-export const pluginActivationManager = new PluginActivationManager(pluginCatalog, {
+export const pluginActivationManager: PluginActivationManager = (_hmrState.activationManager ??= new PluginActivationManager(pluginCatalog, {
   onStateChange: async (id, state) => {
     // Call adapter lifecycle hooks
     const metadata = pluginCatalog.get(id);
@@ -278,4 +288,4 @@ export const pluginActivationManager = new PluginActivationManager(pluginCatalog
       }
     }
   },
-});
+}));
