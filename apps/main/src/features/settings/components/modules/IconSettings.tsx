@@ -8,9 +8,11 @@
 
 import { settingsRegistry } from '../../lib/core/registry';
 import { registerIconSettings } from '../../lib/schemas/icon.settings';
+import { registerModelBadgeSettings } from '../../lib/schemas/modelBadge.settings';
 import { DynamicSettingsPanel } from '../shared/DynamicSettingsPanel';
 
 registerIconSettings();
+registerModelBadgeSettings();
 
 function IconsSettings() {
   return (
@@ -24,6 +26,14 @@ function ThemeSettings() {
   return (
     <div className="flex-1 overflow-auto p-4">
       <DynamicSettingsPanel categoryId="appearance" tabId="theme" />
+    </div>
+  );
+}
+
+function ModelBadgesSettings() {
+  return (
+    <div className="flex-1 overflow-auto p-4">
+      <DynamicSettingsPanel categoryId="appearance" tabId="model-badges" />
     </div>
   );
 }
@@ -51,6 +61,12 @@ settingsRegistry.register({
       label: 'Theme',
       icon: 'paintbrush',
       component: ThemeSettings,
+    },
+    {
+      id: 'model-badges',
+      label: 'Model Badges',
+      icon: 'tag',
+      component: ModelBadgesSettings,
     },
   ],
 });

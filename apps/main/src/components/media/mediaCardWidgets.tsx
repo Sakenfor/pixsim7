@@ -34,7 +34,7 @@ import {
 import { applyQuickTag, normalizeTagInput } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
 import { useTagAutocomplete, TAG_NAMESPACES } from '@features/assets/lib/useTagAutocomplete';
-import { useProviders, providerCapabilityRegistry } from '@features/providers';
+import { useProviders, providerCapabilityRegistry, useModelBadgeStore } from '@features/providers';
 
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardResolvedProps } from './MediaCard';
@@ -1092,6 +1092,30 @@ function resolveModelFamily(modelId: string, providerId: string): ModelFamilyInf
 }
 
 /**
+ * Inner component for model family badge — uses hooks for store access.
+ */
+function ModelFamilyBadgeContent({ data }: { data: MediaCardOverlayData }) {
+  const showOnMediaCards = useModelBadgeStore((s) => s.showOnMediaCards);
+  const colorOverrides = useModelBadgeStore((s) => s.colors);
+
+  if (!showOnMediaCards || !data.model || !data.providerId) return null;
+
+  const family = resolveModelFamily(data.model, data.providerId);
+  if (!family) return null;
+
+  const bgColor = colorOverrides[data.model] ?? family.color;
+  return (
+    <div
+      className="inline-flex items-center justify-center cq-btn-md rounded-full shadow-md font-bold"
+      style={{ backgroundColor: bgColor, color: family.textColor ?? '#fff' }}
+      title={family.label}
+    >
+      <span className="text-[0.55em] leading-none">{family.short}</span>
+    </div>
+  );
+}
+
+/**
  * Create model family badge widget (top-left, stacked below primary icon)
  * Shows a colored initials circle (e.g. "Qw", "Gm") when the asset's
  * model belongs to a known family.
@@ -1106,20 +1130,7 @@ export function createModelFamilyWidget(
     ...BADGE_SLOT.topLeft,
     visibility: { trigger: 'always' },
     priority: BADGE_PRIORITY.background,
-    render: (data: MediaCardOverlayData) => {
-      if (!data.model || !data.providerId) return null;
-      const family = resolveModelFamily(data.model, data.providerId);
-      if (!family) return null;
-      return (
-        <div
-          className="inline-flex items-center justify-center cq-btn-md rounded-full shadow-md font-bold"
-          style={{ backgroundColor: family.color, color: family.textColor ?? '#fff' }}
-          title={family.label}
-        >
-          <span className="text-[0.55em] leading-none">{family.short}</span>
-        </div>
-      );
-    },
+    render: (data: MediaCardOverlayData) => <ModelFamilyBadgeContent data={data} />,
   };
 }
 

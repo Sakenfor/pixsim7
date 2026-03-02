@@ -131,3 +131,9 @@ export { estimatePixverseCost } from './lib/api/pixverseCost';
 // ============================================================================
 
 export { registerProviderPlugins, pixversePlugin, soraPlugin } from './lib/plugins';
+
+// ============================================================================
+// Stores
+// ============================================================================
+
+export { useModelBadgeStore } from './stores/modelBadgeStore';
