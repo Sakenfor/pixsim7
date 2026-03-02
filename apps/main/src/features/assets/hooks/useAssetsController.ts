@@ -156,6 +156,8 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     queueAddToTransition,
     queueAutoGenerate,
     quickGenerate,
+    upgradeModel,
+    patchAsset,
   } = useMediaGenerationActions();
 
   // Filter persistence
@@ -504,8 +506,11 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
       actions.onQuickGenerate = (_id?: number, count?: number, overrides?: { duration?: number }) =>
         quickGenerate(asset, { count, duration: overrides?.duration });
     }
+    // Gesture cascade actions — bound to the asset at the controller level.
+    actions.onUpgradeModel = () => upgradeModel(asset);
+    actions.onPatchAsset = () => patchAsset(asset);
     return actions;
-  }, [actionHandlers, quickGenerate]);
+  }, [actionHandlers, quickGenerate, upgradeModel, patchAsset]);
 
   return {
     // Filters

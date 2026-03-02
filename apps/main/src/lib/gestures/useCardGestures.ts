@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 
 import { useUploadProviderStore } from '@features/assets/stores/uploadProviderStore';
 
@@ -61,6 +61,12 @@ export interface UseCardGesturesResult {
   totalTiers: number | undefined;
   /** True when direction has multiple actions (cascade mode active) */
   isCascade: boolean;
+  /** True when user has dragged back to center after committing (cancel zone) */
+  isReturning: boolean;
+  /** The direction that was active before the user returned to center */
+  returningDirection: GestureDirection | null;
+  /** The action label that was active before the user returned to center */
+  returningActionLabel: string | null;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -141,6 +147,34 @@ export function useCardGestures({
 
   // Visual feedback derivations
   const isCommitted = activeGesture?.phase === 'committed';
+  const phase = activeGesture?.phase ?? 'idle';
+
+  // Track "was committed" to detect returning-to-center cancel state.
+  // We store the last committed direction + action label so the cancel overlay
+  // can show what action is being cancelled.
+  const lastCommittedRef = useRef<{
+    direction: GestureDirection;
+    actionLabel: string;
+  } | null>(null);
+
+  if (isCommitted && activeGesture) {
+    // Snapshot the committed state so we can reference it if user uncommits
+    const cascade = resolveCascadeAction(
+      getCascadeActionsForDirection(gestureDirections, activeGesture.direction),
+      activeGesture.distance,
+      gestureThreshold,
+      cascadeStepPixels,
+    );
+    lastCommittedRef.current = {
+      direction: activeGesture.direction,
+      actionLabel: getGestureActionLabel(cascade.actionId),
+    };
+  } else if (phase === 'idle') {
+    // Reset when gesture ends
+    lastCommittedRef.current = null;
+  }
+
+  const isReturning = phase === 'pending' && lastCommittedRef.current !== null;
 
   // Live cascade resolution — re-resolves on every pointermove
   const activeCascade = isCommitted
@@ -181,9 +215,12 @@ export function useCardGestures({
     duration: activeDuration,
     durationUnit: secondaryState.unit,
     edgeInset: gestureEdgeInset,
-    phase: activeGesture?.phase ?? 'idle',
+    phase,
     tierIndex: activeCascade?.isCascade ? activeCascade.tierIndex : undefined,
     totalTiers: activeCascade?.isCascade ? activeCascade.totalTiers : undefined,
     isCascade: activeCascade?.isCascade ?? false,
+    isReturning,
+    returningDirection: isReturning ? lastCommittedRef.current!.direction : null,
+    returningActionLabel: isReturning ? lastCommittedRef.current!.actionLabel : null,
   };
 }

@@ -14,6 +14,8 @@ import {
 
 import type { OperationType } from '@/types/operations';
 
+import { upgradeModelForAsset, patchAssetToWidget } from '../lib/assetGenerationActions';
+
 import { useGenerationScopeStores } from './useGenerationScope';
 
 /**
@@ -37,7 +39,7 @@ import { useGenerationScopeStores } from './useGenerationScope';
  */
 export function useMediaGenerationActions() {
   // Use scoped stores for scope-aware generation settings
-  const { useSessionStore, useInputStore } = useGenerationScopeStores();
+  const { id: scopedScopeId, useSessionStore, useInputStore } = useGenerationScopeStores();
   const scopedAddInputs = useInputStore((s) => s.addInputs);
 
   // Read operation type from scoped session store
@@ -194,6 +196,57 @@ export function useMediaGenerationActions() {
     [addInputs, getWidgetContext, sessionOperationType, selectAssetFromSummary],
   );
 
+  // Upgrade model — re-queue generation with one model tier up.
+  // Delegates to standalone upgradeModelForAsset() for shared logic with context menu.
+  const upgradeModel = useCallback(
+    async (asset: AssetModel) => {
+      try {
+        const result = await upgradeModelForAsset(asset, getCurrentOperationType());
+        useToastStore.getState().addToast({
+          type: result.type,
+          message: result.message,
+          duration: result.ok ? 3000 : 4000,
+        });
+      } catch (err) {
+        useToastStore.getState().addToast({
+          type: 'error',
+          message: `Upgrade failed: ${extractErrorMessage(err)}`,
+          duration: 4000,
+        });
+      }
+    },
+    [getCurrentOperationType],
+  );
+
+  // Patch asset — open quickgen widget pre-filled with asset's generation context.
+  // Delegates to standalone patchAssetToWidget() for shared logic with context menu.
+  const patchAsset = useCallback(
+    async (asset: AssetModel) => {
+      const widget = getWidgetContext();
+      if (!widget) {
+        useToastStore.getState().addToast({
+          type: 'warning',
+          message: 'No generation widget available',
+          duration: 4000,
+        });
+        return;
+      }
+      try {
+        await patchAssetToWidget(asset, getCurrentOperationType(), {
+          widget,
+          scopeId: scopedScopeId,
+        });
+      } catch (err) {
+        useToastStore.getState().addToast({
+          type: 'error',
+          message: `Patch failed: ${extractErrorMessage(err)}`,
+          duration: 4000,
+        });
+      }
+    },
+    [getCurrentOperationType, getWidgetContext, scopedScopeId],
+  );
+
   return {
     queueImageToImage,
     queueImageToVideo,
@@ -202,5 +255,7 @@ export function useMediaGenerationActions() {
     queueAutoGenerate,
     queueSilentAdd,
     quickGenerate,
+    upgradeModel,
+    patchAsset,
   };
 }

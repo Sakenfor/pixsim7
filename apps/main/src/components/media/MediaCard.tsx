@@ -80,6 +80,9 @@ export interface MediaCardActions {
   onImageToVideo?: (id: number) => void;
   onVideoExtend?: (id: number) => void;
   onAddToTransition?: (id: number) => void;
+  // Gesture upgrade/patch actions
+  onUpgradeModel?: (id: number) => void;
+  onPatchAsset?: (id: number) => void;
   // Review actions
   onApprove?: (id: number) => void;
   onReject?: (id: number) => void;
@@ -231,6 +234,19 @@ const DIRECTION_ARROWS: Record<GestureDirection, string> = {
   left: '←',
   right: '→',
 };
+
+function GestureCancelOverlay({ actionLabel }: {
+  actionLabel: string;
+}) {
+  return (
+    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/25 rounded-t-md pointer-events-none select-none transition-opacity duration-150">
+      <span className="text-2xl text-white/60 drop-shadow-md">✕</span>
+      <span className="mt-1 text-xs font-medium text-white/50 drop-shadow-sm line-through">
+        {actionLabel}
+      </span>
+    </div>
+  );
+}
 
 function GestureOverlay({ direction, actionId, count, duration, durationUnit, tierIndex, totalTiers, isCascade }: {
   direction: GestureDirection;
@@ -586,7 +602,7 @@ export function MediaCard(props: MediaCardProps) {
                   src={videoSrc}
                   poster={thumbSrc}
                   className="h-full w-full object-cover"
-                  preload="metadata"
+                  preload="none"
                   muted
                   playsInline
                   crossOrigin={getCrossOrigin(videoSrc)}
@@ -627,7 +643,7 @@ export function MediaCard(props: MediaCardProps) {
               <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />
             </div>
           )}
-          {gesture.isCommitted && gesture.actionId && gesture.direction && (
+          {gesture.isCommitted && gesture.actionId && gesture.direction ? (
             <GestureOverlay
               direction={gesture.direction}
               actionId={gesture.actionId}
@@ -638,7 +654,11 @@ export function MediaCard(props: MediaCardProps) {
               totalTiers={gesture.totalTiers}
               isCascade={gesture.isCascade}
             />
-          )}
+          ) : gesture.isReturning && gesture.returningActionLabel ? (
+            <GestureCancelOverlay
+              actionLabel={gesture.returningActionLabel}
+            />
+          ) : null}
         </div>
       </OverlayContainer>
     </div>

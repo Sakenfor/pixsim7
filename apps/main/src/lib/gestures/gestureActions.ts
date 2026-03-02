@@ -29,6 +29,8 @@ export const GESTURE_ACTIONS = [
   { id: 'imageToImage', label: 'Image to Image', actionKey: 'onImageToImage' },
   { id: 'imageToVideo', label: 'Image to Video', actionKey: 'onImageToVideo' },
   { id: 'videoExtend', label: 'Extend Video', actionKey: 'onVideoExtend' },
+  { id: 'upgradeModel', label: 'Upgrade Model', actionKey: 'onUpgradeModel' },
+  { id: 'patchAsset', label: 'Patch Asset', actionKey: 'onPatchAsset' },
   { id: 'archive', label: 'Archive', actionKey: 'onArchive' },
   { id: 'delete', label: 'Delete', actionKey: 'onDelete' },
   { id: 'toggleFavorite', label: 'Toggle Favorite' },

@@ -17,11 +17,14 @@ import { useToastStore } from '@pixsim7/shared.ui';
 
 import type { AssetModel } from '@features/assets';
 import { assetEvents, getAssetDisplayUrls, toViewerAsset, toViewerAssets, toSelectedAsset, useMediaSettingsStore } from '@features/assets';
+import { applyQuickTag, useQuickTagStore } from '@features/assets';
 import { archiveAsset } from '@features/assets/lib/api';
 import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
+import { useAssetSetStore, type ManualAssetSet } from '@features/assets/stores/assetSetStore';
 import { useAssetViewerStore } from '@features/assets/stores/assetViewerStore';
 import { useDeleteModalStore } from '@features/assets/stores/deleteModalStore';
+import { useGalleryApplyTargetStore } from '@features/assets/stores/galleryApplyTargetStore';
 import { useRelatedAssetsStore } from '@features/assets/stores/relatedAssetsStore';
 import {
   CAP_ASSET,
@@ -31,12 +34,10 @@ import {
   type GenerationContextSummary,
 } from '@features/contextHub';
 import { useGenerationInputStore } from '@features/generation';
+import { upgradeModelForAsset, patchAssetToWidget } from '@features/generation/lib/assetGenerationActions';
 import { useSettingsUiStore } from '@features/settings/stores/settingsUiStore';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
-import { applyQuickTag, useQuickTagStore } from '@features/assets';
-import { useAssetSetStore, type ManualAssetSet } from '@features/assets/stores/assetSetStore';
-import { useGalleryApplyTargetStore } from '@features/assets/stores/galleryApplyTargetStore';
 
 import { enrichAsset } from '@/lib/api/assets';
 import { BACKEND_BASE } from '@/lib/api/client';
@@ -448,6 +449,62 @@ const addToTransitionAction = createGenerationAction(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Upgrade Model / Patch Asset — reuse standalone functions from generation lib
+// ─────────────────────────────────────────────────────────────────────────────
+
+const upgradeModelAction: MenuAction = {
+  id: 'asset:upgrade-model',
+  label: 'Upgrade Model',
+  icon: 'zap',
+  category: 'generation',
+  requiredCapabilities: [CAP_ASSET],
+  visible: (ctx) => {
+    const assets = resolveAssets(ctx);
+    return assets.length === 1;
+  },
+  execute: async (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return;
+    const generationContext = getCapability<GenerationContextSummary>(ctx, 'generationContext');
+    const fallbackOp = resolveOperationType(generationContext?.mode, 'image_to_video');
+    try {
+      const result = await upgradeModelForAsset(assets[0], fallbackOp);
+      notify(result.type, result.message);
+    } catch (err) {
+      notify('error', `Upgrade failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  },
+};
+
+const patchAssetAction: MenuAction = {
+  id: 'asset:patch-asset',
+  label: 'Patch Asset',
+  icon: 'pencil',
+  category: 'generation',
+  requiredCapabilities: [CAP_ASSET, CAP_GENERATION_WIDGET],
+  visible: (ctx) => {
+    const assets = resolveAssets(ctx);
+    return assets.length === 1;
+  },
+  execute: async (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return;
+    const widget = resolveGenerationWidget(ctx);
+    if (!widget) {
+      notify('warning', 'No generation widget available');
+      return;
+    }
+    const generationContext = getCapability<GenerationContextSummary>(ctx, 'generationContext');
+    const fallbackOp = resolveOperationType(generationContext?.mode, 'image_to_video');
+    try {
+      await patchAssetToWidget(assets[0], fallbackOp, { widget });
+    } catch (err) {
+      notify('error', `Patch failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Queue Management Actions
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -686,6 +743,17 @@ const generateSubmenuAction: MenuAction = {
         items[items.length - 1] = { ...items[items.length - 1], divider: true, sectionLabel: 'Shortcuts' };
       }
       items.push(...shortcuts);
+    }
+
+    // Re-generate actions (Upgrade Model, Patch Asset)
+    const regenActions = [upgradeModelAction, patchAssetAction]
+      .filter(a => a.visible?.(ctx) !== false)
+      .map(a => ({ ...a, category: undefined, requiredCapabilities: undefined }));
+    if (regenActions.length > 0) {
+      if (items.length > 0) {
+        items[items.length - 1] = { ...items[items.length - 1], divider: true, sectionLabel: 'Re-generate' };
+      }
+      items.push(...regenActions);
     }
 
     // Remove from Inputs

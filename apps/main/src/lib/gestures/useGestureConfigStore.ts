@@ -68,7 +68,7 @@ export const useGestureConfigStore = create<GestureConfigState>()(
       threshold: 30,
       edgeInset: 0.2,
       cascadeStepPixels: 50,
-      gestureUp: ['upload'],
+      gestureUp: ['upload', 'upgradeModel', 'patchAsset'],
       gestureDown: ['archive'],
       gestureLeft: ['none'],
       gestureRight: ['quickGenerate'],
@@ -87,11 +87,11 @@ export const useGestureConfigStore = create<GestureConfigState>()(
     }),
     {
       name: 'gesture-config-v1',
-      version: 2,
+      version: 3,
       migrate: (persisted: any, version: number) => {
+        const state = persisted as Record<string, any>;
         if (version < 2) {
           // v1→v2: wrap single string direction values in arrays, add cascadeStepPixels
-          const state = persisted as Record<string, any>;
           for (const key of ['gestureUp', 'gestureDown', 'gestureLeft', 'gestureRight'] as const) {
             const val = state[key];
             if (typeof val === 'string') {
@@ -100,6 +100,13 @@ export const useGestureConfigStore = create<GestureConfigState>()(
           }
           if (state.cascadeStepPixels == null) {
             state.cascadeStepPixels = 50;
+          }
+        }
+        if (version < 3) {
+          // v2→v3: add upgradeModel + patchAsset to gestureUp cascade (only if still default)
+          const up = state.gestureUp;
+          if (Array.isArray(up) && up.length === 1 && up[0] === 'upload') {
+            state.gestureUp = ['upload', 'upgradeModel', 'patchAsset'];
           }
         }
         return persisted as GestureConfigState;
