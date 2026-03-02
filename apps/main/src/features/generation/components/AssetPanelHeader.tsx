@@ -2,8 +2,8 @@
  * AssetPanelHeader – Header bar with history, recent-gens, and settings buttons.
  * Owns floating panel toggles and settings popover local state.
  */
-import { Dropdown } from '@pixsim7/shared.ui';
-import { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react';
+import { Popover } from '@pixsim7/shared.ui';
+import { useRef, useEffect, useState, useCallback } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -85,7 +85,6 @@ export function AssetPanelHeader({
 
   // ── Settings popover state ─────────────────────────────────────────
   const [showSettingsPopover, setShowSettingsPopover] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
 
   // ── History panel toggle ───────────────────────────────────────────
   useEffect(() => {
@@ -209,23 +208,7 @@ export function AssetPanelHeader({
     );
   }, [isRecentGensPanelOpen, operationType, scopeInstanceId, instanceId, sourceLabel, updateFloatingPanelContext]);
 
-  // ── Settings anchor rect sync ──────────────────────────────────────
-  useLayoutEffect(() => {
-    if (!showSettingsPopover || !settingsTriggerRef.current) {
-      setAnchorRect(null);
-      return;
-    }
-    const update = () => {
-      setAnchorRect(settingsTriggerRef.current?.getBoundingClientRect() ?? null);
-    };
-    update();
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, [showSettingsPopover]);
+  // (anchor rect sync removed — Popover handles positioning via ref)
 
   // ── Derived values ─────────────────────────────────────────────────
   const hasHistory = compatibleHistory.length > 0;
@@ -307,23 +290,16 @@ export function AssetPanelHeader({
         </div>
       </div>
 
-      {/* Settings dropdown */}
-      <Dropdown
-        isOpen={showSettingsPopover}
+      {/* Settings popover */}
+      <Popover
+        open={showSettingsPopover}
         onClose={() => setShowSettingsPopover(false)}
-        portal
-        positionMode="fixed"
+        anchor={settingsTriggerRef.current}
+        placement="bottom"
+        align="end"
+        offset={4}
         triggerRef={settingsTriggerRef}
-        anchorPosition={
-          anchorRect
-            ? {
-                x: Math.max(8, Math.min(anchorRect.right - 192, window.innerWidth - 192 - 8)),
-                y: anchorRect.bottom + 4,
-              }
-            : { x: 0, y: 0 }
-        }
-        minWidth="192px"
-        className="rounded-lg bg-white dark:bg-neutral-900"
+        className="w-[192px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-3"
       >
         <div className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-2">
           Display
@@ -367,7 +343,7 @@ export function AssetPanelHeader({
             </button>
           )}
         </div>
-      </Dropdown>
+      </Popover>
     </>
   );
 }

@@ -6,7 +6,7 @@
  * (related panels that can be quickly added as a tab in the same group).
  */
 
-import { Dropdown, DropdownItem } from '@pixsim7/shared.ui';
+import { DropdownItem, Popover } from '@pixsim7/shared.ui';
 import { resolvePanelDefinitionId, addDockviewPanel } from '@pixsim7/shared.ui.dockview';
 import type { IDockviewHeaderActionsProps } from 'dockview-core';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -21,7 +21,6 @@ export function SiblingPanelsDropdown({
   panels,
 }: IDockviewHeaderActionsProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [anchorPosition, setAnchorPosition] = useState<{ x: number; y: number } | undefined>();
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const activePanelDefId = activePanel
@@ -59,12 +58,8 @@ export function SiblingPanelsDropdown({
   );
 
   const handleToggle = useCallback(() => {
-    if (!isOpen && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setAnchorPosition({ x: rect.right, y: rect.bottom + 2 });
-    }
     setIsOpen((prev) => !prev);
-  }, [isOpen]);
+  }, []);
 
   // Nothing to show — no siblings at all for this panel
   if (allSiblings.length === 0) return null;
@@ -82,22 +77,22 @@ export function SiblingPanelsDropdown({
           <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       </button>
-      <Dropdown
-        isOpen={isOpen}
+      <Popover
+        open={isOpen}
         onClose={() => setIsOpen(false)}
-        portal
-        positionMode="fixed"
-        position="bottom-right"
-        anchorPosition={anchorPosition}
+        anchor={buttonRef.current}
+        placement="bottom"
+        align="end"
+        offset={2}
         triggerRef={buttonRef}
-        minWidth="140px"
+        className="min-w-[140px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
       >
         {available.map((s) => (
           <DropdownItem key={s.id} onClick={() => handleAdd(s.id)}>
             {s.title}
           </DropdownItem>
         ))}
-      </Dropdown>
+      </Popover>
     </div>
   );
 }

@@ -1,5 +1,5 @@
-import { Dropdown, Input } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Input, Popover } from '@pixsim7/shared.ui';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 // ---------------------------------------------------------------------------
 // PageJumpPopover — replaces browser prompt() for "go to page" input
@@ -27,25 +27,6 @@ export function PageJumpPopover({
   const [value, setValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const anchorRef = useRef<HTMLButtonElement>(null);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-
-  // Sync anchor rect while open
-  useLayoutEffect(() => {
-    if (!open || !anchorRef.current) {
-      setAnchorRect(null);
-      return;
-    }
-    const update = () => {
-      setAnchorRect(anchorRef.current?.getBoundingClientRect() ?? null);
-    };
-    update();
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, [open]);
 
   // Auto-focus + select when opened
   useEffect(() => {
@@ -100,20 +81,16 @@ export function PageJumpPopover({
       >
         {pageLabel}
       </button>
-      {open && anchorRect && (
-        <Dropdown
-          isOpen={open}
-          onClose={() => setOpen(false)}
-          positionMode="fixed"
-          anchorPosition={{
-            x: Math.max(8, Math.min(anchorRect.left, window.innerWidth - 200 - 8)),
-            y: anchorRect.bottom + 4,
-          }}
-          minWidth="180px"
-          className="max-w-[220px]"
-          portal
-          triggerRef={anchorRef}
-        >
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchor={anchorRef.current}
+        placement="bottom"
+        align="start"
+        offset={4}
+        triggerRef={anchorRef}
+        className="w-[200px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl"
+      >
           <div
             className="p-2 space-y-2"
             onKeyDown={(e) => {
@@ -165,8 +142,7 @@ export function PageJumpPopover({
               ))}
             </div>
           </div>
-        </Dropdown>
-      )}
+      </Popover>
     </>
   );
 }

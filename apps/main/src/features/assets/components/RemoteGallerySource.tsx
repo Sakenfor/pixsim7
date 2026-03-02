@@ -78,17 +78,15 @@ import { PaginationStrip } from './shared/PaginationStrip';
 function ActiveSetChip({
   manualSets,
   activeManualSet,
-  activeManualSetId,
-  setActiveManualSetId,
-  clearActiveManualSetId,
+  filterSetIds,
+  onToggleFilter,
   selectedCount,
   onAddSelected,
 }: {
   manualSets: ManualAssetSet[];
   activeManualSet: ManualAssetSet | undefined;
-  activeManualSetId: string | undefined;
-  setActiveManualSetId: (id?: string) => void;
-  clearActiveManualSetId: () => void;
+  filterSetIds: string[];
+  onToggleFilter: (setId: string) => void;
   selectedCount: number;
   onAddSelected: () => void;
 }) {
@@ -98,9 +96,10 @@ function ActiveSetChip({
   const [rect, setRect] = useState<DOMRect | null>(null);
   const hoverTimeout = useRef<number | null>(null);
 
-  const isActive = !!activeManualSet;
+  const filterCount = filterSetIds.length;
+  const isFiltering = filterCount > 0;
   const isVisible = open || hovered;
-  const isInFlow = isActive;
+  const isInFlow = isFiltering;
 
   useLayoutEffect(() => {
     if (!isVisible || !anchorRef.current) {
@@ -136,6 +135,11 @@ function ActiveSetChip({
 
   if (manualSets.length === 0) return null;
 
+  // Label for the chip when filtering
+  const chipLabel = filterCount === 1
+    ? manualSets.find((s) => s.id === filterSetIds[0])?.name ?? 'Set'
+    : `${filterCount} sets`;
+
   return (
     <div
       className={`relative group flex-none ${isInFlow ? '' : 'w-7 h-7'}`}
@@ -146,11 +150,11 @@ function ActiveSetChip({
       <button
         type="button"
         ref={anchorRef}
-        title="Active Set"
+        title="Asset Sets"
         aria-expanded={open}
         onClick={() => setOpen((prev) => !prev)}
         className={`${isInFlow ? 'relative' : 'absolute left-0 top-0 w-7 justify-center'} z-20 inline-flex items-center gap-1.5 h-7 px-1.5 rounded border text-xs transition-[background-color,border-color] duration-200 ${
-          isActive
+          isFiltering
             ? 'border-emerald-500/50 bg-emerald-500/10 text-neutral-800 dark:text-neutral-100'
             : open
               ? 'border-neutral-300 dark:border-neutral-600 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200'
@@ -158,17 +162,10 @@ function ActiveSetChip({
         }`}
       >
         <span className="relative flex-shrink-0">
-          <Icon name="target" size={14} className="w-3.5 h-3.5" />
+          <Icon name={isFiltering ? 'filter' : 'target'} size={14} className="w-3.5 h-3.5" />
         </span>
         {isInFlow && (
-          <span className="font-medium whitespace-nowrap">
-            {activeManualSet!.name}
-          </span>
-        )}
-        {isInFlow && (
-          <span className="text-[9px] leading-none px-1 min-w-[14px] text-center rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-            {activeManualSet!.assetIds.length}
-          </span>
+          <span className="font-medium whitespace-nowrap">{chipLabel}</span>
         )}
       </button>
       {/* Floating label for idle state */}
@@ -180,7 +177,7 @@ function ActiveSetChip({
               : 'opacity-0 border-transparent'
           }`}
         >
-          Active Set
+          Asset Sets
         </span>
       )}
       {/* Dropdown */}
@@ -203,40 +200,26 @@ function ActiveSetChip({
             className="max-w-[280px]"
           >
             <div className="flex flex-col gap-0.5">
-              {/* "None" option */}
-              <label
-                className="flex items-center gap-2 px-1.5 py-1 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
-              >
-                <input
-                  type="radio"
-                  name="active-set-chip"
-                  checked={!activeManualSetId}
-                  onChange={() => { clearActiveManualSetId(); setOpen(false); }}
-                  className="accent-emerald-500"
-                />
-                <span className={!activeManualSetId ? 'text-neutral-400 dark:text-neutral-500' : ''}>
-                  None
-                </span>
-              </label>
-              {/* Manual sets */}
-              {manualSets.map((s) => (
-                <label
-                  key={s.id}
-                  className="flex items-center gap-2 px-1.5 py-1 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                >
-                  <input
-                    type="radio"
-                    name="active-set-chip"
-                    checked={activeManualSetId === s.id}
-                    onChange={() => { setActiveManualSetId(s.id); setOpen(false); }}
-                    className="accent-emerald-500"
-                  />
-                  <span className="flex-1 truncate">{s.name}</span>
-                  <span className="text-[10px] text-neutral-400 dark:text-neutral-500 tabular-nums">
-                    {s.assetIds.length}
-                  </span>
-                </label>
-              ))}
+              {manualSets.map((s) => {
+                const checked = filterSetIds.includes(s.id);
+                return (
+                  <label
+                    key={s.id}
+                    className="flex items-center gap-2 px-1.5 py-1 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggleFilter(s.id)}
+                      className="accent-emerald-500"
+                    />
+                    <span className="flex-1 truncate">{s.name}</span>
+                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 tabular-nums">
+                      {s.assetIds.length}
+                    </span>
+                  </label>
+                );
+              })}
               {/* Add selected action */}
               {selectedCount > 0 && activeManualSet && (
                 <>
@@ -247,7 +230,7 @@ function ActiveSetChip({
                     className="flex items-center gap-1.5 px-1.5 py-1 text-sm text-emerald-700 dark:text-emerald-300 rounded hover:bg-emerald-500/10 transition-colors"
                   >
                     <Icon name="plus" size={12} />
-                    <span>Add {selectedCount} selected</span>
+                    <span>Add {selectedCount} to {activeManualSet.name}</span>
                   </button>
                 </>
               )}
@@ -270,6 +253,7 @@ interface RemoteGallerySourceProps {
 }
 
 export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbarExtra }: RemoteGallerySourceProps) {
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const panelConfig = usePanelConfigStore((s) => s.panelConfigs.gallery);
@@ -315,19 +299,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     if (!hasGrouping || normalizedGroupScope.length === 0) return undefined;
     return { upload_method: normalizedGroupScope };
   }, [hasGrouping, normalizedGroupScope]);
-  const groupSearchOverrides = useMemo(() => {
-    if (!isLeafGroup) return undefined;
-    return {
-      group_path: groupPathPayload,
-      group_filter: groupFilter,
-    };
-  }, [groupFilter, groupPathPayload, isLeafGroup]);
-  const initialPageRef = useRef(parsePageParam(location.search));
-  const controller = useAssetsController({
-    initialPage: initialPageRef.current,
-    preservePageOnFilterChange: true,
-    requestOverrides: groupSearchOverrides,
-  });
   const { providers } = useProviders();
   const allSets = useAssetSetStore((state) => state.sets);
   const manualSets = useMemo(
@@ -336,8 +307,35 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   );
   const addAssetsToSet = useAssetSetStore((s) => s.addAssetsToSet);
   const activeManualSetId = useGalleryApplyTargetStore((s) => s.activeManualSetId);
-  const setActiveManualSetId = useGalleryApplyTargetStore((s) => s.setActiveManualSetId);
   const clearActiveManualSetId = useGalleryApplyTargetStore((s) => s.clearActiveManualSetId);
+  const filterSetIds = useGalleryApplyTargetStore((s) => s.filterSetIds);
+  const toggleFilterSet = useGalleryApplyTargetStore((s) => s.toggleFilterSet);
+
+  const groupSearchOverrides = useMemo(() => {
+    // Build union of asset IDs from checked filter sets
+    let asset_ids: number[] | undefined;
+    if (filterSetIds.length > 0) {
+      const ids = new Set<number>();
+      for (const setId of filterSetIds) {
+        const s = allSets.find((ms): ms is ManualAssetSet => ms.kind === 'manual' && ms.id === setId);
+        if (s) for (const id of s.assetIds) ids.add(id);
+      }
+      // Send even if empty — checking an empty set should show nothing.
+      // Use [-1] sentinel so the backend IN clause matches nothing.
+      asset_ids = ids.size > 0 ? [...ids] : [-1];
+    }
+
+    const groupPart = isLeafGroup ? { group_path: groupPathPayload, group_filter: groupFilter } : {};
+    const idsPart = asset_ids ? { asset_ids } : {};
+    const merged = { ...groupPart, ...idsPart };
+    return Object.keys(merged).length > 0 ? merged : undefined;
+  }, [groupFilter, groupPathPayload, isLeafGroup, filterSetIds, allSets]);
+  const initialPageRef = useRef(parsePageParam(location.search));
+  const controller = useAssetsController({
+    initialPage: initialPageRef.current,
+    preservePageOnFilterChange: true,
+    requestOverrides: groupSearchOverrides,
+  });
   const { openGalleryAsset } = useAssetViewer({ source: 'gallery' });
   const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
 
@@ -364,7 +362,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   const [groupError, setGroupError] = useState<string | null>(null);
   const [groupMenuOpen, setGroupMenuOpen] = useState(false);
   const groupMenuAnchorRef = useRef<HTMLButtonElement | null>(null);
-  const [groupMenuRect, setGroupMenuRect] = useState<DOMRect | null>(null);
   const [groupSort, setGroupSort] = useState<GroupSortKey>('newest');
 
   // Layout settings (gaps)
@@ -410,25 +407,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       setExpandedToolId(tools[0]?.id ?? null);
     });
   }, [controller.selectAll, controller.assets]);
-
-  useLayoutEffect(() => {
-    if (!groupMenuOpen || !groupMenuAnchorRef.current) {
-      setGroupMenuRect(null);
-      return;
-    }
-
-    const update = () => {
-      setGroupMenuRect(groupMenuAnchorRef.current?.getBoundingClientRect() ?? null);
-    };
-
-    update();
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, [groupMenuOpen]);
 
   const pageFromUrl = useMemo(() => parsePageParam(location.search), [location.search]);
   const groupRequest = useMemo<AssetGroupRequest | null>(() => {
@@ -1144,16 +1122,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
 
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            {/* Search */}
-            <div className="flex-1 min-w-[200px] max-w-[300px]">
-              <input
-                placeholder="Search tags, description..."
-                className="w-full h-7 px-2 text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-700 dark:text-neutral-200 placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus:outline-none focus:border-accent transition-colors"
-                value={controller.filters.q}
-                onChange={(e) => setFilters({ q: e.target.value })}
-              />
-            </div>
-
             {/* Page-based pagination controls */}
             {showParallelGroups ? null : showGroupOverview ? (
               <PaginationStrip
@@ -1180,7 +1148,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
               groupMenuAnchorRef={groupMenuAnchorRef}
               groupMenuOpen={groupMenuOpen}
               setGroupMenuOpen={setGroupMenuOpen}
-              groupMenuRect={groupMenuRect}
               groupByStack={groupByStack}
               groupMode={groupMode}
               groupMultiLayout={groupMultiLayout}
@@ -1218,15 +1185,13 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
             <DynamicFilters
               filters={controller.filters}
               onFiltersChange={(f) => setFilters(f)}
-              exclude={['q']}
               showCounts
               extraChips={
                 <ActiveSetChip
                   manualSets={manualSets}
                   activeManualSet={activeManualSet}
-                  activeManualSetId={activeManualSetId}
-                  setActiveManualSetId={setActiveManualSetId}
-                  clearActiveManualSetId={clearActiveManualSetId}
+                  filterSetIds={filterSetIds}
+                  onToggleFilter={toggleFilterSet}
                   selectedCount={controller.selectedAssetIds.size}
                   onAddSelected={addSelectedToActiveManualSet}
                 />
@@ -1249,7 +1214,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       </div>
 
       {/* Scrollable gallery */}
-      <div className="flex-1 overflow-auto mt-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-auto mt-4">
         {hasGrouping && groupPath.length > 0 && (
           <GroupBreadcrumb
             groupPath={groupPath}
@@ -1333,6 +1298,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
             rowGap={layoutSettings.rowGap}
             columnGap={layoutSettings.columnGap}
             minColumnWidth={cardSize}
+            scrollParentRef={scrollContainerRef}
           />
         ) : (
           <div

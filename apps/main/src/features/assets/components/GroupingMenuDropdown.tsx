@@ -1,4 +1,4 @@
-import { Dropdown, GroupByPillBar, GroupMenuTrigger, SegmentedControl, ToolbarSelect, type GroupByOption } from '@pixsim7/shared.ui';
+import { GroupByPillBar, GroupMenuTrigger, Popover, SegmentedControl, ToolbarSelect, type GroupByOption } from '@pixsim7/shared.ui';
 import type { RefObject } from 'react';
 
 import { Icon } from '@lib/icons';
@@ -23,7 +23,6 @@ export interface GroupingMenuDropdownProps {
   groupMenuAnchorRef: RefObject<HTMLButtonElement | null>;
   groupMenuOpen: boolean;
   setGroupMenuOpen: (open: boolean) => void;
-  groupMenuRect: DOMRect | null;
   groupByStack: GalleryGroupBy[];
   groupMode: GalleryGroupMode;
   groupMultiLayout: GalleryGroupMultiLayout;
@@ -40,7 +39,6 @@ export function GroupingMenuDropdown({
   groupMenuAnchorRef,
   groupMenuOpen,
   setGroupMenuOpen,
-  groupMenuRect,
   groupByStack,
   groupMode,
   groupMultiLayout,
@@ -67,24 +65,16 @@ export function GroupingMenuDropdown({
         onClick={() => setGroupMenuOpen(!groupMenuOpen)}
         title={groupSummary}
       />
-      {groupMenuOpen && groupMenuRect && (
-        <Dropdown
-          isOpen={groupMenuOpen}
-          onClose={() => setGroupMenuOpen(false)}
-          positionMode="fixed"
-          anchorPosition={{
-            x: Math.max(
-              8,
-              Math.min(
-                groupMenuRect.left,
-                window.innerWidth - 320 - 8
-              )
-            ),
-            y: groupMenuRect.bottom + 8,
-          }}
-          minWidth="280px"
-          className="max-w-[360px]"
-        >
+      <Popover
+        open={groupMenuOpen}
+        onClose={() => setGroupMenuOpen(false)}
+        anchor={groupMenuAnchorRef.current}
+        placement="bottom"
+        align="start"
+        offset={8}
+        triggerRef={groupMenuAnchorRef}
+        className="w-[320px] max-w-[360px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-3"
+      >
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
@@ -145,8 +135,7 @@ export function GroupingMenuDropdown({
               options={GROUP_SORT_OPTIONS}
             />
           </div>
-        </Dropdown>
-      )}
+      </Popover>
     </div>
   );
 }

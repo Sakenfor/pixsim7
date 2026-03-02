@@ -1,4 +1,4 @@
-import { Dropdown, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
+import { DropdownDivider, DropdownItem, Popover } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent } from 'react';
 
 
@@ -54,7 +54,7 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
   const contentScrollByScopeRef = useRef<ContentScrollByScope | null>(null);
 
   const [managedFolderId, setManagedFolderId] = useState<string | null>(null);
-  const [manageFolderMenuPos, setManageFolderMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const manageFolderAnchorRef = useRef<HTMLButtonElement | null>(null);
 
   // --- Folder name / favorites / subfolder derivations ---
   const folderNames = useMemo(() => {
@@ -166,15 +166,14 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
 
   const closeManageFolderMenu = useCallback(() => {
     setManagedFolderId(null);
-    setManageFolderMenuPos(null);
+    manageFolderAnchorRef.current = null;
   }, []);
 
   const openManageFolderMenu = useCallback((event: ReactMouseEvent<HTMLButtonElement>, folderId: string) => {
     event.preventDefault();
     event.stopPropagation();
-    const rect = event.currentTarget.getBoundingClientRect();
+    manageFolderAnchorRef.current = event.currentTarget;
     setManagedFolderId(folderId);
-    setManageFolderMenuPos({ x: rect.left, y: rect.bottom + 4 });
   }, []);
 
   const managedFolderName = managedFolderId ? (folderNames[managedFolderId] || managedFolderId) : null;
@@ -361,14 +360,15 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
           </div>
         </div>
 
-        {managedFolderId && manageFolderMenuPos && (
-          <Dropdown
-            isOpen={!!managedFolderId}
+        {managedFolderId && (
+          <Popover
+            open={!!managedFolderId}
             onClose={closeManageFolderMenu}
-            positionMode="fixed"
-            anchorPosition={manageFolderMenuPos}
-            minWidth="210px"
-            portal
+            anchor={manageFolderAnchorRef.current}
+            placement="bottom"
+            align="start"
+            offset={4}
+            className="min-w-[210px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
           >
             <DropdownItem disabled icon={<Icons.folder size={12} />}>
               {managedFolderName ?? managedFolderId}
@@ -412,7 +412,7 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
             >
               Remove Folder
             </DropdownItem>
-          </Dropdown>
+          </Popover>
         )}
 
         {/* Scanning progress */}

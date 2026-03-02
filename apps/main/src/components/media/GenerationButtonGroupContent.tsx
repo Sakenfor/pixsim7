@@ -4,7 +4,7 @@
  * Handles smart action, menu, slot picker, and regenerate functionality.
  */
 
-import { ActionHintBadge, ButtonGroup, Dropdown, DropdownItem, DropdownDivider, PortalFloat, useToast, type ButtonGroupItem } from '@pixsim7/shared.ui';
+import { ActionHintBadge, ButtonGroup, DropdownItem, DropdownDivider, Popover, PortalFloat, useToast, type ButtonGroupItem } from '@pixsim7/shared.ui';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 
 import { uploadAssetToProvider } from '@lib/api/assets';
@@ -749,14 +749,15 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       )}
 
       {/* Provider picker dropdown (right-click on upload button) */}
-      {isProviderMenuOpen && providerMenuPos && (
-        <Dropdown
-          isOpen={isProviderMenuOpen}
+      {providerMenuPos && (
+        <Popover
+          open={isProviderMenuOpen}
           onClose={() => setIsProviderMenuOpen(false)}
-          positionMode="fixed"
-          anchorPosition={providerMenuPos}
-          minWidth="180px"
-          portal
+          anchor={new DOMRect(providerMenuPos.x, providerMenuPos.y, 0, 0)}
+          placement="bottom"
+          align="start"
+          offset={4}
+          className="min-w-[180px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
         >
           {uploadTargetOptions.map((target) => (
             <DropdownItem
@@ -786,7 +787,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
               </DropdownItem>
             </>
           )}
-        </Dropdown>
+        </Popover>
       )}
     </div>
   );

@@ -7,7 +7,7 @@ import {
   ensurePromptBlocks,
 } from '@pixsim7/core.prompt';
 import type { PromptBlockCandidate } from '@pixsim7/shared.types/prompt';
-import { Dropdown, DropdownItem, DropdownDivider, FoldGroup, GroupedFold, PromptInput } from '@pixsim7/shared.ui';
+import { DropdownItem, DropdownDivider, FoldGroup, GroupedFold, Popover, PromptInput } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -117,7 +117,6 @@ export function PromptComposer({
   const [mode, setMode] = useState<PromptComposerMode>('text');
   const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const layoutTriggerRef = useRef<HTMLButtonElement>(null);
-  const [layoutMenuAnchor, setLayoutMenuAnchor] = useState<{ x: number; y: number } | undefined>();
   const [blocks, setBlocks] = useState<PromptBlockItem[]>([
     { id: 'block-0', role: DEFAULT_PROMPT_ROLE, text: '' },
   ]);
@@ -130,7 +129,6 @@ export function PromptComposer({
   const [showPackHints, setShowPackHints] = useState(false);
   const [showBlockBuilder, setShowBlockBuilder] = useState(false);
   const [showBlockTools, setShowBlockTools] = useState(false);
-  const [blockToolsAnchor, setBlockToolsAnchor] = useState<{ x: number; y: number } | undefined>();
 
   const [analyzingBlocks, setAnalyzingBlocks] = useState(false);
   const [fetchingVariants, setFetchingVariants] = useState(false);
@@ -425,15 +423,7 @@ export function PromptComposer({
             ref={layoutTriggerRef}
             type="button"
             disabled={disabled}
-            onClick={() => {
-              setShowLayoutMenu((prev) => {
-                if (!prev && layoutTriggerRef.current) {
-                  const rect = layoutTriggerRef.current.getBoundingClientRect();
-                  setLayoutMenuAnchor({ x: rect.left, y: rect.bottom + 4 });
-                }
-                return !prev;
-              });
-            }}
+            onClick={() => setShowLayoutMenu((prev) => !prev)}
             title={mode === 'text' ? 'Text mode' : `Blocks — ${blocksLayout}`}
             className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
           >
@@ -443,14 +433,15 @@ export function PromptComposer({
             />
             <Icon name="chevronDown" size={10} />
           </button>
-          <Dropdown
-            isOpen={showLayoutMenu}
+          <Popover
+            open={showLayoutMenu}
             onClose={() => setShowLayoutMenu(false)}
+            anchor={layoutTriggerRef.current}
+            placement="bottom"
+            align="start"
+            offset={4}
             triggerRef={layoutTriggerRef}
-            positionMode="fixed"
-            anchorPosition={layoutMenuAnchor}
-            minWidth="140px"
-            portal
+            className="min-w-[140px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
           >
             <DropdownItem
               icon={<Icon name="fileText" size={14} />}
@@ -494,7 +485,7 @@ export function PromptComposer({
             >
               Template Builder
             </DropdownItem>
-          </Dropdown>
+          </Popover>
         </div>
 
         <button
@@ -565,15 +556,7 @@ export function PromptComposer({
                 ref={blockToolsTriggerRef}
                 type="button"
                 disabled={disabled}
-                onClick={() => {
-                  setShowBlockTools((prev) => {
-                    if (!prev && blockToolsTriggerRef.current) {
-                      const rect = blockToolsTriggerRef.current.getBoundingClientRect();
-                      setBlockToolsAnchor({ x: rect.left, y: rect.bottom + 4 });
-                    }
-                    return !prev;
-                  });
-                }}
+                onClick={() => setShowBlockTools((prev) => !prev)}
                 title="Block tools"
                 aria-label="Block tools"
                 className={clsx(
@@ -585,14 +568,15 @@ export function PromptComposer({
               >
                 <Icon name="more-horizontal" size={14} />
               </button>
-              <Dropdown
-                isOpen={showBlockTools}
+              <Popover
+                open={showBlockTools}
                 onClose={() => setShowBlockTools(false)}
+                anchor={blockToolsTriggerRef.current}
+                placement="bottom"
+                align="start"
+                offset={4}
                 triggerRef={blockToolsTriggerRef}
-                positionMode="fixed"
-                anchorPosition={blockToolsAnchor}
-                minWidth="180px"
-                portal
+                className="min-w-[180px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
               >
                 <DropdownItem
                   icon={analyzingBlocks ? <Icon name="refresh" size={12} className="animate-spin" /> : <Icon name="search" size={12} />}
@@ -623,7 +607,7 @@ export function PromptComposer({
                 >
                   Block builder
                 </DropdownItem>
-              </Dropdown>
+              </Popover>
             </div>
 
             <span className="ml-auto text-[10px] text-neutral-500 dark:text-neutral-400">
