@@ -239,6 +239,32 @@ function isRegistryMode<TContext, TPanelId extends string>(
   return 'registry' in props && props.registry !== undefined;
 }
 
+function hasPanelContext(context: unknown): boolean {
+  return context !== null && context !== undefined;
+}
+
+function shouldShowPanelInDock(
+  panel: PanelDefinition,
+  context: unknown,
+): boolean {
+  if (panel.requiresContext && !hasPanelContext(context)) {
+    return false;
+  }
+  if (!panel.showWhen) {
+    return true;
+  }
+  try {
+    const visibilityContext =
+      context && typeof context === 'object'
+        ? context
+        : {};
+    return panel.showWhen(visibilityContext as any);
+  } catch (error) {
+    console.error(`Error in showWhen for panel "${panel.id}":`, error);
+    return false;
+  }
+}
+
 /**
  * Provides the panel context as a capability when context is defined.
  * This allows panels to consume context via `useCapability(CAP_PANEL_CONTEXT)`
@@ -342,6 +368,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       let panels = panelsProp
         .map(id => panelSelectors.get(id))
         .filter((def): def is PanelDefinition => def !== undefined);
+      panels = panels.filter((panel) => shouldShowPanelInDock(panel, context));
       if (allowedPanels && allowedPanels.length > 0) {
         const allowedSet = new Set(allowedPanels);
         panels = panels.filter((p) => allowedSet.has(p.id));
@@ -356,6 +383,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     // New API: scope-based filtering
     if (scope) {
       let panels = panelSelectors.getForScope(scope);
+      panels = panels.filter((panel) => shouldShowPanelInDock(panel, context));
       if (excludePanels.length > 0) {
         panels = panels.filter(p => !excludePanels.includes(p.id));
       }
@@ -373,12 +401,13 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     // No panels specified - will use registry mode if provided
     return [];
   // eslint-disable-next-line react-hooks/exhaustive-deps -- globalRegistryVersion makes panelSelectors reads reactive
-  }, [panelsProp, scope, excludePanels, allowedPanels, allowedCategories, globalRegistryVersion]);
+  }, [panelsProp, scope, context, excludePanels, allowedPanels, allowedCategories, globalRegistryVersion]);
 
   // Determine which panels are allowed to be added (context menu)
   const availablePanelDefs = useMemo((): PanelDefinition[] => {
     // Start with all public panels
     let panels = panelSelectors.getPublicPanels();
+    panels = panels.filter((panel) => shouldShowPanelInDock(panel, context));
 
     // If allowedPanels is provided (even if empty), strictly filter to those panels
     if (allowedPanels !== undefined) {
@@ -393,7 +422,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
     return panels;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- globalRegistryVersion makes panelSelectors reads reactive
-  }, [allowedPanels, allowedCategories, globalRegistryVersion]);
+  }, [context, allowedPanels, allowedCategories, globalRegistryVersion]);
 
   const [isReady, setIsReady] = useState(false);
   const apiRef = useRef<DockviewReadyEvent['api'] | null>(null);

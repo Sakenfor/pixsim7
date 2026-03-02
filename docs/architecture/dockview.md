@@ -11,18 +11,20 @@
 - **Asset Viewer**: passes an explicit `panels` list, storage key `dockview:asset-viewer:v5`.
 
 ### SmartDockview Props (simplified)
-- `scope?: string` — filter by panel `availableIn` (recommended for simple docks).
-- `panels?: string[]` — explicit panel IDs (takes precedence over scope).
-- `excludePanels?: string[]` — omit specific panels when using scope.
-- `allowedPanels?: string[]` / `allowedCategories?: string[]` — limit what can be added via context menu (omit for “anywhere”).
-- `storageKey?: string` — localStorage persistence.
-- `defaultLayout?: (api, panelDefs) => void` — optional custom layout for scope/panels mode.
-- `panelManagerId?: string` — ID for cross-dockview actions/context menu.
-- `enableContextMenu?: boolean` — requires `ContextMenuProvider` at root.
+- `scope?: string` - filter by panel `availableIn` (recommended for simple docks).
+- `panels?: string[]` - explicit panel IDs (takes precedence over scope).
+- `excludePanels?: string[]` - omit specific panels when using scope.
+- `allowedPanels?: string[]` / `allowedCategories?: string[]` - limit what can be added via context menu (omit for "anywhere").
+- `storageKey?: string` - localStorage persistence.
+- `defaultLayout?: (api, panelDefs) => void` - optional custom layout for scope/panels mode.
+- `panelManagerId?: string` - ID for cross-dockview actions/context menu.
+- `enableContextMenu?: boolean` - requires `ContextMenuProvider` at root.
 
 ### Behavior Highlights
-- If no panels resolve and no registry/direct components are provided, SmartDockview shows an inline “No panels available” message.
+- If no panels resolve and no registry/direct components are provided, SmartDockview shows an inline "No panels available" message.
 - Context menu add-panel uses all allowed panels (respecting `allowed*`).
+- `showWhen` and `requiresContext` are enforced for both initial panel resolution and add-panel candidates.
+- `CAP_PANEL_CONTEXT` now carries the current `EditorContext` from `PanelHostLite`, so context-gated panel visibility evaluates consistently.
 - Scope-based auto-wrapping and user-controlled Local/Global scopes still apply; scope provider registry untouched.
 - Legacy registry mode remains for internal use but is discouraged.
 - Dockview hosts are registered centrally and expose a shared `addPanel/isPanelOpen/focusPanel` API.
@@ -34,7 +36,7 @@
 
 ### Follow-ups (nice to have)
 - Continue pruning legacy mentions of `globalPanelIds/includeGlobalPanels`.
-- Consider merging panel settings stores per the “settings store simplification” proposal once the UI stabilizes.
+- Consider merging panel settings stores per the "settings store simplification" proposal once the UI stabilizes.
 - Add a short recipe for defining `availableIn` on new panels and how to opt into multiple scopes.
 
 ### Panel Authoring Checklist (use for new panels)

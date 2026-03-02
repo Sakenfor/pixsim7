@@ -1,57 +1,32 @@
-import { useEffect, useState, useCallback } from 'react';
 import { Button, Modal, FormField, Input, useToast } from '@pixsim7/shared.ui';
-import { useWorldContextStore } from '@features/scene';
+import { useEffect, useState, useCallback } from 'react';
+
 import {
-  listGameWorlds,
   createGameWorld,
   listGameLocations,
-  type GameWorldSummary,
   type GameLocationSummary,
-} from '@lib/api/game';
+} from '@lib/api';
+
+import { useWorldContextStore } from '@features/scene';
+
+import { useSharedWorldSelection } from '@/hooks';
 
 export function WorldContextSelector() {
   const toast = useToast();
-  const { worldId, locationId, setWorldId, setLocationId } = useWorldContextStore();
+  const { locationId, setLocationId } = useWorldContextStore();
+  const {
+    worlds,
+    selectedWorldId: worldId,
+    setSelectedWorldId: setWorldId,
+    isLoadingWorlds,
+    worldLoadError,
+    reloadWorlds,
+  } = useSharedWorldSelection({ autoSelectFirst: true });
 
-  const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);
-  const [isLoadingWorlds, setIsLoadingWorlds] = useState(false);
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
   const [showNewWorldDialog, setShowNewWorldDialog] = useState(false);
   const [newWorldName, setNewWorldName] = useState('');
-
-  // Load worlds on mount
-  useEffect(() => {
-    void loadWorlds();
-  }, []);
-
-  // Load locations when world changes
-  useEffect(() => {
-    if (worldId !== null) {
-      void loadLocations();
-    } else {
-      setLocations([]);
-      setLocationId(null);
-    }
-  }, [worldId, setLocationId]);
-
-  const loadWorlds = useCallback(async () => {
-    setIsLoadingWorlds(true);
-    try {
-      const data = await listGameWorlds();
-      const list = Array.isArray(data) ? data : [];
-      setWorlds(list);
-
-      // Auto-select first world if none selected
-      if (list.length > 0 && worldId === null) {
-        setWorldId(list[0].id);
-      }
-    } catch (error) {
-      toast.error(`Failed to load worlds: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsLoadingWorlds(false);
-    }
-  }, [worldId, setWorldId, toast]);
 
   const loadLocations = useCallback(async () => {
     setIsLoadingLocations(true);
@@ -76,6 +51,23 @@ export function WorldContextSelector() {
     }
   }, [locationId, setLocationId, toast]);
 
+  // Bubble world load errors to the existing toast channel.
+  useEffect(() => {
+    if (worldLoadError) {
+      toast.error(`Failed to load worlds: ${worldLoadError}`);
+    }
+  }, [worldLoadError, toast]);
+
+  // Load locations when world changes
+  useEffect(() => {
+    if (worldId !== null) {
+      void loadLocations();
+    } else {
+      setLocations([]);
+      setLocationId(null);
+    }
+  }, [worldId, setLocationId, loadLocations]);
+
   const handleCreateWorld = useCallback(async () => {
     if (!newWorldName.trim()) {
       toast.error('World name is required');
@@ -87,14 +79,14 @@ export function WorldContextSelector() {
       toast.success(`Created world: ${newWorld.name}`);
       setNewWorldName('');
       setShowNewWorldDialog(false);
-      await loadWorlds();
+      await reloadWorlds();
       setWorldId(newWorld.id);
     } catch (error) {
       toast.error(
         `Failed to create world: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
-  }, [newWorldName, toast, loadWorlds, setWorldId]);
+  }, [newWorldName, toast, reloadWorlds, setWorldId]);
 
   return (
     <div className="flex items-center gap-2">

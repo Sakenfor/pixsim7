@@ -22,6 +22,19 @@ import {
 // Re-export types for consumers
 export type { EditorPrimaryView, EditorMode } from './deriveEditorState';
 
+function toNullableNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
 export interface EditorContext {
   world: {
     id: number | null;
@@ -112,6 +125,10 @@ export function useEditorContext(): EditorContext {
 
   // Extract primitives for stable memoization
   const sceneTitle = currentScene?.title ?? null;
+  const runtimeWorldId = toNullableNumber(gameContext?.worldId);
+  const runtimeLocationId = toNullableNumber(gameContext?.locationId);
+  const effectiveWorldId = worldId ?? runtimeWorldId;
+  const effectiveLocationId = locationId ?? runtimeLocationId;
   const sessionId = gameContext?.sessionId ?? null;
   const worldTimeSeconds = gameContext?.worldTimeSeconds ?? null;
   const runtimeMode = gameContext?.mode ?? null;
@@ -131,8 +148,8 @@ export function useEditorContext(): EditorContext {
   return useMemo<EditorContext>(
     () => ({
       world: {
-        id: worldId,
-        locationId,
+        id: effectiveWorldId,
+        locationId: effectiveLocationId,
         name: null,
         locationName: null,
       },
@@ -157,8 +174,8 @@ export function useEditorContext(): EditorContext {
       },
     }),
     [
-      worldId,
-      locationId,
+      effectiveWorldId,
+      effectiveLocationId,
       currentSceneId,
       sceneTitle,
       selectedNodeIds,

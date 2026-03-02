@@ -115,9 +115,11 @@ function resolveContextLabel(
  */
 function LitePanelContextProvider({
   instanceId,
+  context,
   children,
 }: {
   instanceId: string;
+  context: EditorContext;
   children: React.ReactNode;
 }) {
   useProvideCapability(
@@ -125,9 +127,9 @@ function LitePanelContextProvider({
     {
       id: `panel-context:${instanceId}`,
       label: "Panel Context",
-      getValue: () => null,
+      getValue: () => context,
     },
-    [],
+    [context],
   );
   return <>{children}</>;
 }
@@ -202,7 +204,10 @@ export function PanelHostLite({
             tags={panelDef.tags}
             category={panelDef.category}
           >
-            <LitePanelContextProvider instanceId={`panel:${panelId}`}>
+            <LitePanelContextProvider
+              instanceId={`panel:${panelId}`}
+              context={ctx}
+            >
               <Component />
             </LitePanelContextProvider>
           </ScopeHost>

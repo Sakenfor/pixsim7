@@ -15,12 +15,10 @@ import { Panel, Button } from '@pixsim7/shared.ui';
 import { useState, useEffect, useMemo } from 'react';
 
 import {
-  listGameWorlds,
   getGameWorld,
   listGameNpcs,
   listGameLocations,
   saveGameWorldMeta,
-  type GameWorldSummary,
   type GameWorldDetail,
   type GameNpcSummary,
   type GameLocationSummary,
@@ -28,6 +26,8 @@ import {
 
 import { useAssetPickerStore } from '@features/assets';
 import type { SelectedAsset as PickerSelectedAsset } from '@features/assets/stores/assetPickerStore';
+
+import { useSharedWorldSelection } from '@/hooks';
 
 /**
  * Visual roles data structure stored in world.meta.visualRoles
@@ -105,8 +105,14 @@ const LOCATION_SLOTS: RoleSlot[] = [
 ];
 
 export function WorldVisualRolesPanel() {
-  const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
-  const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
+  const {
+    worlds,
+    selectedWorldId,
+    setSelectedWorldId,
+    isLoadingWorlds,
+    worldLoadError,
+  } = useSharedWorldSelection();
+
   const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
   const [visualRoles, setVisualRoles] = useState<WorldVisualRoles>({});
 
@@ -114,33 +120,16 @@ export function WorldVisualRolesPanel() {
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const enterSelectionMode = useAssetPickerStore((s) => s.enterSelectionMode);
 
-  // Load worlds on mount
-  useEffect(() => {
-    (async () => {
-      try {
-        setIsLoading(true);
-        const worldList = await listGameWorlds();
-        setWorlds(worldList);
-        if (worldList.length > 0 && !selectedWorldId) {
-          setSelectedWorldId(worldList[0].id);
-        }
-      } catch (err: any) {
-        setError(err?.message || 'Failed to load worlds');
-      } finally {
-        setIsLoading(false);
-      }
-    })();
-  }, []);
-
   // Load world detail, NPCs, and locations when world is selected
   useEffect(() => {
     if (!selectedWorldId) {
+      setIsLoading(false);
       setWorldDetail(null);
       setVisualRoles({});
       setNpcs([]);
@@ -324,7 +313,7 @@ export function WorldVisualRolesPanel() {
   };
 
   // Loading state
-  if (isLoading) {
+  if (isLoadingWorlds || isLoading) {
     return (
       <div className="h-full w-full flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
         <p className="text-neutral-600 dark:text-neutral-400">Loading...</p>
@@ -360,9 +349,10 @@ export function WorldVisualRolesPanel() {
             </label>
             <select
               value={selectedWorldId || ''}
-              onChange={(e) => setSelectedWorldId(Number(e.target.value))}
+              onChange={(e) => setSelectedWorldId(e.target.value ? Number(e.target.value) : null)}
               className="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded text-sm text-neutral-900 dark:text-neutral-100"
             >
+              <option value="">Select world...</option>
               {worlds.map((world) => (
                 <option key={world.id} value={world.id}>
                   {world.name}
@@ -383,6 +373,9 @@ export function WorldVisualRolesPanel() {
         </div>
 
         {/* Error message */}
+        {worldLoadError && !error && (
+          <p className="text-sm text-red-500 mt-2">{worldLoadError}</p>
+        )}
         {error && (
           <p className="text-sm text-red-500 mt-2">{error}</p>
         )}

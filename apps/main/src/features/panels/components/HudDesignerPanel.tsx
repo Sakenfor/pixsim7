@@ -7,32 +7,19 @@
  * Wrapper around HudLayoutBuilder with world selection.
  */
 
-import { useState, useEffect } from "react";
 import { HudLayoutBuilder } from "@features/hud";
-import { listGameWorlds, type GameWorldSummary } from "@lib/api/game";
+
+import { useSharedWorldSelection } from "@/hooks";
 
 export function HudDesignerPanel() {
-  const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
-  const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    worlds,
+    selectedWorldId,
+    setSelectedWorldId,
+    isLoadingWorlds,
+  } = useSharedWorldSelection();
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const worldList = await listGameWorlds();
-        setWorlds(worldList);
-        if (worldList.length > 0 && !selectedWorldId) {
-          setSelectedWorldId(worldList[0].id);
-        }
-      } catch (error) {
-        console.error("Failed to load worlds:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    })();
-  }, []);
-
-  if (isLoading) {
+  if (isLoadingWorlds) {
     return (
       <div className="h-full w-full flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
         <p className="text-neutral-600 dark:text-neutral-400">
@@ -75,10 +62,11 @@ export function HudDesignerPanel() {
               World:
             </label>
             <select
-              value={selectedWorldId}
-              onChange={(e) => setSelectedWorldId(Number(e.target.value))}
+              value={selectedWorldId ?? ""}
+              onChange={(e) => setSelectedWorldId(e.target.value ? Number(e.target.value) : null)}
               className="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded text-sm text-neutral-900 dark:text-neutral-100"
             >
+              <option value="">Select world...</option>
               {worlds.map((world) => (
                 <option key={world.id} value={world.id}>
                   {world.name}

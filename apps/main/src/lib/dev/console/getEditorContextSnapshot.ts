@@ -19,6 +19,19 @@ import { useGameStateStore } from '@/stores/gameStateStore';
 
 
 
+function toNullableNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
 /**
  * Get a snapshot of the current editor context (non-hook version)
  */
@@ -46,6 +59,10 @@ export function getEditorContextSnapshot(): EditorContext {
   }
 
   const sceneTitle = currentScene?.title ?? null;
+  const runtimeWorldId = toNullableNumber(gameContext?.worldId);
+  const runtimeLocationId = toNullableNumber(gameContext?.locationId);
+  const effectiveWorldId = worldId ?? runtimeWorldId;
+  const effectiveLocationId = locationId ?? runtimeLocationId;
   const sessionId = gameContext?.sessionId ?? null;
   const worldTimeSeconds = gameContext?.worldTimeSeconds ?? null;
   const runtimeMode = gameContext?.mode ?? null;
@@ -55,8 +72,8 @@ export function getEditorContextSnapshot(): EditorContext {
 
   return {
     world: {
-      id: worldId,
-      locationId,
+      id: effectiveWorldId,
+      locationId: effectiveLocationId,
       name: null,
       locationName: null,
     },
