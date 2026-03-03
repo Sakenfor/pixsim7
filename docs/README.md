@@ -3,6 +3,7 @@
 ## Quick Start
 - [Getting Started](./getting-started/README.md) - Setup, launcher, ports
 - [Architecture Overview](./architecture/README.md) - System design
+- [Ongoing Work Status](./architecture/ongoing-work-status.md) - Current active implementation lanes and next steps
 - [Repository Map](./repo-map.md) - Codebase structure
 
 ## Core Systems

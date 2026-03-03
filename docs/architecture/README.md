@@ -6,6 +6,9 @@ This directory contains architectural documentation for PixSim7 — specs, desig
 
 ### Active Architecture Tracks
 
+**Execution Status**
+- [Ongoing Work Status](./ongoing-work-status.md) - Live status board for current in-progress lanes (planner, primitives cutover, seed validation, debug package).
+
 **Block & Prompt System**
 - [Block Primitives Evolution](./block-primitives-evolution.md) - **Canonical doc** for block systems. Covers BlockPrimitive model, PromptBlock retirement, composition paths, and migration status.
 - [Prompt Resolver `next_v1` Spec](./prompt-resolver-next-v1.md) - Parallel resolver architecture, interfaces, and migration strategy.
