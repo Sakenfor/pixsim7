@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+from copy import deepcopy
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from pixsim7.backend.main.services.game.npc_schedule_projection import (
+    NPCScheduleProjection,
+    NPCScheduleSlot,
+    compile_routines_from_schedule_projections,
+)
+
+from ..seed_data import (
+    BEHAVIOR_TEMPLATE,
+    NPC_BEHAVIOR_BINDINGS,
+    NPC_SEEDS,
+    SEED_KEY,
+)
+
+
+def build_behavior_config() -> Dict[str, Any]:
+    behavior_config = deepcopy(BEHAVIOR_TEMPLATE)
+    projections: List[NPCScheduleProjection] = []
+    for npc_seed in NPC_SEEDS:
+        binding = NPC_BEHAVIOR_BINDINGS.get(npc_seed.key, {})
+        routine_id = str(
+            binding.get("routineId") or f"bananza.routine.{npc_seed.key}.schedule_compiled"
+        )
+        default_preferences = (
+            dict(binding.get("preferences"))
+            if isinstance(binding.get("preferences"), dict)
+            else None
+        )
+
+        projections.append(
+            NPCScheduleProjection(
+                npc_key=npc_seed.key,
+                npc_name=npc_seed.name,
+                routine_id=routine_id,
+                default_preferences=default_preferences,
+                schedules=[
+                    NPCScheduleSlot(
+                        day_of_week=schedule.day_of_week,
+                        start_time=schedule.start_time,
+                        end_time=schedule.end_time,
+                        location_key=schedule.location_key,
+                        label=schedule.label,
+                    )
+                    for schedule in npc_seed.schedules
+                ],
+            )
+        )
+
+    compiled_routines = compile_routines_from_schedule_projections(
+        behavior_config,
+        projections,
+        source="compiled_from_npc_schedule",
+        seed_key=SEED_KEY,
+    )
+
+    if compiled_routines:
+        behavior_config["routines"] = compiled_routines
+
+    meta = behavior_config.get("meta")
+    if not isinstance(meta, dict):
+        meta = {}
+    meta["seed_key"] = SEED_KEY
+    meta["routine_source"] = "compiled_from_npc_schedules"
+    behavior_config["meta"] = meta
+    return behavior_config
+
+
+def now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def generation_template_payload(seed: Dict[str, Any]) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "name": str(seed.get("name") or "").strip(),
+        "slug": str(seed.get("slug") or "").strip(),
+        "description": (
+            str(seed.get("description")).strip()
+            if seed.get("description") is not None
+            else None
+        ),
+        "slots": deepcopy(seed.get("slots") or []),
+        "composition_strategy": str(seed.get("composition_strategy") or "sequential"),
+        "package_name": (
+            str(seed.get("package_name") or "").strip() or None
+        ),
+        "tags": [str(tag) for tag in (seed.get("tags") or []) if str(tag).strip()],
+        "is_public": bool(seed.get("is_public", True)),
+        "template_metadata": deepcopy(seed.get("template_metadata") or {}),
+        "character_bindings": deepcopy(seed.get("character_bindings") or {}),
+    }
+    metadata = payload["template_metadata"]
+    if isinstance(metadata, dict):
+        metadata.setdefault("seed_key", SEED_KEY)
+    return payload
+
+
+def base_world_meta() -> Dict[str, Any]:
+    return {
+        "seed_key": SEED_KEY,
+        "genre": "comedy_adventure",
+        "premise": (
+            "A silly turn-based cruise where Gorilla and Banana trade jokes, "
+            "flirt, and chase small goals while schedules keep the world moving."
+        ),
+        "style": "leisure-suit-larry-inspired parody tone",
+        "turn_model": "turn_based",
+    }

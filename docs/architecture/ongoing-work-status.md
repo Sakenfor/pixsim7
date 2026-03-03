@@ -15,7 +15,7 @@ This file is operational status, not architecture spec.
 | Scene planner panel | In progress | `scene-plan` panel scaffolding exists and can build a preview plan from behavior/action-selection inputs. | Wire one end-to-end happy path (world + NPCs -> request -> plan JSON -> trace/debug notes). |
 | Project availability/debug package | In progress | `useProjectAvailability` is integrated in `ProjectPanel` and checks core world/template/pack availability. | Add one compact "debug package" export/readout for reproducible checks. |
 | Block primitives cutover finalization | In progress (high impact) | Core flow moved to primitives-first; remaining legacy cleanup is broad (migrations, ID policy, old model references). | Finish one focused cleanup slice at a time (IDs, migrations, docs, then model pruning). |
-| Bananza seed + gameplay validation loop | In progress | Seed and behavior-related test setup exists, but workflow is not yet canonicalized as "user-like project flow". | Stabilize one canonical test script: create/load project, seed minimum world/NPC behavior, run planner/generation checks. |
+| Bananza seed + gameplay validation loop | In progress | Seed script modularized to `scripts/seeds/game/bananza/` package (data, flows/api, flows/direct, cli). Old `scripts/seed_bananza_boat_slice.py` kept as thin compatibility wrapper. | Stabilize one canonical test script: create/load project, seed minimum world/NPC behavior, run planner/generation checks. |
 
 ## Recent Completed Anchors
 
