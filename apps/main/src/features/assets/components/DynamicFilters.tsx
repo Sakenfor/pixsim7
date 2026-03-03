@@ -100,6 +100,8 @@ interface DynamicFiltersProps {
   compact?: boolean;
   /** Extra chip elements rendered after primary filters and before the overflow menu */
   extraChips?: ReactNode;
+  /** Called when the user picks "Browse in gallery" from a chip's context menu. */
+  onBrowseFilter?: (filterKey: string, currentFilters: AssetFilters) => void;
 }
 
 /**
@@ -114,9 +116,11 @@ export function DynamicFilters({
   showCounts = false,
   compact = false,
   extraChips,
+  onBrowseFilter,
 }: DynamicFiltersProps) {
   const [openFilters, setOpenFilters] = useState<Set<string>>(new Set());
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const [chipMenu, setChipMenu] = useState<{ key: string; x: number; y: number } | null>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const hoverTimeoutRef = useRef<number | null>(null);
   const filterContext = useMemo(() => {
@@ -279,9 +283,7 @@ export function DynamicFilters({
           filter.key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
         const isPinned = pinnedKeys.includes(filter.key);
-        // When idle, the button stays at icon-width and the label floats
-        // separately with pointer-events-none so it doesn't block neighbors.
-        const isInFlow = hasSelection || isOpen;
+        const isInFlow = hasSelection || isOpen || isPinned;
 
         return (
           <div
@@ -292,7 +294,7 @@ export function DynamicFilters({
             onMouseLeave={() => closeHover(filter.key)}
             onContextMenu={(e) => {
               e.preventDefault();
-              togglePin(filter.key);
+              setChipMenu({ key: filter.key, x: e.clientX, y: e.clientY });
             }}
           >
             <button
@@ -338,23 +340,6 @@ export function DynamicFilters({
               )}
               {isInFlow && isPinned && (
                 <span className="flex-shrink-0 text-accent">
-                  <Icon name="pin" size={10} className="w-2.5 h-2.5" />
-                </span>
-              )}
-              {isInFlow && (
-                <span
-                  role="button"
-                  tabIndex={-1}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    togglePin(filter.key);
-                  }}
-                  className={`flex-shrink-0 cursor-pointer transition-opacity duration-150 ${
-                    isPinned
-                      ? 'opacity-0'
-                      : 'opacity-0 hover:!opacity-100'
-                  }`}
-                >
                   <Icon name="pin" size={10} className="w-2.5 h-2.5" />
                 </span>
               )}
@@ -414,6 +399,89 @@ export function DynamicFilters({
           onChange={handleFilterChange}
           hasSelection={hasOverflowSelection}
         />
+      )}
+      {chipMenu && createPortal(
+        <ChipContextMenu
+          x={chipMenu.x}
+          y={chipMenu.y}
+          isPinned={pinnedKeys.includes(chipMenu.key)}
+          onTogglePin={() => { togglePin(chipMenu.key); setChipMenu(null); }}
+          onBrowse={onBrowseFilter ? () => { onBrowseFilter(chipMenu.key, filters); setChipMenu(null); } : undefined}
+          onClose={() => setChipMenu(null)}
+        />,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Chip right-click context menu
+// ---------------------------------------------------------------------------
+
+export function ChipContextMenu({
+  x,
+  y,
+  isPinned,
+  onTogglePin,
+  onBrowse,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  isPinned?: boolean;
+  onTogglePin?: () => void;
+  onBrowse?: () => void;
+  onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    document.addEventListener('keydown', keyHandler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', keyHandler);
+    };
+  }, [onClose]);
+
+  // Clamp to viewport
+  const left = Math.min(x, window.innerWidth - 180);
+  const top = Math.min(y, window.innerHeight - 120);
+
+  return (
+    <div
+      ref={menuRef}
+      className="fixed z-popover min-w-[160px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl py-1"
+      style={{ left, top }}
+    >
+      {onTogglePin && (
+        <button
+          type="button"
+          onClick={onTogglePin}
+          className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+        >
+          <Icon name="pin" size={14} className="w-3.5 h-3.5" />
+          <span>{isPinned ? 'Unpin filter' : 'Pin filter'}</span>
+        </button>
+      )}
+      {onBrowse && (
+        <button
+          type="button"
+          onClick={onBrowse}
+          className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+        >
+          <Icon name="image" size={14} className="w-3.5 h-3.5" />
+          <span>Browse in gallery</span>
+        </button>
       )}
     </div>
   );

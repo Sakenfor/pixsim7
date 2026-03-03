@@ -1,5 +1,6 @@
 import { Button } from '@pixsim7/shared.ui';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 
@@ -23,6 +24,7 @@ import {
   type GalleryGroupBySelection,
 } from '@features/panels';
 import { useProviders } from '@features/providers';
+import { useWorkspaceStore } from '@features/workspace';
 
 import { MasonryGrid } from '@/components/layout/MasonryGrid';
 import { MediaCard } from '@/components/media/MediaCard';
@@ -43,7 +45,7 @@ import { useGalleryApplyTargetStore } from '../stores/galleryApplyTargetStore';
 
 import { CuratorSurfaceContent } from './CuratorGallerySurface';
 import { DebugSurfaceContent } from './DebugGallerySurface';
-import { DynamicFilters } from './DynamicFilters';
+import { DynamicFilters, ChipContextMenu } from './DynamicFilters';
 import { FilterPresetBar } from './FilterPresetBar';
 import { GroupBreadcrumb } from './GroupBreadcrumb';
 import { GroupFolderTile, GroupListRow } from './GroupCards';
@@ -83,6 +85,7 @@ function AssetSetChip({
   filterSetIds,
   onToggleFilter,
   onSetTarget,
+  onBrowseSet,
   selectedCount,
   onAddSelected,
 }: {
@@ -93,9 +96,12 @@ function AssetSetChip({
   filterSetIds: string[];
   onToggleFilter: (setId: string) => void;
   onSetTarget: (setId?: string) => void;
+  onBrowseSet: (set: ManualAssetSet) => void;
   selectedCount: number;
   onAddSelected: () => void;
 }) {
+  const [rowMenu, setRowMenu] = useState<{ set: ManualAssetSet; x: number; y: number } | null>(null);
+
   if (manualSets.length === 0) return null;
   const activeCount = filterSetIds.length + (activeManualSet ? 1 : 0);
   return (
@@ -126,6 +132,10 @@ function AssetSetChip({
           return (
             <div
               key={s.id}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setRowMenu({ set: s, x: e.clientX, y: e.clientY });
+              }}
               className={`flex items-center gap-2 px-1.5 py-1 text-sm rounded transition-colors ${
                 isTarget
                   ? 'bg-emerald-500/5'
@@ -178,6 +188,19 @@ function AssetSetChip({
           </>
         )}
       </div>
+      {rowMenu && createPortal(
+        <ChipContextMenu
+          x={rowMenu.x}
+          y={rowMenu.y}
+          onBrowse={() => {
+            onBrowseSet(rowMenu.set);
+            setRowMenu(null);
+            chipState.closeChip(chipKey);
+          }}
+          onClose={() => setRowMenu(null)}
+        />,
+        document.body,
+      )}
     </FilterChip>
   );
 }
@@ -251,6 +274,36 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   const filterSetIds = useGalleryApplyTargetStore((s) => s.filterSetIds);
   const toggleFilterSet = useGalleryApplyTargetStore((s) => s.toggleFilterSet);
   const setChipState = useFilterChipState();
+  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+  const browseSetInMiniGallery = useCallback(
+    (set: ManualAssetSet) => {
+      if (set.assetIds.length === 0) return;
+      openFloatingPanel('mini-gallery', {
+        width: 480,
+        height: 520,
+        context: {
+          initialFilters: { asset_ids: set.assetIds },
+          sourceLabel: set.name,
+        },
+      });
+    },
+    [openFloatingPanel],
+  );
+
+  const browseFilterInMiniGallery = useCallback(
+    (_filterKey: string, currentFilters: AssetFilters) => {
+      openFloatingPanel('mini-gallery', {
+        width: 480,
+        height: 520,
+        context: {
+          initialFilters: currentFilters,
+          syncInitialFilters: true,
+          sourceLabel: 'Filtered assets',
+        },
+      });
+    },
+    [openFloatingPanel],
+  );
 
   const groupSearchOverrides = useMemo(() => {
     // Build union of asset IDs from checked filter sets
@@ -1121,6 +1174,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
               filters={controller.filters}
               onFiltersChange={(f) => setFilters(f)}
               showCounts
+              onBrowseFilter={browseFilterInMiniGallery}
               extraChips={
                 <AssetSetChip
                   chipKey="asset-sets"
@@ -1130,6 +1184,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
                   filterSetIds={filterSetIds}
                   onToggleFilter={toggleFilterSet}
                   onSetTarget={setActiveManualSetId}
+                  onBrowseSet={browseSetInMiniGallery}
                   selectedCount={controller.selectedAssetIds.size}
                   onAddSelected={addSelectedToActiveManualSet}
                 />

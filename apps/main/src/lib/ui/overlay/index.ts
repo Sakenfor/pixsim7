@@ -91,11 +91,15 @@ export {
   buildRemoveWidget,
   buildPinToggleWidget,
   buildCountBadgeWidget,
+  buildSetIndicatorWidget,
+  buildAddToSetWidget,
 } from './widgetPresets';
 
 export type {
   RemoveWidgetOptions,
   CountBadgeOptions,
+  SetIndicatorWidgetOptions,
+  AddToSetWidgetOptions,
 } from './widgetPresets';
 
 export type {

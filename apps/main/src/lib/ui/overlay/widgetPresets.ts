@@ -107,3 +107,79 @@ export function buildCountBadgeWidget(
     priority: BADGE_PRIORITY.background,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Set indicator widget (emerald dot — "in active set")
+// ---------------------------------------------------------------------------
+
+export interface SetIndicatorWidgetOptions {
+  /** Widget id. Default `'set-indicator'`. */
+  id?: string;
+  /** Tooltip text. Default `'In active set'`. */
+  tooltip?: string;
+  /** Override className. */
+  className?: string;
+}
+
+/**
+ * Build an emerald-dot badge indicating an asset belongs to the active set.
+ * Stacks at top-left via `badges-tl` group.
+ */
+export function buildSetIndicatorWidget(
+  options?: SetIndicatorWidgetOptions,
+): OverlayWidget {
+  return createBadgeWidget({
+    id: options?.id ?? 'set-indicator',
+    ...BADGE_SLOT.topLeft,
+    visibility: { trigger: 'always' },
+    variant: 'icon',
+    color: 'green',
+    shape: 'circle',
+    tooltip: options?.tooltip ?? 'In active set',
+    className:
+      options?.className ??
+      '!w-2.5 !h-2.5 !min-w-0 !min-h-0 !p-0 !bg-emerald-500 ring-2 ring-white/90 dark:ring-neutral-900/90 shadow-sm',
+    priority: BADGE_PRIORITY.interactive,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Add-to-set widget (hover pill button)
+// ---------------------------------------------------------------------------
+
+export interface AddToSetWidgetOptions {
+  /** Widget id. Default `'add-to-set'`. */
+  id?: string;
+  /** Button label. Default `'Add'`. */
+  label?: string;
+  /** Tooltip text. */
+  tooltip?: string;
+  /** Override className. */
+  className?: string;
+}
+
+/**
+ * Build an "Add" pill button that appears on hover for adding an asset to the
+ * active set. Positioned at top-left, hover-only visibility.
+ */
+export function buildAddToSetWidget(
+  onAdd: () => void,
+  options?: AddToSetWidgetOptions,
+): OverlayWidget {
+  const label = options?.label ?? 'Add';
+  return createBadgeWidget({
+    id: options?.id ?? 'add-to-set',
+    ...BADGE_SLOT.topLeft,
+    visibility: { trigger: 'hover-container' },
+    variant: 'icon-text',
+    icon: 'plus',
+    labelBinding: { kind: 'fn', target: 'label', fn: () => label },
+    color: 'gray',
+    tooltip: options?.tooltip,
+    onClick: () => onAdd(),
+    className:
+      options?.className ??
+      'border border-neutral-200 dark:border-neutral-700 !bg-white/95 dark:!bg-neutral-900/95 !text-neutral-700 dark:!text-neutral-200 hover:!bg-accent/10 hover:border-accent/40 shadow-sm text-[10px] font-medium',
+    priority: BADGE_PRIORITY.interactive,
+  });
+}
