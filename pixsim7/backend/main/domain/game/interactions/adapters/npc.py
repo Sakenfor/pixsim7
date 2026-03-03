@@ -50,6 +50,44 @@ class NpcInteractionTargetAdapter(InteractionTargetAdapter):
     def kind(self) -> str:
         return "npc"
 
+    @staticmethod
+    def _as_dict(value: Any) -> Dict[str, Any]:
+        return value if isinstance(value, dict) else {}
+
+    def _resolve_npc_behavior_state(self, session_flags: Dict[str, Any], npc_id: int) -> Dict[str, Any]:
+        """
+        Resolve behavior-related state from the canonical ECS component first,
+        with legacy state fallback for backward compatibility.
+        """
+        npcs = self._as_dict(session_flags.get("npcs"))
+        npc_blob = self._as_dict(npcs.get(f"npc:{npc_id}"))
+        components = self._as_dict(npc_blob.get("components"))
+        behavior_comp = self._as_dict(components.get("behavior"))
+        legacy_state = self._as_dict(npc_blob.get("state"))
+
+        current_activity = (
+            behavior_comp.get("currentActivityId")
+            or behavior_comp.get("currentActivity")
+            or legacy_state.get("currentActivityId")
+            or legacy_state.get("currentActivity")
+            or legacy_state.get("activity")
+        )
+
+        state_tags = behavior_comp.get("tags")
+        if not isinstance(state_tags, list):
+            state_tags = legacy_state.get("stateTags")
+        if not isinstance(state_tags, list):
+            state_tags = []
+
+        simulation_tier = behavior_comp.get("simulationTier") or legacy_state.get("simulationTier")
+
+        return {
+            "currentActivityId": current_activity,
+            "currentActivity": current_activity,
+            "stateTags": state_tags,
+            "simulationTier": simulation_tier,
+        }
+
     def normalize_target_id(self, target_id: Union[int, str]) -> int:
         if isinstance(target_id, int):
             return target_id
@@ -87,19 +125,17 @@ class NpcInteractionTargetAdapter(InteractionTargetAdapter):
         npc_id = self.normalize_target_id(target_id)
         stats_snapshot = session.get("stats") or {}
         flags = session.get("flags", {})
-        current_activity = None
-        state_tags = []
+        behavior_state = self._resolve_npc_behavior_state(flags, npc_id)
+        current_activity = behavior_state.get("currentActivityId")
+        state_tags = behavior_state.get("stateTags", [])
         mood_tags = []
         last_used_at = {}
 
         npc_key = f"npc:{npc_id}"
-        npc_flags = flags.get("npcs", {}).get(npc_key, {})
-        if "state" in npc_flags:
-            state = npc_flags["state"]
-            current_activity = state.get("currentActivity") or state.get("activity")
-            state_tags = state.get("stateTags", [])
-
+        npc_flags = self._as_dict(self._as_dict(flags.get("npcs")).get(npc_key))
         mood_tags = npc_flags.get("moodTags", [])
+        if not isinstance(mood_tags, list):
+            mood_tags = []
 
         target_ref = format_entity_ref("npc", npc_id).to_string()
         interaction_state = flags.get("interactions", {}).get(target_ref, {})
@@ -127,10 +163,10 @@ class NpcInteractionTargetAdapter(InteractionTargetAdapter):
         target_id: Union[int, str],
     ) -> Tuple[bool, Optional[str]]:
         npc_id = self.normalize_target_id(target_id)
-        npc_state = None
+        behavior_state = None
         if context.session_flags:
-            npc_state = context.session_flags.get("npcs", {}).get(f"npc:{npc_id}", {}).get("state")
-        return check_behavior_gating(gating, npc_state)
+            behavior_state = self._resolve_npc_behavior_state(context.session_flags, npc_id)
+        return check_behavior_gating(gating, behavior_state)
 
     def check_mood_gating(
         self,

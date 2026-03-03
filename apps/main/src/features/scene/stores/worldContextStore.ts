@@ -26,8 +26,20 @@ export const useWorldContextStore = create<WorldContextState>((set) => ({
   worldId: null,
   locationId: null,
 
-  setWorldId: (id) => set({ worldId: id }),
-  setLocationId: (id) => set({ locationId: id }),
-  setContext: (worldId, locationId) => set({ worldId, locationId }),
-  clearContext: () => set({ worldId: null, locationId: null }),
+  setWorldId: (id) =>
+    set((state) => (state.worldId === id ? state : { worldId: id })),
+  setLocationId: (id) =>
+    set((state) => (state.locationId === id ? state : { locationId: id })),
+  setContext: (worldId, locationId) =>
+    set((state) =>
+      state.worldId === worldId && state.locationId === locationId
+        ? state
+        : { worldId, locationId }
+    ),
+  clearContext: () =>
+    set((state) =>
+      state.worldId === null && state.locationId === null
+        ? state
+        : { worldId: null, locationId: null }
+    ),
 }));

@@ -19,7 +19,7 @@ from pixsim7.backend.main.api.dependencies import (
 )
 from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.domain.game.core.models import (
-    GameSession, GameWorld, GameNPC, GameLocation,
+    GameSession, GameWorld, GameNPC, GameLocation, NPCSchedule,
     GameScene, GameSceneNode
 )
 from pixsim7.backend.main.domain.narrative import (
@@ -507,6 +507,142 @@ async def generate_next_line_debug(
     )
 
 
+SECONDS_PER_DAY = 24 * 60 * 60
+DAYS_PER_WEEK = 7
+
+
+def _as_dict(value: Any) -> Dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _slugify(value: str) -> str:
+    import re
+
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", value).strip("_").lower()
+    return slug
+
+
+def _split_world_time(world_time: float) -> tuple[int, float]:
+    value = float(world_time if world_time is not None else 0.0)
+    if value < 0:
+        value = 0.0
+    day_index = int(value // SECONDS_PER_DAY)
+    day_of_week = day_index % DAYS_PER_WEEK
+    seconds_in_day = float(value % SECONDS_PER_DAY)
+    return day_of_week, seconds_in_day
+
+
+def _resolve_npc_session_blob(session: GameSession, npc_id: int) -> Dict[str, Any]:
+    flags = _as_dict(session.flags)
+    npcs = _as_dict(flags.get("npcs"))
+    return _as_dict(npcs.get(f"npc:{int(npc_id)}"))
+
+
+def _resolve_npc_behavior_state(npc_blob: Dict[str, Any]) -> Dict[str, Any]:
+    components = _as_dict(npc_blob.get("components"))
+    behavior_component = _as_dict(components.get("behavior"))
+    legacy_state = _as_dict(npc_blob.get("state"))
+
+    current_activity_id = (
+        behavior_component.get("currentActivityId")
+        or behavior_component.get("currentActivity")
+        or legacy_state.get("currentActivityId")
+        or legacy_state.get("currentActivity")
+        or legacy_state.get("activity")
+    )
+
+    return {
+        "currentActivityId": current_activity_id,
+        "simulationTier": behavior_component.get("simulationTier") or legacy_state.get("simulationTier"),
+    }
+
+
+def _resolve_npc_mood(npc_blob: Dict[str, Any]) -> Optional[str]:
+    mood_tags = npc_blob.get("moodTags")
+    if isinstance(mood_tags, list):
+        for tag in mood_tags:
+            if isinstance(tag, str) and tag.strip():
+                return tag.strip()
+
+    mood_component = _as_dict(_as_dict(npc_blob.get("components")).get("mood"))
+    general_mood = _as_dict(mood_component.get("general"))
+    mood_id = general_mood.get("moodId")
+    if isinstance(mood_id, str) and mood_id.strip():
+        return mood_id.strip()
+    return None
+
+
+def _resolve_location_tag(location: Optional[GameLocation]) -> Optional[str]:
+    if location is None:
+        return None
+
+    meta = _as_dict(location.meta)
+    raw = (
+        meta.get("locationTag")
+        or meta.get("location_tag")
+        or meta.get("tag")
+        or meta.get("location_key")
+    )
+    if isinstance(raw, str) and raw.strip():
+        value = raw.strip()
+        return value if ":" in value else f"location:{value}"
+
+    if isinstance(location.name, str) and location.name.strip():
+        slug = _slugify(location.name)
+        if slug:
+            return f"location:{slug}"
+
+    return None
+
+
+def _resolve_scene_intent_from_activity(
+    world_meta: Dict[str, Any],
+    activity_id: Optional[str],
+) -> Optional[str]:
+    if not isinstance(activity_id, str) or not activity_id.strip():
+        return None
+
+    behavior = _as_dict(world_meta.get("behavior"))
+    activities = _as_dict(behavior.get("activities"))
+    activity = _as_dict(activities.get(activity_id.strip()))
+    visual = _as_dict(activity.get("visual"))
+    scene_intent = visual.get("sceneIntent")
+    if isinstance(scene_intent, str) and scene_intent.strip():
+        return scene_intent.strip()
+    return None
+
+
+async def _resolve_location_for_npc(
+    db: DatabaseSession,
+    npc: GameNPC,
+    *,
+    world_time: float,
+) -> tuple[Optional[GameLocation], Optional[str]]:
+    day_of_week, seconds_in_day = _split_world_time(world_time)
+    schedule_result = await db.execute(
+        select(NPCSchedule)
+        .where(
+            NPCSchedule.npc_id == int(npc.id),
+            NPCSchedule.day_of_week == int(day_of_week),
+            NPCSchedule.start_time <= float(seconds_in_day),
+            NPCSchedule.end_time > float(seconds_in_day),
+        )
+        .order_by(NPCSchedule.start_time.desc(), NPCSchedule.id.desc())
+    )
+    schedule = schedule_result.scalars().first()
+    if schedule is not None:
+        location = await db.get(GameLocation, int(schedule.location_id))
+        if location is not None:
+            return location, "schedule"
+
+    if npc.home_location_id is not None:
+        location = await db.get(GameLocation, int(npc.home_location_id))
+        if location is not None:
+            return location, "home"
+
+    return None, None
+
+
 class ActionSelectionRequest(BaseModel):
     """Request for selecting action blocks."""
     location_tag: Optional[str] = None
@@ -536,6 +672,34 @@ class ActionSelectionResponse(BaseModel):
     fallback_reason: Optional[str] = None
     prompts: List[str]
     segments: List[Dict[str, Any]]
+
+
+class BuildActionSelectionRequestFromBehaviorRequest(BaseModel):
+    """Build an ActionSelectionRequest using behavior + schedule/session state."""
+
+    session_id: int
+    world_id: int
+    lead_npc_id: int
+    partner_npc_id: Optional[int] = None
+
+    world_time: Optional[float] = None
+    include_scene_intent_tag: bool = False
+
+    pose: Optional[str] = None
+    mood: Optional[str] = None
+    intimacy_level: Optional[str] = None
+    branch_intent: Optional[str] = None
+    previous_block_id: Optional[str] = None
+    required_tags: List[str] = Field(default_factory=list)
+    exclude_tags: List[str] = Field(default_factory=list)
+    max_duration: Optional[float] = None
+
+
+class BuildActionSelectionRequestFromBehaviorResponse(BaseModel):
+    """Built action-selection request plus derived behavior context."""
+
+    request: ActionSelectionRequest
+    derived: Dict[str, Any]
 
 
 class GenerateActionBlockRequest(BaseModel):
@@ -574,6 +738,95 @@ class ActionNextResponse(BaseModel):
     generated_block: Optional[Dict[str, Any]] = None
     generation_info: Optional[Dict[str, Any]] = None
     generation_error: Optional[str] = None
+
+
+async def _build_action_selection_request_from_behavior(
+    req: BuildActionSelectionRequestFromBehaviorRequest,
+    db: DatabaseSession,
+    user: CurrentUser,
+) -> tuple[ActionSelectionRequest, Dict[str, Any]]:
+    session = await db.get(GameSession, int(req.session_id))
+    if not session or session.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    world = await db.get(GameWorld, int(req.world_id))
+    if not world or world.owner_user_id != user.id:
+        raise HTTPException(status_code=404, detail="World not found")
+
+    if session.world_id is not None and int(session.world_id) != int(world.id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Session {session.id} belongs to world {session.world_id}, not {world.id}",
+        )
+
+    lead_npc = await db.get(GameNPC, int(req.lead_npc_id))
+    if not lead_npc:
+        raise HTTPException(status_code=404, detail="Lead NPC not found")
+    if lead_npc.world_id is not None and int(lead_npc.world_id) != int(world.id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Lead NPC {lead_npc.id} belongs to world {lead_npc.world_id}, not {world.id}",
+        )
+
+    if req.partner_npc_id is not None:
+        partner_npc = await db.get(GameNPC, int(req.partner_npc_id))
+        if not partner_npc:
+            raise HTTPException(status_code=404, detail="Partner NPC not found")
+        if partner_npc.world_id is not None and int(partner_npc.world_id) != int(world.id):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Partner NPC {partner_npc.id} belongs to world {partner_npc.world_id}, not {world.id}",
+            )
+
+    effective_world_time = float(req.world_time) if req.world_time is not None else float(session.world_time or 0.0)
+    lead_blob = _resolve_npc_session_blob(session, int(req.lead_npc_id))
+    behavior_state = _resolve_npc_behavior_state(lead_blob)
+    current_activity_id = behavior_state.get("currentActivityId")
+    derived_mood = req.mood or _resolve_npc_mood(lead_blob)
+
+    location, location_source = await _resolve_location_for_npc(
+        db,
+        lead_npc,
+        world_time=effective_world_time,
+    )
+    location_tag = _resolve_location_tag(location)
+    world_meta = _as_dict(world.meta)
+    scene_intent = _resolve_scene_intent_from_activity(world_meta, current_activity_id)
+
+    required_tags = list(req.required_tags or [])
+    if req.include_scene_intent_tag and scene_intent:
+        scene_intent_tag = f"scene_intent:{scene_intent}"
+        if scene_intent_tag not in required_tags:
+            required_tags.append(scene_intent_tag)
+
+    built = ActionSelectionRequest(
+        location_tag=location_tag,
+        pose=req.pose,
+        intimacy_level=req.intimacy_level,
+        mood=derived_mood,
+        branch_intent=req.branch_intent,
+        previous_block_id=req.previous_block_id,
+        lead_npc_id=req.lead_npc_id,
+        partner_npc_id=req.partner_npc_id,
+        required_tags=required_tags,
+        exclude_tags=list(req.exclude_tags or []),
+        max_duration=req.max_duration,
+        session_id=req.session_id,
+        world_id=req.world_id,
+    )
+
+    derived: Dict[str, Any] = {
+        "world_time": effective_world_time,
+        "location_id": int(location.id) if location and location.id is not None else None,
+        "location_name": (str(location.name) if location and location.name is not None else None),
+        "location_source": location_source,
+        "location_tag": location_tag,
+        "current_activity_id": current_activity_id,
+        "scene_intent": scene_intent,
+        "mood": derived_mood,
+        "simulation_tier": behavior_state.get("simulationTier"),
+    }
+    return built, derived
 
 
 async def _run_action_selection(
@@ -696,6 +949,38 @@ async def _run_action_selection(
         prompts=sequence.prompts,
         segments=sequence.segments,
     )
+
+
+@router.post(
+    "/actions/request-from-behavior",
+    response_model=BuildActionSelectionRequestFromBehaviorResponse,
+)
+async def build_action_selection_request_from_behavior(
+    req: BuildActionSelectionRequestFromBehaviorRequest,
+    db: DatabaseSession,
+    user: CurrentUser,
+) -> BuildActionSelectionRequestFromBehaviorResponse:
+    """
+    Build ActionSelectionRequest from runtime behavior/schedule context.
+
+    This endpoint does not run selection itself; it returns the normalized
+    request payload for `/actions/select`.
+    """
+    built, derived = await _build_action_selection_request_from_behavior(req, db, user)
+    return BuildActionSelectionRequestFromBehaviorResponse(request=built, derived=derived)
+
+
+@router.post("/actions/select-from-behavior", response_model=ActionSelectionResponse)
+async def select_action_blocks_from_behavior(
+    req: BuildActionSelectionRequestFromBehaviorRequest,
+    db: DatabaseSession,
+    user: CurrentUser,
+) -> ActionSelectionResponse:
+    """
+    Build ActionSelectionRequest from behavior context and immediately run selection.
+    """
+    built, _ = await _build_action_selection_request_from_behavior(req, db, user)
+    return await _run_action_selection(built, db, user)
 
 
 @router.post("/actions/select", response_model=ActionSelectionResponse)

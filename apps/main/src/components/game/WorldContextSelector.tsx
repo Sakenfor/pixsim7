@@ -1,5 +1,5 @@
 import { Button, Modal, FormField, Input, useToast } from '@pixsim7/shared.ui';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 
 import {
   createGameWorld,
@@ -13,7 +13,8 @@ import { useSharedWorldSelection } from '@/hooks';
 
 export function WorldContextSelector() {
   const toast = useToast();
-  const { locationId, setLocationId } = useWorldContextStore();
+  const locationId = useWorldContextStore((s) => s.locationId);
+  const setLocationId = useWorldContextStore((s) => s.setLocationId);
   const {
     worlds,
     selectedWorldId: worldId,
@@ -27,8 +28,18 @@ export function WorldContextSelector() {
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
   const [showNewWorldDialog, setShowNewWorldDialog] = useState(false);
   const [newWorldName, setNewWorldName] = useState('');
+  const toastRef = useRef(toast);
+  const locationIdRef = useRef<number | null>(locationId);
 
-  const loadLocations = useCallback(async () => {
+  useEffect(() => {
+    toastRef.current = toast;
+  }, [toast]);
+
+  useEffect(() => {
+    locationIdRef.current = locationId;
+  }, [locationId]);
+
+  const loadLocationsForWorld = useCallback(async () => {
     setIsLoadingLocations(true);
     try {
       const data = await listGameLocations();
@@ -39,34 +50,36 @@ export function WorldContextSelector() {
       setLocations(list);
 
       // Auto-select first location if none selected
-      if (list.length > 0 && locationId === null) {
+      if (list.length > 0 && locationIdRef.current === null) {
         setLocationId(list[0].id);
       }
     } catch (error) {
-      toast.error(
+      toastRef.current.error(
         `Failed to load locations: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     } finally {
       setIsLoadingLocations(false);
     }
-  }, [locationId, setLocationId, toast]);
+  }, [setLocationId]);
 
   // Bubble world load errors to the existing toast channel.
   useEffect(() => {
     if (worldLoadError) {
-      toast.error(`Failed to load worlds: ${worldLoadError}`);
+      toastRef.current.error(`Failed to load worlds: ${worldLoadError}`);
     }
-  }, [worldLoadError, toast]);
+  }, [worldLoadError]);
 
   // Load locations when world changes
   useEffect(() => {
     if (worldId !== null) {
-      void loadLocations();
+      void loadLocationsForWorld();
     } else {
-      setLocations([]);
-      setLocationId(null);
+      setLocations((prev) => (prev.length === 0 ? prev : []));
+      if (locationIdRef.current !== null) {
+        setLocationId(null);
+      }
     }
-  }, [worldId, setLocationId, loadLocations]);
+  }, [worldId, loadLocationsForWorld, setLocationId]);
 
   const handleCreateWorld = useCallback(async () => {
     if (!newWorldName.trim()) {

@@ -427,7 +427,11 @@ def check_behavior_gating(
             return False, f"Target is {current_state} (unavailable)"
 
     # Check activity
-    current_activity = target_state.get("currentActivity") or target_state.get("activity")
+    current_activity = (
+        target_state.get("currentActivityId")
+        or target_state.get("currentActivity")
+        or target_state.get("activity")
+    )
 
     if gating.allowed_activities:
         if not current_activity or current_activity not in gating.allowed_activities:

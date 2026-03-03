@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from uuid import UUID, uuid4
 
-from sqlmodel import SQLModel, Field, Column
+from sqlmodel import Field, Column
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import Text
 
@@ -14,7 +14,7 @@ from ..stats import HasStatsWithMetadata
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 
-class LocationTemplate(SQLModel, HasStatsWithMetadata, table=True):
+class LocationTemplate(HasStatsWithMetadata, table=True):
     """Reusable location definition shared across worlds."""
     __tablename__ = "location_templates"
 

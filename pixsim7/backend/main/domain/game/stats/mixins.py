@@ -5,11 +5,11 @@ Provides reusable stats field and utilities for any model that needs stat tracki
 """
 
 from typing import Dict, Any
-from sqlmodel import Field
+from sqlmodel import SQLModel, Field
 from sqlalchemy import JSON
 
 
-class HasStats:
+class HasStats(SQLModel, table=False):
     """
     Mixin for models that own stats.
 
@@ -17,7 +17,7 @@ class HasStats:
     as the abstract stat system.
 
     Usage:
-        class GameNPC(SQLModel, HasStats, table=True):
+        class GameNPC(HasStats, table=True):
             id: int
             name: str
             # stats field inherited from HasStats
@@ -55,7 +55,7 @@ class HasStatsWithMetadata(HasStats):
     Includes fields for tracking stat modifications, sources, and history.
 
     Usage:
-        class GameItem(SQLModel, HasStatsWithMetadata, table=True):
+        class GameItem(HasStatsWithMetadata, table=True):
             id: int
             name: str
             # stats and stats_metadata inherited

@@ -110,7 +110,7 @@ class GameWorldState(SQLModel, table=True):
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
 
-class GameLocation(SQLModel, HasStats, table=True):
+class GameLocation(HasStats, table=True):
     __tablename__ = "game_locations"
     id: Optional[int] = Field(default=None, primary_key=True)
     world_id: Optional[int] = Field(default=None, foreign_key="game_worlds.id", index=True)
@@ -130,7 +130,7 @@ class GameLocation(SQLModel, HasStats, table=True):
     created_at: datetime = Field(default_factory=utcnow, index=True)
     # stats field inherited from HasStats - used for environmental effects
 
-class GameNPC(SQLModel, HasStats, table=True):
+class GameNPC(HasStats, table=True):
     __tablename__ = "game_npcs"
     id: Optional[int] = Field(default=None, primary_key=True)
     world_id: Optional[int] = Field(default=None, foreign_key="game_worlds.id", index=True)
@@ -140,7 +140,7 @@ class GameNPC(SQLModel, HasStats, table=True):
     # stats field inherited from HasStats - base stats (combat skills, attributes, etc.)
 
 
-class GameItem(SQLModel, HasStatsWithMetadata, table=True):
+class GameItem(HasStatsWithMetadata, table=True):
     __tablename__ = "game_items"
     id: Optional[int] = Field(default=None, primary_key=True)
     world_id: Optional[int] = Field(default=None, foreign_key="game_worlds.id", index=True)
@@ -161,7 +161,7 @@ class NPCSchedule(SQLModel, table=True):
     location_id: int = Field(foreign_key="game_locations.id")
     rule: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
-class NPCState(SQLModel, HasStats, table=True):
+class NPCState(HasStats, table=True):
     __tablename__ = "npc_state"
     npc_id: Optional[int] = Field(primary_key=True)
     current_location_id: Optional[int] = Field(default=None, foreign_key="game_locations.id")

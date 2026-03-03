@@ -115,7 +115,8 @@ class BehaviorStateComponentSchema(BaseModel):
     Component key: "behavior"
     """
 
-    currentActivity: Optional[str] = Field(None, description="Current activity ID")
+    currentActivityId: Optional[str] = Field(None, description="Current activity ID (canonical)")
+    currentActivity: Optional[str] = Field(None, description="Current activity ID (legacy alias)")
     activityStartedAt: Optional[int] = Field(None, description="Activity started timestamp")
     nextDecisionAt: Optional[int] = Field(None, description="Next decision time")
     simulationTier: Optional[str] = Field(None, description="Simulation tier")
