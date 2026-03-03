@@ -141,4 +141,8 @@ class AssetEventEmitter {
   }
 }
 
-export const assetEvents = new AssetEventEmitter();
+// Persist singleton across HMR module re-evaluations so emitters and
+// subscribers always reference the same instance.
+const _hmrKey = Symbol.for('pixsim7:assetEvents');
+export const assetEvents: AssetEventEmitter =
+  ((globalThis as any)[_hmrKey] ??= new AssetEventEmitter());

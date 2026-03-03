@@ -40,7 +40,18 @@ import type { OperationType } from '@/types/operations';
 
 // Tracks last asset ID seen by auto-switch logic.
 // Survives component unmount/remount (gallery navigation) but resets on page refresh.
-let _lastViewerAssetId: string | number | undefined;
+// Persisted on globalThis so it also survives HMR module re-evaluation.
+const _viewerHmrKey = Symbol.for('pixsim7:viewerQuickGenerate');
+const _viewerHmrState = ((globalThis as any)[_viewerHmrKey] ??= {}) as {
+  lastAssetId?: string | number;
+};
+// Accessor so existing code reads/writes the same reference
+function getLastViewerAssetId(): string | number | undefined {
+  return _viewerHmrState.lastAssetId;
+}
+function setLastViewerAssetId(id: string | number | undefined) {
+  _viewerHmrState.lastAssetId = id;
+}
 
 const VIEWER_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings'] as const;
 
@@ -150,13 +161,13 @@ function ViewerQuickGenerateChrome({
   // Uses module-level var so it survives unmount/remount (gallery click)
   // but resets on page refresh (preserving persisted operation type).
   useEffect(() => {
-    if (_lastViewerAssetId === undefined) {
+    if (getLastViewerAssetId() === undefined) {
       // First mount after refresh — just record, don't auto-switch
-      _lastViewerAssetId = asset.id;
+      setLastViewerAssetId(asset.id);
       return;
     }
-    if (_lastViewerAssetId === asset.id) return;
-    _lastViewerAssetId = asset.id;
+    if (getLastViewerAssetId() === asset.id) return;
+    setLastViewerAssetId(asset.id);
 
     if (mode !== 'user' || !autoSwitchEnabled) return;
 
@@ -271,8 +282,8 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
       setOpen={setOpen}
       provideContext={false}
       storageKeyPrefix="viewer-quickgen"
-      className=""
-      panelHostClassName="h-[360px] min-h-[280px] mt-2"
+      className={alwaysExpanded ? 'h-full flex flex-col' : ''}
+      panelHostClassName={alwaysExpanded ? 'flex-1 min-h-0 mt-2' : 'h-[360px] min-h-[280px] mt-2'}
       context={{
         sourceToggleMode: mode,
         sourceToggleGenerationId: asset.sourceGenerationId,
@@ -293,3 +304,4 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     </QuickGenWidget>
   );
 }
+

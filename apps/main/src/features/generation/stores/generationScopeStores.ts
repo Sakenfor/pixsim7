@@ -9,9 +9,20 @@ export type GenerationSettingsStoreHook = <T>(
   selector: (state: GenerationSettingsState) => T
 ) => T;
 
-const sessionStores = new Map<string, GenerationSessionStoreHook>();
-const settingsStores = new Map<string, GenerationSettingsStoreHook>();
-const inputStores = new Map<string, GenerationInputStoreHook>();
+// Persist scope store Maps across HMR module re-evaluations.
+// Without this, re-evaluation creates fresh empty Maps and panels that
+// survived HMR (via dockview stabilization) get new empty stores instead
+// of their existing populated ones.
+const _hmrKey = Symbol.for('pixsim7:generationScopes');
+const _hmrState = ((globalThis as any)[_hmrKey] ??= {}) as {
+  sessionStores?: Map<string, GenerationSessionStoreHook>;
+  settingsStores?: Map<string, GenerationSettingsStoreHook>;
+  inputStores?: Map<string, GenerationInputStoreHook>;
+};
+const sessionStores = (_hmrState.sessionStores ??= new Map());
+const settingsStores = (_hmrState.settingsStores ??= new Map());
+const inputStores = (_hmrState.inputStores ??= new Map());
+
 
 function getStorageKey(prefix: string, scopeId: string) {
   return `${prefix}:${scopeId}`;

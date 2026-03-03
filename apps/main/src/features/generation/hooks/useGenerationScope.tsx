@@ -20,19 +20,28 @@ export interface GenerationScopeStores {
   useInputStore: GenerationInputStoreHook;
 }
 
-const GLOBAL_SCOPE: GenerationScopeStores = {
-  id: "global",
-  label: "Global",
-  useSessionStore: getGenerationSessionStore("global"),
-  useSettingsStore: useGenerationSettingsStore as unknown as GenerationSettingsStoreHook,
-  useInputStore: useGenerationInputStore as unknown as GenerationInputStoreHook,
-};
+// Lazily resolve the global scope so it always references the HMR-stable
+// store singletons (which are cached on globalThis via Symbol.for).
+function getGlobalScope(): GenerationScopeStores {
+  return {
+    id: "global",
+    label: "Global",
+    useSessionStore: getGenerationSessionStore("global"),
+    useSettingsStore: useGenerationSettingsStore as unknown as GenerationSettingsStoreHook,
+    useInputStore: useGenerationInputStore as unknown as GenerationInputStoreHook,
+  };
+}
 
 /**
  * React context for generation scope stores.
- * Replaces the capability system with a simpler direct context approach.
+ * Persisted on globalThis so the context object identity survives HMR
+ * module re-evaluation. Without this, providers use the new context but
+ * consumers (especially in dockview portals) still subscribe to the old
+ * one, falling back to global scope and showing stale data.
  */
-const GenerationScopeContext = createContext<GenerationScopeStores | null>(null);
+const _scopeCtxKey = Symbol.for('pixsim7:generationScopeContext');
+const GenerationScopeContext: React.Context<GenerationScopeStores | null> =
+  ((globalThis as any)[_scopeCtxKey] ??= createContext<GenerationScopeStores | null>(null));
 
 /**
  * Hook to access generation scope stores.
@@ -40,7 +49,7 @@ const GenerationScopeContext = createContext<GenerationScopeStores | null>(null)
  */
 export function useGenerationScopeStores(): GenerationScopeStores {
   const context = useContext(GenerationScopeContext);
-  return context ?? GLOBAL_SCOPE;
+  return context ?? getGlobalScope();
 }
 
 interface GenerationScopeProviderProps {
@@ -68,9 +77,10 @@ export function GenerationScopeProvider({
     }
 
     if (scopeId === "global") {
+      const global = getGlobalScope();
       return {
-        ...GLOBAL_SCOPE,
-        label: label ?? GLOBAL_SCOPE.label,
+        ...global,
+        label: label ?? global.label,
       };
     }
 

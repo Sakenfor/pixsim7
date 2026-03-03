@@ -13,11 +13,16 @@ import { assetEvents, fromAssetResponse, type AssetModel } from '@features/asset
 
 import type { OperationType } from '@/types/operations';
 
+export type PickStrategy = 'random' | 'sequential' | 'no_repeat';
+
 export interface AssetSetSlotRef {
   setId: string;                        // references AssetSet.id
   mode: 'random_each' | 'locked';       // pick timing
   lockedAssetId?: number;               // for 'locked' mode — the pinned pick
   originalAssetId?: number;             // asset that was in the slot before linking
+  pickStrategy?: PickStrategy;          // how to pick from set (default: random)
+  pickIndex?: number;                   // sequential counter
+  recentPicks?: number[];               // no_repeat history
 }
 
 export interface InputItem {
@@ -64,6 +69,8 @@ export interface GenerationInputsState {
   setAssetSetRef: (operationType: OperationType, inputId: string, ref: AssetSetSlotRef | undefined) => void;
   updateAssetSetMode: (operationType: OperationType, inputId: string, mode: AssetSetSlotRef['mode']) => void;
   lockAssetSetPick: (operationType: OperationType, inputId: string, assetId: number) => void;
+  updatePickStrategy: (operationType: OperationType, inputId: string, strategy: PickStrategy) => void;
+  updatePickState: (operationType: OperationType, inputId: string, patch: { pickIndex?: number; recentPicks?: number[] }) => void;
 
   getCurrentInput: (operationType: OperationType) => InputItem | null;
   getInputs: (operationType: OperationType) => InputItem[];
@@ -556,6 +563,57 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
           });
         },
 
+        updatePickStrategy: (operationType, inputId, strategy) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) => {
+                    if (item.id !== inputId || !item.assetSetRef) return item;
+                    return {
+                      ...item,
+                      assetSetRef: {
+                        ...item.assetSetRef,
+                        pickStrategy: strategy,
+                        pickIndex: undefined,
+                        recentPicks: undefined,
+                      },
+                    };
+                  }),
+                },
+              },
+            };
+          });
+        },
+
+        updatePickState: (operationType, inputId, patch) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) => {
+                    if (item.id !== inputId || !item.assetSetRef) return item;
+                    return {
+                      ...item,
+                      assetSetRef: {
+                        ...item.assetSetRef,
+                        ...(patch.pickIndex !== undefined ? { pickIndex: patch.pickIndex } : {}),
+                        ...(patch.recentPicks !== undefined ? { recentPicks: patch.recentPicks } : {}),
+                      },
+                    };
+                  }),
+                },
+              },
+            };
+          });
+        },
+
         getCurrentInput: (operationType) => {
           const existing = getOperationInputs(get().inputsByOperation, operationType);
           if (existing.items.length === 0) return null;
@@ -598,13 +656,25 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
   );
 }
 
-export const useGenerationInputStore = createGenerationInputStore('generation_inputs_v1');
+// Persist global input store across HMR module re-evaluations.
+const _hmrKey = Symbol.for('pixsim7:generationInputStore');
+const _hmrState = ((globalThis as any)[_hmrKey] ??= {}) as {
+  store?: GenerationInputStoreHook;
+  subscribed?: boolean;
+};
+
+export const useGenerationInputStore: GenerationInputStoreHook =
+  (_hmrState.store ??= createGenerationInputStore('generation_inputs_v1'));
 
 // Keep asset snapshots fresh: any surface that updates an asset (gallery upload,
 // gesture swipe, compact card button, etc.) emits assetUpdated — patch in place.
-assetEvents.subscribeToUpdates((response) => {
-  useGenerationInputStore.getState().updateAssetModel(response.id, fromAssetResponse(response));
-});
+// Guard prevents duplicate subscriptions across HMR re-evaluations.
+if (!_hmrState.subscribed) {
+  _hmrState.subscribed = true;
+  assetEvents.subscribeToUpdates((response) => {
+    useGenerationInputStore.getState().updateAssetModel(response.id, fromAssetResponse(response));
+  });
+}
 
 export function getInputsForOperation(operationType: OperationType): InputItem[] {
   const state = useGenerationInputStore.getState();

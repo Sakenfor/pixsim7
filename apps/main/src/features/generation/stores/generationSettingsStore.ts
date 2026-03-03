@@ -348,13 +348,23 @@ export function createGenerationSettingsStore(
   );
 }
 
-export const useGenerationSettingsStore = createGenerationSettingsStore(
+// Persist global settings store across HMR module re-evaluations.
+// Also guards the manual rehydration setTimeout from firing again on HMR.
+const _settingsHmrKey = Symbol.for('pixsim7:generationSettingsStore');
+const _settingsHmrState = ((globalThis as any)[_settingsHmrKey] ??= {}) as {
+  store?: ReturnType<typeof createGenerationSettingsStore>;
+  rehydrated?: boolean;
+};
+
+export const useGenerationSettingsStore = (_settingsHmrState.store ??= createGenerationSettingsStore(
   STORAGE_KEY,
   createBackendStorage('generationSettings'),
-);
+));
 
 // Manual rehydration workaround for async storage (see zustandPersistWorkaround.ts)
-if (typeof window !== 'undefined') {
+// Guarded so it only runs once — not again on HMR re-evaluation.
+if (typeof window !== 'undefined' && !_settingsHmrState.rehydrated) {
+  _settingsHmrState.rehydrated = true;
   setTimeout(() => {
     debugFlags.log('rehydration', '[GenerationSettingsStore] Triggering manual rehydration');
     manuallyRehydrateStore(
