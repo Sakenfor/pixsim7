@@ -32,6 +32,16 @@ export function isSetStrategy(s: string): s is SetStrategy {
   return s === 'input_x_set_random' || s === 'input_x_set_sequential' || s === 'set_each';
 }
 
+/** Pick a random item from a non-empty array. */
+export function pickRandom<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+/** Pick the item at `index % length` (wrapping sequential). */
+export function pickSequential<T>(items: T[], index: number): T {
+  return items[index % items.length];
+}
+
 /**
  * Given an array of input items and a strategy, return groups of items
  * that should be submitted together as a single generation request.
@@ -86,10 +96,10 @@ export function computeSetCombinations<T>(inputs: T[], setItems: T[], strategy: 
 
   switch (strategy) {
     case 'input_x_set_random':
-      return inputs.map(item => [item, setItems[Math.floor(Math.random() * setItems.length)]]);
+      return inputs.map(item => [item, pickRandom(setItems)]);
 
     case 'input_x_set_sequential':
-      return inputs.map((item, idx) => [item, setItems[idx % setItems.length]]);
+      return inputs.map((item, idx) => [item, pickSequential(setItems, idx)]);
 
     case 'set_each':
       return setItems.map(s => [s]);

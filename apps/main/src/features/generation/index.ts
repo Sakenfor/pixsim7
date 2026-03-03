@@ -51,7 +51,7 @@ export { usePersistedScopeState } from './hooks/usePersistedScopeState';
 
 // Stores
 export { useGenerationInputStore, getInputsForOperation } from './stores/generationInputStore';
-export type { GenerationInputsState, InputItem, AddInputOptions, OperationInputs, AssetSetSlotRef } from './stores/generationInputStore';
+export type { GenerationInputsState, InputItem, AddInputOptions, OperationInputs, AssetSetSlotRef, PickStrategy } from './stores/generationInputStore';
 export { useGenerationSettingsStore, createGenerationSettingsStore } from './stores/generationSettingsStore';
 export {
   createGenerationSessionStore,

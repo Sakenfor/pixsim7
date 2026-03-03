@@ -11,6 +11,8 @@ import type { InputItem } from '@features/generation';
 import { useCompositionPackageStore } from '@/stores/compositionPackageStore';
 import type { OperationType } from '@/types/operations';
 
+import { pickFromSet } from './pickFromSet';
+
 // Re-export for backwards compatibility
 export type { OperationType };
 
@@ -25,6 +27,13 @@ export interface QuickGenerateContext {
   currentInput?: InputItem;
   /** Max prompt chars — prompt is clamped to this limit before sending to API */
   maxChars?: number;
+}
+
+export interface PickStateUpdate {
+  inputId: string;
+  pickedAssetId: number;
+  pickIndex?: number;
+  recentPicks?: number[];
 }
 
 export interface BuildGenerationResult {
@@ -42,6 +51,12 @@ export interface BuildGenerationResult {
    * Trimmed prompt that should be used for generation and history.
    */
   finalPrompt: string;
+
+  /**
+   * Pick state updates from asset set resolution (sequential index, no-repeat history).
+   * The caller should persist these via updatePickState and update display assets.
+   */
+  pickStateUpdates?: PickStateUpdate[];
 }
 
 /**
@@ -203,6 +218,8 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
       .filter(Boolean);
   };
 
+  const pickStateUpdates: PickStateUpdate[] = [];
+
   const resolveCompositionAssetsFromInputs = async (
     inputs: InputItem[] | undefined,
     options: { mediaType?: 'image' | 'video' } = {},
@@ -215,20 +232,45 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
       if (item.assetSetRef) {
         const set = useAssetSetStore.getState().getSet(item.assetSetRef.setId);
         if (set) {
-          if (item.assetSetRef.mode === 'locked' && item.assetSetRef.lockedAssetId) {
-            try {
-              const fetched = await getAsset(item.assetSetRef.lockedAssetId);
-              resolvedAsset = fromAssetResponse(fetched);
-            } catch {
-              // Fall back to current display asset
+          if (item.assetSetRef.mode === 'locked') {
+            if (item.assetSetRef.lockedAssetId) {
+              try {
+                const fetched = await getAsset(item.assetSetRef.lockedAssetId);
+                resolvedAsset = fromAssetResponse(fetched);
+              } catch {
+                // Fall back to current display asset
+                console.warn(`[pickFromSet] Failed to fetch locked asset ${item.assetSetRef.lockedAssetId}, using display asset`);
+              }
+            } else {
+              // Bug 3: locked mode without lockedAssetId — treat as random pick with warning
+              console.warn(`[pickFromSet] Locked mode without lockedAssetId on input ${item.id}, falling back to random pick`);
+              const setAssets = await resolveAssetSet(set);
+              if (setAssets.length > 0) {
+                const result = pickFromSet(setAssets, item.assetSetRef.pickStrategy, item.assetSetRef);
+                resolvedAsset = result.asset;
+                pickStateUpdates.push({
+                  inputId: item.id,
+                  pickedAssetId: result.asset.id,
+                  ...result.updatedRef,
+                });
+              }
             }
           } else {
-            // random_each — resolve set, pick random
+            // random_each — resolve set, pick using strategy
             const setAssets = await resolveAssetSet(set);
             if (setAssets.length > 0) {
-              resolvedAsset = setAssets[Math.floor(Math.random() * setAssets.length)];
+              const result = pickFromSet(setAssets, item.assetSetRef.pickStrategy, item.assetSetRef);
+              resolvedAsset = result.asset;
+              pickStateUpdates.push({
+                inputId: item.id,
+                pickedAssetId: result.asset.id,
+                ...result.updatedRef,
+              });
             }
           }
+        } else {
+          // Bug 1: set not found — warn instead of silent fallback
+          console.warn(`[pickFromSet] Asset set "${item.assetSetRef.setId}" not found, using display asset`);
         }
       }
 
@@ -581,6 +623,7 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
   return {
     params: normalizedParams,
     finalPrompt: clampedPrompt,
+    pickStateUpdates: pickStateUpdates.length > 0 ? pickStateUpdates : undefined,
   };
 }
 

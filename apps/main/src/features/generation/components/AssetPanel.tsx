@@ -55,6 +55,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
       onSetLink={state.handleSetLink}
       onSetUnlink={state.handleSetUnlink}
       onSetModeChange={state.handleSetModeChange}
+      onPickStrategyChange={state.handlePickStrategyChange}
       onReroll={state.handleSetReroll}
       onClose={state.handleSetPopoverClose}
     />

@@ -9,7 +9,7 @@ import { Icon } from '@lib/icons';
 
 import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
 import { useAssetSetStore, type AssetSet } from '@features/assets/stores/assetSetStore';
-import type { AssetSetSlotRef, InputItem } from '@features/generation';
+import type { AssetSetSlotRef, InputItem, PickStrategy } from '@features/generation';
 
 import type { OperationType } from '@/types/operations';
 
@@ -20,6 +20,7 @@ export interface SetSlotPopoverProps {
   onSetLink: (operationType: OperationType, inputId: string, setId: string) => void;
   onSetUnlink: (operationType: OperationType, inputId: string) => void;
   onSetModeChange: (operationType: OperationType, inputId: string, mode: AssetSetSlotRef['mode']) => void;
+  onPickStrategyChange: (operationType: OperationType, inputId: string, strategy: PickStrategy) => void;
   onReroll: (operationType: OperationType, inputId: string) => void;
   onClose: () => void;
 }
@@ -31,6 +32,7 @@ export function SetSlotPopover({
   onSetLink,
   onSetUnlink,
   onSetModeChange,
+  onPickStrategyChange,
   onReroll,
   onClose,
 }: SetSlotPopoverProps) {
@@ -159,6 +161,31 @@ export function SetSlotPopover({
                 Locked
               </button>
             </div>
+            {currentRef.mode === 'random_each' && (
+              <div className="flex items-center gap-1">
+                {([
+                  { key: 'random' as const, label: 'Random' },
+                  { key: 'sequential' as const, label: 'Seq' },
+                  { key: 'no_repeat' as const, label: 'No Rep' },
+                ] as const).map(({ key, label }) => {
+                  const active = (currentRef.pickStrategy ?? 'random') === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`flex-1 px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors ${
+                        active
+                          ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
+                          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                      }`}
+                      onClick={() => onPickStrategyChange(operationType, inputItem.id, key)}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {currentRef.mode === 'locked' && (
               <button
                 type="button"

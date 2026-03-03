@@ -1,4 +1,4 @@
-import { Dropdown, DropdownItem, DropdownSectionHeader } from '@pixsim7/shared.ui';
+import { DropdownItem, DropdownSectionHeader, Popover } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useMemo, useRef, useState } from 'react';
 
@@ -47,7 +47,6 @@ export function EachSplitButton({
 
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const [anchorPos, setAnchorPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const sets = useAssetSetStore((s) => s.sets);
   const currentRunOptions = normalizeFanoutRunOptions(draftRunOptions);
@@ -95,10 +94,6 @@ export function EachSplitButton({
     setPickCount: currentRunOptions.setPickCount,
   });
 
-  const allPresets = useMemo(
-    () => [...BUILTIN_FANOUT_PRESETS, ...(customPresets || [])],
-    [customPresets],
-  );
   const builtinBasicPresets = useMemo(
     () =>
       BUILTIN_FANOUT_PRESETS.filter(
@@ -114,13 +109,7 @@ export function EachSplitButton({
     [],
   );
 
-  const handleToggle = () => {
-    if (!open && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      setAnchorPos({ x: rect.right, y: rect.top });
-    }
-    setOpen((o) => !o);
-  };
+  const handleToggle = () => setOpen((o) => !o);
 
   function applyPreset(preset: FanoutRunOptions) {
     const normalized = normalizeFanoutRunOptions(preset);
@@ -154,8 +143,6 @@ export function EachSplitButton({
       setSelectedPresetId(null);
     }
   }
-
-  const totalItems = EACH_STRATEGIES.length + SET_STRATEGIES.length + allPresets.length + 16;
 
   return (
     <div className="relative flex-shrink-0">
@@ -218,88 +205,97 @@ export function EachSplitButton({
         </div>
       </div>
 
-      <Dropdown
-        isOpen={open}
+      <Popover
+        open={open}
         onClose={() => setOpen(false)}
-        portal
-        positionMode="fixed"
-        anchorPosition={{ x: anchorPos.x - 260, y: Math.max(8, anchorPos.y - (totalItems * 18)) }}
-        minWidth="260px"
+        anchor={triggerRef.current}
+        placement="top"
+        align="end"
+        offset={6}
         triggerRef={triggerRef}
-        className="!p-0"
+        className="w-[260px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl max-h-[70vh] overflow-y-auto"
       >
         <DropdownSectionHeader first>Built-in Presets</DropdownSectionHeader>
-        {builtinBasicPresets.map((preset) => (
-          <DropdownItem
-            key={preset.id}
-            onClick={() => {
-              applyPreset(preset);
-              setOpen(false);
-            }}
-            className="text-[11px]"
-            icon={<Icon name="sparkles" size={10} />}
-          >
-            <div className="flex flex-col items-start">
-              <span>{preset.label}</span>
-              {preset.description && <span className="text-[9px] text-neutral-400">{preset.description}</span>}
-            </div>
-          </DropdownItem>
-        ))}
+        {builtinBasicPresets.map((preset) => {
+          const isActive = selectedPresetId === preset.id;
+          return (
+            <DropdownItem
+              key={preset.id}
+              onClick={() => {
+                applyPreset(preset);
+                setOpen(false);
+              }}
+              className={clsx('text-[11px]', isActive && 'font-semibold bg-accent/10')}
+              icon={isActive ? <Icon name="check" size={10} /> : <Icon name="sparkles" size={10} />}
+            >
+              <div className="flex flex-col items-start">
+                <span>{preset.label}</span>
+                {preset.description && <span className="text-[9px] text-neutral-400">{preset.description}</span>}
+              </div>
+            </DropdownItem>
+          );
+        })}
         {builtinOvernightPresets.length > 0 && (
           <>
             <DropdownSectionHeader>Overnight / Long Runs</DropdownSectionHeader>
-            {builtinOvernightPresets.map((preset) => (
-              <DropdownItem
-                key={preset.id}
-                onClick={() => {
-                  applyPreset(preset);
-                  setOpen(false);
-                }}
-                className="text-[11px]"
-                icon={<Icon name="moon" size={10} />}
-              >
-                <div className="flex flex-col items-start">
-                  <span>{preset.label}</span>
-                  {preset.description && (
-                    <span className="text-[9px] text-neutral-400">{preset.description}</span>
-                  )}
-                </div>
-              </DropdownItem>
-            ))}
+            {builtinOvernightPresets.map((preset) => {
+              const isActive = selectedPresetId === preset.id;
+              return (
+                <DropdownItem
+                  key={preset.id}
+                  onClick={() => {
+                    applyPreset(preset);
+                    setOpen(false);
+                  }}
+                  className={clsx('text-[11px]', isActive && 'font-semibold bg-accent/10')}
+                  icon={isActive ? <Icon name="check" size={10} /> : <Icon name="moon" size={10} />}
+                >
+                  <div className="flex flex-col items-start">
+                    <span>{preset.label}</span>
+                    {preset.description && (
+                      <span className="text-[9px] text-neutral-400">{preset.description}</span>
+                    )}
+                  </div>
+                </DropdownItem>
+              );
+            })}
           </>
         )}
         <DropdownSectionHeader>Custom Presets</DropdownSectionHeader>
-        {(customPresets || []).map((preset) => (
-          <DropdownItem
-            key={preset.id}
-            onClick={() => {
-              applyPreset(preset);
-              setOpen(false);
-            }}
-            className="text-[11px]"
-            icon={<Icon name="sparkles" size={10} />}
-            rightSlot={
-              preset.id.startsWith('custom-') ? (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteCustomPreset(preset.id);
-                  }}
-                  className="text-[10px] text-neutral-400 hover:text-red-500"
-                  title="Delete preset"
-                >
-                  <Icon name="trash" size={10} />
-                </button>
-              ) : null
-            }
-          >
-            <div className="flex flex-col items-start">
-              <span>{preset.label}</span>
-              {preset.description && <span className="text-[9px] text-neutral-400">{preset.description}</span>}
-            </div>
-          </DropdownItem>
-        ))}
+        {(customPresets || []).map((preset) => {
+          const isActive = selectedPresetId === preset.id;
+          return (
+            <DropdownItem
+              key={preset.id}
+              onClick={() => {
+                applyPreset(preset);
+                setOpen(false);
+              }}
+              className={clsx('text-[11px]', isActive && 'font-semibold bg-accent/10')}
+              icon={isActive ? <Icon name="check" size={10} /> : <Icon name="sparkles" size={10} />}
+              rightSlot={
+                preset.id.startsWith('custom-') ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteCustomPreset(preset.id);
+                    }}
+                    className="text-[10px] text-neutral-400 hover:text-red-500"
+                    title="Delete preset"
+                  >
+                    <Icon name="trash" size={10} />
+                  </button>
+                ) : null
+              }
+            >
+              <div className="flex flex-col items-start">
+                <span>{preset.label}</span>
+                {preset.description && <span className="text-[9px] text-neutral-400">{preset.description}</span>}
+              </div>
+            </DropdownItem>
+          );
+        })}
         <div className="px-2 py-1 border-t border-neutral-200 dark:border-neutral-700">
           <div className="mb-1 text-[10px] text-neutral-500">
             Preset:{' '}
@@ -338,7 +334,8 @@ export function EachSplitButton({
               setDraftPatch({ strategy: s.id, setId: undefined });
               setOpen(false);
             }}
-            className={clsx(selectedStrategy === s.id && 'font-semibold')}
+            className={clsx(selectedStrategy === s.id && 'font-semibold bg-amber-500/10')}
+            icon={selectedStrategy === s.id ? <Icon name="check" size={10} /> : undefined}
           >
             <div className="flex flex-col items-start">
               <span>{s.label}</span>
@@ -354,7 +351,8 @@ export function EachSplitButton({
               setDraftPatch({ strategy: s.id });
               setOpen(false);
             }}
-            className={clsx(selectedStrategy === s.id && 'font-semibold')}
+            className={clsx(selectedStrategy === s.id && 'font-semibold bg-violet-500/10')}
+            icon={selectedStrategy === s.id ? <Icon name="check" size={10} /> : undefined}
           >
             <div className="flex flex-col items-start">
               <span>{s.label}</span>
@@ -470,7 +468,7 @@ export function EachSplitButton({
             </>
           )}
         </div>
-      </Dropdown>
+      </Popover>
 
       {needsSet && (
         <select

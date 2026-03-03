@@ -180,7 +180,9 @@ export function GenerationSettingsPanel({
   const showTargetButton = canTarget;
 
   return (
-    <div className={clsx('h-full overflow-y-auto thin-scrollbar bg-neutral-50 dark:bg-neutral-900 rounded-xl', className)}>
+    <div className={clsx('h-full flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-xl', className)}>
+      {/* Scrollable content area */}
+      <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar">
       <div className="flex flex-col gap-1 p-1.5">
         {/* Row 1: Provider icon, Operation type, Target, Advanced settings */}
         <div className="flex gap-1 items-center">
@@ -256,8 +258,10 @@ export function GenerationSettingsPanel({
           unlimitedModels={unlimitedModels}
         />
 
-        {/* Go button — sticky so it stays visible when scrolling */}
-        <div className="sticky bottom-0 flex flex-col gap-1 -mx-1.5 px-1.5 pb-1.5 pt-1 bg-neutral-50 dark:bg-neutral-900">
+      </div>
+      </div>
+      {/* Action area — pinned to bottom */}
+      <div className="flex-shrink-0 flex flex-col gap-1 px-1.5 pb-1.5 pt-1">
         {/* Queue progress */}
         {queueProgress && (
           <div className="flex items-center gap-2 text-[10px] text-accent">
@@ -281,41 +285,46 @@ export function GenerationSettingsPanel({
           </div>
         )}
 
-        {/* Action area: tool row + stable button row */}
+        {/* Action area: Each row + Go row */}
         <div className="quickgen-actions-no-motion flex flex-col gap-1 min-w-0 rounded-xl bg-white/70 dark:bg-neutral-800/60 p-1 shadow-sm ring-1 ring-neutral-200/70 dark:ring-neutral-700/70">
-          <div className="flex items-stretch gap-1.5 min-w-0 flex-nowrap">
-            {/* Advanced settings gear icon */}
-            <div className="flex-shrink-0">
-              <AdvancedSettingsPopover
-                params={advancedParams}
-                values={workbench.dynamicParams}
-                onChange={workbench.handleParamChange}
-                disabled={generating}
-                currentModel={workbench.dynamicParams?.model as string | undefined}
-                accounts={activeAccounts}
+          {/* Generate Each split-button — full width row */}
+          {onGenerateEach && (inputCount > 1 || useAssetSetStore.getState().sets.length > 0) && OPERATION_METADATA[operationType].multiAssetMode !== 'required' && (
+            <div className="min-w-0">
+              <EachSplitButton
+                onGenerateEach={onGenerateEach}
+                disabled={generating || !canGenerate}
+                generating={generating}
+                queueProgress={queueProgress}
+                inputCount={inputCount}
               />
             </div>
+          )}
 
-            {/* Generate Each split-button — visible with 2+ inputs or when sets exist */}
-            {onGenerateEach && (inputCount > 1 || useAssetSetStore.getState().sets.length > 0) && OPERATION_METADATA[operationType].multiAssetMode !== 'required' && (
-              <div className="flex-shrink-0 max-w-full">
-                <EachSplitButton
-                  onGenerateEach={onGenerateEach}
-                  disabled={generating || !canGenerate}
-                  generating={generating}
-                  queueProgress={queueProgress}
-                  inputCount={inputCount}
-                />
-              </div>
-            )}
+          <div className="flex items-stretch gap-1.5 min-w-0">
+          {/* Advanced settings gear icon */}
+          <div className="flex-shrink-0">
+            <AdvancedSettingsPopover
+              params={advancedParams}
+              values={workbench.dynamicParams}
+              onChange={workbench.handleParamChange}
+              disabled={generating}
+              currentModel={workbench.dynamicParams?.model as string | undefined}
+              accounts={activeAccounts}
+            />
           </div>
-
-          <div className={clsx(
-            'grid gap-1.5 min-w-0',
-            secondaryButton ? 'grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]' : 'grid-cols-1',
-          )}>
           {/* Primary Go button with inline burst stepper */}
-          <div className="min-w-0 flex">
+          <div
+            className="min-w-0 flex flex-1"
+            onWheel={(e) => {
+              if (generating || !canGenerate) return;
+              e.preventDefault();
+              if (e.deltaY < 0) {
+                setBurstCount((c: number) => Math.min(50, c + 1));
+              } else if (e.deltaY > 0) {
+                setBurstCount((c: number) => Math.max(1, c - 1));
+              }
+            }}
+          >
             {/* Main Go area */}
             <button
               onClick={() => {
@@ -333,7 +342,7 @@ export function GenerationSettingsPanel({
               className={clsx(
                 'flex-1 px-2 py-1.5 text-xs font-semibold text-white tabular-nums',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
-                burstCount > 1 ? 'rounded-l-lg' : 'rounded-lg',
+                'rounded-l-lg',
                 generating || !canGenerate
                   ? 'bg-neutral-400'
                   : error
@@ -372,7 +381,7 @@ export function GenerationSettingsPanel({
             {/* Burst stepper area */}
             <div
               className={clsx(
-                'flex flex-col border-l border-white/20 rounded-r-lg text-white',
+                'flex flex-col border-l border-white/20 rounded-r-lg text-white min-w-[28px]',
                 generating || !canGenerate
                   ? 'bg-neutral-400'
                   : error
@@ -386,16 +395,17 @@ export function GenerationSettingsPanel({
                 type="button"
                 onClick={() => setBurstCount((c: number) => Math.min(50, c + 1))}
                 disabled={generating || !canGenerate}
-                className="px-1 flex-1 flex items-center justify-center hover:bg-white/10 rounded-tr-lg disabled:cursor-not-allowed"
+                className="px-1.5 flex-1 flex items-center justify-center hover:bg-white/10 rounded-tr-lg disabled:cursor-not-allowed"
               >
-                <Icon name="chevronUp" size={8} />
+                <Icon name="chevronUp" size={10} />
               </button>
               <button
                 type="button"
                 onClick={() => canUseSequentialBurst && setBurstSequentialMode((v: boolean) => !v)}
                 disabled={generating || !canGenerate || !canUseSequentialBurst}
                 className={clsx(
-                  'text-[9px] font-mono text-center leading-none px-1 py-0.5',
+                  'text-[11px] font-mono text-center leading-none px-1.5 py-0.5',
+                  burstSequentialMode && canUseSequentialBurst ? 'bg-white/15' : '',
                   canUseSequentialBurst ? 'hover:bg-white/10' : '',
                   'disabled:cursor-not-allowed',
                 )}
@@ -413,9 +423,9 @@ export function GenerationSettingsPanel({
                 type="button"
                 onClick={() => setBurstCount((c: number) => Math.max(1, c - 1))}
                 disabled={generating || !canGenerate || burstCount <= 1}
-                className="px-1 flex-1 flex items-center justify-center hover:bg-white/10 rounded-br-lg disabled:cursor-not-allowed disabled:opacity-50"
+                className="px-1.5 flex-1 flex items-center justify-center hover:bg-white/10 rounded-br-lg disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Icon name="chevronDown" size={8} />
+                <Icon name="chevronDown" size={10} />
               </button>
             </div>
           </div>
@@ -463,7 +473,6 @@ export function GenerationSettingsPanel({
           )}
           </div>
         </div>
-      </div>
       </div>
     </div>
   );

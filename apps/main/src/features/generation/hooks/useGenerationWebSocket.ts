@@ -12,7 +12,7 @@ import { useSyncExternalStore } from 'react';
 
 import { pixsimClient, BACKEND_BASE, type GenerationResponse } from '@lib/api';
 import type { AssetResponse } from '@lib/api/assets';
-import { debugFlags } from '@lib/utils';
+import { debugFlags, hmrSingleton } from '@lib/utils';
 
 import { assetEvents, useAssetSettingsStore, fromAssetResponse, getAssetDisplayUrls } from '@features/assets';
 
@@ -498,7 +498,7 @@ class WebSocketManager {
   }
 }
 
-const wsManager = new WebSocketManager();
+const wsManager = hmrSingleton('wsManager', () => new WebSocketManager());
 
 export function useGenerationWebSocket() {
   // Subscribe to the singleton WebSocket manager

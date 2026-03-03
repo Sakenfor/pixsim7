@@ -31,7 +31,8 @@ import {
   normalizeFanoutRunOptions,
   type FanoutRunOptions,
 } from '../lib/fanoutPresets';
-import { buildGenerationRequest } from '../lib/quickGenerateLogic';
+import { pickFromSet } from '../lib/pickFromSet';
+import { buildGenerationRequest, type PickStateUpdate } from '../lib/quickGenerateLogic';
 import { createGenerationRunDescriptor, createGenerationRunItemContext, type GenerationRunContext } from '../lib/runContext';
 import { executeSequentialSteps, createSequentialStepRunContextMetadata } from '../lib/sequentialExecutor';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
@@ -253,7 +254,7 @@ export function useQuickGenerateController() {
     operationInputs: any[],
     currentInput: any,
     overrides?: { activeAsset?: ReturnType<typeof toSelectedAsset>; promptOverride?: string | null },
-  ): Promise<{ error: string } | { finalPrompt: string; params: any; effectiveOperationType: string }> {
+  ): Promise<{ error: string } | { finalPrompt: string; params: any; effectiveOperationType: string; pickStateUpdates?: PickStateUpdate[] }> {
     // Resolve prompt limit so buildGenerationRequest can clamp the prompt
     const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', operationType);
     const model = dynamicParams?.model as string | undefined;
@@ -289,7 +290,90 @@ export function useQuickGenerateController() {
       finalPrompt: buildResult.finalPrompt,
       params: buildResult.params,
       effectiveOperationType: getFallbackOperation(operationType, hasAssetInput),
+      pickStateUpdates: buildResult.pickStateUpdates,
     };
+  }
+
+  /** Persist pick state updates (sequential index / no_repeat history) and update display assets */
+  function applyPickStateUpdates(updates: PickStateUpdate[] | undefined) {
+    if (!updates || updates.length === 0) return;
+    const inputStore = (useInputStore as any).getState();
+    for (const update of updates) {
+      // Persist strategy state
+      inputStore.updatePickState(operationType, update.inputId, {
+        pickIndex: update.pickIndex,
+        recentPicks: update.recentPicks,
+      });
+
+      // Update display asset to show the picked asset
+      const state = (useInputStore as any).getState();
+      const existing = state.inputsByOperation?.[operationType];
+      if (existing) {
+        const item = existing.items.find((i: any) => i.id === update.inputId);
+        if (item && item.asset.id !== update.pickedAssetId) {
+          // Only update if the picked asset differs from display
+          // We don't have the full AssetModel here, but the composition_assets
+          // already used the correct asset for generation. The display will
+          // show the picked asset id which is enough for the badge/tooltip.
+          // The full asset model will be fetched if needed by hydration.
+          (useInputStore as any).setState({
+            inputsByOperation: {
+              ...state.inputsByOperation,
+              [operationType]: {
+                ...existing,
+                items: existing.items.map((i: any) =>
+                  i.id === update.inputId
+                    ? { ...i, asset: { ...i.asset, id: update.pickedAssetId } }
+                    : i,
+                ),
+              },
+            },
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Resolve all unique asset sets referenced by inputs ONCE, returning a cache.
+   * Prevents N×M API calls when buildRequest is called per group/burst item.
+   */
+  async function preResolveSetRefs(inputs: any[]): Promise<Map<string, AssetModel[]>> {
+    const cache = new Map<string, AssetModel[]>();
+    const setIds = new Set<string>();
+    for (const item of inputs) {
+      const ref = item?.assetSetRef;
+      if (ref?.setId && !setIds.has(ref.setId)) {
+        setIds.add(ref.setId);
+      }
+    }
+    for (const setId of setIds) {
+      const set = useAssetSetStore.getState().getSet(setId);
+      if (set) {
+        try {
+          cache.set(setId, await resolveAssetSet(set));
+        } catch {
+          console.warn(`[preResolveSetRefs] Failed to resolve set "${setId}"`);
+        }
+      }
+    }
+    return cache;
+  }
+
+  /**
+   * Replace assetSetRef on inputs with a concrete pre-picked asset using
+   * the cached resolved sets. Returns new input array (does not mutate).
+   */
+  function prePickSetRefs(inputs: any[], cache: Map<string, AssetModel[]>): any[] {
+    if (cache.size === 0) return inputs;
+    return inputs.map((item: any) => {
+      const ref = item?.assetSetRef;
+      if (!ref || ref.mode !== 'random_each') return item;
+      const setAssets = cache.get(ref.setId);
+      if (!setAssets || setAssets.length === 0) return item;
+      const { asset } = pickFromSet(setAssets, ref.pickStrategy, ref);
+      return { ...item, asset, assetSetRef: undefined };
+    });
   }
 
   function withServerTemplateRollRunContext(
@@ -359,6 +443,11 @@ export function useQuickGenerateController() {
       executionMode,
       reusePreviousOutputAsInput,
     } = args;
+    // Pre-resolve all referenced asset sets ONCE so buildRequest doesn't
+    // re-resolve per group (avoids N×M sequential API calls during preparation).
+    const allGroupItems = groups.flat();
+    const setCache = await preResolveSetRefs(allGroupItems);
+
     const itemPayloads = await prepareEachExecutionItems({
       groups,
       total,
@@ -366,9 +455,11 @@ export function useQuickGenerateController() {
       onError,
       emptyErrorMessage: `No valid items could be prepared for backend ${executionMode === 'sequential' ? 'sequential Each' : 'fanout'}`,
       prepareItem: async ({ index: i, total, group, primaryInput }) => {
+        const resolvedGroup = prePickSetRefs(group, setCache);
+        const resolvedPrimary = resolvedGroup[0] ?? primaryInput;
         const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
-        await applyFrameExtraction(dynamicParams, primaryInput, []);
-        const request = await buildRequest(dynamicParams, group, primaryInput, { promptOverride: rolledOnce });
+        await applyFrameExtraction(dynamicParams, resolvedPrimary, []);
+        const request = await buildRequest(dynamicParams, resolvedGroup, resolvedPrimary, { promptOverride: rolledOnce });
         if ('error' in request) {
           return { kind: 'skip', reason: request.error };
         }
@@ -490,6 +581,7 @@ export function useQuickGenerateController() {
       setGenerationId(genId);
       setWatchingGeneration(genId);
       recordInputHistory(operationType, currentInputs);
+      applyPickStateUpdates(request.pickStateUpdates);
 
       logEvent('INFO', 'generation_created', {
         generationId: genId,
@@ -529,6 +621,13 @@ export function useQuickGenerateController() {
       // - 'once' mode: roll once client-side, pass prompt override for all items
       const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
       const rollOnce = !useServerRolling ? await maybeRollTemplate() : null;
+      // Pre-resolve sets once so burst iterations don't re-resolve per item
+      const hasRandomEachRef = currentInputs.some(
+        (item: any) => item.assetSetRef?.mode === 'random_each',
+      );
+      const setCache = hasRandomEachRef ? await preResolveSetRefs(currentInputs) : new Map<string, AssetModel[]>();
+
+      // Build a base request for validation (and reuse when no random_each refs)
       const baseRequest = await buildRequest(dynamicParams, currentInputs, currentInput, { promptOverride: rollOnce });
       if ('error' in baseRequest) {
         setError(baseRequest.error);
@@ -541,8 +640,20 @@ export function useQuickGenerateController() {
 
       for (let i = 0; i < count; i++) {
         try {
+          // Bug 2 fix: when random_each refs exist, pre-pick from cached sets
+          // so each burst item gets a fresh pick without re-resolving the set
+          let request = baseRequest;
+          if (hasRandomEachRef) {
+            const pickedInputs = prePickSetRefs(currentInputs, setCache);
+            const pickedCurrent = pickedInputs.find((item: any) => item.id === currentInput?.id) ?? currentInput;
+            const freshRequest = await buildRequest(dynamicParams, pickedInputs, pickedCurrent, { promptOverride: rollOnce });
+            if (!('error' in freshRequest)) {
+              request = freshRequest;
+            }
+          }
+
           const genId = await submitOne(
-            baseRequest,
+            request,
             createGenerationRunItemContext(run, {
               itemIndex: i,
               itemTotal: total,
@@ -566,6 +677,8 @@ export function useQuickGenerateController() {
           });
         }
       }
+
+      applyPickStateUpdates(baseRequest.pickStateUpdates);
 
       if (generatedIds.length > 0) {
         const lastId = generatedIds[generatedIds.length - 1];
@@ -622,6 +735,12 @@ export function useQuickGenerateController() {
 
       recordInputHistory(operationType, currentInputs);
 
+      // Pre-resolve sets once for step 1 (step 2+ uses previous output, no set refs)
+      const hasRandomEachRef = currentInputs.some(
+        (item: any) => item.assetSetRef?.mode === 'random_each',
+      );
+      const setCache = hasRandomEachRef ? await preResolveSetRefs(currentInputs) : new Map<string, AssetModel[]>();
+
       const result = await executeSequentialSteps({
         steps: Array.from({ length: count }, (_, i) => ({
           id: `burst_seq_${i + 1}`,
@@ -630,8 +749,8 @@ export function useQuickGenerateController() {
         })),
         submitStep: async (context) => {
           const dynamicParams = { ...baseDynamicParams };
-          let operationInputsForStep = currentInputs;
-          let currentInputForStep = currentInput;
+          let operationInputsForStep: any[] = currentInputs;
+          let currentInputForStep: any = currentInput;
 
           // Sequential burst semantics: from step 2 onward, use previous output as the new source
           // for operations that consume a source asset (img2img/i2v/etc.). We force this by
@@ -645,6 +764,10 @@ export function useQuickGenerateController() {
             delete dynamicParams.composition_assets;
             operationInputsForStep = [];
             currentInputForStep = undefined;
+          } else if (hasRandomEachRef) {
+            // Step 1: pre-pick from cached sets to avoid re-resolving
+            operationInputsForStep = prePickSetRefs(currentInputs, setCache);
+            currentInputForStep = operationInputsForStep.find((item: any) => item.id === currentInput?.id) ?? currentInput;
           }
 
           const request = await buildRequest(
