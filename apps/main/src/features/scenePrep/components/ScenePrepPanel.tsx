@@ -393,6 +393,12 @@ function shortId(value: string, max = 8): string {
   return trimmed.length > max ? trimmed.slice(0, max) : trimmed;
 }
 
+function compactTaxonomyToken(value: string, max = 24): string {
+  const normalized = slugifyTagPart(value).replace(/-/g, '_');
+  if (!normalized) return '';
+  return normalized.length > max ? normalized.slice(0, max) : normalized;
+}
+
 function getNextScenePrepStage(stage: ScenePrepStage): ScenePrepStage | null {
   if (stage === 'explore') return 'compose';
   if (stage === 'compose') return 'refine';
@@ -435,6 +441,41 @@ function buildCharacterBindings(rows: ScenePrepCastRow[]): CharacterBindings {
     result[role] = { character_id: characterId };
   }
   return result;
+}
+
+function buildSceneBeatId(stage: ScenePrepStage, variant: ScenePrepVariantRow, index: number): string {
+  const stageToken = compactTaxonomyToken(stage, 12) || 'stage';
+  const variantToken = compactTaxonomyToken(
+    variant.key || variant.label || variant.promptSuffix || `variant_${index + 1}`,
+    24,
+  ) || `variant_${index + 1}`;
+  return `${stageToken}_${variantToken}_${index + 1}`;
+}
+
+function castRolePriority(role: string): number {
+  if (role === 'lead' || role === 'player' || role === 'protagonist') return 0;
+  if (role === 'support' || role === 'companion') return 1;
+  return 2;
+}
+
+function buildCastPairTag(rows: ScenePrepCastRow[]): string | null {
+  const entries = rows
+    .map((row) => {
+      const role = compactTaxonomyToken(row.role, 16);
+      const characterId = compactTaxonomyToken(row.character_id, 16);
+      if (!role || !characterId) return null;
+      return { role, characterId };
+    })
+    .filter((row): row is { role: string; characterId: string } => row != null)
+    .sort((a, b) => {
+      const priorityDelta = castRolePriority(a.role) - castRolePriority(b.role);
+      if (priorityDelta !== 0) return priorityDelta;
+      const roleDelta = a.role.localeCompare(b.role);
+      if (roleDelta !== 0) return roleDelta;
+      return a.characterId.localeCompare(b.characterId);
+    });
+  if (entries.length === 0) return null;
+  return entries.slice(0, 2).map((entry) => `${entry.role}:${entry.characterId}`).join('|');
 }
 
 function buildGuidancePlanFromRows(rows: ScenePrepGuidanceRefRow[]) {
@@ -568,6 +609,8 @@ function buildScenePrepRows(args: {
       runContext: {
         scene_variant_key: variant.key || `variant_${index + 1}`,
         scene_variant_label: variant.label || `Variant ${index + 1}`,
+        beat_id: buildSceneBeatId(args.stage, variant, index),
+        shot_type: variant.shot || 'unspecified',
         shot: variant.shot,
         view: variant.view,
         expression_state: variant.state,
@@ -648,6 +691,7 @@ export function ScenePrepPanel({
   );
 
   const characterBindings = useMemo(() => buildCharacterBindings(castRows), [castRows]);
+  const castPair = useMemo(() => buildCastPairTag(castRows), [castRows]);
   const guidancePlan = useMemo(() => buildGuidancePlanFromRows(guidanceRefRows), [guidanceRefRows]);
   const explicitSourceAssetId = useMemo(() => toNumericAssetId(sourceAssetId), [sourceAssetId]);
   const inferredGuidanceSourceAssetId = useMemo(() => firstGuidanceIdentityAssetId(guidanceRefRows), [guidanceRefRows]);
@@ -1190,7 +1234,9 @@ export function ScenePrepPanel({
       scene_prep_launch_id: launchId,
       scene_prep_deliverable_set_id: deliverableSetId,
       scene_prep_name: prepName,
+      scene_id: sceneKey || null,
       scene_key: sceneKey || null,
+      cast_pair: castPair || null,
       scene_prompt_base: trimmedBasePrompt,
       matrix_query: matrixQuery.trim() || null,
       discovery_notes: discoveryNotes.trim() || null,
@@ -1234,7 +1280,9 @@ export function ScenePrepPanel({
         inputs: rows,
         executionMetadata: {
           launch_kind: 'scene_prep_panel',
+          scene_id: sceneKey || null,
           scene_key: sceneKey || null,
+          cast_pair: castPair || null,
           prep_name: prepName,
           scene_prep_stage: stage,
           scene_prep_launch_id: launchId,
@@ -1285,6 +1333,7 @@ export function ScenePrepPanel({
     matrixQuery,
     discoveryNotes,
     characterBindings,
+    castPair,
     deliverableSetId,
     guidancePlan,
     resolvedOperation,

@@ -31,6 +31,8 @@ import { WorldContextSelector } from '@/components/game/WorldContextSelector';
 
 import { PanelHeader } from '../shared/PanelHeader';
 
+import { useProjectAvailability, type AvailabilityItem } from './useProjectAvailability';
+
 type LastProjectAction =
   | {
       kind: 'save';
@@ -80,6 +82,20 @@ function confirmDeleteSavedProject(projectName: string): boolean {
   return window.confirm(`Delete saved project "${projectName}"? This cannot be undone.`);
 }
 
+function formatAvailabilityValue(item: AvailabilityItem): string {
+  if (item.status === 'loading') {
+    return 'Loading...';
+  }
+  if (item.status === 'error') {
+    return `Error: ${item.error || 'Unknown error'}`;
+  }
+  if (typeof item.count === 'number') {
+    const sampledText = item.sampled ? ' (sampled)' : '';
+    return item.detail ? `${item.count}${sampledText} · ${item.detail}` : `${item.count}${sampledText}`;
+  }
+  return item.detail || 'OK';
+}
+
 export function ProjectPanel() {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -127,6 +143,12 @@ export function ProjectPanel() {
     const next = typeof value === 'number' ? value : Number(value ?? NaN);
     return Number.isFinite(next) ? next : null;
   }, [editorContext.runtime.sessionId]);
+  const {
+    items: availabilityItems,
+    isLoading: availabilityLoading,
+    lastRefreshedAtMs: availabilityLastRefreshedAtMs,
+    refresh: refreshAvailability,
+  } = useProjectAvailability(worldId ?? null);
 
   const loadSavedProjects = async (opts?: { silent?: boolean }) => {
     try {
@@ -752,6 +774,45 @@ export function ProjectPanel() {
           defaultWorldId={worldId}
           defaultSessionId={runtimeSessionId}
         />
+      </div>
+
+      <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 text-xs">
+        <div className="flex items-center justify-between gap-2">
+          <div className="font-semibold">Availability Snapshot</div>
+          <div className="flex items-center gap-2">
+            <span className="text-neutral-500 dark:text-neutral-400">
+              {availabilityLastRefreshedAtMs
+                ? `Updated ${formatTimestamp(availabilityLastRefreshedAtMs)}`
+                : 'Not refreshed yet'}
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                void refreshAvailability();
+              }}
+              disabled={availabilityLoading}
+            >
+              Refresh
+            </Button>
+          </div>
+        </div>
+        <div className="mt-2 space-y-1">
+          {availabilityItems.map((item) => (
+            <div key={item.key} className="flex items-start justify-between gap-3">
+              <span className="text-neutral-600 dark:text-neutral-300">{item.label}</span>
+              <span
+                className={
+                  item.status === 'error'
+                    ? 'text-right text-red-600 dark:text-red-400'
+                    : 'text-right text-neutral-700 dark:text-neutral-200'
+                }
+              >
+                {formatAvailabilityValue(item)}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 text-xs">

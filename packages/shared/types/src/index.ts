@@ -23,6 +23,10 @@ export * from './sceneGraph';
 // Namespace export (new pattern: import { SceneGraph } from '@pixsim7/shared.types')
 export * as SceneGraph from './sceneGraph';
 
+// Scene Plan types (spatial/intent planning contract)
+export * from './scenePlan';
+export * as ScenePlan from './scenePlan';
+
 // ===================
 // Game DTOs
 // ===================
