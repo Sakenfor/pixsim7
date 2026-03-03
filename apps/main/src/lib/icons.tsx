@@ -135,6 +135,7 @@ import {
   Home,
   FileQuestionMark,
   Tags,
+  ListFilter,
 } from 'lucide-react';
 import type { ComponentType, SVGProps } from 'react';
 
@@ -230,6 +231,8 @@ export const Icons = {
   eye: Eye,
   eyeOff: EyeOff,
   sliders: Sliders,
+  filter: ListFilter,
+  listFilter: ListFilter,
   fileText: FileText,
   fileCode: FileCode,
   'file-code': FileCode,

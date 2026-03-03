@@ -19,6 +19,7 @@
 
 export { GallerySurfaceHost } from './components/GallerySurfaceHost';
 export { GallerySurfaceSwitcher } from './components/GallerySurfaceSwitcher';
+export { SurfacePresetPicker, type SurfacePresetPickerProps } from './components/SurfacePresetPicker';
 
 // ============================================================================
 // Components - Layout
