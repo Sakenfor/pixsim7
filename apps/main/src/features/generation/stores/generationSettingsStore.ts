@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
 
 import { createBackendStorage, manuallyRehydrateStore, exposeStoreForDebugging, debugFlags } from '@lib/utils';
+import { hmrSingleton } from '@lib/utils';
 
 import type { OperationType } from '@/types/operations';
 
@@ -348,24 +349,16 @@ export function createGenerationSettingsStore(
   );
 }
 
-// Persist global settings store across HMR module re-evaluations.
-// Also guards the manual rehydration setTimeout from firing again on HMR.
-const _settingsHmrKey = Symbol.for('pixsim7:generationSettingsStore');
-const _settingsHmrState = ((globalThis as any)[_settingsHmrKey] ??= {}) as {
-  store?: ReturnType<typeof createGenerationSettingsStore>;
-  rehydrated?: boolean;
-};
 
-export const useGenerationSettingsStore = (_settingsHmrState.store ??= createGenerationSettingsStore(
-  STORAGE_KEY,
-  createBackendStorage('generationSettings'),
-));
+export const useGenerationSettingsStore = hmrSingleton('generationSettingsStore', () =>
+  createGenerationSettingsStore(STORAGE_KEY, createBackendStorage('generationSettings')),
+);
 
 // Manual rehydration workaround for async storage (see zustandPersistWorkaround.ts)
-// Guarded so it only runs once — not again on HMR re-evaluation.
-if (typeof window !== 'undefined' && !_settingsHmrState.rehydrated) {
-  _settingsHmrState.rehydrated = true;
-  setTimeout(() => {
+// hmrSingleton guard ensures this only runs once — not again on HMR re-evaluation.
+hmrSingleton('generationSettingsStore:rehydration', () => {
+  if (typeof window !== 'undefined') {
+    setTimeout(() => {
     debugFlags.log('rehydration', '[GenerationSettingsStore] Triggering manual rehydration');
     manuallyRehydrateStore(
       useGenerationSettingsStore,
@@ -395,5 +388,7 @@ if (typeof window !== 'undefined' && !_settingsHmrState.rehydrated) {
       _hasHydrated: true,
     });
     exposeStoreForDebugging(useGenerationSettingsStore, 'GenerationSettings');
-  }, 50);
-}
+    }, 50);
+  }
+  return true;
+});

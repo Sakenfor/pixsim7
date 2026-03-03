@@ -1,5 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useMemo } from "react";
+import { useContext, useMemo } from "react";
+
+import { createHmrSafeContext } from "@lib/utils";
 
 import { useGenerationInputStore } from "../stores/generationInputStore";
 import type { GenerationInputStoreHook } from "../stores/generationInputStore";
@@ -32,16 +34,7 @@ function getGlobalScope(): GenerationScopeStores {
   };
 }
 
-/**
- * React context for generation scope stores.
- * Persisted on globalThis so the context object identity survives HMR
- * module re-evaluation. Without this, providers use the new context but
- * consumers (especially in dockview portals) still subscribe to the old
- * one, falling back to global scope and showing stale data.
- */
-const _scopeCtxKey = Symbol.for('pixsim7:generationScopeContext');
-const GenerationScopeContext: React.Context<GenerationScopeStores | null> =
-  ((globalThis as any)[_scopeCtxKey] ??= createContext<GenerationScopeStores | null>(null));
+const GenerationScopeContext = createHmrSafeContext<GenerationScopeStores | null>('generationScope', null);
 
 /**
  * Hook to access generation scope stores.

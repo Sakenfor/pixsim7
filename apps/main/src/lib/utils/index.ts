@@ -19,3 +19,6 @@ export { manuallyRehydrateStore, exposeStoreForDebugging } from './zustandPersis
 
 // Validation utilities
 export * from './validation';
+
+// HMR-safe factories
+export { createHmrSafeContext, hmrSingleton } from './hmrSafe';

@@ -1,4 +1,6 @@
-import { createContext, useContext } from "react";
+import { useContext } from "react";
+
+import { createHmrSafeContext } from "@lib/utils";
 
 import type { CapabilityRegistry } from "../types";
 
@@ -8,7 +10,7 @@ export interface ContextHubState {
   hostId?: string;
 }
 
-export const ContextHubContext = createContext<ContextHubState | null>(null);
+export const ContextHubContext = createHmrSafeContext<ContextHubState | null>('contextHub', null);
 
 export function useContextHubState(): ContextHubState | null {
   return useContext(ContextHubContext);

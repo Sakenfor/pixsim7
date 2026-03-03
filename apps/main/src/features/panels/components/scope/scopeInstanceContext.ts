@@ -1,4 +1,6 @@
-import { createContext, useContext } from "react";
+import { useContext } from "react";
+
+import { createHmrSafeContext } from "@lib/utils";
 
 type ScopeInstanceMap = Record<string, string>;
 
@@ -6,7 +8,7 @@ type ScopeInstanceMap = Record<string, string>;
  * Context for scoped instance IDs keyed by scopeId.
  * This supports multiple active scopes without collisions.
  */
-export const ScopeInstanceContext = createContext<ScopeInstanceMap | undefined>(undefined);
+export const ScopeInstanceContext = createHmrSafeContext<ScopeInstanceMap | undefined>('scopeInstance', undefined);
 
 /**
  * Hook to get the current scope's instanceId.

@@ -17,6 +17,7 @@ import { Ref } from '@pixsim7/shared.types';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import { Icon } from '@lib/icons';
+import { hmrSingleton } from '@lib/utils';
 
 import type { ViewerAsset } from '@features/assets';
 import {
@@ -38,19 +39,17 @@ import {
 
 import type { OperationType } from '@/types/operations';
 
+
 // Tracks last asset ID seen by auto-switch logic.
-// Survives component unmount/remount (gallery navigation) but resets on page refresh.
-// Persisted on globalThis so it also survives HMR module re-evaluation.
-const _viewerHmrKey = Symbol.for('pixsim7:viewerQuickGenerate');
-const _viewerHmrState = ((globalThis as any)[_viewerHmrKey] ??= {}) as {
-  lastAssetId?: string | number;
-};
-// Accessor so existing code reads/writes the same reference
+// Survives component unmount/remount (gallery navigation) and HMR.
+const _viewerState = hmrSingleton('viewerQuickGenerate', () => ({
+  lastAssetId: undefined as string | number | undefined,
+}));
 function getLastViewerAssetId(): string | number | undefined {
-  return _viewerHmrState.lastAssetId;
+  return _viewerState.lastAssetId;
 }
 function setLastViewerAssetId(id: string | number | undefined) {
-  _viewerHmrState.lastAssetId = id;
+  _viewerState.lastAssetId = id;
 }
 
 const VIEWER_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings'] as const;

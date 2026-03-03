@@ -9,6 +9,8 @@ import { create } from 'zustand';
 import type { StoreApi, UseBoundStore } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+import { hmrSingleton } from '@lib/utils';
+
 import { assetEvents, fromAssetResponse, type AssetModel } from '@features/assets';
 
 import type { OperationType } from '@/types/operations';
@@ -656,25 +658,19 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
   );
 }
 
-// Persist global input store across HMR module re-evaluations.
-const _hmrKey = Symbol.for('pixsim7:generationInputStore');
-const _hmrState = ((globalThis as any)[_hmrKey] ??= {}) as {
-  store?: GenerationInputStoreHook;
-  subscribed?: boolean;
-};
 
 export const useGenerationInputStore: GenerationInputStoreHook =
-  (_hmrState.store ??= createGenerationInputStore('generation_inputs_v1'));
+  hmrSingleton('generationInputStore', () => createGenerationInputStore('generation_inputs_v1'));
 
 // Keep asset snapshots fresh: any surface that updates an asset (gallery upload,
 // gesture swipe, compact card button, etc.) emits assetUpdated — patch in place.
-// Guard prevents duplicate subscriptions across HMR re-evaluations.
-if (!_hmrState.subscribed) {
-  _hmrState.subscribed = true;
+// hmrSingleton guard prevents duplicate subscriptions across HMR re-evaluations.
+hmrSingleton('generationInputStore:subscription', () => {
   assetEvents.subscribeToUpdates((response) => {
     useGenerationInputStore.getState().updateAssetModel(response.id, fromAssetResponse(response));
   });
-}
+  return true; // sentinel value — hmrSingleton needs a return
+});
 
 export function getInputsForOperation(operationType: OperationType): InputItem[] {
   const state = useGenerationInputStore.getState();

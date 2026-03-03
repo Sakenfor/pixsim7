@@ -7,7 +7,9 @@
  */
 
 import type { DockviewApi } from 'dockview-core';
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { useContext, useMemo, type ReactNode } from 'react';
+
+import { createHmrSafeContext } from '@lib/utils';
 
 import type { PanelRegistryLike } from './types';
 
@@ -18,7 +20,7 @@ type DockviewContextValue = {
   floatPanelHandler?: (dockviewPanelId: string, panel: any, options?: any) => void;
 };
 
-const DockviewIdContext = createContext<DockviewContextValue>({});
+const DockviewIdContext = createHmrSafeContext<DockviewContextValue>('dockviewId', {});
 
 interface DockviewIdProviderProps {
   children: ReactNode;
