@@ -17,7 +17,7 @@
 
 The scene editor has a clear separation of concerns:
 
-### SceneBuilderPanel (`apps/main/src/components/legacy/SceneBuilderPanel.tsx`)
+### SceneBuilderPanel (`apps/main/src/features/scene/components/panels/SceneBuilderPanel.tsx`)
 **Purpose:** Scene-level context and actions
 - **Displays:** World/location context, current scene info
 - **Actions:** Preview in Game, Play from Here in 2D
@@ -41,13 +41,13 @@ The scene editor has a clear separation of concerns:
 - Auto-discovers editors in `apps/main/src/components/inspector/`
 - Provides dynamic import for editor components
 
-### Graph Editor Surfaces (`apps/main/src/lib/graph`)
+### Graph Editor Surfaces (`apps/main/src/features/graph`)
 **Purpose:** Modular graph editor UIs
 - `GraphEditorRegistry` (`editorRegistry.ts`) tracks available graph editor surfaces
 - Built-in editors are registered via `registerGraphEditors()`:
   - `scene-graph-v2` – Scene Graph Editor (legacy/core, ReactFlow-based)
   - `arc-graph` – Arc Graph Editor (arc/quest-focused)
-- `GraphEditorHost` (`components/graph/GraphEditorHost.tsx`) renders the active editor by ID
+- `GraphEditorHost` (`apps/main/src/features/graph/components/graph/GraphEditorHost.tsx`) renders the active editor by ID
 - The workspace **Graph** panel uses `GraphEditorHost` and defaults to `scene-graph-v2`
 
 ---
@@ -76,7 +76,7 @@ nodeTypeRegistry.register({
 Create `apps/main/src/components/inspector/MyNodeEditor.tsx`:
 
 ```typescript
-import type { DraftSceneNode } from '../../modules/scene-builder';
+import type { DraftSceneNode } from '@domain/sceneBuilder';
 
 interface MyNodeEditorProps {
   node: DraftSceneNode;
@@ -125,26 +125,26 @@ Visual authoring of branching, modular video scenes with:
 ## Current State (as of Nov 12, 2025)
 
 **Implemented:**
-- `GraphPanel` (frontend) - Draggable nodes, connection mode, set start node
+- `SceneGraphPanel` (frontend) - Draggable nodes, connection mode, set start node
 - `SceneBuilderPanel` (frontend) - Basic node config form (selection strategy, progression steps, mini-game stub)
 - `DockLayout` - Includes Gallery, Scene Builder, Game iframe, Graph panels; `workspace` preset sets this up
 - Game Frontend - Working `ScenePlayer` with real `<video>` playback, loop segments, progression, and Reflex mini-game
 
 **Reference Files:**
 - Frontend:
-  - `apps/main/src/components/GraphPanel.tsx` (React Flow wiring)
-  - `apps/main/src/components/SceneBuilderPanel.tsx` (scene-level actions, embeds InspectorPanel)
+  - `apps/main/src/features/graph/components/scene-graph-v2/SceneGraphPanel.tsx` (React Flow wiring)
+  - `apps/main/src/features/scene/components/panels/SceneBuilderPanel.tsx` (scene-level actions, embeds InspectorPanel)
   - `apps/main/src/components/inspector/InspectorPanel.tsx` (PRIMARY EXTENSION POINT)
   - `apps/main/src/lib/nodeEditorRegistry.ts` (editor auto-discovery)
   - `apps/main/src/components/inspector/VideoNodeEditor.tsx` (example editor)
-  - `apps/main/src/components/nodes/SceneNode.tsx` (node component with handles)
-  - `apps/main/src/modules/scene-builder/index.ts` (draft model + toRuntimeScene)
+  - `apps/main/src/features/graph/components/nodes/SceneNode.tsx` (node component with handles)
+  - `apps/main/src/domain/sceneBuilder/index.ts` (draft model + toRuntimeScene)
 - Types:
   - `packages/types/src/index.ts` (Scene, SceneNode, SceneEdge, SelectionStrategy, PlaybackMode)
   - `packages/types/src/nodeTypeRegistry.ts` (node type definitions)
 - Game Frontend:
-  - `game-apps/main/src/components/ScenePlayer.tsx`
-  - `game-apps/main/src/components/minigames/ReflexMiniGame.tsx`
+  - `packages/game/components/src/components/ScenePlayer.tsx`
+  - `packages/game/components/src/components/minigames/ReflexMiniGame.tsx`
 
 ---
 
@@ -156,13 +156,13 @@ Visual authoring of branching, modular video scenes with:
 
 **Deliverables:**
 - Update `SceneNode.tsx` to enable success/failure handles (distinct colors and IDs)
-- Update `GraphPanel.tsx` `onConnect` to capture `sourceHandle`/`targetHandle`
+- Update `SceneGraphPanel.tsx` `onConnect` to capture `sourceHandle`/`targetHandle`
 - Extend `scene-builder` draft model with `DraftEdge` type and `DraftEdgeMeta` (ports + future conditions/effects)
 - Update `toRuntimeScene()` to include `isDefault` for edges from the `default` port
 
 **Implementation:**
 1. In `SceneNode.tsx`, enable the right-side success/failure handles (visible, interactive)
-2. In `GraphPanel.tsx` `onConnect`, capture `sourceHandle`/`targetHandle` and store a `DraftEdge` with meta `{ fromPort, toPort }`
+2. In `SceneGraphPanel.tsx` `onConnect`, capture `sourceHandle`/`targetHandle` and store a `DraftEdge` with meta `{ fromPort, toPort }`
 3. In scene-builder module, add types `DraftEdgeMeta`/`DraftEdge` and a list of edges in the draft
 4. Stop synthesizing edges only from `node.connections`; migrate to `draft.edges`
 5. Update `toRuntimeScene()` to output `SceneEdge.isDefault` when `fromPort === 'default'`
@@ -520,7 +520,7 @@ To add a new node type configuration UI:
 - React Flow Docs: https://reactflow.dev/
 - Types Package: `packages/types/src/index.ts`
 - UI Primitives: `packages/ui/`
-- Scene Player: `game-apps/main/src/components/ScenePlayer.tsx`
+- Scene Player: `packages/game/components/src/components/ScenePlayer.tsx`
 - Backend API: `http://localhost:8001/docs`
 
 ---

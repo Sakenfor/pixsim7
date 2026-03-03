@@ -13,7 +13,7 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 ### 1. Relationship System
 
 **Backend:**
-- Location: `pixsim7/backend/main/domain/narrative/relationships.py`
+- Location: `pixsim7/backend/main/domain/game/stats/relationships_package.py`
 - Data: `GameSession.relationships` (JSON field)
 
 **Data Structure:**
@@ -55,7 +55,7 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 ### 2. Quest System
 
 **Backend:**
-- Service: `pixsim7/backend/main/services/game/quest_service.py`
+- Service: `pixsim7/backend/main/services/game/quest.py` (`QuestService`)
 - API: `pixsim7/backend/main/api/v1/game_quests.py`
 - Routes: Registered via `pixsim7/backend/main/routes/game_quests/manifest.py`
 - Data: `GameSession.flags.quests` (JSON field)
@@ -113,9 +113,9 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 ### 3. Inventory System
 
 **Backend:**
-- Service: `pixsim7_backend/services/game/inventory_service.py`
-- API: `pixsim7_backend/api/v1/game_inventory.py`
-- Routes: Registered via `pixsim7_backend/routes/game_inventory/manifest.py`
+- Service: `pixsim7/backend/main/services/game/inventory.py` (`InventoryService`)
+- API: `pixsim7/backend/main/api/v1/game_inventory.py`
+- Routes: Registered via `pixsim7/backend/main/routes/game_inventory/manifest.py`
 - Data: `GameSession.flags.inventory` (JSON field)
 
 **Data Structure:**
@@ -149,7 +149,7 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 - `GET /api/v1/game/inventory/sessions/{session_id}/stats` - Get statistics
 
 **Frontend:**
-- Component: `apps/main/src/components/game/InventoryPanel.tsx`
+- Component: `apps/main/src/components/game/panels/InventoryPanel.tsx`
 - Features:
   - Item list with quantities
   - Item details panel with metadata
@@ -193,7 +193,7 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 ### 6. Stealth/Pickpocket
 
 **Backend:**
-- Plugin: `pixsim7_backend/plugins/game_stealth/` (already exists)
+- Plugin: `packages/plugins/stealth/backend/manifest.py` (external plugin package)
 - API: `/api/v1/game/stealth/pickpocket`
 
 **Features:**
@@ -296,7 +296,7 @@ All frontend API functions located in: `apps/main/src/lib/api/game.ts`
 Functions include:
 - Quest management: `listSessionQuests`, `addQuest`, `updateQuestStatus`, etc.
 - Inventory management: `listInventoryItems`, `addInventoryItem`, `removeInventoryItem`, etc.
-- Relationship computation: `@pixsim7/game.engine` (with a re-export shim at `apps/main/src/lib/game/relationshipComputation.ts`)
+- Relationship computation: `@pixsim7/game.engine` (`packages/game/engine/src/`)
 
 ## Notes for Opus (UI Redesign)
 
@@ -329,27 +329,28 @@ Functions include:
 
 ```
 Backend:
-- pixsim7_backend/services/game/
-  - quest_service.py
-  - inventory_service.py
-- pixsim7_backend/api/v1/
+- pixsim7/backend/main/services/game/
+  - quest.py (QuestService)
+  - inventory.py (InventoryService)
+- pixsim7/backend/main/api/v1/
   - game_quests.py
   - game_inventory.py
-- pixsim7_backend/routes/
+- pixsim7/backend/main/routes/
   - game_quests/
   - game_inventory/
-- pixsim7_backend/domain/narrative/
-  - relationships.py
+- pixsim7/backend/main/domain/game/stats/
+  - relationships_package.py
 
 Frontend:
 - apps/main/src/components/game/
   - RelationshipDashboard.tsx
   - QuestLog.tsx
-  - InventoryPanel.tsx
   - DialogueUI.tsx
   - GameNotification.tsx
-- apps/main/src/lib/game/
-  - relationshipComputation.ts (re-exports relationship helpers from @pixsim7/game.engine)
+- apps/main/src/components/game/panels/
+  - InventoryPanel.tsx
+- packages/game/engine/src/
+  - session/ (relationship/session helpers used by frontend via `@pixsim7/game.engine`)
 - apps/main/src/routes/
   - Game2D.tsx
 
