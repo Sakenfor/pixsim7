@@ -3,7 +3,7 @@
  *
  * Manage default analyzer selection and advanced analyzer overrides.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   ASSET_ANALYZER_INTENT_KEYS,
@@ -37,9 +37,10 @@ import { useAuthStore } from '@/stores/authStore';
 
 import { settingsRegistry } from '../../lib/core/registry';
 
-import { AnalyzerCatalog } from './AnalyzerCatalog';
+import { AnalyzerCatalog, type AnalysisPointSelection } from './AnalyzerCatalog';
 
 type FormMode = 'create' | 'edit';
+type AssetIntentKey = (typeof ASSET_ANALYZER_INTENT_KEYS)[number];
 
 interface FormState {
   label: string;
@@ -439,6 +440,415 @@ function InstanceForm({
   );
 }
 
+type RoutingControl =
+  | 'prompt_default'
+  | 'image_default'
+  | 'video_default'
+  | 'intent_override'
+  | 'similarity_threshold';
+
+interface RoutingEntry {
+  id: string;
+  group: 'Prompt' | 'Asset' | 'System';
+  label: string;
+  description: string;
+  control: RoutingControl;
+  intentKey?: AssetIntentKey;
+}
+
+const ROUTING_ENTRIES: RoutingEntry[] = [
+  {
+    id: 'prompt_parsing',
+    group: 'Prompt',
+    label: 'Prompt parsing',
+    description: 'Tag extraction and parser analysis during prompt editing.',
+    control: 'prompt_default',
+  },
+  {
+    id: 'prompt_generation',
+    group: 'Prompt',
+    label: 'Generation workflow',
+    description: 'Prompt analysis before generation execution.',
+    control: 'prompt_default',
+  },
+  {
+    id: 'asset_ingest_on_ingest',
+    group: 'Asset',
+    label: 'Asset ingestion (on_ingest fallback)',
+    description: 'Default route when ingestion does not specify an analyzer.',
+    control: 'image_default',
+  },
+  {
+    id: 'character_ingest_face',
+    group: 'Asset',
+    label: 'Character ingest: Face',
+    description: 'Face-mode character reference analysis.',
+    control: 'intent_override',
+    intentKey: 'character_ingest_face',
+  },
+  {
+    id: 'character_ingest_sheet',
+    group: 'Asset',
+    label: 'Character ingest: Sheet / Composite',
+    description: 'Sheet/composite character reference analysis.',
+    control: 'intent_override',
+    intentKey: 'character_ingest_sheet',
+  },
+  {
+    id: 'scene_prep_location',
+    group: 'Asset',
+    label: 'Scene prep: Location',
+    description: 'Scene prep location-reference analysis.',
+    control: 'intent_override',
+    intentKey: 'scene_prep_location',
+  },
+  {
+    id: 'scene_prep_style',
+    group: 'Asset',
+    label: 'Scene prep: Style',
+    description: 'Scene prep style-reference analysis.',
+    control: 'intent_override',
+    intentKey: 'scene_prep_style',
+  },
+  {
+    id: 'manual_analysis_image',
+    group: 'Asset',
+    label: 'Manual analysis: Image',
+    description: 'Image analysis calls when analyzer_id is omitted.',
+    control: 'image_default',
+  },
+  {
+    id: 'manual_analysis_video',
+    group: 'Asset',
+    label: 'Manual analysis: Video',
+    description: 'Video analysis calls when analyzer_id is omitted.',
+    control: 'video_default',
+  },
+  {
+    id: 'similarity_threshold',
+    group: 'System',
+    label: 'Visual similarity threshold',
+    description: 'Default threshold for similar-content search.',
+    control: 'similarity_threshold',
+  },
+];
+const DEFAULT_ROUTING_ENTRY = ROUTING_ENTRIES[0] as RoutingEntry;
+
+interface AnalysisRoutingCatalogProps {
+  promptAnalyzers: AnalyzerInfo[];
+  assetAnalyzers: AnalyzerInfo[];
+  defaultPromptAnalyzer: string;
+  defaultImageAnalyzer: string;
+  defaultVideoAnalyzer: string;
+  intentAssetAnalyzers: Partial<Record<AssetIntentKey, string>>;
+  visualSimilarityThreshold: number;
+  hasPromptDefaultOption: boolean;
+  hasImageDefaultOption: boolean;
+  hasVideoDefaultOption: boolean;
+  isSavingDefaults: boolean;
+  defaultsError: string | null;
+  isAtRecommendedDefaults: boolean;
+  pointSelections: Record<string, AnalysisPointSelection>;
+  onPromptChange: (value: string) => void;
+  onImageChange: (value: string) => void;
+  onVideoChange: (value: string) => void;
+  onIntentChange: (intent: AssetIntentKey, value: string) => void;
+  onSimilarityChange: (value: number) => void;
+  onReset: () => void;
+}
+
+function AnalysisRoutingCatalog({
+  promptAnalyzers,
+  assetAnalyzers,
+  defaultPromptAnalyzer,
+  defaultImageAnalyzer,
+  defaultVideoAnalyzer,
+  intentAssetAnalyzers,
+  visualSimilarityThreshold,
+  hasPromptDefaultOption,
+  hasImageDefaultOption,
+  hasVideoDefaultOption,
+  isSavingDefaults,
+  defaultsError,
+  isAtRecommendedDefaults,
+  pointSelections,
+  onPromptChange,
+  onImageChange,
+  onVideoChange,
+  onIntentChange,
+  onSimilarityChange,
+  onReset,
+}: AnalysisRoutingCatalogProps) {
+  const [selectedRoutingId, setSelectedRoutingId] = useState<string>(DEFAULT_ROUTING_ENTRY.id);
+
+  const selectedEntry = useMemo(
+    () => ROUTING_ENTRIES.find((entry) => entry.id === selectedRoutingId) ?? DEFAULT_ROUTING_ENTRY,
+    [selectedRoutingId]
+  );
+
+  const groupedEntries = useMemo(() => {
+    return {
+      prompt: ROUTING_ENTRIES.filter((entry) => entry.group === 'Prompt'),
+      asset: ROUTING_ENTRIES.filter((entry) => entry.group === 'Asset'),
+      system: ROUTING_ENTRIES.filter((entry) => entry.group === 'System'),
+    };
+  }, []);
+
+  const getSidebarValue = useCallback(
+    (entry: RoutingEntry): string => {
+      if (entry.control === 'similarity_threshold') {
+        return visualSimilarityThreshold.toFixed(2);
+      }
+      return pointSelections[entry.id]?.analyzerId ?? 'unresolved';
+    },
+    [pointSelections, visualSimilarityThreshold]
+  );
+
+  const currentIntentValue =
+    selectedEntry.control === 'intent_override' && selectedEntry.intentKey
+      ? (intentAssetAnalyzers?.[selectedEntry.intentKey] ?? '').trim()
+      : '';
+  const hasIntentOption =
+    !currentIntentValue ||
+    assetAnalyzers.some((analyzer) => analyzer.id === currentIntentValue);
+
+  return (
+    <section className="space-y-2">
+      <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+        Analysis Point Routing
+      </h3>
+      <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+        Catalog view of runtime routing. Pick an analysis point from the left to inspect or change its analyzer.
+      </p>
+
+      <div className="flex border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden" style={{ height: 460 }}>
+        <div className="w-72 border-r border-neutral-200 dark:border-neutral-700 bg-neutral-50/70 dark:bg-neutral-900/50 shrink-0 overflow-auto">
+          <div className="p-2 space-y-2">
+            {([
+              ['PROMPT', groupedEntries.prompt],
+              ['ASSET', groupedEntries.asset],
+              ['SYSTEM', groupedEntries.system],
+            ] as const).map(([groupLabel, entries]) => (
+              <div key={groupLabel}>
+                <div className="text-[9px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500 px-2 py-1">
+                  {groupLabel}
+                </div>
+                <div className="space-y-1">
+                  {entries.map((entry) => {
+                    const isSelected = entry.id === selectedEntry.id;
+                    return (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        onClick={() => setSelectedRoutingId(entry.id)}
+                        className={`w-full text-left px-2 py-1.5 rounded transition-colors ${
+                          isSelected
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100'
+                            : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
+                        }`}
+                      >
+                        <div className="text-[11px] font-medium truncate">{entry.label}</div>
+                        <div className="text-[9px] font-mono text-neutral-500 dark:text-neutral-400 truncate mt-0.5">
+                          {getSidebarValue(entry)}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex-1 bg-white dark:bg-neutral-900 p-4 overflow-auto min-w-0">
+          <div className="space-y-3">
+            <div>
+              <h4 className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+                {selectedEntry.label}
+              </h4>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
+                {selectedEntry.description}
+              </p>
+            </div>
+
+            {selectedEntry.control !== 'similarity_threshold' && (
+              <div className="p-2.5 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50/70 dark:bg-neutral-800/40">
+                <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Current routed analyzer</div>
+                <div className="text-[11px] font-mono text-neutral-800 dark:text-neutral-100 mt-0.5">
+                  {pointSelections[selectedEntry.id]?.analyzerId ?? 'unresolved'}
+                </div>
+                <div className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">
+                  Source: {pointSelections[selectedEntry.id]?.source ?? 'unavailable'}
+                </div>
+              </div>
+            )}
+
+            {(selectedEntry.control === 'prompt_default') && (
+              <div className="space-y-2">
+                <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+                  Prompt analyzer default
+                </label>
+                <select
+                  value={defaultPromptAnalyzer}
+                  onChange={(e) => onPromptChange(e.target.value)}
+                  disabled={isSavingDefaults}
+                  className="w-full max-w-xl px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+                >
+                  {!hasPromptDefaultOption && (
+                    <option value={defaultPromptAnalyzer}>Unavailable: {defaultPromptAnalyzer}</option>
+                  )}
+                  {promptAnalyzers.map((analyzer) => (
+                    <option key={analyzer.id} value={analyzer.id}>
+                      {analyzer.name}
+                    </option>
+                  ))}
+                </select>
+                {!hasPromptDefaultOption && (
+                  <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                    Selected analyzer is not currently registered.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {(selectedEntry.control === 'image_default') && (
+              <div className="space-y-2">
+                <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+                  Image analyzer default
+                </label>
+                <select
+                  value={defaultImageAnalyzer}
+                  onChange={(e) => onImageChange(e.target.value)}
+                  disabled={isSavingDefaults}
+                  className="w-full max-w-xl px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+                >
+                  {!hasImageDefaultOption && (
+                    <option value={defaultImageAnalyzer}>Unavailable: {defaultImageAnalyzer}</option>
+                  )}
+                  {assetAnalyzers.map((analyzer) => (
+                    <option key={analyzer.id} value={analyzer.id}>
+                      {analyzer.name}
+                    </option>
+                  ))}
+                </select>
+                {!hasImageDefaultOption && (
+                  <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                    Selected analyzer is not currently registered.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {(selectedEntry.control === 'video_default') && (
+              <div className="space-y-2">
+                <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+                  Video analyzer default
+                </label>
+                <select
+                  value={defaultVideoAnalyzer}
+                  onChange={(e) => onVideoChange(e.target.value)}
+                  disabled={isSavingDefaults}
+                  className="w-full max-w-xl px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+                >
+                  {!hasVideoDefaultOption && (
+                    <option value={defaultVideoAnalyzer}>Unavailable: {defaultVideoAnalyzer}</option>
+                  )}
+                  {assetAnalyzers.map((analyzer) => (
+                    <option key={analyzer.id} value={analyzer.id}>
+                      {analyzer.name}
+                    </option>
+                  ))}
+                </select>
+                {!hasVideoDefaultOption && (
+                  <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                    Selected analyzer is not currently registered.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {(selectedEntry.control === 'intent_override' && selectedEntry.intentKey) && (
+              <div className="space-y-2">
+                <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+                  Intent override
+                </label>
+                <select
+                  value={currentIntentValue}
+                  onChange={(e) => {
+                    if (selectedEntry.intentKey) {
+                      onIntentChange(selectedEntry.intentKey, e.target.value);
+                    }
+                  }}
+                  className="w-full max-w-xl px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+                >
+                  <option value="">Use Image Default ({defaultImageAnalyzer})</option>
+                  {!hasIntentOption && currentIntentValue && (
+                    <option value={currentIntentValue}>Unavailable: {currentIntentValue}</option>
+                  )}
+                  {assetAnalyzers.map((analyzer) => (
+                    <option key={analyzer.id} value={analyzer.id}>
+                      {analyzer.name}
+                    </option>
+                  ))}
+                </select>
+                {!hasIntentOption && currentIntentValue && (
+                  <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                    Selected override is not currently registered.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {(selectedEntry.control === 'similarity_threshold') && (
+              <div className="space-y-2 max-w-xl">
+                <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+                  Default similarity threshold
+                </label>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                  value={visualSimilarityThreshold}
+                  onChange={(e) => onSimilarityChange(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+                <div className="text-[11px] font-mono text-neutral-700 dark:text-neutral-300">
+                  {visualSimilarityThreshold.toFixed(2)}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+          {promptAnalyzers.length} prompt analyzers / {assetAnalyzers.length} asset analyzers
+        </div>
+        <button
+          onClick={onReset}
+          disabled={isAtRecommendedDefaults || isSavingDefaults}
+          className="px-3 py-1.5 text-[11px] rounded bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed text-neutral-700 dark:text-neutral-300 transition-colors"
+        >
+          Reset to Recommended
+        </button>
+      </div>
+
+      {isSavingDefaults && (
+        <p className="text-[10px] text-neutral-500 dark:text-neutral-400 text-right">
+          Saving analyzer defaults...
+        </p>
+      )}
+      {defaultsError && (
+        <p className="text-[10px] text-red-700 dark:text-red-400 text-right">
+          Failed to save analyzer defaults: {defaultsError}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function AnalyzersSettings() {
   const [analyzers, setAnalyzers] = useState<AnalyzerInfo[]>([]);
   const [instances, setInstances] = useState<AnalyzerInstance[]>([]);
@@ -488,33 +898,6 @@ export function AnalyzersSettings() {
     defaultVideoAnalyzer === DEFAULT_ASSET_ANALYZER_ID &&
     !hasAnyIntentOverrides &&
     Math.abs(visualSimilarityThreshold - DEFAULT_VISUAL_SIMILARITY_THRESHOLD) < 0.001;
-
-  const intentOverrideRows: Array<{
-    key: (typeof ASSET_ANALYZER_INTENT_KEYS)[number];
-    label: string;
-    description: string;
-  }> = [
-    {
-      key: 'character_ingest_face',
-      label: 'Character Ingest: Face',
-      description: 'Used by Character Reference Ingest when Analyzer Mode = Face.',
-    },
-    {
-      key: 'character_ingest_sheet',
-      label: 'Character Ingest: Sheet / Composite',
-      description: 'Used by Character Reference Ingest when Analyzer Mode = Sheet / Composite.',
-    },
-    {
-      key: 'scene_prep_location',
-      label: 'Scene Prep: Location',
-      description: 'Reserved for Scene Prep location-reference analysis/import flows.',
-    },
-    {
-      key: 'scene_prep_style',
-      label: 'Scene Prep: Style',
-      description: 'Reserved for Scene Prep style-reference analysis/import flows.',
-    },
-  ];
 
   // Fetch server media settings (for embedding controls)
   useEffect(() => {
@@ -783,6 +1166,48 @@ export function AnalyzersSettings() {
     }
   };
 
+  const analysisPointSelections = useMemo<Record<string, AnalysisPointSelection>>(() => {
+    const resolveIntentSelection = (intent: AssetIntentKey): AnalysisPointSelection => {
+      const override = (intentAssetAnalyzers?.[intent] ?? '').trim();
+      return {
+        analyzerId: override || defaultImageAnalyzer,
+        source: override ? 'Intent override' : `Image default (${defaultImageAnalyzer})`,
+      };
+    };
+
+    return {
+      prompt_parsing: {
+        analyzerId: defaultPromptAnalyzer,
+        source: `Prompt default (${defaultPromptAnalyzer})`,
+      },
+      prompt_generation: {
+        analyzerId: defaultPromptAnalyzer,
+        source: `Prompt default (${defaultPromptAnalyzer})`,
+      },
+      asset_ingest_on_ingest: {
+        analyzerId: defaultImageAnalyzer,
+        source: `Image default fallback (${defaultImageAnalyzer})`,
+      },
+      character_ingest_face: resolveIntentSelection('character_ingest_face'),
+      character_ingest_sheet: resolveIntentSelection('character_ingest_sheet'),
+      scene_prep_location: resolveIntentSelection('scene_prep_location'),
+      scene_prep_style: resolveIntentSelection('scene_prep_style'),
+      manual_analysis_image: {
+        analyzerId: defaultImageAnalyzer,
+        source: `Image default when analyzer_id is omitted (${defaultImageAnalyzer})`,
+      },
+      manual_analysis_video: {
+        analyzerId: defaultVideoAnalyzer,
+        source: `Video default when analyzer_id is omitted (${defaultVideoAnalyzer})`,
+      },
+    };
+  }, [
+    defaultImageAnalyzer,
+    defaultPromptAnalyzer,
+    defaultVideoAnalyzer,
+    intentAssetAnalyzers,
+  ]);
+
   // Loading state
   if (isLoading) {
     return (
@@ -828,258 +1253,28 @@ export function AnalyzersSettings() {
         for custom overrides (different model, base URL, or provider-specific config).
       </div>
 
-      {/* Status */}
-      <section className="space-y-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-          Status
-        </h3>
-        <div className="grid gap-3 md:grid-cols-5 p-3 border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50/60 dark:bg-neutral-900/40">
-          <div className="space-y-1">
-            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Prompt Default</div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px]">{defaultPromptAnalyzer}</span>
-              <span className={`px-1.5 py-0.5 rounded text-[9px] ${
-                hasPromptDefaultOption
-                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                  : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-              }`}>
-                {hasPromptDefaultOption ? 'valid' : 'missing'}
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Image Default</div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px]">{defaultImageAnalyzer}</span>
-              <span className={`px-1.5 py-0.5 rounded text-[9px] ${
-                hasImageDefaultOption
-                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                  : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-              }`}>
-                {hasImageDefaultOption ? 'valid' : 'missing'}
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Video Default</div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px]">{defaultVideoAnalyzer}</span>
-              <span className={`px-1.5 py-0.5 rounded text-[9px] ${
-                hasVideoDefaultOption
-                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                  : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-              }`}>
-                {hasVideoDefaultOption ? 'valid' : 'missing'}
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Registered Analyzers</div>
-            <div className="text-[11px] text-neutral-700 dark:text-neutral-300">
-              {promptAnalyzers.length} prompt / {assetAnalyzers.length} asset
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Similarity Default</div>
-            <div className="font-mono text-[11px] text-neutral-700 dark:text-neutral-300">
-              {visualSimilarityThreshold.toFixed(2)}
-            </div>
-          </div>
-        </div>
-        <div className="flex justify-end">
-          <button
-            onClick={handleResetDefaults}
-            disabled={isAtRecommendedDefaults || isSavingDefaults}
-            className="px-3 py-1.5 text-[11px] rounded bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed text-neutral-700 dark:text-neutral-300 transition-colors"
-          >
-            Reset to Recommended
-          </button>
-        </div>
-        {isSavingDefaults && (
-          <p className="text-[10px] text-neutral-500 dark:text-neutral-400 text-right">
-            Saving analyzer defaults...
-          </p>
-        )}
-        {defaultsError && (
-          <p className="text-[10px] text-red-700 dark:text-red-400 text-right">
-            Failed to save analyzer defaults: {defaultsError}
-          </p>
-        )}
-      </section>
-
-      {/* Runtime defaults */}
-      <section className="space-y-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-          Default Analyzer Selection
-        </h3>
-        <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
-          These defaults are saved in your account preferences and used by backend analysis flows when analyzer IDs are omitted.
-        </p>
-        <div className="grid gap-3 md:grid-cols-4 p-3 border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50/60 dark:bg-neutral-900/40">
-          <div className="space-y-1">
-            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
-              Prompt Analyzer
-            </label>
-            <select
-              value={defaultPromptAnalyzer}
-              onChange={(e) => handlePromptDefaultChange(e.target.value)}
-              disabled={isSavingDefaults}
-              className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
-            >
-              {!hasPromptDefaultOption && (
-                <option value={defaultPromptAnalyzer}>Unavailable: {defaultPromptAnalyzer}</option>
-              )}
-              {promptAnalyzers.length === 0 && hasPromptDefaultOption && (
-                <option value={defaultPromptAnalyzer}>{defaultPromptAnalyzer}</option>
-              )}
-              {promptAnalyzers.map((analyzer) => (
-                <option key={analyzer.id} value={analyzer.id}>
-                  {analyzer.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
-              <span className="font-semibold">Used by:</span> Prompt parsing and tag extraction in generation workflows.
-            </p>
-            {!hasPromptDefaultOption && (
-              <p className="text-[10px] text-amber-700 dark:text-amber-400">
-                Selected analyzer is not currently registered.
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
-              Image Analyzer
-            </label>
-            <select
-              value={defaultImageAnalyzer}
-              onChange={(e) => handleImageDefaultChange(e.target.value)}
-              disabled={isSavingDefaults}
-              className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
-            >
-              {!hasImageDefaultOption && (
-                <option value={defaultImageAnalyzer}>Unavailable: {defaultImageAnalyzer}</option>
-              )}
-              {assetAnalyzers.length === 0 && hasImageDefaultOption && (
-                <option value={defaultImageAnalyzer}>{defaultImageAnalyzer}</option>
-              )}
-              {assetAnalyzers.map((analyzer) => (
-                <option key={analyzer.id} value={analyzer.id}>
-                  {analyzer.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
-              <span className="font-semibold">Used by:</span> Image-focused asset-analysis tools (zone detection and similar flows).
-            </p>
-            {!hasImageDefaultOption && (
-              <p className="text-[10px] text-amber-700 dark:text-amber-400">
-                Selected analyzer is not currently registered.
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
-              Video Analyzer
-            </label>
-            <select
-              value={defaultVideoAnalyzer}
-              onChange={(e) => handleVideoDefaultChange(e.target.value)}
-              disabled={isSavingDefaults}
-              className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
-            >
-              {!hasVideoDefaultOption && (
-                <option value={defaultVideoAnalyzer}>Unavailable: {defaultVideoAnalyzer}</option>
-              )}
-              {assetAnalyzers.length === 0 && hasVideoDefaultOption && (
-                <option value={defaultVideoAnalyzer}>{defaultVideoAnalyzer}</option>
-              )}
-              {assetAnalyzers.map((analyzer) => (
-                <option key={analyzer.id} value={analyzer.id}>
-                  {analyzer.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
-              <span className="font-semibold">Used by:</span> Video-focused asset-analysis workflows and future video tooling.
-            </p>
-            {!hasVideoDefaultOption && (
-              <p className="text-[10px] text-amber-700 dark:text-amber-400">
-                Selected analyzer is not currently registered.
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
-              Default Similarity Threshold
-            </label>
-            <input
-              type="range"
-              min={0.1}
-              max={1}
-              step={0.05}
-              value={visualSimilarityThreshold}
-              onChange={(e) => setVisualSimilarityThreshold(parseFloat(e.target.value))}
-              className="w-full"
-            />
-            <div className="text-[11px] font-mono text-neutral-700 dark:text-neutral-300">
-              {visualSimilarityThreshold.toFixed(2)}
-            </div>
-            <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
-              <span className="font-semibold">Used by:</span> Similar Content search defaults (higher = stricter).
-            </p>
-          </div>
-        </div>
-
-        <div className="p-3 border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50/60 dark:bg-neutral-900/40 space-y-2">
-          <div>
-            <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
-              Intent Overrides (Local)
-            </h4>
-            <p className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">
-              Optional local overrides for specific workflows (e.g. Character Ingest Face/Sheet). These are stored in browser settings for now and fall back to the image default when empty.
-            </p>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {intentOverrideRows.map((row) => {
-              const currentValue = (intentAssetAnalyzers?.[row.key] ?? '').trim();
-              const hasCurrentOption = !currentValue || assetAnalyzers.some((analyzer) => analyzer.id === currentValue);
-              return (
-                <div key={row.key} className="space-y-1">
-                  <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
-                    {row.label}
-                  </label>
-                  <select
-                    value={currentValue}
-                    onChange={(e) => handleIntentAssetAnalyzerChange(row.key, e.target.value)}
-                    className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
-                  >
-                    <option value="">Use Image Default ({defaultImageAnalyzer})</option>
-                    {!hasCurrentOption && currentValue && (
-                      <option value={currentValue}>Unavailable: {currentValue}</option>
-                    )}
-                    {assetAnalyzers.map((analyzer) => (
-                      <option key={analyzer.id} value={analyzer.id}>
-                        {analyzer.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                    {row.description}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
+      <AnalysisRoutingCatalog
+        promptAnalyzers={promptAnalyzers}
+        assetAnalyzers={assetAnalyzers}
+        defaultPromptAnalyzer={defaultPromptAnalyzer}
+        defaultImageAnalyzer={defaultImageAnalyzer}
+        defaultVideoAnalyzer={defaultVideoAnalyzer}
+        intentAssetAnalyzers={intentAssetAnalyzers}
+        visualSimilarityThreshold={visualSimilarityThreshold}
+        hasPromptDefaultOption={hasPromptDefaultOption}
+        hasImageDefaultOption={hasImageDefaultOption}
+        hasVideoDefaultOption={hasVideoDefaultOption}
+        isSavingDefaults={isSavingDefaults}
+        defaultsError={defaultsError}
+        isAtRecommendedDefaults={isAtRecommendedDefaults}
+        pointSelections={analysisPointSelections}
+        onPromptChange={handlePromptDefaultChange}
+        onImageChange={handleImageDefaultChange}
+        onVideoChange={handleVideoDefaultChange}
+        onIntentChange={handleIntentAssetAnalyzerChange}
+        onSimilarityChange={setVisualSimilarityThreshold}
+        onReset={handleResetDefaults}
+      />
 
       {/* Visual Embeddings */}
       {isAdmin && (
@@ -1251,6 +1446,7 @@ export function AnalyzersSettings() {
           analyzers={analyzers}
           instances={instances}
           deletingIds={deletingIds}
+          analysisPointSelections={analysisPointSelections}
           onEdit={handleEdit}
           onDelete={handleDelete}
           onToggle={handleToggle}

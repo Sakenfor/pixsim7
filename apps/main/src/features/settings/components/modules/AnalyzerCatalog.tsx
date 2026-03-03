@@ -4,7 +4,7 @@
  * Left sidebar: searchable, grouped-by-target list of analyzers.
  * Right detail: selected analyzer info, analysis points, instance stack.
  */
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type {
   AnalyzerInfo,
@@ -17,20 +17,68 @@ import type {
 // Analysis Points — describes *where* each analyzer target is invoked
 // ---------------------------------------------------------------------------
 
-const ANALYSIS_POINTS: Record<AnalyzerTarget, { label: string; description: string }[]> = {
+interface AnalysisPointDefinition {
+  id: string;
+  label: string;
+  description: string;
+}
+
+const ANALYSIS_POINTS: Record<AnalyzerTarget, AnalysisPointDefinition[]> = {
   prompt: [
-    { label: 'Prompt parsing', description: 'Tag extraction during prompt editing' },
-    { label: 'Generation workflow', description: 'Pre-generation prompt analysis' },
+    {
+      id: 'prompt_parsing',
+      label: 'Prompt parsing',
+      description: 'Tag extraction during prompt editing',
+    },
+    {
+      id: 'prompt_generation',
+      label: 'Generation workflow',
+      description: 'Pre-generation prompt analysis',
+    },
   ],
   asset: [
-    { label: 'Asset ingestion (on_ingest)', description: 'Automatic analysis when assets are imported' },
-    { label: 'Character ingest: Face', description: 'Face-mode character reference analysis' },
-    { label: 'Character ingest: Sheet', description: 'Sheet/composite character reference analysis' },
-    { label: 'Scene prep: Location', description: 'Location reference analysis for scene prep' },
-    { label: 'Scene prep: Style', description: 'Style reference analysis for scene prep' },
-    { label: 'Manual analysis', description: 'User-triggered analysis on individual assets' },
+    {
+      id: 'asset_ingest_on_ingest',
+      label: 'Asset ingestion (on_ingest)',
+      description: 'Automatic analysis when assets are imported',
+    },
+    {
+      id: 'character_ingest_face',
+      label: 'Character ingest: Face',
+      description: 'Face-mode character reference analysis',
+    },
+    {
+      id: 'character_ingest_sheet',
+      label: 'Character ingest: Sheet',
+      description: 'Sheet/composite character reference analysis',
+    },
+    {
+      id: 'scene_prep_location',
+      label: 'Scene prep: Location',
+      description: 'Location reference analysis for scene prep',
+    },
+    {
+      id: 'scene_prep_style',
+      label: 'Scene prep: Style',
+      description: 'Style reference analysis for scene prep',
+    },
+    {
+      id: 'manual_analysis_image',
+      label: 'Manual analysis: Image',
+      description: 'User-triggered analysis on image assets when analyzer_id is omitted',
+    },
+    {
+      id: 'manual_analysis_video',
+      label: 'Manual analysis: Video',
+      description: 'User-triggered analysis on video assets when analyzer_id is omitted',
+    },
   ],
 };
+
+export interface AnalysisPointSelection {
+  analyzerId: string;
+  source: string;
+}
 
 // ---------------------------------------------------------------------------
 // Kind badge colours
@@ -143,6 +191,7 @@ function AnalyzerDetail({
   onDelete,
   onToggle,
   onAddInstance,
+  analysisPointSelections,
 }: {
   analyzer: AnalyzerInfo;
   instances: AnalyzerInstance[];
@@ -151,12 +200,24 @@ function AnalyzerDetail({
   onDelete: (instance: AnalyzerInstance) => void;
   onToggle: (instance: AnalyzerInstance) => void;
   onAddInstance: (analyzerId: string) => void;
+  analysisPointSelections: Record<string, AnalysisPointSelection>;
 }) {
   const analyzerInstances = instances
     .filter((i) => i.analyzer_id === analyzer.id)
     .sort((a, b) => b.priority - a.priority);
 
-  const analysisPoints = ANALYSIS_POINTS[analyzer.target] ?? [];
+  const analysisPoints = useMemo(() => ANALYSIS_POINTS[analyzer.target] ?? [], [analyzer.target]);
+  const [selectedPointId, setSelectedPointId] = useState<string | null>(
+    analysisPoints[0]?.id ?? null
+  );
+
+  useEffect(() => {
+    setSelectedPointId(analysisPoints[0]?.id ?? null);
+  }, [analysisPoints, analyzer.id]);
+
+  const selectedPoint = analysisPoints.find((point) => point.id === selectedPointId) ?? analysisPoints[0] ?? null;
+  const pointSelection = selectedPoint ? analysisPointSelections[selectedPoint.id] : undefined;
+  const isSelectedAnalyzerForPoint = pointSelection?.analyzerId === analyzer.id;
 
   return (
     <div className="p-4 space-y-4 overflow-auto h-full">
@@ -214,21 +275,77 @@ function AnalyzerDetail({
           <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-1.5">
             Analysis Points
           </h4>
-          <div className="space-y-1">
-            {analysisPoints.map((point) => (
-              <div
-                key={point.label}
-                className="flex items-start gap-2 text-[10px] text-neutral-600 dark:text-neutral-400"
-              >
-                <span className="text-neutral-400 dark:text-neutral-500 mt-px shrink-0">
-                  &bull;
-                </span>
-                <div>
-                  <span className="text-neutral-700 dark:text-neutral-300">{point.label}</span>
-                  <span className="text-neutral-400 dark:text-neutral-500"> &mdash; {point.description}</span>
-                </div>
+          <div className="flex border border-neutral-200 dark:border-neutral-700 rounded-md overflow-hidden bg-neutral-50/40 dark:bg-neutral-900/30">
+            <div className="w-48 border-r border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/50 shrink-0">
+              <div className="p-1.5 space-y-1">
+                {analysisPoints.map((point) => {
+                  const pointAnalyzer = analysisPointSelections[point.id]?.analyzerId;
+                  const usesCurrentAnalyzer = pointAnalyzer === analyzer.id;
+                  const isSelected = point.id === selectedPoint?.id;
+
+                  return (
+                    <button
+                      key={point.id}
+                      type="button"
+                      onClick={() => setSelectedPointId(point.id)}
+                      className={`w-full text-left px-2 py-1.5 rounded transition-colors ${
+                        isSelected
+                          ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100'
+                          : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
+                      }`}
+                    >
+                      <div className="text-[10px] font-medium truncate">{point.label}</div>
+                      <div className="text-[9px] mt-0.5">
+                        <span className={`px-1 py-0.5 rounded ${
+                          usesCurrentAnalyzer
+                            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                            : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400'
+                        }`}>
+                          {usesCurrentAnalyzer ? 'selected' : 'other analyzer'}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-            ))}
+            </div>
+
+            <div className="flex-1 p-2.5 min-w-0">
+              {selectedPoint && (
+                <div className="space-y-2 text-[10px]">
+                  <div>
+                    <div className="text-[11px] font-semibold text-neutral-800 dark:text-neutral-100">
+                      {selectedPoint.label}
+                    </div>
+                    <div className="text-neutral-500 dark:text-neutral-400 mt-0.5">
+                      {selectedPoint.description}
+                    </div>
+                  </div>
+
+                  <div className="p-2 rounded border border-neutral-200 dark:border-neutral-700 bg-white/70 dark:bg-neutral-900/60">
+                    <div className="text-neutral-500 dark:text-neutral-400">Configured analyzer</div>
+                    <div className="font-mono text-[11px] text-neutral-800 dark:text-neutral-100 mt-0.5">
+                      {pointSelection?.analyzerId ?? 'No default mapping'}
+                    </div>
+                    {pointSelection?.source && (
+                      <div className="text-neutral-500 dark:text-neutral-400 mt-1">
+                        Source: {pointSelection.source}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={`px-2 py-1 rounded text-[10px] inline-flex ${
+                    isSelectedAnalyzerForPoint
+                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                  }`}>
+                    {isSelectedAnalyzerForPoint
+                      ? 'This analyzer is currently selected for this analysis point.'
+                      : 'A different analyzer is currently selected for this analysis point.'}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -318,6 +435,7 @@ export interface AnalyzerCatalogProps {
   analyzers: AnalyzerInfo[];
   instances: AnalyzerInstance[];
   deletingIds: Set<number>;
+  analysisPointSelections: Record<string, AnalysisPointSelection>;
   onEdit: (instance: AnalyzerInstance) => void;
   onDelete: (instance: AnalyzerInstance) => void;
   onToggle: (instance: AnalyzerInstance) => void;
@@ -328,6 +446,7 @@ export function AnalyzerCatalog({
   analyzers,
   instances,
   deletingIds,
+  analysisPointSelections,
   onEdit,
   onDelete,
   onToggle,
@@ -423,6 +542,7 @@ export function AnalyzerCatalog({
             analyzer={effectiveSelected}
             instances={instances}
             deletingIds={deletingIds}
+            analysisPointSelections={analysisPointSelections}
             onEdit={onEdit}
             onDelete={onDelete}
             onToggle={onToggle}

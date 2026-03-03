@@ -28,9 +28,9 @@ export interface ServerMediaSettings {
   frame_extraction_upload: 'source_provider' | 'always' | 'never';
   /** Default provider for uploads when frame_extraction_upload is 'always' */
   default_upload_provider: string;
-  /** Generate CLIP embeddings for visual similarity search */
+  /** Generate CLIP embeddings during asset ingestion */
   generate_embeddings: boolean;
-  /** Shell command for CLIP embedding generation */
+  /** Command for CLIP embedding generation */
   clip_embedding_command: string;
 }
 

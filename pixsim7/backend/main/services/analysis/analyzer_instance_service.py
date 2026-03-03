@@ -71,6 +71,7 @@ class AnalyzerInstanceService(ProviderInstanceServiceBase):
         description: Optional[str] = None,
         enabled: bool = True,
         priority: int = 0,
+        on_ingest: bool = False,
     ) -> ProviderInstanceConfig:
         analyzer_id, provider_id, model_id = _resolve_analyzer_defaults(
             analyzer_id,
@@ -91,6 +92,7 @@ class AnalyzerInstanceService(ProviderInstanceServiceBase):
             description=description,
             enabled=enabled,
             priority=priority,
+            on_ingest=on_ingest,
         )
 
         logger.info(
@@ -165,8 +167,20 @@ class AnalyzerInstanceService(ProviderInstanceServiceBase):
 
         return await self._apply_updates(
             instance,
-            {"provider_id", "model_id", "label", "description", "config", "enabled", "priority"},
+            {"provider_id", "model_id", "label", "description", "config", "enabled", "priority", "on_ingest"},
             updates,
+        )
+
+    async def list_on_ingest_instances(
+        self,
+        *,
+        owner_user_id: int,
+    ) -> list[ProviderInstanceConfig]:
+        """Enabled instances with on_ingest=True for a user."""
+        return await self._list(
+            ProviderInstanceConfig.owner_user_id == owner_user_id,
+            ProviderInstanceConfig.on_ingest == True,  # noqa: E712
+            enabled_only=True,
         )
 
     async def delete_instance(

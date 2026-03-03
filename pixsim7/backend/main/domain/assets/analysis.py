@@ -10,6 +10,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional
 
+from pydantic import ConfigDict
 from sqlalchemy import JSON
 from sqlmodel import Column, Field, Index, SQLModel
 
@@ -37,6 +38,7 @@ class AssetAnalysis(SQLModel, table=True):
     """
 
     __tablename__ = "asset_analyses"
+    model_config = ConfigDict(protected_namespaces=())
 
     # Identity
     id: Optional[int] = Field(default=None, primary_key=True)

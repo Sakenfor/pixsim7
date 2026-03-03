@@ -49,10 +49,8 @@ class MediaSettingsResponse(BaseModel):
     default_upload_provider: str = Field(
         description="Default provider for uploads when frame_extraction_upload is 'always'"
     )
-    generate_embeddings: bool = Field(description="Generate CLIP embeddings for visual similarity search")
-    clip_embedding_command: str = Field(
-        description="Shell command for CLIP embedding generation (or set CLIP_EMBEDDING_COMMAND env var)"
-    )
+    generate_embeddings: bool = Field(description="Generate CLIP embeddings during ingestion")
+    clip_embedding_command: str = Field(description="Command for CLIP embedding generation")
 
 
 class MediaSettingsUpdate(BaseModel):

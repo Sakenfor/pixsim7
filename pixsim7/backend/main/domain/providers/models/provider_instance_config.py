@@ -8,6 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional, Dict, Any
 
+from pydantic import ConfigDict
 from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import JSON, DateTime, func
 
@@ -30,6 +31,7 @@ class ProviderInstanceConfig(SQLModel, table=True):
     - Scoped ownership (global vs per-user)
     """
     __tablename__ = "provider_instance_configs"
+    model_config = ConfigDict(protected_namespaces=())
 
     # Primary key
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -98,6 +100,13 @@ class ProviderInstanceConfig(SQLModel, table=True):
         default=True,
         index=True,
         description="Whether this instance is active"
+    )
+
+    # Whether to auto-run this instance during asset ingestion
+    on_ingest: bool = Field(
+        default=False,
+        index=True,
+        description="Auto-run during asset ingestion (analyzer kind only)"
     )
 
     # Priority for sorting in UI (higher = shown first)

@@ -18,7 +18,6 @@ Design principles:
 - No user param: permissions derived from asset.user_id
 - Storage abstraction: stored_key is stable, local_path is cache
 """
-import os
 import asyncio
 import hashlib
 import mimetypes
@@ -181,16 +180,13 @@ class MediaSettings:
 
     @property
     def generate_embeddings(self) -> bool:
-        """Generate CLIP embeddings for visual similarity search (opt-in)."""
+        """Generate CLIP embeddings during asset ingestion."""
         return self._settings.get("generate_embeddings", False)
 
     @property
     def clip_embedding_command(self) -> str:
-        """Command for CLIP embedding generation (or CLIP_EMBEDDING_COMMAND env var)."""
-        return self._settings.get(
-            "clip_embedding_command",
-            os.environ.get("CLIP_EMBEDDING_COMMAND", ""),
-        )
+        """Command that accepts JSON on stdin and returns embeddings on stdout."""
+        return self._settings.get("clip_embedding_command", "")
 
     def update(self, updates: Dict[str, Any]) -> None:
         """Update settings and save."""
@@ -265,7 +261,6 @@ class AssetIngestionService:
         extract_metadata: bool = True,
         generate_thumbnails: Optional[bool] = None,
         generate_previews: Optional[bool] = None,
-        generate_embeddings: Optional[bool] = None,
     ) -> Asset:
         """
         Ingest a single asset.
@@ -300,8 +295,6 @@ class AssetIngestionService:
             generate_thumbnails = self.settings.generate_thumbnails
         if generate_previews is None:
             generate_previews = self.settings.generate_previews
-        if generate_embeddings is None:
-            generate_embeddings = self.settings.generate_embeddings
 
         # Idempotent check: skip if already ingested with content-addressed storage (unless forced)
         # Only skip when all requested steps are already complete.
@@ -310,8 +303,7 @@ class AssetIngestionService:
             needs_metadata = extract_metadata and not asset.metadata_extracted_at
             needs_thumbnails = generate_thumbnails and not asset.thumbnail_generated_at
             needs_previews = generate_previews and not asset.preview_generated_at
-            needs_embedding = generate_embeddings and not asset.embedding_generated_at
-            if not (needs_metadata or needs_thumbnails or needs_previews or needs_embedding):
+            if not (needs_metadata or needs_thumbnails or needs_previews):
                 logger.debug(
                     "ingest_skipped_already_complete",
                     asset_id=asset_id,
@@ -385,9 +377,8 @@ class AssetIngestionService:
                 await self._generate_preview(asset, local_path)
                 asset.preview_generated_at = datetime.now(timezone.utc)
 
-            # Step 7: Generate CLIP embedding (if not already done or forced)
-            if generate_embeddings and (force or not asset.embedding_generated_at):
-                await self._generate_embedding(asset, local_path)
+            # Step 7: Trigger on-ingest analyzers (best-effort, async)
+            await self._trigger_on_ingest_analyses(asset, local_path)
 
             # Link to global content blob (best-effort)
             if asset.sha256 and asset.content_id is None:
@@ -980,117 +971,180 @@ class AssetIngestionService:
                 detail="ffmpeg not available for video preview generation"
             )
 
-    async def _generate_embedding(self, asset: Asset, local_path: str) -> None:
+    async def _trigger_on_ingest_analyses(
+        self,
+        asset: Asset,
+        local_path: str,
+    ) -> None:
         """
-        Generate CLIP embedding for visual similarity search.
+        Trigger analyzers with on_ingest=True after ingestion.
 
-        Calls an external command (configured via clip_embedding_command setting
-        or CLIP_EMBEDDING_COMMAND env var) with JSON stdin/stdout contract.
+        Best-effort: individual failures never block ingestion.
+        Command-based instances execute inline; others queue via ARQ.
+        """
+        try:
+            from pixsim7.backend.main.domain import User
+            from pixsim7.backend.main.services.analysis.analyzer_instance_service import (
+                AnalyzerInstanceService,
+            )
+            from pixsim7.backend.main.services.analysis.analysis_service import (
+                AnalysisService,
+            )
+            from pixsim7.backend.main.services.command_runtime import (
+                run_subprocess_text,
+                parse_shell_args,
+            )
+            import json
 
-        Best-effort: logs warnings on failure, never blocks ingestion.
+            instance_service = AnalyzerInstanceService(self.db)
+            instances = await instance_service.list_on_ingest_instances(
+                owner_user_id=asset.user_id,
+            )
+            if not instances:
+                return
+
+            user = await self.db.get(User, asset.user_id)
+            if not user:
+                logger.warning(
+                    "on_ingest_skip_no_user",
+                    asset_id=asset.id,
+                    user_id=asset.user_id,
+                )
+                return
+
+            analysis_service = AnalysisService(self.db)
+
+            for instance in instances:
+                try:
+                    command = instance.config.get("command") if instance.config else None
+
+                    if command:
+                        # Inline execution via subprocess
+                        await self._run_inline_analysis(
+                            asset=asset,
+                            local_path=local_path,
+                            instance=instance,
+                            user=user,
+                            analysis_service=analysis_service,
+                            command=command,
+                        )
+                    else:
+                        # Queue for async provider execution
+                        await analysis_service.create_analysis(
+                            user=user,
+                            asset_id=asset.id,
+                            analyzer_id=instance.analyzer_id,
+                            enqueue=True,
+                        )
+
+                except Exception as e:
+                    logger.warning(
+                        "on_ingest_instance_failed",
+                        asset_id=asset.id,
+                        instance_id=instance.id,
+                        analyzer_id=instance.analyzer_id,
+                        error=str(e),
+                    )
+
+        except Exception as e:
+            logger.warning(
+                "on_ingest_trigger_failed",
+                asset_id=asset.id,
+                error=str(e),
+            )
+
+    async def _run_inline_analysis(
+        self,
+        *,
+        asset: Asset,
+        local_path: str,
+        instance,
+        user,
+        analysis_service,
+        command: str,
+    ) -> None:
+        """
+        Execute a command-based analyzer inline and record result.
+
+        Command contract (stdin JSON → stdout JSON):
+          stdin:  {"task": "embed_images", "paths": [path]}
+          stdout: {"embeddings": [[768 floats]]}  (for asset:embedding)
         """
         import json
-        import shlex
-        import subprocess
-        import sys
+        from pixsim7.backend.main.services.command_runtime import (
+            run_subprocess_text,
+            parse_shell_args,
+        )
 
-        cmd_str = self.settings.clip_embedding_command
-        if not cmd_str.strip():
-            logger.debug(
-                "embedding_skipped_no_command",
-                asset_id=asset.id,
-                detail="No CLIP embedding command configured",
-            )
-            return
-
-        # Prefer thumbnail path (consistent 320x320 input) over original
+        # Prefer thumbnail for embedding analyzers
         embed_path = local_path
         if asset.thumbnail_key:
             thumb_path = self.storage.get_path(asset.thumbnail_key)
             if Path(thumb_path).exists():
                 embed_path = thumb_path
 
+        cmd_list = parse_shell_args(command, logger=logger)
+        if not cmd_list:
+            logger.warning(
+                "on_ingest_empty_command",
+                asset_id=asset.id,
+                instance_id=instance.id,
+            )
+            return
+
+        input_payload = json.dumps({
+            "task": "embed_images",
+            "paths": [embed_path],
+        })
+
+        timeout = instance.config.get("timeout", 120) if instance.config else 120
+        result = await run_subprocess_text(
+            cmd_list,
+            input_text=input_payload,
+            timeout=timeout,
+        )
+
+        # Create analysis record (no ARQ queueing — already executed)
+        analysis = await analysis_service.create_analysis(
+            user=user,
+            asset_id=asset.id,
+            analyzer_id=instance.analyzer_id,
+            enqueue=False,
+        )
+
+        if result.returncode != 0:
+            await analysis_service.mark_failed(
+                analysis.id,
+                f"Command exited {result.returncode}: {result.stderr[:300]}",
+            )
+            return
+
+        stdout_text = result.stdout.strip()
+        if not stdout_text:
+            await analysis_service.mark_failed(analysis.id, "Empty output")
+            return
+
         try:
-            posix = sys.platform != "win32"
-            try:
-                cmd_list = shlex.split(cmd_str, posix=posix)
-            except ValueError:
-                cmd_list = cmd_str.strip().split()
-
-            input_payload = json.dumps({
-                "task": "embed_images",
-                "paths": [embed_path],
-            })
-
-            def run_subprocess():
-                return subprocess.run(
-                    cmd_list,
-                    input=input_payload,
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                    shell=False,
-                )
-
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, run_subprocess)
-
-            if result.returncode != 0:
-                stderr_preview = (result.stderr or "")[:300]
-                logger.warning(
-                    "embedding_command_failed",
-                    asset_id=asset.id,
-                    exit_code=result.returncode,
-                    stderr=stderr_preview,
-                )
-                return
-
-            stdout_text = result.stdout.strip()
-            if not stdout_text:
-                logger.warning("embedding_empty_output", asset_id=asset.id)
-                return
-
             output_data = json.loads(stdout_text)
-            embeddings = output_data.get("embeddings")
-            if not embeddings or len(embeddings) < 1:
-                logger.warning("embedding_missing_data", asset_id=asset.id)
-                return
-
-            embedding = embeddings[0]
-            if len(embedding) != 768:
-                logger.warning(
-                    "embedding_wrong_dimensions",
-                    asset_id=asset.id,
-                    expected=768,
-                    got=len(embedding),
-                )
-                return
-
-            asset.embedding = embedding
-            asset.embedding_generated_at = datetime.now(timezone.utc)
-
-            logger.info(
-                "embedding_generated",
-                asset_id=asset.id,
-                dimensions=len(embedding),
-            )
-
         except json.JSONDecodeError as e:
-            logger.warning("embedding_invalid_json", asset_id=asset.id, error=str(e))
-        except subprocess.TimeoutExpired:
-            logger.warning("embedding_timeout", asset_id=asset.id)
-        except FileNotFoundError:
-            logger.warning(
-                "embedding_command_not_found",
-                asset_id=asset.id,
-                command=cmd_str.split()[0] if cmd_str.strip() else "(empty)",
-            )
-        except Exception as e:
-            logger.warning(
-                "embedding_generation_failed",
-                asset_id=asset.id,
-                error=str(e),
-            )
+            await analysis_service.mark_failed(analysis.id, f"Invalid JSON: {e}")
+            return
+
+        await analysis_service.mark_completed(analysis.id, output_data)
+
+        # For embedding analyzers: copy vector to asset
+        if instance.analyzer_id == "asset:embedding":
+            embeddings = output_data.get("embeddings")
+            if embeddings and len(embeddings) >= 1:
+                embedding = embeddings[0]
+                if len(embedding) == 768:
+                    asset.embedding = embedding
+                    asset.embedding_generated_at = datetime.now(timezone.utc)
+                    logger.info(
+                        "on_ingest_embedding_applied",
+                        asset_id=asset.id,
+                        dimensions=len(embedding),
+                    )
 
     def _guess_extension(self, asset: Asset) -> str:
         """Guess file extension from asset info."""

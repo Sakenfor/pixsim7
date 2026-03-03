@@ -71,6 +71,7 @@ class AnalysisService:
         prompt: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         priority: int = 5,
+        enqueue: bool = True,
     ) -> AssetAnalysis:
         """
         Create a new asset analysis job.
@@ -146,18 +147,19 @@ class AnalysisService:
             "provider_id": provider_id,
         })
 
-        # Queue for processing via ARQ
-        try:
-            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-            arq_pool = await get_arq_pool()
-            await arq_pool.enqueue_job(
-                "process_analysis",
-                analysis_id=analysis.id,
-            )
-            logger.info(f"Analysis {analysis.id} queued for processing")
-        except Exception as e:
-            logger.error(f"Failed to queue analysis {analysis.id}: {e}")
-            # Don't fail creation if ARQ is down - worker can pick it up later
+        # Queue for processing via ARQ (skip when caller handles execution inline)
+        if enqueue:
+            try:
+                from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+                arq_pool = await get_arq_pool()
+                await arq_pool.enqueue_job(
+                    "process_analysis",
+                    analysis_id=analysis.id,
+                )
+                logger.info(f"Analysis {analysis.id} queued for processing")
+            except Exception as e:
+                logger.error(f"Failed to queue analysis {analysis.id}: {e}")
+                # Don't fail creation if ARQ is down - worker can pick it up later
 
         return analysis
 
