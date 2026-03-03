@@ -681,11 +681,11 @@
   opacity: 0.5;
 }
 
-.ring-1 {
+.energy-rings .ring-1 {
   animation: ring-expand 2s linear infinite;
 }
 
-.ring-2 {
+.energy-rings .ring-2 {
   animation: ring-expand 2s linear infinite 1s;
 }
 

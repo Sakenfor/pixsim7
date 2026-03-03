@@ -125,7 +125,7 @@ export function PresetSelector({
           'hover:bg-neutral-50 dark:hover:bg-neutral-700',
           'disabled:opacity-50 disabled:cursor-not-allowed',
           'transition-colors',
-          presetLoading && 'animate-pulse'
+          presetLoading && 'animate-pulse-subtle'
         )}
         title="Generation Presets - Save and load prompt + inputs + settings"
       >

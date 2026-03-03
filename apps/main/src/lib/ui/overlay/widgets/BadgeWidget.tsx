@@ -156,7 +156,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
               cq-btn-md
               ${iconColorClasses[color]}
               ${shapeClasses[shape]}
-              ${pulse ? 'animate-pulse' : ''}
+              ${pulse ? 'animate-pulse-badge' : ''}
               shadow-md
               ${className}
             `.trim()}
@@ -173,7 +173,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
           color={color}
           className={`
             cq-badge inline-flex items-center gap-1
-            ${pulse ? 'animate-pulse' : ''}
+            ${pulse ? 'animate-pulse-badge' : ''}
             shadow-sm
             ${className}
           `.trim()}

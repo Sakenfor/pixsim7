@@ -33,7 +33,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
       disabled={loading || disabled}
       {...props}
     >
-      {loading ? <span className="animate-pulse">•••</span> : children}
+      {loading ? <span className="animate-pulse-subtle">•••</span> : children}
     </button>
   )
 })

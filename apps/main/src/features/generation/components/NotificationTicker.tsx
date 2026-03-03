@@ -217,7 +217,7 @@ export function NotificationTicker() {
         className={clsx(
           'text-xs px-1.5 py-0.5 rounded transition-colors relative',
           'hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/30',
-          activeCount > 0 && 'animate-pulse'
+          activeCount > 0 && 'animate-pulse-subtle'
         )}
         title={expanded ? 'Collapse notifications' : 'Expand notifications'}
       >

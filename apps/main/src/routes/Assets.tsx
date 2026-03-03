@@ -28,8 +28,8 @@ import {
 } from '@features/contextHub';
 import { useControlCenterLayout } from '@features/controlCenter';
 import {
-  GallerySurfaceSwitcher,
   GalleryLayoutControls,
+  SurfacePresetPicker,
   // mergeBadgeConfig,
   deriveOverlayPresetIdFromBadgeConfig,
   getAssetSource,
@@ -287,21 +287,10 @@ export function AssetsRoute() {
               toolbarExtra={
                 <>
                   {activeSourceId === 'remote-gallery' && (
-                    <GallerySurfaceSwitcher mode="dropdown" />
-                  )}
-                  {activeSourceId === 'remote-gallery' && (
-                    <select
-                      value={currentOverlayPresetId}
-                      onChange={(e) => handleOverlayPresetChange(e.target.value)}
-                      className="h-7 px-1.5 text-xs rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 focus:outline-none focus:border-accent transition-colors"
-                      title="Media card preset"
-                    >
-                      {mediaCardPresets.map(preset => (
-                        <option key={preset.id} value={preset.id}>
-                          {preset.icon} {preset.name}
-                        </option>
-                      ))}
-                    </select>
+                    <SurfacePresetPicker
+                      currentPresetId={currentOverlayPresetId}
+                      onPresetChange={handleOverlayPresetChange}
+                    />
                   )}
                   <GalleryLayoutControls
                     layout={layout}
@@ -378,7 +367,7 @@ export function AssetsRoute() {
                     }`}
                     title={generationWsConnected ? 'Generation feed live - click to open' : 'Generation feed offline'}
                   >
-                    <span className={`w-1.5 h-1.5 rounded-full ${generationWsConnected ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} />
+                    <span className={`w-1.5 h-1.5 rounded-full ${generationWsConnected ? 'bg-green-500 animate-pulse-subtle' : 'bg-amber-500'}`} />
                     <span>{generationWsConnected ? 'Live' : 'Offline'}</span>
                   </button>
                 </>

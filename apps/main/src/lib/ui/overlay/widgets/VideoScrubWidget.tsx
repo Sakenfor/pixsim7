@@ -907,7 +907,7 @@ export function VideoScrubWidgetRenderer({
                 ${dotActive
                   ? 'bg-blue-500 hover:bg-blue-400 scale-110 hover:scale-150'
                   : isExtracting
-                    ? 'bg-blue-400 animate-pulse'
+                    ? 'bg-blue-400 animate-pulse-subtle'
                     : 'bg-white hover:bg-orange-400 hover:scale-150 hover:shadow-[0_0_8px_rgba(251,146,60,0.8)]'
                 }
               `}

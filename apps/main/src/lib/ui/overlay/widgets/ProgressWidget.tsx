@@ -6,10 +6,12 @@
  */
 
 import React from 'react';
-import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
-import { Icon } from '@lib/icons';
+
 import type { DataBinding } from '@lib/editing-core';
 import { resolveDataBinding } from '@lib/editing-core';
+import { Icon } from '@lib/icons';
+
+import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 
 export interface ProgressWidgetConfig {
   /** Widget ID */
@@ -211,7 +213,7 @@ export function createProgressWidget(config: ProgressWidgetConfig): OverlayWidge
                 ${stateColors[state]}
                 ${isHorizontal ? 'h-full' : 'w-full'}
                 transition-all duration-300 rounded-full
-                ${animated ? 'animate-pulse' : ''}
+                ${animated ? 'animate-pulse-subtle' : ''}
               `}
               style={{
                 [isHorizontal ? 'width' : 'height']: `${percentage}%`,

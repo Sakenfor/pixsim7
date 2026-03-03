@@ -13,7 +13,7 @@ export function LivePollBadge({
     <span className="inline-flex items-center gap-1 text-[10px]">
       <span
         className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-          polling ? 'bg-green-500 animate-pulse' : 'bg-blue-500'
+          polling ? 'bg-green-500 animate-pulse-subtle' : 'bg-blue-500'
         }`}
       />
       <span

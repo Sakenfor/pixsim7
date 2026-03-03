@@ -537,7 +537,7 @@ export function ChainBuilderPanel() {
                     Step {activeExecution.current_step_index + 1} of {activeExecution.total_steps}
                   </span>
                   {executionPolling && (
-                    <span className="text-[10px] text-blue-500 animate-pulse ml-auto">
+                    <span className="text-[10px] text-blue-500 animate-pulse-subtle ml-auto">
                       polling...
                     </span>
                   )}

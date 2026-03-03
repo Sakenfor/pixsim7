@@ -191,7 +191,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
                 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                 : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
             }`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-green-500 animate-pulse' : 'bg-neutral-400'}`} />
+              <div className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-green-500 animate-pulse-subtle' : 'bg-neutral-400'}`} />
               {wsConnected ? 'Live' : 'Offline'}
             </div>
             {/* Manual refresh */}
@@ -330,7 +330,7 @@ function GroupAssetPreview({ assetId }: { assetId: number }) {
 
   if (loading || thumbLoading) {
     return (
-      <div className="w-7 h-7 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse flex-shrink-0" />
+      <div className="w-7 h-7 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse-subtle flex-shrink-0" />
     );
   }
 
@@ -390,7 +390,7 @@ function GenerationAssetGridCard({ assetId, onClick }: { assetId: number; onClic
 
   if (loading || !asset) {
     return (
-      <div className="aspect-square rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
+      <div className="aspect-square rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse-subtle" />
     );
   }
 
