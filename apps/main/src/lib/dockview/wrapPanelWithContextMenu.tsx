@@ -13,12 +13,13 @@ import { getInstanceId, ScopeHost } from '@features/panels';
 
 import {
   useContextMenuOptional,
-  useDockviewId,
+  useDockviewContext,
   extractContextFromElement,
   contextDataRegistry,
 } from './contextMenu';
 import { buildDockviewContext } from './contextMenu/buildDockviewContext';
 import { setFloatingHostContextPayload } from './floatingPanelInterop';
+import { PanelErrorBoundary } from './PanelErrorBoundary';
 
 export interface PanelWrapOptions {
   /** Panel definition ID (e.g., "info", "quickGenerate") */
@@ -128,7 +129,7 @@ export function wrapPanelWithContextMenu(
 
   const Wrapped = (panelProps: IDockviewPanelProps) => {
     const menu = useContextMenuOptional();
-    const dockviewId = useDockviewId();
+    const { dockviewId, scopedPanelIds } = useDockviewContext();
     const contextHubState = useContextHubState();
     const instanceId = getInstanceId(dockviewId, panelProps.api?.id ?? panelId);
     const floatingContextPayload = buildFloatingContextPayload(contextRef.current);
@@ -160,6 +161,7 @@ export function wrapPanelWithContextMenu(
         api: panelProps.containerApi ?? getApiRef() ?? undefined,
         resetDockviewLayout,
         contextHubState,
+        scopedPanelIds,
       };
 
       // Check for component-level context (data-context-type attribute)
@@ -200,7 +202,7 @@ export function wrapPanelWithContextMenu(
 
     return (
       <div
-        className="h-full w-full"
+        className="dv-panel-cq h-full w-full"
         onContextMenuCapture={
           contextMenuActive && enablePanelContentContextMenu
             ? handleContextMenu
@@ -218,7 +220,9 @@ export function wrapPanelWithContextMenu(
             category={category}
           >
             <PanelContextProvider context={contextRef.current} instanceId={instanceId}>
-              <Component {...panelProps} context={contextRef.current} panelId={panelId} />
+              <PanelErrorBoundary panelId={panelId}>
+                <Component {...panelProps} context={contextRef.current} panelId={panelId} />
+              </PanelErrorBoundary>
             </PanelContextProvider>
           </ScopeHost>
         </ContextHubHost>

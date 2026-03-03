@@ -12,6 +12,7 @@ import { useMemo, type ReactNode } from 'react';
 
 import { Icon } from '@lib/icons';
 
+import { useAccentButtonClasses } from '@features/appearance';
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import {
   CAP_GENERATION_WIDGET,
@@ -132,6 +133,9 @@ export function GenerationSettingsPanel({
   const isTargeted = !!targetProviderId && preferredProviderId === targetProviderId;
   const canTarget = !!targetProviderId;
 
+  // Button style from appearance settings
+  const btn = useAccentButtonClasses();
+
   // Use the shared generation workbench hook for settings management
   const workbench = useGenerationWorkbench({ operationType });
 
@@ -183,7 +187,7 @@ export function GenerationSettingsPanel({
     <div className={clsx('h-full flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-xl', className)}>
       {/* Scrollable content area */}
       <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar">
-      <div className="flex flex-col gap-1 p-1.5">
+      <div className="gen-panel-content flex flex-col gap-1 p-1.5">
         {/* Row 1: Provider icon, Operation type, Target, Advanced settings */}
         <div className="flex gap-1 items-center">
           {showProvider && (
@@ -250,18 +254,20 @@ export function GenerationSettingsPanel({
         )}
 
         {/* Dynamic params */}
-        <GenerationParamControls
-          paramSpecs={filteredParamSpecs}
-          values={workbench.dynamicParams}
-          onChange={workbench.handleParamChange}
-          generating={generating}
-          unlimitedModels={unlimitedModels}
-        />
+        <div className="gen-panel-params flex flex-col gap-1">
+          <GenerationParamControls
+            paramSpecs={filteredParamSpecs}
+            values={workbench.dynamicParams}
+            onChange={workbench.handleParamChange}
+            generating={generating}
+            unlimitedModels={unlimitedModels}
+          />
+        </div>
 
       </div>
       </div>
       {/* Action area — pinned to bottom */}
-      <div className="flex-shrink-0 flex flex-col gap-1 px-1.5 pb-1.5 pt-1">
+      <div className="gen-panel-footer flex-shrink-0 flex flex-col gap-1 px-1.5 pb-1.5 pt-1">
         {/* Queue progress */}
         {queueProgress && (
           <div className="flex items-center gap-2 text-[10px] text-accent">
@@ -286,7 +292,7 @@ export function GenerationSettingsPanel({
         )}
 
         {/* Action area: Each row + Go row */}
-        <div className="quickgen-actions-no-motion flex flex-col gap-1 min-w-0 rounded-xl bg-white/70 dark:bg-neutral-800/60 p-1 shadow-sm ring-1 ring-neutral-200/70 dark:ring-neutral-700/70">
+        <div className="gen-panel-action-group quickgen-actions-no-motion flex flex-col gap-1 min-w-0 rounded-xl bg-white/70 dark:bg-neutral-800/60 p-1 shadow-sm ring-1 ring-neutral-200/70 dark:ring-neutral-700/70">
           {/* Generate Each split-button — full width row */}
           {onGenerateEach && (inputCount > 1 || useAssetSetStore.getState().sets.length > 0) && OPERATION_METADATA[operationType].multiAssetMode !== 'required' && (
             <div className="min-w-0">
@@ -340,14 +346,14 @@ export function GenerationSettingsPanel({
               }}
               disabled={generating || !canGenerate}
               className={clsx(
-                'flex-1 px-2 py-1.5 text-xs font-semibold text-white tabular-nums',
+                'flex-1 px-2 py-1.5 text-xs font-semibold tabular-nums',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 'rounded-l-lg',
                 generating || !canGenerate
-                  ? 'bg-neutral-400'
+                  ? 'text-white bg-neutral-400'
                   : error
-                  ? 'bg-red-600 hover:bg-red-700 ring-2 ring-red-400'
-                  : 'bg-accent hover:bg-accent-hover'
+                  ? 'text-white bg-red-600 hover:bg-red-700 ring-2 ring-red-400'
+                  : btn.primary
               )}
               style={{ transition: 'none', animation: 'none' }}
             >
@@ -381,12 +387,12 @@ export function GenerationSettingsPanel({
             {/* Burst stepper area */}
             <div
               className={clsx(
-                'flex flex-col border-l border-white/20 rounded-r-lg text-white min-w-[28px]',
+                'flex flex-col border-l border-white/20 rounded-r-lg min-w-[28px]',
                 generating || !canGenerate
-                  ? 'bg-neutral-400'
+                  ? 'text-white bg-neutral-400'
                   : error
-                  ? 'bg-red-600'
-                  : 'bg-accent',
+                  ? 'text-white bg-red-600'
+                  : btn.tertiary,
                 (generating || !canGenerate) && 'opacity-50',
               )}
               style={{ transition: 'none', animation: 'none' }}
@@ -436,13 +442,13 @@ export function GenerationSettingsPanel({
               onClick={secondaryButton.onGenerate}
               disabled={generating || !canGenerate}
               className={clsx(
-                'min-w-0 px-2 py-1.5 rounded-lg text-xs font-semibold text-white tabular-nums',
+                'min-w-0 px-2 py-1.5 rounded-lg text-xs font-semibold tabular-nums',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 generating || !canGenerate
-                  ? 'bg-neutral-400'
+                  ? 'text-white bg-neutral-400'
                   : error
-                  ? 'bg-red-600 hover:bg-red-700 ring-2 ring-red-400'
-                  : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700'
+                  ? 'text-white bg-red-600 hover:bg-red-700 ring-2 ring-red-400'
+                  : btn.secondary
               )}
               style={{ transition: 'none', animation: 'none' }}
               title="Generate using Media Viewer asset"

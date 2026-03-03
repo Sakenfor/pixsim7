@@ -365,6 +365,51 @@ button {
 /* Standalone `scale` variant — composes with position `transform` (translateX etc.)
    without overriding it. Used by overlay widgets that have inline transform. */
 
+/* ═══════════════════════════════════════════════════════════════════════
+ * dv-panel-cq — global panel container-query context
+ *
+ * Applied to every dockview panel wrapper (wrapPanelWithContextMenu).
+ * Uses container-type: size so any panel can query its own width/height
+ * via unnamed @container rules without per-panel setup.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.dv-panel-cq {
+  container-type: size;
+}
+
+/* ── GenerationSettingsPanel: wide (≥ 300px) ─────────────────────── */
+
+@container (min-width: 300px) {
+  .gen-panel-params {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.25rem;
+  }
+  .gen-panel-params > .gen-param-full {
+    grid-column: 1 / -1;
+  }
+  .gen-panel-action-group {
+    flex-direction: row;
+    align-items: stretch;
+  }
+  .gen-panel-action-group > * {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* ── GenerationSettingsPanel: narrow (≤ 180px) ───────────────────── */
+
+@container (max-width: 180px) {
+  .gen-panel-content {
+    padding: 0.25rem;
+    gap: 0.125rem;
+  }
+  .gen-panel-footer {
+    padding: 0.25rem;
+  }
+}
+
 /* ── Thin overlay scrollbar ─────────────────────────────────────────── */
 /* Nearly invisible until hovered; use `.thin-scrollbar` on any overflow container */
 .thin-scrollbar {

@@ -138,7 +138,7 @@ export function GenerationParamControls({
         const gridLimit = isIconOnly ? 14 : 8;
         if (showAsVisualGrid && options.length <= gridLimit) {
           return (
-            <div key={param.name} className="flex flex-wrap gap-1">
+            <div key={param.name} className="gen-param-full flex flex-wrap gap-1">
               {options.map((opt: string) => {
                 const icon = getParamIcon(param.name, opt);
                 const isSelected = currentValue === opt;
@@ -206,7 +206,11 @@ export function GenerationParamControls({
                 const label = familyShort ? `[${familyShort}] ${baseLabel}` : baseLabel;
                 const isFree = param.name === 'model' && isModelInUnlimitedSet(unlimitedModels, opt);
                 return (
-                  <option key={opt} value={opt}>
+                  <option
+                    key={opt}
+                    value={opt}
+                    className={isFree ? 'text-emerald-700 dark:text-emerald-300' : 'text-neutral-900 dark:text-neutral-100'}
+                  >
                     {isFree ? `${label} (free)` : label}
                   </option>
                 );
