@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import get_db, get_current_user
+from pixsim7.backend.main.api.dependencies import get_db, get_current_user, require_admin
 from pixsim7.backend.main.services.prompt.block.template_service import BlockTemplateService
 from pixsim7.backend.main.services.prompt.block.block_primitive_query import (
     build_block_primitive_query,
@@ -2037,7 +2037,7 @@ async def reload_content_packs(
 @router.get("/meta/content-packs/inventory")
 async def get_content_pack_inventory(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """Return full inventory of content packs (DB + disk), with entity counts and status."""
     from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
@@ -2051,7 +2051,7 @@ async def get_content_pack_inventory(
 async def purge_content_packs(
     pack: Optional[str] = Query(None, description="Specific orphaned pack to purge (default: all orphaned)"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """Purge orphaned content pack entities (packs no longer on disk).
 
@@ -2080,10 +2080,12 @@ async def purge_content_packs(
         return {"packs_purged": 0, "results": {}}
 
     results = {}
+    packs_purged = 0
     for pack_name in orphaned:
         try:
             results[pack_name] = await purge_orphaned_pack(db, pack_name)
+            packs_purged += 1
         except Exception as e:
             results[pack_name] = {"error": str(e)}
 
-    return {"packs_purged": len(orphaned), "results": results}
+    return {"packs_purged": packs_purged, "results": results}
