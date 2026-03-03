@@ -109,6 +109,8 @@ class AssetSearchRequest(BaseModel):
     has_parent: bool | None = Field(None, description="Has lineage parent")
     has_children: bool | None = Field(None, description="Has lineage children")
 
+    asset_ids: list[int] | None = Field(None, description="Whitelist of asset IDs to include")
+
     similar_to: int | None = Field(None, description="Asset ID for visual similarity search (uses CLIP embeddings)")
     similarity_threshold: float | None = Field(None, ge=0.0, le=1.0, description="Min similarity 0-1, default 0.3")
 

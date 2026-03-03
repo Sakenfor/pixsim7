@@ -117,6 +117,7 @@ async def search_assets(
             operation_type=request.operation_type,
             has_parent=request.has_parent,
             has_children=request.has_children,
+            asset_ids=request.asset_ids,
             prompt_version_id=request.prompt_version_id,
             group_by=request.group_by.value if isinstance(request.group_by, Enum) else request.group_by,
             group_key=request.group_key,

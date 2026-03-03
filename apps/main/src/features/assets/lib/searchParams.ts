@@ -119,6 +119,7 @@ export function buildAssetSearchRequest(
     source_generation_id: filters.source_generation_id,
     source_asset_id: filters.source_asset_id,
     sha256: filters.sha256 || undefined,
+    asset_ids: filters.asset_ids?.length ? filters.asset_ids : undefined,
     similar_to: filters.similar_to,
     similarity_threshold: filters.similarity_threshold,
     prompt_version_id: filters.prompt_version_id || undefined,

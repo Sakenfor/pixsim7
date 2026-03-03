@@ -122,6 +122,7 @@ class AssetSearchMixin:
         content_domain: Optional[Any] = None,
         content_category: Optional[str] = None,
         content_rating: Optional[str] = None,
+        asset_ids: Optional[list[int]] = None,
         source_generation_id: Optional[int] = None,
         source_asset_id: Optional[int] = None,
         sha256: Optional[str] = None,
@@ -205,6 +206,10 @@ class AssetSearchMixin:
         # Searchable filter (default True to hide non-searchable assets)
         if searchable is not None:
             query = query.where(Asset.searchable == searchable)
+
+        # Asset ID whitelist
+        if asset_ids:
+            query = query.where(Asset.id.in_(asset_ids))
 
         # Apply registry-driven filters
         if filters:
@@ -896,6 +901,7 @@ class AssetSearchMixin:
         content_category: Optional[str] = None,
         content_rating: Optional[str] = None,
         searchable: Optional[bool] = True,  # Default True to hide non-searchable
+        asset_ids: Optional[list[int]] = None,
         source_generation_id: Optional[int] = None,
         source_asset_id: Optional[int] = None,
         sha256: Optional[str] = None,
@@ -980,6 +986,7 @@ class AssetSearchMixin:
             content_domain=content_domain,
             content_category=content_category,
             content_rating=content_rating,
+            asset_ids=asset_ids,
             source_generation_id=source_generation_id,
             source_asset_id=source_asset_id,
             sha256=sha256,

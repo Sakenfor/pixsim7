@@ -45,6 +45,8 @@ export type AssetSearchRequest = Partial<AssetSearchRequestSchema> & {
   similar_to?: number;
   /** Min similarity 0-1, default 0.3 */
   similarity_threshold?: number;
+  /** Whitelist of asset IDs to include */
+  asset_ids?: number[];
 };
 export type ListAssetsQuery = AssetSearchRequest;
 
