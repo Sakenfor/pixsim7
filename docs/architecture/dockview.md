@@ -1,4 +1,6 @@
-## Dockview / Panel System Snapshot (Dec 2025)
+## Dockview / Panel System Snapshot
+
+> **Last reviewed:** December 2025. Panel definitions have since moved under `features/panels/domain/definitions/` auto-discovery. Core SmartDockview API and scope semantics remain stable.
 
 ### Goals
 - One SmartDockview API for all spaces (workspace, control center, asset viewer, future widgets).

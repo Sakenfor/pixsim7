@@ -1,5 +1,8 @@
 # Graph Renderer Plugin System
 
+> **Status:** Canonical | **Topic:** Node renderer registry and plugin architecture | **Last verified:** 2026-03-03
+> **Related:** `NODE_EDITOR_DEVELOPMENT.md`, `GRAPH_SYSTEM.md`
+
 ## Overview
 
 The graph node rendering system has been transformed into a pluggable architecture, allowing custom visual representations for different node types without modifying core components.
@@ -8,7 +11,7 @@ The graph node rendering system has been transformed into a pluggable architectu
 
 ### Core Components
 
-1. **NodeRendererRegistry** (`frontend/src/lib/graph/nodeRendererRegistry.ts`)
+1. **NodeRendererRegistry** (`apps/main/src/features/graph/lib/editor/nodeRendererRegistry.ts`)
    - Central registry for node renderers
    - Singleton pattern with `nodeRendererRegistry` instance
    - Methods: `register()`, `get()`, `getOrDefault()`, `has()`, `getAll()`
@@ -30,14 +33,14 @@ The graph node rendering system has been transformed into a pluggable architectu
    }
    ```
 
-3. **Built-in Renderers** (`frontend/src/lib/graph/builtinRenderers.ts`)
+3. **Built-in Renderers** (`apps/main/src/features/graph/lib/editor/builtinRenderers.ts`)
    - Registers all standard node renderers
    - Called on app initialization
 
 ## Built-in Renderers
 
 ### 1. DefaultNodeRenderer (Fallback)
-**Location:** `frontend/src/components/graph/DefaultNodeRenderer.tsx`
+**Location:** `apps/main/src/features/graph/components/graph/DefaultNodeRenderer.tsx`
 
 - Used for unknown node types
 - Shows node type badge with icon
@@ -45,7 +48,7 @@ The graph node rendering system has been transformed into a pluggable architectu
 - Shows node ID and description
 
 ### 2. VideoNodeRenderer
-**Location:** `frontend/src/components/graph/VideoNodeRenderer.tsx`
+**Location:** `apps/main/src/features/graph/components/graph/VideoNodeRenderer.tsx`
 
 Features:
 - **Video Thumbnail Preview** - Shows first media clip as preview
@@ -56,7 +59,7 @@ Features:
 - **NPC Metadata** - Speaker role and NPC bindings
 
 ### 3. ChoiceNodeRenderer
-**Location:** `frontend/src/components/graph/ChoiceNodeRenderer.tsx`
+**Location:** `apps/main/src/features/graph/components/graph/ChoiceNodeRenderer.tsx`
 
 Features:
 - **Choice Preview** - Shows up to 3 choices with labels
@@ -69,8 +72,8 @@ Features:
 ### Registering a Custom Renderer
 
 ```typescript
-import { nodeRendererRegistry } from './lib/graph/nodeRendererRegistry';
-import { MyCustomRenderer } from './components/graph/MyCustomRenderer';
+import { nodeRendererRegistry } from '@features/graph/lib/editor/nodeRendererRegistry';
+import { MyCustomRenderer } from '@features/graph/components/graph/MyCustomRenderer';
 
 // Register a custom renderer
 nodeRendererRegistry.register({
@@ -84,8 +87,8 @@ nodeRendererRegistry.register({
 ### Creating a Custom Renderer Component
 
 ```typescript
-// frontend/src/components/graph/MyCustomRenderer.tsx
-import { NodeRendererProps } from '../../lib/graph/nodeRendererRegistry';
+// Example: apps/main/src/features/graph/components/graph/MyCustomRenderer.tsx
+import { NodeRendererProps } from '@features/graph/lib/editor/nodeRendererRegistry';
 
 export function MyCustomRenderer({ node, isSelected, isStart, hasErrors }: NodeRendererProps) {
   // Access node data
@@ -357,8 +360,8 @@ export const questTriggerRenderer: NodeRenderer = {
 ```typescript
 import { questTriggerNodeType } from './examples/plugins/quest-trigger/quest-trigger';
 import { questTriggerRenderer } from './examples/plugins/quest-trigger/quest-trigger.tsx';
-import { nodeTypeRegistry } from '@pixsim7/types';
-import { nodeRendererRegistry } from '@/lib/graph/nodeRendererRegistry';
+import { nodeTypeRegistry } from '@pixsim7/shared.types';
+import { nodeRendererRegistry } from '@features/graph/lib/editor/nodeRendererRegistry';
 
 // Register node type
 nodeTypeRegistry.register(questTriggerNodeType);
@@ -483,12 +486,11 @@ nodeRendererRegistry.register({
 
 ## Files Modified
 
-- `frontend/src/lib/graph/nodeRendererRegistry.ts` (NEW)
-- `frontend/src/lib/graph/builtinRenderers.ts` (NEW)
-- `frontend/src/components/graph/DefaultNodeRenderer.tsx` (NEW)
-- `frontend/src/components/graph/VideoNodeRenderer.tsx` (NEW)
-- `frontend/src/components/graph/ChoiceNodeRenderer.tsx` (NEW)
-- `frontend/src/components/nodes/SceneNode.tsx` (MODIFIED)
-- `frontend/src/App.tsx` (MODIFIED)
+- `apps/main/src/features/graph/lib/editor/nodeRendererRegistry.ts`
+- `apps/main/src/features/graph/lib/editor/builtinRenderers.ts`
+- `apps/main/src/features/graph/components/graph/DefaultNodeRenderer.tsx`
+- `apps/main/src/features/graph/components/graph/VideoNodeRenderer.tsx`
+- `apps/main/src/features/graph/components/graph/ChoiceNodeRenderer.tsx`
+- `apps/main/src/features/graph/components/nodes/SceneNode.tsx`
 
 The graph is now fully pluggable and ready for custom visual experiences!

@@ -103,6 +103,8 @@ Notes:
 
 ### 5. Legacy Asset-Collection Scenes (older backend scene concept)
 
+> **Deprecated (March 2026).** Active scene runtime uses `GameScene` (`domain/game/core/models.py`). This model is still registered in `core_models` manifest and `domain/__init__.py` but is not used by any active authoring or runtime path. Plan removal separately.
+
 Purpose:
 - A scene as a container of connected assets (`Scene`, `SceneAsset`, `SceneConnection`)
 - Sequence/branching assembly of assets
@@ -111,9 +113,8 @@ Primary file:
 - `pixsim7/backend/main/domain/scene.py`
 
 Notes:
-- Older/parallel concept
-- Not the same as `GameScene`
-- No strong evidence this is the primary active scene authoring path today
+- **Legacy — not the active scene system.** `GameScene` is the canonical runtime/authoring model.
+- Still imported via `core_models` manifest — removal requires a dedicated cleanup pass.
 
 ### 6. Character Scene Manifests (character requirements for scenes)
 

@@ -1,12 +1,12 @@
 # Game Library Modules
 
-This directory contains TypeScript modules for game logic, schemas, and helpers used by the 2D game preview and scene editor.
+This directory provides game-related utilities and thin integration layers used by the 2D game preview and scene editor. Core logic lives in `@pixsim7/game.engine` (`packages/game/engine/src/`); this directory re-exports and extends it for frontend use.
 
-## Key Modules
+## Key APIs (from `@pixsim7/game.engine`)
 
-### interactionSchema.ts
+### Hotspot Actions & Playback Phases
 
-**Hotspot actions and scene playback phases:**
+Provided by `@pixsim7/game.engine`, imported directly by `Game2D.tsx`:
 
 - **`HotspotAction`** types: `play_scene`, `change_location`, `npc_talk`
   - Defines the frontend schema for hotspot actions
@@ -24,20 +24,20 @@ This directory contains TypeScript modules for game logic, schemas, and helpers 
 
 **See:**
 - `docs/game-systems/HOTSPOT_ACTIONS_2D.md` – Complete hotspot action schema and playback phase details
-- `docs/SYSTEM_OVERVIEW.md` – High-level overview of game systems
+- `docs/game-systems/SYSTEM_OVERVIEW.md` – High-level overview of game systems
 
 ---
 
-### session.ts
+### Session State Helpers
 
-**World time and session state helpers:**
+Provided by `@pixsim7/game.engine` (`packages/game/engine/src/session/`):
 
 - World time synchronization between `GameSession` and `GameWorldState`
 - Session kind detection (`world` vs `scene`)
 
 **Session State Manipulation:**
 
-Game2D and interaction plugins now use `@pixsim7/game.engine` session helpers for all relationship and flag manipulation. **Plugins access these via `context.session`** rather than importing directly:
+Game2D and interaction plugins use `@pixsim7/game.engine` session helpers for all relationship and flag manipulation. **Plugins access these via `context.session`** rather than importing directly:
 
 ```typescript
 // In an interaction plugin:
@@ -67,17 +67,34 @@ This ensures consistent session logic across all frontends (React/3D/CLI) and ke
 - `GameSession.relationships` – NPC ↔ Player and NPC ↔ NPC affinity/trust/flags
 
 **See:**
-- `docs/RELATIONSHIPS_AND_ARCS.md` – Complete guide to relationships, arcs, quests, and session state conventions
-- `docs/SYSTEM_OVERVIEW.md` – Sessions overview
+- `docs/game/RELATIONSHIPS_AND_ARCS.md` – Complete guide to relationships, arcs, quests, and session state conventions
+- `docs/game-systems/SYSTEM_OVERVIEW.md` – Sessions overview
 - `packages/game/engine/src/session/` – Session types, helpers, and builder
-- `frontend/src/lib/game/interactions/sessionAdapter.ts` – Context.session implementation
-- `frontend/src/lib/game/interactions/executor.ts` – Interaction execution logic
+- `apps/main/src/lib/game/interactions/executor.ts` – Interaction execution logic
+
+---
+
+## Local Modules
+
+### interactions/
+
+- `executor.ts` – Interaction execution logic (slot interactions, normalization)
+- `dynamicLoader.ts` – Dynamic plugin interaction loading from backend manifests
+- `presets.ts` – Interaction preset definitions
+- `InteractionConfigForm.tsx` – Config form component for interactions
+
+### Other
+
+- `index.ts` – Re-exports from `@pixsim7/game.engine`
+- `customHelpers.ts` – Project-specific game helpers
+- `npcPreferences.ts` – NPC preference utilities
+- `usePixSim7Core.ts` – Core game hook
 
 ---
 
 ## Usage Notes
 
-- These modules define **frontend-only schemas** on top of generic backend JSON fields
+- Core game logic lives in `@pixsim7/game.engine` — this directory re-exports and extends it
 - Backend models remain generic; TypeScript types and helpers enforce conventions
-- When adding new action types or playback rules, update the hotspot helpers in `@pixsim7/game.engine` (re-exported via `interactionSchema.ts`) and document in `docs/game-systems/HOTSPOT_ACTIONS_2D.md`
-- When adding new session state patterns, update `session.ts` helpers and document in `RELATIONSHIPS_AND_ARCS.md`
+- When adding new action types or playback rules, update `@pixsim7/game.engine` and document in `docs/game-systems/HOTSPOT_ACTIONS_2D.md`
+- When adding new session state patterns, update session helpers in `packages/game/engine/src/session/` and document in `docs/game/RELATIONSHIPS_AND_ARCS.md`

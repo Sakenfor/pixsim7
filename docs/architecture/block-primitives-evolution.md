@@ -1,6 +1,11 @@
 # Block Primitives: Architecture Evolution & Open Questions
 
+> **Status:** Canonical | **Topic:** Block/primitive systems, PromptBlock retirement, composition paths | **Last verified:** 2026-03-03
+> **Related:** `prompt-pipeline-current-state.md` (superseded snapshot), `prompt-resolver-next-v1.md`, `../../docs/actions/README.md` (archived)
+
 > Update (March 1, 2026): Runtime and game dialogue now resolve through primitives-first composition (`dynamic_slot_planner -> compiler_v1 -> next_v1`). Legacy `/api/v1/action_blocks`, `routes/action_blocks`, and the ActionEngine selector stack were removed from active backend runtime wiring.
+>
+> Update (March 2, 2026): PromptBlock retirement progressed further. Active write/query paths now target `BlockPrimitive`, block references in main DB moved to canonical string `block_id` values, and PromptBlock is now legacy/archive-only for remaining historical surfaces.
 
 ## Current State (March 2026)
 
@@ -8,9 +13,20 @@
 
 | System | Table | Database | Status | Content |
 |--------|-------|----------|--------|---------|
-| **PromptBlock** | `action_blocks` | Main DB | Archived content, model active | ~600 legacy blocks (narrative choreography) |
-| **BlockPrimitive** | `block_primitives` | Separate `pixsim7_blocks` DB | Active, 22 entries | Atomic modifiers (light, camera, color, location, environment, character_pose) |
+| **PromptBlock** | `action_blocks` | Main DB | Legacy/archive only | Historical block records kept for compatibility while final cleanup lands |
+| **BlockPrimitive** | `block_primitives` | Separate `pixsim7_blocks` DB | Active canonical source | Atomic and prose-capable blocks used by current composition paths |
 | **PromptVersion** | `prompt_versions` | Main DB | Active | Complete versioned prompts (final output, not building blocks) |
+
+### PromptBlock Status Snapshot (March 2, 2026)
+
+- PromptBlock is no longer the active model for block composition/runtime selection.
+- New and updated block content flows through `BlockPrimitive` (blocks DB) in active paths.
+- `block_image_fits.block_id` now stores canonical string block IDs (not UUID FK to `action_blocks.id`).
+- `character_usage.action_block_id` now stores canonical string block IDs.
+- `prompt_version_blocks.block_id` has been moved to canonical string block IDs as a soft reference.
+- `dev_prompt_timeline` no longer queries PromptBlock directly for family block summaries.
+- Embedding service now embeds and searches `BlockPrimitive`.
+- PromptBlock remains in codebase as a legacy model until final schema/model cleanup.
 
 ### PromptBlock Model (Legacy)
 Heavy model with many fields most systems don't use:
@@ -35,11 +51,17 @@ Deliberately simple:
 ### What's Already Wired
 - Template slots and runtime resolution now use primitives as the active source.
 - Runtime query mode resolves through planner/compiler/resolver instead of the legacy selector stack.
+- Template service primitive query path is the only supported block source in active roll/resolve flow.
 - `_CATEGORY_FALLBACK` in composition_role_inference.py maps primitive categories to composition roles
 - Block matrix panel supports viewing both sources
 - Primitives support `frame` field for spatial wrapping (e.g., `"{text} from the left side"`)
 - ScenePrep currently launches template fanout generation and records `scene_prep_*` provenance; it does not directly invoke `/api/v1/game/dialogue/actions/select`.
 - `SceneArtifact` persists prep-side state only; `ActionSelectionContext` is runtime resolver input in backend game dialogue flow.
+- Dev/category apply + content pack block import now write `BlockPrimitive` rows.
+- Semantic pack export and dev ontology scan now read primitives for block catalog data.
+- Timeline/debug aggregation derives block usage from `Generation + BlockImageFit` and resolves primitive IDs from blocks DB.
+- Embedding path is primitive-based (`EmbeddingService` targets `BlockPrimitive`).
+- New block IDs are enforced as namespaced strings (for collision safety across packs/projects).
 
 ---
 
@@ -74,9 +96,10 @@ block_primitives table (blocks DB):
 - PromptBlock's extra fields (`compatible_next/prev`, `transition_from/to/via`, etc.) are unused dead weight
 
 ### What Gets Retired
-- `action_blocks` table (PromptBlock) — frozen, eventually dropped
+- `action_blocks` table (PromptBlock) - frozen, final drop pending completion of legacy cleanup
 - Any old content worth keeping migrates to BlockPrimitive with appropriate categories
-- The `block_source: "action_blocks"` routing path in template_service.py eventually removed
+- `block_source: "action_blocks"` routing path in template service is removed from active flow
+- Remaining PromptBlock model/domain exports are legacy surfaces to delete in final cutover
 
 ### Small Additions Needed on BlockPrimitive
 - `reference_asset_id` (optional) — for image-backed blocks (wardrobe, character references)
@@ -269,7 +292,7 @@ If BlockPrimitive becomes canonical:
 - Which old PromptBlock content is worth migrating?
 - What categories do legacy blocks map to?
 - Does the `action_blocks` table stay as read-only archive or get dropped?
-- When does `block_source: "action_blocks"` routing get removed?
+- Which final code surfaces still import/export PromptBlock and can now be deleted safely?
 
 ### 5. ScenePrep Integration
 How do primitives appear in the ScenePrep UI?
@@ -300,8 +323,4 @@ When the composer has both a full prose block and fine-grained primitives availa
 5. **Converge runtime + template selection policy** where practical
 6. **Wire ScenePrep** to show primitive categories as modifier options
 7. **Build dynamic slot builder** — game state → category list → primitive query → compose
-8. **Finalize PromptBlock retirement plan** (`action_blocks` archive/drop timeline)
-
-
-
-
+8. **Finalize PromptBlock retirement** (apply migrations in all envs, remove legacy model exports/imports, then drop `action_blocks`)

@@ -1,5 +1,8 @@
 # PixSim7 Game System Overview
 
+> **Status:** Canonical | **Topic:** Game systems architecture map | **Last verified:** 2026-03-03
+> **Related:** `GAMEPLAY_SYSTEMS.md`, `HOTSPOT_ACTIONS_2D.md`, `NODE_EDITOR_DEVELOPMENT.md`, `../architecture/block-primitives-evolution.md`
+
 **Quick navigation for agents and developers working on the game / world / scene editor / 2D systems.**
 
 This document provides a high-level map of how PixSim7's game systems fit together. For implementation details, follow the links to specialized documentation below.
@@ -156,8 +159,8 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 - Syncs `world_time` from `GameWorldState` for life-sim sessions
 
 **Related files:**
-- `apps/main/src/lib/game/interactionSchema.ts` – Action types and phase derivation
-- `apps/main/src/lib/game/session.ts` – World time / session helpers
+- `@pixsim7/game.engine` (`packages/game/engine/src/`) – Hotspot action parsing, playback phase derivation, session helpers
+- `apps/main/src/lib/game/` – Thin re-export layer and README for the above
 
 **See:** `HOTSPOT_ACTIONS_2D.md` for hotspot action schema and playback phase mapping.
 
@@ -165,25 +168,21 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 
 ### Scene Editor & Graph: Node-Based Authoring
 
-**`apps/main/src/components/GraphPanel.tsx`** – Visual graph editor:
+**`apps/main/src/features/graph/components/scene-graph-v2/SceneGraphPanel.tsx`** – Visual graph editor:
 - Drag-and-drop nodes with connection mode
 - Port-aware edges (default, success, failure)
 - Set start node, rename, delete, duplicate
 
-**`apps/main/src/components/SceneBuilderPanel.tsx`** – Property inspector:
+**`apps/main/src/features/scene/components/panels/SceneBuilderPanel.tsx`** – Property inspector:
 - Node-specific configuration forms
 - Selection strategy, progression steps, mini-game config
 - Cast/role management, NPC binding hints
 
-**`apps/main/src/components/nodes/SceneNode.tsx`** – Node component:
-- Multiple handles for different edge types
-- Visual indicators for node type and metadata
-
-**`apps/main/src/modules/scene-builder/index.ts`** – Draft model:
+**`apps/main/src/domain/sceneBuilder/`** – Draft model:
 - `DraftScene`, `DraftNode`, `DraftEdge` with editor-only metadata
 - `toRuntimeScene()` – Converts draft to compact `@pixsim7/types.Scene`
 
-**`apps/main/src/components/WorldContextSelector.tsx`** – World/location context bar:
+**`apps/main/src/components/game/WorldContextSelector.tsx`** – World/location context bar:
 - Selects the world and location for scene editing context
 - Used by scene editor to provide world-aware authoring
 
@@ -199,12 +198,12 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 
 ### Dev Tools Surface & Debug Workspace
 
-**`apps/main/src/lib/devtools/`** – Developer tools registry and infrastructure:
-- **`devToolRegistry`** – Central registry for all dev/debug tools
-- **`DevToolDefinition`** – Type definition for dev tools with metadata (category, icon, component, route)
-- **`registerDevTools()`** – Initializes all built-in dev tools at app startup
+**`apps/main/src/lib/dev/devtools/`** – Developer tools registry and infrastructure:
+- **`devToolRegistry`** (`devToolRegistry.ts`) – Central registry for all dev/debug tools
+- **`DevToolDefinition`** (`types.ts`) – Type definition for dev tools with metadata (category, icon, component, route)
+- **`registerDevTools()`** (`registerDevTools.ts`) – Initializes all built-in dev tools at app startup
 
-**`apps/main/src/components/dev/DevToolsPanel.tsx`** – Main dev tools navigation panel:
+**`apps/main/src/features/panels/components/dev/DevToolsPanel.tsx`** – Main dev tools navigation panel:
 - Browse all registered dev tools by category (session, plugins, graph, generation, etc.)
 - Search and filter tools by name, description, or tags
 - Open tools as panels or navigate to full routes
@@ -242,8 +241,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 
 **Key files:**
 - `apps/main/src/routes/Game2D.tsx` – 2D preview and hotspot handling
-- `apps/main/src/lib/game/interactionSchema.ts` – Action parsing and phase derivation
-- `apps/main/src/lib/game/session.ts` – Session helpers
+- `@pixsim7/game.engine` (`packages/game/engine/src/`) – Action parsing, phase derivation, session helpers
 
 **Key constraints:**
 - Don't change database schemas; use `meta`, `flags`, `relationships` instead
@@ -259,9 +257,9 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 - `GRAPH_UI_LIFE_SIM_PHASES.md` – World/life-sim integration, character binding model
 
 **Key files:**
-- `apps/main/src/components/GraphPanel.tsx` – Graph canvas
-- `apps/main/src/components/SceneBuilderPanel.tsx` – Property inspector
-- `apps/main/src/modules/scene-builder/index.ts` – Draft model and conversion
+- `apps/main/src/features/graph/components/scene-graph-v2/SceneGraphPanel.tsx` – Graph canvas
+- `apps/main/src/features/scene/components/panels/SceneBuilderPanel.tsx` – Property inspector
+- `apps/main/src/domain/sceneBuilder/` – Draft model and conversion
 
 **Key constraints:**
 - Scenes are world-agnostic; use roles, not hard NPC IDs (except for identity-specific nodes)
@@ -277,8 +275,8 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 - `GRAPH_UI_LIFE_SIM_PHASES.md` – Character binding model, roles vs identity
 
 **Key files:**
-- Backend: `pixsim7/backend/main/api/v1/game_npcs.py` – NPC and schedule APIs
-- Frontend: `apps/main/src/lib/game/session.ts` – Session helpers
+- Backend: `pixsim7/backend/main/plugins/game_npcs/manifest.py` – NPC and schedule APIs (plugin-provided)
+- Frontend: `@pixsim7/game.engine` (`packages/game/engine/src/`) – Session helpers
 
 **Key constraints:**
 - NPCs have schedules (`NPCSchedule`) for presence queries
@@ -332,11 +330,12 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 ## Related Documentation
 
 - `HOTSPOT_ACTIONS_2D.md` – 2D hotspot actions and scene playback phases
-- `RELATIONSHIPS_AND_ARCS.md` – Relationships, arcs, quests, items, events
+- `../game/RELATIONSHIPS_AND_ARCS.md` – Relationships, arcs, quests, items, events
 - `GRAPH_UI_LIFE_SIM_PHASES.md` – Graph editor + life-sim integration
 - `GAME_WORLD_DISPLAY_MODES.md` – 2D/3D display modes for scenes
 - `NODE_EDITOR_DEVELOPMENT.md` – Scene editor architecture and roadmap
-- `PHASE4_CANONICAL_SCENE_SCHEMA.md` – Canonical `@pixsim7/types.Scene` schema definition
+- `../archive/completed-refactoring/PHASE4_CANONICAL_SCENE_SCHEMA.md` – Canonical `@pixsim7/types.Scene` schema definition *(archived — implementation complete)*
+- `../architecture/block-primitives-evolution.md` – Block primitives architecture (canonical for prompt block systems)
 
 ---
 
@@ -378,7 +377,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 ## Quick Start for Common Tasks
 
 **Adding a new hotspot action:**
-1. Define the action type in `apps/main/src/lib/game/interactionSchema.ts`
+1. Define the action type in `@pixsim7/game.engine` (`packages/game/engine/src/`)
 2. Update `parseHotspotAction` to handle the new type
 3. Update `handlePlayHotspot` in `Game2D.tsx` to implement the behavior
 4. Document in `HOTSPOT_ACTIONS_2D.md`
@@ -392,7 +391,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 
 **Adding relationship/arc tracking:**
 1. Define the convention in `GameSession.flags` or `relationships`
-2. Add helper functions in `apps/main/src/lib/game/session.ts`
+2. Add helper functions in `@pixsim7/game.engine` (`packages/game/engine/src/session/`)
 3. Update scenes to set flags/relationships via edge effects
 4. Document the convention in `RELATIONSHIPS_AND_ARCS.md`
 
@@ -411,7 +410,7 @@ The backend plugin manager searches for plugins in two locations:
 
 1. **Core plugins** (`pixsim7/backend/main/plugins/`):
    - Traditional plugins where each plugin is a subdirectory with `manifest.py`
-   - Example: `pixsim7/backend/main/plugins/game_analytics/manifest.py`
+   - Example: `pixsim7/backend/main/plugins/game_npcs/manifest.py`
 
 2. **External plugins** (`packages/plugins/*/backend/`):
    - Self-contained plugin packages with frontend/backend/shared structure

@@ -42,6 +42,10 @@ Documentation for game mechanics, world systems, and scene/world editors.
   - Hotspot interactions
   - NPC portrait system
 
+- **[GAME_WORLD_DISPLAY_MODES.md](./GAME_WORLD_DISPLAY_MODES.md)** - 2D/3D display modes for scenes
+  - Fullscreen, surface, and panel presentation
+  - Display spaces and targets
+
 ## Game Mechanics
 
 - **[GAMEPLAY_SYSTEMS.md](./GAMEPLAY_SYSTEMS.md)** - Relationship, quest, and game systems reference
@@ -51,4 +55,7 @@ Documentation for game mechanics, world systems, and scene/world editors.
 
 ---
 
-**Related:** See [../narrative/](../narrative/) for dialogue systems and [../actions/](../actions/) for action blocks.
+**Related:**
+- [../narrative/](../narrative/) – Dialogue systems
+- [../actions/](../actions/) – Action blocks *(deprecated — replaced by block primitives; see [../architecture/block-primitives-evolution.md](../architecture/block-primitives-evolution.md))*
+- [../architecture/block-primitives-evolution.md](../architecture/block-primitives-evolution.md) – Current block/primitives system

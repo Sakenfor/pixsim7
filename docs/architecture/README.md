@@ -6,7 +6,8 @@ This directory contains architectural documentation for PixSim7 — specs, desig
 
 ### Active Architecture Tracks
 
-**Prompt System**
+**Block & Prompt System**
+- [Block Primitives Evolution](./block-primitives-evolution.md) - **Canonical doc** for block systems. Covers BlockPrimitive model, PromptBlock retirement, composition paths, and migration status.
 - [Prompt Resolver `next_v1` Spec](./prompt-resolver-next-v1.md) - Parallel resolver architecture, interfaces, and migration strategy.
 - [Prompt Resolver Workbench Roadmap](./prompt-resolver-workbench-roadmap.md) - Multi-iteration implementation plan and handoff guide.
 - [Prompt Template Controls Backlog](./prompt-template-controls-backlog.md) - SlotKey migration, theme modifier packs.
@@ -26,6 +27,9 @@ This directory contains architectural documentation for PixSim7 — specs, desig
   - [Plain English Summary](./backend-game-extraction-summary.md)
 - [Local LLM Prompt Analyzer](./local-llm-prompt-analyzer.md) - llama-cpp-python integration plan.
 - [Asset Versioning System](./ASSET_VERSIONING_SYSTEM.md) - Asset version families and revision tracking.
+
+### Snapshots (historical reference)
+- [Prompt Pipeline Current State](./prompt-pipeline-current-state.md) - Pre-redesign snapshot of compiler/resolver pipeline. **Superseded by** [Block Primitives Evolution](./block-primitives-evolution.md) for current block system state.
 
 ### Completed (historical reference)
 - [Sync Synthetic Generation](./sync-synthetic-generation-plan.md) - Synthetic generation records for synced assets. **Fully implemented.**

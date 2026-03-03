@@ -27,21 +27,19 @@ while keeping the scene graph (`Scene`, `SceneNode`, `SceneEdge`) backend‑agno
 
 Key existing references:
 - Scene editor & graph:
-  - `apps/main/src/components/GraphPanel.tsx`
-  - `apps/main/src/components/SceneBuilderPanel.tsx`
-  - `apps/main/src/components/nodes/SceneNode.tsx`
-  - `apps/main/src/modules/scene-builder/index.ts`
+  - `apps/main/src/features/graph/components/scene-graph-v2/SceneGraphPanel.tsx`
+  - `apps/main/src/features/scene/components/panels/SceneBuilderPanel.tsx`
+  - `apps/main/src/features/graph/components/nodes/SceneNode.tsx`
+  - `apps/main/src/domain/sceneBuilder/`
 - Game APIs & 2D playtest:
   - `apps/main/src/lib/api/game.ts`
-  - `@pixsim7/game.engine` (hotspot actions and playback helpers)
-  - `apps/main/src/lib/game/interactionSchema.ts` (re-export shim)
-  - `apps/main/src/lib/game/session.ts`
+  - `@pixsim7/game.engine` (`packages/game/engine/src/`) — hotspot actions, playback helpers, session helpers
   - `apps/main/src/routes/GameWorld.tsx`
   - `apps/main/src/routes/Game2D.tsx`
 - Backend world/time/NPC endpoints:
   - `/api/v1/game/worlds` (`pixsim7/backend/main/api/v1/game_worlds.py`)
   - `/api/v1/game/sessions` (`pixsim7/backend/main/api/v1/game_sessions.py`)
-  - `/api/v1/game/npcs/presence` (`pixsim7/backend/main/api/v1/game_npcs.py`)
+  - `/api/v1/game/npcs` (plugin: `pixsim7/backend/main/plugins/game_npcs/manifest.py`)
 
 ---
 

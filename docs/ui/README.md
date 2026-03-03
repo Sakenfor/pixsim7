@@ -19,7 +19,7 @@ Documentation for UI systems, layouts, overlays, and gizmo displays.
 
 ## Display Modes
 
-- **[GAME_WORLD_DISPLAY_MODES.md](./GAME_WORLD_DISPLAY_MODES.md)** - Different display modes for game worlds
+- **[GAME_WORLD_DISPLAY_MODES.md](../game-systems/GAME_WORLD_DISPLAY_MODES.md)** - Different display modes for game worlds *(moved to `docs/game-systems/`)*
 
 ---
 

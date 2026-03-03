@@ -1,8 +1,11 @@
 # PixSim7 Gameplay Systems - Complete Reference
 
+> **Status:** Canonical | **Topic:** Relationships, quests, inventory, dialogue, stealth | **Last verified:** 2026-03-03
+> **Related:** `SYSTEM_OVERVIEW.md`, `../game/RELATIONSHIPS_AND_ARCS.md`, `HOTSPOT_ACTIONS_2D.md`
+
 ## Overview
 
-This document describes the complete gameplay systems implemented in PixSim7, ready for UI redesign and enhancement.
+This document describes the gameplay systems implemented in PixSim7.
 
 ## Architecture
 
@@ -211,7 +214,7 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 ### Shared Components (@pixsim7/ui)
 
 **New Components:**
-1. **ProgressBar** (`packages/ui/src/ProgressBar.tsx`)
+1. **ProgressBar** (`packages/shared/ui/src/ProgressBar.tsx`)
    - Value/max support
    - 7 color variants (blue, green, red, purple, pink, orange, yellow)
    - Optional label and value display
@@ -298,32 +301,13 @@ Functions include:
 - Inventory management: `listInventoryItems`, `addInventoryItem`, `removeInventoryItem`, etc.
 - Relationship computation: `@pixsim7/game.engine` (`packages/game/engine/src/`)
 
-## Notes for Opus (UI Redesign)
+## UI Enhancement Notes (Non-Canonical)
 
-### Strengths of Current Implementation:
-1. Complete backend systems
-2. Working API endpoints
-3. Functional UI components
-4. Proper data flow
-5. Reusable UI library components
+> The following are planning notes for future UI work, not descriptions of current behavior.
 
-### Areas for Enhancement:
-1. **Visual Design** - Improve aesthetics, colors, spacing
-2. **UX Flow** - Better player guidance, onboarding
-3. **Animations** - Add transitions, micro-interactions
-4. **Layout** - Rethink panel arrangement, responsiveness
-5. **Game Feel** - Polish interactions, feedback
-6. **Accessibility** - Keyboard navigation, screen readers
-7. **Mobile** - Responsive design for smaller screens
-8. **Theming** - Consistent design system
+**Areas for enhancement:** visual design, UX flow, animations, layout/responsiveness, game feel, accessibility, mobile, theming.
 
-### Recommended Approach:
-1. Review all systems in action
-2. Create design mockups
-3. Implement new design system
-4. Enhance animations and transitions
-5. Polish interactions
-6. Add onboarding/tutorials
+**Recommended approach:** review systems in action → create design mockups → implement design system → polish interactions → add onboarding.
 
 ## File Structure
 

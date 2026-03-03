@@ -140,8 +140,8 @@ Visual authoring of branching, modular video scenes with:
   - `apps/main/src/features/graph/components/nodes/SceneNode.tsx` (node component with handles)
   - `apps/main/src/domain/sceneBuilder/index.ts` (draft model + toRuntimeScene)
 - Types:
-  - `packages/types/src/index.ts` (Scene, SceneNode, SceneEdge, SelectionStrategy, PlaybackMode)
-  - `packages/types/src/nodeTypeRegistry.ts` (node type definitions)
+  - `packages/shared/types/src/index.ts` (Scene, SceneNode, SceneEdge, SelectionStrategy, PlaybackMode)
+  - `packages/shared/types/src/nodeTypeRegistry.ts` (node type definitions)
 - Game Frontend:
   - `packages/game/components/src/components/ScenePlayer.tsx`
   - `packages/game/components/src/components/minigames/ReflexMiniGame.tsx`
@@ -516,9 +516,9 @@ To add a new node type configuration UI:
 - **InspectorPanel:** `apps/main/src/components/inspector/InspectorPanel.tsx` (PRIMARY EXTENSION POINT)
 - **Node Editor Registry:** `apps/main/src/lib/nodeEditorRegistry.ts`
 - **Example Editors:** `apps/main/src/components/inspector/` (10+ examples)
-- **Node Type Registry:** `packages/types/src/nodeTypeRegistry.ts`
+- **Node Type Registry:** `packages/shared/types/src/nodeTypeRegistry.ts`
 - React Flow Docs: https://reactflow.dev/
-- Types Package: `packages/types/src/index.ts`
+- Types Package: `packages/shared/types/src/index.ts`
 - UI Primitives: `packages/ui/`
 - Scene Player: `packages/game/components/src/components/ScenePlayer.tsx`
 - Backend API: `http://localhost:8001/docs`

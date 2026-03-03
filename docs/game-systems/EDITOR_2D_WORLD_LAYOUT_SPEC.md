@@ -1,5 +1,8 @@
 # 2D World Layout & NPC Interaction Editor – Design Guide
 
+> **Status:** Canonical (design spec) | **Topic:** 2D world editor UX and JSON shapes | **Last verified:** 2026-03-03
+> **Related:** `SYSTEM_OVERVIEW.md`, `HOTSPOT_ACTIONS_2D.md`, `GRAPH_UI_LIFE_SIM_PHASES.md`
+
 This doc is for improving the existing PixSim7 **Game World editor** and related
 graph tools so creators can build richer 2D worlds with standing NPCs,
 interaction slots (talk, pickpocket, etc.), and, later, light stealth mechanics.
@@ -10,7 +13,7 @@ and respect:
 - `docs/GRAPH_UI_LIFE_SIM_PHASES.md`
 - `docs/HOTSPOT_ACTIONS_2D.md`
 - `docs/RELATIONSHIPS_AND_ARCS.md`
-- `docs/ACTION_PROMPT_ENGINE_SPEC.md`
+- `docs/actions/ACTION_PROMPT_ENGINE_SPEC.md` *(deprecated — action engine replaced by block primitives; see `docs/architecture/block-primitives-evolution.md`)*
 
 Use those as the canonical source for scene graphs, hotspot actions, world
 state, and action blocks. This doc only covers **editor UX and JSON shapes**.
@@ -27,12 +30,12 @@ state, and action blocks. This doc only covers **editor UX and JSON shapes**.
     - `type: 'play_scene' | 'change_location' | 'npc_talk'`
     - `scene_id`, `target_location_id`, `npc_id`.
 
-- `apps/main/src/components/GraphPanel.tsx`
+- `apps/main/src/features/graph/components/scene-graph-v2/SceneGraphPanel.tsx`
   - Scene graph editor (React Flow) for scene nodes/edges.
   - Uses `WorldContextSelector` to know `(worldId, locationId)` context but
     scene data is world‑agnostic.
 
-- `apps/main/src/components/SceneBuilderPanel.tsx`
+- `apps/main/src/features/scene/components/panels/SceneBuilderPanel.tsx`
   - Node inspector for the selected scene node.
   - Already writes some life‑sim metadata into `SceneNode.metadata`:
     - `lifeSim.advanceMinutes`,
@@ -265,9 +268,11 @@ same pattern as existing `/game/*` routes and use JSON flags, not new tables.
 **Goal:** Implement a simple, chance‑based pickpocket mechanic that uses
 session flags, without real stealth simulation.
 
-### Suggested Endpoint (Backend)
+### Stealth Endpoint (Backend)
 
-Add `pixsim7/backend/main/api/v1/game_stealth.py` (name flexible) with:
+> **Current state:** Stealth/pickpocket is implemented as an external plugin at `packages/plugins/stealth/backend/manifest.py`, serving `/api/v1/game/stealth/pickpocket`. If an in-core implementation is desired later, add `pixsim7/backend/main/api/v1/game_stealth.py`.
+
+The active endpoint:
 
 - `POST /api/v1/game/stealth/pickpocket`
   - Body:

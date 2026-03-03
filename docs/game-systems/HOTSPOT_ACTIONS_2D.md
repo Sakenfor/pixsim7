@@ -1,5 +1,8 @@
 # 2D Hotspot Actions & NPC Portraits (Frontend Schema)
 
+> **Status:** Canonical | **Topic:** Hotspot action types, scene playback phases, NPC portraits | **Last verified:** 2026-03-03
+> **Related:** `SYSTEM_OVERVIEW.md`, `NODE_EDITOR_DEVELOPMENT.md`, `GAME_WORLD_DISPLAY_MODES.md`
+
 ## Scope
 
 **This doc is for:** Developers working on 2D gameplay, hotspot interactions, scene playback, and NPC portrait rendering in the Game2D preview.
@@ -21,8 +24,7 @@ remain generic; only the **JSON stored in `GameHotspot.action`** and the
 TypeScript helpers define this behavior.
 
 Relevant code:
-- `@pixsim7/game.engine` (hotspot actions and playback helpers)
-- `apps/main/src/lib/game/interactionSchema.ts` (re-exports game engine helpers)
+- `@pixsim7/game.engine` (`packages/game/engine/src/`) – hotspot actions, playback helpers, session helpers
 - `apps/main/src/routes/Game2D.tsx`
 - `apps/main/src/routes/GameWorld.tsx`
 

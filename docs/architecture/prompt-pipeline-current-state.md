@@ -1,5 +1,9 @@
 # Prompt Pipeline — Current State (pre-redesign snapshot)
 
+> **Superseded (March 2026):** This doc captures the pipeline as it existed before the block primitives migration. The active block model is now `BlockPrimitive` (blocks DB), not `PromptBlock` (`action_blocks`). The compiler/resolver pipeline structure (compiler_v1 → ResolutionRequest → next_v1) is still accurate, but block queries now target `BlockPrimitive` via `build_block_primitive_query()` rather than `build_prompt_block_query()`.
+>
+> For current block system state, see [`block-primitives-evolution.md`](./block-primitives-evolution.md).
+
 > Captured before block schema redesign. Documents the compiler → resolver → assembly
 > pipeline as it exists, including all schema dependencies and coupling points.
 
