@@ -18,6 +18,10 @@ from pixsim7.backend.main.infrastructure.database.session import (
     get_async_blocks_session,
     get_async_session,
 )
+from pixsim7.backend.main.domain.game.schemas.project_bundle import (
+    ProjectOriginKind,
+    ProjectProvenance,
+)
 from pixsim7.backend.main.services.game.project_bundle import GameProjectBundleService
 from pixsim7.backend.main.services.game.project_storage import GameProjectStorageService
 from pixsim7.backend.main.services.prompt.block.template_service import (
@@ -34,6 +38,7 @@ from ..seed_data import (
     SIMULATION_TEMPLATE,
 )
 from .common import (
+    base_world_meta,
     build_behavior_config,
     generation_template_payload,
     now_utc,
@@ -56,16 +61,7 @@ async def _ensure_world(
     )
     world = existing.scalars().first()
 
-    base_meta = {
-        "seed_key": "bananza_boat_slice_v1",
-        "genre": "comedy_adventure",
-        "premise": (
-            "A silly turn-based cruise where Gorilla and Banana trade jokes, "
-            "flirt, and chase small goals while schedules keep the world moving."
-        ),
-        "style": "leisure-suit-larry-inspired parody tone",
-        "turn_model": "turn_based",
-    }
+    base_meta = base_world_meta()
 
     if world is None:
         world = GameWorld(
@@ -120,7 +116,7 @@ async def _upsert_locations(
                 x=seed.x,
                 y=seed.y,
                 meta={
-                    "seed_key": "bananza_boat_slice_v1",
+                    "seed_key": SEED_KEY,
                     "location_key": seed.key,
                     "description": seed.description,
                 },
@@ -133,7 +129,7 @@ async def _upsert_locations(
             meta = dict(location.meta or {})
             meta.update(
                 {
-                    "seed_key": "bananza_boat_slice_v1",
+                    "seed_key": SEED_KEY,
                     "location_key": seed.key,
                     "description": seed.description,
                 }
@@ -167,20 +163,26 @@ async def _upsert_npcs_and_schedules(
             )
         )
         npc = result.scalars().first()
+        seed_personality = dict(seed.personality)
+        seed_personality.update(
+            {
+                "seed_key": SEED_KEY,
+                "npc_key": seed.key,
+            }
+        )
         if npc is None:
             npc = GameNPC(
                 world_id=world_id,
                 name=seed.name,
                 home_location_id=(home_location.id if home_location is not None else None),
-                personality=dict(seed.personality),
+                personality=seed_personality,
             )
             db.add(npc)
             await db.flush()
         else:
             npc.home_location_id = home_location.id if home_location is not None else None
             personality = dict(npc.personality or {})
-            personality.update(seed.personality)
-            personality["seed_key"] = "bananza_boat_slice_v1"
+            personality.update(seed_personality)
             npc.personality = personality
             db.add(npc)
             await db.flush()
@@ -210,7 +212,7 @@ async def _upsert_npcs_and_schedules(
                     end_time=sched.end_time,
                     location_id=location.id,
                     rule={
-                        "seed_key": "bananza_boat_slice_v1",
+                        "seed_key": SEED_KEY,
                         "label": sched.label,
                     },
                 )
@@ -261,7 +263,7 @@ async def _upsert_behavior_templates(
         personality["archetypeId"] = binding["archetypeId"]
         personality["routineId"] = binding["routineId"]
         personality["behavior"] = behavior
-        personality["seed_key"] = "bananza_boat_slice_v1"
+        personality["seed_key"] = SEED_KEY
 
         npc.personality = personality
         db.add(npc)
@@ -361,6 +363,7 @@ async def _upsert_project_snapshot(
     *,
     owner_user_id: int,
     world_id: int,
+    world_name: str,
     project_name: str,
     project_id: Optional[int] = None,
 ) -> Dict[str, Any]:
@@ -396,6 +399,14 @@ async def _upsert_project_snapshot(
         bundle=bundle,
         source_world_id=world_id,
         overwrite_project_id=(existing.id if existing is not None else None),
+        provenance=ProjectProvenance(
+            kind=ProjectOriginKind.DEMO,
+            source_key=SEED_KEY,
+            meta={
+                "seed_key": SEED_KEY,
+                "seed_world_name": world_name,
+            },
+        ),
     )
     return {
         "project_id": saved.id,
@@ -434,6 +445,7 @@ async def seed_bananza_boat_slice(
             db,
             owner_user_id=owner_user_id,
             world_id=world.id,
+            world_name=world_name,
             project_name=project_name,
             project_id=project_id,
         )

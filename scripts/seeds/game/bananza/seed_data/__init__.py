@@ -700,7 +700,7 @@ SIMULATION_TEMPLATE: Dict[str, Any] = {
         "dormant": {"maxNpcs": 5000, "description": "Dormant world population"},
     },
     "pauseSimulation": False,
-    "meta": {"seed_key": "bananza_boat_slice_v1"},
+    "meta": {"seed_key": SEED_KEY},
 }
 
 
