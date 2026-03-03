@@ -108,12 +108,9 @@ export function MasonryGrid({
   }, [positions, hasInitialLayout, updateVisibleSet]);
 
   // ── Scroll tracking ──────────────────────────────────────────────────
-  // Relayout is suppressed while scrolling and during a settling window after
-  // scroll stops, so that images loading from cache don't cause individual shifts.
-  const suppressRelayoutRef = useRef(false);
-  const scrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingRelayoutRef = useRef(false);
+  // After relayout, anchor the scroll position so items near the viewport
+  // don't appear to jump when cards above change height.
+  const pendingScrollDeltaRef = useRef(0);
 
   useEffect(() => {
     const scrollEl = scrollParentRef?.current;
@@ -131,28 +128,7 @@ export function MasonryGrid({
       }
     };
 
-    const flushPendingRelayout = () => {
-      suppressRelayoutRef.current = false;
-      if (pendingRelayoutRef.current) {
-        pendingRelayoutRef.current = false;
-        setLayoutVersion((v) => v + 1);
-      }
-    };
-
     const onScroll = () => {
-      suppressRelayoutRef.current = true;
-
-      // Clear both timers on each scroll event
-      if (scrollIdleTimerRef.current) clearTimeout(scrollIdleTimerRef.current);
-      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
-
-      // After 150ms idle: scroll stopped, start settling window
-      scrollIdleTimerRef.current = setTimeout(() => {
-        // Settling: keep suppressing for another 250ms so cached images
-        // finish loading without triggering individual relayouts
-        settleTimerRef.current = setTimeout(flushPendingRelayout, 250);
-      }, 150);
-
       if (rafId != null) return;
       rafId = requestAnimationFrame(() => {
         rafId = null;
@@ -183,8 +159,6 @@ export function MasonryGrid({
     return () => {
       scrollEl.removeEventListener('scroll', onScroll);
       if (rafId != null) cancelAnimationFrame(rafId);
-      if (scrollIdleTimerRef.current) clearTimeout(scrollIdleTimerRef.current);
-      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
       ro?.disconnect();
     };
   }, [scrollParentRef, updateVisibleSet]);
@@ -244,12 +218,6 @@ export function MasonryGrid({
         }
       }
       if (!heightChanged) return;
-
-      // Defer relayout while scrolling + settling — flush once heights stabilize
-      if (suppressRelayoutRef.current) {
-        pendingRelayoutRef.current = true;
-        return;
-      }
 
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
@@ -315,8 +283,10 @@ export function MasonryGrid({
     }
   }, [colWidth, columnWidth]);
 
-  // ── Compute positions with true tetris-like 2D bin packing ───────────
-  // Items can fill ANY available gap, not just column bottoms
+  // ── Compute positions: shortest-column fill ───────────────────────────
+  // All items are single-column width, so place each item in whichever
+  // column currently has the smallest bottom — O(N×C) instead of the
+  // previous O(N²×C) tetris-style rectangle overlap scanning.
   useLayoutEffect(() => {
     if (!containerWidth || items.length === 0 || !columnWidth) {
       setPositions([]);
@@ -325,71 +295,10 @@ export function MasonryGrid({
     }
 
     const nextPositions: { top: number; left: number; height: number }[] = [];
-    const occupiedRects: { top: number; left: number; bottom: number; right: number }[] = [];
-
-    // Helper: Check if a position would overlap with existing items
-    // Note: Items that exactly touch (adjacent) should NOT be considered overlapping
-    const wouldOverlap = (top: number, left: number, height: number, width: number): boolean => {
-      const bottom = top + height;
-      const right = left + width;
-
-      return occupiedRects.some(rect => {
-        // Use < instead of <= to allow adjacent (touching) items
-        // Subtract 1 to account for pixel rounding and allow exact adjacency
-        const horizontalOverlap = left < rect.right - 1 && right > rect.left + 1;
-        const verticalOverlap = top < rect.bottom - 1 && bottom > rect.top + 1;
-        return horizontalOverlap && verticalOverlap;
-      });
-    };
-
-    // Helper: Find the highest available position for an item
-    const findBestPosition = (itemHeight: number): { top: number; left: number } => {
-      const itemWidth = colWidth;
-
-      // Collect all possible "landing" Y positions (0, and bottom of each existing item)
-      const landingYs = new Set<number>([0]);
-      occupiedRects.forEach(rect => {
-        landingYs.add(rect.bottom);
-      });
-      const sortedYs = Array.from(landingYs).sort((a, b) => a - b);
-
-      // Try each landing position from top to bottom
-      for (const top of sortedYs) {
-        // Try each column position
-        for (let colIdx = 0; colIdx < cols; colIdx++) {
-          const left = colIdx * (colWidth + columnGap);
-
-          // Check overlap WITHOUT including gaps (gaps are already in occupied rects)
-          if (!wouldOverlap(top, left, itemHeight, itemWidth)) {
-            return { top, left };
-          }
-        }
-      }
-
-      // Fallback: place at bottom of shortest column
-      const colHeights = new Array(cols).fill(0);
-      occupiedRects.forEach(rect => {
-        const colIdx = Math.floor(rect.left / (colWidth + columnGap));
-        if (colIdx >= 0 && colIdx < cols) {
-          colHeights[colIdx] = Math.max(colHeights[colIdx], rect.bottom);
-        }
-      });
-
-      let minHeight = colHeights[0];
-      let minCol = 0;
-      for (let c = 1; c < cols; c++) {
-        if (colHeights[c] < minHeight) {
-          minHeight = colHeights[c];
-          minCol = c;
-        }
-      }
-
-      return { top: minHeight, left: minCol * (colWidth + columnGap) };
-    };
+    const colBottoms = new Array<number>(cols).fill(0);
 
     let anyMeasured = false;
 
-    // Place each item
     items.forEach((_, index) => {
       const el = itemRefs.current[index];
       // Use DOM height for mounted items, fall back to last measured height for virtualized placeholders
@@ -408,26 +317,53 @@ export function MasonryGrid({
         return;
       }
 
-      const { top, left } = findBestPosition(height);
+      // Find shortest column
+      let minCol = 0;
+      for (let c = 1; c < cols; c++) {
+        if (colBottoms[c] < colBottoms[minCol]) minCol = c;
+      }
 
+      const top = colBottoms[minCol];
+      const left = minCol * (colWidth + columnGap);
       nextPositions[index] = { top, left, height };
-
-      // Mark this space as occupied
-      occupiedRects.push({
-        top,
-        left,
-        bottom: top + height + rowGap,
-        right: left + colWidth + columnGap,
-      });
+      colBottoms[minCol] = top + height + rowGap;
     });
+
+    // ── Scroll anchoring ─────────────────────────────────────────────────
+    // Find the item closest to the viewport top and record how much it
+    // shifted so we can compensate scrollTop after React commits.
+    pendingScrollDeltaRef.current = 0;
+    if (scrollParentRef?.current && positions.length > 0 && positions.length === nextPositions.length) {
+      const scrollTop = scrollTopRef.current;
+      const offset = containerOffsetRef.current;
+
+      let anchorIndex = -1;
+      let bestDist = Infinity;
+      for (let i = 0; i < positions.length; i++) {
+        const p = positions[i];
+        if (!p || p.height === 0) continue;
+        const absTop = offset + p.top;
+        // Only consider items near or below the viewport top
+        if (absTop < scrollTop - 200) continue;
+        const dist = Math.abs(absTop - scrollTop);
+        if (dist < bestDist) {
+          bestDist = dist;
+          anchorIndex = i;
+        }
+      }
+
+      if (anchorIndex >= 0 && nextPositions[anchorIndex]) {
+        pendingScrollDeltaRef.current =
+          nextPositions[anchorIndex].top - positions[anchorIndex].top;
+      }
+    }
 
     setPositions(nextPositions);
 
-    // Calculate total height
-    const maxBottom = occupiedRects.length > 0
-      ? Math.max(...occupiedRects.map(r => r.bottom)) - rowGap
+    const maxBottom = colBottoms.length > 0
+      ? Math.max(...colBottoms) - rowGap
       : 0;
-    setContainerHeight(maxBottom);
+    setContainerHeight(Math.max(0, maxBottom));
 
     // Enable virtualization after first successful measurement pass
     // (hasInitialLayout intentionally read but not in deps — only transitions false→true once)
@@ -435,6 +371,17 @@ export function MasonryGrid({
       setHasInitialLayout(true);
     }
   }, [items.length, containerWidth, columnGap, rowGap, cols, colWidth, columnWidth, layoutVersion]);
+
+  // ── Apply scroll anchor adjustment after positions commit ─────────────
+  // Runs in useLayoutEffect (before paint) so the user never sees the jump.
+  useLayoutEffect(() => {
+    const delta = pendingScrollDeltaRef.current;
+    if (Math.abs(delta) > 1 && scrollParentRef?.current) {
+      scrollParentRef.current.scrollTop += delta;
+      scrollTopRef.current = scrollParentRef.current.scrollTop;
+    }
+    pendingScrollDeltaRef.current = 0;
+  }, [positions, scrollParentRef]);
 
   return (
     <div

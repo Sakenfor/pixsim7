@@ -9,6 +9,38 @@ import { assetEvents, useAssetViewerStore } from '@features/assets';
 import { BACKEND_BASE } from '../lib/api/client';
 
 
+// ── Module-level blob URL cache ─────────────────────────────────────────
+// Keeps blob URLs alive across virtualization unmount/remount cycles so
+// thumbnails render instantly when cards scroll back into view.
+// LRU eviction revokes the oldest URLs to cap memory (~200 thumbnails).
+const BLOB_CACHE_MAX = 200;
+const _blobCache = new Map<string, string>(); // fetchUrl → blobUrl
+
+function getCachedBlob(fetchUrl: string): string | undefined {
+  const blobUrl = _blobCache.get(fetchUrl);
+  if (blobUrl !== undefined) {
+    // Move to end (most recently used)
+    _blobCache.delete(fetchUrl);
+    _blobCache.set(fetchUrl, blobUrl);
+  }
+  return blobUrl;
+}
+
+function setCachedBlob(fetchUrl: string, blobUrl: string): void {
+  const existing = _blobCache.get(fetchUrl);
+  if (existing && existing !== blobUrl) URL.revokeObjectURL(existing);
+  _blobCache.delete(fetchUrl);
+  _blobCache.set(fetchUrl, blobUrl);
+  while (_blobCache.size > BLOB_CACHE_MAX) {
+    const first = _blobCache.keys().next().value;
+    if (first === undefined) break;
+    const old = _blobCache.get(first);
+    _blobCache.delete(first);
+    if (old) URL.revokeObjectURL(old);
+  }
+}
+
+
 export interface UseMediaThumbnailOptions {
   /**
    * When true, fetches external URLs and converts to blob URLs to prevent
@@ -83,7 +115,6 @@ export function useMediaThumbnailFull(
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [retryTrigger, setRetryTrigger] = useState(0);
-  const objectUrlRef = useRef<string | null>(null);
   const globalPreventDiskCache = useMediaSettingsStore((s) => s.preventDiskCache);
   const galleryQualityMode = useAssetViewerStore((s) => s.settings.qualityMode);
   const preferOriginal = useAssetViewerStore((s) => s.settings.preferOriginal);
@@ -136,12 +167,6 @@ export function useMediaThumbnailFull(
     setLoading(true);
     setFailed(false);
 
-    // Cleanup any previous object URL
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    }
-
     if (!selectedUrl) {
       setThumbSrc(undefined);
       setLoading(false);
@@ -162,6 +187,14 @@ export function useMediaThumbnailFull(
     }
 
     const { fullUrl, isBackend } = resolveBackendUrl(selectedUrl, BACKEND_BASE);
+
+    // Instant hit from blob cache — avoids flash when virtualized cards remount
+    const cached = getCachedBlob(fullUrl);
+    if (cached) {
+      setThumbSrc(cached);
+      setLoading(false);
+      return;
+    }
 
     // External http/https URL
     if (!isBackend) {
@@ -191,12 +224,10 @@ export function useMediaThumbnailFull(
             }
             const blob = await res.blob();
             const objectUrl = URL.createObjectURL(blob);
-            objectUrlRef.current = objectUrl;
+            setCachedBlob(fullUrl, objectUrl);
             if (!cancelled) {
               setThumbSrc(objectUrl);
               setLoading(false);
-            } else {
-              URL.revokeObjectURL(objectUrl);
             }
           } catch {
             // CORS or network error
@@ -285,12 +316,10 @@ export function useMediaThumbnailFull(
         }
         const blob = await res.blob();
         const objectUrl = URL.createObjectURL(blob);
-        objectUrlRef.current = objectUrl;
+        setCachedBlob(fullUrl, objectUrl);
         if (!cancelled) {
           setThumbSrc(objectUrl);
           setLoading(false);
-        } else {
-          URL.revokeObjectURL(objectUrl);
         }
       } catch {
         if (!cancelled) {
@@ -304,11 +333,8 @@ export function useMediaThumbnailFull(
 
     return () => {
       cancelled = true;
-      // Clean up blob URL on unmount
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = null;
-      }
+      // Blob URLs are NOT revoked here — the module-level LRU cache
+      // keeps them alive so remounted cards render instantly.
     };
   }, [selectedUrl, preventDiskCache, remoteUrl, retryTrigger]);
 
