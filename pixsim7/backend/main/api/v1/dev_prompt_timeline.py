@@ -2,34 +2,24 @@
 Dev Prompt Family Timeline API
 
 Dev-only endpoint for viewing the timeline/performance of a PromptFamily,
-showing how versions evolve, which blocks are extracted, and which assets
+showing how versions evolve, which block primitives are used, and which assets
 are generated with fit scores.
-
-Purpose:
-- Show version evolution timeline with generation metrics
-- Show extracted ActionBlocks with usage and fit scores
-- Show assets generated from versions with source tracking
-- Answer "which prompts/blocks/packs are actually working?"
-
-Design:
-- Dev-only endpoint (no production use)
-- Read-only operations (no mutations)
-- Aggregates data from versions, blocks, assets, and fit scores
-- Optimized for timeline/performance view in Prompt Lab
 """
-from fastapi import APIRouter, HTTPException
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from collections import defaultdict
+from typing import Any, Dict, List, Optional
 from uuid import UUID
-from sqlalchemy import select, func
-from sqlalchemy.orm import selectinload
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import or_, select
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.services.prompt import PromptVersionService
-from pixsim7.backend.main.domain.prompt import PromptBlock
+from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.domain.generation.block_image_fit import BlockImageFit
 from pixsim7.backend.main.domain.generation.models import Generation
-from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
+from pixsim7.backend.main.services.prompt import PromptVersionService
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -41,6 +31,7 @@ router = APIRouter(prefix="/dev/prompt-families", tags=["dev"])
 
 class TimelineVersion(BaseModel):
     """Version info for timeline display"""
+
     version_id: UUID
     version_number: int
     created_at: str
@@ -51,9 +42,10 @@ class TimelineVersion(BaseModel):
 
 
 class TimelineBlockSummary(BaseModel):
-    """ActionBlock summary with performance metrics"""
-    block_id: str                 # ActionBlock.block_id
-    db_id: str                    # PromptBlock.id (UUID) as string
+    """Block primitive summary with performance metrics."""
+
+    block_id: str  # canonical primitive id
+    db_id: str  # BlockPrimitive.id (UUID) as string, or block_id fallback
     prompt_version_id: Optional[UUID]
     usage_count: int
     avg_fit_score: Optional[float]
@@ -62,21 +54,33 @@ class TimelineBlockSummary(BaseModel):
 
 class TimelineAssetSummary(BaseModel):
     """Asset summary with source tracking"""
+
     asset_id: int
     generation_id: Optional[int]
     created_at: str
     source_version_id: Optional[UUID]
-    source_block_ids: List[str]   # block_id strings from lineage
+    source_block_ids: List[str]
 
 
 class PromptFamilyTimelineResponse(BaseModel):
     """Complete timeline data for a PromptFamily"""
+
     family_id: UUID
     family_slug: str
     title: str
     versions: List[TimelineVersion]
     blocks: List[TimelineBlockSummary]
     assets: List[TimelineAssetSummary]
+
+
+def _pick_version_for_block(
+    *,
+    version_ids: set[UUID],
+    version_rank: Dict[UUID, int],
+) -> Optional[UUID]:
+    if not version_ids:
+        return None
+    return min(version_ids, key=lambda version_id: version_rank.get(version_id, 10**9))
 
 
 # ===== Endpoints =====
@@ -88,39 +92,19 @@ async def get_family_timeline(
     db: DatabaseSession = None,
     user: CurrentUser = None,
 ) -> PromptFamilyTimelineResponse:
-    """
-    Get timeline/performance view for a PromptFamily.
-
-    Shows:
-    - Versions with generation counts and successful assets
-    - ActionBlocks extracted from versions with usage and fit scores
-    - Assets generated from versions with source tracking
-
-    Path params:
-    - family_id: UUID of the family
-
-    Query params:
-    - limit_assets: Max assets to return (default 100, most recent)
-
-    Returns:
-        Complete timeline data for the family
-    """
+    """Get timeline/performance view for a PromptFamily."""
     try:
         service = PromptVersionService(db)
 
-        # 1. Get family info
+        # 1. Family info
         family = await service.get_family(family_id)
         if not family:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Family {family_id} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Family {family_id} not found")
 
-        # 2. Get all versions for this family
+        # 2. Family versions
         versions = await service.list_versions(family_id=family_id, limit=1000)
         version_ids = [v.id for v in versions]
-
-        # Build version timeline entries
+        version_rank = {version.id: idx for idx, version in enumerate(versions)}
         timeline_versions = [
             TimelineVersion(
                 version_id=v.id,
@@ -134,96 +118,136 @@ async def get_family_timeline(
             for v in versions
         ]
 
-        # 3. Get ActionBlocks that reference these versions
-        # Look for blocks with prompt_version_id or extracted_from_prompt_version
-        blocks_query = select(PromptBlock).where(
-            (PromptBlock.prompt_version_id.in_(version_ids)) |
-            (PromptBlock.extracted_from_prompt_version.in_(version_ids))
-        )
-        blocks_result = await db.execute(blocks_query)
-        blocks = blocks_result.scalars().all()
-
-        # Get usage and fit scores for each block
-        timeline_blocks = []
-        for block in blocks:
-            # Get average fit score from BlockImageFit
-            fit_query = select(func.avg(BlockImageFit.fit_rating)).where(
-                BlockImageFit.block_id == block.id
+        # 3. Generations tied to these versions (for asset list and block usage source).
+        generations: List[Generation] = []
+        if version_ids:
+            generations_query = (
+                select(Generation)
+                .where(Generation.prompt_version_id.in_(version_ids))
+                .order_by(Generation.created_at.desc())
+                .limit(limit_assets)
             )
-            fit_result = await db.execute(fit_query)
-            avg_fit = fit_result.scalar()
+            generations_result = await db.execute(generations_query)
+            generations = list(generations_result.scalars().all())
 
-            # Get last used timestamp from BlockImageFit
-            last_used_query = select(func.max(BlockImageFit.created_at)).where(
-                BlockImageFit.block_id == block.id
+        generation_ids = [generation.id for generation in generations if generation.id is not None]
+        generation_version_by_id: Dict[int, UUID] = {
+            generation.id: generation.prompt_version_id
+            for generation in generations
+            if generation.id is not None and generation.prompt_version_id is not None
+        }
+        asset_ids = [generation.asset_id for generation in generations if generation.asset_id is not None]
+
+        # 4. Preload assets for listed generations.
+        assets_by_id: Dict[int, Asset] = {}
+        if asset_ids:
+            assets_result = await db.execute(select(Asset).where(Asset.id.in_(asset_ids)))
+            assets_by_id = {asset.id: asset for asset in assets_result.scalars().all()}
+
+        # 5. Pull all fit rows relevant to these generations/assets once.
+        fit_rows: List[BlockImageFit] = []
+        fit_filters = []
+        if generation_ids:
+            fit_filters.append(BlockImageFit.generation_id.in_(generation_ids))
+        if asset_ids:
+            fit_filters.append(BlockImageFit.asset_id.in_(asset_ids))
+        if fit_filters:
+            fits_result = await db.execute(select(BlockImageFit).where(or_(*fit_filters)))
+            fit_rows = list(fits_result.scalars().all())
+
+        # 6. Aggregate block metrics + per-asset lineage.
+        block_stats: Dict[str, Dict[str, Any]] = {}
+        source_blocks_by_generation: Dict[int, set[str]] = defaultdict(set)
+        source_blocks_by_asset: Dict[int, set[str]] = defaultdict(set)
+
+        for fit in fit_rows:
+            block_id = str(fit.block_id).strip()
+            if not block_id:
+                continue
+
+            stats = block_stats.setdefault(
+                block_id,
+                {
+                    "usage_count": 0,
+                    "fit_sum": 0.0,
+                    "fit_count": 0,
+                    "last_used": None,
+                    "version_ids": set(),
+                },
             )
-            last_used_result = await db.execute(last_used_query)
-            last_used = last_used_result.scalar()
+            stats["usage_count"] += 1
+            if fit.fit_rating is not None:
+                stats["fit_sum"] += float(fit.fit_rating)
+                stats["fit_count"] += 1
+            if fit.created_at is not None and (
+                stats["last_used"] is None or fit.created_at > stats["last_used"]
+            ):
+                stats["last_used"] = fit.created_at
 
+            if fit.generation_id is not None:
+                source_blocks_by_generation[int(fit.generation_id)].add(block_id)
+                source_version_id = generation_version_by_id.get(int(fit.generation_id))
+                if source_version_id is not None:
+                    stats["version_ids"].add(source_version_id)
+            if fit.asset_id is not None:
+                source_blocks_by_asset[int(fit.asset_id)].add(block_id)
+
+        # 7. Resolve primitive DB IDs from blocks DB.
+        primitive_by_block_id: Dict[str, BlockPrimitive] = {}
+        if block_stats:
+            async with get_async_blocks_session() as blocks_db:
+                primitive_result = await blocks_db.execute(
+                    select(BlockPrimitive).where(
+                        BlockPrimitive.block_id.in_(list(block_stats.keys()))
+                    )
+                )
+                primitive_by_block_id = {
+                    primitive.block_id: primitive for primitive in primitive_result.scalars().all()
+                }
+
+        timeline_blocks: List[TimelineBlockSummary] = []
+        for block_id, stats in block_stats.items():
+            primitive = primitive_by_block_id.get(block_id)
+            fit_count = int(stats["fit_count"])
+            avg_fit = (stats["fit_sum"] / fit_count) if fit_count > 0 else None
+            prompt_version_id = _pick_version_for_block(
+                version_ids=stats["version_ids"],
+                version_rank=version_rank,
+            )
             timeline_blocks.append(
                 TimelineBlockSummary(
-                    block_id=block.block_id,
-                    db_id=str(block.id),
-                    prompt_version_id=block.prompt_version_id or block.extracted_from_prompt_version,
-                    usage_count=block.usage_count or 0,
+                    block_id=block_id,
+                    db_id=str(primitive.id) if primitive is not None else block_id,
+                    prompt_version_id=prompt_version_id,
+                    usage_count=int(stats["usage_count"]),
                     avg_fit_score=float(avg_fit) if avg_fit is not None else None,
-                    last_used_at=str(last_used) if last_used else None,
+                    last_used_at=str(stats["last_used"]) if stats["last_used"] is not None else None,
+                )
+            )
+        timeline_blocks.sort(key=lambda item: (-item.usage_count, item.block_id))
+
+        timeline_assets: List[TimelineAssetSummary] = []
+        for generation in generations:
+            if generation.asset_id is None:
+                continue
+            asset = assets_by_id.get(generation.asset_id)
+            if asset is None:
+                continue
+
+            source_block_ids = sorted(
+                source_blocks_by_generation.get(generation.id, set())
+                | source_blocks_by_asset.get(asset.id, set())
+            )
+            timeline_assets.append(
+                TimelineAssetSummary(
+                    asset_id=asset.id,
+                    generation_id=generation.id,
+                    created_at=str(getattr(asset, "created_at", generation.created_at)),
+                    source_version_id=generation.prompt_version_id,
+                    source_block_ids=source_block_ids,
                 )
             )
 
-        # 4. Get Assets/Generations linked to these versions
-        # Query generations that used these prompt versions
-        generations_query = (
-            select(Generation)
-            .where(Generation.prompt_version_id.in_(version_ids))
-            .order_by(Generation.created_at.desc())
-            .limit(limit_assets)
-        )
-        generations_result = await db.execute(generations_query)
-        generations = generations_result.scalars().all()
-
-        # Get assets for these generations
-        timeline_assets = []
-        for gen in generations:
-            if gen.asset_id:
-                # Get the asset
-                asset_query = select(Asset).where(Asset.id == gen.asset_id)
-                asset_result = await db.execute(asset_query)
-                asset = asset_result.scalar()
-
-                if asset:
-                    # Try to find block usage from BlockImageFit
-                    fit_query = (
-                        select(BlockImageFit.block_id)
-                        .where(
-                            (BlockImageFit.asset_id == asset.id) |
-                            (BlockImageFit.generation_id == gen.id)
-                        )
-                        .distinct()
-                    )
-                    fit_result = await db.execute(fit_query)
-                    block_db_ids = fit_result.scalars().all()
-
-                    # Convert block DB IDs to block_id strings
-                    source_block_ids = []
-                    if block_db_ids:
-                        block_ids_query = select(PromptBlock.block_id).where(
-                            PromptBlock.id.in_(block_db_ids)
-                        )
-                        block_ids_result = await db.execute(block_ids_query)
-                        source_block_ids = list(block_ids_result.scalars().all())
-
-                    timeline_assets.append(
-                        TimelineAssetSummary(
-                            asset_id=asset.id,
-                            generation_id=gen.id,
-                            created_at=str(asset.created_at) if hasattr(asset, 'created_at') else str(gen.created_at),
-                            source_version_id=gen.prompt_version_id,
-                            source_block_ids=source_block_ids,
-                        )
-                    )
-
-        # Build final response
         response = PromptFamilyTimelineResponse(
             family_id=family.id,
             family_slug=family.slug,
@@ -234,14 +258,15 @@ async def get_family_timeline(
         )
 
         logger.info(
-            f"Retrieved timeline for family {family_id}: "
-            f"{len(timeline_versions)} versions, "
-            f"{len(timeline_blocks)} blocks, "
-            f"{len(timeline_assets)} assets",
+            "Retrieved timeline for family %s: %d versions, %d blocks, %d assets",
+            family_id,
+            len(timeline_versions),
+            len(timeline_blocks),
+            len(timeline_assets),
             extra={
                 "user_id": user.id,
                 "family_id": str(family_id),
-            }
+            },
         )
 
         return response
@@ -259,5 +284,5 @@ async def get_family_timeline(
         )
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get family timeline: {str(e)}"
+            detail=f"Failed to get family timeline: {str(e)}",
         )

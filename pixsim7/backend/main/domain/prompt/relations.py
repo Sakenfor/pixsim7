@@ -31,8 +31,9 @@ class PromptVersionBlock(SQLModel, table=True):
         index=True,
         description="The prompt version containing this block"
     )
-    block_id: UUID = Field(
-        foreign_key="action_blocks.id",
+    # Soft reference to canonical primitive string ID (cross-DB, no FK).
+    block_id: str = Field(
+        max_length=200,
         index=True,
         description="The block used in this version"
     )

@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from pixsim7.backend.main.domain.prompt import PromptBlock, BlockTemplate
+from pixsim7.backend.main.domain.prompt import BlockTemplate
 from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.services.prompt.block.compiler_core import (
     build_default_compiler_registry,
@@ -552,7 +552,7 @@ class BlockTemplateService:
         return matched / total
 
     @staticmethod
-    def _rating_score(candidate: PromptBlock) -> float:
+    def _rating_score(candidate: ResolverCandidateBlock) -> float:
         raw = getattr(candidate, "avg_rating", None)
         if raw is None:
             return 0.0
@@ -563,15 +563,15 @@ class BlockTemplateService:
         return max(0.0, min(value / 5.0, 1.0))
 
     @staticmethod
-    def _block_tags(block: PromptBlock) -> Dict[str, Any]:
+    def _block_tags(block: ResolverCandidateBlock) -> Dict[str, Any]:
         tags = getattr(block, "tags", None)
         return tags if isinstance(tags, dict) else {}
 
     @classmethod
     def _diversity_score(
         cls,
-        candidate: PromptBlock,
-        selected_so_far: List[PromptBlock],
+        candidate: ResolverCandidateBlock,
+        selected_so_far: List[ResolverCandidateBlock],
         diversity_keys: Optional[List[str]],
     ) -> float:
         if not diversity_keys:
@@ -641,9 +641,9 @@ class BlockTemplateService:
         self,
         *,
         strategy: str,
-        candidates: List[PromptBlock],
+        candidates: List[ResolverCandidateBlock],
         rng: random.Random,
-    ) -> Tuple[PromptBlock, Dict[str, Any], List[str]]:
+    ) -> Tuple[ResolverCandidateBlock, Dict[str, Any], List[str]]:
         warnings: List[str] = []
         if strategy == "weighted_rating" and any(getattr(c, "avg_rating", None) for c in candidates):
             weights = [max((getattr(c, "avg_rating", None) or 1.0), 0.1) for c in candidates]
@@ -674,10 +674,10 @@ class BlockTemplateService:
         *,
         strategy: str,
         slot: Dict[str, Any],
-        candidates: List[PromptBlock],
-        selected_so_far: List[PromptBlock],
+        candidates: List[ResolverCandidateBlock],
+        selected_so_far: List[ResolverCandidateBlock],
         rng: random.Random,
-    ) -> Tuple[PromptBlock, Dict[str, Any], List[str]]:
+    ) -> Tuple[ResolverCandidateBlock, Dict[str, Any], List[str]]:
         warnings: List[str] = []
         preferences = slot.get("preferences") if isinstance(slot.get("preferences"), dict) else {}
         selection_config = slot.get("selection_config") if isinstance(slot.get("selection_config"), dict) else {}
@@ -699,7 +699,7 @@ class BlockTemplateService:
 
         target_intensity = self._coerce_int(slot.get("intensity"))
 
-        scored: List[Tuple[PromptBlock, Dict[str, Any]]] = []
+        scored: List[Tuple[ResolverCandidateBlock, Dict[str, Any]]] = []
         for candidate in candidates:
             block_tags = self._block_tags(candidate)
             boost_score = self._match_ratio_for_tag_map(block_tags, preferences.get("boost_tags"))
@@ -772,10 +772,10 @@ class BlockTemplateService:
         self,
         *,
         slot: Dict[str, Any],
-        candidates: List[PromptBlock],
-        selected_so_far: List[PromptBlock],
+        candidates: List[ResolverCandidateBlock],
+        selected_so_far: List[ResolverCandidateBlock],
         rng: random.Random,
-    ) -> Tuple[PromptBlock, Dict[str, Any], List[str]]:
+    ) -> Tuple[ResolverCandidateBlock, Dict[str, Any], List[str]]:
         strategy = str(slot.get("selection_strategy") or "uniform")
 
         if strategy in {"uniform", "weighted_rating"}:

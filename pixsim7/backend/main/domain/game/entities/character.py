@@ -187,7 +187,7 @@ class CharacterUsage(SQLModel, table=True):
     # What uses this character
     usage_type: str = Field(max_length=50)  # "prompt", "action_block", "composition"
     prompt_version_id: Optional[UUID] = Field(None, index=True)  # soft ref to prompt_versions.id
-    action_block_id: Optional[UUID] = Field(None, index=True)  # soft ref to action_blocks.id
+    action_block_id: Optional[str] = Field(None, max_length=200, index=True)  # soft ref to block_primitives.block_id
 
     # Template reference that was expanded
     template_reference: Optional[str] = None  # "{{character:gorilla_01}}"

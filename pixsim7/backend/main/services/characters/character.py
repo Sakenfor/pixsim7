@@ -285,7 +285,7 @@ class CharacterService:
         character_id: str,
         usage_type: str,
         prompt_version_id: Optional[UUID] = None,
-        action_block_id: Optional[UUID] = None,
+        action_block_id: Optional[str] = None,
         template_reference: Optional[str] = None
     ) -> CharacterUsage:
         """Track where a character is used"""
@@ -296,13 +296,18 @@ class CharacterService:
             raise ValueError(f"Character '{character_id}' not found")
 
         now = datetime.now(timezone.utc)
+        normalized_action_block_id: Optional[str] = None
+        if action_block_id is not None:
+            text = str(action_block_id).strip()
+            if text:
+                normalized_action_block_id = text
 
         usage = CharacterUsage(
             id=uuid4(),
             character_id=character.id,
             usage_type=usage_type,
             prompt_version_id=prompt_version_id,
-            action_block_id=action_block_id,
+            action_block_id=normalized_action_block_id,
             template_reference=template_reference,
             used_at=now
         )

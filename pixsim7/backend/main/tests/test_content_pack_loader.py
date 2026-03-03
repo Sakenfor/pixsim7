@@ -4,6 +4,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
 import pytest
@@ -597,11 +598,21 @@ async def test_load_pack_prune_mode_tracks_pruned_counts(monkeypatch: pytest.Mon
         ):
             assert source_pack_name == pack_name
             assert incoming_lookup_values
-            assert metadata_field in {"block_metadata", "template_metadata", "character_metadata"}
+            assert metadata_field in {"tags", "template_metadata", "character_metadata"}
             return pruned_by_lookup[lookup_field]
 
         monkeypatch.setattr(loader, "_upsert_entities", _fake_upsert)
         monkeypatch.setattr(loader, "_prune_missing_entities", _fake_prune)
+
+        class _DummyBlocksDB:
+            async def commit(self) -> None:
+                return None
+
+        @asynccontextmanager
+        async def _fake_blocks_session():
+            yield _DummyBlocksDB()
+
+        monkeypatch.setattr(loader, "get_async_blocks_session", _fake_blocks_session)
 
         class _DummyDB:
             async def commit(self) -> None:
@@ -688,3 +699,65 @@ async def test_upsert_entities_rehomes_content_pack_rows_without_force(
     assert row.package_name == "shared"
     assert row.block_metadata[loader.CONTENT_PACK_SOURCE_KEY] == "shared"
     assert row.updated_at == now
+
+
+@pytest.mark.asyncio
+async def test_upsert_entities_rehome_can_be_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Column:
+        def __eq__(self, _other):
+            return ("eq", _other)
+
+    class _Model:
+        __name__ = "BlockPrimitive"
+        block_id = _Column()
+
+    class _Query:
+        def where(self, _expr):
+            return self
+
+    class _Result:
+        def __init__(self, row):
+            self._row = row
+
+        def scalar_one_or_none(self):
+            return self._row
+
+    row = SimpleNamespace(
+        block_id="shared.pose.lock",
+        tags={loader.CONTENT_PACK_SOURCE_KEY: "old_pack"},
+        updated_at=None,
+    )
+
+    class _DummyDB:
+        def __init__(self, existing_row):
+            self._row = existing_row
+
+        async def execute(self, _query):
+            return _Result(self._row)
+
+        def add(self, _entity):
+            return None
+
+    monkeypatch.setattr(loader, "select", lambda _model: _Query())
+
+    db = _DummyDB(row)
+    now = datetime.now(timezone.utc)
+    with pytest.raises(loader.ContentPackValidationError, match="Use namespaced block_id"):
+        await loader._upsert_entities(
+            db,
+            _Model,
+            [{
+                "block_id": "shared.pose.lock",
+                "tags": {loader.CONTENT_PACK_SOURCE_KEY: "new_pack"},
+            }],
+            lookup_field="block_id",
+            fields={"tags": {}},
+            create_only={},
+            force=False,
+            metadata_field="tags",
+            now=now,
+            pack_name="new_pack",
+            allow_rehome=False,
+        )

@@ -7,7 +7,6 @@ from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import JSON
 from typing import Optional, Dict, Any
 from datetime import datetime
-from uuid import UUID
 
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
@@ -21,10 +20,10 @@ class BlockImageFit(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
 
-    block_id: UUID = Field(
-        foreign_key="action_blocks.id",
+    block_id: str = Field(
+        max_length=200,
         index=True,
-        description="PromptBlock.id being evaluated"
+        description="Canonical block ID (BlockPrimitive.block_id) being evaluated"
     )
 
     asset_id: Optional[int] = Field(

@@ -32,6 +32,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel
 
+from pixsim7.backend.main.domain.blocks import BlockPrimitive
+from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.services.prompt.block.template_controls import (
     expand_control_presets,
 )
@@ -66,16 +68,15 @@ class ContentPackValidationError(ValueError):
 # "create_only" fields are only set on INSERT, never overwritten on UPDATE.
 
 _BLOCK_FIELDS: Dict[str, Any] = {
-    "role": None, "category": None, "kind": "single_state",
-    "text": "", "tags": {}, "complexity_level": "simple",
-    "package_name": None, "description": None,
-    "char_count": 0, "word_count": 0,
-    "style": "cinematic", "duration_sec": 1.0,
-    "block_metadata": {},
+    "category": "uncategorized",
+    "text": "",
+    "tags": {},
+    "source": "system",
+    "is_public": True,
 }
 _BLOCK_CREATE_ONLY: Dict[str, Any] = {
-    "source_type": "library", "curation_status": "curated",
-    "is_public": True, "created_by": "content_pack",
+    "avg_rating": None,
+    "usage_count": 0,
 }
 
 _TEMPLATE_FIELDS: Dict[str, Any] = {
@@ -328,11 +329,14 @@ def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
 
             tags = block.get("tags")
             if tags is None:
-                block["tags"] = {}
+                block_tags: Dict[str, Any] = {}
             elif not isinstance(tags, dict):
                 raise ContentPackValidationError(
                     f"{src}: blocks[{index}].tags must be an object"
                 )
+            else:
+                block_tags = dict(tags)
+
             try:
                 validate_block_family_contract(
                     block=block,
@@ -342,6 +346,31 @@ def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
                 )
             except BlockFamilyContractValidationError as exc:
                 raise ContentPackValidationError(str(exc)) from exc
+
+            role_value = block.get("role")
+            if isinstance(role_value, str):
+                role_value = role_value.strip()
+                if role_value:
+                    block_tags.setdefault("role", role_value)
+
+            category_value = block.get("category")
+            if isinstance(category_value, str):
+                category_value = category_value.strip()
+                if category_value:
+                    block_tags.setdefault("legacy_category", category_value)
+
+            package_value = block.get("package_name")
+            if isinstance(package_value, str) and package_value.strip():
+                block_tags.setdefault("source_pack", package_value.strip())
+            else:
+                block_tags.setdefault("source_pack", content_dir.name)
+
+            duration_value = block.get("duration_sec")
+            if duration_value is not None:
+                block_tags.setdefault("duration_sec", duration_value)
+
+            block_tags[CONTENT_PACK_SOURCE_KEY] = content_dir.name
+            block["tags"] = block_tags
 
             block_metadata = _ensure_optional_dict(
                 value=block.get("block_metadata"),
@@ -890,6 +919,73 @@ def _pick(data: Dict[str, Any], field_defaults: Dict[str, Any]) -> Dict[str, Any
     return {k: data.get(k, default) for k, default in field_defaults.items()}
 
 
+def _project_block_to_primitive(block: Dict[str, Any], *, plugin_name: str) -> Dict[str, Any]:
+    """Project a legacy content-pack block shape into BlockPrimitive fields."""
+    tags = block.get("tags")
+    if not isinstance(tags, dict):
+        tags = {}
+    else:
+        tags = dict(tags)
+
+    role = block.get("role")
+    if isinstance(role, str):
+        role = role.strip()
+        if role:
+            tags.setdefault("role", role)
+    else:
+        role = None
+
+    legacy_category = block.get("category")
+    if isinstance(legacy_category, str):
+        legacy_category = legacy_category.strip()
+        if legacy_category:
+            tags.setdefault("legacy_category", legacy_category)
+    else:
+        legacy_category = None
+
+    package_name = block.get("package_name")
+    if isinstance(package_name, str) and package_name.strip():
+        tags.setdefault("source_pack", package_name.strip())
+    else:
+        tags.setdefault("source_pack", plugin_name)
+
+    tags[CONTENT_PACK_SOURCE_KEY] = plugin_name
+
+    category: str | None = None
+    candidate_category = block.get("category")
+    if isinstance(candidate_category, str):
+        candidate_category = candidate_category.strip()
+        if candidate_category:
+            category = candidate_category
+    if not category and role:
+        category = role
+    if not category:
+        category = "uncategorized"
+
+    text = block.get("text")
+    if not isinstance(text, str):
+        text = ""
+
+    source = block.get("source")
+    if not isinstance(source, str) or not source.strip():
+        source = "system"
+    else:
+        source = source.strip()
+
+    is_public = block.get("is_public")
+    if not isinstance(is_public, bool):
+        is_public = True
+
+    return {
+        "block_id": block.get("block_id"),
+        "category": category,
+        "text": text,
+        "tags": tags,
+        "source": source,
+        "is_public": is_public,
+    }
+
+
 async def _upsert_entities(
     db: AsyncSession,
     model_cls: Type[SQLModel],
@@ -902,11 +998,12 @@ async def _upsert_entities(
     metadata_field: str | None = None,
     now: datetime,
     pack_name: str,
+    allow_rehome: bool = True,
 ) -> Dict[str, int]:
     """Upsert a list of YAML-parsed dicts into the given model.
 
     Args:
-        model_cls: SQLModel class (PromptBlock, BlockTemplate, Character).
+        model_cls: SQLModel class (BlockPrimitive, BlockTemplate, Character).
         items: Parsed YAML dicts.
         lookup_field: Unique key to match existing rows (e.g. "block_id").
         fields: {field: default} for fields that are set on both create and update.
@@ -942,6 +1039,13 @@ async def _upsert_entities(
                     incoming_source = incoming_metadata.get(CONTENT_PACK_SOURCE_KEY)
 
             if existing_source and incoming_source and existing_source != incoming_source:
+                if not allow_rehome:
+                    raise ContentPackValidationError(
+                        f"Pack '{pack_name}': {model_cls.__name__} '{lookup_value}' "
+                        f"already belongs to content pack '{existing_source}'. "
+                        "Use namespaced block_id values (for example "
+                        f"'{incoming_source}.<name>') to avoid collisions."
+                    )
                 for k, v in attrs.items():
                     setattr(row, k, v)
                 row.updated_at = now
@@ -1021,8 +1125,11 @@ async def load_pack(
 
     Returns dict with keys like blocks_created, blocks_updated, blocks_skipped,
     blocks_pruned, templates_*, characters_*.
+
+    Blocks are written to the blocks database (BlockPrimitive). Templates and
+    characters continue to use the main application database.
     """
-    from pixsim7.backend.main.domain.prompt import PromptBlock, BlockTemplate
+    from pixsim7.backend.main.domain.prompt import BlockTemplate
     from pixsim7.backend.main.domain.game.entities.character import Character
 
     content_dir = CONTENT_PACKS_DIR / plugin_name
@@ -1032,12 +1139,49 @@ async def load_pack(
     now = datetime.now(timezone.utc)
     combined: Dict[str, int] = {}
 
+    parsed_blocks = parse_blocks(content_dir)
+    primitive_items = [
+        _project_block_to_primitive(item, plugin_name=plugin_name)
+        for item in parsed_blocks
+    ]
+    parsed_templates = parse_templates(content_dir)
+    parsed_characters = parse_characters(content_dir)
+
+    async with get_async_blocks_session() as blocks_db:
+        s = await _upsert_entities(
+            blocks_db,
+            BlockPrimitive,
+            primitive_items,
+            lookup_field="block_id",
+            fields=_BLOCK_FIELDS,
+            create_only=_BLOCK_CREATE_ONLY,
+            force=force,
+            metadata_field="tags",
+            now=now,
+            pack_name=plugin_name,
+            allow_rehome=False,
+        )
+        combined["blocks_created"] = s["created"]
+        combined["blocks_updated"] = s["updated"]
+        combined["blocks_skipped"] = s["skipped"]
+        combined["blocks_pruned"] = 0
+
+        if prune_missing:
+            combined["blocks_pruned"] = await _prune_missing_entities(
+                blocks_db,
+                BlockPrimitive,
+                lookup_field="block_id",
+                metadata_field="tags",
+                source_pack_name=plugin_name,
+                incoming_lookup_values=[item["block_id"] for item in primitive_items],
+            )
+
+        await blocks_db.commit()
+
     for prefix, model, items, fields, create_only, lookup, metadata_field in [
-        ("blocks", PromptBlock, parse_blocks(content_dir),
-         _BLOCK_FIELDS, _BLOCK_CREATE_ONLY, "block_id", "block_metadata"),
-        ("templates", BlockTemplate, parse_templates(content_dir),
+        ("templates", BlockTemplate, parsed_templates,
          _TEMPLATE_FIELDS, _TEMPLATE_CREATE_ONLY, "slug", "template_metadata"),
-        ("characters", Character, parse_characters(content_dir),
+        ("characters", Character, parsed_characters,
          _CHARACTER_FIELDS, _CHARACTER_CREATE_ONLY, "character_id", "character_metadata"),
     ]:
         s = await _upsert_entities(

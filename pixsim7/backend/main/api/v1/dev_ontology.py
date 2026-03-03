@@ -19,7 +19,8 @@ from pydantic import BaseModel
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
-from pixsim7.backend.main.domain.prompt import PromptBlock
+from pixsim7.backend.main.domain.blocks import BlockPrimitive
+from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.services.prompt.block.tagging import extract_ontology_ids_from_tags
 from sqlalchemy import select
 from pixsim_logging import get_logger
@@ -120,12 +121,11 @@ def extract_all_vocab_ids_from_registry() -> Dict[str, Dict[str, Any]]:
     return id_map
 
 
-async def count_vocab_id_usage(db, vocab_id: str, limit: int = 5) -> tuple[int, List[str]]:
+async def count_vocab_id_usage(vocab_id: str, limit: int = 5) -> tuple[int, List[str]]:
     """
     Count how many ActionBlocks use a specific vocabulary ID.
 
     Args:
-        db: Database session
         vocab_id: The vocabulary ID to search for
         limit: Max number of example block IDs to return
 
@@ -133,10 +133,11 @@ async def count_vocab_id_usage(db, vocab_id: str, limit: int = 5) -> tuple[int, 
         (count, example_block_ids)
     """
     # Query all action blocks (limited to avoid performance issues)
-    result = await db.execute(
-        select(PromptBlock).limit(1000)
-    )
-    blocks = result.scalars().all()
+    async with get_async_blocks_session() as blocks_db:
+        result = await blocks_db.execute(
+            select(BlockPrimitive).limit(1000)
+        )
+        blocks = result.scalars().all()
 
     matching_count = 0
     example_block_ids = []
@@ -178,10 +179,11 @@ async def get_ontology_usage(
         id_map = extract_all_vocab_ids_from_registry()
 
         # Build usage report for each ID
+        del db  # Keep dependency shape; usage scan runs against primitives DB.
         id_usages: List[OntologyIdUsage] = []
 
         for vocab_id, metadata in id_map.items():
-            count, examples = await count_vocab_id_usage(db, vocab_id, limit=5)
+            count, examples = await count_vocab_id_usage(vocab_id, limit=5)
 
             id_usages.append(
                 OntologyIdUsage(
@@ -197,8 +199,9 @@ async def get_ontology_usage(
         id_usages.sort(key=lambda x: (-x.action_block_count, x.id))
 
         # Count total action blocks scanned
-        result = await db.execute(select(PromptBlock))
-        total_blocks = len(result.scalars().all())
+        async with get_async_blocks_session() as blocks_db:
+            result = await blocks_db.execute(select(BlockPrimitive))
+            total_blocks = len(result.scalars().all())
 
         response = OntologyUsageResponse(
             vocabulary_version="1.0.0",

@@ -226,7 +226,7 @@ class CharacterTemplateEngine:
         self,
         block_prompt: str,
         track_usage: bool = True,
-        action_block_id: Optional[UUID] = None
+        action_block_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Expand character references in an action block
 

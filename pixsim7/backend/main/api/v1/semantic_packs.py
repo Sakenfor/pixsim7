@@ -15,8 +15,9 @@ from sqlmodel import func
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
-from pixsim7.backend.main.domain.prompt import PromptBlock
+from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.domain.user import User
+from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.shared.schemas.semantic_pack_schemas import (
     SemanticPackManifest,
     SemanticPackCreateRequest,
@@ -264,13 +265,28 @@ async def export_semantic_pack(
 
     # Include ActionBlocks if requested
     if include_action_blocks and pack.action_block_ids:
-        result = await db.execute(
-            select(PromptBlock).where(
-                PromptBlock.block_id.in_(pack.action_block_ids)
+        async with get_async_blocks_session() as blocks_db:
+            result = await blocks_db.execute(
+                select(BlockPrimitive).where(
+                    BlockPrimitive.block_id.in_(pack.action_block_ids)
+                )
             )
-        )
-        blocks = result.scalars().all()
-        export_data.action_blocks = [block.to_json_dict() for block in blocks]
+            blocks = result.scalars().all()
+
+        export_data.action_blocks = [
+            {
+                "id": block.block_id,
+                "block_id": block.block_id,
+                "category": block.category,
+                "text": block.text,
+                "tags": block.tags if isinstance(block.tags, dict) else {},
+                "source": block.source,
+                "is_public": bool(block.is_public),
+                "avg_rating": block.avg_rating,
+                "usage_count": int(block.usage_count or 0),
+            }
+            for block in blocks
+        ]
 
     # Include PromptFamilies if requested
     if include_prompt_families and pack.prompt_family_slugs:

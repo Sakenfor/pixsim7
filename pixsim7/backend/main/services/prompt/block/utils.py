@@ -1,13 +1,13 @@
 """
-Utilities for building ActionBlock objects from AI suggestions
+Utilities for building primitive blocks from AI suggestions.
 
-Helps convert category discovery suggestions into draft PromptBlock instances
-that can be persisted via the existing API.
+Helps convert category discovery suggestions into draft BlockPrimitive
+instances that can be persisted via the existing API.
 """
 from typing import Optional
 from datetime import datetime, timezone
 
-from pixsim7.backend.main.domain.prompt import PromptBlock
+from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.services.prompt.candidates import candidate_from_suggested_action_block
 from pixsim7.backend.main.shared.schemas.discovery_schemas import (
     PromptBlockCandidate,
@@ -19,17 +19,17 @@ def build_draft_action_block_from_candidate(
     candidate: PromptBlockCandidate,
     package_name: Optional[str] = None,
     source_prompt: Optional[str] = None,
-) -> PromptBlock:
+) -> BlockPrimitive:
     """
-    Build a draft PromptBlock instance from a normalized candidate.
+    Build a draft BlockPrimitive instance from a normalized candidate.
 
-    Creates a minimal draft action block with:
+    Creates a minimal draft primitive with:
     - block_id from candidate.block_id
-    - prompt from candidate.text
+    - text from candidate.text
+    - category from candidate.category (or candidate.role fallback)
     - tags from candidate.tags (ontology-aligned where possible)
-    - source_type: candidate.source_type (default: "ai_suggested")
-    - is_composite: False by default
-    - Other fields set to sensible defaults
+    - source inferred from source_type
+    - is_public=False by default (draft/private)
 
     Args:
         candidate: The normalized candidate to promote to a block
@@ -37,55 +37,12 @@ def build_draft_action_block_from_candidate(
         source_prompt: Optional excerpt from the prompt that generated this suggestion
 
     Returns:
-        A new PromptBlock instance (not yet persisted to DB)
+        A new BlockPrimitive instance (not yet persisted to DB)
     """
     if not candidate.block_id:
         raise ValueError("PromptBlockCandidate.block_id is required")
 
     source_type = candidate.source_type or "ai_suggested"
-
-    # Build metadata for traceability (Task D)
-    block_metadata = {
-        "source_type": source_type,
-        "source_discovery_timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-
-    # Add source prompt excerpt if provided (first 200 chars)
-    if source_prompt:
-        excerpt_length = min(200, len(source_prompt))
-        block_metadata["source_prompt_excerpt"] = source_prompt[:excerpt_length]
-
-    # Add any notes from the candidate
-    if candidate.notes:
-        block_metadata["ai_suggestion_notes"] = candidate.notes
-
-    if candidate.metadata:
-        block_metadata["candidate_metadata"] = candidate.metadata
-
-    if candidate.matched_keywords:
-        block_metadata["candidate_matched_keywords"] = candidate.matched_keywords
-
-    if candidate.role_scores:
-        block_metadata["candidate_role_scores"] = candidate.role_scores
-
-    if candidate.ontology_ids:
-        block_metadata["candidate_ontology_ids"] = candidate.ontology_ids
-
-    # Calculate basic stats
-    char_count = len(candidate.text)
-    word_count = len(candidate.text.split())
-
-    # Determine complexity level based on character count
-    if char_count < 300:
-        complexity_level = "simple"
-    elif char_count < 600:
-        complexity_level = "moderate"
-    elif char_count < 1000:
-        complexity_level = "complex"
-    else:
-        complexity_level = "very_complex"
-
-    # Determine kind from tags if available, default to single_state
     tags = candidate.tags.copy() if isinstance(candidate.tags, dict) else {}
     if candidate.ontology_ids:
         existing = tags.get("ontology_ids")
@@ -98,43 +55,61 @@ def build_draft_action_block_from_candidate(
         if merged:
             tags["ontology_ids"] = merged
 
-    kind = tags.get("kind", "single_state")
-    if kind not in ["single_state", "transition"]:
-        kind = "single_state"
+    if candidate.role and isinstance(candidate.role, str):
+        role = candidate.role.strip()
+        if role:
+            tags.setdefault("role", role)
 
-    # Create the draft action block
-    block = PromptBlock(
+    if package_name and isinstance(package_name, str):
+        source_pack = package_name.strip()
+        if source_pack:
+            tags.setdefault("source_pack", source_pack)
+
+    trace: dict[str, object] = {
+        "source_type": source_type,
+        "source_discovery_timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    if source_prompt:
+        excerpt_length = min(200, len(source_prompt))
+        trace["source_prompt_excerpt"] = source_prompt[:excerpt_length]
+    if candidate.notes:
+        trace["ai_suggestion_notes"] = candidate.notes
+    if candidate.metadata:
+        trace["candidate_metadata"] = candidate.metadata
+    if candidate.matched_keywords:
+        trace["candidate_matched_keywords"] = candidate.matched_keywords
+    if candidate.role_scores:
+        trace["candidate_role_scores"] = candidate.role_scores
+    if trace:
+        tags.setdefault("trace", trace)
+
+    category = None
+    if isinstance(candidate.category, str):
+        candidate_category = candidate.category.strip()
+        if candidate_category:
+            category = candidate_category
+    if not category and isinstance(candidate.role, str):
+        role_category = candidate.role.strip()
+        if role_category:
+            category = role_category
+    if not category:
+        category = "uncategorized"
+
+    source = "imported"
+    if source_type in {"library", "system"}:
+        source = "system"
+    elif source_type in {"user_created", "user"}:
+        source = "user"
+
+    block = BlockPrimitive(
         block_id=candidate.block_id,
-        role=candidate.role,
-        category=candidate.category,
-        kind=kind,
-        prompt=candidate.text,
-        negative_prompt=None,  # Not provided in suggestions
-        style="soft_cinema",  # Default style
-        duration_sec=6.0,  # Default duration
+        category=category,
+        text=candidate.text,
         tags=tags,
-        compatible_next=[],  # Will be determined later during compatibility analysis
-        compatible_prev=[],  # Will be determined later during compatibility analysis
-        complexity_level=complexity_level,
-        char_count=char_count,
-        word_count=word_count,
-        source_type=source_type,
-        extracted_from_prompt_version=None,  # Not linked to a specific prompt version
-        is_composite=False,  # Simple blocks by default
-        component_blocks=[],
-        composition_strategy=None,
-        prompt_version_id=None,
-        package_name=package_name or "ai_suggested",
-        camera_movement=None,
-        consistency=None,
-        intensity_progression=None,
+        source=source,
+        is_public=False,
         usage_count=0,
-        success_count=0,
         avg_rating=None,
-        is_public=False,  # Keep AI-suggested blocks private by default until reviewed
-        created_by="ai_discovery",
-        description=candidate.notes or f"AI-suggested block: {candidate.block_id}",
-        block_metadata=block_metadata,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -146,9 +121,9 @@ def build_draft_action_block_from_suggestion(
     suggestion: SuggestedActionBlock,
     package_name: Optional[str] = None,
     source_prompt: Optional[str] = None,
-) -> PromptBlock:
+) -> BlockPrimitive:
     """
-    Build a draft PromptBlock instance from an AI suggestion.
+    Build a draft BlockPrimitive instance from an AI suggestion.
 
     Backward-compatible wrapper that normalizes into PromptBlockCandidate.
     """

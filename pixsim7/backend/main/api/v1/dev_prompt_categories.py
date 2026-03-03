@@ -24,10 +24,15 @@ from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.services.prompt.parser import analyze_prompt
 from pixsim7.backend.main.services.llm.ai_hub_service import AiHubService
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
-from pixsim7.backend.main.domain.prompt import PromptBlock
+from pixsim7.backend.main.domain.blocks import BlockPrimitive
+from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.services.semantic_packs.utils import (
     build_draft_pack_from_suggestion,
     merge_parser_hints,
+)
+from pixsim7.backend.main.services.prompt.block.block_id_policy import (
+    is_namespaced_block_id,
+    namespaced_block_id_error,
 )
 from pixsim7.backend.main.services.prompt.block.utils import (
     build_draft_action_block_from_candidate,
@@ -265,7 +270,7 @@ class ApplyPackSuggestionRequest(BaseModel):
 
 
 class ApplyBlockSuggestionRequest(BaseModel):
-    """Request to apply a block candidate as a draft PromptBlock"""
+    """Request to apply a block candidate as a draft primitive block."""
     block_id: str = Field(..., description="Unique block identifier")
     text: str = Field(..., description="The prompt text for this block")
     role: Optional[str] = Field(
@@ -470,12 +475,12 @@ async def apply_block_suggestion(
     request: ApplyBlockSuggestionRequest,
 ) -> ApplyBlockSuggestionResponse:
     """
-    Apply a block suggestion by creating a draft PromptBlock.
+    Apply a block suggestion by creating a draft BlockPrimitive.
 
     Behavior:
     - If block with block_id exists: return 400 error (no overwrites)
-    - If block doesn't exist: create new draft block with source_type='ai_suggested'
-    - Always marks block as AI-suggested in metadata
+    - If block doesn't exist: create new draft primitive with source='imported'
+    - Always marks block as AI-suggested in tags.trace
 
     Args:
         request: Block suggestion details from Prompt Lab
@@ -495,6 +500,11 @@ async def apply_block_suggestion(
             status_code=400,
             detail="block_id and text are required and cannot be empty"
         )
+    if not is_namespaced_block_id(block_id):
+        raise HTTPException(
+            status_code=400,
+            detail=namespaced_block_id_error(block_id),
+        )
 
     logger.info(
         "apply_block_suggestion_start",
@@ -506,66 +516,69 @@ async def apply_block_suggestion(
     )
 
     try:
-        # Check if block already exists
-        result = await db.execute(
-            select(PromptBlock).where(PromptBlock.block_id == block_id)
-        )
-        existing_block = result.scalar_one_or_none()
+        del db  # Endpoint retains main DB dependency shape; block writes use blocks DB.
 
-        if existing_block:
-            # Block already exists - don't overwrite
-            logger.warning(
-                "apply_block_suggestion_already_exists",
+        async with get_async_blocks_session() as blocks_db:
+            # Check if block already exists
+            result = await blocks_db.execute(
+                select(BlockPrimitive).where(BlockPrimitive.block_id == block_id)
+            )
+            existing_block = result.scalar_one_or_none()
+
+            if existing_block:
+                # Block already exists - don't overwrite
+                logger.warning(
+                    "apply_block_suggestion_already_exists",
+                    extra={
+                        "user_id": user.id,
+                        "block_id": block_id,
+                    }
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"ActionBlock with block_id '{block_id}' already exists. "
+                           f"Cannot overwrite existing blocks."
+                )
+
+            # Create new draft block
+            logger.info(
+                "apply_block_suggestion_create_new",
                 extra={
                     "user_id": user.id,
                     "block_id": block_id,
+                    "package_name": request.package_name,
                 }
             )
-            raise HTTPException(
-                status_code=400,
-                detail=f"ActionBlock with block_id '{block_id}' already exists. "
-                       f"Cannot overwrite existing blocks."
+
+            # Build candidate object
+            candidate = PromptBlockCandidate(
+                block_id=block_id,
+                text=prompt,
+                role=request.role,
+                category=request.category,
+                ontology_ids=request.ontology_ids,
+                tags=request.tags,
+                source_type=request.source_type or "ai_suggested",
+                notes=request.notes,
             )
 
-        # Create new draft block
-        logger.info(
-            "apply_block_suggestion_create_new",
-            extra={
-                "user_id": user.id,
-                "block_id": block_id,
-                "package_name": request.package_name,
-            }
-        )
+            # Build draft primitive block
+            new_block = build_draft_action_block_from_candidate(
+                candidate=candidate,
+                package_name=request.package_name,
+                source_prompt=request.source_prompt,
+            )
 
-        # Build candidate object
-        candidate = PromptBlockCandidate(
-            block_id=block_id,
-            text=prompt,
-            role=request.role,
-            category=request.category,
-            ontology_ids=request.ontology_ids,
-            tags=request.tags,
-            source_type=request.source_type or "ai_suggested",
-            notes=request.notes,
-        )
+            blocks_db.add(new_block)
+            await blocks_db.commit()
+            await blocks_db.refresh(new_block)
 
-        # Build draft action block
-        new_block = build_draft_action_block_from_candidate(
-            candidate=candidate,
-            package_name=request.package_name,
-            source_prompt=request.source_prompt,
-        )
-
-        db.add(new_block)
-        await db.commit()
-        await db.refresh(new_block)
-
-        return ApplyBlockSuggestionResponse(
-            success=True,
-            block_id=block_id,
-            message=f"Created new draft ActionBlock '{block_id}'",
-            db_id=str(new_block.id),
-        )
+            return ApplyBlockSuggestionResponse(
+                success=True,
+                block_id=block_id,
+                message=f"Created new draft ActionBlock '{block_id}'",
+                db_id=str(new_block.id),
+            )
 
     except HTTPException:
         # Re-raise HTTP exceptions as-is
@@ -580,7 +593,6 @@ async def apply_block_suggestion(
                 "error_type": e.__class__.__name__,
             }
         )
-        await db.rollback()
         raise HTTPException(
             status_code=500,
             detail=f"Failed to apply block suggestion: {str(e)}"

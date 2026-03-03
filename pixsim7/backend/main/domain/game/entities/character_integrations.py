@@ -117,7 +117,7 @@ class CharacterCapability(SQLModel, table=True):
     skill_level: int = Field(default=5)  # 1-10 scale
 
     # Action blocks this capability enables
-    action_blocks: List[UUID] = Field(
+    action_blocks: List[str] = Field(
         default_factory=list,
         sa_column=Column(JSON)
     )

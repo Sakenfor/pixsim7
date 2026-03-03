@@ -20,6 +20,10 @@ from pixsim7.backend.main.services.prompt.block.template_service import BlockTem
 from pixsim7.backend.main.services.prompt.block.block_primitive_query import (
     build_block_primitive_query,
 )
+from pixsim7.backend.main.services.prompt.block.block_id_policy import (
+    is_namespaced_block_id,
+    namespaced_block_id_error,
+)
 from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.services.prompt.block.template_slots import (
     TemplateSlotSpec,
@@ -1367,6 +1371,11 @@ async def upsert_block_by_block_id(
         if block is None:
             if not create_if_missing:
                 raise HTTPException(status_code=404, detail="block_not_found")
+            if not is_namespaced_block_id(normalized_block_id):
+                raise HTTPException(
+                    status_code=400,
+                    detail=namespaced_block_id_error(normalized_block_id),
+                )
 
             block = BlockPrimitive(
                 block_id=normalized_block_id,

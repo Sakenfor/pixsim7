@@ -11,8 +11,6 @@ from typing import Any, Dict, Iterable, Optional
 
 from sqlalchemy import func, or_, select
 
-from pixsim7.backend.main.domain.prompt import PromptBlock
-
 
 _COMPLEXITY_ORDER = ["simple", "moderate", "complex", "very_complex"]
 _TAG_QUERY_GROUP_ALIASES = {
@@ -109,6 +107,10 @@ def build_prompt_block_query(
     text_query: Optional[str] = None,
 ):
     """Build a SQLAlchemy select for PromptBlock with shared filter semantics."""
+    # Keep PromptBlock import local so modules that only need tag normalization
+    # (e.g. primitive queries) do not load legacy action-block ORM mappings.
+    from pixsim7.backend.main.domain.prompt import PromptBlock
+
     query = select(PromptBlock)
 
     if role:

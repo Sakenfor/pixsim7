@@ -13,10 +13,26 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select
 
 from pixsim7.backend.main.domain.game.entities import CharacterCapability
-from pixsim7.backend.main.domain.prompt import PromptBlock
+from pixsim7.backend.main.domain.blocks import BlockPrimitive
+from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
+
+
+def _normalize_block_ids(values: Optional[List[Any]]) -> List[str]:
+    """Normalize a list of block identifiers into non-empty unique strings."""
+    if not values:
+        return []
+    normalized: List[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        normalized.append(text)
+    return normalized
 
 
 class CharacterCapabilityService:
@@ -31,7 +47,7 @@ class CharacterCapabilityService:
         skill_level: int = 5,
         character_id: Optional[UUID] = None,
         character_instance_id: Optional[UUID] = None,
-        action_blocks: Optional[List[UUID]] = None,
+        action_blocks: Optional[List[str]] = None,
         conditions: Optional[Dict[str, Any]] = None,
         effects: Optional[Dict[str, Any]] = None,
         cooldown_seconds: Optional[int] = None,
@@ -64,7 +80,7 @@ class CharacterCapabilityService:
             character_instance_id=character_instance_id,
             capability_type=capability_type,
             skill_level=min(max(skill_level, 1), 10),  # Clamp to 1-10
-            action_blocks=action_blocks or [],
+            action_blocks=_normalize_block_ids(action_blocks),
             conditions=conditions or {},
             effects=effects or {},
             cooldown_seconds=cooldown_seconds,
@@ -173,7 +189,7 @@ class CharacterCapabilityService:
     async def get_action_blocks_for_capability(
         self,
         capability_id: UUID
-    ) -> List[PromptBlock]:
+    ) -> List[BlockPrimitive]:
         """Get action blocks enabled by a capability
 
         Args:
@@ -186,13 +202,20 @@ class CharacterCapabilityService:
         if not capability or not capability.action_blocks:
             return []
 
-        # Get action blocks
-        result = await self.db.execute(
-            select(PromptBlock).where(
-                PromptBlock.id.in_(capability.action_blocks)
+        block_ids = _normalize_block_ids(capability.action_blocks)
+        if not block_ids:
+            return []
+
+        async with get_async_blocks_session() as blocks_db:
+            result = await blocks_db.execute(
+                select(BlockPrimitive).where(
+                    BlockPrimitive.block_id.in_(block_ids)
+                )
             )
-        )
-        return list(result.scalars().all())
+            rows = list(result.scalars().all())
+
+        rows_by_id = {str(row.block_id): row for row in rows}
+        return [rows_by_id[block_id] for block_id in block_ids if block_id in rows_by_id]
 
     async def get_available_action_blocks(
         self,
@@ -229,14 +252,16 @@ class CharacterCapabilityService:
 
             for block in blocks:
                 available_blocks.append({
-                    "action_block_id": str(block.id),
+                    "action_block_id": block.block_id,
                     "block_id": block.block_id,
                     "capability_type": cap_type,
                     "skill_level": capability.skill_level,
                     "conditions": capability.conditions,
                     "effects": capability.effects,
                     "cooldown_seconds": capability.cooldown_seconds,
-                    "block_prompt": block.prompt[:100] + "..." if len(block.prompt) > 100 else block.prompt
+                    "block_prompt": (
+                        block.text[:100] + "..." if len(block.text) > 100 else block.text
+                    ),
                 })
 
         return available_blocks
@@ -245,7 +270,7 @@ class CharacterCapabilityService:
         self,
         capability_id: UUID,
         skill_level: Optional[int] = None,
-        action_blocks: Optional[List[UUID]] = None,
+        action_blocks: Optional[List[str]] = None,
         conditions: Optional[Dict[str, Any]] = None,
         effects: Optional[Dict[str, Any]] = None,
         cooldown_seconds: Optional[int] = None
@@ -270,7 +295,7 @@ class CharacterCapabilityService:
         if skill_level is not None:
             capability.skill_level = min(max(skill_level, 1), 10)
         if action_blocks is not None:
-            capability.action_blocks = action_blocks
+            capability.action_blocks = _normalize_block_ids(action_blocks)
         if conditions is not None:
             capability.conditions = conditions
         if effects is not None:

@@ -9,20 +9,20 @@ Purpose:
 
 Design:
 - Dev-only endpoints (no production use yet)
-- Integrates with PromptBlock, Asset, and Generation models
+- Integrates with BlockPrimitive, Asset, and Generation models
 - Stores fit feedback in BlockImageFit table
 """
 from fastapi import APIRouter, HTTPException
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
-from uuid import UUID
 from datetime import datetime
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.domain.prompt import PromptBlock
+from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.domain.generation.block_image_fit import BlockImageFit
+from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.services.asset.tags import tag_asset_from_metadata
 from pixsim7.backend.main.services.prompt.block.fit_scoring import (
     compute_block_asset_fit,
@@ -40,13 +40,13 @@ router = APIRouter(prefix="/dev/block-fit", tags=["dev", "block-fit"])
 
 class ComputeFitRequest(BaseModel):
     """Request to compute fit score between a block and asset."""
-    block_id: UUID = Field(..., description="PromptBlock.id to evaluate")
+    block_id: str = Field(..., description="BlockPrimitive.block_id to evaluate")
     asset_id: int = Field(..., description="Asset.id to evaluate against")
 
 
 class RateFitRequest(BaseModel):
     """Request to rate and record block-to-asset fit."""
-    block_id: UUID = Field(..., description="PromptBlock.id to evaluate")
+    block_id: str = Field(..., description="BlockPrimitive.block_id to evaluate")
     asset_id: int = Field(..., description="Asset.id to evaluate against")
     generation_id: Optional[int] = Field(None, description="Optional Generation.id")
     role_in_sequence: str = Field(
@@ -73,7 +73,7 @@ class FitScoreResponse(BaseModel):
 class FitRatingResponse(BaseModel):
     """Response after recording a fit rating."""
     id: int
-    block_id: UUID
+    block_id: str
     asset_id: int
     generation_id: Optional[int]
     role_in_sequence: str
@@ -111,11 +111,16 @@ async def compute_fit_score(
 
     No data is persisted by this endpoint - use /rate to record feedback.
     """
-    # Load block
-    block_result = await db.execute(
-        select(PromptBlock).where(PromptBlock.id == request.block_id)
-    )
-    block = block_result.scalar_one_or_none()
+    block_id = str(request.block_id or "").strip()
+    if not block_id:
+        raise HTTPException(status_code=400, detail="block_id is required")
+
+    # Load block from primitives DB
+    async with get_async_blocks_session() as blocks_db:
+        block_result = await blocks_db.execute(
+            select(BlockPrimitive).where(BlockPrimitive.block_id == block_id)
+        )
+        block = block_result.scalar_one_or_none()
     if not block:
         raise HTTPException(status_code=404, detail="ActionBlock not found")
 
@@ -150,7 +155,7 @@ async def compute_fit_score(
     logger.info(
         "Computed fit score",
         extra={
-            "block_id": str(block.id),
+            "block_id": block.block_id,
             "asset_id": asset.id,
             "score": score,
         }
@@ -184,11 +189,16 @@ async def rate_fit(
 
     Use this to collect training data for fit scoring improvements.
     """
-    # Load block
-    block_result = await db.execute(
-        select(PromptBlock).where(PromptBlock.id == request.block_id)
-    )
-    block = block_result.scalar_one_or_none()
+    block_id = str(request.block_id or "").strip()
+    if not block_id:
+        raise HTTPException(status_code=400, detail="block_id is required")
+
+    # Load block from primitives DB
+    async with get_async_blocks_session() as blocks_db:
+        block_result = await blocks_db.execute(
+            select(BlockPrimitive).where(BlockPrimitive.block_id == block_id)
+        )
+        block = block_result.scalar_one_or_none()
     if not block:
         raise HTTPException(status_code=404, detail="ActionBlock not found")
 
@@ -232,7 +242,7 @@ async def rate_fit(
 
     # Create BlockImageFit record
     fit_record = BlockImageFit(
-        block_id=request.block_id,
+        block_id=block_id,
         asset_id=request.asset_id,
         generation_id=request.generation_id,
         role_in_sequence=request.role_in_sequence,
@@ -253,7 +263,7 @@ async def rate_fit(
         "Recorded fit rating",
         extra={
             "fit_id": fit_record.id,
-            "block_id": str(request.block_id),
+            "block_id": block_id,
             "asset_id": request.asset_id,
             "rating": request.fit_rating,
             "heuristic_score": score,
@@ -265,7 +275,7 @@ async def rate_fit(
 
 @router.get("/list", response_model=FitRatingListResponse)
 async def list_fit_ratings(
-    block_id: Optional[UUID] = None,
+    block_id: Optional[str] = None,
     asset_id: Optional[int] = None,
     db: DatabaseSession = None,
     user: CurrentUser = None,
@@ -278,8 +288,9 @@ async def list_fit_ratings(
     """
     query = select(BlockImageFit).order_by(BlockImageFit.created_at.desc())
 
-    if block_id:
-        query = query.where(BlockImageFit.block_id == block_id)
+    normalized_block_id = str(block_id or "").strip()
+    if normalized_block_id:
+        query = query.where(BlockImageFit.block_id == normalized_block_id)
     if asset_id:
         query = query.where(BlockImageFit.asset_id == asset_id)
 
