@@ -921,6 +921,13 @@ class ProviderService:
             thumbnail_url = status_result.thumbnail_url or existing_thumbnail
         provider_video_id = status_result.provider_video_id or existing_provider_id or submission.provider_job_id
 
+        # Stamp media_type from OPERATION_REGISTRY so asset creation never
+        # has to guess from ambiguous video_url / image_url keys.
+        if operation_type:
+            op_spec = OPERATION_REGISTRY.get(operation_type)
+            if op_spec:
+                submission.response.setdefault("media_type", op_spec.output_media)
+
         # Update response - use assignment to ensure SQLAlchemy detects the change
         updated_response = {
             **submission.response,

@@ -133,17 +133,21 @@ class AssetCreationMixin:
                 "Submission response missing required fields (provider_asset_id/provider_video_id, asset_url/video_url)"
             )
 
-        # Detect media type from response or infer from operation type
-        media_type_str = response.get("media_type")
-        if media_type_str:
-            media_type = MediaType(media_type_str)
-        elif response.get("image_url") or response.get("provider_image_id"):
-            media_type = MediaType.IMAGE
-        elif response.get("video_url") or response.get("provider_video_id"):
-            media_type = MediaType.VIDEO
+        # Detect media type from OPERATION_REGISTRY (authoritative).
+        # Response keys are unreliable — the polling pipeline always writes
+        # video_url/provider_video_id regardless of operation type.
+        from pixsim7.backend.main.shared.operation_mapping import OPERATION_REGISTRY
+        operation_type = getattr(generation, "operation_type", None)
+        op_spec = OPERATION_REGISTRY.get(operation_type) if operation_type else None
+        if op_spec:
+            media_type = MediaType.IMAGE if op_spec.output_media == "image" else MediaType.VIDEO
         else:
-            # Default to video for backward compatibility
-            media_type = MediaType.VIDEO
+            # Fallback for legacy/missing operation_type
+            media_type_str = response.get("media_type")
+            if media_type_str:
+                media_type = MediaType(media_type_str)
+            else:
+                media_type = MediaType.VIDEO
 
         # Extract metadata up-front for dedup and insert
         metadata = response.get("metadata", {})
