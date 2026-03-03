@@ -20,6 +20,7 @@ import { usePanelConfigStore, type GalleryPanelSettings, type GalleryGroupMultiL
 
 import { pixsimClient } from '@/lib/api';
 
+import { ContentPacksDashboard } from '../../components/shared/ContentPacksDashboard';
 import { LocalFoldersStatus } from '../../components/shared/LocalFoldersStatus';
 import { MaintenanceDashboard } from '../../components/shared/MaintenanceDashboard';
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
@@ -377,6 +378,20 @@ const maintenanceTab: SettingTab = {
           type: 'custom',
           label: 'Maintenance',
           component: MaintenanceDashboard,
+        },
+      ],
+    },
+    {
+      id: 'content-packs-dashboard',
+      title: 'Content Packs',
+      showWhen: adminOnly,
+      adminGroup: true,
+      fields: [
+        {
+          id: 'content-packs-dashboard-widget',
+          type: 'custom',
+          label: 'Content Packs',
+          component: ContentPacksDashboard,
         },
       ],
     },

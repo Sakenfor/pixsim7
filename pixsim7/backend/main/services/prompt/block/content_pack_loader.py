@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Type
 from uuid import uuid4
 
 import yaml
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel
 
@@ -223,12 +223,15 @@ def _set_content_pack_source(metadata: Dict[str, Any], pack_name: str) -> Dict[s
 
 
 def discover_content_packs() -> List[str]:
-    """Return pack names under content_packs/prompt/."""
+    """Return pack names under content_packs/prompt/.
+
+    Directories whose name starts with ``_`` (e.g. ``_archived``) are skipped.
+    """
     if not CONTENT_PACKS_DIR.exists():
         return []
     return sorted(
         d.name for d in CONTENT_PACKS_DIR.iterdir()
-        if d.is_dir() and (
+        if d.is_dir() and not d.name.startswith("_") and (
             _has_any_pack_source(d, "blocks")
             or _has_any_pack_source(d, "templates")
             or _has_any_pack_source(d, "characters")
@@ -1244,3 +1247,165 @@ async def seed_content_packs(db: AsyncSession) -> int:
             )
 
     return total_created
+
+
+async def get_content_pack_inventory(db: AsyncSession) -> Dict[str, Any]:
+    """Build an inventory of content packs across DB and disk.
+
+    Returns a dict with:
+      - disk_packs: list of pack names found on disk
+      - packs: {name: {status, blocks, templates, characters}}
+      - summary: {orphaned_packs, total_orphaned_entities, ...}
+    """
+    from pixsim7.backend.main.domain.prompt import BlockTemplate
+    from pixsim7.backend.main.domain.game.entities.character import Character
+
+    disk_packs = set(discover_content_packs())
+
+    # Query distinct content_pack values + counts from each entity type
+    db_packs: Dict[str, Dict[str, int]] = {}  # pack -> {blocks, templates, characters}
+
+    # BlockPrimitive lives in the blocks DB
+    async with get_async_blocks_session() as blocks_db:
+        result = await blocks_db.execute(
+            select(
+                BlockPrimitive.tags.op("->>")(CONTENT_PACK_SOURCE_KEY).label("pack"),
+                func.count().label("cnt"),
+            )
+            .where(BlockPrimitive.tags.op("->>")(CONTENT_PACK_SOURCE_KEY).isnot(None))
+            .group_by("pack")
+        )
+        for row in result.all():
+            pack_name = row.pack
+            if pack_name:
+                db_packs.setdefault(pack_name, {"blocks": 0, "templates": 0, "characters": 0})
+                db_packs[pack_name]["blocks"] = row.cnt
+
+    # BlockTemplate in main DB
+    result = await db.execute(
+        select(
+            BlockTemplate.template_metadata.op("->>")(CONTENT_PACK_SOURCE_KEY).label("pack"),
+            func.count().label("cnt"),
+        )
+        .where(BlockTemplate.template_metadata.op("->>")(CONTENT_PACK_SOURCE_KEY).isnot(None))
+        .group_by("pack")
+    )
+    for row in result.all():
+        pack_name = row.pack
+        if pack_name:
+            db_packs.setdefault(pack_name, {"blocks": 0, "templates": 0, "characters": 0})
+            db_packs[pack_name]["templates"] = row.cnt
+
+    # Character in main DB
+    result = await db.execute(
+        select(
+            Character.character_metadata.op("->>")(CONTENT_PACK_SOURCE_KEY).label("pack"),
+            func.count().label("cnt"),
+        )
+        .where(Character.character_metadata.op("->>")(CONTENT_PACK_SOURCE_KEY).isnot(None))
+        .group_by("pack")
+    )
+    for row in result.all():
+        pack_name = row.pack
+        if pack_name:
+            db_packs.setdefault(pack_name, {"blocks": 0, "templates": 0, "characters": 0})
+            db_packs[pack_name]["characters"] = row.cnt
+
+    # Merge disk + DB pack names
+    all_pack_names = sorted(disk_packs | set(db_packs.keys()))
+
+    packs: Dict[str, Dict[str, Any]] = {}
+    orphaned_packs = 0
+    total_orphaned_entities = 0
+
+    for name in all_pack_names:
+        in_db = name in db_packs
+        on_disk = name in disk_packs
+        counts = db_packs.get(name, {"blocks": 0, "templates": 0, "characters": 0})
+
+        if on_disk and in_db:
+            status = "active"
+        elif in_db and not on_disk:
+            status = "orphaned"
+            orphaned_packs += 1
+            total_orphaned_entities += counts["blocks"] + counts["templates"] + counts["characters"]
+        else:
+            status = "disk_only"
+
+        packs[name] = {"status": status, **counts}
+
+    return {
+        "disk_packs": sorted(disk_packs),
+        "packs": packs,
+        "summary": {
+            "total_packs": len(all_pack_names),
+            "active_packs": sum(1 for p in packs.values() if p["status"] == "active"),
+            "orphaned_packs": orphaned_packs,
+            "disk_only_packs": sum(1 for p in packs.values() if p["status"] == "disk_only"),
+            "total_orphaned_entities": total_orphaned_entities,
+        },
+    }
+
+
+async def purge_orphaned_pack(db: AsyncSession, pack_name: str) -> Dict[str, int]:
+    """Delete all entities belonging to a content pack no longer on disk.
+
+    Safety: refuses if the pack still exists on disk.
+    Returns {blocks_purged, templates_purged, characters_purged}.
+    """
+    from pixsim7.backend.main.domain.prompt import BlockTemplate
+    from pixsim7.backend.main.domain.game.entities.character import Character
+
+    if pack_name in discover_content_packs():
+        raise ValueError(
+            f"Pack '{pack_name}' still exists on disk. "
+            "Archive or remove it before purging."
+        )
+
+    result: Dict[str, int] = {
+        "blocks_purged": 0,
+        "templates_purged": 0,
+        "characters_purged": 0,
+    }
+
+    # Purge BlockPrimitive from blocks DB
+    async with get_async_blocks_session() as blocks_db:
+        result["blocks_purged"] = await _prune_missing_entities(
+            blocks_db,
+            BlockPrimitive,
+            lookup_field="block_id",
+            metadata_field="tags",
+            source_pack_name=pack_name,
+            incoming_lookup_values=[],
+        )
+        await blocks_db.commit()
+
+    # Purge BlockTemplate from main DB
+    result["templates_purged"] = await _prune_missing_entities(
+        db,
+        BlockTemplate,
+        lookup_field="slug",
+        metadata_field="template_metadata",
+        source_pack_name=pack_name,
+        incoming_lookup_values=[],
+    )
+
+    # Purge Character from main DB
+    result["characters_purged"] = await _prune_missing_entities(
+        db,
+        Character,
+        lookup_field="character_id",
+        metadata_field="character_metadata",
+        source_pack_name=pack_name,
+        incoming_lookup_values=[],
+    )
+
+    await db.commit()
+
+    logger.info(
+        "content_pack_purged",
+        pack=pack_name,
+        **{k: v for k, v in result.items() if v},
+    )
+
+    return result

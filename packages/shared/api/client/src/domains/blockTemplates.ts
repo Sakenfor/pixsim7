@@ -287,6 +287,37 @@ export interface ReloadContentPacksResponse {
   results: Record<string, ReloadContentPackStats>;
 }
 
+export interface ContentPackInfo {
+  status: 'active' | 'orphaned' | 'disk_only';
+  blocks: number;
+  templates: number;
+  characters: number;
+}
+
+export interface ContentPackInventory {
+  disk_packs: string[];
+  packs: Record<string, ContentPackInfo>;
+  summary: {
+    total_packs: number;
+    active_packs: number;
+    orphaned_packs: number;
+    disk_only_packs: number;
+    total_orphaned_entities: number;
+  };
+}
+
+export interface PurgeContentPackStats {
+  blocks_purged?: number;
+  templates_purged?: number;
+  characters_purged?: number;
+  error?: string;
+}
+
+export interface PurgeContentPacksResponse {
+  packs_purged: number;
+  results: Record<string, PurgeContentPackStats>;
+}
+
 export interface TemplateSlotPackageCount {
   package_name: string | null;
   count: number;
@@ -420,6 +451,20 @@ export function createBlockTemplatesApi(client: PixSimApiClient) {
         '/block-templates/meta/content-packs/reload',
         undefined,
         { params: query },
+      );
+    },
+
+    async getContentPackInventory(): Promise<ContentPackInventory> {
+      return client.get<ContentPackInventory>(
+        '/block-templates/meta/content-packs/inventory',
+      );
+    },
+
+    async purgeOrphanedPacks(pack?: string): Promise<PurgeContentPacksResponse> {
+      return client.post<PurgeContentPacksResponse>(
+        '/block-templates/meta/content-packs/purge',
+        undefined,
+        { params: pack ? { pack } : undefined },
       );
     },
 

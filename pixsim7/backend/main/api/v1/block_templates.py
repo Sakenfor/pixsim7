@@ -2032,3 +2032,58 @@ async def reload_content_packs(
             results[pack_name] = {"error": str(e)}
 
     return {"packs_processed": len(packs), "results": results}
+
+
+@router.get("/meta/content-packs/inventory")
+async def get_content_pack_inventory(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return full inventory of content packs (DB + disk), with entity counts and status."""
+    from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
+        get_content_pack_inventory as _get_inventory,
+    )
+
+    return await _get_inventory(db)
+
+
+@router.post("/meta/content-packs/purge")
+async def purge_content_packs(
+    pack: Optional[str] = Query(None, description="Specific orphaned pack to purge (default: all orphaned)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Purge orphaned content pack entities (packs no longer on disk).
+
+    If pack is specified, purges that single pack. Otherwise purges all orphaned packs.
+    """
+    from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
+        get_content_pack_inventory as _get_inventory,
+        purge_orphaned_pack,
+    )
+
+    if pack:
+        try:
+            stats = await purge_orphaned_pack(db, pack)
+            return {"packs_purged": 1, "results": {pack: stats}}
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    # Purge all orphaned packs
+    inventory = await _get_inventory(db)
+    orphaned = [
+        name for name, info in inventory["packs"].items()
+        if info["status"] == "orphaned"
+    ]
+
+    if not orphaned:
+        return {"packs_purged": 0, "results": {}}
+
+    results = {}
+    for pack_name in orphaned:
+        try:
+            results[pack_name] = await purge_orphaned_pack(db, pack_name)
+        except Exception as e:
+            results[pack_name] = {"error": str(e)}
+
+    return {"packs_purged": len(orphaned), "results": results}
