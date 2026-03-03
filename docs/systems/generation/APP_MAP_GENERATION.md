@@ -184,6 +184,71 @@ curl "http://localhost:8000/api/v1/generations?limit=10&status=failed"
 ### Invalidate Cache
 Use cache service methods or flush Redis keys matching `generation:*`
 
+## Asset Generation Context (Regenerate / Extend / Load-to-QuickGen)
+
+Assets are **self-describing**: they carry the functional subset of generation data
+needed to Regenerate, Extend, or Load-to-Quick-Gen without depending on the
+Generation table being available.
+
+### Design Principles
+
+1. **Metadata-first**: The `/assets/{id}/generation-context` endpoint reads from
+   `asset.media_metadata["generation_context"]` first. Generation records are a
+   fallback only when metadata is missing.
+2. **Flat provider params**: The context stores flat provider params (`model`,
+   `quality`, `seed`, `aspect_ratio`, etc.) — the same shape `buildGenerationConfig`
+   / `generateAsset` expect on the frontend. No nested `generation_config` wrapper.
+3. **Generations are ephemeral**: Generation rows may eventually be pruned.
+   `GenerationBatchItemManifest` and the stamped context survive independently.
+
+### Stamping Flow
+
+When a generation completes and an asset is created (`services/asset/_creation.py`):
+
+```
+Generation.canonical_params  (flat: { model, quality, seed, ... })
+  → extract_flat_provider_params()  (handles both flat and nested formats)
+  → build_generation_context()
+  → asset.media_metadata["generation_context"] = {
+      operation_type, provider_id, prompt,
+      params: { model, quality, seed, ... },   ← flat provider params
+      source_asset_ids: [...]
+    }
+```
+
+### Param Shape Gotcha
+
+`Generation.raw_params` and `Generation.canonical_params` have different shapes:
+
+| Field | Shape | Example |
+|-------|-------|---------|
+| `raw_params` | Nested (as received from API) | `{ generation_config: { style: { pixverse: { model: "v3.5" } } } }` |
+| `canonical_params` | Flat (after `canonicalize_params()`) | `{ model: "v3.5", quality: "720p", seed: 42 }` |
+
+`extract_flat_provider_params()` in `services/generation/context.py` handles both
+formats: if `generation_config` key is present it unwraps from `style.<provider>`;
+otherwise it returns the flat dict directly (filtering internal keys).
+
+### Regenerate Flow (Frontend)
+
+```
+handleRegenerate() (useGenerationCardHandlers.ts)
+  → getAssetGenerationContext(assetId)          // GET /assets/{id}/generation-context
+  → parseGenerationContext(ctx, operationType)   // merges canonical_params + raw_params
+  → stripSeedFromParams(params)                  // remove seed, keep model/quality/etc
+  → submitDirectGeneration({ params, ... })      // → generateAsset → backend
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `services/generation/context.py` | `extract_flat_provider_params`, `build_generation_context`, `build_generation_context_from_generation` |
+| `services/asset/_creation.py` | Stamps `generation_context` onto asset at creation |
+| `api/v1/assets.py` | `GET /assets/{id}/generation-context` endpoint (metadata-first, Generation fallback) |
+| `apps/.../useGenerationCardHandlers.ts` | `handleRegenerate`, `handleLoadToQuickGen`, `handleExtendVideo` |
+| `apps/.../mediaCardGeneration.utils.ts` | `parseGenerationContext`, `parseGenerationRecord` |
+
 ## Future Enhancements
 - Real-time generation status via WebSocket
 - Cost budgeting and alerts

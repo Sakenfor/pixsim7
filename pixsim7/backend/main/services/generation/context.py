@@ -16,16 +16,33 @@ from typing import Any, Dict, List, Optional
 def extract_flat_provider_params(canonical_params: dict) -> dict:
     """
     Extract flat provider-specific params from a Generation record's
-    canonical_params.  The stored shape is typically:
+    canonical_params.  The stored shape varies:
 
-        { "generation_config": { "style": { "<provider>": {flat params} }, ... } }
+    1. **Nested (raw_params):**
+       ``{ "generation_config": { "style": { "<provider>": {flat params} }, ... } }``
+
+    2. **Already-flat (canonical_params after canonicalize_params):**
+       ``{ "model": "v3.5", "quality": "720p", "seed": 123, ... }``
 
     We want ONLY the flat provider params (model, quality, seed, etc.) that
     the frontend can feed back into buildGenerationConfig / generateAsset.
     """
     gen_config = canonical_params.get("generation_config") or canonical_params.get("config") or {}
     if not isinstance(gen_config, dict):
-        return {}
+        gen_config = {}
+
+    # If there's no generation_config wrapper, canonical_params is already flat
+    # (this is the shape produced by canonicalize_params() and stored on
+    # Generation.canonical_params).  Return provider-relevant keys directly.
+    if not gen_config:
+        # Filter out internal/structural keys that aren't provider params
+        _INTERNAL_KEYS = frozenset({
+            "scene_context", "player_context", "social_context",
+            "composition_metadata", "derived_analysis",
+            "content_rating", "pacing",
+        })
+        return {k: v for k, v in canonical_params.items()
+                if v is not None and k not in _INTERNAL_KEYS}
 
     style = gen_config.get("style") or {}
     if not isinstance(style, dict):
