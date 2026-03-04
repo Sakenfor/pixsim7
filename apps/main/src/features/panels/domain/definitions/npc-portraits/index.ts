@@ -14,6 +14,8 @@ export default definePanel({
     featureIds: ['game'],
     modules: ['game', 'npc-brain-lab', 'npcs', 'interaction-studio'],
     order: 30,
+    openPreference: 'route-preferred',
+    openRoute: '/npc-portraits',
   },
   orchestration: {
     type: 'zone-panel',

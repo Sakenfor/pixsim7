@@ -14,6 +14,8 @@ export default definePanel({
     featureIds: ['game', 'interactions'],
     modules: ['game', 'npc-brain-lab', 'npcs', 'interaction-studio'],
     order: 40,
+    openPreference: 'route-preferred',
+    openRoute: '/interaction-studio',
   },
   orchestration: {
     type: 'zone-panel',

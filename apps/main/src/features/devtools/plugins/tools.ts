@@ -12,6 +12,7 @@ import type { DevToolDefinition } from '@pixsim7/shared.devtools.core';
 import { buildDevtoolsUrl } from '@lib/dev/devtools/devtoolsUrl';
 
 // Import dev tool components
+import { AppMapPanel } from '@features/panels/components/dev/AppMapPanel';
 import { BackendArchitecturePanel } from '@features/panels/components/dev/BackendArchitecturePanel';
 import { CapabilityTestingPanel } from '@features/panels/components/dev/CapabilityTestingPanel';
 import { DependencyGraphPanel } from '@features/panels/components/dev/DependencyGraphPanel';
@@ -59,6 +60,16 @@ export const capabilityTestingTool: DevToolDefinition = {
 // ============================================================================
 // Architecture & Graph Tools
 // ============================================================================
+
+export const appMapTool: DevToolDefinition = {
+  id: 'app-map',
+  label: 'App Map',
+  description: 'Live map of features, plugins, registries, and architecture diagnostics',
+  icon: 'graph',
+  category: 'graph',
+  panelComponent: AppMapPanel,
+  tags: ['architecture', 'plugins', 'registries', 'capabilities', 'diagnostics'],
+};
 
 export const dependencyGraphTool: DevToolDefinition = {
   id: 'dependency-graph',

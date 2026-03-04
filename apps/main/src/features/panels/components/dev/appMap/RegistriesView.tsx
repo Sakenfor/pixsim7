@@ -6,12 +6,10 @@
  */
 
 import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '@pixsim7/game.engine';
-import { useState, useMemo, useSyncExternalStore } from 'react';
+import { useState, useMemo, useSyncExternalStore, useEffect } from 'react';
 
 import type { Identifiable } from '@lib/core/BaseRegistry';
 import { Icon } from '@lib/icons';
-
-// Catalog selectors (source of truth for gallery/world/brain/gizmo families)
 import {
   brainToolSelectors,
   galleryToolSelectors,
@@ -19,6 +17,17 @@ import {
   gizmoSurfaceSelectors,
   worldToolSelectors,
 } from '@lib/plugins/catalogSelectors';
+import {
+  initializeBlockCatalogResolvers,
+  initializeGameCatalogResolvers,
+  initializeProjectResolvers,
+  initializeSessionResolvers,
+  resolverRegistry,
+  type ResolverConsumptionRecord,
+  type ResolverRunEvent,
+} from '@lib/resolvers';
+
+// Catalog selectors (source of truth for gallery/world/brain/gizmo families)
 
 // Types
 import type { BrainToolPlugin } from '@features/brainTools/lib/types';
@@ -38,10 +47,11 @@ interface RegistryInfo {
   name: string;
   description: string;
   icon: string;
-  category: 'tools' | 'surfaces' | 'interactions' | 'other';
+  category: 'tools' | 'surfaces' | 'interactions' | 'resolvers' | 'other';
   getItems: () => Identifiable[];
   subscribe: (cb: () => void) => () => void;
   renderItem: (item: Identifiable) => React.ReactNode;
+  renderDetails?: (searchQuery: string) => React.ReactNode;
 }
 
 /**
@@ -109,6 +119,17 @@ const REGISTRIES: RegistryInfo[] = [
     renderItem: (item) => <GizmoSurfaceItem surface={item as GizmoSurfaceDefinition} />,
   },
   {
+    id: 'resolver-observability',
+    name: 'Resolver Observability',
+    description: 'Resolver runtime consumption, cache, and consumer diagnostics',
+    icon: 'R',
+    category: 'resolvers',
+    getItems: () => toResolverConsumptionItems(resolverRegistry.getAllConsumption()),
+    subscribe: (cb) => resolverRegistry.subscribe(() => cb()),
+    renderItem: (item) => <ResolverConsumptionItem row={item as ResolverConsumptionItemRow} />,
+    renderDetails: (searchQuery) => <ResolverObservabilityDetails searchQuery={searchQuery} />,
+  },
+  {
     id: 'interactions',
     name: 'Interactions',
     description: 'Game interactions from plugins (pickpocket, stealth, etc.)',
@@ -128,7 +149,7 @@ export function RegistriesView() {
     REGISTRIES[0]?.id ?? null
   );
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'tools' | 'surfaces' | 'interactions'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'tools' | 'surfaces' | 'interactions' | 'resolvers'>('all');
 
   const filteredRegistries = useMemo(() => {
     if (categoryFilter === 'all') return REGISTRIES;
@@ -144,7 +165,7 @@ export function RegistriesView() {
         {/* Category Filter */}
         <div className="p-3 border-b border-neutral-200 dark:border-neutral-700">
           <div className="flex gap-2">
-            {(['all', 'tools', 'surfaces', 'interactions'] as const).map((cat) => (
+            {(['all', 'tools', 'surfaces', 'interactions', 'resolvers'] as const).map((cat) => (
               <button
                 key={cat}
                 onClick={() => setCategoryFilter(cat)}
@@ -205,10 +226,14 @@ export function RegistriesView() {
             </div>
 
             {/* Items */}
-            <RegistryItemList
-              registry={selectedRegistry}
-              searchQuery={searchQuery}
-            />
+            {selectedRegistry.renderDetails ? (
+              selectedRegistry.renderDetails(searchQuery)
+            ) : (
+              <RegistryItemList
+                registry={selectedRegistry}
+                searchQuery={searchQuery}
+              />
+            )}
           </>
         ) : (
           <div className="flex items-center justify-center h-full text-neutral-500 dark:text-neutral-400">
@@ -216,6 +241,370 @@ export function RegistriesView() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+interface ResolverConsumptionItemRow extends ResolverConsumptionRecord, Identifiable {}
+
+interface ResolverAggregateRow extends Identifiable {
+  resolverId: string;
+  label?: string;
+  owner?: string;
+  tags?: string[];
+  cachePolicy?: string;
+  totalCalls: number;
+  successCalls: number;
+  errorCalls: number;
+  cacheHitCalls: number;
+  consumerCount: number;
+  avgDurationMs: number;
+}
+
+function toResolverConsumptionItems(rows: ResolverConsumptionRecord[]): ResolverConsumptionItemRow[] {
+  return rows.map((row) => ({
+    ...row,
+    id: `${row.resolverId}::${row.consumerId}`,
+  }));
+}
+
+function filterResolverQuery(
+  rows: ResolverConsumptionItemRow[],
+  query: string,
+): ResolverConsumptionItemRow[] {
+  if (!query.trim()) return rows;
+  const needle = query.trim().toLowerCase();
+  return rows.filter((row) => {
+    return (
+      row.resolverId.toLowerCase().includes(needle) ||
+      row.consumerId.toLowerCase().includes(needle) ||
+      (row.lastError?.toLowerCase().includes(needle) ?? false)
+    );
+  });
+}
+
+function filterResolverAggregateQuery(rows: ResolverAggregateRow[], query: string): ResolverAggregateRow[] {
+  if (!query.trim()) return rows;
+  const needle = query.trim().toLowerCase();
+  return rows.filter((row) => {
+    return (
+      row.resolverId.toLowerCase().includes(needle) ||
+      (row.label?.toLowerCase().includes(needle) ?? false) ||
+      (row.owner?.toLowerCase().includes(needle) ?? false) ||
+      (row.tags?.some((tag) => tag.toLowerCase().includes(needle)) ?? false)
+    );
+  });
+}
+
+function ResolverObservabilityDetails({ searchQuery }: { searchQuery: string }) {
+  const [events, setEvents] = useState<ResolverRunEvent[]>([]);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    initializeGameCatalogResolvers();
+    initializeSessionResolvers();
+    initializeProjectResolvers();
+    initializeBlockCatalogResolvers();
+    setRefreshTick((current) => current + 1);
+  }, []);
+
+  useEffect(() => {
+    return resolverRegistry.subscribe((event) => {
+      setEvents((previous) => [event, ...previous].slice(0, 100));
+      setRefreshTick((current) => current + 1);
+    });
+  }, []);
+
+  const consumptionRows = useMemo(
+    () => filterResolverQuery(
+      toResolverConsumptionItems(resolverRegistry.getAllConsumption()),
+      searchQuery,
+    ),
+    [searchQuery, refreshTick],
+  );
+
+  const aggregateRows = useMemo(() => {
+    const definitions = resolverRegistry.getAll();
+    const allConsumption = toResolverConsumptionItems(resolverRegistry.getAllConsumption());
+    const statsByResolverId = new Map<
+      string,
+      {
+        totalCalls: number;
+        successCalls: number;
+        errorCalls: number;
+        cacheHitCalls: number;
+        consumerCount: number;
+        avgDurationMs: number;
+      }
+    >();
+
+    for (const row of allConsumption) {
+      const current = statsByResolverId.get(row.resolverId) ?? {
+        totalCalls: 0,
+        successCalls: 0,
+        errorCalls: 0,
+        cacheHitCalls: 0,
+        consumerCount: 0,
+        avgDurationMs: 0,
+      };
+      current.totalCalls += row.totalCalls;
+      current.successCalls += row.successCalls;
+      current.errorCalls += row.errorCalls;
+      current.cacheHitCalls += row.cacheHitCalls;
+      current.consumerCount += 1;
+      current.avgDurationMs += row.avgDurationMs;
+      statsByResolverId.set(row.resolverId, current);
+    }
+
+    const rows: ResolverAggregateRow[] = definitions.map((definition) => {
+      const stats = statsByResolverId.get(definition.id);
+      const consumerCount = stats?.consumerCount ?? 0;
+      const avgDurationMs =
+        consumerCount > 0 ? (stats?.avgDurationMs ?? 0) / consumerCount : 0;
+
+      return {
+        id: definition.id,
+        resolverId: definition.id,
+        label: definition.label,
+        owner: definition.owner,
+        tags: definition.tags,
+        cachePolicy: definition.cachePolicy ?? 'none',
+        totalCalls: stats?.totalCalls ?? 0,
+        successCalls: stats?.successCalls ?? 0,
+        errorCalls: stats?.errorCalls ?? 0,
+        cacheHitCalls: stats?.cacheHitCalls ?? 0,
+        consumerCount,
+        avgDurationMs,
+      };
+    });
+
+    return filterResolverAggregateQuery(rows, searchQuery);
+  }, [searchQuery, refreshTick]);
+
+  const filteredEvents = useMemo(() => {
+    if (!searchQuery.trim()) return events;
+    const needle = searchQuery.trim().toLowerCase();
+    return events.filter((event) => {
+      return (
+        event.resolverId.toLowerCase().includes(needle) ||
+        event.consumerId.toLowerCase().includes(needle) ||
+        (event.error?.toLowerCase().includes(needle) ?? false)
+      );
+    });
+  }, [events, searchQuery]);
+
+  const totalCalls = consumptionRows.reduce((sum, row) => sum + row.totalCalls, 0);
+  const errorCalls = consumptionRows.reduce((sum, row) => sum + row.errorCalls, 0);
+  const cacheHitCalls = consumptionRows.reduce((sum, row) => sum + row.cacheHitCalls, 0);
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs text-neutral-500 dark:text-neutral-400">
+          {aggregateRows.length} resolvers, {consumptionRows.length} resolver-consumer links
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              resolverRegistry.clearAllCache();
+              setRefreshTick((current) => current + 1);
+            }}
+            className="px-2 py-1 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs font-medium"
+          >
+            Clear All Cache
+          </button>
+          <button
+            onClick={() => {
+              resolverRegistry.clearAllConsumption();
+              setRefreshTick((current) => current + 1);
+            }}
+            className="px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium"
+          >
+            Clear Consumption
+          </button>
+          <button
+            onClick={() => setEvents([])}
+            className="px-2 py-1 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-xs font-medium"
+          >
+            Clear Events
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <ResolverMetricCard label="Total Calls" value={String(totalCalls)} />
+        <ResolverMetricCard label="Error Calls" value={String(errorCalls)} />
+        <ResolverMetricCard
+          label="Cache Hit Rate"
+          value={totalCalls > 0 ? `${Math.round((cacheHitCalls / totalCalls) * 100)}%` : '0%'}
+        />
+      </div>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+          Registered Resolvers
+        </h3>
+        <div className="space-y-2">
+          {aggregateRows.map((row) => (
+            <ResolverAggregateItem key={row.id} row={row} />
+          ))}
+          {aggregateRows.length === 0 && (
+            <div className="text-center py-6 text-sm text-neutral-500 dark:text-neutral-400">
+              No resolvers match your filter.
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+          Consumer Usage
+        </h3>
+        <div className="space-y-2">
+          {consumptionRows.map((row) => (
+            <ResolverConsumptionItem key={row.id} row={row} />
+          ))}
+          {consumptionRows.length === 0 && (
+            <div className="text-center py-6 text-sm text-neutral-500 dark:text-neutral-400">
+              No usage rows yet.
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+          Live Run Events
+        </h3>
+        <div className="space-y-2">
+          {filteredEvents.slice(0, 30).map((event, index) => (
+            <ResolverEventItem key={`${event.startedAt}:${event.resolverId}:${event.consumerId}:${index}`} event={event} />
+          ))}
+          {filteredEvents.length === 0 && (
+            <div className="text-center py-6 text-sm text-neutral-500 dark:text-neutral-400">
+              No run events yet.
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ResolverMetricCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded-md p-3 bg-white dark:bg-neutral-900">
+      <div className="text-xs text-neutral-500 dark:text-neutral-400">{label}</div>
+      <div className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{value}</div>
+    </div>
+  );
+}
+
+function ResolverAggregateItem({ row }: { row: ResolverAggregateRow }) {
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded-md p-3 bg-neutral-50 dark:bg-neutral-800/60">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="font-medium text-neutral-900 dark:text-neutral-100">
+            {row.label ?? row.resolverId}
+          </div>
+          <div className="text-xs text-neutral-500 dark:text-neutral-400">
+            {row.resolverId}
+          </div>
+        </div>
+        <div className="text-xs text-neutral-500 dark:text-neutral-400">
+          owner: {row.owner ?? 'n/a'} | cache: {row.cachePolicy ?? 'none'}
+        </div>
+      </div>
+      <div className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">
+        calls {row.totalCalls} | success {row.successCalls} | errors {row.errorCalls} | cache hits{' '}
+        {row.cacheHitCalls} | consumers {row.consumerCount} | avg {row.avgDurationMs.toFixed(1)}ms
+      </div>
+      {row.tags && row.tags.length > 0 && (
+        <div className="mt-2 flex gap-1 flex-wrap">
+          {row.tags.map((tag) => (
+            <span
+              key={tag}
+              className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 text-xs rounded"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="mt-2">
+        <button
+          onClick={() => resolverRegistry.clearResolverCache(row.resolverId)}
+          className="px-2 py-1 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs font-medium"
+        >
+          Clear Resolver Cache
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ResolverConsumptionItem({ row }: { row: ResolverConsumptionItemRow }) {
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded-md p-3 bg-white dark:bg-neutral-900">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="font-medium text-neutral-900 dark:text-neutral-100">{row.consumerId}</div>
+          <div className="text-xs text-neutral-500 dark:text-neutral-400">{row.resolverId}</div>
+        </div>
+        <div
+          className={`text-xs font-medium ${
+            row.lastStatus === 'error'
+              ? 'text-red-600 dark:text-red-400'
+              : 'text-green-600 dark:text-green-400'
+          }`}
+        >
+          {row.lastStatus}
+        </div>
+      </div>
+      <div className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">
+        calls {row.totalCalls} | success {row.successCalls} | errors {row.errorCalls} | cache hits{' '}
+        {row.cacheHitCalls} | avg {row.avgDurationMs.toFixed(1)}ms | last {row.lastDurationMs.toFixed(1)}ms
+      </div>
+      {row.lastError && (
+        <div className="mt-2 text-xs text-red-600 dark:text-red-400">{row.lastError}</div>
+      )}
+      <div className="mt-2 flex gap-2">
+        <button
+          onClick={() => resolverRegistry.clearConsumptionForConsumer(row.consumerId)}
+          className="px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium"
+        >
+          Clear Consumer Stats
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ResolverEventItem({ event }: { event: ResolverRunEvent }) {
+  const timestamp = new Date(event.startedAt).toLocaleTimeString();
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded-md p-2 bg-neutral-50 dark:bg-neutral-800/50 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-neutral-700 dark:text-neutral-200">
+          {event.resolverId}{' <- '}{event.consumerId}
+        </div>
+        <div
+          className={`font-medium ${
+            event.status === 'error'
+              ? 'text-red-600 dark:text-red-400'
+              : 'text-green-600 dark:text-green-400'
+          }`}
+        >
+          {event.status}
+        </div>
+      </div>
+      <div className="text-neutral-500 dark:text-neutral-400 mt-1">
+        {timestamp} | {event.durationMs.toFixed(1)}ms | cache {event.cacheHit ? 'hit' : 'miss'}
+      </div>
+      {event.error && (
+        <div className="text-red-600 dark:text-red-400 mt-1">{event.error}</div>
+      )}
     </div>
   );
 }

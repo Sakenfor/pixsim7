@@ -10,6 +10,7 @@ import {
   sessionStateViewerTool,
   generationHealthTool,
   capabilityTestingTool,
+  appMapTool,
   dependencyGraphTool,
   backendArchitectureTool,
   gizmoSurfacesTool,
@@ -26,6 +27,7 @@ export {
   sessionStateViewerTool,
   generationHealthTool,
   capabilityTestingTool,
+  appMapTool,
   dependencyGraphTool,
   backendArchitectureTool,
   gizmoSurfacesTool,
@@ -46,6 +48,7 @@ export const builtInDevTools = [
   capabilityTestingTool,
 
   // Architecture & Graph
+  appMapTool,
   dependencyGraphTool,
   backendArchitectureTool,
 

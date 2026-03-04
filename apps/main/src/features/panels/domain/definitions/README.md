@@ -66,6 +66,30 @@ definePanel({
 });
 ```
 
+## Navigation Open Preference
+
+Panels can define how ActivityBar generated sub-navigation opens them:
+
+```typescript
+export default definePanel({
+  id: 'my-panel',
+  title: 'My Panel',
+  component: MyPanel,
+  navigation: {
+    openPreference: 'dock-preferred', // default
+    // openPreference: 'float-preferred',
+    // openPreference: 'route-preferred',
+    // openRoute: '/workspace?openPanel=my-panel',
+  },
+});
+```
+
+- `dock-preferred`: open in workspace dock when available; fallback to floating.
+- `float-preferred`: always open as floating panel.
+- `route-preferred`: navigate to `openRoute` (or panel route fallback).
+
+`Ctrl/Cmd+Click` on sub-navigation still forces route navigation.
+
 ## Context Binding
 
 The `contexts` array determines where a panel can appear:

@@ -14,6 +14,8 @@ export default definePanel({
     featureIds: ['game'],
     modules: ['game', 'npc-brain-lab', 'npcs', 'interaction-studio'],
     order: 20,
+    openPreference: 'route-preferred',
+    openRoute: '/npc-brain-lab',
   },
   supportsCompactMode: false,
   supportsMultipleInstances: false,

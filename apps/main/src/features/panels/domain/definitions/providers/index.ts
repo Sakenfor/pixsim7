@@ -14,6 +14,7 @@ export default definePanel({
     featureIds: ['generation'],
     modules: ['generation-page', 'settings-page'],
     order: 50,
+    openPreference: 'float-preferred',
   },
   supportsCompactMode: false,
   supportsMultipleInstances: false,

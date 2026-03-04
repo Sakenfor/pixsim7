@@ -1,5 +1,6 @@
-import { definePanel } from '../../../lib/definePanel';
 import { HealthPanel } from '@/components/health/HealthPanel';
+
+import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'health',
@@ -9,6 +10,9 @@ export default definePanel({
   tags: ['health', 'monitoring', 'validation', 'diagnostics'],
   icon: 'heart',
   description: 'System health and validation',
+  navigation: {
+    openPreference: 'float-preferred',
+  },
   contextLabel: 'preset',
   supportsCompactMode: true,
   supportsMultipleInstances: false,

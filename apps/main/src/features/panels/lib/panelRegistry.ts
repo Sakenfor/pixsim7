@@ -70,6 +70,19 @@ export interface PanelNavigationContribution {
   order?: number;
   /** Hide this contribution from generated subNav lists. */
   hidden?: boolean;
+  /**
+   * Preferred open behavior when launched from generated sub-navigation.
+   *
+   * - `dock-preferred` (default): try workspace dock first, fallback to floating when unavailable.
+   * - `float-preferred`: open as floating panel.
+   * - `route-preferred`: navigate to `openRoute` (or route fallback).
+   */
+  openPreference?: "dock-preferred" | "float-preferred" | "route-preferred";
+  /**
+   * Optional route override used when `openPreference` is `route-preferred`
+   * and as the Ctrl/Cmd+Click route target.
+   */
+  openRoute?: string;
 }
 
 /**

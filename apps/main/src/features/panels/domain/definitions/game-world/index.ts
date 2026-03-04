@@ -14,6 +14,8 @@ export default definePanel({
     featureIds: ['game'],
     modules: ['game'],
     order: 10,
+    openPreference: 'route-preferred',
+    openRoute: '/game-world',
   },
   orchestration: {
     type: 'zone-panel',

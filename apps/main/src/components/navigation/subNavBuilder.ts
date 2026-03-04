@@ -272,7 +272,7 @@ function buildPanelItems(options: {
     id: `panel:${panel.id}`,
     label: panel.navigation?.label ?? panel.title,
     icon: panel.navigation?.icon ?? panel.icon ?? 'layoutGrid',
-    route: `/workspace?openPanel=${encodeURIComponent(panel.id)}`,
+    route: panel.navigation?.openRoute ?? `/workspace?openPanel=${encodeURIComponent(panel.id)}`,
   }));
 }
 

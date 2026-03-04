@@ -3,6 +3,10 @@ import { PortalFloat, useHoverExpand } from '@pixsim7/shared.ui';
 import { useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
+
+import { openFloatingWorkspacePanel, openWorkspacePanel } from '@features/workspace';
+
 import { NavIcon } from './ActivityBar';
 
 interface SubNavFlyoutProps {
@@ -27,7 +31,27 @@ export function SubNavFlyout({ items, route, children }: SubNavFlyoutProps) {
   const activeItemId = getActiveItemId(items, location.pathname, location.search);
 
   const handleItemClick = useCallback(
-    (item: SubNavItem) => {
+    (item: SubNavItem, event: React.MouseEvent<HTMLButtonElement>) => {
+      const panelId = getPanelIdFromSubNavItem(item);
+      if (panelId) {
+        const preference = getPanelOpenPreference(panelId);
+        const forceWorkspaceRoute = event.ctrlKey || event.metaKey;
+        if (forceWorkspaceRoute) {
+          navigate(item.route ?? `/workspace?openPanel=${encodeURIComponent(panelId)}`);
+          return;
+        }
+
+        if (preference === 'route-preferred') {
+          navigate(item.route ?? `/workspace?openPanel=${encodeURIComponent(panelId)}`);
+        } else if (preference === 'float-preferred') {
+          openFloatingWorkspacePanel(panelId);
+        } else {
+          // dock-preferred: workspace restore with built-in floating fallback
+          openWorkspacePanel(panelId);
+        }
+        return;
+      }
+
       if (item.route) {
         navigate(item.route);
       } else if (item.param) {
@@ -55,10 +79,12 @@ export function SubNavFlyout({ items, route, children }: SubNavFlyoutProps) {
         >
           {items.map((item) => {
             const isActive = item.id === activeItemId;
+            const panelId = getPanelIdFromSubNavItem(item);
+            const preference = panelId ? getPanelOpenPreference(panelId) : null;
             return (
               <button
                 key={item.id}
-                onClick={() => handleItemClick(item)}
+                onClick={(event) => handleItemClick(item, event)}
                 className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-sm transition-colors ${
                   isActive
                     ? 'text-accent bg-accent/15'
@@ -67,6 +93,15 @@ export function SubNavFlyout({ items, route, children }: SubNavFlyoutProps) {
               >
                 {item.icon && <NavIcon name={item.icon} size={14} />}
                 <span className="whitespace-nowrap">{item.label}</span>
+                {panelId ? (
+                  <span className="ml-auto text-[10px] uppercase tracking-wide text-neutral-500">
+                    {preference === 'route-preferred'
+                      ? 'route'
+                      : preference === 'float-preferred'
+                        ? 'float'
+                        : 'dock'}
+                  </span>
+                ) : null}
               </button>
             );
           })}
@@ -74,6 +109,29 @@ export function SubNavFlyout({ items, route, children }: SubNavFlyoutProps) {
       )}
     </div>
   );
+}
+
+function getPanelOpenPreference(panelId: string): 'dock-preferred' | 'float-preferred' | 'route-preferred' {
+  const panel = panelSelectors.get(panelId);
+  return panel?.navigation?.openPreference ?? 'dock-preferred';
+}
+
+function getPanelIdFromSubNavItem(item: SubNavItem): string | null {
+  if (item.id.startsWith('panel:')) {
+    const panelId = item.id.slice('panel:'.length).trim();
+    return panelId.length > 0 ? panelId : null;
+  }
+
+  if (!item.route) return null;
+
+  try {
+    const url = new URL(item.route, 'http://localhost');
+    if (url.pathname !== '/workspace') return null;
+    const panelId = url.searchParams.get('openPanel');
+    return panelId && panelId.trim().length > 0 ? panelId : null;
+  } catch {
+    return null;
+  }
 }
 
 function getActiveItemId(items: SubNavItem[], pathname: string, search: string): string | null {
