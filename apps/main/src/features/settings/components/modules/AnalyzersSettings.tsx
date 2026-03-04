@@ -12,13 +12,25 @@ import {
   useAnalyzerSettingsStore,
 } from '@lib/analyzers';
 import {
+  createAnalysisBackfill,
+  listAnalysisBackfills,
+  pauseAnalysisBackfill,
+  resumeAnalysisBackfill,
+  cancelAnalysisBackfill,
+  type AnalysisBackfillResponse,
+  type AnalysisBackfillStatus,
+  type CreateAnalysisBackfillRequest,
+} from '@lib/api/analyses';
+import {
   listAnalyzers,
+  listAnalysisPoints,
   listAnalyzerInstances,
   createAnalyzerInstance,
   updateAnalyzerInstance,
   deleteAnalyzerInstance,
   type AnalyzerInfo,
   type AnalyzerInstance,
+  type AnalysisPointInfo,
   type CreateAnalyzerInstanceRequest,
   type UpdateAnalyzerInstanceRequest,
 } from '@lib/api/analyzers';
@@ -29,15 +41,18 @@ import {
 } from '@lib/api/userPreferences';
 import { isAdminUser } from '@lib/auth/userRoles';
 
-import { useMediaSettingsStore, type ServerMediaSettings } from '@features/assets';
+import { useMediaSettingsStore } from '@features/assets';
 import { usePromptSettingsStore } from '@features/prompts/stores/promptSettingsStore';
 
-import { pixsimClient } from '@/lib/api';
 import { useAuthStore } from '@/stores/authStore';
 
 import { settingsRegistry } from '../../lib/core/registry';
 
-import { AnalyzerCatalog, type AnalysisPointSelection } from './AnalyzerCatalog';
+import {
+  AnalyzerCatalog,
+  type AnalysisPointSelection,
+  type CatalogAnalysisPointDefinition,
+} from './AnalyzerCatalog';
 
 type FormMode = 'create' | 'edit';
 type AssetIntentKey = (typeof ASSET_ANALYZER_INTENT_KEYS)[number];
@@ -53,6 +68,15 @@ interface FormState {
   config: string; // JSON string
 }
 
+interface BackfillFormState {
+  media_type: '' | 'image' | 'video' | 'audio' | '3d_model';
+  analyzer_id: string;
+  analyzer_intent: '' | AssetIntentKey;
+  analysis_point: string;
+  batch_size: number;
+  priority: number;
+}
+
 const INITIAL_FORM_STATE: FormState = {
   label: '',
   analyzer_id: '',
@@ -63,12 +87,90 @@ const INITIAL_FORM_STATE: FormState = {
   priority: 0,
   config: '{}',
 };
+const INITIAL_BACKFILL_FORM_STATE: BackfillFormState = {
+  media_type: '',
+  analyzer_id: '',
+  analyzer_intent: '',
+  analysis_point: '',
+  batch_size: 100,
+  priority: 5,
+};
 const DEFAULT_VISUAL_SIMILARITY_THRESHOLD = 0.3;
+const EMBEDDING_ANALYZER_ID = 'asset:embedding';
+const DEFAULT_EMBEDDING_PROVIDER_ID = 'cmd-embedding';
+const DEFAULT_EMBEDDING_MODEL_ID = 'clip-default';
+const DEFAULT_EMBEDDING_LABEL = 'Visual Embeddings';
 
-function normalizeAnalyzerSetting(value: unknown, fallback: string): string {
-  if (typeof value !== 'string') return fallback;
-  const trimmed = value.trim();
-  return trimmed || fallback;
+const ACTIVE_BACKFILL_STATUSES: AnalysisBackfillStatus[] = ['pending', 'running'];
+
+function extractEmbeddingCommand(config: Record<string, unknown>): string {
+  const command = config.command;
+  return typeof command === 'string' ? command : '';
+}
+
+function normalizeAnalyzerChainPreference(
+  listValue: unknown,
+  fallback: string
+): string[] {
+  const chain: string[] = [];
+
+  if (Array.isArray(listValue)) {
+    for (const item of listValue) {
+      if (typeof item !== 'string') continue;
+      const value = item.trim();
+      if (value && !chain.includes(value)) {
+        chain.push(value);
+      }
+    }
+  }
+
+  if (chain.length === 0) {
+    chain.push(fallback);
+  }
+
+  return chain;
+}
+
+function normalizeAnalyzerChainInput(values: string[], fallback: string): string[] {
+  const chain = values
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  const deduped = Array.from(new Set(chain));
+  return deduped.length > 0 ? deduped : [fallback];
+}
+
+function normalizeOptionalAnalyzerChainInput(values: string[]): string[] {
+  const chain = values
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  return Array.from(new Set(chain));
+}
+
+function backfillStatusClasses(status: AnalysisBackfillStatus): string {
+  switch (status) {
+    case 'completed':
+      return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400';
+    case 'failed':
+      return 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400';
+    case 'cancelled':
+      return 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300';
+    case 'paused':
+      return 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400';
+    default:
+      return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400';
+  }
+}
+
+function isBackfillActive(status: AnalysisBackfillStatus): boolean {
+  return ACTIVE_BACKFILL_STATUSES.includes(status);
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString();
 }
 
 /** Mask sensitive config values for display */
@@ -440,6 +542,139 @@ function InstanceForm({
   );
 }
 
+function AnalyzerChainEditor({
+  chain,
+  analyzers,
+  allowEmpty = false,
+  fallbackLabel,
+  disabled = false,
+  onChange,
+}: {
+  chain: string[];
+  analyzers: AnalyzerInfo[];
+  allowEmpty?: boolean;
+  fallbackLabel?: string;
+  disabled?: boolean;
+  onChange: (next: string[]) => void;
+}) {
+  const options = analyzers.map((analyzer) => ({
+    value: analyzer.id,
+    label: analyzer.name,
+  }));
+
+  const addEntry = () => {
+    if (disabled) return;
+    const firstOption = options[0]?.value;
+    if (!firstOption) return;
+    onChange([...chain, firstOption]);
+  };
+
+  const updateEntry = (index: number, value: string) => {
+    const next = [...chain];
+    next[index] = value;
+    onChange(next);
+  };
+
+  const moveEntry = (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= chain.length) return;
+    const next = [...chain];
+    const current = next[index];
+    next[index] = next[targetIndex];
+    next[targetIndex] = current;
+    onChange(next);
+  };
+
+  const removeEntry = (index: number) => {
+    const next = chain.filter((_, i) => i !== index);
+    if (next.length === 0 && !allowEmpty) {
+      return;
+    }
+    onChange(next);
+  };
+
+  return (
+    <div className="space-y-2">
+      {chain.length === 0 ? (
+        <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+          {fallbackLabel ?? 'No analyzer configured.'}
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {chain.map((value, index) => {
+            const exists = analyzers.some((analyzer) => analyzer.id === value);
+            return (
+              <div
+                key={`${value}-${index}`}
+                className="flex items-center gap-1.5"
+              >
+                <span className="text-[10px] w-4 text-neutral-500 dark:text-neutral-400 text-right">
+                  {index + 1}.
+                </span>
+                <select
+                  value={value}
+                  disabled={disabled}
+                  onChange={(e) => updateEntry(index, e.target.value)}
+                  className="flex-1 max-w-xl px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+                >
+                  {!exists && (
+                    <option value={value}>Unavailable: {value}</option>
+                  )}
+                  {options.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={disabled || index === 0}
+                  onClick={() => moveEntry(index, -1)}
+                  className="px-2 py-1 text-[10px] rounded bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled || index === chain.length - 1}
+                  onClick={() => moveEntry(index, 1)}
+                  className="px-2 py-1 text-[10px] rounded bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled || (!allowEmpty && chain.length <= 1)}
+                  onClick={() => removeEntry(index)}
+                  className="px-2 py-1 text-[10px] rounded bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={disabled || options.length === 0}
+          onClick={addEntry}
+          className="px-2 py-1 text-[10px] rounded bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white"
+        >
+          + Add Fallback
+        </button>
+        {fallbackLabel && (
+          <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+            {fallbackLabel}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 type RoutingControl =
   | 'prompt_default'
   | 'image_default'
@@ -449,168 +684,252 @@ type RoutingControl =
 
 interface RoutingEntry {
   id: string;
-  group: 'Prompt' | 'Asset' | 'System';
+  group: 'prompt' | 'asset' | 'system';
   label: string;
   description: string;
   control: RoutingControl;
-  intentKey?: AssetIntentKey;
+  target: 'prompt' | 'asset' | null;
+  intentKey?: string;
+  mediaType?: 'image' | 'video' | null;
+  supportsChain: boolean;
 }
 
-const ROUTING_ENTRIES: RoutingEntry[] = [
+const FALLBACK_ROUTING_ENTRIES: RoutingEntry[] = [
   {
     id: 'prompt_parsing',
-    group: 'Prompt',
+    group: 'prompt',
     label: 'Prompt parsing',
     description: 'Tag extraction and parser analysis during prompt editing.',
+    target: 'prompt',
     control: 'prompt_default',
+    supportsChain: true,
   },
   {
     id: 'prompt_generation',
-    group: 'Prompt',
+    group: 'prompt',
     label: 'Generation workflow',
     description: 'Prompt analysis before generation execution.',
+    target: 'prompt',
     control: 'prompt_default',
+    supportsChain: true,
   },
   {
     id: 'asset_ingest_on_ingest',
-    group: 'Asset',
+    group: 'asset',
     label: 'Asset ingestion (on_ingest fallback)',
     description: 'Default route when ingestion does not specify an analyzer.',
+    target: 'asset',
     control: 'image_default',
+    mediaType: 'image',
+    supportsChain: true,
   },
   {
     id: 'character_ingest_face',
-    group: 'Asset',
+    group: 'asset',
     label: 'Character ingest: Face',
     description: 'Face-mode character reference analysis.',
+    target: 'asset',
     control: 'intent_override',
     intentKey: 'character_ingest_face',
+    supportsChain: true,
   },
   {
     id: 'character_ingest_sheet',
-    group: 'Asset',
+    group: 'asset',
     label: 'Character ingest: Sheet / Composite',
     description: 'Sheet/composite character reference analysis.',
+    target: 'asset',
     control: 'intent_override',
     intentKey: 'character_ingest_sheet',
+    supportsChain: true,
   },
   {
     id: 'scene_prep_location',
-    group: 'Asset',
+    group: 'asset',
     label: 'Scene prep: Location',
     description: 'Scene prep location-reference analysis.',
+    target: 'asset',
     control: 'intent_override',
     intentKey: 'scene_prep_location',
+    supportsChain: true,
   },
   {
     id: 'scene_prep_style',
-    group: 'Asset',
+    group: 'asset',
     label: 'Scene prep: Style',
     description: 'Scene prep style-reference analysis.',
+    target: 'asset',
     control: 'intent_override',
     intentKey: 'scene_prep_style',
+    supportsChain: true,
   },
   {
     id: 'manual_analysis_image',
-    group: 'Asset',
+    group: 'asset',
     label: 'Manual analysis: Image',
     description: 'Image analysis calls when analyzer_id is omitted.',
+    target: 'asset',
     control: 'image_default',
+    mediaType: 'image',
+    supportsChain: true,
   },
   {
     id: 'manual_analysis_video',
-    group: 'Asset',
+    group: 'asset',
     label: 'Manual analysis: Video',
     description: 'Video analysis calls when analyzer_id is omitted.',
+    target: 'asset',
     control: 'video_default',
+    mediaType: 'video',
+    supportsChain: true,
   },
   {
     id: 'similarity_threshold',
-    group: 'System',
+    group: 'system',
     label: 'Visual similarity threshold',
     description: 'Default threshold for similar-content search.',
+    target: null,
     control: 'similarity_threshold',
+    supportsChain: false,
   },
 ];
-const DEFAULT_ROUTING_ENTRY = ROUTING_ENTRIES[0] as RoutingEntry;
+
+function mapAnalysisPointToRoutingEntry(point: AnalysisPointInfo): RoutingEntry {
+  return {
+    id: point.id,
+    group: point.group,
+    label: point.label,
+    description: point.description,
+    control: point.control,
+    target: point.target,
+    intentKey: point.intent_key ?? undefined,
+    mediaType: point.media_type ?? null,
+    supportsChain: point.supports_chain,
+  };
+}
 
 interface AnalysisRoutingCatalogProps {
+  routingEntries: RoutingEntry[];
   promptAnalyzers: AnalyzerInfo[];
   assetAnalyzers: AnalyzerInfo[];
-  defaultPromptAnalyzer: string;
-  defaultImageAnalyzer: string;
-  defaultVideoAnalyzer: string;
-  intentAssetAnalyzers: Partial<Record<AssetIntentKey, string>>;
+  promptDefaultChain: string[];
+  imageDefaultChain: string[];
+  videoDefaultChain: string[];
+  intentAnalyzerChains: Partial<Record<AssetIntentKey, string[]>>;
+  analysisPointChains: Record<string, string[]>;
   visualSimilarityThreshold: number;
-  hasPromptDefaultOption: boolean;
-  hasImageDefaultOption: boolean;
-  hasVideoDefaultOption: boolean;
   isSavingDefaults: boolean;
   defaultsError: string | null;
   isAtRecommendedDefaults: boolean;
   pointSelections: Record<string, AnalysisPointSelection>;
-  onPromptChange: (value: string) => void;
-  onImageChange: (value: string) => void;
-  onVideoChange: (value: string) => void;
-  onIntentChange: (intent: AssetIntentKey, value: string) => void;
+  onPromptChainChange: (values: string[]) => void;
+  onImageChainChange: (values: string[]) => void;
+  onVideoChainChange: (values: string[]) => void;
+  onIntentChainChange: (intent: AssetIntentKey, values: string[]) => void;
+  onAnalysisPointChainChange: (pointId: string, values: string[]) => void;
   onSimilarityChange: (value: number) => void;
   onReset: () => void;
 }
 
 function AnalysisRoutingCatalog({
+  routingEntries,
   promptAnalyzers,
   assetAnalyzers,
-  defaultPromptAnalyzer,
-  defaultImageAnalyzer,
-  defaultVideoAnalyzer,
-  intentAssetAnalyzers,
+  promptDefaultChain,
+  imageDefaultChain,
+  videoDefaultChain,
+  intentAnalyzerChains,
+  analysisPointChains,
   visualSimilarityThreshold,
-  hasPromptDefaultOption,
-  hasImageDefaultOption,
-  hasVideoDefaultOption,
   isSavingDefaults,
   defaultsError,
   isAtRecommendedDefaults,
   pointSelections,
-  onPromptChange,
-  onImageChange,
-  onVideoChange,
-  onIntentChange,
+  onPromptChainChange,
+  onImageChainChange,
+  onVideoChainChange,
+  onIntentChainChange,
+  onAnalysisPointChainChange,
   onSimilarityChange,
   onReset,
 }: AnalysisRoutingCatalogProps) {
-  const [selectedRoutingId, setSelectedRoutingId] = useState<string>(DEFAULT_ROUTING_ENTRY.id);
+  const [selectedRoutingId, setSelectedRoutingId] = useState<string>(routingEntries[0]?.id ?? '');
 
-  const selectedEntry = useMemo(
-    () => ROUTING_ENTRIES.find((entry) => entry.id === selectedRoutingId) ?? DEFAULT_ROUTING_ENTRY,
-    [selectedRoutingId]
-  );
+  const selectedEntry = useMemo(() => {
+    if (routingEntries.length === 0) return null;
+    return routingEntries.find((entry) => entry.id === selectedRoutingId) ?? routingEntries[0];
+  }, [routingEntries, selectedRoutingId]);
+
+  useEffect(() => {
+    if (routingEntries.length === 0) {
+      if (selectedRoutingId !== '') {
+        setSelectedRoutingId('');
+      }
+      return;
+    }
+    const hasSelected = routingEntries.some((entry) => entry.id === selectedRoutingId);
+    if (!hasSelected) {
+      setSelectedRoutingId(routingEntries[0]?.id ?? '');
+    }
+  }, [routingEntries, selectedRoutingId]);
 
   const groupedEntries = useMemo(() => {
     return {
-      prompt: ROUTING_ENTRIES.filter((entry) => entry.group === 'Prompt'),
-      asset: ROUTING_ENTRIES.filter((entry) => entry.group === 'Asset'),
-      system: ROUTING_ENTRIES.filter((entry) => entry.group === 'System'),
+      prompt: routingEntries.filter((entry) => entry.group === 'prompt'),
+      asset: routingEntries.filter((entry) => entry.group === 'asset'),
+      system: routingEntries.filter((entry) => entry.group === 'system'),
     };
-  }, []);
+  }, [routingEntries]);
 
   const getSidebarValue = useCallback(
     (entry: RoutingEntry): string => {
       if (entry.control === 'similarity_threshold') {
         return visualSimilarityThreshold.toFixed(2);
       }
-      return pointSelections[entry.id]?.analyzerId ?? 'unresolved';
+      const selection = pointSelections[entry.id];
+      const chain = Array.isArray(selection?.analyzerIds) && selection.analyzerIds.length > 0
+        ? selection.analyzerIds
+        : selection?.analyzerId
+          ? [selection.analyzerId]
+          : [];
+      if (chain.length === 0) return 'unresolved';
+      if (chain.length <= 2) return chain.join(' -> ');
+      return `${chain[0]} -> ${chain[1]} (+${chain.length - 2})`;
     },
     [pointSelections, visualSimilarityThreshold]
   );
 
-  const currentIntentValue =
-    selectedEntry.control === 'intent_override' && selectedEntry.intentKey
-      ? (intentAssetAnalyzers?.[selectedEntry.intentKey] ?? '').trim()
-      : '';
-  const hasIntentOption =
-    !currentIntentValue ||
-    assetAnalyzers.some((analyzer) => analyzer.id === currentIntentValue);
+  const defaultImageAnalyzer = imageDefaultChain[0] ?? DEFAULT_ASSET_ANALYZER_ID;
+  const selectedIntentKey = selectedEntry?.intentKey;
+  const isKnownIntentKey = Boolean(
+    selectedIntentKey &&
+    ASSET_ANALYZER_INTENT_KEYS.includes(selectedIntentKey as AssetIntentKey)
+  );
+  const currentIntentChain =
+    selectedEntry?.control === 'intent_override' && selectedIntentKey && isKnownIntentKey
+      ? (intentAnalyzerChains[selectedIntentKey as AssetIntentKey] ?? [])
+      : [];
+  const currentPointSelection = selectedEntry ? pointSelections[selectedEntry.id] : undefined;
+  const currentPointChain =
+    Array.isArray(currentPointSelection?.analyzerIds) && currentPointSelection.analyzerIds.length > 0
+      ? currentPointSelection.analyzerIds
+      : currentPointSelection?.analyzerId
+        ? [currentPointSelection.analyzerId]
+        : [];
+  const currentPointOverrideChain = analysisPointChains[selectedEntry.id] ?? [];
+
+  if (!selectedEntry) {
+    return (
+      <section className="space-y-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          Analysis Point Routing
+        </h3>
+        <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+          No analysis points are currently defined by the backend.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-2">
@@ -618,7 +937,7 @@ function AnalysisRoutingCatalog({
         Analysis Point Routing
       </h3>
       <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
-        Catalog view of runtime routing. Pick an analysis point from the left to inspect or change its analyzer.
+        Catalog view of runtime routing. Pick an analysis point from the left to inspect or change its analyzer chain.
       </p>
 
       <div className="flex border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden" style={{ height: 460 }}>
@@ -673,12 +992,22 @@ function AnalysisRoutingCatalog({
 
             {selectedEntry.control !== 'similarity_threshold' && (
               <div className="p-2.5 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50/70 dark:bg-neutral-800/40">
-                <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Current routed analyzer</div>
-                <div className="text-[11px] font-mono text-neutral-800 dark:text-neutral-100 mt-0.5">
-                  {pointSelections[selectedEntry.id]?.analyzerId ?? 'unresolved'}
-                </div>
+                <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Current routed analyzer chain</div>
+                {currentPointChain.length > 0 ? (
+                  <div className="space-y-1 mt-1">
+                    {currentPointChain.map((analyzerId, index) => (
+                      <div key={`${analyzerId}-${index}`} className="text-[11px] font-mono text-neutral-800 dark:text-neutral-100">
+                        {index + 1}. {analyzerId}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[11px] font-mono text-neutral-800 dark:text-neutral-100 mt-0.5">
+                    unresolved
+                  </div>
+                )}
                 <div className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">
-                  Source: {pointSelections[selectedEntry.id]?.source ?? 'unavailable'}
+                  Source: {currentPointSelection?.source ?? 'unavailable'}
                 </div>
               </div>
             )}
@@ -686,115 +1015,68 @@ function AnalysisRoutingCatalog({
             {(selectedEntry.control === 'prompt_default') && (
               <div className="space-y-2">
                 <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
-                  Prompt analyzer default
+                  Prompt analyzer chain
                 </label>
-                <select
-                  value={defaultPromptAnalyzer}
-                  onChange={(e) => onPromptChange(e.target.value)}
+                <AnalyzerChainEditor
+                  chain={promptDefaultChain}
+                  analyzers={promptAnalyzers}
                   disabled={isSavingDefaults}
-                  className="w-full max-w-xl px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
-                >
-                  {!hasPromptDefaultOption && (
-                    <option value={defaultPromptAnalyzer}>Unavailable: {defaultPromptAnalyzer}</option>
-                  )}
-                  {promptAnalyzers.map((analyzer) => (
-                    <option key={analyzer.id} value={analyzer.id}>
-                      {analyzer.name}
-                    </option>
-                  ))}
-                </select>
-                {!hasPromptDefaultOption && (
-                  <p className="text-[10px] text-amber-700 dark:text-amber-400">
-                    Selected analyzer is not currently registered.
-                  </p>
-                )}
+                  onChange={onPromptChainChange}
+                />
               </div>
             )}
 
             {(selectedEntry.control === 'image_default') && (
               <div className="space-y-2">
                 <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
-                  Image analyzer default
+                  Image analyzer chain
                 </label>
-                <select
-                  value={defaultImageAnalyzer}
-                  onChange={(e) => onImageChange(e.target.value)}
+                <AnalyzerChainEditor
+                  chain={imageDefaultChain}
+                  analyzers={assetAnalyzers}
                   disabled={isSavingDefaults}
-                  className="w-full max-w-xl px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
-                >
-                  {!hasImageDefaultOption && (
-                    <option value={defaultImageAnalyzer}>Unavailable: {defaultImageAnalyzer}</option>
-                  )}
-                  {assetAnalyzers.map((analyzer) => (
-                    <option key={analyzer.id} value={analyzer.id}>
-                      {analyzer.name}
-                    </option>
-                  ))}
-                </select>
-                {!hasImageDefaultOption && (
-                  <p className="text-[10px] text-amber-700 dark:text-amber-400">
-                    Selected analyzer is not currently registered.
-                  </p>
-                )}
+                  onChange={onImageChainChange}
+                />
               </div>
             )}
 
             {(selectedEntry.control === 'video_default') && (
               <div className="space-y-2">
                 <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
-                  Video analyzer default
+                  Video analyzer chain
                 </label>
-                <select
-                  value={defaultVideoAnalyzer}
-                  onChange={(e) => onVideoChange(e.target.value)}
+                <AnalyzerChainEditor
+                  chain={videoDefaultChain}
+                  analyzers={assetAnalyzers}
                   disabled={isSavingDefaults}
-                  className="w-full max-w-xl px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
-                >
-                  {!hasVideoDefaultOption && (
-                    <option value={defaultVideoAnalyzer}>Unavailable: {defaultVideoAnalyzer}</option>
-                  )}
-                  {assetAnalyzers.map((analyzer) => (
-                    <option key={analyzer.id} value={analyzer.id}>
-                      {analyzer.name}
-                    </option>
-                  ))}
-                </select>
-                {!hasVideoDefaultOption && (
-                  <p className="text-[10px] text-amber-700 dark:text-amber-400">
-                    Selected analyzer is not currently registered.
-                  </p>
-                )}
+                  onChange={onVideoChainChange}
+                />
               </div>
             )}
 
             {(selectedEntry.control === 'intent_override' && selectedEntry.intentKey) && (
               <div className="space-y-2">
                 <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
-                  Intent override
+                  Intent override chain
                 </label>
-                <select
-                  value={currentIntentValue}
-                  onChange={(e) => {
-                    if (selectedEntry.intentKey) {
-                      onIntentChange(selectedEntry.intentKey, e.target.value);
-                    }
-                  }}
-                  className="w-full max-w-xl px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
-                >
-                  <option value="">Use Image Default ({defaultImageAnalyzer})</option>
-                  {!hasIntentOption && currentIntentValue && (
-                    <option value={currentIntentValue}>Unavailable: {currentIntentValue}</option>
-                  )}
-                  {assetAnalyzers.map((analyzer) => (
-                    <option key={analyzer.id} value={analyzer.id}>
-                      {analyzer.name}
-                    </option>
-                  ))}
-                </select>
-                {!hasIntentOption && currentIntentValue && (
-                  <p className="text-[10px] text-amber-700 dark:text-amber-400">
-                    Selected override is not currently registered.
-                  </p>
+                {isKnownIntentKey ? (
+                  <AnalyzerChainEditor
+                    chain={currentIntentChain}
+                    analyzers={assetAnalyzers}
+                    allowEmpty
+                    fallbackLabel={`If empty, falls back to Image chain (${defaultImageAnalyzer}).`}
+                    disabled={isSavingDefaults}
+                    onChange={(next) => {
+                      if (selectedEntry.intentKey) {
+                        onIntentChainChange(selectedEntry.intentKey as AssetIntentKey, next);
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="p-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-900/20 text-[10px] text-amber-700 dark:text-amber-300">
+                    Intent key <span className="font-mono">{selectedEntry.intentKey}</span> is not recognized by this client yet.
+                    Update the frontend intent schema to make this point editable.
+                  </div>
                 )}
               </div>
             )}
@@ -818,13 +1100,29 @@ function AnalysisRoutingCatalog({
                 </div>
               </div>
             )}
+
+            {selectedEntry.control !== 'similarity_threshold' && (
+              <div className="space-y-2 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+                <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+                  Point-specific chain override (optional)
+                </label>
+                <AnalyzerChainEditor
+                  chain={currentPointOverrideChain}
+                  analyzers={selectedEntry.target === 'prompt' ? promptAnalyzers : assetAnalyzers}
+                  allowEmpty
+                  fallbackLabel="If empty, this point uses its control fallback chain."
+                  disabled={isSavingDefaults}
+                  onChange={(next) => onAnalysisPointChainChange(selectedEntry.id, next)}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       <div className="flex items-center justify-between gap-3">
         <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-          {promptAnalyzers.length} prompt analyzers / {assetAnalyzers.length} asset analyzers
+          {promptAnalyzers.length} text analyzers / {assetAnalyzers.length} media analyzers
         </div>
         <button
           onClick={onReset}
@@ -849,9 +1147,300 @@ function AnalysisRoutingCatalog({
   );
 }
 
+interface AnalyzerBackfillPanelProps {
+  assetAnalyzers: AnalyzerInfo[];
+  runs: AnalysisBackfillResponse[];
+  isLoading: boolean;
+  error: string | null;
+  formState: BackfillFormState;
+  isCreating: boolean;
+  activeRunActionId: number | null;
+  onFormChange: (updates: Partial<BackfillFormState>) => void;
+  onCreate: () => void;
+  onRefresh: () => void;
+  onPause: (runId: number) => void;
+  onResume: (runId: number) => void;
+  onCancel: (runId: number) => void;
+}
+
+function AnalyzerBackfillPanel({
+  assetAnalyzers,
+  runs,
+  isLoading,
+  error,
+  formState,
+  isCreating,
+  activeRunActionId,
+  onFormChange,
+  onCreate,
+  onRefresh,
+  onPause,
+  onResume,
+  onCancel,
+}: AnalyzerBackfillPanelProps) {
+  const sortedRuns = useMemo(
+    () => [...runs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    [runs]
+  );
+
+  return (
+    <section className="space-y-3 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+            Analysis Backfill Runs
+          </h3>
+          <p className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">
+            Queue analysis across existing assets. Dedupe prevents rerunning identical analyzer+input combinations.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isLoading}
+          className="px-3 py-1.5 text-[11px] rounded bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50 text-neutral-700 dark:text-neutral-300 transition-colors"
+        >
+          {isLoading ? 'Refreshing...' : 'Refresh'}
+        </button>
+      </div>
+
+      <div className="p-3 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/40 space-y-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
+              Media type
+            </label>
+            <select
+              value={formState.media_type}
+              onChange={(e) =>
+                onFormChange({
+                  media_type: e.target.value as BackfillFormState['media_type'],
+                })
+              }
+              className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+            >
+              <option value="">Any media</option>
+              <option value="image">Image</option>
+              <option value="video">Video</option>
+              <option value="audio">Audio</option>
+              <option value="3d_model">3D model</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
+              Analyzer (optional)
+            </label>
+            <select
+              value={formState.analyzer_id}
+              onChange={(e) => onFormChange({ analyzer_id: e.target.value })}
+              className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+            >
+              <option value="">Auto-resolve from defaults</option>
+              {assetAnalyzers.map((analyzer) => (
+                <option key={analyzer.id} value={analyzer.id}>
+                  {analyzer.name} ({analyzer.id})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
+              Intent (optional)
+            </label>
+            <select
+              value={formState.analyzer_intent}
+              onChange={(e) =>
+                onFormChange({
+                  analyzer_intent: e.target.value as BackfillFormState['analyzer_intent'],
+                })
+              }
+              className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+            >
+              <option value="">None</option>
+              {ASSET_ANALYZER_INTENT_KEYS.map((intent) => (
+                <option key={intent} value={intent}>
+                  {intent}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
+              Analysis point (optional)
+            </label>
+            <input
+              type="text"
+              value={formState.analysis_point}
+              onChange={(e) => onFormChange({ analysis_point: e.target.value })}
+              placeholder="manual_batch_images"
+              className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
+              Batch size
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={1000}
+              value={formState.batch_size}
+              onChange={(e) => onFormChange({ batch_size: Number(e.target.value) || 100 })}
+              className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
+              Priority
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={10}
+              value={formState.priority}
+              onChange={(e) => onFormChange({ priority: Number(e.target.value) || 5 })}
+              className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+            Backfill processes assets in ID order and stores checkpoints for resume.
+          </p>
+          <button
+            type="button"
+            onClick={onCreate}
+            disabled={isCreating}
+            className="px-3 py-1.5 text-[11px] rounded bg-blue-500 hover:bg-blue-600 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white transition-colors"
+          >
+            {isCreating ? 'Creating...' : 'Start Backfill Run'}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-[11px] text-red-700 dark:text-red-300">
+          {error}
+        </div>
+      )}
+
+      {sortedRuns.length === 0 ? (
+        <div className="p-3 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/40 text-[11px] text-neutral-500 dark:text-neutral-400">
+          No backfill runs yet.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {sortedRuns.map((run) => {
+            const progress =
+              run.total_assets > 0
+                ? Math.min(100, Math.round((run.processed_assets / run.total_assets) * 100))
+                : 0;
+            const canPause = run.status === 'pending' || run.status === 'running';
+            const canResume = run.status === 'paused';
+            const canCancel = !['completed', 'failed', 'cancelled'].includes(run.status);
+            const actionBusy = activeRunActionId === run.id;
+
+            return (
+              <div
+                key={run.id}
+                className="p-3 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50/60 dark:bg-neutral-900/40"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-semibold text-neutral-800 dark:text-neutral-100">
+                        Run #{run.id}
+                      </span>
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded ${backfillStatusClasses(run.status)}`}>
+                        {run.status}
+                      </span>
+                      {isBackfillActive(run.status) && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                          active
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400 font-mono">
+                      media={run.media_type ?? 'any'} analyzer={run.analyzer_id ?? 'auto'} intent={run.analyzer_intent ?? '-'} point={run.analysis_point ?? '-'}
+                    </div>
+                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                      created {formatDateTime(run.created_at)} • updated {formatDateTime(run.updated_at)}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {canPause && (
+                      <button
+                        type="button"
+                        onClick={() => onPause(run.id)}
+                        disabled={actionBusy}
+                        className="px-2 py-1 text-[10px] rounded bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 disabled:opacity-50"
+                      >
+                        Pause
+                      </button>
+                    )}
+                    {canResume && (
+                      <button
+                        type="button"
+                        onClick={() => onResume(run.id)}
+                        disabled={actionBusy}
+                        className="px-2 py-1 text-[10px] rounded bg-blue-100 dark:bg-blue-900/30 hover:bg-blue-200 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 disabled:opacity-50"
+                      >
+                        Resume
+                      </button>
+                    )}
+                    {canCancel && (
+                      <button
+                        type="button"
+                        onClick={() => onCancel(run.id)}
+                        disabled={actionBusy}
+                        className="px-2 py-1 text-[10px] rounded bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-2">
+                  <div className="flex items-center justify-between text-[10px] text-neutral-500 dark:text-neutral-400">
+                    <span>
+                      Processed {run.processed_assets}/{run.total_assets} • Created {run.created_analyses} • Deduped {run.deduped_assets} • Failed {run.failed_assets}
+                    </span>
+                    <span className="font-mono">{progress}%</span>
+                  </div>
+                  <div className="mt-1 h-1.5 rounded bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                </div>
+
+                {run.last_error && (
+                  <div className="mt-2 text-[10px] text-red-700 dark:text-red-300">
+                    Last error: {run.last_error}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function AnalyzersSettings() {
   const [analyzers, setAnalyzers] = useState<AnalyzerInfo[]>([]);
   const [instances, setInstances] = useState<AnalyzerInstance[]>([]);
+  const [routingEntries, setRoutingEntries] = useState<RoutingEntry[]>(FALLBACK_ROUTING_ENTRIES);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -865,99 +1454,264 @@ export function AnalyzersSettings() {
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
   const [isSavingDefaults, setIsSavingDefaults] = useState(false);
   const [defaultsError, setDefaultsError] = useState<string | null>(null);
+  const [promptDefaultChain, setPromptDefaultChain] = useState<string[]>([DEFAULT_PROMPT_ANALYZER_ID]);
+  const [imageDefaultChain, setImageDefaultChain] = useState<string[]>([DEFAULT_ASSET_ANALYZER_ID]);
+  const [videoDefaultChain, setVideoDefaultChain] = useState<string[]>([DEFAULT_ASSET_ANALYZER_ID]);
+  const [intentAnalyzerChains, setIntentAnalyzerChains] = useState<Partial<Record<AssetIntentKey, string[]>>>({});
+  const [analysisPointChains, setAnalysisPointChains] = useState<Record<string, string[]>>({});
+  const [backfillRuns, setBackfillRuns] = useState<AnalysisBackfillResponse[]>([]);
+  const [backfillForm, setBackfillForm] = useState<BackfillFormState>(INITIAL_BACKFILL_FORM_STATE);
+  const [isLoadingBackfills, setIsLoadingBackfills] = useState(false);
+  const [isCreatingBackfill, setIsCreatingBackfill] = useState(false);
+  const [backfillError, setBackfillError] = useState<string | null>(null);
+  const [activeBackfillActionId, setActiveBackfillActionId] = useState<number | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
-  const defaultPromptAnalyzer = usePromptSettingsStore((s) => s.defaultAnalyzer);
   const setDefaultPromptAnalyzer = usePromptSettingsStore((s) => s.setDefaultAnalyzer);
-  const defaultImageAnalyzer = useAnalyzerSettingsStore((s) => s.defaultImageAnalyzer);
+  const setDefaultImageAnalyzers = useAnalyzerSettingsStore((s) => s.setDefaultImageAnalyzers);
   const setDefaultImageAnalyzer = useAnalyzerSettingsStore((s) => s.setDefaultImageAnalyzer);
-  const defaultVideoAnalyzer = useAnalyzerSettingsStore((s) => s.defaultVideoAnalyzer);
+  const setDefaultVideoAnalyzers = useAnalyzerSettingsStore((s) => s.setDefaultVideoAnalyzers);
   const setDefaultVideoAnalyzer = useAnalyzerSettingsStore((s) => s.setDefaultVideoAnalyzer);
-  const intentAssetAnalyzers = useAnalyzerSettingsStore((s) => s.intentAssetAnalyzers);
-  const setIntentAssetAnalyzer = useAnalyzerSettingsStore((s) => s.setIntentAssetAnalyzer);
+  const setIntentAssetAnalyzerChain = useAnalyzerSettingsStore((s) => s.setIntentAssetAnalyzerChain);
   const clearIntentAssetAnalyzer = useAnalyzerSettingsStore((s) => s.clearIntentAssetAnalyzer);
   const visualSimilarityThreshold = useMediaSettingsStore((s) => s.visualSimilarityThreshold);
   const setVisualSimilarityThreshold = useMediaSettingsStore((s) => s.setVisualSimilarityThreshold);
-  const serverSettings = useMediaSettingsStore((s) => s.serverSettings);
-  const setServerSettings = useMediaSettingsStore((s) => s.setServerSettings);
+  const [isSavingEmbedding, setIsSavingEmbedding] = useState(false);
+  const [embeddingError, setEmbeddingError] = useState<string | null>(null);
+  const [embeddingCommandDraft, setEmbeddingCommandDraft] = useState('');
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminUser(user);
 
+  const defaultPromptAnalyzer = promptDefaultChain[0] ?? DEFAULT_PROMPT_ANALYZER_ID;
+  const defaultImageAnalyzer = imageDefaultChain[0] ?? DEFAULT_ASSET_ANALYZER_ID;
+  const defaultVideoAnalyzer = videoDefaultChain[0] ?? DEFAULT_ASSET_ANALYZER_ID;
+
   const promptAnalyzers = analyzers.filter((analyzer) => analyzer.target === 'prompt');
   const assetAnalyzers = analyzers.filter((analyzer) => analyzer.target === 'asset');
-  const hasPromptDefaultOption = promptAnalyzers.some((analyzer) => analyzer.id === defaultPromptAnalyzer);
-  const hasImageDefaultOption = assetAnalyzers.some((analyzer) => analyzer.id === defaultImageAnalyzer);
-  const hasVideoDefaultOption = assetAnalyzers.some((analyzer) => analyzer.id === defaultVideoAnalyzer);
   const hasAnyIntentOverrides = ASSET_ANALYZER_INTENT_KEYS.some((key) => {
-    const value = intentAssetAnalyzers?.[key];
-    return typeof value === 'string' && value.trim().length > 0;
+    const chain = intentAnalyzerChains?.[key];
+    return Array.isArray(chain) && chain.length > 0;
   });
+  const hasAnyAnalysisPointOverrides = Object.values(analysisPointChains).some(
+    (chain) => Array.isArray(chain) && chain.length > 0
+  );
   const isAtRecommendedDefaults =
     defaultPromptAnalyzer === DEFAULT_PROMPT_ANALYZER_ID &&
     defaultImageAnalyzer === DEFAULT_ASSET_ANALYZER_ID &&
     defaultVideoAnalyzer === DEFAULT_ASSET_ANALYZER_ID &&
+    promptDefaultChain.length <= 1 &&
+    imageDefaultChain.length <= 1 &&
+    videoDefaultChain.length <= 1 &&
     !hasAnyIntentOverrides &&
+    !hasAnyAnalysisPointOverrides &&
     Math.abs(visualSimilarityThreshold - DEFAULT_VISUAL_SIMILARITY_THRESHOLD) < 0.001;
 
-  // Fetch server media settings (for embedding controls)
-  useEffect(() => {
-    if (!serverSettings) {
-      pixsimClient.get<ServerMediaSettings>('/media/settings')
-        .then(setServerSettings)
-        .catch((err) => console.error('Failed to fetch media settings:', err));
+  const fetchBackfillRuns = useCallback(async () => {
+    try {
+      setIsLoadingBackfills(true);
+      const response = await listAnalysisBackfills({ limit: 50 });
+      setBackfillRuns(response.items ?? []);
+      setBackfillError(null);
+    } catch (err) {
+      setBackfillError(err instanceof Error ? err.message : 'Failed to load backfill runs');
+    } finally {
+      setIsLoadingBackfills(false);
     }
-  }, [serverSettings, setServerSettings]);
-
-  const updateMediaSetting = useCallback(
-    async (key: keyof ServerMediaSettings, value: ServerMediaSettings[keyof ServerMediaSettings]) => {
-      if (!serverSettings) return;
-      const prev = serverSettings;
-      setServerSettings({ ...serverSettings, [key]: value });
-      try {
-        const updated = await pixsimClient.patch<ServerMediaSettings>('/media/settings', { [key]: value });
-        setServerSettings(updated);
-      } catch (err) {
-        console.error('Failed to update media setting:', err);
-        setServerSettings(prev);
-      }
-    },
-    [serverSettings, setServerSettings]
-  );
+  }, []);
 
   // Fetch data
   const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const [analyzersRes, instancesRes, preferences] = await Promise.all([
+      const [analyzersRes, instancesRes, preferences, pointsRes] = await Promise.all([
         listAnalyzers(),
         listAnalyzerInstances({ include_disabled: true }),
         getUserPreferences(),
+        listAnalysisPoints().catch(() => ({ analysis_points: [] })),
       ]);
       setAnalyzers([...analyzersRes.analyzers]);
       setInstances([...instancesRes.instances]);
+      const points = Array.isArray(pointsRes.analysis_points) && pointsRes.analysis_points.length > 0
+        ? pointsRes.analysis_points.map(mapAnalysisPointToRoutingEntry)
+        : FALLBACK_ROUTING_ENTRIES;
+      setRoutingEntries(points);
 
       const prefs = (preferences.analyzer as AnalyzerPreferences | undefined) ?? {};
+      const promptChain = normalizeAnalyzerChainPreference(
+        prefs.prompt_default_ids,
+        DEFAULT_PROMPT_ANALYZER_ID
+      );
+      const imageChain = normalizeAnalyzerChainPreference(
+        prefs.asset_default_image_ids,
+        DEFAULT_ASSET_ANALYZER_ID
+      );
+      const videoChain = normalizeAnalyzerChainPreference(
+        prefs.asset_default_video_ids,
+        DEFAULT_ASSET_ANALYZER_ID
+      );
 
-      setDefaultPromptAnalyzer(
-        normalizeAnalyzerSetting(prefs.prompt_default_id, DEFAULT_PROMPT_ANALYZER_ID)
-      );
-      setDefaultImageAnalyzer(
-        normalizeAnalyzerSetting(prefs.asset_default_image_id, DEFAULT_ASSET_ANALYZER_ID)
-      );
-      setDefaultVideoAnalyzer(
-        normalizeAnalyzerSetting(prefs.asset_default_video_id, DEFAULT_ASSET_ANALYZER_ID)
-      );
+      const rawIntentChains = (prefs.asset_intent_default_ids ?? {}) as Record<string, unknown>;
+      const nextIntentChains: Partial<Record<AssetIntentKey, string[]>> = {};
+      for (const intentKey of ASSET_ANALYZER_INTENT_KEYS) {
+        const fromList = Array.isArray(rawIntentChains[intentKey])
+          ? (rawIntentChains[intentKey] as unknown[]).filter((item): item is string => typeof item === 'string')
+          : [];
+        const chain = normalizeOptionalAnalyzerChainInput(fromList);
+        if (chain.length > 0) {
+          nextIntentChains[intentKey] = chain;
+        }
+      }
+
+      const rawPointChains = (prefs.analysis_point_default_ids ?? {}) as Record<string, unknown>;
+      const nextAnalysisPointChains: Record<string, string[]> = {};
+      const pointIds = new Set<string>(Object.keys(rawPointChains));
+      for (const pointId of pointIds) {
+        const fromList = Array.isArray(rawPointChains[pointId])
+          ? (rawPointChains[pointId] as unknown[]).filter((item): item is string => typeof item === 'string')
+          : [];
+        const chain = normalizeOptionalAnalyzerChainInput(fromList);
+        if (chain.length > 0) {
+          nextAnalysisPointChains[pointId] = chain;
+        }
+      }
+
+      setPromptDefaultChain(promptChain);
+      setImageDefaultChain(imageChain);
+      setVideoDefaultChain(videoChain);
+      setIntentAnalyzerChains(nextIntentChains);
+      setAnalysisPointChains(nextAnalysisPointChains);
+
+      setDefaultPromptAnalyzer(promptChain[0]);
+      setDefaultImageAnalyzers(imageChain);
+      setDefaultImageAnalyzer(imageChain[0]);
+      setDefaultVideoAnalyzers(videoChain);
+      setDefaultVideoAnalyzer(videoChain[0]);
+      for (const intentKey of ASSET_ANALYZER_INTENT_KEYS) {
+        const chain = nextIntentChains[intentKey];
+        if (Array.isArray(chain) && chain.length > 0) {
+          setIntentAssetAnalyzerChain(intentKey, chain);
+        } else {
+          clearIntentAssetAnalyzer(intentKey);
+        }
+      }
+
+      void fetchBackfillRuns();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setIsLoading(false);
     }
-  }, [setDefaultImageAnalyzer, setDefaultPromptAnalyzer, setDefaultVideoAnalyzer]);
+  }, [
+    clearIntentAssetAnalyzer,
+    setDefaultImageAnalyzer,
+    setDefaultImageAnalyzers,
+    setDefaultPromptAnalyzer,
+    setDefaultVideoAnalyzer,
+    setDefaultVideoAnalyzers,
+    setIntentAssetAnalyzerChain,
+    fetchBackfillRuns,
+  ]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const embeddingInstances = useMemo(() => {
+    return instances
+      .filter((instance) => instance.analyzer_id === EMBEDDING_ANALYZER_ID)
+      .slice()
+      .sort((a, b) => b.priority - a.priority || b.id - a.id);
+  }, [instances]);
+
+  const activeEmbeddingInstance = useMemo(() => {
+    return embeddingInstances.find((instance) => instance.on_ingest) ?? embeddingInstances[0] ?? null;
+  }, [embeddingInstances]);
+
+  const activeEmbeddingCommand = useMemo(() => {
+    if (!activeEmbeddingInstance) return '';
+    return extractEmbeddingCommand(activeEmbeddingInstance.config as Record<string, unknown>);
+  }, [activeEmbeddingInstance]);
+
+  const embeddingEnabled = Boolean(activeEmbeddingInstance?.enabled && activeEmbeddingInstance?.on_ingest);
+
+  useEffect(() => {
+    setEmbeddingCommandDraft(activeEmbeddingCommand);
+  }, [activeEmbeddingCommand]);
+
+  const persistEmbeddingControls = useCallback(
+    async (updates: { enabled?: boolean; command?: string }) => {
+      const requestedEnabled = updates.enabled;
+      const requestedCommand = updates.command;
+      setEmbeddingError(null);
+      setIsSavingEmbedding(true);
+
+      try {
+        if (activeEmbeddingInstance) {
+          const currentConfig = (activeEmbeddingInstance.config ?? {}) as Record<string, unknown>;
+          const nextConfig = requestedCommand === undefined
+            ? currentConfig
+            : { ...currentConfig, command: requestedCommand.trim() };
+
+          await updateAnalyzerInstance(activeEmbeddingInstance.id, {
+            enabled: requestedEnabled ?? activeEmbeddingInstance.enabled,
+            on_ingest: requestedEnabled ?? activeEmbeddingInstance.on_ingest,
+            config: nextConfig,
+          });
+        } else {
+          const shouldEnable = requestedEnabled ?? false;
+          const hasCommand = typeof requestedCommand === 'string' && requestedCommand.trim().length > 0;
+          if (!shouldEnable && !hasCommand) {
+            return;
+          }
+
+          const payload: CreateAnalyzerInstanceRequest = {
+            analyzer_id: EMBEDDING_ANALYZER_ID,
+            label: DEFAULT_EMBEDDING_LABEL,
+            provider_id: DEFAULT_EMBEDDING_PROVIDER_ID,
+            model_id: DEFAULT_EMBEDDING_MODEL_ID,
+            enabled: shouldEnable,
+            on_ingest: shouldEnable,
+            priority: 0,
+            config: hasCommand ? { command: requestedCommand?.trim() ?? '' } : {},
+          };
+          await createAnalyzerInstance(payload);
+        }
+
+        await fetchData();
+      } catch (err) {
+        setEmbeddingError(err instanceof Error ? err.message : 'Failed to update embedding controls');
+      } finally {
+        setIsSavingEmbedding(false);
+      }
+    },
+    [activeEmbeddingInstance, fetchData]
+  );
+
+  const handleEmbeddingEnabledChange = useCallback(
+    (enabled: boolean) => {
+      void persistEmbeddingControls({ enabled });
+    },
+    [persistEmbeddingControls]
+  );
+
+  const handleEmbeddingCommandSave = useCallback(() => {
+    if (embeddingCommandDraft === activeEmbeddingCommand) return;
+    void persistEmbeddingControls({ command: embeddingCommandDraft });
+  }, [activeEmbeddingCommand, embeddingCommandDraft, persistEmbeddingControls]);
+
+  const hasActiveBackfillRuns = useMemo(
+    () => backfillRuns.some((run) => isBackfillActive(run.status)),
+    [backfillRuns]
+  );
+
+  useEffect(() => {
+    if (!hasActiveBackfillRuns) return undefined;
+    const timer = window.setInterval(() => {
+      void fetchBackfillRuns();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [fetchBackfillRuns, hasActiveBackfillRuns]);
 
   const persistAnalyzerPreferences = useCallback(
     async (updates: Partial<AnalyzerPreferences>) => {
@@ -981,43 +1735,163 @@ export function AnalyzersSettings() {
     []
   );
 
-  const handlePromptDefaultChange = useCallback(
-    (value: string) => {
-      const nextValue = normalizeAnalyzerSetting(value, DEFAULT_PROMPT_ANALYZER_ID);
-      setDefaultPromptAnalyzer(nextValue);
-      void persistAnalyzerPreferences({ prompt_default_id: nextValue });
+  const handlePromptDefaultChainChange = useCallback(
+    (values: string[]) => {
+      const chain = normalizeAnalyzerChainInput(values, DEFAULT_PROMPT_ANALYZER_ID);
+      setPromptDefaultChain(chain);
+      setDefaultPromptAnalyzer(chain[0]);
+      void persistAnalyzerPreferences({
+        prompt_default_ids: chain,
+      });
     },
     [persistAnalyzerPreferences, setDefaultPromptAnalyzer]
   );
 
-  const handleImageDefaultChange = useCallback(
-    (value: string) => {
-      const nextValue = normalizeAnalyzerSetting(value, DEFAULT_ASSET_ANALYZER_ID);
-      setDefaultImageAnalyzer(nextValue);
-      void persistAnalyzerPreferences({ asset_default_image_id: nextValue });
+  const handleImageDefaultChainChange = useCallback(
+    (values: string[]) => {
+      const chain = normalizeAnalyzerChainInput(values, DEFAULT_ASSET_ANALYZER_ID);
+      setImageDefaultChain(chain);
+      setDefaultImageAnalyzers(chain);
+      setDefaultImageAnalyzer(chain[0]);
+      void persistAnalyzerPreferences({
+        asset_default_image_ids: chain,
+      });
     },
-    [persistAnalyzerPreferences, setDefaultImageAnalyzer]
+    [persistAnalyzerPreferences, setDefaultImageAnalyzer, setDefaultImageAnalyzers]
   );
 
-  const handleVideoDefaultChange = useCallback(
-    (value: string) => {
-      const nextValue = normalizeAnalyzerSetting(value, DEFAULT_ASSET_ANALYZER_ID);
-      setDefaultVideoAnalyzer(nextValue);
-      void persistAnalyzerPreferences({ asset_default_video_id: nextValue });
+  const handleVideoDefaultChainChange = useCallback(
+    (values: string[]) => {
+      const chain = normalizeAnalyzerChainInput(values, DEFAULT_ASSET_ANALYZER_ID);
+      setVideoDefaultChain(chain);
+      setDefaultVideoAnalyzers(chain);
+      setDefaultVideoAnalyzer(chain[0]);
+      void persistAnalyzerPreferences({
+        asset_default_video_ids: chain,
+      });
     },
-    [persistAnalyzerPreferences, setDefaultVideoAnalyzer]
+    [persistAnalyzerPreferences, setDefaultVideoAnalyzer, setDefaultVideoAnalyzers]
   );
 
-  const handleIntentAssetAnalyzerChange = useCallback(
-    (intent: (typeof ASSET_ANALYZER_INTENT_KEYS)[number], value: string) => {
-      const normalized = value.trim();
-      if (!normalized) {
-        clearIntentAssetAnalyzer(intent);
-        return;
+  const handleIntentAssetAnalyzerChainChange = useCallback(
+    (intent: AssetIntentKey, values: string[]) => {
+      const chain = normalizeOptionalAnalyzerChainInput(values);
+      setIntentAnalyzerChains((prev) => {
+        const next: Partial<Record<AssetIntentKey, string[]>> = { ...prev };
+        if (chain.length > 0) {
+          next[intent] = chain;
+          setIntentAssetAnalyzerChain(intent, chain);
+        } else {
+          delete next[intent];
+          clearIntentAssetAnalyzer(intent);
+        }
+
+        void persistAnalyzerPreferences({
+          asset_intent_default_ids: next,
+        });
+
+        return next;
+      });
+    },
+    [clearIntentAssetAnalyzer, persistAnalyzerPreferences, setIntentAssetAnalyzerChain]
+  );
+
+  const handleAnalysisPointChainChange = useCallback(
+    (pointId: string, values: string[]) => {
+      const chain = normalizeOptionalAnalyzerChainInput(values);
+      setAnalysisPointChains((prev) => {
+        const next = { ...prev };
+        if (chain.length > 0) {
+          next[pointId] = chain;
+        } else {
+          delete next[pointId];
+        }
+
+        void persistAnalyzerPreferences({
+          analysis_point_default_ids: next,
+        });
+
+        return next;
+      });
+    },
+    [persistAnalyzerPreferences]
+  );
+
+  const handleBackfillFormChange = useCallback((updates: Partial<BackfillFormState>) => {
+    setBackfillForm((prev) => ({ ...prev, ...updates }));
+  }, []);
+
+  const handleCreateBackfill = useCallback(async () => {
+    try {
+      setIsCreatingBackfill(true);
+      setBackfillError(null);
+
+      const payload: CreateAnalysisBackfillRequest = {
+        batch_size: Math.max(1, Math.min(1000, Math.trunc(backfillForm.batch_size || 100))),
+        priority: Math.max(0, Math.min(10, Math.trunc(backfillForm.priority || 5))),
+      };
+
+      if (backfillForm.media_type) payload.media_type = backfillForm.media_type;
+      if (backfillForm.analyzer_id.trim()) payload.analyzer_id = backfillForm.analyzer_id.trim();
+      if (backfillForm.analyzer_intent) payload.analyzer_intent = backfillForm.analyzer_intent;
+      if (backfillForm.analysis_point.trim()) payload.analysis_point = backfillForm.analysis_point.trim();
+
+      await createAnalysisBackfill(payload);
+      setBackfillForm((prev) => ({
+        ...prev,
+        analysis_point: '',
+      }));
+      await fetchBackfillRuns();
+    } catch (err) {
+      setBackfillError(err instanceof Error ? err.message : 'Failed to create backfill run');
+    } finally {
+      setIsCreatingBackfill(false);
+    }
+  }, [backfillForm, fetchBackfillRuns]);
+
+  const runBackfillAction = useCallback(
+    async (runId: number, action: 'pause' | 'resume' | 'cancel') => {
+      try {
+        setActiveBackfillActionId(runId);
+        setBackfillError(null);
+
+        if (action === 'pause') {
+          await pauseAnalysisBackfill(runId);
+        } else if (action === 'resume') {
+          await resumeAnalysisBackfill(runId);
+        } else {
+          await cancelAnalysisBackfill(runId);
+        }
+        await fetchBackfillRuns();
+      } catch (err) {
+        setBackfillError(err instanceof Error ? err.message : `Failed to ${action} backfill run`);
+      } finally {
+        setActiveBackfillActionId(null);
       }
-      setIntentAssetAnalyzer(intent, normalized);
     },
-    [clearIntentAssetAnalyzer, setIntentAssetAnalyzer]
+    [fetchBackfillRuns]
+  );
+
+  const handlePauseBackfillRun = useCallback(
+    (runId: number) => {
+      void runBackfillAction(runId, 'pause');
+    },
+    [runBackfillAction]
+  );
+
+  const handleResumeBackfillRun = useCallback(
+    (runId: number) => {
+      void runBackfillAction(runId, 'resume');
+    },
+    [runBackfillAction]
+  );
+
+  const handleCancelBackfillRun = useCallback(
+    (runId: number) => {
+      if (!confirm(`Cancel backfill run #${runId}?`)) return;
+      void runBackfillAction(runId, 'cancel');
+    },
+    [runBackfillAction]
   );
 
   // Form handlers
@@ -1071,24 +1945,41 @@ export function AnalyzersSettings() {
   };
 
   const handleResetDefaults = useCallback(() => {
-    setDefaultPromptAnalyzer(DEFAULT_PROMPT_ANALYZER_ID);
-    setDefaultImageAnalyzer(DEFAULT_ASSET_ANALYZER_ID);
-    setDefaultVideoAnalyzer(DEFAULT_ASSET_ANALYZER_ID);
+    const promptChain = [DEFAULT_PROMPT_ANALYZER_ID];
+    const imageChain = [DEFAULT_ASSET_ANALYZER_ID];
+    const videoChain = [DEFAULT_ASSET_ANALYZER_ID];
+
+    setPromptDefaultChain(promptChain);
+    setImageDefaultChain(imageChain);
+    setVideoDefaultChain(videoChain);
+    setIntentAnalyzerChains({});
+    setAnalysisPointChains({});
+
+    setDefaultPromptAnalyzer(promptChain[0]);
+    setDefaultImageAnalyzers(imageChain);
+    setDefaultImageAnalyzer(imageChain[0]);
+    setDefaultVideoAnalyzers(videoChain);
+    setDefaultVideoAnalyzer(videoChain[0]);
     for (const intentKey of ASSET_ANALYZER_INTENT_KEYS) {
       clearIntentAssetAnalyzer(intentKey);
     }
     setVisualSimilarityThreshold(DEFAULT_VISUAL_SIMILARITY_THRESHOLD);
     void persistAnalyzerPreferences({
-      prompt_default_id: DEFAULT_PROMPT_ANALYZER_ID,
-      asset_default_image_id: DEFAULT_ASSET_ANALYZER_ID,
-      asset_default_video_id: DEFAULT_ASSET_ANALYZER_ID,
+      prompt_default_ids: promptChain,
+      asset_default_image_ids: imageChain,
+      asset_default_video_ids: videoChain,
+      asset_intent_default_ids: {},
+      analysis_point_default_ids: {},
     });
   }, [
     persistAnalyzerPreferences,
     setDefaultImageAnalyzer,
+    setDefaultImageAnalyzers,
     setDefaultPromptAnalyzer,
     setDefaultVideoAnalyzer,
+    setDefaultVideoAnalyzers,
     clearIntentAssetAnalyzer,
+    setAnalysisPointChains,
     setVisualSimilarityThreshold,
   ]);
 
@@ -1167,46 +2058,96 @@ export function AnalyzersSettings() {
   };
 
   const analysisPointSelections = useMemo<Record<string, AnalysisPointSelection>>(() => {
-    const resolveIntentSelection = (intent: AssetIntentKey): AnalysisPointSelection => {
-      const override = (intentAssetAnalyzers?.[intent] ?? '').trim();
+    const resolveIntentSelection = (intentKey?: string): AnalysisPointSelection => {
+      const isKnownIntent = Boolean(
+        intentKey && ASSET_ANALYZER_INTENT_KEYS.includes(intentKey as AssetIntentKey)
+      );
+      if (!intentKey || !isKnownIntent) {
+        return {
+          analyzerId: defaultImageAnalyzer,
+          analyzerIds: imageDefaultChain,
+          source: `Image chain fallback (${imageDefaultChain.join(' -> ')})`,
+        };
+      }
+      const overrideChain = intentAnalyzerChains?.[intentKey as AssetIntentKey] ?? [];
+      const chain = overrideChain.length > 0 ? overrideChain : imageDefaultChain;
       return {
-        analyzerId: override || defaultImageAnalyzer,
-        source: override ? 'Intent override' : `Image default (${defaultImageAnalyzer})`,
+        analyzerId: chain[0] ?? defaultImageAnalyzer,
+        analyzerIds: chain,
+        source:
+          overrideChain.length > 0
+            ? `Intent override chain (${overrideChain.join(' -> ')})`
+            : `Image chain fallback (${imageDefaultChain.join(' -> ')})`,
       };
     };
 
-    return {
-      prompt_parsing: {
-        analyzerId: defaultPromptAnalyzer,
-        source: `Prompt default (${defaultPromptAnalyzer})`,
-      },
-      prompt_generation: {
-        analyzerId: defaultPromptAnalyzer,
-        source: `Prompt default (${defaultPromptAnalyzer})`,
-      },
-      asset_ingest_on_ingest: {
-        analyzerId: defaultImageAnalyzer,
-        source: `Image default fallback (${defaultImageAnalyzer})`,
-      },
-      character_ingest_face: resolveIntentSelection('character_ingest_face'),
-      character_ingest_sheet: resolveIntentSelection('character_ingest_sheet'),
-      scene_prep_location: resolveIntentSelection('scene_prep_location'),
-      scene_prep_style: resolveIntentSelection('scene_prep_style'),
-      manual_analysis_image: {
-        analyzerId: defaultImageAnalyzer,
-        source: `Image default when analyzer_id is omitted (${defaultImageAnalyzer})`,
-      },
-      manual_analysis_video: {
-        analyzerId: defaultVideoAnalyzer,
-        source: `Video default when analyzer_id is omitted (${defaultVideoAnalyzer})`,
-      },
-    };
+    const selections: Record<string, AnalysisPointSelection> = {};
+    for (const entry of routingEntries) {
+      if (entry.control === 'similarity_threshold') continue;
+
+      const pointOverride = analysisPointChains[entry.id] ?? [];
+      if (pointOverride.length > 0) {
+        selections[entry.id] = {
+          analyzerId: pointOverride[0],
+          analyzerIds: pointOverride,
+          source: `Point override chain (${pointOverride.join(' -> ')})`,
+        };
+        continue;
+      }
+
+      if (entry.control === 'prompt_default') {
+        selections[entry.id] = {
+          analyzerId: defaultPromptAnalyzer,
+          analyzerIds: promptDefaultChain,
+          source: `Prompt chain (${promptDefaultChain.join(' -> ')})`,
+        };
+        continue;
+      }
+
+      if (entry.control === 'video_default') {
+        selections[entry.id] = {
+          analyzerId: defaultVideoAnalyzer,
+          analyzerIds: videoDefaultChain,
+          source: `Video chain (${videoDefaultChain.join(' -> ')})`,
+        };
+        continue;
+      }
+
+      if (entry.control === 'image_default') {
+        selections[entry.id] = {
+          analyzerId: defaultImageAnalyzer,
+          analyzerIds: imageDefaultChain,
+          source: `Image chain (${imageDefaultChain.join(' -> ')})`,
+        };
+        continue;
+      }
+
+      selections[entry.id] = resolveIntentSelection(entry.intentKey);
+    }
+
+    return selections;
   }, [
+    analysisPointChains,
     defaultImageAnalyzer,
     defaultPromptAnalyzer,
     defaultVideoAnalyzer,
-    intentAssetAnalyzers,
+    imageDefaultChain,
+    intentAnalyzerChains,
+    promptDefaultChain,
+    routingEntries,
+    videoDefaultChain,
   ]);
+
+  const catalogAnalysisPoints = useMemo<CatalogAnalysisPointDefinition[]>(() => {
+    return routingEntries
+      .filter((entry): entry is RoutingEntry & { target: 'prompt' | 'asset' } => entry.target === 'prompt' || entry.target === 'asset')
+      .map((entry) => ({
+        id: entry.id,
+        label: entry.label,
+        description: entry.description,
+        target: entry.target,
+      }));
+  }, [routingEntries]);
 
   // Loading state
   if (isLoading) {
@@ -1254,26 +2195,42 @@ export function AnalyzersSettings() {
       </div>
 
       <AnalysisRoutingCatalog
+        routingEntries={routingEntries}
         promptAnalyzers={promptAnalyzers}
         assetAnalyzers={assetAnalyzers}
-        defaultPromptAnalyzer={defaultPromptAnalyzer}
-        defaultImageAnalyzer={defaultImageAnalyzer}
-        defaultVideoAnalyzer={defaultVideoAnalyzer}
-        intentAssetAnalyzers={intentAssetAnalyzers}
+        promptDefaultChain={promptDefaultChain}
+        imageDefaultChain={imageDefaultChain}
+        videoDefaultChain={videoDefaultChain}
+        intentAnalyzerChains={intentAnalyzerChains}
+        analysisPointChains={analysisPointChains}
         visualSimilarityThreshold={visualSimilarityThreshold}
-        hasPromptDefaultOption={hasPromptDefaultOption}
-        hasImageDefaultOption={hasImageDefaultOption}
-        hasVideoDefaultOption={hasVideoDefaultOption}
         isSavingDefaults={isSavingDefaults}
         defaultsError={defaultsError}
         isAtRecommendedDefaults={isAtRecommendedDefaults}
         pointSelections={analysisPointSelections}
-        onPromptChange={handlePromptDefaultChange}
-        onImageChange={handleImageDefaultChange}
-        onVideoChange={handleVideoDefaultChange}
-        onIntentChange={handleIntentAssetAnalyzerChange}
+        onPromptChainChange={handlePromptDefaultChainChange}
+        onImageChainChange={handleImageDefaultChainChange}
+        onVideoChainChange={handleVideoDefaultChainChange}
+        onIntentChainChange={handleIntentAssetAnalyzerChainChange}
+        onAnalysisPointChainChange={handleAnalysisPointChainChange}
         onSimilarityChange={setVisualSimilarityThreshold}
         onReset={handleResetDefaults}
+      />
+
+      <AnalyzerBackfillPanel
+        assetAnalyzers={assetAnalyzers}
+        runs={backfillRuns}
+        isLoading={isLoadingBackfills}
+        error={backfillError}
+        formState={backfillForm}
+        isCreating={isCreatingBackfill}
+        activeRunActionId={activeBackfillActionId}
+        onFormChange={handleBackfillFormChange}
+        onCreate={() => void handleCreateBackfill()}
+        onRefresh={() => void fetchBackfillRuns()}
+        onPause={handlePauseBackfillRun}
+        onResume={handleResumeBackfillRun}
+        onCancel={handleCancelBackfillRun}
       />
 
       {/* Visual Embeddings */}
@@ -1283,8 +2240,16 @@ export function AnalyzersSettings() {
             Visual Embeddings
           </h3>
           <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
-            CLIP embeddings enable "Similar content" search. Embeddings are generated during ingestion for both images and videos (using their thumbnail frame).
+            CLIP embeddings enable "Similar content" search. This control now maps to your
+            <span className="font-mono"> asset:embedding </span>
+            analyzer instance with
+            <span className="font-mono"> on_ingest=true</span>.
           </p>
+          {embeddingError && (
+            <div className="p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-[10px] text-red-700 dark:text-red-300">
+              {embeddingError}
+            </div>
+          )}
           <div className="grid gap-3 md:grid-cols-2 p-3 border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50/60 dark:bg-neutral-900/40">
             <div className="space-y-1">
               <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
@@ -1293,37 +2258,61 @@ export function AnalyzersSettings() {
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={serverSettings?.generate_embeddings ?? false}
-                  onChange={(e) => updateMediaSetting('generate_embeddings', e.target.checked)}
-                  disabled={!serverSettings}
+                  checked={embeddingEnabled}
+                  onChange={(e) => handleEmbeddingEnabledChange(e.target.checked)}
+                  disabled={isSavingEmbedding}
                   className="sr-only peer"
                 />
                 <div
                   className={`w-9 h-5 rounded-full peer peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all relative ${
-                    serverSettings?.generate_embeddings ? 'bg-blue-500' : 'bg-neutral-300 dark:bg-neutral-700'
+                    embeddingEnabled ? 'bg-blue-500' : 'bg-neutral-300 dark:bg-neutral-700'
                   }`}
                 />
                 <span className="text-[11px] text-neutral-700 dark:text-neutral-300">
-                  {serverSettings?.generate_embeddings ? 'Enabled' : 'Disabled'}
+                  {embeddingEnabled ? 'Enabled' : 'Disabled'}
                 </span>
               </label>
               <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
                 Generate CLIP embeddings during asset ingestion for "Similar content" searches.
               </p>
+              <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                Active instance: {activeEmbeddingInstance ? (
+                  <>
+                    <span className="font-mono">{activeEmbeddingInstance.label}</span>
+                    {' '}
+                    (<span className="font-mono">#{activeEmbeddingInstance.id}</span>)
+                  </>
+                ) : 'none (will be created when enabled)'}
+              </p>
+              {embeddingInstances.length > 1 && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                  {embeddingInstances.length} embedding instances detected. This toggle controls the active one.
+                </p>
+              )}
             </div>
 
             <div className="space-y-1">
               <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
                 CLIP Embedding Command
               </label>
-              <input
-                type="text"
-                value={serverSettings?.clip_embedding_command ?? ''}
-                onChange={(e) => updateMediaSetting('clip_embedding_command', e.target.value)}
-                disabled={!serverSettings?.generate_embeddings}
-                placeholder="python tools/clip_embed.py"
-                className="w-full px-2 py-1.5 text-[11px] font-mono border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 disabled:opacity-50"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={embeddingCommandDraft}
+                  onChange={(e) => setEmbeddingCommandDraft(e.target.value)}
+                  onBlur={handleEmbeddingCommandSave}
+                  placeholder="python tools/clip_embed.py"
+                  className="flex-1 px-2 py-1.5 text-[11px] font-mono border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+                />
+                <button
+                  type="button"
+                  onClick={handleEmbeddingCommandSave}
+                  disabled={isSavingEmbedding || embeddingCommandDraft === activeEmbeddingCommand}
+                  className="px-2 py-1.5 text-[10px] rounded bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50 text-neutral-700 dark:text-neutral-300 transition-colors"
+                >
+                  Save
+                </button>
+              </div>
               <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
                 Command that accepts JSON on stdin and returns embeddings on stdout.
               </p>
@@ -1446,6 +2435,7 @@ export function AnalyzersSettings() {
           analyzers={analyzers}
           instances={instances}
           deletingIds={deletingIds}
+          analysisPoints={catalogAnalysisPoints}
           analysisPointSelections={analysisPointSelections}
           onEdit={handleEdit}
           onDelete={handleDelete}

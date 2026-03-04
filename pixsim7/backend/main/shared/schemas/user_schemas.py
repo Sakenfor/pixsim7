@@ -64,17 +64,29 @@ class AnalyzerPreferences(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    prompt_default_id: str | None = Field(
+    prompt_default_ids: List[str] | None = Field(
         default=None,
-        description="Default prompt analyzer ID (e.g., 'prompt:simple')",
+        description="Ordered prompt analyzer fallback IDs (first executable is used)",
     )
-    asset_default_image_id: str | None = Field(
+    asset_default_image_ids: List[str] | None = Field(
         default=None,
-        description="Default asset analyzer ID for image media",
+        description="Ordered image analyzer fallback IDs",
     )
-    asset_default_video_id: str | None = Field(
+    asset_default_video_ids: List[str] | None = Field(
         default=None,
-        description="Default asset analyzer ID for video media",
+        description="Ordered video analyzer fallback IDs",
+    )
+    asset_intent_default_ids: Dict[str, List[str]] | None = Field(
+        default=None,
+        description="Ordered per-intent analyzer fallback IDs",
+    )
+    analysis_point_default_ids: Dict[str, List[str]] | None = Field(
+        default=None,
+        description="Ordered per-analysis-point analyzer fallback IDs",
+    )
+    analysis_points_custom: List[Dict[str, Any]] | None = Field(
+        default=None,
+        description="User-defined custom analysis points for dynamic routing",
     )
     auto_apply_tags: bool | None = None
     tag_prefix: str | None = None

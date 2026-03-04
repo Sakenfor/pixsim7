@@ -11,10 +11,18 @@ export type {
   AnalyzerInfo,
   AnalyzerInstance,
   AnalyzerInstanceListResponse,
+  AnalysisPointGroup,
+  AnalysisPointControl,
+  AnalysisPointInfo,
+  AnalysisPointsListResponse,
+  CreateAnalysisPointRequest,
+  UpdateAnalysisPointRequest,
+  AnalyzerInputModality,
   CreateAnalyzerInstanceRequest,
   UpdateAnalyzerInstanceRequest,
   AnalyzerKind,
   AnalyzerTarget,
+  AnalyzerTaskFamily,
   AnalyzersListResponse,
   ListAnalyzersOptions,
 } from '@pixsim7/shared.api.client/domains';
@@ -25,6 +33,10 @@ export const listAnalyzers = analyzersApi.listAnalyzers;
 export const listPromptAnalyzers = analyzersApi.listPromptAnalyzers;
 export const listAssetAnalyzers = analyzersApi.listAssetAnalyzers;
 export const getAnalyzer = analyzersApi.getAnalyzer;
+export const listAnalysisPoints = analyzersApi.listAnalysisPoints;
+export const createAnalysisPoint = analyzersApi.createAnalysisPoint;
+export const updateAnalysisPoint = analyzersApi.updateAnalysisPoint;
+export const deleteAnalysisPoint = analyzersApi.deleteAnalysisPoint;
 export const listAnalyzerInstances = analyzersApi.listAnalyzerInstances;
 export const createAnalyzerInstance = analyzersApi.createAnalyzerInstance;
 export const getAnalyzerInstance = analyzersApi.getAnalyzerInstance;

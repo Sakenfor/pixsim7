@@ -8,6 +8,9 @@ Handles the full lifecycle of asset analysis jobs:
 - ARQ job queueing
 """
 import logging
+import hashlib
+import json
+from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,12 +20,14 @@ from pixsim7.backend.main.domain import (
     User,
     Asset,
 )
+from pixsim7.backend.main.domain.analyzer_definition import AnalyzerDefinition
 from pixsim7.backend.main.domain.assets.analysis import (
     AssetAnalysis,
     AnalysisStatus,
 )
 from pixsim7.backend.main.services.analysis.analyzer_defaults import (
     resolve_asset_default_analyzer_id,
+    resolve_asset_default_analyzer_ids,
 )
 from pixsim7.backend.main.services.analysis.analyzer_pipeline import (
     AnalyzerExecutionRequest,
@@ -30,6 +35,7 @@ from pixsim7.backend.main.services.analysis.analyzer_pipeline import (
     resolve_analyzer_execution,
 )
 from pixsim7.backend.main.services.analysis.analyzer_instance_service import AnalyzerInstanceService
+from pixsim7.backend.main.services.analysis.analysis_result_applier import AnalysisResultApplier
 from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerTarget
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
@@ -44,6 +50,15 @@ ANALYSIS_CREATED = "analysis.created"
 ANALYSIS_STARTED = "analysis.started"
 ANALYSIS_COMPLETED = "analysis.completed"
 ANALYSIS_FAILED = "analysis.failed"
+
+
+@dataclass(frozen=True)
+class ResolvedAnalysisExecution:
+    analyzer_id: str
+    provider_id: str
+    model_id: Optional[str]
+    analyzer_definition_version: str
+    effective_config_hash: str
 
 
 class AnalysisService:
@@ -68,6 +83,7 @@ class AnalysisService:
         asset_id: int,
         analyzer_id: Optional[str] = None,
         analyzer_intent: Optional[str] = None,
+        analysis_point: Optional[str] = None,
         prompt: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         priority: int = 5,
@@ -94,35 +110,135 @@ class AnalysisService:
             ResourceNotFoundError: Asset not found
             InvalidOperationError: Invalid parameters
         """
-        # Validate asset exists and user has access
+        analysis, _ = await self.create_analysis_with_meta(
+            user=user,
+            asset_id=asset_id,
+            analyzer_id=analyzer_id,
+            analyzer_intent=analyzer_intent,
+            analysis_point=analysis_point,
+            prompt=prompt,
+            params=params,
+            priority=priority,
+            enqueue=enqueue,
+        )
+        return analysis
+
+    async def create_analysis_with_meta(
+        self,
+        *,
+        user: User,
+        asset_id: int,
+        analyzer_id: Optional[str] = None,
+        analyzer_intent: Optional[str] = None,
+        analysis_point: Optional[str] = None,
+        prompt: Optional[str] = None,
+        params: Optional[Dict[str, Any]] = None,
+        priority: int = 5,
+        enqueue: bool = True,
+    ) -> tuple[AssetAnalysis, bool]:
+        """
+        Create analysis and return `(analysis, created)` where `created=False`
+        indicates idempotent dedupe hit.
+        """
         asset = await self._get_asset(asset_id)
         if asset.user_id != user.id:
             raise InvalidOperationError("Cannot analyze assets owned by other users")
 
-        effective_analyzer_id = analyzer_id.strip() if isinstance(analyzer_id, str) else None
-        if not effective_analyzer_id:
+        normalized_params = params or {}
+        resolved_analysis_point = self._resolve_analysis_point(
+            asset=asset,
+            analyzer_intent=analyzer_intent,
+            analysis_point=analysis_point,
+        )
+        input_fingerprint = self._compute_input_fingerprint(
+            asset=asset,
+            prompt=prompt,
+            params=normalized_params,
+            analysis_point=resolved_analysis_point,
+        )
+
+        explicit_analyzer_id = analyzer_id.strip() if isinstance(analyzer_id, str) else None
+        if explicit_analyzer_id:
+            resolved_execution = await self._resolve_execution_config(
+                user_id=user.id,
+                asset=asset,
+                analyzer_id=explicit_analyzer_id,
+            )
+        else:
             media_type = asset.media_type.value if hasattr(asset.media_type, "value") else asset.media_type
-            effective_analyzer_id = resolve_asset_default_analyzer_id(
+            candidate_analyzer_ids = resolve_asset_default_analyzer_ids(
                 getattr(user, "preferences", None),
                 media_type=media_type,
                 intent=analyzer_intent,
+                analysis_point=resolved_analysis_point,
             )
 
-        resolved_analyzer_id, provider_id, model_id = await self._resolve_execution_config(
-            user_id=user.id,
-            asset=asset,
-            analyzer_id=effective_analyzer_id,
+            resolved_execution: Optional[ResolvedAnalysisExecution] = None
+            errors: list[str] = []
+            for candidate_analyzer_id in candidate_analyzer_ids:
+                try:
+                    resolved_execution = await self._resolve_execution_config(
+                        user_id=user.id,
+                        asset=asset,
+                        analyzer_id=candidate_analyzer_id,
+                    )
+                    break
+                except InvalidOperationError as e:
+                    errors.append(f"{candidate_analyzer_id}: {e}")
+
+            if not resolved_execution:
+                fallback_id = resolve_asset_default_analyzer_id(
+                    getattr(user, "preferences", None),
+                    media_type=media_type,
+                    intent=analyzer_intent,
+                    analysis_point=resolved_analysis_point,
+                )
+                error_details = "; ".join(errors) if errors else "no candidates were resolvable"
+                raise InvalidOperationError(
+                    "No executable analyzer resolved from defaults. "
+                    f"First default candidate: {fallback_id}. Details: {error_details}"
+                )
+
+        dedupe_key = self._compute_dedupe_key(
+            asset_id=asset.id,
+            analysis_point=resolved_analysis_point,
+            analyzer_id=resolved_execution.analyzer_id,
+            effective_config_hash=resolved_execution.effective_config_hash,
+            input_fingerprint=input_fingerprint,
         )
 
-        # Create analysis record
+        existing = await self._find_existing_analysis(
+            asset_id=asset.id,
+            analysis_point=resolved_analysis_point,
+            analyzer_id=resolved_execution.analyzer_id,
+            effective_config_hash=resolved_execution.effective_config_hash,
+            input_fingerprint=input_fingerprint,
+        )
+        if existing is not None:
+            logger.info(
+                "analysis_deduped analysis_id=%s asset_id=%s analyzer_id=%s analysis_point=%s",
+                existing.id,
+                asset.id,
+                resolved_execution.analyzer_id,
+                resolved_analysis_point,
+            )
+            if enqueue and existing.status == AnalysisStatus.PENDING:
+                await self._enqueue_analysis_job(existing.id)
+            return existing, False
+
         analysis = AssetAnalysis(
             user_id=user.id,
             asset_id=asset_id,
-            analyzer_id=resolved_analyzer_id,
-            model_id=model_id,
-            provider_id=provider_id,
+            analyzer_id=resolved_execution.analyzer_id,
+            model_id=resolved_execution.model_id,
+            provider_id=resolved_execution.provider_id,
             prompt=prompt,
-            params=params or {},
+            params=normalized_params,
+            analysis_point=resolved_analysis_point,
+            analyzer_definition_version=resolved_execution.analyzer_definition_version,
+            effective_config_hash=resolved_execution.effective_config_hash,
+            input_fingerprint=input_fingerprint,
+            dedupe_key=dedupe_key,
             status=AnalysisStatus.PENDING,
             priority=priority,
             created_at=datetime.now(timezone.utc),
@@ -134,34 +250,33 @@ class AnalysisService:
         await self.db.refresh(analysis)
 
         logger.info(
-            f"Analysis {analysis.id} created for asset {asset_id} "
-            f"(analyzer={resolved_analyzer_id}, provider={provider_id})"
+            "analysis_created analysis_id=%s asset_id=%s analyzer_id=%s provider_id=%s analysis_point=%s",
+            analysis.id,
+            asset_id,
+            resolved_execution.analyzer_id,
+            resolved_execution.provider_id,
+            resolved_analysis_point,
         )
 
-        # Emit event
-        await event_bus.publish(ANALYSIS_CREATED, {
-            "analysis_id": analysis.id,
-            "asset_id": asset_id,
-            "user_id": user.id,
-            "analyzer_id": resolved_analyzer_id,
-            "provider_id": provider_id,
-        })
+        await event_bus.publish(
+            ANALYSIS_CREATED,
+            {
+                "analysis_id": analysis.id,
+                "asset_id": asset_id,
+                "user_id": user.id,
+                "analyzer_id": resolved_execution.analyzer_id,
+                "provider_id": resolved_execution.provider_id,
+                "analysis_point": resolved_analysis_point,
+                "analyzer_definition_version": resolved_execution.analyzer_definition_version,
+                "effective_config_hash": resolved_execution.effective_config_hash,
+                "dedupe_key": dedupe_key,
+            },
+        )
 
-        # Queue for processing via ARQ (skip when caller handles execution inline)
         if enqueue:
-            try:
-                from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-                arq_pool = await get_arq_pool()
-                await arq_pool.enqueue_job(
-                    "process_analysis",
-                    analysis_id=analysis.id,
-                )
-                logger.info(f"Analysis {analysis.id} queued for processing")
-            except Exception as e:
-                logger.error(f"Failed to queue analysis {analysis.id}: {e}")
-                # Don't fail creation if ARQ is down - worker can pick it up later
+            await self._enqueue_analysis_job(analysis.id)
 
-        return analysis
+        return analysis, True
 
     # ===== LIFECYCLE =====
 
@@ -203,6 +318,9 @@ class AnalysisService:
         analysis.completed_at = datetime.now(timezone.utc)
         analysis.updated_at = datetime.now(timezone.utc)
         analysis.result = result
+
+        applier = AnalysisResultApplier(self.db)
+        await applier.apply_completion(analysis)
 
         await self.db.commit()
         await self.db.refresh(analysis)
@@ -358,8 +476,8 @@ class AnalysisService:
         user_id: int,
         asset: Asset,
         analyzer_id: str,
-    ) -> tuple[str, str, Optional[str]]:
-        """Resolve canonical analyzer ID, provider ID, and model ID."""
+    ) -> ResolvedAnalysisExecution:
+        """Resolve canonical analyzer and reproducible execution metadata."""
         canonical_id = analyzer_registry.resolve_legacy(analyzer_id)
 
         instance_service = AnalyzerInstanceService(self.db)
@@ -401,4 +519,170 @@ class AnalysisService:
                 f"Analyzer '{resolved.analyzer_id}' has no resolved provider"
             )
 
-        return resolved.analyzer_id, resolved.provider_id, resolved.model_id
+        analyzer_definition_version = await self._resolve_analyzer_definition_version(
+            resolved.analyzer_id,
+            resolved.analyzer,
+        )
+        effective_config_hash = self._compute_effective_config_hash(
+            analyzer_id=resolved.analyzer_id,
+            provider_id=resolved.provider_id,
+            model_id=resolved.model_id,
+            analyzer_definition_version=analyzer_definition_version,
+            analyzer_config=resolved.analyzer.config or {},
+            instance_id=selected_instance.id if selected_instance is not None else None,
+            instance_config=selected_instance.config if selected_instance is not None else {},
+        )
+
+        return ResolvedAnalysisExecution(
+            analyzer_id=resolved.analyzer_id,
+            provider_id=resolved.provider_id,
+            model_id=resolved.model_id,
+            analyzer_definition_version=analyzer_definition_version,
+            effective_config_hash=effective_config_hash,
+        )
+
+    def _resolve_analysis_point(
+        self,
+        *,
+        asset: Asset,
+        analyzer_intent: Optional[str],
+        analysis_point: Optional[str],
+    ) -> str:
+        if isinstance(analysis_point, str) and analysis_point.strip():
+            return analysis_point.strip()
+        if isinstance(analyzer_intent, str) and analyzer_intent.strip():
+            return analyzer_intent.strip()
+        media_type = asset.media_type.value if hasattr(asset.media_type, "value") else str(asset.media_type)
+        return f"manual_analysis_{media_type}"
+
+    def _compute_input_fingerprint(
+        self,
+        *,
+        asset: Asset,
+        prompt: Optional[str],
+        params: Dict[str, Any],
+        analysis_point: str,
+    ) -> str:
+        asset_fingerprint = asset.sha256 or f"asset-id:{asset.id}"
+        payload = {
+            "asset_fingerprint": asset_fingerprint,
+            "analysis_point": analysis_point,
+            "prompt": prompt or "",
+            "params": params or {},
+        }
+        return self._stable_hash(payload)
+
+    def _compute_dedupe_key(
+        self,
+        *,
+        asset_id: int,
+        analysis_point: str,
+        analyzer_id: str,
+        effective_config_hash: str,
+        input_fingerprint: str,
+    ) -> str:
+        return self._stable_hash(
+            {
+                "asset_id": asset_id,
+                "analysis_point": analysis_point,
+                "analyzer_id": analyzer_id,
+                "effective_config_hash": effective_config_hash,
+                "input_fingerprint": input_fingerprint,
+            }
+        )
+
+    async def _find_existing_analysis(
+        self,
+        *,
+        asset_id: int,
+        analysis_point: str,
+        analyzer_id: str,
+        effective_config_hash: str,
+        input_fingerprint: str,
+    ) -> Optional[AssetAnalysis]:
+        result = await self.db.execute(
+            select(AssetAnalysis)
+            .where(AssetAnalysis.asset_id == asset_id)
+            .where(AssetAnalysis.analysis_point == analysis_point)
+            .where(AssetAnalysis.analyzer_id == analyzer_id)
+            .where(AssetAnalysis.effective_config_hash == effective_config_hash)
+            .where(AssetAnalysis.input_fingerprint == input_fingerprint)
+            .where(
+                AssetAnalysis.status.in_(
+                    [
+                        AnalysisStatus.PENDING,
+                        AnalysisStatus.PROCESSING,
+                        AnalysisStatus.COMPLETED,
+                    ]
+                )
+            )
+            .order_by(AssetAnalysis.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def _resolve_analyzer_definition_version(
+        self,
+        analyzer_id: str,
+        analyzer,
+    ) -> str:
+        result = await self.db.execute(
+            select(AnalyzerDefinition).where(AnalyzerDefinition.analyzer_id == analyzer_id).limit(1)
+        )
+        definition = result.scalar_one_or_none()
+        if definition is not None:
+            version = definition.version if definition.version and definition.version > 0 else 1
+            return f"db:{definition.id}:v{version}"
+
+        registry_signature = self._stable_hash(
+            {
+                "id": analyzer.id,
+                "name": analyzer.name,
+                "kind": analyzer.kind.value if hasattr(analyzer.kind, "value") else str(analyzer.kind),
+                "target": analyzer.target.value if hasattr(analyzer.target, "value") else str(analyzer.target),
+                "provider_id": analyzer.provider_id,
+                "model_id": analyzer.model_id,
+                "config": analyzer.config or {},
+                "source_plugin_id": analyzer.source_plugin_id,
+            }
+        )
+        return f"registry:{registry_signature[:16]}"
+
+    def _compute_effective_config_hash(
+        self,
+        *,
+        analyzer_id: str,
+        provider_id: str,
+        model_id: Optional[str],
+        analyzer_definition_version: str,
+        analyzer_config: Dict[str, Any],
+        instance_id: Optional[int],
+        instance_config: Dict[str, Any],
+    ) -> str:
+        payload = {
+            "analyzer_id": analyzer_id,
+            "provider_id": provider_id,
+            "model_id": model_id,
+            "analyzer_definition_version": analyzer_definition_version,
+            "analyzer_config": analyzer_config or {},
+            "instance_id": instance_id,
+            "instance_config": instance_config or {},
+        }
+        return self._stable_hash(payload)
+
+    def _stable_hash(self, payload: Dict[str, Any]) -> str:
+        normalized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str)
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+    async def _enqueue_analysis_job(self, analysis_id: int) -> None:
+        try:
+            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+            arq_pool = await get_arq_pool()
+            await arq_pool.enqueue_job(
+                "process_analysis",
+                analysis_id=analysis_id,
+            )
+            logger.info("analysis_queued analysis_id=%s", analysis_id)
+        except Exception as e:
+            logger.error("analysis_queue_failed analysis_id=%s error=%s", analysis_id, str(e))

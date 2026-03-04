@@ -1,16 +1,24 @@
 import type { PixSimApiClient } from '../client';
 import type {
+  AnalyzerInputModality,
   AnalyzerInstanceCreate,
   AnalyzerInstanceListResponse,
   AnalyzerInstanceResponse,
   AnalyzerInstanceUpdate,
+  AnalyzerKind,
   AnalyzerResponse,
+  AnalyzerTarget,
+  AnalyzerTaskFamily,
   AnalyzersListResponse,
 } from '@pixsim7/shared.api.model';
 export type {
+  AnalyzerInputModality,
   AnalyzerInstanceListResponse,
   AnalyzerInstanceResponse,
+  AnalyzerKind,
   AnalyzerResponse,
+  AnalyzerTarget,
+  AnalyzerTaskFamily,
   AnalyzersListResponse,
 };
 
@@ -21,24 +29,6 @@ export type {
 export type CreateAnalyzerInstanceRequest = AnalyzerInstanceCreate;
 export type UpdateAnalyzerInstanceRequest = AnalyzerInstanceUpdate;
 
-// ============================================================================
-// Frontend-only types (UX helpers, not in OpenAPI)
-// ============================================================================
-
-/**
- * Analyzer kind enum.
- * [frontend-only] Backend returns string; this provides autocomplete.
- * TODO: Define as enum in backend for strict OpenAPI typing.
- */
-export type AnalyzerKind = 'parser' | 'llm' | 'vision';
-
-/**
- * Analyzer target enum.
- * [frontend-only] Backend returns string; this provides autocomplete.
- * TODO: Define as enum in backend for strict OpenAPI typing.
- */
-export type AnalyzerTarget = 'prompt' | 'asset';
-
 /**
  * Options for listing analyzers.
  * [frontend-only] Query parameter helper.
@@ -46,6 +36,57 @@ export type AnalyzerTarget = 'prompt' | 'asset';
 export interface ListAnalyzersOptions {
   target?: AnalyzerTarget;
   include_legacy?: boolean;
+}
+
+export type AnalysisPointGroup = 'prompt' | 'asset' | 'system';
+export type AnalysisPointControl =
+  | 'prompt_default'
+  | 'image_default'
+  | 'video_default'
+  | 'intent_override'
+  | 'similarity_threshold';
+
+export interface AnalysisPointInfo {
+  id: string;
+  label: string;
+  description: string;
+  group: AnalysisPointGroup;
+  target: AnalyzerTarget | null;
+  control: AnalysisPointControl;
+  intent_key?: string | null;
+  media_type?: 'image' | 'video' | null;
+  supports_chain: boolean;
+  source?: 'system' | 'user' | 'plugin';
+  editable?: boolean;
+}
+
+export interface AnalysisPointsListResponse {
+  analysis_points: AnalysisPointInfo[];
+}
+
+export interface CreateAnalysisPointRequest {
+  id?: string;
+  label: string;
+  description?: string;
+  group?: AnalysisPointGroup;
+  target?: AnalyzerTarget | null;
+  control: AnalysisPointControl;
+  intent_key?: string | null;
+  media_type?: 'image' | 'video' | null;
+  supports_chain?: boolean;
+  default_analyzer_ids?: string[] | null;
+}
+
+export interface UpdateAnalysisPointRequest {
+  label?: string;
+  description?: string;
+  group?: AnalysisPointGroup;
+  target?: AnalyzerTarget | null;
+  control?: AnalysisPointControl;
+  intent_key?: string | null;
+  media_type?: 'image' | 'video' | null;
+  supports_chain?: boolean;
+  default_analyzer_ids?: string[] | null;
 }
 
 // Backward compatibility alias
@@ -73,6 +114,31 @@ export function createAnalyzersApi(client: PixSimApiClient) {
 
     async getAnalyzer(analyzerId: string): Promise<AnalyzerInfo> {
       return client.get<AnalyzerInfo>(`/analyzers/${analyzerId}`);
+    },
+
+    async listAnalysisPoints(
+      params?: {
+        target?: AnalysisPointGroup;
+      }
+    ): Promise<AnalysisPointsListResponse> {
+      return client.get<AnalysisPointsListResponse>('/analysis-points', {
+        params,
+      });
+    },
+
+    async createAnalysisPoint(payload: CreateAnalysisPointRequest): Promise<AnalysisPointInfo> {
+      return client.post<AnalysisPointInfo>('/analysis-points', payload);
+    },
+
+    async updateAnalysisPoint(
+      pointId: string,
+      payload: UpdateAnalysisPointRequest
+    ): Promise<AnalysisPointInfo> {
+      return client.patch<AnalysisPointInfo>(`/analysis-points/${encodeURIComponent(pointId)}`, payload);
+    },
+
+    async deleteAnalysisPoint(pointId: string): Promise<void> {
+      await client.delete(`/analysis-points/${encodeURIComponent(pointId)}`);
     },
 
     async listAnalyzerInstances(
@@ -109,4 +175,3 @@ export function createAnalyzersApi(client: PixSimApiClient) {
     },
   };
 }
-

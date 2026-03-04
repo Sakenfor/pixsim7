@@ -4,8 +4,10 @@ Analyzer API endpoints
 Provides discovery of available analyzers (prompt and asset) for frontend configuration.
 """
 
+import re
+
 from fastapi import APIRouter, Query, HTTPException, Request
-from typing import List, Optional
+from typing import Any, List, Optional
 from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import (
@@ -14,10 +16,13 @@ from pixsim7.backend.main.api.dependencies import (
     DatabaseSession,
     AnalysisGatewaySvc,
 )
+from pixsim7.backend.main.domain import User
 from pixsim7.backend.main.services.prompt.parser import (
     analyzer_registry,
     AnalyzerTarget,
     AnalyzerKind,
+    AnalyzerInputModality,
+    AnalyzerTaskFamily,
     get_effective_instance_options,
 )
 from pixsim7.backend.main.infrastructure.services.gateway import ProxyResult
@@ -73,6 +78,8 @@ class AnalyzerResponse(BaseModel):
     description: str
     kind: AnalyzerKind
     target: AnalyzerTarget
+    input_modality: AnalyzerInputModality
+    task_family: AnalyzerTaskFamily
     provider_id: Optional[str] = None
     model_id: Optional[str] = None
     source_plugin_id: Optional[str] = None
@@ -85,6 +92,98 @@ class AnalyzersListResponse(BaseModel):
     """Response for list of analyzers."""
     analyzers: List[AnalyzerResponse]
     default_id: str
+
+
+class AnalysisPointResponse(BaseModel):
+    """Runtime analysis point definition."""
+    id: str
+    label: str
+    description: str
+    group: str = Field(description="Point group: prompt | asset | system")
+    target: Optional[AnalyzerTarget] = Field(
+        default=None,
+        description="Analyzer target associated with this point (if applicable)",
+    )
+    control: str = Field(
+        description=(
+            "Routing control type: prompt_default | image_default | video_default "
+            "| intent_override | similarity_threshold"
+        )
+    )
+    intent_key: Optional[str] = Field(
+        default=None,
+        description="Intent key for intent_override points",
+    )
+    media_type: Optional[str] = Field(
+        default=None,
+        description="Media type hint for defaults (image/video)",
+    )
+    supports_chain: bool = Field(
+        default=True,
+        description="Whether this point supports ordered analyzer chains",
+    )
+    source: str = Field(
+        default="system",
+        description="Point source: system | user | plugin",
+    )
+    editable: bool = Field(
+        default=False,
+        description="Whether current user can mutate this analysis point",
+    )
+
+
+class AnalysisPointsListResponse(BaseModel):
+    """Response for list of runtime analysis points."""
+    analysis_points: List[AnalysisPointResponse]
+
+
+class CustomAnalysisPointCreate(BaseModel):
+    """Create a custom user-defined analysis point."""
+    id: Optional[str] = Field(
+        default=None,
+        max_length=120,
+        description="Optional stable point ID suffix (auto-generated if omitted)",
+    )
+    label: str = Field(..., min_length=1, max_length=120)
+    description: Optional[str] = Field(default="", max_length=500)
+    group: str = Field(default="asset", description="prompt | asset | system")
+    target: Optional[str] = Field(default=None, description="prompt | asset")
+    control: str = Field(
+        ...,
+        description=(
+            "prompt_default | image_default | video_default | "
+            "intent_override | similarity_threshold"
+        ),
+    )
+    intent_key: Optional[str] = Field(default=None, max_length=120)
+    media_type: Optional[str] = Field(default=None, description="image | video")
+    supports_chain: bool = True
+    default_analyzer_ids: Optional[List[str]] = Field(
+        default=None,
+        description="Optional initial analyzer chain override for this point",
+    )
+
+
+class CustomAnalysisPointUpdate(BaseModel):
+    """Patch a custom user-defined analysis point."""
+    label: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    description: Optional[str] = Field(default=None, max_length=500)
+    group: Optional[str] = Field(default=None, description="prompt | asset | system")
+    target: Optional[str] = Field(default=None, description="prompt | asset")
+    control: Optional[str] = Field(
+        default=None,
+        description=(
+            "prompt_default | image_default | video_default | "
+            "intent_override | similarity_threshold"
+        ),
+    )
+    intent_key: Optional[str] = Field(default=None, max_length=120)
+    media_type: Optional[str] = Field(default=None, description="image | video")
+    supports_chain: Optional[bool] = None
+    default_analyzer_ids: Optional[List[str]] = Field(
+        default=None,
+        description="Optional analyzer chain override for this point",
+    )
 
 
 class AnalyzerInstanceCreate(BaseModel):
@@ -154,6 +253,8 @@ class AnalyzerDefinitionCreate(BaseModel):
     description: Optional[str] = Field(None, description="Analyzer description")
     kind: AnalyzerKind
     target: AnalyzerTarget
+    input_modality: Optional[AnalyzerInputModality] = None
+    task_family: Optional[AnalyzerTaskFamily] = None
     provider_id: Optional[str] = Field(None, max_length=50)
     model_id: Optional[str] = Field(None, max_length=100)
     config: Optional[dict] = Field(default_factory=dict)
@@ -168,6 +269,8 @@ class AnalyzerDefinitionUpdate(BaseModel):
     description: Optional[str] = None
     kind: Optional[AnalyzerKind] = None
     target: Optional[AnalyzerTarget] = None
+    input_modality: Optional[AnalyzerInputModality] = None
+    task_family: Optional[AnalyzerTaskFamily] = None
     provider_id: Optional[str] = Field(None, max_length=50)
     model_id: Optional[str] = Field(None, max_length=100)
     base_analyzer_id: Optional[str] = Field(None, max_length=100)
@@ -216,6 +319,193 @@ class AnalyzerPresetUpdate(BaseModel):
 
 class AnalyzerPresetReject(BaseModel):
     reason: Optional[str] = None
+
+
+@router.get("/analysis-points", response_model=AnalysisPointsListResponse)
+async def list_analysis_points(
+    req: Request,
+    user: CurrentUser,
+    analysis_gateway: AnalysisGatewaySvc,
+    target: Optional[str] = Query(
+        None,
+        description="Filter by point group: prompt | asset | system",
+    ),
+):
+    """
+    List analysis point definitions used by routing/settings UIs.
+    """
+    proxy = await _proxy_request(
+        analysis_gateway,
+        req,
+        "GET",
+        "/api/v1/analysis-points",
+        params={"target": target},
+    )
+    if proxy.called:
+        return AnalysisPointsListResponse.model_validate(proxy.data)
+
+    points = _list_analysis_points(user=user)
+
+    if target:
+        normalized_target = target.strip().lower()
+        if normalized_target not in {"prompt", "asset", "system"}:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Invalid target '{target}'. Must be one of: "
+                    "'prompt', 'asset', 'system'."
+                ),
+            )
+        points = [point for point in points if point.group == normalized_target]
+
+    return AnalysisPointsListResponse(analysis_points=points)
+
+
+@router.post("/analysis-points", response_model=AnalysisPointResponse, status_code=201)
+async def create_custom_analysis_point(
+    data: CustomAnalysisPointCreate,
+    req: Request,
+    user: CurrentUser,
+    db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
+):
+    """Create a user-defined custom analysis point."""
+    proxy = await _proxy_request(
+        analysis_gateway,
+        req,
+        "POST",
+        "/api/v1/analysis-points",
+        json=data.model_dump(mode="json"),
+    )
+    if proxy.called:
+        return AnalysisPointResponse.model_validate(proxy.data)
+
+    user_record = await db.get(User, user.id)
+    if not user_record:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    preferences = user_record.preferences if isinstance(user_record.preferences, dict) else {}
+    analyzer_prefs = _get_or_create_analyzer_preferences(preferences)
+    custom_points = _get_custom_analysis_points(analyzer_prefs)
+
+    existing_ids = {point.id for point in _list_analysis_points(user=user_record)}
+    point = _normalize_custom_analysis_point_create(data, existing_ids=existing_ids)
+    custom_points.append(point.model_dump(mode="json"))
+
+    analyzer_prefs["analysis_points_custom"] = custom_points
+    _apply_analysis_point_default_ids(
+        analyzer_prefs=analyzer_prefs,
+        point_id=point.id,
+        analyzer_ids=data.default_analyzer_ids,
+    )
+
+    user_record.preferences = preferences
+    await db.commit()
+    await db.refresh(user_record)
+    return point
+
+
+@router.patch("/analysis-points/{point_id}", response_model=AnalysisPointResponse)
+async def update_custom_analysis_point(
+    point_id: str,
+    data: CustomAnalysisPointUpdate,
+    req: Request,
+    user: CurrentUser,
+    db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
+):
+    """Update a user-defined custom analysis point."""
+    proxy = await _proxy_request(
+        analysis_gateway,
+        req,
+        "PATCH",
+        f"/api/v1/analysis-points/{point_id}",
+        json=data.model_dump(mode="json", exclude_unset=True),
+    )
+    if proxy.called:
+        return AnalysisPointResponse.model_validate(proxy.data)
+
+    user_record = await db.get(User, user.id)
+    if not user_record:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    preferences = user_record.preferences if isinstance(user_record.preferences, dict) else {}
+    analyzer_prefs = _get_or_create_analyzer_preferences(preferences)
+    custom_points = _get_custom_analysis_points(analyzer_prefs)
+
+    target_index = -1
+    current_point: AnalysisPointResponse | None = None
+    for index, raw in enumerate(custom_points):
+        candidate = _parse_custom_analysis_point(raw)
+        if candidate and candidate.id == point_id:
+            target_index = index
+            current_point = candidate
+            break
+
+    if target_index < 0 or current_point is None:
+        raise HTTPException(status_code=404, detail=f"Custom analysis point '{point_id}' not found")
+
+    updated_point = _normalize_custom_analysis_point_update(current_point=current_point, updates=data)
+    custom_points[target_index] = updated_point.model_dump(mode="json")
+    analyzer_prefs["analysis_points_custom"] = custom_points
+
+    if data.default_analyzer_ids is not None:
+        _apply_analysis_point_default_ids(
+            analyzer_prefs=analyzer_prefs,
+            point_id=point_id,
+            analyzer_ids=data.default_analyzer_ids,
+        )
+
+    user_record.preferences = preferences
+    await db.commit()
+    await db.refresh(user_record)
+    return updated_point
+
+
+@router.delete("/analysis-points/{point_id}", status_code=204)
+async def delete_custom_analysis_point(
+    point_id: str,
+    req: Request,
+    user: CurrentUser,
+    db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
+):
+    """Delete a user-defined custom analysis point."""
+    proxy = await _proxy_request(
+        analysis_gateway,
+        req,
+        "DELETE",
+        f"/api/v1/analysis-points/{point_id}",
+    )
+    if proxy.called:
+        return None
+
+    user_record = await db.get(User, user.id)
+    if not user_record:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    preferences = user_record.preferences if isinstance(user_record.preferences, dict) else {}
+    analyzer_prefs = _get_or_create_analyzer_preferences(preferences)
+    custom_points = _get_custom_analysis_points(analyzer_prefs)
+
+    retained: list[dict[str, Any]] = []
+    deleted = False
+    for raw in custom_points:
+        point = _parse_custom_analysis_point(raw)
+        if point and point.id == point_id:
+            deleted = True
+            continue
+        if point:
+            retained.append(point.model_dump(mode="json"))
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Custom analysis point '{point_id}' not found")
+
+    analyzer_prefs["analysis_points_custom"] = retained
+    _clear_analysis_point_default_ids(analyzer_prefs=analyzer_prefs, point_id=point_id)
+
+    user_record.preferences = preferences
+    await db.commit()
 
 
 @router.get("/analyzers", response_model=AnalyzersListResponse)
@@ -344,6 +634,8 @@ async def create_analyzer(
             description=data.description,
             kind=data.kind,
             target=data.target,
+            input_modality=data.input_modality,
+            task_family=data.task_family,
             provider_id=data.provider_id,
             model_id=data.model_id,
             config=data.config,
@@ -974,6 +1266,379 @@ def _mask_instance_config(config: dict) -> dict:
     return masked
 
 
+_ALLOWED_POINT_GROUPS = {"prompt", "asset", "system"}
+_ALLOWED_POINT_CONTROLS = {
+    "prompt_default",
+    "image_default",
+    "video_default",
+    "intent_override",
+    "similarity_threshold",
+}
+_ALLOWED_MEDIA_TYPES = {"image", "video"}
+_CUSTOM_POINTS_KEY = "analysis_points_custom"
+_ANALYSIS_POINT_DEFAULT_IDS_KEY = "analysis_point_default_ids"
+
+
+def _system_analysis_points() -> List[AnalysisPointResponse]:
+    return [
+        AnalysisPointResponse(
+            id="prompt_parsing",
+            label="Prompt parsing",
+            description="Tag extraction and parser analysis during prompt editing.",
+            group="prompt",
+            target=AnalyzerTarget.PROMPT,
+            control="prompt_default",
+            supports_chain=True,
+            source="system",
+            editable=False,
+        ),
+        AnalysisPointResponse(
+            id="prompt_generation",
+            label="Generation workflow",
+            description="Prompt analysis before generation execution.",
+            group="prompt",
+            target=AnalyzerTarget.PROMPT,
+            control="prompt_default",
+            supports_chain=True,
+            source="system",
+            editable=False,
+        ),
+        AnalysisPointResponse(
+            id="asset_ingest_on_ingest",
+            label="Asset ingestion (on_ingest fallback)",
+            description="Default route when ingestion does not specify an analyzer.",
+            group="asset",
+            target=AnalyzerTarget.ASSET,
+            control="image_default",
+            media_type="image",
+            supports_chain=True,
+            source="system",
+            editable=False,
+        ),
+        AnalysisPointResponse(
+            id="character_ingest_face",
+            label="Character ingest: Face",
+            description="Face-mode character reference analysis.",
+            group="asset",
+            target=AnalyzerTarget.ASSET,
+            control="intent_override",
+            intent_key="character_ingest_face",
+            supports_chain=True,
+            source="system",
+            editable=False,
+        ),
+        AnalysisPointResponse(
+            id="character_ingest_sheet",
+            label="Character ingest: Sheet / Composite",
+            description="Sheet/composite character reference analysis.",
+            group="asset",
+            target=AnalyzerTarget.ASSET,
+            control="intent_override",
+            intent_key="character_ingest_sheet",
+            supports_chain=True,
+            source="system",
+            editable=False,
+        ),
+        AnalysisPointResponse(
+            id="scene_prep_location",
+            label="Scene prep: Location",
+            description="Scene prep location-reference analysis.",
+            group="asset",
+            target=AnalyzerTarget.ASSET,
+            control="intent_override",
+            intent_key="scene_prep_location",
+            supports_chain=True,
+            source="system",
+            editable=False,
+        ),
+        AnalysisPointResponse(
+            id="scene_prep_style",
+            label="Scene prep: Style",
+            description="Scene prep style-reference analysis.",
+            group="asset",
+            target=AnalyzerTarget.ASSET,
+            control="intent_override",
+            intent_key="scene_prep_style",
+            supports_chain=True,
+            source="system",
+            editable=False,
+        ),
+        AnalysisPointResponse(
+            id="manual_analysis_image",
+            label="Manual analysis: Image",
+            description="Image analysis calls when analyzer_id is omitted.",
+            group="asset",
+            target=AnalyzerTarget.ASSET,
+            control="image_default",
+            media_type="image",
+            supports_chain=True,
+            source="system",
+            editable=False,
+        ),
+        AnalysisPointResponse(
+            id="manual_analysis_video",
+            label="Manual analysis: Video",
+            description="Video analysis calls when analyzer_id is omitted.",
+            group="asset",
+            target=AnalyzerTarget.ASSET,
+            control="video_default",
+            media_type="video",
+            supports_chain=True,
+            source="system",
+            editable=False,
+        ),
+        AnalysisPointResponse(
+            id="similarity_threshold",
+            label="Visual similarity threshold",
+            description="Default threshold for similar-content search.",
+            group="system",
+            target=None,
+            control="similarity_threshold",
+            supports_chain=False,
+            source="system",
+            editable=False,
+        ),
+    ]
+
+
+def _list_analysis_points(*, user: Optional[User] = None) -> List[AnalysisPointResponse]:
+    system_points = _system_analysis_points()
+    if user is None:
+        return system_points
+
+    custom_points = _extract_user_custom_analysis_points(user)
+    if not custom_points:
+        return system_points
+
+    by_id: dict[str, AnalysisPointResponse] = {point.id: point for point in system_points}
+    for point in custom_points:
+        by_id[point.id] = point
+    return list(by_id.values())
+
+
+def _extract_user_custom_analysis_points(user: User) -> list[AnalysisPointResponse]:
+    if not isinstance(user.preferences, dict):
+        return []
+    analyzer_prefs = user.preferences.get("analyzer")
+    if not isinstance(analyzer_prefs, dict):
+        return []
+    raw_points = analyzer_prefs.get(_CUSTOM_POINTS_KEY)
+    if not isinstance(raw_points, list):
+        return []
+
+    points: list[AnalysisPointResponse] = []
+    for raw in raw_points:
+        point = _parse_custom_analysis_point(raw)
+        if point:
+            points.append(point)
+    return points
+
+
+def _parse_custom_analysis_point(raw: Any) -> AnalysisPointResponse | None:
+    if not isinstance(raw, dict):
+        return None
+    try:
+        normalized = _normalize_custom_analysis_point_fields(
+            raw,
+            allow_missing=False,
+        )
+    except HTTPException:
+        return None
+    point_id = str(raw.get("id") or "").strip()
+    if not point_id:
+        return None
+    normalized["id"] = point_id
+    return AnalysisPointResponse(**normalized, source="user", editable=True)
+
+
+def _normalize_custom_analysis_point_create(
+    payload: CustomAnalysisPointCreate,
+    *,
+    existing_ids: set[str],
+) -> AnalysisPointResponse:
+    raw = payload.model_dump(exclude_none=True)
+    normalized = _normalize_custom_analysis_point_fields(raw, allow_missing=False)
+    requested_id = raw.get("id")
+    normalized_id = _normalize_custom_point_id(
+        requested=requested_id,
+        label=normalized["label"],
+        existing_ids=existing_ids,
+    )
+    normalized["id"] = normalized_id
+    return AnalysisPointResponse(**normalized, source="user", editable=True)
+
+
+def _normalize_custom_analysis_point_update(
+    *,
+    current_point: AnalysisPointResponse,
+    updates: CustomAnalysisPointUpdate,
+) -> AnalysisPointResponse:
+    raw_updates = updates.model_dump(exclude_unset=True, exclude_none=True)
+    merged = current_point.model_dump(mode="json")
+    merged.update(raw_updates)
+    normalized = _normalize_custom_analysis_point_fields(merged, allow_missing=False)
+    normalized["id"] = current_point.id
+    return AnalysisPointResponse(**normalized, source="user", editable=True)
+
+
+def _normalize_custom_analysis_point_fields(
+    raw: dict[str, Any],
+    *,
+    allow_missing: bool,
+) -> dict[str, Any]:
+    label = str(raw.get("label") or "").strip()
+    if not label and not allow_missing:
+        raise HTTPException(status_code=400, detail="Analysis point label is required")
+
+    description = str(raw.get("description") or "").strip()
+    group = str(raw.get("group") or "").strip().lower() or "asset"
+    if group not in _ALLOWED_POINT_GROUPS:
+        raise HTTPException(status_code=400, detail=f"Invalid analysis point group '{group}'")
+
+    control = str(raw.get("control") or "").strip().lower()
+    if control not in _ALLOWED_POINT_CONTROLS:
+        raise HTTPException(status_code=400, detail=f"Invalid analysis point control '{control}'")
+
+    target_raw = raw.get("target")
+    target: Optional[str]
+    if target_raw is None:
+        if group == "prompt":
+            target = AnalyzerTarget.PROMPT.value
+        elif group == "asset":
+            target = AnalyzerTarget.ASSET.value
+        else:
+            target = None
+    else:
+        target = str(target_raw).strip().lower() or None
+        if target not in {AnalyzerTarget.PROMPT.value, AnalyzerTarget.ASSET.value, None}:
+            raise HTTPException(status_code=400, detail=f"Invalid analysis point target '{target}'")
+
+    media_type_raw = raw.get("media_type")
+    media_type = None
+    if media_type_raw is not None:
+        media_type = str(media_type_raw).strip().lower() or None
+        if media_type is not None and media_type not in _ALLOWED_MEDIA_TYPES:
+            raise HTTPException(status_code=400, detail=f"Invalid media_type '{media_type}'")
+
+    intent_key_raw = raw.get("intent_key")
+    intent_key = None
+    if intent_key_raw is not None:
+        intent_key = str(intent_key_raw).strip() or None
+
+    supports_chain = bool(raw.get("supports_chain", True))
+    if control == "similarity_threshold":
+        group = "system"
+        target = None
+        media_type = None
+        intent_key = None
+        supports_chain = False
+
+    if control == "prompt_default" and target != AnalyzerTarget.PROMPT.value:
+        raise HTTPException(status_code=400, detail="prompt_default points must target 'prompt'")
+    if control in {"image_default", "video_default", "intent_override"} and target != AnalyzerTarget.ASSET.value:
+        raise HTTPException(status_code=400, detail=f"{control} points must target 'asset'")
+    if control == "intent_override" and not intent_key:
+        raise HTTPException(status_code=400, detail="intent_override requires intent_key")
+    if control in {"image_default", "video_default"} and media_type is None:
+        media_type = "image" if control == "image_default" else "video"
+
+    return {
+        "id": str(raw.get("id") or "").strip(),
+        "label": label,
+        "description": description,
+        "group": group,
+        "target": target,
+        "control": control,
+        "intent_key": intent_key,
+        "media_type": media_type,
+        "supports_chain": supports_chain,
+    }
+
+
+def _normalize_custom_point_id(
+    *,
+    requested: Any,
+    label: str,
+    existing_ids: set[str],
+) -> str:
+    if isinstance(requested, str) and requested.strip():
+        base = requested.strip()
+        if base.startswith("user:"):
+            candidate = base
+        else:
+            candidate = f"user:{base}"
+        if candidate in existing_ids:
+            raise HTTPException(status_code=409, detail=f"Analysis point '{candidate}' already exists")
+        return candidate
+
+    slug = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+    if not slug:
+        slug = "custom-point"
+    candidate = f"user:{slug}"
+    suffix = 2
+    while candidate in existing_ids:
+        candidate = f"user:{slug}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _get_or_create_analyzer_preferences(preferences: dict[str, Any]) -> dict[str, Any]:
+    analyzer_prefs = preferences.get("analyzer")
+    if not isinstance(analyzer_prefs, dict):
+        analyzer_prefs = {}
+        preferences["analyzer"] = analyzer_prefs
+    return analyzer_prefs
+
+
+def _get_custom_analysis_points(analyzer_prefs: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_points = analyzer_prefs.get(_CUSTOM_POINTS_KEY)
+    if not isinstance(raw_points, list):
+        return []
+    return [item for item in raw_points if isinstance(item, dict)]
+
+
+def _apply_analysis_point_default_ids(
+    *,
+    analyzer_prefs: dict[str, Any],
+    point_id: str,
+    analyzer_ids: Optional[list[str]],
+) -> None:
+    if analyzer_ids is None:
+        return
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in analyzer_ids:
+        if not isinstance(raw, str):
+            continue
+        candidate = analyzer_registry.resolve_legacy(raw.strip())
+        analyzer = analyzer_registry.get(candidate)
+        if not analyzer or analyzer.target != AnalyzerTarget.ASSET or not analyzer.enabled:
+            continue
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        normalized.append(candidate)
+
+    id_map = analyzer_prefs.get(_ANALYSIS_POINT_DEFAULT_IDS_KEY)
+    if not isinstance(id_map, dict):
+        id_map = {}
+
+    if normalized:
+        id_map[point_id] = normalized
+    else:
+        id_map.pop(point_id, None)
+
+    analyzer_prefs[_ANALYSIS_POINT_DEFAULT_IDS_KEY] = id_map
+
+
+def _clear_analysis_point_default_ids(*, analyzer_prefs: dict[str, Any], point_id: str) -> None:
+    id_map = analyzer_prefs.get(_ANALYSIS_POINT_DEFAULT_IDS_KEY)
+    if isinstance(id_map, dict):
+        id_map.pop(point_id, None)
+        analyzer_prefs[_ANALYSIS_POINT_DEFAULT_IDS_KEY] = id_map
+
+
 def _build_analyzer_response(analyzer) -> AnalyzerResponse:
     effective_options = get_effective_instance_options(analyzer)
     return AnalyzerResponse(
@@ -982,6 +1647,8 @@ def _build_analyzer_response(analyzer) -> AnalyzerResponse:
         description=analyzer.description,
         kind=analyzer.kind,
         target=analyzer.target,
+        input_modality=analyzer.input_modality,
+        task_family=analyzer.task_family,
         provider_id=analyzer.provider_id,
         model_id=analyzer.model_id,
         source_plugin_id=analyzer.source_plugin_id,

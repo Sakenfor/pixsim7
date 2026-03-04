@@ -13,6 +13,7 @@ export { createChainsApi } from './chains';
 export { createCharactersApi } from './characters';
 export { createAdminApi } from './admin';
 export { createAnalyzersApi } from './analyzers';
+export { createAnalysesApi } from './analyses';
 export { createAssetsApi } from './assets';
 export { createAutomationApi } from './automation';
 export { createCompositionApi } from './composition';
@@ -99,11 +100,32 @@ export type {
   AnalyzerInstanceListResponse,
   CreateAnalyzerInstanceRequest,
   UpdateAnalyzerInstanceRequest,
+  AnalysisPointGroup,
+  AnalysisPointControl,
+  AnalysisPointInfo,
+  AnalysisPointsListResponse,
+  CreateAnalysisPointRequest,
+  UpdateAnalysisPointRequest,
+  AnalyzerInputModality,
   AnalyzerKind,
   AnalyzerTarget,
+  AnalyzerTaskFamily,
   AnalyzersListResponse,
   ListAnalyzersOptions,
 } from './analyzers';
+
+export type {
+  AnalysisStatus,
+  AnalysisBackfillStatus,
+  CreateAnalysisRequest,
+  AnalysisResponse,
+  AnalysisListResponse,
+  CreateAnalysisBackfillRequest,
+  AnalysisBackfillResponse,
+  AnalysisBackfillListResponse,
+  ListAssetAnalysesOptions,
+  ListAnalysisBackfillsOptions,
+} from './analyses';
 
 export type {
   AssetResponse,

@@ -1,6 +1,7 @@
 """
 User management API endpoints
 """
+from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, UserSvc
 from pixsim7.backend.main.shared.schemas.user_schemas import (
@@ -17,6 +18,9 @@ from pixsim7.backend.main.shared.schemas.user_schemas import (
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
     ValidationError as DomainValidationError,
+)
+from pixsim7.backend.main.services.analysis.analyzer_defaults import (
+    canonicalize_analyzer_preferences,
 )
 
 router = APIRouter()
@@ -36,6 +40,24 @@ def _normalize_permissions(permissions: list[str]) -> list[str]:
     return normalized
 
 
+def _canonicalize_analyzer_preferences_in_payload(preferences: dict) -> dict:
+    if not isinstance(preferences, dict):
+        return preferences
+    analyzer = preferences.get("analyzer")
+    if isinstance(analyzer, dict):
+        updated = dict(preferences)
+        updated["analyzer"] = canonicalize_analyzer_preferences(analyzer)
+        return updated
+    return preferences
+
+
+def _build_user_response(user: Any) -> UserResponse:
+    response = UserResponse.model_validate(user)
+    canonicalized = _canonicalize_analyzer_preferences_in_payload(user.preferences or {})
+    response.preferences = UserPreferences.model_validate(canonicalized)
+    return response
+
+
 # ===== GET CURRENT USER =====
 
 @router.get("/users/me", response_model=UserResponse)
@@ -45,7 +67,7 @@ async def get_current_user(user: CurrentUser):
 
     Returns the profile information for the currently authenticated user.
     """
-    return UserResponse.model_validate(user)
+    return _build_user_response(user)
 
 
 # ===== UPDATE CURRENT USER =====
@@ -73,10 +95,10 @@ async def update_current_user(
         # Update user
         if updates:
             updated_user = await user_service.update_user(user.id, **updates)
-            return UserResponse.model_validate(updated_user)
+            return _build_user_response(updated_user)
 
         # No updates provided
-        return UserResponse.model_validate(user)
+        return _build_user_response(user)
 
     except DomainValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -121,7 +143,8 @@ async def get_user_preferences(user: CurrentUser):
     Returns the preferences dictionary for the currently authenticated user.
     Preferences can include theme, notification settings, cube state, etc.
     """
-    validated = UserPreferences.model_validate(user.preferences or {})
+    canonicalized = _canonicalize_analyzer_preferences_in_payload(user.preferences or {})
+    validated = UserPreferences.model_validate(canonicalized)
     return UserPreferencesResponse(preferences=validated)
 
 
@@ -141,7 +164,8 @@ async def update_user_preferences(
     """
     try:
         # Merge with existing preferences (patch semantics at top level).
-        current_prefs = UserPreferences.model_validate(user.preferences or {}).model_dump(exclude_none=True)
+        current_raw_prefs = _canonicalize_analyzer_preferences_in_payload(user.preferences or {})
+        current_prefs = UserPreferences.model_validate(current_raw_prefs).model_dump(exclude_none=True)
         incoming_prefs = request.preferences.model_dump(exclude_unset=True)
         updated_prefs = {**current_prefs, **incoming_prefs}
 
@@ -149,12 +173,16 @@ async def update_user_preferences(
         updated_prefs = {k: v for k, v in updated_prefs.items() if v is not None}
 
         # Validate and persist canonical structured keys only.
-        validated = UserPreferences.model_validate(updated_prefs)
+        canonicalized_prefs = _canonicalize_analyzer_preferences_in_payload(updated_prefs)
+        validated = UserPreferences.model_validate(canonicalized_prefs)
         validated_dict = validated.model_dump(exclude_none=True)
 
         # Update user
         updated_user = await user_service.update_user(user.id, preferences=validated_dict)
-        response_prefs = UserPreferences.model_validate(updated_user.preferences or {})
+        response_canonicalized = _canonicalize_analyzer_preferences_in_payload(
+            updated_user.preferences or {}
+        )
+        response_prefs = UserPreferences.model_validate(response_canonicalized)
         return UserPreferencesResponse(preferences=response_prefs)
 
     except DomainValidationError as e:

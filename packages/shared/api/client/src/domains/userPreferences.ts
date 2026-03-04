@@ -79,12 +79,18 @@ export interface AutoTagsPreferences {
  * Analyzer preferences for prompt analysis.
  */
 export interface AnalyzerPreferences {
-  /** Default prompt analyzer ID (e.g., "prompt:simple", "prompt:claude") */
-  prompt_default_id?: string;
-  /** Default asset analyzer ID for image media */
-  asset_default_image_id?: string;
-  /** Default asset analyzer ID for video media */
-  asset_default_video_id?: string;
+  /** Ordered prompt analyzer fallback IDs (first executable is used) */
+  prompt_default_ids?: string[];
+  /** Ordered image analyzer fallback IDs (first executable is used) */
+  asset_default_image_ids?: string[];
+  /** Ordered video analyzer fallback IDs (first executable is used) */
+  asset_default_video_ids?: string[];
+  /** Ordered per-intent analyzer fallback IDs */
+  asset_intent_default_ids?: Record<string, string[]>;
+  /** Ordered per-analysis-point analyzer fallback IDs */
+  analysis_point_default_ids?: Record<string, string[]>;
+  /** User-defined custom analysis point definitions */
+  analysis_points_custom?: Array<Record<string, unknown>>;
   /** Apply analysis tags to generated assets */
   auto_apply_tags?: boolean;
   /** Prefix for analysis tags (e.g., "prompt:" -> "prompt:has:character") */
