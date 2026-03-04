@@ -12,10 +12,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from pixsim7.backend.main.services.prompt.llm_resolution import (
-    normalize_llm_provider_id,
-    resolve_llm_model_id,
-    resolve_llm_provider_id,
+from pixsim7.backend.main.services.analysis.execution_policy import (
+    ProviderModelPrecedenceRequest,
+    resolve_provider_model_precedence,
 )
 from pixsim7.backend.main.services.prompt.parser import (
     AnalyzerInfo,
@@ -105,19 +104,19 @@ def resolve_analyzer_execution(request: AnalyzerExecutionRequest) -> ResolvedAna
     analyzer = resolved_def.analyzer
 
     if analyzer.kind == AnalyzerKind.LLM:
-        provider_id = resolve_llm_provider_id(
-            explicit_provider_id=request.explicit_provider_id,
-            analyzer_provider_id=analyzer.provider_id,
-            user_provider_id=request.user_llm_provider_id,
-            fallback_provider_id=request.fallback_provider_id,
+        precedence = resolve_provider_model_precedence(
+            ProviderModelPrecedenceRequest(
+                explicit_provider_id=request.explicit_provider_id,
+                explicit_model_id=request.explicit_model_id,
+                analyzer_provider_id=analyzer.provider_id,
+                analyzer_model_id=analyzer.model_id,
+                user_provider_id=request.user_llm_provider_id,
+                user_model_id=request.user_llm_model_id,
+                fallback_provider_id=request.fallback_provider_id,
+            )
         )
-        model_id = resolve_llm_model_id(
-            explicit_model_id=request.explicit_model_id,
-            analyzer_model_id=analyzer.model_id,
-            user_model_id=request.user_llm_model_id,
-            user_provider_id=request.user_llm_provider_id,
-            resolved_provider_id=provider_id,
-        )
+        provider_id = precedence.provider_id
+        model_id = precedence.model_id
     else:
         provider_id = (
             request.explicit_provider_id
@@ -130,9 +129,6 @@ def resolve_analyzer_execution(request: AnalyzerExecutionRequest) -> ResolvedAna
         raise AnalyzerPipelineError(
             f"Analyzer '{resolved_def.analyzer_id}' has no resolved provider"
         )
-
-    if analyzer.kind == AnalyzerKind.LLM and provider_id:
-        provider_id = normalize_llm_provider_id(provider_id) or provider_id
 
     return ResolvedAnalyzerExecution(
         analyzer_id=resolved_def.analyzer_id,

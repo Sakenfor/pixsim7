@@ -12,6 +12,11 @@ from pixsim7.backend.main.domain import User, AiInteraction
 from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.services.llm.registry import llm_registry
 from pixsim7.backend.main.services.ai_model import ai_model_registry, get_default_model
+from pixsim7.backend.main.services.analysis.execution_policy import (
+    DEFAULT_MODEL_BY_PROVIDER,
+    ProviderModelPrecedenceRequest,
+    resolve_provider_model_precedence,
+)
 from pixsim7.backend.main.services.prompt.llm_resolution import normalize_llm_provider_id
 from pixsim7.backend.main.shared.schemas.ai_model_schemas import AiModelCapability
 from pixsim7.backend.main.shared.errors import (
@@ -26,12 +31,6 @@ logger = logging.getLogger(__name__)
 _PROVIDER_TO_AI_SETTINGS_KEY = {
     "anthropic-llm": "anthropic_api_key",
     "openai-llm": "openai_api_key",
-}
-
-_DEFAULT_MODEL_BY_PROVIDER = {
-    "anthropic-llm": "claude-sonnet-4-20250514",
-    "openai-llm": "gpt-4",
-    "local-llm": "smollm2-1.7b",
 }
 
 
@@ -169,47 +168,19 @@ class AiHubService:
         """
         Resolve effective provider/model for execution.
 
-        Policy:
-        - provider-bound calls stay provider-bound
-        - AI-model capability defaults apply only when both provider/model are missing
+        Uses the shared execution policy for preference + runtime resolution,
+        then applies async capability defaults and hardcoded global fallback
+        for fully-unspecified calls.
         """
-        resolved_model_id = model_id
-        resolved_provider_id = normalize_llm_provider_id(provider_id) or provider_id
-        model_provider_id: Optional[str] = None
-
-        # If model is known in AI model catalog, infer provider from model.
-        if resolved_model_id:
-            try:
-                model = ai_model_registry.get(resolved_model_id)
-                if model:
-                    model_provider_id = (
-                        normalize_llm_provider_id(model.provider_id) or model.provider_id
-                    )
-            except Exception:
-                model_provider_id = None
-
-        if not resolved_provider_id and model_provider_id:
-            resolved_provider_id = model_provider_id
-
-        # If provider/model conflict, keep provider and drop model so we can
-        # deterministically resolve a provider-compatible default model.
-        if (
-            resolved_provider_id
-            and model_provider_id
-            and model_provider_id != resolved_provider_id
-        ):
-            logger.warning(
-                "llm_provider_model_mismatch provider=%s model=%s model_provider=%s",
-                resolved_provider_id,
-                resolved_model_id,
-                model_provider_id,
+        precedence = resolve_provider_model_precedence(
+            ProviderModelPrecedenceRequest(
+                explicit_provider_id=provider_id,
+                explicit_model_id=model_id,
             )
-            resolved_model_id = None
+        )
 
-        # Provider-known calls should stay provider-bound; resolve model from
-        # provider defaults rather than cross-provider global capability defaults.
-        if resolved_provider_id and not resolved_model_id:
-            resolved_model_id = _DEFAULT_MODEL_BY_PROVIDER.get(resolved_provider_id)
+        resolved_provider_id = precedence.provider_id
+        resolved_model_id = precedence.model_id
 
         # Only fully-unspecified calls use AI model capability defaults.
         if not resolved_provider_id and not resolved_model_id:
@@ -232,11 +203,12 @@ class AiHubService:
                     f"Failed to lookup prompt-edit defaults: {e}"
                 )
 
+        # Hardcoded global fallback — last resort.
         if not resolved_provider_id:
             resolved_provider_id = "openai-llm"
 
         if not resolved_model_id:
-            resolved_model_id = _DEFAULT_MODEL_BY_PROVIDER.get(
+            resolved_model_id = DEFAULT_MODEL_BY_PROVIDER.get(
                 resolved_provider_id,
                 "gpt-4",
             )

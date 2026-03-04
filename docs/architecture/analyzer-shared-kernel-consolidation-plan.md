@@ -1,0 +1,229 @@
+# Analyzer Shared Kernel Consolidation Plan
+
+## Context
+
+PixSim7 currently has two analyzer orchestrators:
+
+- `PromptAnalysisService` for prompt/text analysis
+- `AnalysisService` for asset/job analysis
+
+This split is valid because runtime shape and lifecycle differ (inline prompt path vs queued asset jobs). The risk is duplication in shared behavior (resolution policy, chain behavior, telemetry, error semantics, config hashing).
+
+This document defines the shared-kernel consolidation plan while keeping the two orchestrators separate.
+
+## Goals
+
+1. Keep prompt and asset orchestrators separate.
+2. Move shared logic into a single reusable kernel layer.
+3. Eliminate drift in provider/model resolution, chain execution, and observability.
+4. Make analyzer/plugin growth safe without hardcoded behavior spread.
+
+## Non-Goals
+
+1. Merge prompt and asset services into one monolith.
+2. Replace ARQ/job lifecycle for asset analysis.
+3. Rework the analyzer registry model in this track.
+
+## Current Baseline
+
+Already consolidated:
+
+1. `_ids`-only analyzer preference contract
+2. AI Hub as single LLM provider/model resolution authority
+
+Still fragmented:
+
+1. Non-LLM execution policy precedence
+2. Chain execution semantics
+3. Result envelope/provenance shape
+4. Error taxonomy and retry hints
+5. Telemetry and run metrics contracts
+
+## Target Shared Kernel Areas
+
+### 1. Unified Execution Policy (All Analyzer Kinds)
+
+- One policy component for provider/model/instance precedence across prompt and asset flows.
+- LLM, vision, and parser-adjacent cases use the same precedence contract where applicable.
+
+### 2. Shared Analyzer Chain Executor
+
+- One executor with explicit strategy:
+  - `first_success`
+  - `run_all`
+- Explicit timeout budget, per-step timeout, and merge strategy hooks.
+
+### 3. Shared Result Envelope + Provenance
+
+Standard metadata for all analyzer executions:
+
+- `analyzer_id`
+- `provider_id`
+- `model_id`
+- `analysis_point` (if applicable)
+- `effective_config_hash`
+- `duration_ms`
+- `fallback_used`
+- `error_category` (if failed)
+
+### 4. Unified Capability Contract
+
+Analyzer capability declaration consumed by both orchestrators:
+
+- `input_modality`
+- `task_family`
+- `supports_batch`
+- `supports_streaming`
+- `output_schema_id`
+
+### 5. Shared Error Taxonomy + Retry Hints
+
+Normalize execution errors into categories:
+
+- `transient`
+- `auth`
+- `quota`
+- `invalid_input`
+- `provider_unavailable`
+- `unknown`
+
+Each category carries retry guidance for prompt fallback and asset worker behavior.
+
+### 6. Shared Observability Hooks
+
+Single instrumentation helper for both paths:
+
+- start/stop timing
+- success/failure counters
+- fallback depth
+- empty-result rate
+
+### 7. Shared Effective Config Hashing
+
+One canonical hashing helper for dedupe, provenance, and replayability:
+
+- stable key ordering
+- consistent redaction rules
+- consistent payload fields
+
+### 8. Shared Preference Normalization Boundary
+
+Central utility for analyzer preference normalization and validation:
+
+- `_ids` key validation
+- analysis point override validation
+- intent chain validation
+
+## Phased Roadmap
+
+## Phase 0: Contracts First
+
+1. Define shared kernel interfaces for execution policy, chain executor, telemetry hook, and error normalization.
+2. Add golden tests for precedence and envelope behavior.
+
+Exit criteria:
+
+1. All interfaces are explicit and versioned in code comments/docs.
+2. Both orchestrators can compile against interface stubs.
+
+## Phase 1: Unified Execution Policy
+
+1. Move non-LLM precedence into shared policy module.
+2. Route prompt and asset orchestration through the same policy adapter.
+
+Exit criteria:
+
+1. No duplicated precedence branches in orchestrators.
+2. Existing resolver tests pass plus new shared policy tests.
+
+## Phase 2: Chain Executor + Error Taxonomy
+
+1. Implement shared chain executor with strategy + timeout controls.
+2. Normalize provider/analyzer errors into shared categories and retry hints.
+
+Exit criteria:
+
+1. Prompt and asset paths both use chain executor.
+2. Worker retry logic and prompt fallback logic consume normalized categories.
+
+## Phase 3: Result Envelope + Metrics
+
+1. Introduce shared result envelope builder.
+2. Add shared telemetry hooks and dashboards/log fields.
+
+Exit criteria:
+
+1. All analyzer runs emit a consistent provenance envelope.
+2. Metrics for latency/success/fallback are visible per analyzer/provider.
+
+## Phase 4: Capability and Plugin Contract
+
+1. Introduce capability contract readers for both orchestrators.
+2. Enforce output schema IDs and adapter validation points.
+
+Exit criteria:
+
+1. New analyzers can plug in without per-orchestrator hardcoding.
+2. Capability mismatches fail fast with clear errors.
+
+## Risks and Mitigations
+
+1. Risk: silent behavior change in fallback order  
+   Mitigation: golden tests with before/after vectors and staged rollout flags.
+
+2. Risk: throughput regressions from shared chain layer  
+   Mitigation: benchmark baseline and add per-step timing metrics.
+
+3. Risk: plugin breakage from stricter contracts  
+   Mitigation: versioned capability contract and compatibility adapter.
+
+## Suggested Work Items
+
+1. `kernel-exec-policy`: shared precedence module + tests.
+2. `kernel-chain-executor`: strategy/timeout/merge implementation + tests.
+3. `kernel-error-taxonomy`: normalize + retry hints + worker integration.
+4. `kernel-envelope`: shared provenance envelope + schema checks.
+5. `kernel-observability`: unified metrics/log hook adoption.
+6. `kernel-capability-contract`: output schema and capability checks.
+
+## Progress
+
+### Phase 0 + Phase 1 (`kernel-exec-policy`) — Completed 2026-03-04
+
+**Deliverables:**
+
+- New module: `services/analysis/execution_policy.py`
+  - `resolve_provider_model_precedence()` — unified sync precedence for provider/model
+  - `ProviderModelPrecedenceRequest` / `ProviderModelPrecedenceResult` — explicit contract
+  - `DEFAULT_MODEL_BY_PROVIDER` — single source of truth (was duplicated in `ai_hub_service.py`)
+  - Provenance tracking (`provider_source`, `model_source`, `conflict_detected`)
+
+- Wired both orchestrators:
+  - `analyzer_pipeline.py::resolve_analyzer_execution()` — LLM branch now uses shared policy (replaces direct `resolve_llm_provider_id` + `resolve_llm_model_id` + manual `normalize_llm_provider_id`)
+  - `ai_hub_service.py::_resolve_provider_and_model()` — sync portion delegates to shared policy; async capability defaults and hardcoded global fallback remain in AiHubService
+
+- Removed duplication:
+  - `analyzer_pipeline.py` no longer has its own normalize + resolve calls — delegates to `resolve_provider_model_precedence`
+  - `ai_hub_service.py` no longer has inline model catalog inference, conflict detection, or `_DEFAULT_MODEL_BY_PROVIDER` — delegates to `resolve_provider_model_precedence`
+  - `llm_resolution.py` remains as the low-level helper layer consumed by the shared policy
+
+- Tests: 21 new tests in `test_execution_policy.py` covering:
+  - Provider precedence vectors (5 tests)
+  - Model precedence vectors (4 tests)
+  - Model catalog inference (3 tests)
+  - Provider-model conflict handling (3 tests)
+  - Provider default model lookup (3 tests)
+  - No hidden fallback drift (3 tests)
+- All 25 existing analyzer/LLM tests pass with zero regressions
+
+**What is NOT in this slice:**
+
+- Chain executor (Phase 2: `kernel-chain-executor`)
+- Error taxonomy / retry hints (Phase 2)
+- Result envelope / provenance (Phase 3)
+- Observability hooks (Phase 3)
+- Capability contract (Phase 4)
+
+## Completion Signal
+
+This plan is complete when prompt and asset orchestrators are thin coordinators over the same shared analyzer kernel for all cross-cutting behavior, while preserving their distinct runtime lifecycles.
