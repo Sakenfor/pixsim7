@@ -23,10 +23,7 @@ Documentation for backend architecture, deployment, testing, and modernization.
 
 ## Backend Modernization & Planning
 
-- **[BACKEND_MODERNIZATION.md](./BACKEND_MODERNIZATION.md)** - God object elimination and clean architecture refactoring
-  - Modernization goals
-  - Refactoring tasks
-  - Clean architecture
+- **[BACKEND_MODERNIZATION.md](../archive/completed/BACKEND_MODERNIZATION.md)** - God object elimination and clean architecture refactoring *(Completed, archived)*
 
 - **[BACKEND_INTERACTION_DISPATCHER.md](./BACKEND_INTERACTION_DISPATCHER.md)** - Backend interaction dispatcher design
   - Dispatcher architecture

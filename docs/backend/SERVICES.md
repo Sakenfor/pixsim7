@@ -100,52 +100,7 @@ async def login(
 
 ---
 
-### **3. JobService** (`services/job/job_service.py`)
-
-Manages job lifecycle, queue, and status tracking.
-
-**Key Methods:**
-```python
-async def create_job(user_id: int, provider_id: str, operation_type: OperationType, params: dict) -> Job
-async def get_job(job_id: int) -> Job | None
-async def list_jobs(user_id: int, filters: dict, pagination: dict) -> list[Job]
-async def update_status(job_id: int, status: JobStatus, error: str = None) -> Job
-async def cancel_job(job_id: int) -> None
-async def get_pending_jobs(limit: int = 10) -> list[Job]
-```
-
-**Job Status Flow:**
-```
-PENDING → PROCESSING → COMPLETED
-         ↘ FAILED
-         ↘ CANCELLED
-```
-
-**Usage Example:**
-```python
-@router.post("/jobs")
-async def create_job(
-    request: CreateJobRequest,
-    current_user: User = Depends(get_current_user),
-    db: DatabaseSession = Depends(get_database),
-):
-    service = JobService(db)
-    job = await service.create_job(
-        user_id=current_user.id,
-        provider_id=request.provider_id,
-        operation_type=request.operation_type,
-        params=request.params,
-    )
-
-    # Queue for background processing
-    await enqueue_job(job.id)
-
-    return JobResponse.from_orm(job)
-```
-
----
-
-### **4. AccountService** (`services/account/account_service.py`)
+### **3. AccountService** (`services/account/account_service.py`)
 
 Provider account pooling, selection, and credit management.
 
@@ -190,7 +145,7 @@ async def process_job(job_id: int):
 
 ---
 
-### **5. ProviderService** (`services/provider/provider_service.py`)
+### **4. ProviderService** (`services/provider/provider_service.py`)
 
 Orchestrates provider operations via adapter pattern.
 
@@ -232,9 +187,9 @@ status = await service.check_status(
 
 ---
 
-### **6. AssetService** (`services/asset/asset_service.py`)
+### **5. AssetService** (`services/asset/service.py`)
 
-Asset management, cross-provider uploads, metadata, and lineage.
+Composition layer over split asset modules. New code should use specific modules directly: `core.py`, `_creation.py`, `_deletion.py`, `_search.py`, `sync.py`, `enrichment.py`, `quota.py`, `ingestion.py`, `versioning.py`, `tags.py`, `branching.py`, `dedup.py`.
 
 **Key Methods:**
 ```python
@@ -290,9 +245,9 @@ async def list_assets(
 
 ---
 
-### **7. LineageService** (`services/asset/lineage_service.py`)
+### **6. LineageService** (`services/asset/lineage.py`)
 
-Asset lineage graph management.
+Asset lineage query helpers.
 
 **Key Methods:**
 ```python
@@ -320,7 +275,7 @@ graph = await lineage_service.get_lineage_graph(new_asset.id)
 
 ---
 
-### **8. StorageService** (`services/storage/storage_service.py`)
+### **7. StorageService** (`services/storage/storage_service.py`)
 
 Media file storage abstraction with content-addressed deduplication.
 
@@ -372,7 +327,7 @@ stored_key = await storage.store_from_path_with_hash(
 
 # Get local path for serving
 local_path = storage.get_path(stored_key)
-# Returns: "data/media/u/1/content/ab/abc123...mp4"
+# Returns: "<PIXSIM_HOME>/media/u/1/content/ab/abc123...mp4"
 ```
 
 **Usage Example:**
@@ -408,7 +363,7 @@ async def upload_from_url(request: UploadRequest, user: CurrentUser):
 ```
 
 **Implementation Details:**
-- **Local Storage:** Files stored under `data/media/` by default
+- **Local Storage:** Files stored under `<PIXSIM_HOME>/media/` by default
 - **Two-level directories:** `{hash[:2]}/` prevents too many files in one directory
 - **Per-user scoping:** Privacy and quota isolation
 - **Chunked hashing:** Efficient SHA256 computation for large files
@@ -419,36 +374,7 @@ async def upload_from_url(request: UploadRequest, user: CurrentUser):
 
 ---
 
-### **9. SubmissionPipeline** (`services/submission/pipeline.py`)
-
-Job submission orchestration with structured logging.
-
-**Key Methods:**
-```python
-async def submit_job(job: Job) -> ProviderSubmission
-```
-
-**Stages (logged):**
-1. `pipeline:start` - Begin submission
-2. `pipeline:artifact` - Prepare artifacts (upload source assets)
-3. `provider:submit` - Submit to provider
-4. `provider:status` - Status check
-5. `provider:complete` - Job completed
-
-**Usage Example:**
-```python
-from pixsim7.backend.main.services.submission.pipeline import SubmissionPipeline
-
-pipeline = SubmissionPipeline(db, account_service, provider_service, asset_service)
-
-# Called by worker
-submission = await pipeline.submit_job(job)
-# Returns ProviderSubmission with provider_job_id
-```
-
----
-
-### **9. UploadService** (`services/upload/upload_service.py`)
+### **8. UploadService** (`services/upload/upload_service.py`)
 
 User file upload handling.
 
@@ -488,7 +414,7 @@ async def upload_asset(
 
 ---
 
-### **10. AutomationService** (`services/automation/`)
+### **9. AutomationService** (`services/automation/`)
 
 Device automation for mobile app control.
 
@@ -509,7 +435,7 @@ await service.start_loop(device_id=1)
 
 ---
 
-### **11. AiHubService** (`services/llm/ai_hub_service.py`)
+### **10. AiHubService** (`services/llm/ai_hub_service.py`)
 
 AI-powered prompt editing using LLM providers (OpenAI, Anthropic, local models).
 
@@ -598,25 +524,27 @@ async def get_resource(
 ### **Pattern 2: Multi-Service Coordination**
 
 ```python
-# Job submission requires multiple services
-async def submit_job(job_id: int):
-    # 1. Get job
-    job_service = JobService(db)
-    job = await job_service.get_job(job_id)
+# Generation submission requires multiple services
+async def submit_generation(generation_id: int):
+    # 1. Get generation
+    gen_service = GenerationService(db)
+    generation = await gen_service.query.get_generation_by_id(generation_id)
 
     # 2. Select account
     account_service = AccountService(db)
     account = await account_service.select_account(
-        job.provider_id,
-        job.operation_type
+        generation.provider_id,
+        generation.operation_type
     )
 
-    # 3. Submit via pipeline
-    pipeline = SubmissionPipeline(db, account_service, provider_service, asset_service)
-    submission = await pipeline.submit_job(job)
+    # 3. Execute via provider
+    provider_service = ProviderService()
+    result = await provider_service.execute_job(
+        generation.provider_id, account, generation.operation_type, generation.params
+    )
 
-    # 4. Update job status
-    await job_service.update_status(job.id, JobStatus.PROCESSING)
+    # 4. Update status
+    await gen_service.lifecycle.mark_processing(generation.id)
 ```
 
 ### **Pattern 3: Transaction Safety**
@@ -741,11 +669,10 @@ async def get_user_by_email(email: str) -> Optional[User]:
 
 ## 🔗 Related Documentation
 
-- **Architecture:** `/ARCHITECTURE.md`
-- **Development Guide:** `/DEVELOPMENT_GUIDE.md`
+- **Architecture:** `docs/architecture/README.md`
+- **Backend Modernization:** `docs/archive/completed/BACKEND_MODERNIZATION.md` — service splitting history
 - **API Reference:** http://localhost:8001/docs
-- **Provider Integration:** `docs/backend/PROVIDERS.md`
 
 ---
 
-**Last Updated:** 2025-11-16
+**Last Updated:** 2026-03-04

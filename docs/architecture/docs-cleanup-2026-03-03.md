@@ -80,14 +80,14 @@ Cleaned the `docs/` tree to reduce duplication, fix stale paths, relocate orphan
 
 ## Residual Risks / Manual Verification Needed
 
-1. **`docs/frontend/FRONTEND_COMPONENT_GUIDE.md`** — references stale paths (`stores/controlCenterStore.ts`, `components/control/ControlCenterDock.tsx`). These components have moved to `features/controlCenter/`. Low priority since the doc itself is a lightweight guide.
+1. ~~**`docs/frontend/FRONTEND_COMPONENT_GUIDE.md`**~~ — **Fixed 2026-03-04.** Paths updated to `features/controlCenter/`.
 
-2. **`docs/game/` directory** — still exists with a redirect README. Could be fully removed once all consumers have updated. The 136 legacy task files in `docs/archive/claude-tasks-legacy/` are untouched.
+2. ~~**`docs/game/` directory**~~ — **Fixed 2026-03-04.** Directory removed.
 
-3. **`docs/architecture/plugins.md`** — this is an ADR about gizmo organization, not a plugin system doc. Its filename is misleading vs `docs/systems/plugins/PLUGIN_ARCHITECTURE.md`. Consider renaming to `gizmo-organization-adr.md`.
+3. ~~**`docs/architecture/plugins.md`**~~ — **Fixed 2026-03-04.** Renamed to `gizmo-component-organization.md`.
 
-4. **`docs/infrastructure/BACKEND_MODERNIZATION.md`** — marked "Status: Completed" but kept in active infrastructure/ directory. Could be archived to `archive/completed/`.
+4. ~~**`docs/infrastructure/BACKEND_MODERNIZATION.md`**~~ — **Fixed 2026-03-04.** Archived to `archive/completed/`.
 
 5. **`docs/archive/deprecated-docs/`** — contains `UNIFIED_PLUGIN_SYSTEM.md` and `extension-architecture.md` which overlap with current ADRs. These are already in archive so low risk.
 
-6. **`docs/reviews/`** (top-level) — 3 review files exist alongside `docs/architecture/reviews/`. Consider merging into one reviews location.
+6. ~~**`docs/reviews/`** (top-level)~~ — **Fixed 2026-03-04.** Consolidated into `docs/architecture/reviews/`.

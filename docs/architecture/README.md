@@ -30,6 +30,8 @@ This directory contains architectural documentation for PixSim7 — specs, desig
 - [Backend Game Extraction](./backend-game-extraction.md) - Dual-DB monolith plan for game data isolation.
   - [Plain English Summary](./backend-game-extraction-summary.md)
 - [Local LLM Prompt Analyzer](./local-llm-prompt-analyzer.md) - llama-cpp-python integration plan.
+- [Analyzer + AI Hub LLM Resolution Policy](./analyzer-aihub-llm-resolution-policy.md) - Canonical provider/model fallback policy for shared LLM runtime.
+- [Analyzer Shared Kernel Consolidation Plan](./analyzer-shared-kernel-consolidation-plan.md) - Roadmap for consolidating shared analyzer logic while keeping prompt and asset orchestrators separate.
 - [Asset Versioning System](./ASSET_VERSIONING_SYSTEM.md) - Asset version families and revision tracking.
 
 ### Snapshots (historical reference)
@@ -43,7 +45,7 @@ This directory contains architectural documentation for PixSim7 — specs, desig
 - [Action Registry](./action-registry.md) - Auto-generated action table from module pages.
 - [Spatial Model](./spatial-model.md)
 - [Dockview Architecture](./dockview.md)
-- [Plugin Architecture](./plugins.md)
+- [Gizmo Component Organization](./gizmo-component-organization.md)
 - [Generic Game Objects](./generic-game-objects.md)
 - [Diagrams](./diagrams.md)
 

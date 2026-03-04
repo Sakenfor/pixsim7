@@ -19,9 +19,9 @@ Usage notes:
 - Workspace route: `apps/main/src/routes/Workspace.tsx`
 
 ## Control Center Dock
-- Store: `apps/main/src/stores/controlCenterStore.ts`
-- Component: `apps/main/src/components/control/ControlCenterDock.tsx`
-- Tasks for enhancement: `docs/CONTROL_CENTER_TASKS.md`
+- Store: `apps/main/src/features/controlCenter/stores/controlCenterStore.ts`
+- Component: `apps/main/src/features/controlCenter/components/ControlCenterDock.tsx`
+- Module entry: `apps/main/src/features/controlCenter/index.ts`
 
 ## General Conventions
 - Prefer colocating UI primitives under `components/primitives/` with barrel exports.

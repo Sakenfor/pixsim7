@@ -21,6 +21,14 @@ Point-in-time architecture analyses and design evaluations. These are living doc
 | [comic-panels-architecture-review.md](./2025-12-13-comic-panels-architecture-review.md) | Dec 2025 | Comic panel placement in architecture | Reference |
 | [prompt-system-review.md](./2025-11-18-prompt-system-review.md) | Nov 2025 | Prompt versioning, action blocks, integration | Reference |
 
+## Pipeline & Systems Reviews
+
+| Document | Date | Topic | Status |
+|----------|------|-------|--------|
+| [blocks-template-composition-runtime-findings-2026-02-21.md](./blocks-template-composition-runtime-findings-2026-02-21.md) | Feb 2026 | Block/template composition runtime analysis | Reference |
+| [generation-pipeline-audit-2026-02-23.md](./generation-pipeline-audit-2026-02-23.md) | Feb 2026 | Generation pipeline audit | Reference |
+| [pack-registry-patterns-review.md](./pack-registry-patterns-review.md) | Feb 2026 | Pack registry pattern analysis | Reference |
+
 ## Meta / Audits
 
 | Document | Date | Topic |
