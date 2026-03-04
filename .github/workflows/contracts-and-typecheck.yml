@@ -86,6 +86,9 @@ jobs:
           OPENAPI_URL: http://127.0.0.1:8000/openapi.json
         run: pnpm openapi:check
 
+      - name: App-map artifact freshness check
+        run: pnpm docs:app-map:check
+
       - name: App typecheck
         run: npx tsc --noEmit --project apps/main/tsconfig.json
 

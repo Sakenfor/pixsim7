@@ -24,6 +24,9 @@ from pathlib import Path
 
 from pixsim7.backend.main.api.dependencies import get_database, get_current_user_optional
 from pixsim7.backend.main.domain.user import User
+from pixsim7.backend.main.api.v1.dev_architecture_contract import (
+    ArchitectureGraphV1 as ArchitectureGraphV1Response,
+)
 
 router = APIRouter(prefix="/dev/architecture", tags=["dev"])
 
@@ -207,7 +210,9 @@ def discover_routes() -> List[Dict[str, Any]]:
 
 
 def discover_capabilities() -> List[Dict[str, Any]]:
-    """Discover all capability APIs from infrastructure/plugins/capabilities/."""
+    """Discover all capability APIs from the capability manifest."""
+    from pixsim7.backend.main.infrastructure.plugins.capabilities.manifest import CAPABILITY_MANIFEST
+
     capabilities_dir = Path("pixsim7/backend/main/infrastructure/plugins/capabilities")
 
     if not capabilities_dir.exists():
@@ -215,62 +220,9 @@ def discover_capabilities() -> List[Dict[str, Any]]:
 
     capabilities = []
 
-    # Known capability API classes
-    capability_classes = [
-        {
-            "name": "WorldReadAPI",
-            "file": "world.py",
-            "category": "read",
-            "description": "Read world/NPC data",
-            "methods": ["get_world", "get_npc", "list_world_npcs"],
-            "permission": "world:read",
-        },
-        {
-            "name": "SessionReadAPI",
-            "file": "session.py",
-            "category": "read",
-            "description": "Read session state",
-            "methods": ["get_session", "get_session_relationships", "get_session_flags"],
-            "permission": "session:read",
-        },
-        {
-            "name": "SessionMutationsAPI",
-            "file": "session.py",
-            "category": "write",
-            "description": "Modify session state",
-            "methods": ["execute_interaction", "update_relationship", "set_flag"],
-            "permission": "session:write",
-        },
-        {
-            "name": "ComponentAPI",
-            "file": "components.py",
-            "category": "ecs",
-            "description": "ECS component operations",
-            "methods": ["register_component", "get_component", "set_component", "remove_component"],
-            "permission": "component:write",
-        },
-        {
-            "name": "BehaviorExtensionAPI",
-            "file": "behaviors.py",
-            "category": "behavior",
-            "description": "Register conditions, effects, scoring functions",
-            "methods": ["register_condition", "register_effect", "register_scoring_function"],
-            "permission": "behavior:register",
-        },
-        {
-            "name": "LoggingAPI",
-            "file": "logging.py",
-            "category": "logging",
-            "description": "Structured logging",
-            "methods": ["info", "warning", "debug", "error"],
-            "permission": "log:emit",
-        },
-    ]
-
-    for cap in capability_classes:
+    for _key, cap in CAPABILITY_MANIFEST.items():
         file_path = capabilities_dir / cap["file"]
         if file_path.exists():
-            # Try to get relative path, fall back to resolved path if not possible
             try:
                 path_str = str(file_path.resolve().relative_to(Path.cwd()))
             except ValueError:
@@ -286,7 +238,9 @@ def discover_capabilities() -> List[Dict[str, Any]]:
 
 
 def discover_services() -> List[Dict[str, Any]]:
-    """Discover service composition tree from services/ directory."""
+    """Discover service composition tree from the service manifest."""
+    from pixsim7.backend.main.services.manifest import SERVICE_MANIFEST
+
     services_dir = Path("pixsim7/backend/main/services")
 
     if not services_dir.exists():
@@ -294,50 +248,9 @@ def discover_services() -> List[Dict[str, Any]]:
 
     services = []
 
-    # Map of known service compositions
-    service_compositions = {
-        "generation": {
-            "name": "GenerationService",
-            "file": "generation/generation_service.py",
-            "type": "composition",
-            "description": "Generation request management",
-            "sub_services": [
-                {"name": "CreationService", "file": "generation/creation_service.py", "lines": 545, "responsibility": "Creation, validation, canonicalization"},
-                {"name": "LifecycleService", "file": "generation/lifecycle_service.py", "lines": 252, "responsibility": "Status transitions & event publishing"},
-                {"name": "QueryService", "file": "generation/query_service.py", "lines": 197, "responsibility": "Retrieval & listing operations"},
-                {"name": "RetryService", "file": "generation/retry_service.py", "lines": 192, "responsibility": "Retry logic & auto-retry detection"},
-            ],
-        },
-        "prompts": {
-            "name": "PromptVersionService",
-            "file": "prompts/prompt_version_service.py",
-            "type": "composition",
-            "description": "Prompt version management",
-            "sub_services": [
-                {"name": "FamilyService", "file": "prompts/family_service.py", "lines": 280, "responsibility": "Families & versions CRUD"},
-                {"name": "VariantService", "file": "prompts/variant_service.py", "lines": 245, "responsibility": "Variant feedback & metrics"},
-                {"name": "AnalyticsService", "file": "prompts/analytics_service.py", "lines": 210, "responsibility": "Diff, compare, analytics"},
-                {"name": "OperationsService", "file": "prompts/operations_service.py", "lines": 250, "responsibility": "Batch, import/export, inference"},
-            ],
-        },
-        "asset": {
-            "name": "AssetService",
-            "file": "asset/asset_service.py",
-            "type": "composition",
-            "description": "Asset management",
-            "sub_services": [
-                {"name": "CoreService", "file": "asset/core_service.py", "lines": 320, "responsibility": "CRUD, search, listing"},
-                {"name": "SyncService", "file": "asset/sync_service.py", "lines": 280, "responsibility": "Download mgmt, sync, providers"},
-                {"name": "EnrichmentService", "file": "asset/enrichment_service.py", "lines": 290, "responsibility": "Recognition, extraction"},
-                {"name": "QuotaService", "file": "asset/quota_service.py", "lines": 270, "responsibility": "User quotas, storage tracking"},
-            ],
-        },
-    }
-
-    for service_key, service_data in service_compositions.items():
+    for service_key, service_data in SERVICE_MANIFEST.items():
         main_file = services_dir / service_data["file"]
         if main_file.exists():
-            # Try to get relative path, fall back to resolved path if not possible
             try:
                 main_path = str(main_file.resolve().relative_to(Path.cwd()))
             except ValueError:
@@ -352,11 +265,9 @@ def discover_services() -> List[Dict[str, Any]]:
                 "sub_services": [],
             }
 
-            # Check if sub-services exist
             for sub in service_data["sub_services"]:
                 sub_file = services_dir / sub["file"]
                 if sub_file.exists():
-                    # Try to get relative path, fall back to resolved path if not possible
                     try:
                         sub_path = str(sub_file.resolve().relative_to(Path.cwd()))
                     except ValueError:
@@ -537,48 +448,32 @@ async def get_frontend_architecture(
     return load_frontend_app_map()
 
 
-@router.get("/unified", response_model=UnifiedArchitectureResponse)
-async def get_unified_architecture(
-    db: AsyncSession = Depends(get_database),
+@router.get("/graph", response_model=ArchitectureGraphV1Response)
+async def get_architecture_graph(
     user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
-    Get unified architecture map combining backend and frontend data.
+    Get canonical architecture graph (v1).
+
+    Combines frontend generated artifact + backend runtime introspection
+    into a single unified payload with provenance, links, and drift warnings.
 
     This is the CANONICAL endpoint for full application architecture.
-    Use this endpoint when you need both frontend modules and backend services.
-
-    Returns:
-        - version: Schema version
-        - backend: Backend architecture (routes, services, capabilities, plugins)
-        - frontend: Frontend feature modules (from app_map.generated.json)
-        - metrics: Combined architecture health metrics
     """
-    # Get backend data
-    routes_data = discover_routes()
-    capabilities_data = discover_capabilities()
-    services_data = discover_services()
-    plugins_data = discover_plugin_manifests()
-    metrics_data = calculate_metrics(routes_data, services_data, plugins_data)
+    from .dev_architecture_graph import build_architecture_graph
 
-    # Get frontend data
-    frontend_data = load_frontend_app_map()
+    return build_architecture_graph()
 
-    # Calculate unified metrics
-    unified_metrics = {
-        **metrics_data,
-        "total_frontend_features": len(frontend_data.get("entries", [])),
-        "frontend_generated_at": frontend_data.get("generatedAt"),
-    }
 
-    return {
-        "version": "1.0",
-        "backend": {
-            "routes": routes_data,
-            "capabilities": capabilities_data,
-            "services": services_data,
-            "plugins": plugins_data,
-        },
-        "frontend": frontend_data,
-        "metrics": unified_metrics,
-    }
+@router.get("/unified", response_model=ArchitectureGraphV1Response)
+async def get_unified_architecture(
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    Alias for /dev/architecture/graph. Returns identical payload.
+
+    Kept for backwards compatibility — prefer /graph for new consumers.
+    """
+    from .dev_architecture_graph import build_architecture_graph
+
+    return build_architecture_graph()

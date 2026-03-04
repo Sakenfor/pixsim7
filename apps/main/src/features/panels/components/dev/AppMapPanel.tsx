@@ -9,7 +9,7 @@
  * - System health metrics
  */
 
-import type { AppMapMetadata } from '@pixsim7/shared.types';
+import type { AppMapMetadata, ArchitectureGraphV1 } from '@pixsim7/shared.types';
 import React, {
   useState,
   useMemo,
@@ -39,6 +39,7 @@ import { useAuthStore } from '@/stores/authStore';
 
 // Split views
 import { FeaturesView } from './appMap/FeaturesView';
+import { loadArchitectureGraph, type GraphLoadSource } from './appMap/loadArchitectureGraph';
 import { PluginsView } from './appMap/PluginsView';
 import { RegistriesView } from './appMap/RegistriesView';
 import { StatsView } from './appMap/StatsView';
@@ -139,6 +140,17 @@ export function AppMapPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<TabId>('features');
   const [allPlugins, setAllPlugins] = useState<UnifiedPluginDescriptor[]>([]);
+
+  // Architecture graph (unified backend + frontend data)
+  const [graphData, setGraphData] = useState<ArchitectureGraphV1 | null>(null);
+  const [graphSource, setGraphSource] = useState<GraphLoadSource | null>(null);
+
+  useEffect(() => {
+    loadArchitectureGraph().then((result) => {
+      setGraphData(result.graph);
+      setGraphSource(result.loadSource);
+    });
+  }, []);
 
   // Devtools codegen link (permission + DEV mode)
   const user = useAuthStore((s) => s.user);
@@ -307,10 +319,28 @@ export function AppMapPanel() {
               </p>
             </div>
             <div className="flex gap-3 items-center">
-              <div className="text-sm text-neutral-600 dark:text-neutral-400">
-                <span className="font-medium">{allFeatures.length}</span> features
-                {' • '}
-                <span className="font-medium">{allPlugins.length}</span> plugins
+              <div className="flex items-center gap-3 text-sm text-neutral-600 dark:text-neutral-400">
+                <span>
+                  <span className="font-medium">{allFeatures.length}</span> features
+                  {' • '}
+                  <span className="font-medium">{allPlugins.length}</span> plugins
+                </span>
+                {graphSource && (
+                  <span
+                    className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      graphSource === 'backend'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                    }`}
+                    title={
+                      graphSource === 'backend'
+                        ? `Live graph from backend (${graphData?.sources.backend.generated_at ?? ''})`
+                        : 'Using local fallback — backend offline'
+                    }
+                  >
+                    {graphSource === 'backend' ? 'Live' : 'Offline'}
+                  </span>
+                )}
               </div>
               <button
                 onClick={handleExport}
