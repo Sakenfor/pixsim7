@@ -3,8 +3,10 @@ import { memo, useCallback, useState, useRef } from "react";
 import { Rnd } from "react-rnd";
 
 import { readFloatingOriginMeta, stripFloatingOriginMeta } from "@lib/dockview/floatingPanelInterop";
+import { PanelErrorBoundary } from "@lib/dockview/PanelErrorBoundary";
 import { Icon } from "@lib/icons";
 import { devToolSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
+import { hmrSingleton } from "@lib/utils/hmrSafe";
 
 import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@features/contextHub";
 import { useWorkspaceStore, type FloatingPanelState } from "@features/workspace";
@@ -13,9 +15,44 @@ import { panelPlacementCoordinator } from "@features/workspace/lib/panelPlacemen
 
 import { DevToolDynamicPanel } from "@/components/dev/DevToolDynamicPanel";
 
-import { useDragToDock, type DropZone } from "../../hooks/useDragToDock";
+import { useDragToDock, type DropZone, type DragToDockTarget } from "../../hooks/useDragToDock";
 
 import { DropZoneOverlay } from "./DropZoneOverlay";
+
+// ── HMR-resilient component cache ──────────────────────────────────
+// Same pattern as SmartDockview: implRef (mutable) → proxy (stable).
+// On HMR, only implRef.current is updated — proxy identity never changes,
+// so React doesn't unmount/remount the floating panel content.
+// Cached on globalThis via hmrSingleton so the maps themselves survive re-evaluation.
+const _floatingImplRefs = hmrSingleton(
+  'floatingPanel:implRefs',
+  () => ({} as Record<string, { current: React.ComponentType<any> }>),
+);
+const _floatingProxyCache = hmrSingleton(
+  'floatingPanel:proxyCache',
+  () => ({} as Record<string, React.ComponentType<any>>),
+);
+
+function getStableComponent(
+  definitionId: string,
+  component: React.ComponentType<any>,
+): React.ComponentType<any> {
+  if (!_floatingProxyCache[definitionId]) {
+    const implRef = { current: component };
+    _floatingImplRefs[definitionId] = implRef;
+
+    const FloatingProxy = (props: any) => {
+      const Impl = implRef.current;
+      return Impl ? <Impl {...props} /> : null;
+    };
+    FloatingProxy.displayName = `FloatingProxy(${definitionId})`;
+    _floatingProxyCache[definitionId] = FloatingProxy;
+  } else {
+    // HMR path: update the ref, keep the proxy identity stable
+    _floatingImplRefs[definitionId].current = component;
+  }
+  return _floatingProxyCache[definitionId];
+}
 
 function formatDockviewOriginLabel(dockviewId: string | null | undefined): string | null {
   if (!dockviewId) return null;
@@ -56,7 +93,7 @@ function FloatingPanelContextProvider({
 
 interface FloatingPanelProps {
   panel: FloatingPanelState;
-  onDragStateChange: (panelId: string, isDragging: boolean, zone: DropZone | null, rect: DOMRect | null) => void;
+  onDragStateChange: (panelId: string, isDragging: boolean, zone: DropZone | null, target: DragToDockTarget | null) => void;
 }
 
 const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: FloatingPanelProps) {
@@ -71,20 +108,34 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
     (s) => s.bringFloatingPanelToFront
   );
 
-  const {
-    activeDropZone,
-    workspaceRect,
-    onDragStart,
-    onDrag,
-    onDragStop,
-  } = useDragToDock({ panelId: panel.id });
-
-  const rndRef = useRef<Rnd | null>(null);
-
   // Resolve definition ID (strips ::N suffix for multi-instance floating panels)
   const definitionId = getFloatingDefinitionId(panel.id);
 
-  // Check if this is a dev-tool panel (format: "dev-tool:toolId")
+  // Build canDockInto filter from panel's availableIn
+  const canDockInto = useCallback((dockviewId: string) => {
+    const isDevTool = typeof definitionId === "string" && definitionId.startsWith("dev-tool:");
+    if (isDevTool) return true; // dev tools can dock anywhere
+    const panelDef = panelSelectors.get(definitionId);
+    if (!panelDef?.availableIn || panelDef.availableIn.length === 0) return true; // no restriction
+    return panelDef.availableIn.includes(dockviewId);
+  }, [definitionId]);
+
+  const {
+    activeDropZone,
+    activeTarget,
+    onDragStart,
+    onDrag,
+    onDragStop,
+  } = useDragToDock({ panelId: panel.id, canDockInto });
+
+  // Keep activeDropZone/activeTarget in refs so handleDrag always reads the latest value
+  const activeDropZoneRef = useRef<DropZone | null>(null);
+  activeDropZoneRef.current = activeDropZone;
+  const activeTargetRef = useRef<DragToDockTarget | null>(null);
+  activeTargetRef.current = activeTarget;
+
+  const rndRef = useRef<Rnd | null>(null);
+
   const isDevToolPanel =
     typeof definitionId === "string" && definitionId.startsWith("dev-tool:");
 
@@ -102,7 +153,7 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
     const toolId = definitionId.slice("dev-tool:".length);
     const devTool = devToolSelectors.get(toolId);
 
-    Component = DevToolDynamicPanel;
+    Component = getStableComponent(`dev-tool:${toolId}`, DevToolDynamicPanel);
     title = devTool?.label || toolId;
 
     // Ensure toolId is in context (critical for persistence/restore)
@@ -112,7 +163,7 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
     const panelDef = panelSelectors.get(definitionId);
     if (!panelDef) return null;
 
-    Component = panelDef.component;
+    Component = getStableComponent(definitionId, panelDef.component);
     title = panelDef.title;
   }
 
@@ -123,16 +174,15 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
 
   const handleDragStart = () => {
     onDragStart();
-    onDragStateChange(panel.id, true, null, workspaceRect);
+    onDragStateChange(panel.id, true, null, null);
   };
 
   const handleDrag = () => {
-    // Get current panel position from the dragging element
     const element = rndRef.current?.getSelfElement();
     if (element) {
       const rect = element.getBoundingClientRect();
       onDrag(rect);
-      onDragStateChange(panel.id, true, activeDropZone, workspaceRect);
+      onDragStateChange(panel.id, true, activeDropZoneRef.current, activeTargetRef.current);
     }
   };
 
@@ -141,12 +191,11 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
     onDragStateChange(panel.id, false, null, null);
 
     if (result.shouldDock && result.zone) {
-      // Dock the panel at the detected zone
       panelPlacementCoordinator.dockFloatingPanel(panel.id, {
         direction: result.zone === "center" ? "within" : result.zone,
+        targetDockviewId: result.targetDockviewId ?? undefined,
       });
     } else {
-      // Just update position
       updateFloatingPanelPosition(panel.id, d.x, d.y);
     }
   };
@@ -258,11 +307,13 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
                 context={panelContext}
                 instanceId={`floating:${panel.id}`}
               >
-                {isDevToolPanel ? (
-                  <Component context={panelContext} />
-                ) : (
-                  <Component {...panelContext} />
-                )}
+                <PanelErrorBoundary panelId={definitionId}>
+                  {isDevToolPanel ? (
+                    <Component context={panelContext} />
+                  ) : (
+                    <Component {...panelContext} />
+                  )}
+                </PanelErrorBoundary>
               </FloatingPanelContextProvider>
             </ContextHubHost>
           </div>
@@ -280,20 +331,22 @@ export function FloatingPanelsManager() {
     panelId: string | null;
     isDragging: boolean;
     activeZone: DropZone | null;
-    workspaceRect: DOMRect | null;
-  }>({ panelId: null, isDragging: false, activeZone: null, workspaceRect: null });
+    targetRect: DOMRect | null;
+    targetDockviewId: string | null;
+  }>({ panelId: null, isDragging: false, activeZone: null, targetRect: null, targetDockviewId: null });
 
   const handleDragStateChange = useCallback((
     panelId: string,
     isDragging: boolean,
     zone: DropZone | null,
-    rect: DOMRect | null
+    target: DragToDockTarget | null,
   ) => {
     setDragState({
       panelId: isDragging ? panelId : null,
       isDragging,
       activeZone: zone,
-      workspaceRect: rect,
+      targetRect: target?.rect ?? null,
+      targetDockviewId: target?.dockviewId ?? null,
     });
   }, []);
 
@@ -309,7 +362,8 @@ export function FloatingPanelsManager() {
       <DropZoneOverlay
         isDragging={dragState.isDragging}
         activeZone={dragState.activeZone}
-        workspaceRect={dragState.workspaceRect}
+        workspaceRect={dragState.targetRect}
+        targetLabel={formatDockviewOriginLabel(dragState.targetDockviewId)}
       />
     </>
   );

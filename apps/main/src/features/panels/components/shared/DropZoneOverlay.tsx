@@ -8,15 +8,17 @@
 import type { DropZone } from "@pixsim7/shared.ui.dockview";
 import { createPortal } from "react-dom";
 
-interface DropZoneOverlayProps {
+export interface DropZoneOverlayProps {
   isDragging: boolean;
   activeZone: DropZone | null;
   workspaceRect: DOMRect | null;
+  /** Label shown in center zone to identify the target dockview (e.g. "Dock into Asset Viewer") */
+  targetLabel?: string | null;
 }
 
 const zoneStyles = {
   base: "absolute flex items-center justify-center transition-all duration-150 border-2 border-dashed",
-  inactive: "bg-blue-500/5 border-transparent",
+  inactive: "bg-blue-500/10 border-blue-500/20",
   active: "bg-blue-500/25 border-blue-500/60",
 };
 
@@ -40,6 +42,7 @@ export function DropZoneOverlay({
   isDragging,
   activeZone,
   workspaceRect,
+  targetLabel,
 }: DropZoneOverlayProps) {
   if (!isDragging || !workspaceRect) return null;
 
@@ -121,7 +124,7 @@ export function DropZoneOverlay({
             >
               <span className="text-2xl text-blue-500">{zoneIcons[zone]}</span>
               <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                {zoneLabels[zone]}
+                {zone === 'center' && targetLabel ? `Dock into ${targetLabel}` : zoneLabels[zone]}
               </span>
             </div>
           </div>

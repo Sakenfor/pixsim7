@@ -9,4 +9,5 @@ export {
   type UseDragToDockOptions,
   type UseDragToDockReturn,
   type DropZone,
+  type DragToDockTarget,
 } from "@pixsim7/shared.ui.dockview";

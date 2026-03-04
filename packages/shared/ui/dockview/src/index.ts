@@ -36,7 +36,7 @@ export type { DockviewPanelRegistry, DockviewPanelRegistryEntry } from './useDoc
 
 // Drag-to-dock utilities
 export { useDragToDock } from './useDragToDock';
-export type { UseDragToDockOptions, UseDragToDockReturn, DropZone } from './useDragToDock';
+export type { UseDragToDockOptions, UseDragToDockReturn, DropZone, DragToDockTarget } from './useDragToDock';
 export { DropZoneOverlay } from './DropZoneOverlay';
 export type { DropZoneOverlayProps } from './DropZoneOverlay';
 

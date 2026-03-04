@@ -63,9 +63,17 @@
   padding: 2px 4px;
 }
 
-/* Hide tabs when group has a single panel (JS toggles dv-tabs-hidden) */
-.smartDockview :global(.dv-tabs-hidden .dv-tabs-and-actions-container) {
+/* Hide tab strip when group has a single panel (JS toggles dv-tabs-hidden).
+   Only the tabs container is hidden — the header actions (left/right) stay visible
+   so drag handles and other controls remain accessible. */
+.smartDockview :global(.dv-tabs-hidden .dv-tabs-container) {
   display: none;
+}
+
+/* Compact the header when tabs are hidden (no padding/min-height needed) */
+.smartDockview :global(.dv-tabs-hidden .dv-tabs-and-actions-container) {
+  min-height: 0;
+  padding: 0;
 }
 
 /* Hide default tab close buttons (optional - can be enabled per-panel) */

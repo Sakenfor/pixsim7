@@ -75,25 +75,10 @@ export function useSmartDockview(
               : 0;
       const shouldShowTabs = panelCount >= minPanelsForTabs;
 
-      // Access the header through the group's model
-      // Note: This accesses internal dockview structure
-      try {
-        const header = (group as any).header ?? model?.header;
-        if (header && typeof header.hidden !== "undefined") {
-          header.hidden = !shouldShowTabs;
-        }
-      } catch (e) {
-        // Fallback: try through model
-        try {
-          if (model?.header) {
-            model.header.hidden = !shouldShowTabs;
-          }
-        } catch {
-          // Silently fail if structure doesn't match
-        }
-      }
-
-      // CSS fallback for cases where header hiding doesn't apply
+      // Toggle CSS class on the group element to hide/show tabs.
+      // We do NOT set header.hidden because that hides the entire header
+      // including left/right action components (like drag handles).
+      // Instead, the CSS class targets only the tabs container.
       const groupElement = (group as any).element;
       if (groupElement && groupElement.classList) {
         groupElement.classList.toggle("dv-tabs-hidden", !shouldShowTabs);

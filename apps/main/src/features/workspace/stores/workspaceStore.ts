@@ -138,6 +138,7 @@ export interface WorkspaceActions {
     position: {
       direction: "left" | "right" | "above" | "below" | "within";
       referencePanel?: string;
+      targetDockviewId?: string;
     }
   ) => void;
 }
@@ -472,10 +473,10 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           },
         });
 
-        // Get workspace dockview API
-        const api = getDockviewApi("workspace");
+        // Get target dockview API (defaults to "workspace" for backward compat)
+        const api = getDockviewApi(position.targetDockviewId ?? "workspace");
         if (!api) {
-          console.warn("[dockFloatingPanel] Workspace dockview not available");
+          console.warn("[dockFloatingPanel] Dockview not available:", position.targetDockviewId ?? "workspace");
           return;
         }
 

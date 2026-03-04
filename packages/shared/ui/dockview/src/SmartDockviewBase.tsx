@@ -54,6 +54,10 @@ export interface SmartDockviewBaseProps<TContext = any> extends UseSmartDockview
   layout?: SmartDockviewLayoutController;
   /** Optional: Component rendered in the right side of each group header */
   rightHeaderActionsComponent?: React.FunctionComponent<any>;
+  /** Optional: Component rendered in the left side of each group header (before tabs) */
+  leftHeaderActionsComponent?: React.FunctionComponent<any>;
+  /** Disable dockview's native floating groups (use when providing custom floating panel system) */
+  disableFloatingGroups?: boolean;
 }
 
 export function SmartDockviewBase<TContext = any>({
@@ -69,10 +73,12 @@ export function SmartDockviewBase<TContext = any>({
   theme = "dockview-theme-abyss",
   layout,
   rightHeaderActionsComponent,
+  leftHeaderActionsComponent,
   storageKey,
   minPanelsForTabs,
   onLayoutChange,
   deprecatedPanels,
+  disableFloatingGroups,
 }: SmartDockviewBaseProps<TContext>) {
   const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -165,8 +171,10 @@ export function SmartDockviewBase<TContext = any>({
         defaultTabComponent={defaultTabComponent as unknown as React.FunctionComponent<IDockviewPanelHeaderProps>}
         watermarkComponent={watermarkComponent as unknown as React.FunctionComponent}
         rightHeaderActionsComponent={rightHeaderActionsComponent}
+        leftHeaderActionsComponent={leftHeaderActionsComponent}
         onReady={handleReady}
         className={theme}
+        disableFloatingGroups={disableFloatingGroups}
       />
     </div>
   );
