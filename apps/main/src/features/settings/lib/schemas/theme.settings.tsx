@@ -54,6 +54,25 @@ const themeTab: SettingTab = {
         },
       ],
     },
+    {
+      id: 'button-style',
+      title: 'Button Style',
+      description: 'Controls how accent-colored action buttons are rendered.',
+      fields: [
+        {
+          id: 'buttonStyle',
+          type: 'select',
+          label: 'Button Style',
+          description: 'Applies to primary action buttons like Go and Each.',
+          defaultValue: 'gradient',
+          options: [
+            { value: 'gradient', label: 'Gradient (Default)' },
+            { value: 'solid', label: 'Solid' },
+            { value: 'soft', label: 'Soft' },
+          ],
+        },
+      ],
+    },
   ],
 };
 

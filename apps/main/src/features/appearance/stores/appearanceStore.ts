@@ -6,16 +6,19 @@ import { persist } from 'zustand/middleware';
 export type ColorScheme = 'light' | 'dark' | 'system';
 export type AccentColor = 'blue' | 'purple' | 'emerald' | 'rose' | 'amber';
 export type IconTheme = 'inherit' | 'muted' | 'accent';
+export type ButtonStyle = 'solid' | 'gradient' | 'soft';
 
 interface AppearanceState {
   colorScheme: ColorScheme;
   accentColor: AccentColor;
   iconTheme: IconTheme;
   iconSetId: string;
+  buttonStyle: ButtonStyle;
   setColorScheme: (value: ColorScheme) => void;
   setAccentColor: (value: AccentColor) => void;
   setIconTheme: (value: IconTheme) => void;
   setIconSetId: (value: string) => void;
+  setButtonStyle: (value: ButtonStyle) => void;
 }
 
 // ─── Migration from legacy keys ─────────────────────────────────────────────
@@ -71,10 +74,12 @@ export const useAppearanceStore = create<AppearanceState>()(
       accentColor: 'blue',
       iconTheme: 'inherit',
       iconSetId: 'outline',
+      buttonStyle: 'gradient',
       setColorScheme: (colorScheme) => set({ colorScheme }),
       setAccentColor: (accentColor) => set({ accentColor }),
       setIconTheme: (iconTheme) => set({ iconTheme }),
       setIconSetId: (iconSetId) => set({ iconSetId }),
+      setButtonStyle: (buttonStyle) => set({ buttonStyle }),
     }),
     {
       name: 'appearance_v1',

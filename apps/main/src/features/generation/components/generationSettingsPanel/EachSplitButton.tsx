@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
+import { useAccentButtonClasses } from '@features/appearance';
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import { useFanoutPresetStore, usePersistedScopeState } from '@features/generation';
 import { openWorkspacePanel } from '@features/workspace';
@@ -36,6 +37,7 @@ export function EachSplitButton({
   queueProgress?: { queued: number; total: number } | null;
   inputCount: number;
 }) {
+  const btn = useAccentButtonClasses();
   const [selectedPresetId, setSelectedPresetId] = usePersistedScopeState<string | null>('eachSelectedPresetId', 'each-default');
   const [draftRunOptions, setDraftRunOptions] = usePersistedScopeState<FanoutRunOptions>(
     'eachRunOptionsDraft',
@@ -151,14 +153,12 @@ export function EachSplitButton({
           onClick={() => canRun && onGenerateEach(currentRunOptions)}
           disabled={disabled || !canRun}
           className={clsx(
-            'px-2 py-1.5 rounded-l-lg text-[11px] font-semibold text-white tabular-nums',
+            'px-2 py-1.5 rounded-l-lg text-[11px] font-semibold tabular-nums',
             'min-w-[5.5rem]',
             'disabled:opacity-50 disabled:cursor-not-allowed',
             disabled || !canRun
-              ? 'bg-neutral-400'
-              : needsSet
-                ? 'bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600'
-                : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600',
+              ? 'text-white bg-neutral-400'
+              : btn.secondary,
           )}
           style={{ transition: 'none', animation: 'none' }}
           title={`${current.description} | ${currentRunOptions.executionMode}${currentRunOptions.reusePreviousOutputAsInput ? ' + pipe-prev' : ''} | repeat ${currentRunOptions.repeatCount} | ${currentRunOptions.dispatch} | planned: ${plannedGroupCount ?? '?'} `}
@@ -174,13 +174,11 @@ export function EachSplitButton({
             onClick={handleToggle}
             disabled={disabled}
             className={clsx(
-              'px-1 py-1 rounded-tr-lg text-[11px] font-semibold text-white border-l border-white/20',
+              'px-1 py-1 rounded-tr-lg text-[11px] font-semibold border-l border-white/20',
               'disabled:opacity-50 disabled:cursor-not-allowed',
               disabled
-                ? 'bg-neutral-400'
-                : needsSet
-                  ? 'bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600'
-                  : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600',
+                ? 'text-white bg-neutral-400'
+                : btn.tertiary,
             )}
             style={{ transition: 'none', animation: 'none' }}
             title="Fanout options"
@@ -190,12 +188,10 @@ export function EachSplitButton({
           <button
             onClick={() => openWorkspacePanel('asset-sets')}
             className={clsx(
-              'px-1 py-0.5 rounded-br-lg text-white/70 hover:text-white border-l border-t border-white/20',
+              'px-1 py-0.5 rounded-br-lg opacity-70 hover:opacity-100 border-l border-t border-white/20',
               disabled
-                ? 'bg-neutral-400'
-                : needsSet
-                  ? 'bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600'
-                  : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600',
+                ? 'text-white bg-neutral-400'
+                : btn.tertiary,
             )}
             style={{ transition: 'none', animation: 'none' }}
             title="Manage asset sets"

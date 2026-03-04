@@ -12,6 +12,7 @@
 import {
   useAppearanceStore,
   type AccentColor,
+  type ButtonStyle,
   type ColorScheme,
   type IconTheme,
 } from '@features/appearance';
@@ -27,6 +28,8 @@ export function useAppearanceSettingsAdapter(): SettingStoreAdapter {
   const setIconTheme = useAppearanceStore((s) => s.setIconTheme);
   const iconSetId = useAppearanceStore((s) => s.iconSetId);
   const setIconSetId = useAppearanceStore((s) => s.setIconSetId);
+  const buttonStyle = useAppearanceStore((s) => s.buttonStyle);
+  const setButtonStyle = useAppearanceStore((s) => s.setButtonStyle);
 
   return {
     get: (fieldId: string) => {
@@ -35,6 +38,7 @@ export function useAppearanceSettingsAdapter(): SettingStoreAdapter {
         case 'accentColor': return accentColor;
         case 'iconTheme': return iconTheme;
         case 'iconSetId': return iconSetId;
+        case 'buttonStyle': return buttonStyle;
         default: return undefined;
       }
     },
@@ -44,6 +48,7 @@ export function useAppearanceSettingsAdapter(): SettingStoreAdapter {
         case 'accentColor': setAccentColor((value as AccentColor) ?? 'blue'); break;
         case 'iconTheme': setIconTheme((value as IconTheme) ?? 'inherit'); break;
         case 'iconSetId': setIconSetId(String(value || 'outline')); break;
+        case 'buttonStyle': setButtonStyle((value as ButtonStyle) ?? 'gradient'); break;
       }
     },
     getAll: () => ({
@@ -51,6 +56,7 @@ export function useAppearanceSettingsAdapter(): SettingStoreAdapter {
       accentColor,
       iconTheme,
       iconSetId,
+      buttonStyle,
     }),
   };
 }

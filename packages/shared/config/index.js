@@ -67,6 +67,7 @@ const preset = {
         accent: {
           DEFAULT: 'rgb(var(--color-accent) / <alpha-value>)',
           hover: 'rgb(var(--color-accent-hover) / <alpha-value>)',
+          deep: 'rgb(var(--color-accent-deep) / <alpha-value>)',
           subtle: 'rgb(var(--color-accent-subtle) / <alpha-value>)',
           muted: 'rgb(var(--color-accent-muted) / <alpha-value>)',
           text: 'rgb(var(--color-accent-text) / <alpha-value>)',
@@ -124,6 +125,7 @@ const preset = {
           // Accent tokens (default: blue)
           '--color-accent': '37 99 235',
           '--color-accent-hover': '29 78 216',
+          '--color-accent-deep': '30 64 175',
           '--color-accent-subtle': '219 234 254',
           '--color-accent-muted': '96 165 250',
           '--color-accent-text': '255 255 255',
@@ -151,6 +153,7 @@ const preset = {
           // Accent tokens (dark - same hues, adjusted for dark bg)
           '--color-accent': '59 130 246',
           '--color-accent-hover': '96 165 250',
+          '--color-accent-deep': '29 78 216',
           '--color-accent-subtle': '23 37 84',
           '--color-accent-muted': '37 99 235',
           '--color-accent-text': '255 255 255',
@@ -159,6 +162,7 @@ const preset = {
         '.accent-purple': {
           '--color-accent': '147 51 234',
           '--color-accent-hover': '126 34 206',
+          '--color-accent-deep': '107 33 168',
           '--color-accent-subtle': '243 232 255',
           '--color-accent-muted': '192 132 252',
           '--color-accent-text': '255 255 255',
@@ -166,12 +170,14 @@ const preset = {
         '.dark .accent-purple, .accent-purple.dark': {
           '--color-accent': '168 85 247',
           '--color-accent-hover': '192 132 252',
+          '--color-accent-deep': '126 34 206',
           '--color-accent-subtle': '59 7 100',
           '--color-accent-muted': '147 51 234',
         },
         '.accent-emerald': {
           '--color-accent': '5 150 105',
           '--color-accent-hover': '4 120 87',
+          '--color-accent-deep': '6 95 70',
           '--color-accent-subtle': '209 250 229',
           '--color-accent-muted': '52 211 153',
           '--color-accent-text': '255 255 255',
@@ -179,12 +185,14 @@ const preset = {
         '.dark .accent-emerald, .accent-emerald.dark': {
           '--color-accent': '16 185 129',
           '--color-accent-hover': '52 211 153',
+          '--color-accent-deep': '4 120 87',
           '--color-accent-subtle': '6 78 59',
           '--color-accent-muted': '5 150 105',
         },
         '.accent-rose': {
           '--color-accent': '225 29 72',
           '--color-accent-hover': '190 18 60',
+          '--color-accent-deep': '159 18 57',
           '--color-accent-subtle': '255 228 230',
           '--color-accent-muted': '251 113 133',
           '--color-accent-text': '255 255 255',
@@ -192,12 +200,14 @@ const preset = {
         '.dark .accent-rose, .accent-rose.dark': {
           '--color-accent': '244 63 94',
           '--color-accent-hover': '251 113 133',
+          '--color-accent-deep': '190 18 60',
           '--color-accent-subtle': '136 19 55',
           '--color-accent-muted': '225 29 72',
         },
         '.accent-amber': {
           '--color-accent': '217 119 6',
           '--color-accent-hover': '180 83 9',
+          '--color-accent-deep': '146 64 14',
           '--color-accent-subtle': '254 243 199',
           '--color-accent-muted': '251 191 36',
           '--color-accent-text': '255 255 255',
@@ -205,6 +215,7 @@ const preset = {
         '.dark .accent-amber, .accent-amber.dark': {
           '--color-accent': '245 158 11',
           '--color-accent-hover': '251 191 36',
+          '--color-accent-deep': '180 83 9',
           '--color-accent-subtle': '120 53 15',
           '--color-accent-muted': '217 119 6',
         },
