@@ -33,7 +33,7 @@ function resolveDockviewPanelDefinitionId(panel: any): string | undefined {
  */
 export function CustomTabComponent(props: IDockviewPanelHeaderProps) {
   const contextMenu = useContextMenuOptional();
-  const { dockviewId: currentDockviewId, panelRegistry, dockviewApi, floatPanelHandler } = useDockviewContext();
+  const { dockviewId: currentDockviewId, panelRegistry, dockviewApi, floatPanelHandler, scopedPanelIds } = useDockviewContext();
   const contextHubState = useContextHubState();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dragCandidateRef = useRef<{
@@ -78,6 +78,7 @@ export function CustomTabComponent(props: IDockviewPanelHeaderProps) {
       panelRegistry,
       api: props.containerApi ?? dockviewApi,
       contextHubState,
+      scopedPanelIds,
     };
 
     contextMenu.showContextMenu(

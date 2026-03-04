@@ -18,6 +18,7 @@ type DockviewContextValue = {
   panelRegistry?: PanelRegistryLike;
   dockviewApi?: DockviewApi;
   floatPanelHandler?: (dockviewPanelId: string, panel: any, options?: any) => void;
+  scopedPanelIds?: string[];
 };
 
 const DockviewIdContext = createHmrSafeContext<DockviewContextValue>('dockviewId', {});
@@ -28,6 +29,7 @@ interface DockviewIdProviderProps {
   panelRegistry?: PanelRegistryLike;
   dockviewApi?: DockviewApi | null;
   floatPanelHandler?: (dockviewPanelId: string, panel: any, options?: any) => void;
+  scopedPanelIds?: string[];
 }
 
 export function DockviewIdProvider({
@@ -36,6 +38,7 @@ export function DockviewIdProvider({
   panelRegistry,
   dockviewApi,
   floatPanelHandler,
+  scopedPanelIds,
 }: DockviewIdProviderProps) {
   // Memoize context value to prevent unnecessary re-renders of consumers
   const value = useMemo(
@@ -44,8 +47,9 @@ export function DockviewIdProvider({
       panelRegistry,
       dockviewApi: dockviewApi ?? undefined,
       floatPanelHandler,
+      scopedPanelIds,
     }),
-    [dockviewId, panelRegistry, dockviewApi, floatPanelHandler]
+    [dockviewId, panelRegistry, dockviewApi, floatPanelHandler, scopedPanelIds]
   );
 
   return (

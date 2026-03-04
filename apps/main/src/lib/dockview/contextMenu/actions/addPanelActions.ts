@@ -74,17 +74,23 @@ function getPanelRegistryEntries(ctx: MenuActionContext) {
     : ctx.panelRegistry.getAll();
 }
 
-function getDefaultScopePanelSubmenu(ctx: MenuActionContext, api: ReturnType<typeof resolveCurrentDockview>["api"]): MenuAction | null {
+export function getDefaultScopePanelSubmenu(ctx: MenuActionContext, api: ReturnType<typeof resolveCurrentDockview>["api"]): MenuAction | null {
   if (!ctx.currentDockviewId || !ctx.panelRegistry) return null;
 
-  const defaultPanelIds = getDockWidgetPanelIds(ctx.currentDockviewId);
-  if (!defaultPanelIds.length) return null;
-
-  const panelMap = new Map(getPanelRegistryEntries(ctx).map((p) => [p.id, p]));
   const dockWidget = getDockWidgetByDockviewId(ctx.currentDockviewId);
   const scopeLabel = dockWidget?.label ?? ctx.currentDockviewId;
 
-  const children = defaultPanelIds
+  // Try dock zone registry first, then scoped panel IDs from SmartDockview
+  const dockZonePanelIds = getDockWidgetPanelIds(ctx.currentDockviewId);
+  const scopedIds = dockZonePanelIds.length > 0
+    ? dockZonePanelIds
+    : (ctx as any).scopedPanelIds as string[] | undefined;
+
+  if (!scopedIds?.length) return null;
+
+  const panelMap = new Map(getPanelRegistryEntries(ctx).map((p) => [p.id, p]));
+
+  const children = scopedIds
     .map((panelId) => {
       const panel = panelMap.get(panelId);
       if (!panel) return null;
@@ -168,11 +174,6 @@ export const addPanelAction: MenuAction = {
     const categoryActions: MenuAction[] = [];
     const { api } = resolveCurrentDockview(ctx);
 
-    const defaultScopeSubmenu = getDefaultScopePanelSubmenu(ctx, api);
-    if (defaultScopeSubmenu) {
-      categoryActions.push(defaultScopeSubmenu);
-    }
-
     // Sort categories (put "Core" first, "Other" last)
     const sortedCategories = Array.from(categories.entries()).sort(([a], [b]) => {
       if (a === 'Core') return -1;
@@ -201,10 +202,6 @@ export const addPanelAction: MenuAction = {
         })),
         execute: () => {},
       });
-    }
-
-    if (defaultScopeSubmenu && categoryActions.length > 1) {
-      categoryActions[0] = { ...categoryActions[0], divider: true };
     }
 
     return categoryActions;

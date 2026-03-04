@@ -88,6 +88,7 @@ import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from '@featur
 import { type PanelDefinition } from '@features/panels';
 
 import { DockviewIdProvider, useContextMenuOptional } from './contextMenu';
+import { GroupDragHandle } from './GroupDragHandle';
 import { useDockviewContextMenu } from './useDockviewContextMenu';
 import { useDockviewPanelRegistry } from './useDockviewPanelRegistry';
 import { wrapPanelWithContextMenu, type PanelWrapOptions } from './wrapPanelWithContextMenu';
@@ -196,6 +197,8 @@ interface SmartDockviewBaseProps<TContext = any> {
 
   /** Optional: Component rendered in the right side of each group header */
   rightHeaderActionsComponent?: React.FunctionComponent<any>;
+  /** Disable dockview's native floating groups (default: true — app uses custom floating panel system) */
+  disableFloatingGroups?: boolean;
 }
 
 /** Registry mode props - uses LocalPanelRegistry */
@@ -348,6 +351,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     allowedPanels,
     allowedCategories,
     rightHeaderActionsComponent,
+    disableFloatingGroups = true,
   } = props;
 
   // Resolve dockId (new) vs scope (deprecated)
@@ -486,11 +490,8 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // creates a new panelSelectors object, orphaning the old subscription).
   useEffect(() => {
     if (!hasNoPanels || hadPanelsRef.current) return;
-    const dockLabel = scope ?? panelManagerId ?? 'unknown';
-    console.log(`[SmartDockview:${dockLabel}] recovery poll STARTED`);
     const timer = setInterval(() => {
       const count = panelSelectors.getPublicPanels().length;
-      console.log(`[SmartDockview:${dockLabel}] poll: ${count} panels`);
       if (count > 0) {
         setGlobalRegistryVersion((v) => v + 1);
       }
@@ -554,6 +555,12 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // Determine if context menu features should be active
   const contextMenuActive = enableContextMenu && contextMenu !== null;
 
+  // Scoped panel IDs — the panels this dockview instance was configured with
+  const scopedPanelIds = useMemo(
+    () => resolvedPanelDefs.length > 0 ? resolvedPanelDefs.map(p => p.id) : undefined,
+    [resolvedPanelDefs],
+  );
+
   // Panel registry for context menu "Add Panel" functionality
   const dockviewPanelRegistry = useDockviewPanelRegistry(availablePanelDefs, globalRegistryVersion);
 
@@ -596,11 +603,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
         // Proxy has stable identity, reads implementation from ref at render time
         const PanelProxy = (props: any) => {
           const Impl = implRef.current;
-          if (!Impl) {
-            // DEBUG: temporary — remove after HMR issue is resolved
-            console.warn(`[PanelProxy(${id})] implRef.current is null — panel will render empty`);
-            return null;
-          }
+          if (!Impl) return null;
           return <Impl {...props} />;
         };
         PanelProxy.displayName = `PanelProxy(${id})`;
@@ -660,17 +663,6 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     const prev = prevComponentsRef.current;
     const keys = Object.keys(map);
     const isStable = keys.length === Object.keys(prev).length && keys.every(k => prev[k] === map[k]);
-
-    // DEBUG: temporary HMR diagnostics — remove after issue is resolved
-    // DEBUG: temporary HMR diagnostics — remove after issue is resolved
-    const dockLabel = scope ?? panelManagerId ?? 'unknown';
-    console.log(`[SmartDockview:${dockLabel}] components memo:`, {
-      availablePanelDefs: availablePanelDefs.length,
-      cacheSize: Object.keys(panelWrappedCache.current).length,
-      mapKeys: keys.length,
-      isStable,
-      globalRegistryVersion,
-    });
 
     if (isStable) {
       return prev;
@@ -753,6 +745,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     dockviewId,
     getDockviewPanelRegistry: () => dockviewPanelRegistryRef.current,
     resetDockviewLayout,
+    scopedPanelIds,
   });
 
   if (hasNoPanels && !hadPanelsRef.current) {
@@ -768,6 +761,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       panelRegistry={dockviewPanelRegistry}
       dockviewApi={dockviewApi}
       floatPanelHandler={capabilities?.floatPanelHandler}
+      scopedPanelIds={scopedPanelIds}
     >
       <div
         className="h-full w-full"
@@ -786,6 +780,8 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
             layout={layoutController}
             defaultLayout={applyDefaultLayout}
             rightHeaderActionsComponent={rightHeaderActionsComponent}
+            leftHeaderActionsComponent={capabilities?.floatPanelHandler ? GroupDragHandle : undefined}
+            disableFloatingGroups={disableFloatingGroups}
           />
         </ContextHubHost>
       </div>

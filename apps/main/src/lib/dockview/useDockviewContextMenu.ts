@@ -26,6 +26,8 @@ export interface UseDockviewContextMenuOptions {
   getDockviewPanelRegistry: () => any;
   /** Callback to reset the dockview layout */
   resetDockviewLayout: () => void;
+  /** Panel IDs this dockview was configured with (for "Default Panels" submenu) */
+  scopedPanelIds?: string[];
 }
 
 export interface UseDockviewContextMenuResult {
@@ -47,6 +49,7 @@ export function useDockviewContextMenu(
     dockviewId,
     getDockviewPanelRegistry,
     resetDockviewLayout,
+    scopedPanelIds,
   } = options;
 
   // Handler for right-click on empty dockview area
@@ -59,6 +62,7 @@ export function useDockviewContextMenu(
         currentDockviewId: dockviewId,
         panelRegistry: getDockviewPanelRegistry(),
         resetDockviewLayout,
+        scopedPanelIds,
       };
 
       contextMenuRef.current.showContextMenu(
@@ -68,7 +72,7 @@ export function useDockviewContextMenu(
         }),
       );
     },
-    [contextMenuActive, contextMenuRef, dockviewId, getDockviewPanelRegistry, resetDockviewLayout],
+    [contextMenuActive, contextMenuRef, dockviewId, getDockviewPanelRegistry, resetDockviewLayout, scopedPanelIds],
   );
 
   // Use custom tab component with context menu support when active

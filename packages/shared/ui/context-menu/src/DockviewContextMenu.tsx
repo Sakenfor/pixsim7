@@ -281,7 +281,7 @@ function MenuItemComponent({ item, onClose, depth = 0, renderIcon }: MenuItemCom
             positionMode="static"
             closeOnOutsideClick={false}
             minWidth="200px"
-            className="min-w-[200px] max-w-[300px]"
+            className="min-w-[200px] max-w-[300px] shadow-2xl ring-1 ring-neutral-600/30"
           >
             {item.children!.map(child => (
               <MenuItemComponent

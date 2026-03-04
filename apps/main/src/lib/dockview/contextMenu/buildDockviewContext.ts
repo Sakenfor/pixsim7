@@ -17,6 +17,7 @@ export interface DockviewContextBase {
   panelRegistry?: PanelRegistryLike;
   resetDockviewLayout?: () => void;
   contextHubState?: ContextHubState | null;
+  scopedPanelIds?: string[];
 }
 
 export interface DockviewContextOverrides {

@@ -14,10 +14,12 @@
 import { useContextMenuHistoryStore } from '@features/workspace/stores/contextMenuHistoryStore';
 
 import { contextMenuRegistry } from '../ContextMenuRegistry';
+import { resolveCurrentDockview } from '../resolveCurrentDockview';
 import type { MenuAction } from '../types';
 
 import {
   addPanelAction,
+  getDefaultScopePanelSubmenu,
   getQuickAddActions,
   getEditQuickAddActions,
 } from './addPanelActions';
@@ -84,10 +86,15 @@ const panelsSubmenuAction: MenuAction = {
       items.push(...dynamicQuickAdd);
     }
 
-    // Section 2: Add Panel submenu
+    // Section 2: Default Panels + Add Panel
     if (addPanelAction.visible?.(ctx) !== false) {
       if (items.length > 0) {
         items[items.length - 1] = { ...items[items.length - 1], divider: true, sectionLabel: 'Add' };
+      }
+      const { api } = resolveCurrentDockview(ctx);
+      const defaultScopeSubmenu = getDefaultScopePanelSubmenu(ctx, api);
+      if (defaultScopeSubmenu) {
+        items.push({ ...defaultScopeSubmenu, category: undefined });
       }
       items.push({ ...addPanelAction, category: undefined });
     }
