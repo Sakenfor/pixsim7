@@ -81,15 +81,17 @@ export function AssetPanelGrid({
 }: AssetPanelGridProps) {
   return (
     <div
-      className={isGridMode ? 'grid gap-1.5' : 'flex gap-1.5 h-full'}
-      style={isGridMode ? { gridTemplateColumns: `repeat(${resolvedGridColumns}, minmax(0, 1fr))` } : undefined}
+      className="grid gap-1.5"
+      style={{
+        gridTemplateColumns: isGridMode
+          ? `repeat(${resolvedGridColumns}, minmax(0, 1fr))`
+          : 'repeat(auto-fill, minmax(72px, 1fr))',
+      }}
     >
       {slotItems.map((inputItem, idx) => {
         const isSelected = !!inputItem && inputItem.id === currentInputId;
         const isClamped = clampedSlotIndices.has(idx);
-        const wrapperClasses = isGridMode
-          ? 'relative aspect-square cq-scale'
-          : 'relative flex-shrink-0 h-full aspect-square cq-scale';
+        const wrapperClasses = 'relative aspect-square cq-scale';
 
         if (!inputItem) {
           const isArmed = armedSlotIndex === idx;

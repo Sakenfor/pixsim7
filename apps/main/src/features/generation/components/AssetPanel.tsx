@@ -78,14 +78,14 @@ export function AssetPanel(props: QuickGenPanelProps) {
   }
 
   // ── Multi-asset display (strip / grid) ─────────────────────────────
-  if (state.isMultiAssetDisplay && state.resolvedDisplayMode !== 'carousel') {
+  if (state.resolvedDisplayMode !== 'carousel') {
     return (
       <>
         <div className="h-full w-full flex flex-col">
           {header}
           <div
             ref={state.containerRef}
-            className={`flex-1 p-2 pt-0 ${isGridMode ? 'overflow-auto' : 'overflow-x-auto'} ${state.draggedSlotIndex !== null ? 'cursor-grabbing' : ''}`}
+            className={`flex-1 p-2 pt-0 overflow-auto ${state.draggedSlotIndex !== null ? 'cursor-grabbing' : ''}`}
           >
             <AssetPanelGrid
               slotItems={state.slotItems}

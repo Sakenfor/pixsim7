@@ -600,7 +600,7 @@ export function useQuickGenerateController() {
    * Generate multiple times (burst mode).
    * Submits the same generation request N times for variety.
    */
-  const generateBurst = useCallback(async (count: number, options?: { overrideDynamicParams?: Record<string, any> }) => {
+  const generateBurst = useCallback(async (count: number, options?: { overrideDynamicParams?: Record<string, any>; overrideOperationInputs?: any[] }) => {
     if (count <= 1) return generate(options);
 
     resetForGeneration();
@@ -612,9 +612,13 @@ export function useQuickGenerateController() {
 
     try {
       const { currentInputs, currentInput, transitionInputs } = getInputState();
+      const effectiveInputs = options?.overrideOperationInputs ?? currentInputs;
+      const effectiveCurrentInput = options?.overrideOperationInputs
+        ? options.overrideOperationInputs[0] ?? currentInput
+        : currentInput;
       const dynamicParams = { ...bindings.dynamicParams, ...options?.overrideDynamicParams };
 
-      await applyFrameExtraction(dynamicParams, currentInput, transitionInputs);
+      await applyFrameExtraction(dynamicParams, effectiveCurrentInput, transitionInputs);
 
       // Template handling:
       // - 'each' mode: backend rolls per request using run_context
@@ -622,13 +626,13 @@ export function useQuickGenerateController() {
       const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
       const rollOnce = !useServerRolling ? await maybeRollTemplate() : null;
       // Pre-resolve sets once so burst iterations don't re-resolve per item
-      const hasRandomEachRef = currentInputs.some(
+      const hasRandomEachRef = effectiveInputs.some(
         (item: any) => item.assetSetRef?.mode === 'random_each',
       );
-      const setCache = hasRandomEachRef ? await preResolveSetRefs(currentInputs) : new Map<string, AssetModel[]>();
+      const setCache = hasRandomEachRef ? await preResolveSetRefs(effectiveInputs) : new Map<string, AssetModel[]>();
 
       // Build a base request for validation (and reuse when no random_each refs)
-      const baseRequest = await buildRequest(dynamicParams, currentInputs, currentInput, { promptOverride: rollOnce });
+      const baseRequest = await buildRequest(dynamicParams, effectiveInputs, effectiveCurrentInput, { promptOverride: rollOnce });
       if ('error' in baseRequest) {
         setError(baseRequest.error);
         setGenerating(false);
@@ -636,7 +640,7 @@ export function useQuickGenerateController() {
         return;
       }
 
-      recordInputHistory(operationType, currentInputs);
+      recordInputHistory(operationType, effectiveInputs);
 
       for (let i = 0; i < count; i++) {
         try {
@@ -644,8 +648,8 @@ export function useQuickGenerateController() {
           // so each burst item gets a fresh pick without re-resolving the set
           let request = baseRequest;
           if (hasRandomEachRef) {
-            const pickedInputs = prePickSetRefs(currentInputs, setCache);
-            const pickedCurrent = pickedInputs.find((item: any) => item.id === currentInput?.id) ?? currentInput;
+            const pickedInputs = prePickSetRefs(effectiveInputs, setCache);
+            const pickedCurrent = pickedInputs.find((item: any) => item.id === effectiveCurrentInput?.id) ?? effectiveCurrentInput;
             const freshRequest = await buildRequest(dynamicParams, pickedInputs, pickedCurrent, { promptOverride: rollOnce });
             if (!('error' in freshRequest)) {
               request = freshRequest;
@@ -1115,6 +1119,17 @@ export function useQuickGenerateController() {
     }
   }
 
+  /** Generate using only the currently selected carousel input (ignores other queued inputs). */
+  async function generateCurrentOnly(count?: number) {
+    const { currentInput } = getInputState();
+    if (!currentInput) return generate();
+    const inputOverride = [currentInput];
+    if (count && count > 1) {
+      return generateBurst(count, { overrideOperationInputs: inputOverride });
+    }
+    return generate({ overrideOperationInputs: inputOverride });
+  }
+
   return {
     // Core control center state
     operationType,
@@ -1139,6 +1154,7 @@ export function useQuickGenerateController() {
 
     // Actions
     generate,
+    generateCurrentOnly,
     generateWithAsset,
     generateBurst,
     generateSequentialBurst,

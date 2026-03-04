@@ -87,6 +87,8 @@ export interface GenerationSettingsPanelProps {
   onGenerateSequentialBurst?: (count: number) => void;
   /** Callback for generate-each mode (one generation per queued asset or group) */
   onGenerateEach?: (options?: FanoutRunOptions) => void;
+  /** Callback to generate using only the currently selected carousel input (receives burst count) */
+  onGenerateCurrentOnly?: (count?: number) => void;
   /** Optional node rendered in Row 2 next to Presets (e.g. Asset/My Settings toggle) */
   sourceToggle?: ReactNode;
 }
@@ -107,6 +109,7 @@ export function GenerationSettingsPanel({
   onGenerateBurst,
   onGenerateSequentialBurst,
   onGenerateEach,
+  onGenerateCurrentOnly,
   sourceToggle,
 }: GenerationSettingsPanelProps) {
   const { useSessionStore, useInputStore } = useGenerationScopeStores();
@@ -384,6 +387,26 @@ export function GenerationSettingsPanel({
                   : 'Go'
               )}
             </button>
+            {/* "Current only" split — visible when multiple inputs queued */}
+            {onGenerateCurrentOnly && inputCount > 1 && (
+              <button
+                onClick={() => onGenerateCurrentOnly(isBurstMode ? burstCount : undefined)}
+                disabled={generating || !canGenerate}
+                className={clsx(
+                  'px-1.5 py-1.5 text-[10px] font-semibold border-l border-white/20',
+                  'disabled:opacity-50 disabled:cursor-not-allowed',
+                  generating || !canGenerate
+                    ? 'text-white bg-neutral-400'
+                    : error
+                    ? 'text-white bg-red-600 hover:bg-red-700'
+                    : btn.primary
+                )}
+                style={{ transition: 'none', animation: 'none' }}
+                title={isBurstMode ? `Generate ${burstCount}x with selected input only` : 'Generate with selected input only'}
+              >
+                <Icon name="image" size={11} />
+              </button>
+            )}
             {/* Burst stepper area */}
             <div
               className={clsx(

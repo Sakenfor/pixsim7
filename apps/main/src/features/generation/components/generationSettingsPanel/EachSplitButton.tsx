@@ -72,13 +72,6 @@ export function EachSplitButton({
     [selectedPresetNormalized, currentRunOptions],
   );
 
-  const current = useMemo(
-    () =>
-      EACH_STRATEGIES.find((s) => s.id === selectedStrategy) ??
-      SET_STRATEGIES.find((s) => s.id === selectedStrategy) ??
-      EACH_STRATEGIES[0],
-    [selectedStrategy],
-  );
   const needsSet = isSetStrategy(selectedStrategy);
   const canRun = !needsSet || !!selectedSetId;
   const showProgress = generating && queueProgress;
@@ -149,25 +142,39 @@ export function EachSplitButton({
   return (
     <div className="relative flex-shrink-0">
       <div className="flex">
-        <button
-          onClick={() => canRun && onGenerateEach(currentRunOptions)}
-          disabled={disabled || !canRun}
-          className={clsx(
-            'px-2 py-1.5 rounded-l-lg text-[11px] font-semibold tabular-nums',
-            'min-w-[5.5rem]',
-            'disabled:opacity-50 disabled:cursor-not-allowed',
-            disabled || !canRun
-              ? 'text-white bg-neutral-400'
-              : btn.secondary,
-          )}
-          style={{ transition: 'none', animation: 'none' }}
-          title={`${current.description} | ${currentRunOptions.executionMode}${currentRunOptions.reusePreviousOutputAsInput ? ' + pipe-prev' : ''} | repeat ${currentRunOptions.repeatCount} | ${currentRunOptions.dispatch} | planned: ${plannedGroupCount ?? '?'} `}
-        >
-          <span className="inline-flex min-w-[4.5ch] justify-center">
-            {current.shortLabel}
-            {!showProgress && currentRunOptions.repeatCount > 1 ? `x${currentRunOptions.repeatCount}` : ''}
-          </span>
-        </button>
+        {/* Strategy slices — each strategy is a clickable vertical slice */}
+        {EACH_STRATEGIES.map((s, idx) => {
+          const isActive = selectedStrategy === s.id;
+          const isFirst = idx === 0;
+          return (
+            <button
+              key={s.id}
+              onClick={() => {
+                setDraftPatch({ strategy: s.id, setId: undefined });
+                if (isActive && canRun) onGenerateEach(currentRunOptions);
+              }}
+              disabled={disabled}
+              className={clsx(
+                'px-1.5 py-1.5 text-[10px] font-semibold',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                isFirst ? 'rounded-l-lg' : 'border-l border-white/20',
+                disabled
+                  ? 'text-white bg-neutral-400'
+                  : isActive
+                  ? btn.secondary
+                  : 'text-white/70 bg-neutral-500 hover:bg-neutral-400',
+              )}
+              style={{ transition: 'none', animation: 'none' }}
+              title={isActive ? `Run: ${s.description} (planned: ${plannedGroupCount ?? '?'})` : s.description}
+            >
+              <span className="inline-flex justify-center">
+                {s.shortLabel}
+                {isActive && !showProgress && currentRunOptions.repeatCount > 1 ? `x${currentRunOptions.repeatCount}` : ''}
+              </span>
+            </button>
+          );
+        })}
+        {/* Popover trigger + asset sets */}
         <div className="flex flex-col">
           <button
             ref={triggerRef}
@@ -181,7 +188,7 @@ export function EachSplitButton({
                 : btn.tertiary,
             )}
             style={{ transition: 'none', animation: 'none' }}
-            title="Fanout options"
+            title="Fanout options & presets"
           >
             <Icon name="chevronDown" size={10} className={clsx(open && 'rotate-180')} />
           </button>
@@ -209,32 +216,36 @@ export function EachSplitButton({
         align="end"
         offset={6}
         triggerRef={triggerRef}
-        className="w-[260px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl max-h-[70vh] overflow-y-auto"
+        className="w-[460px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl max-h-[70vh] flex flex-col"
       >
-        <DropdownSectionHeader first>Built-in Presets</DropdownSectionHeader>
-        {builtinBasicPresets.map((preset) => {
-          const isActive = selectedPresetId === preset.id;
-          return (
-            <DropdownItem
-              key={preset.id}
-              onClick={() => {
-                applyPreset(preset);
-                setOpen(false);
-              }}
-              className={clsx('text-[11px]', isActive && 'font-semibold bg-accent/10')}
-              icon={isActive ? <Icon name="check" size={10} /> : <Icon name="sparkles" size={10} />}
-            >
-              <div className="flex flex-col items-start">
-                <span>{preset.label}</span>
-                {preset.description && <span className="text-[9px] text-neutral-400">{preset.description}</span>}
-              </div>
-            </DropdownItem>
-          );
-        })}
-        {builtinOvernightPresets.length > 0 && (
-          <>
-            <DropdownSectionHeader>Overnight / Long Runs</DropdownSectionHeader>
-            {builtinOvernightPresets.map((preset) => {
+        {/* Scrollable content area */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+        {/* Two-column layout: Set Strategies | Presets */}
+        <div className="flex divide-x divide-neutral-200 dark:divide-neutral-700">
+          {/* Left column: Set strategies (input strategies are now button slices) */}
+          <div className="flex-1 min-w-0">
+            <DropdownSectionHeader first>Asset Set Strategies</DropdownSectionHeader>
+            {SET_STRATEGIES.map((s) => (
+              <DropdownItem
+                key={s.id}
+                onClick={() => {
+                  setDraftPatch({ strategy: s.id });
+                }}
+                className={clsx(selectedStrategy === s.id && 'font-semibold bg-violet-500/10')}
+                icon={selectedStrategy === s.id ? <Icon name="check" size={10} /> : undefined}
+              >
+                <div className="flex flex-col items-start">
+                  <span>{s.label}</span>
+                  <span className="text-[9px] text-neutral-400">{s.description}</span>
+                </div>
+              </DropdownItem>
+            ))}
+          </div>
+
+          {/* Right column: Presets */}
+          <div className="flex-1 min-w-0">
+            <DropdownSectionHeader first>Built-in Presets</DropdownSectionHeader>
+            {builtinBasicPresets.map((preset) => {
               const isActive = selectedPresetId === preset.id;
               return (
                 <DropdownItem
@@ -244,121 +255,115 @@ export function EachSplitButton({
                     setOpen(false);
                   }}
                   className={clsx('text-[11px]', isActive && 'font-semibold bg-accent/10')}
-                  icon={isActive ? <Icon name="check" size={10} /> : <Icon name="moon" size={10} />}
+                  icon={isActive ? <Icon name="check" size={10} /> : <Icon name="sparkles" size={10} />}
                 >
                   <div className="flex flex-col items-start">
                     <span>{preset.label}</span>
-                    {preset.description && (
-                      <span className="text-[9px] text-neutral-400">{preset.description}</span>
-                    )}
+                    {preset.description && <span className="text-[9px] text-neutral-400">{preset.description}</span>}
                   </div>
                 </DropdownItem>
               );
             })}
-          </>
-        )}
-        <DropdownSectionHeader>Custom Presets</DropdownSectionHeader>
-        {(customPresets || []).map((preset) => {
-          const isActive = selectedPresetId === preset.id;
-          return (
-            <DropdownItem
-              key={preset.id}
-              onClick={() => {
-                applyPreset(preset);
-                setOpen(false);
-              }}
-              className={clsx('text-[11px]', isActive && 'font-semibold bg-accent/10')}
-              icon={isActive ? <Icon name="check" size={10} /> : <Icon name="sparkles" size={10} />}
-              rightSlot={
-                preset.id.startsWith('custom-') ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteCustomPreset(preset.id);
-                    }}
-                    className="text-[10px] text-neutral-400 hover:text-red-500"
-                    title="Delete preset"
-                  >
-                    <Icon name="trash" size={10} />
-                  </button>
-                ) : null
-              }
-            >
-              <div className="flex flex-col items-start">
-                <span>{preset.label}</span>
-                {preset.description && <span className="text-[9px] text-neutral-400">{preset.description}</span>}
-              </div>
-            </DropdownItem>
-          );
-        })}
-        <div className="px-2 py-1 border-t border-neutral-200 dark:border-neutral-700">
-          <div className="mb-1 text-[10px] text-neutral-500">
+            {builtinOvernightPresets.length > 0 && (
+              <>
+                <DropdownSectionHeader>Overnight / Long Runs</DropdownSectionHeader>
+                {builtinOvernightPresets.map((preset) => {
+                  const isActive = selectedPresetId === preset.id;
+                  return (
+                    <DropdownItem
+                      key={preset.id}
+                      onClick={() => {
+                        applyPreset(preset);
+                        setOpen(false);
+                      }}
+                      className={clsx('text-[11px]', isActive && 'font-semibold bg-accent/10')}
+                      icon={isActive ? <Icon name="check" size={10} /> : <Icon name="moon" size={10} />}
+                    >
+                      <div className="flex flex-col items-start">
+                        <span>{preset.label}</span>
+                        {preset.description && (
+                          <span className="text-[9px] text-neutral-400">{preset.description}</span>
+                        )}
+                      </div>
+                    </DropdownItem>
+                  );
+                })}
+              </>
+            )}
+            <DropdownSectionHeader>Custom Presets</DropdownSectionHeader>
+            {(customPresets || []).map((preset) => {
+              const isActive = selectedPresetId === preset.id;
+              return (
+                <DropdownItem
+                  key={preset.id}
+                  onClick={() => {
+                    applyPreset(preset);
+                    setOpen(false);
+                  }}
+                  className={clsx('text-[11px]', isActive && 'font-semibold bg-accent/10')}
+                  icon={isActive ? <Icon name="check" size={10} /> : <Icon name="sparkles" size={10} />}
+                  rightSlot={
+                    preset.id.startsWith('custom-') ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteCustomPreset(preset.id);
+                        }}
+                        className="text-[10px] text-neutral-400 hover:text-red-500"
+                        title="Delete preset"
+                      >
+                        <Icon name="trash" size={10} />
+                      </button>
+                    ) : null
+                  }
+                >
+                  <div className="flex flex-col items-start">
+                    <span>{preset.label}</span>
+                    {preset.description && <span className="text-[9px] text-neutral-400">{preset.description}</span>}
+                  </div>
+                </DropdownItem>
+              );
+            })}
+            <div className="px-2 py-1 border-t border-neutral-200 dark:border-neutral-700">
+              <button
+                type="button"
+                onClick={saveCurrentAsPreset}
+                className="w-full text-left text-[10px] px-1.5 py-1 rounded bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+              >
+                Save current as preset
+              </button>
+              <button
+                type="button"
+                onClick={() => openWorkspacePanel('execution-presets')}
+                className="mt-1 w-full text-left text-[10px] px-1.5 py-1 rounded bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+              >
+                Open Execution Presets Panel
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Status bar */}
+        <div className="px-2 py-1 border-t border-neutral-200 dark:border-neutral-700 flex items-center gap-2 text-[10px] text-neutral-500">
+          <span>
             Preset:{' '}
             <span className="font-semibold text-neutral-700 dark:text-neutral-200">
               {selectedPreset
-                ? `${selectedPreset.label}${presetDraftModified ? ' (modified draft)' : ''}`
+                ? `${selectedPreset.label}${presetDraftModified ? ' (modified)' : ''}`
                 : 'Ad hoc draft'}
             </span>
-          </div>
-          <div className="mb-1 text-[10px] text-neutral-500">
-            Planned total: <span className="font-semibold text-neutral-700 dark:text-neutral-200">{plannedGroupCount ?? '?'}</span>
-            {needsSet && selectedSet?.kind === 'smart' ? ' (smart set resolves at run time)' : ''}
-          </div>
-          <button
-            type="button"
-            onClick={saveCurrentAsPreset}
-            className="w-full text-left text-[10px] px-1.5 py-1 rounded bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700"
-          >
-            Save current as preset
-          </button>
-          <button
-            type="button"
-            onClick={() => openWorkspacePanel('execution-presets')}
-            className="mt-1 w-full text-left text-[10px] px-1.5 py-1 rounded bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700"
-          >
-            Open Execution Presets Panel
-          </button>
+          </span>
+          <span className="text-neutral-300 dark:text-neutral-600">|</span>
+          <span>
+            Planned: <span className="font-semibold text-neutral-700 dark:text-neutral-200">{plannedGroupCount ?? '?'}</span>
+            {needsSet && selectedSet?.kind === 'smart' ? ' (smart)' : ''}
+          </span>
         </div>
+        </div>{/* end scrollable area */}
 
-        <div className="my-1 border-t border-neutral-200 dark:border-neutral-700" />
-        <DropdownSectionHeader>Strategy</DropdownSectionHeader>
-        {EACH_STRATEGIES.map((s) => (
-          <DropdownItem
-            key={s.id}
-            onClick={() => {
-              setDraftPatch({ strategy: s.id, setId: undefined });
-              setOpen(false);
-            }}
-            className={clsx(selectedStrategy === s.id && 'font-semibold bg-amber-500/10')}
-            icon={selectedStrategy === s.id ? <Icon name="check" size={10} /> : undefined}
-          >
-            <div className="flex flex-col items-start">
-              <span>{s.label}</span>
-              <span className="text-[9px] text-neutral-400">{s.description}</span>
-            </div>
-          </DropdownItem>
-        ))}
-        <DropdownSectionHeader>Asset Set</DropdownSectionHeader>
-        {SET_STRATEGIES.map((s) => (
-          <DropdownItem
-            key={s.id}
-            onClick={() => {
-              setDraftPatch({ strategy: s.id });
-              setOpen(false);
-            }}
-            className={clsx(selectedStrategy === s.id && 'font-semibold bg-violet-500/10')}
-            icon={selectedStrategy === s.id ? <Icon name="check" size={10} /> : undefined}
-          >
-            <div className="flex flex-col items-start">
-              <span>{s.label}</span>
-              <span className="text-[9px] text-neutral-400">{s.description}</span>
-            </div>
-          </DropdownItem>
-        ))}
-
-        <div className="my-1 border-t border-neutral-200 dark:border-neutral-700" />
-        <div className="px-2 py-1 grid grid-cols-2 gap-1.5 text-[10px]">
+        {/* Options grid — sticky at bottom */}
+        <div className="flex-shrink-0 border-t border-neutral-200 dark:border-neutral-700 px-2 py-1.5 grid grid-cols-2 gap-1.5 text-[10px] bg-neutral-50 dark:bg-neutral-800/50 rounded-b-lg">
           <label className="flex flex-col gap-0.5">
               <span className="text-neutral-500">Repeat</span>
               <input
