@@ -47,10 +47,12 @@ export * from './interactions';
 export * from './generations';
 export * from './generationOperations';
 export * from './analyzers';
+export * from './analyses';
 export * from './userPreferences';
 export * from './adminUsers';
 export * from './codegen';
 export * from './characters';
+export * from './gameBehavior';
 
 export * from './tags';
 

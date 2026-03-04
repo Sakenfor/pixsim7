@@ -43,5 +43,21 @@ export { routineGraphModule } from './module';
 // Page route module
 export { routineGraphPageModule } from './routes';
 
+// Service layer (load/save routines via backend)
+export {
+  loadRoutinesForWorld,
+  saveAllRoutines,
+  saveRoutine,
+  removeRoutine,
+  clearRoutineState,
+} from './lib/routineGraphService';
+
+// Conversion (frontend ↔ backend shape)
+export {
+  toBackendGraph,
+  fromBackendGraph,
+  fromBackendRoutines,
+} from './lib/routineGraphConversion';
+
 // Registration
 export { registerRoutineGraphEditor } from './lib/registerRoutineGraphEditor';

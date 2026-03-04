@@ -174,6 +174,8 @@ export function getNodeTypeColor(type: RoutineNodeType): string {
 
 /**
  * Convert frontend edge (from/to) to backend format (fromNodeId/toNodeId)
+ * @deprecated Use `toBackendGraph` from `./lib/routineGraphConversion` instead.
+ * That module properly stashes position/label/edge-id in `meta.__editor` for round-tripping.
  */
 export function toBackendEdge(edge: RoutineEdge): {
   id: string;
@@ -194,6 +196,8 @@ export function toBackendEdge(edge: RoutineEdge): {
 
 /**
  * Convert backend edge (fromNodeId/toNodeId) to frontend format (from/to)
+ * @deprecated Use `fromBackendGraph` from `./lib/routineGraphConversion` instead.
+ * That module properly restores position/label/edge-id from `meta.__editor`.
  */
 export function fromBackendEdge(edge: {
   id: string;

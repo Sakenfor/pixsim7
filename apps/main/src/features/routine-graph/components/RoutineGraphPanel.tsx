@@ -7,12 +7,18 @@
  */
 
 import { findNode } from '@pixsim7/shared.graph.utilities';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ReactFlowProvider } from 'reactflow';
 
 import { Icon } from '@lib/icons';
 
+import { useRequiredAuthoringWorld } from '@features/contextHub';
 
+import {
+  loadRoutinesForWorld,
+  saveAllRoutines,
+  clearRoutineState,
+} from '../lib/routineGraphService';
 import {
   useRoutineGraphStore,
   routineGraphSelectors,
@@ -307,8 +313,111 @@ function UndoRedoToolbar() {
 // ============================================================================
 
 export function RoutineGraphPanel() {
+  const { worldId, isReady, missingReason } = useRequiredAuthoringWorld();
   const currentGraph = useRoutineGraphStore(routineGraphSelectors.currentGraph);
   const isDirty = useRoutineGraphStore(routineGraphSelectors.isDirty);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const loadedWorldRef = useRef<number | null>(null);
+
+  // Load routines when worldId changes
+  useEffect(() => {
+    if (!isReady || worldId == null) {
+      if (loadedWorldRef.current != null) {
+        clearRoutineState();
+        loadedWorldRef.current = null;
+      }
+      return;
+    }
+
+    // Guard against redundant loads
+    if (loadedWorldRef.current === worldId) return;
+    loadedWorldRef.current = worldId;
+
+    setLoading(true);
+    setError(null);
+
+    loadRoutinesForWorld(worldId)
+      .catch((err) => {
+        setError(err?.message ?? 'Failed to load routines');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [worldId, isReady]);
+
+  const handleSave = useCallback(async () => {
+    if (worldId == null || saving) return;
+    setSaving(true);
+    try {
+      await saveAllRoutines(worldId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save routines');
+    } finally {
+      setSaving(false);
+    }
+  }, [worldId, saving]);
+
+  const handleRetry = useCallback(() => {
+    if (worldId == null) return;
+    loadedWorldRef.current = null; // Allow reload
+    setLoading(true);
+    setError(null);
+    loadRoutinesForWorld(worldId)
+      .catch((err) => {
+        setError(err?.message ?? 'Failed to load routines');
+      })
+      .finally(() => {
+        loadedWorldRef.current = worldId;
+        setLoading(false);
+      });
+  }, [worldId]);
+
+  // Render gate: missing world
+  if (missingReason === 'missing-world') {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-neutral-500 dark:text-neutral-400">
+        <div className="text-center space-y-2">
+          <Icon name="globe" size={24} className="mx-auto opacity-40" />
+          <div>No world selected</div>
+          <div className="text-xs text-neutral-400">Open a project with a world to edit routines</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render gate: loading
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-neutral-500 dark:text-neutral-400">
+        <div className="text-center space-y-2">
+          <div className="animate-spin w-5 h-5 border-2 border-neutral-300 border-t-blue-500 rounded-full mx-auto" />
+          <div>Loading routines...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render gate: error
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-neutral-500 dark:text-neutral-400">
+        <div className="text-center space-y-2">
+          <Icon name="alertCircle" size={24} className="mx-auto text-red-400" />
+          <div className="text-red-500">{error}</div>
+          <button
+            onClick={handleRetry}
+            className="px-3 py-1 text-xs bg-neutral-100 dark:bg-neutral-700 hover:bg-neutral-200
+                       dark:hover:bg-neutral-600 rounded"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full overflow-hidden bg-neutral-50 dark:bg-neutral-900">
@@ -331,9 +440,15 @@ export function RoutineGraphPanel() {
               <div className="flex items-center gap-2">
                 <UndoRedoToolbar />
                 {isDirty && (
-                  <span className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
-                    Unsaved
-                  </span>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5
+                               rounded hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:opacity-50"
+                    title="Save all routines"
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
                 )}
               </div>
             </div>
