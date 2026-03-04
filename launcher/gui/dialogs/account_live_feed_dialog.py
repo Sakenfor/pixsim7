@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import re
 import socket
-from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, QTimer
@@ -21,11 +20,11 @@ from PySide6.QtWidgets import (
 )
 
 try:
-    from ..config import ROOT
     from .. import theme
+    from ...core.paths import console_log_file
 except ImportError:
-    from config import ROOT
     import theme
+    from launcher.core.paths import console_log_file
 
 
 class AccountLiveFeedDialog(QDialog):
@@ -46,7 +45,7 @@ class AccountLiveFeedDialog(QDialog):
         self.resize(980, 640)
         self.setModal(False)
 
-        self._log_path = Path(ROOT) / "data" / "logs" / "console" / "worker.log"
+        self._log_path = console_log_file("worker")
         self._log_pos = 0
         self._paused = False
         self._line_count = 0

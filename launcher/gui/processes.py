@@ -14,6 +14,7 @@ try:
     from .logger import launcher_logger as _launcher_logger
     from .status import HealthStatus
     from .docker_utils import compose_up_detached, compose_down, compose_logs
+    from ..core.paths import console_log_file
     from . import pid_store
 except ImportError:
     from services import ServiceDef
@@ -21,6 +22,7 @@ except ImportError:
     from logger import launcher_logger as _launcher_logger
     from status import HealthStatus
     from docker_utils import compose_up_detached, compose_down, compose_logs
+    from launcher.core.paths import console_log_file
     import pid_store
 
 
@@ -93,7 +95,7 @@ class ServiceProcess:
         self._worker_recovery_done = False
 
         # Console log file persistence
-        self.log_file_path = os.path.join(ROOT, 'data', 'logs', 'console', f'{defn.key}.log')
+        self.log_file_path = str(console_log_file(defn.key))
         self._ensure_log_dir()
         self._buffer_char_count = 0
         self._log_file_position = 0  # Track position in log file for incremental reading
@@ -600,7 +602,7 @@ class ServiceProcess:
         started externally.
 
         This starts the incremental file monitor so new lines written
-        to data/logs/console/{key}.log are reflected in the in-memory
+        to the canonical console log file are reflected in the in-memory
         buffer and console tab.
         """
         try:

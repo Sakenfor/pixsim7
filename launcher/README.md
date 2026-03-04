@@ -91,7 +91,7 @@ The launcher integrates with the backend's `/api/v1/logs/console-fields` endpoin
 
 **How it works:**
 1. Backend defines field metadata (name, color, pattern, clickability) in `pixsim7/backend/main/api/v1/logs.py`
-2. Launcher fetches metadata on startup and caches it locally (`data/cache/console_fields.json`)
+2. Launcher fetches metadata on startup and caches it locally (`launcher/core/paths.py -> CACHE_DIR/console_fields.json`)
 3. Console logs are parsed for field patterns (e.g., `job_id=123`)
 4. Matching fields are rendered as colored, clickable badges
 5. Clicking a field ID opens the database log viewer filtered by that field
@@ -113,6 +113,17 @@ console_field_registry.register(ConsoleFieldDefinition(
 
 **Fallback behavior:**
 If the backend API is unavailable, the launcher falls back to hardcoded default fields, ensuring the UI remains functional.
+
+### Runtime Paths
+
+Launcher runtime directories are centralized in `launcher/core/paths.py`:
+
+- `CACHE_DIR` (`data/cache`)
+- `CONSOLE_LOG_DIR` (`data/logs/console`)
+- `LAUNCHER_LOG_DIR` (`data/logs/launcher`)
+- `LAUNCHER_STATE_DIR` (`data/launcher`)
+
+Launcher modules should use these constants/helpers rather than constructing `data/...` paths inline.
 
 ## Design Principles
 

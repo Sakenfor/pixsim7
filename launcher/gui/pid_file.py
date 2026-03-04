@@ -1,20 +1,17 @@
 """PID file management for launcher instance detection."""
 import os
-import sys
-import signal
 from pathlib import Path
+
+try:
+    from ..core.paths import LAUNCHER_STATE_DIR
+except ImportError:
+    from launcher.core.paths import LAUNCHER_STATE_DIR
 
 
 def get_pid_file_path() -> Path:
     """Get the path to the launcher PID file."""
-    try:
-        from .config import ROOT
-    except ImportError:
-        ROOT = Path(__file__).parent.parent.parent
-
-    pid_dir = Path(ROOT) / 'data' / 'launcher'
-    pid_dir.mkdir(parents=True, exist_ok=True)
-    return pid_dir / 'launcher.pid'
+    LAUNCHER_STATE_DIR.mkdir(parents=True, exist_ok=True)
+    return LAUNCHER_STATE_DIR / "launcher.pid"
 
 
 def is_process_running(pid: int) -> bool:

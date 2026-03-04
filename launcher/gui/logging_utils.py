@@ -2,8 +2,12 @@ import os
 import time
 
 from pixsim_logging.file_rotation import rotate_file, append_line
+try:
+    from ..core.paths import LAUNCHER_LOG_DIR
+except ImportError:
+    from launcher.core.paths import LAUNCHER_LOG_DIR
 
-LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'logs', 'launcher')
+LOG_DIR = str(LAUNCHER_LOG_DIR)
 MAX_BYTES = 5 * 1024 * 1024
 BACKUPS = 3
 

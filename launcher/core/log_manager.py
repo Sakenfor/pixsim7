@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Callable
 from datetime import datetime
 from .types import ServiceState
+from .paths import CONSOLE_LOG_DIR
 
 
 class LogManager:
@@ -49,7 +50,7 @@ class LogManager:
 
         Args:
             states: Dictionary of service states
-            log_dir: Directory for log files (default: data/logs/console)
+            log_dir: Directory for log files (default: launcher canonical console log dir)
             max_log_lines: Maximum lines to keep in memory per service
             monitor_interval: How often to check log files for new content (seconds)
             log_callback: Optional callback for new log lines (service_key, line)
@@ -61,8 +62,7 @@ class LogManager:
 
         # Set up log directory
         if log_dir is None:
-            root = Path(__file__).parent.parent.parent
-            log_dir = root / 'data' / 'logs' / 'console'
+            log_dir = CONSOLE_LOG_DIR
 
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)

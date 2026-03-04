@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Callable
 
+from .paths import CONSOLE_LOG_DIR
+
 
 @dataclass
 class ProcessManagerConfig:
@@ -18,7 +20,7 @@ class ProcessManagerConfig:
     Centralizes all process management settings in one place.
     """
     # Logging
-    log_dir: Optional[Path] = None  # Directory for console logs (default: data/logs/console)
+    log_dir: Optional[Path] = None  # Directory for console logs (default: launcher canonical console log dir)
 
     # Events
     event_callback: Optional[Callable] = None  # Callback for process events
@@ -66,7 +68,7 @@ class LogManagerConfig:
     Centralizes all log management settings.
     """
     # Storage
-    log_dir: Optional[Path] = None  # Directory for log files (default: data/logs/console)
+    log_dir: Optional[Path] = None  # Directory for log files (default: launcher canonical console log dir)
     max_log_lines: int = 5000  # Maximum lines to keep in memory per service
 
     # Monitoring
@@ -183,11 +185,11 @@ def create_default_config(root_dir: Optional[Path] = None) -> LauncherConfig:
         LauncherConfig with sensible defaults
     """
     if root_dir is None:
-        # Try to infer root from this file's location
-        # launcher_core is in pixsim7/launcher_core, so root is 2 levels up
+        # Try to infer root from this file's location.
+        # launcher/core lives under repo root at pixsim7/launcher/core.
         root_dir = Path(__file__).parent.parent.parent
 
-    log_dir = root_dir / 'data' / 'logs' / 'console'
+    log_dir = CONSOLE_LOG_DIR
 
     return LauncherConfig(
         process=ProcessManagerConfig(

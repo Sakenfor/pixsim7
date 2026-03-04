@@ -19,6 +19,7 @@ from .types import (
     HealthStatus,
     ProcessEvent
 )
+from .paths import CONSOLE_LOG_DIR
 
 # Import Windows Job Objects for robust process tree management
 try:
@@ -46,7 +47,7 @@ class ProcessManager:
 
         Args:
             services: List of service definitions to manage
-            log_dir: Directory for console logs (default: data/logs/console)
+            log_dir: Directory for console logs (default: launcher canonical console log dir)
             event_callback: Optional callback for process events
         """
         self.services: Dict[str, ServiceDefinition] = {s.key: s for s in services}
@@ -57,10 +58,7 @@ class ProcessManager:
 
         # Set up log directory
         if log_dir is None:
-            # Default to data/logs/console relative to project root
-            # Assume we're in pixsim7/launcher_core, so go up to root
-            root = Path(__file__).parent.parent.parent
-            log_dir = root / 'data' / 'logs' / 'console'
+            log_dir = CONSOLE_LOG_DIR
 
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)

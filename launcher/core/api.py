@@ -9,9 +9,10 @@ import json
 from typing import Optional, Dict, List, Any
 from pathlib import Path
 
+from .paths import CACHE_DIR
+
 
 DEFAULT_API_URL = "http://localhost:8000"
-CACHE_DIR = Path("data/cache")
 
 
 class BackendAPIClient:
@@ -57,7 +58,7 @@ class BackendAPIClient:
         Updates cache if API call succeeds.
 
         Args:
-            cache_file: Path to cache file (default: data/cache/console_fields.json)
+            cache_file: Path to cache file (default: launcher canonical cache dir / console_fields.json)
 
         Returns:
             List of field definitions, or None if both API and cache fail

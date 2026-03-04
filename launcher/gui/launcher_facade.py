@@ -13,11 +13,13 @@ from PySide6.QtCore import QObject
 try:
     from .services import ServiceDef, build_services_from_manifests
     from .qt_bridge import QtEventBridge
-    from .config import ROOT, UIState, load_ui_state
+    from .config import ROOT, load_ui_state
+    from ..core.paths import CONSOLE_LOG_DIR
 except ImportError:
     from services import ServiceDef, build_services_from_manifests
     from qt_bridge import QtEventBridge
-    from config import ROOT, UIState, load_ui_state
+    from config import ROOT, load_ui_state
+    from launcher.core.paths import CONSOLE_LOG_DIR
 
 try:
     from launcher.core import (
@@ -152,7 +154,7 @@ class LauncherFacade(QObject):
         self.bridge = QtEventBridge(self)
 
         # Initialize core managers
-        log_dir = Path(ROOT) / 'data' / 'logs' / 'console'
+        log_dir = CONSOLE_LOG_DIR
 
         self.process_mgr = ProcessManager(
             core_services,

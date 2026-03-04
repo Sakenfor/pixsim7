@@ -13,6 +13,8 @@ from typing import Dict, Optional, Any
 import json
 import os
 
+from .paths import LAUNCHER_STATE_DIR
+
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -94,7 +96,9 @@ class LauncherSettings:
 
 
 def _settings_path(root_dir: Optional[Path] = None) -> Path:
-    root = root_dir or DEFAULT_ROOT
+    if root_dir is None:
+        return LAUNCHER_STATE_DIR / "settings.json"
+    root = root_dir
     return root / "data" / "launcher" / "settings.json"
 
 

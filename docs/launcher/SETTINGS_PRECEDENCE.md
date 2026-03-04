@@ -7,8 +7,21 @@ This document describes where launcher settings live and how they are resolved.
 - Service manifests: `pixsim.service` in `package.json` or `pixsim.service.json`
 - Launcher profiles (UI presets): `launcher/profiles.json`
 - Explicit overrides: `.env`
-- Launcher settings contract (runtime flags): `data/launcher/settings.json`
+- Launcher settings contract (runtime flags): `launcher/core/paths.py -> LAUNCHER_STATE_DIR/settings.json`
 - GUI-only state (window/layout): `launcher/gui/launcher.json`
+
+## Canonical Runtime Paths
+
+Launcher runtime storage paths are centralized in `launcher/core/paths.py`:
+
+- `CACHE_DIR` -> `data/cache`
+- `CONSOLE_LOG_DIR` -> `data/logs/console`
+- `LAUNCHER_LOG_DIR` -> `data/logs/launcher`
+- `LAUNCHER_STATE_DIR` -> `data/launcher` (includes `settings.json` and launcher PID)
+
+Notes:
+- Launcher services should import these constants/helpers instead of rebuilding `data/...` paths locally.
+- These runtime directories are currently repo-root based, not configured via env variables.
 
 ## Resolution Order
 

@@ -29,6 +29,7 @@ try:
         read_env_file, write_env_file, set_sql_logging, set_backend_log_level, set_worker_debug_flags,
         set_use_local_datastores
     )
+    from ..core.paths import launcher_log_file
     from .docker_utils import compose_ps, compose_up_detached, compose_down
     from .dialogs.git_tools_dialog import show_git_tools_dialog
     from .dialogs.simple_git_dialog import show_simple_git_dialog
@@ -47,6 +48,7 @@ except ImportError:
         read_env_file, write_env_file, set_sql_logging, set_backend_log_level, set_worker_debug_flags,
         set_use_local_datastores
     )
+    from launcher.core.paths import launcher_log_file
     from docker_utils import compose_ps, compose_up_detached, compose_down
     from dialogs.git_tools_dialog import show_git_tools_dialog
     from dialogs.simple_git_dialog import show_simple_git_dialog
@@ -170,10 +172,9 @@ def _startup_trace(message: str) -> None:
     if not STARTUP_TRACE_ENABLED:
         return
     try:
-        root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-        trace_path = os.path.join(root_path, 'data', 'logs', 'launcher', 'startup_trace.log')
-        os.makedirs(os.path.dirname(trace_path), exist_ok=True)
-        with open(trace_path, 'a', encoding='utf-8') as f:
+        trace_path = launcher_log_file("startup_trace.log")
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        with trace_path.open('a', encoding='utf-8') as f:
             f.write(f"{datetime.now().isoformat()} {message}\n")
     except Exception:
         pass
@@ -1705,7 +1706,7 @@ class LauncherWindow(QWidget):
         """Attach console view to the selected service's log file.
 
         This is useful when the service was started outside the launcher
-        but is still writing to data/logs/console/{key}.log.
+        but is still writing to the canonical console log directory.
         """
         if not self.selected_service_key or self.selected_service_key not in self.processes:
             return
