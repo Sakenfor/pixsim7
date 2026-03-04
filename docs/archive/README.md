@@ -12,9 +12,10 @@ This directory contains historical documentation from major refactoring phases. 
 
 ## Contents
 
-- `completed/` - Major completed features
+- `completed/` - Major completed features and fully-implemented plans
 - `completed-refactoring/` - Schema and migration docs
-- `claude-tasks-legacy/` - Historical AI task tracking files (architecture has since shifted)
+- `actions-legacy/` - Legacy action block docs (superseded by block primitives)
+- `claude-tasks-legacy/` - Historical AI task tracking files (136 files, architecture has since shifted)
 - `deprecated-docs/` - Redundant documentation consolidated from main docs
 
 ## Current Documentation

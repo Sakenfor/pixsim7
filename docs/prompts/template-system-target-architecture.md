@@ -2,7 +2,7 @@
 
 > Date: 2026-02-23
 > Scope: Implementation-oriented target architecture for connecting existing systems.
-> Status: Proposed (separate from `docs/prompt-template-system-current-state.md`)
+> Status: Proposed (separate from `docs/prompts/template-system-current-state.md`)
 
 ---
 

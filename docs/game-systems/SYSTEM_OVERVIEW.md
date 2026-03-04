@@ -166,6 +166,31 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 
 ---
 
+### Frontend Catalog Resolver Layer
+
+Read-heavy catalog queries are now routed through a shared resolver layer instead of ad-hoc direct list calls from each panel:
+
+- `apps/main/src/lib/resolvers/resolverRegistry.ts`
+- `apps/main/src/lib/resolvers/gameCatalogResolvers.ts`
+- `apps/main/src/lib/resolvers/sessionResolvers.ts`
+- `apps/main/src/lib/resolvers/projectResolvers.ts`
+- `apps/main/src/lib/resolvers/blockCatalogResolvers.ts`
+
+Use resolver APIs for shared reads:
+
+- `resolveGameWorlds`, `resolveGameLocations`, `resolveGameNpcs`
+- `resolveGameSessions`
+- `resolveSavedGameProjects`
+- `resolveBlockTemplates`, `resolveBlockPrimitives`, `resolveContentPacks`
+
+Operational rules:
+
+1. Pass `consumerId` from callers for observability/usage tracking.
+2. Prefer resolver cache policies over duplicating fetch logic in each panel.
+3. Keep mutations (`create/update/delete`) on direct API clients; resolver layer is for reads.
+
+---
+
 ### Scene Editor & Graph: Node-Based Authoring
 
 **`apps/main/src/features/graph/components/scene-graph-v2/SceneGraphPanel.tsx`** – Visual graph editor:

@@ -974,7 +974,7 @@ See [Prompt Companion Plugin](../plugins/prompt-companion.md) for detailed docum
 - [Gallery Tools Plugin](./GALLERY_TOOLS_PLUGIN.md)
 - [Graph Renderer Plugins](./GRAPH_RENDERER_PLUGINS.md)
 - [Gizmo Surfaces and Debug Dashboards](./GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md)
-- [Session Helper Reference](./SESSION_HELPER_REFERENCE.md)
+- [Session Helper Reference](../../generated/SESSION_HELPERS.md)
 - [Interaction Authoring Guide](./INTERACTION_AUTHORING_GUIDE.md)
 - [App Capability Registry](./APP_CAPABILITY_REGISTRY.md)
 - [Comic Panels System](./COMIC_PANELS.md)

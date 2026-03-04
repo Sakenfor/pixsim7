@@ -2,7 +2,7 @@
 
 > Date: 2026-02-23
 > Status: Exploration / RFC
-> Related: `docs/prompt-template-system-target-architecture.md`, `docs/game-systems/GRAPH_SYSTEM.md`
+> Related: `docs/prompts/template-system-target-architecture.md`, `docs/game-systems/GRAPH_SYSTEM.md`
 
 ---
 
@@ -499,7 +499,7 @@ interface ChainStepExecutionState {
 }
 ```
 
-**Note:** `guidance_plan` should follow the provider-agnostic schema in `docs/prompt-guidance-plan-v1.md` and remain separate from provider formatter output. Provider-specific attachment decisions, image-slot numbering, and legend text are derived later.
+**Note:** `guidance_plan` should follow the provider-agnostic schema in `docs/prompts/guidance-plan-v1.md` and remain separate from provider formatter output. Provider-specific attachment decisions, image-slot numbering, and legend text are derived later.
 
 ### Backend model (Python)
 
@@ -558,9 +558,9 @@ GraphNode { id, type: 'gen_step', data: { template_id }, edges: [next_step_id] }
 
 ## 10. Relationship to Existing Architecture Docs
 
-- **Prompt template target architecture** (`docs/prompt-template-system-target-architecture.md`) — Section 8 ("Template as Structured Scene Request") describes templates becoming game-facing artifacts. Sequential chains extend this: a chain is a multi-step scene request.
+- **Prompt template target architecture** (`docs/prompts/template-system-target-architecture.md`) — Section 8 ("Template as Structured Scene Request") describes templates becoming game-facing artifacts. Sequential chains extend this: a chain is a multi-step scene request.
 
-- **Prompt guidance plan v1** (`docs/prompt-guidance-plan-v1.md`) — Defines the provider-agnostic runtime schema (`references`, `regions`, `masks`, `constraints`) that can be carried per-step in chain execution via `runContext.guidance_plan`.
+- **Prompt guidance plan v1** (`docs/prompts/guidance-plan-v1.md`) — Defines the provider-agnostic runtime schema (`references`, `regions`, `masks`, `constraints`) that can be carried per-step in chain execution via `runContext.guidance_plan`.
 
 - **Graph system** (`docs/game-systems/GRAPH_SYSTEM.md`) — The gen_step node type (Phase 2) would register alongside existing scene/arc node types. The shared validation, dependency tracking, and undo/redo systems apply directly.
 

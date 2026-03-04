@@ -1,6 +1,6 @@
 # Game Systems
 
-Documentation for game mechanics, world systems, and scene/world editors.
+Documentation for game mechanics, world systems, NPCs, interactions, relationships, and scene/world editors.
 
 ## Overview & Architecture
 
@@ -49,13 +49,27 @@ Documentation for game mechanics, world systems, and scene/world editors.
 ## Game Mechanics
 
 - **[GAMEPLAY_SYSTEMS.md](./GAMEPLAY_SYSTEMS.md)** - Relationship, quest, and game systems reference
-  - Relationship system
-  - Quest systems
-  - Core mechanics
+
+## NPC & Zone Systems
+
+- **[NPC_INTERACTIVE_ZONES_DESIGN.md](./NPC_INTERACTIVE_ZONES_DESIGN.md)** - Zone system design and metadata-driven approach
+- **[NPC_ZONE_TRACKING_SYSTEM.md](./NPC_ZONE_TRACKING_SYSTEM.md)** - Advanced zone tracking across video segments
+- **[NPC_RESPONSE_GRAPH_DESIGN.md](./NPC_RESPONSE_GRAPH_DESIGN.md)** - Node-based visual programming for NPC reactions
+- **[NPC_RESPONSE_USAGE.md](./NPC_RESPONSE_USAGE.md)** - Practical guide for the response system
+- **[NPC_RESPONSE_VIDEO_INTEGRATION.md](./NPC_RESPONSE_VIDEO_INTEGRATION.md)** - Video generation integration
+
+## Interaction System
+
+- **[INTERACTION_PLUGIN_MANIFEST.md](./INTERACTION_PLUGIN_MANIFEST.md)** - Plugin contract and interface specification
+- **[INTERACTION_SYSTEM_MIGRATION.md](./INTERACTION_SYSTEM_MIGRATION.md)** - Migration to plugin-based architecture
+
+## Relationships
+
+- **[RELATIONSHIPS_AND_ARCS.md](./RELATIONSHIPS_AND_ARCS.md)** - Relationship system and story arc design
 
 ---
 
 **Related:**
 - [../narrative/](../narrative/) – Dialogue systems
-- [../actions/](../actions/) – Action blocks *(deprecated — replaced by block primitives; see [../architecture/block-primitives-evolution.md](../architecture/block-primitives-evolution.md))*
+- [../stats-and-systems/](../stats-and-systems/) – Stat mechanics
 - [../architecture/block-primitives-evolution.md](../architecture/block-primitives-evolution.md) – Current block/primitives system

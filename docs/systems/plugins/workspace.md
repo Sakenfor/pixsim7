@@ -362,5 +362,5 @@ UI plugins are sandboxed for safety:
 
 - [Plugin System Overview](./PLUGIN_SYSTEM.md)
 - [Plugin Catalog](./PLUGIN_CATALOG.md)
-- [Session Helper Reference](./SESSION_HELPER_REFERENCE.md)
+- [Session Helper Reference](../../generated/SESSION_HELPERS.md)
 - [Interaction Plugin Manifest](./INTERACTION_PLUGIN_MANIFEST.md)

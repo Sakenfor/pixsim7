@@ -461,7 +461,7 @@ export function filterByCapability(
 ## See Also
 
 - [Plugin System Overview](./PLUGIN_SYSTEM.md)
-- [Session Helper Reference](./SESSION_HELPER_REFERENCE.md)
+- [Session Helper Reference](../../generated/SESSION_HELPERS.md)
 - [Interaction Plugin Manifest](./INTERACTION_PLUGIN_MANIFEST.md)
 - [Gallery Tools Plugin](./GALLERY_TOOLS_PLUGIN.md)
 - [Provider Capability Registry](./PROVIDER_CAPABILITY_REGISTRY.md)

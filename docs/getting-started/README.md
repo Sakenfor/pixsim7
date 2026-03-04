@@ -19,10 +19,6 @@ Documentation for initial setup, configuration, and basic usage of PixSim7.
   - Starting the application
   - Launcher features and commands
 
-- **[ADMIN_PANEL.md](./ADMIN_PANEL.md)** - Admin panel usage and features guide
-  - Admin dashboard
-  - System management
-
 ---
 
 **Next:** See [../repo-map.md](../repo-map.md) for a comprehensive overview of repository structure.

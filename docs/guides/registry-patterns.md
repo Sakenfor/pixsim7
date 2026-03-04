@@ -1,6 +1,6 @@
 # Registry Patterns in PixSim7
 
-**Last Updated:** 2025-11-20
+**Last Updated:** 2026-03-03
 **Status:** Documentation of current state + migration plan to unified pattern
 
 ---
@@ -14,6 +14,29 @@ PixSim7 currently has **10+ different registry implementations** with inconsiste
 - **Plugin ecosystem fragmentation** - No clear "one way" to register extensions
 - **Feature duplication** - Some registries have locking/stats, others don't
 - **Deprecation debt** - Old registries marked DEPRECATED but still in use
+
+---
+
+## Frontend Resolver Registry (Current Canon for Read Paths)
+
+For frontend data-access reads, use the resolver layer in:
+
+- `apps/main/src/lib/resolvers/resolverRegistry.ts`
+- `apps/main/src/lib/resolvers/*Resolvers.ts`
+
+Current domain resolver modules:
+
+- `gameCatalogResolvers` (`resolveGameWorlds`, `resolveGameLocations`, `resolveGameNpcs`)
+- `sessionResolvers` (`resolveGameSessions`)
+- `projectResolvers` (`resolveSavedGameProjects`)
+- `blockCatalogResolvers` (`resolveBlockTemplates`, `resolveBlockPrimitives`, `resolveContentPacks`)
+
+Pattern rules:
+
+1. Use resolver APIs for list/catalog/query reads that are shared across panels/routes.
+2. Pass a stable `consumerId` in each call for observability and consumption tracking.
+3. Keep write/mutation flows on direct domain API clients; do not route mutations through resolver registry.
+4. Use resolver-level cache controls (`cachePolicy`, TTL, `bypassCache`) rather than ad-hoc component-local caches.
 
 ---
 

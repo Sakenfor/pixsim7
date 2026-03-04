@@ -4,7 +4,7 @@ API references and technical specifications for core systems.
 
 ## Session & Helpers
 
-- **[SESSION_HELPER_REFERENCE.md](./SESSION_HELPER_REFERENCE.md)** - Session helper API reference and types
+- **[Session Helpers](../generated/SESSION_HELPERS.md)** - Auto-generated session helper API reference
 
 ## Character Systems
 

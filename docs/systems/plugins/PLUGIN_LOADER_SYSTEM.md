@@ -651,7 +651,7 @@ export default defineConfig({
 
 - [PLUGIN_SYSTEM.md](./PLUGIN_SYSTEM.md) - Complete plugin system guide
 - [apps/main/src/plugins/README.md](../apps/main/src/plugins/README.md) - Plugin directory guide
-- [Session Helper Reference](./SESSION_HELPER_REFERENCE.md) - Helper API docs
+- [Session Helper Reference](../../generated/SESSION_HELPERS.md) - Helper API docs
 - [Interaction System](./BACKEND_INTERACTION_DISPATCHER.md) - Interaction architecture
 
 ---

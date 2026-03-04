@@ -17,10 +17,8 @@ Documentation for UI systems, layouts, overlays, and gizmo displays.
 
 - **[GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md](./GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md)** - Gizmo surface registry and debug dashboards
 
-## Display Modes
-
-- **[GAME_WORLD_DISPLAY_MODES.md](../game-systems/GAME_WORLD_DISPLAY_MODES.md)** - Different display modes for game worlds *(moved to `docs/game-systems/`)*
-
 ---
 
-**Related:** See [controls/](../controls/) for control center and cube systems.
+**Related:**
+- [controls/](../controls/) for control center and cube systems
+- [../game-systems/GAME_WORLD_DISPLAY_MODES.md](../game-systems/GAME_WORLD_DISPLAY_MODES.md) for game world display modes

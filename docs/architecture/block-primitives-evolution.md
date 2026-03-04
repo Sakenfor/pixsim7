@@ -6,6 +6,8 @@
 > Update (March 1, 2026): Runtime and game dialogue now resolve through primitives-first composition (`dynamic_slot_planner -> compiler_v1 -> next_v1`). Legacy `/api/v1/action_blocks`, `routes/action_blocks`, and the ActionEngine selector stack were removed from active backend runtime wiring.
 >
 > Update (March 2, 2026): PromptBlock retirement progressed further. Active write/query paths now target `BlockPrimitive`, block references in main DB moved to canonical string `block_id` values, and PromptBlock is now legacy/archive-only for remaining historical surfaces.
+>
+> Update (March 3, 2026): Frontend catalog reads were consolidated behind `apps/main/src/lib/resolvers/*` (`resolverRegistry` + domain resolver modules). World/location/NPC/session/project/template/content-pack reads now use resolver APIs with explicit `consumerId` tracking instead of ad-hoc direct list calls.
 
 ## Current State (March 2026)
 
@@ -52,6 +54,11 @@ Deliberately simple:
 - Template slots and runtime resolution now use primitives as the active source.
 - Runtime query mode resolves through planner/compiler/resolver instead of the legacy selector stack.
 - Template service primitive query path is the only supported block source in active roll/resolve flow.
+- Frontend read-path access is now registry-backed for catalog data:
+  - `game.catalog.*` (worlds, locations, npcs)
+  - `game.catalog.sessions`
+  - `game.catalog.saved-projects`
+  - `blocks.catalog.*` (templates, primitives, content packs)
 - `_CATEGORY_FALLBACK` in composition_role_inference.py maps primitive categories to composition roles
 - Block matrix panel supports viewing both sources
 - Primitives support `frame` field for spatial wrapping (e.g., `"{text} from the left side"`)

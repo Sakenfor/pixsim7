@@ -24,6 +24,7 @@ This directory contains architectural documentation for PixSim7 — specs, desig
 
 **System Architecture**
 - [Scene Concepts Map](./scene-concepts-map.md) - Distinguishes Scene Prep vs game/runtime scenes vs legacy scene concepts.
+- [ContextHub Authoring Context Plan](./contexthub-authoring-context-implementation-plan.md) - Canonical rollout plan for project/world context inheritance across panels.
 - [Capability-Driven QuickGen](./capability-driven-quickgen.md) - ContextHub capability contracts for portable QuickGen panels.
 - [Generic Links](./generic-links.md) - Template-to-runtime link pattern (ObjectLink, FieldMapping, activation).
 - [Backend Game Extraction](./backend-game-extraction.md) - Dual-DB monolith plan for game data isolation.
@@ -34,9 +35,9 @@ This directory contains architectural documentation for PixSim7 — specs, desig
 ### Snapshots (historical reference)
 - [Prompt Pipeline Current State](./prompt-pipeline-current-state.md) - Pre-redesign snapshot of compiler/resolver pipeline. **Superseded by** [Block Primitives Evolution](./block-primitives-evolution.md) for current block system state.
 
-### Completed (historical reference)
-- [Sync Synthetic Generation](./sync-synthetic-generation-plan.md) - Synthetic generation records for synced assets. **Fully implemented.**
-- [Shared Packages Domain Reorg](./shared-packages-domain-reorg.md) - `packages/shared` rename to dotted form. **Fully implemented.**
+### Completed (archived)
+- [Sync Synthetic Generation](../archive/completed/sync-synthetic-generation-plan.md) - Synthetic generation records for synced assets. **Fully implemented.**
+- [Shared Packages Domain Reorg](../archive/completed/shared-packages-domain-reorg.md) - `packages/shared` rename to dotted form. **Fully implemented.**
 
 ### Reference
 - [Action Registry](./action-registry.md) - Auto-generated action table from module pages.
