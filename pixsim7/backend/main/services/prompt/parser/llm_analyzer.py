@@ -7,12 +7,16 @@ Produces output compatible with SimplePromptParser for unified processing.
 
 import logging
 import re
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 from pixsim7.backend.main.services.prompt.tag_derivation import (
     derive_structured_and_flat_tags,
 )
+from pixsim7.backend.main.services.llm.ai_hub_service import AiHubService
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +76,8 @@ async def analyze_prompt_with_llm(
     provider_id: Optional[str] = None,
     instance_config: Optional[Dict[str, Any]] = None,
     role_registry: Optional[PromptRoleRegistry] = None,
+    db: Optional["AsyncSession"] = None,
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Analyze prompt using an LLM for deeper semantic understanding.
@@ -81,6 +87,8 @@ async def analyze_prompt_with_llm(
         model_id: LLM model to use (e.g., "claude-sonnet-4", "gpt-4")
         provider_id: Provider ID (e.g., "anthropic-llm", "openai-llm")
         instance_config: Optional provider instance config override
+        db: Optional database session for centralized AI Hub runtime resolution
+        user_id: Optional user ID for credential/account resolution when db is provided
 
     Returns:
         Dict with same format as analyze_prompt():
@@ -95,19 +103,17 @@ async def analyze_prompt_with_llm(
     from pixsim7.backend.main.services.llm.registry import llm_registry
     from pixsim7.backend.main.shared.errors import ProviderNotFoundError, ProviderError
 
-    if not provider_id:
-        provider_id = "anthropic-llm"
-    if not model_id:
-        model_id = "claude-sonnet-4-20250514"
-
-    logger.info(f"LLM prompt analysis: provider={provider_id}, model={model_id}")
+    ai_hub = AiHubService(db)
+    resolved_provider_id, resolved_model_id = await ai_hub.resolve_provider_and_model(
+        provider_id=provider_id,
+        model_id=model_id,
+    )
+    logger.info(
+        "LLM prompt analysis: provider=%s, model=%s",
+        resolved_provider_id,
+        resolved_model_id,
+    )
     role_registry = role_registry or PromptRoleRegistry.default()
-
-    try:
-        llm_provider = llm_registry.get(provider_id)
-    except ProviderNotFoundError:
-        logger.warning(f"LLM provider {provider_id} not found, falling back to simple parser")
-        return await _fallback_to_simple(text)
 
     config = instance_config or {}
     analysis_system_prompt = config.get("analysis_system_prompt")
@@ -120,18 +126,38 @@ async def analyze_prompt_with_llm(
     }
 
     user_prompt = _build_user_prompt(text, analysis_user_prompt)
-    use_compact_system_prompt = provider_id == "local-llm"
+    use_compact_system_prompt = resolved_provider_id == "local-llm"
 
     try:
         full_prompt = f"{_build_system_prompt(role_registry, analysis_system_prompt, compact=use_compact_system_prompt)}\n\n{user_prompt}"
 
-        response_text = await llm_provider.edit_prompt(
-            model_id=model_id,
-            prompt_before=full_prompt,
-            context={"mode": "prompt_analysis"},
-            account=None,
-            instance_config=provider_config or None,
-        )
+        if db is not None:
+            execution = await ai_hub.execute_prompt(
+                provider_id=resolved_provider_id,
+                model_id=resolved_model_id,
+                prompt_before=full_prompt,
+                context={"mode": "prompt_analysis"},
+                user_id=user_id,
+                instance_config=provider_config or None,
+            )
+            response_text = execution["prompt_after"]
+        else:
+            try:
+                llm_provider = llm_registry.get(resolved_provider_id)
+            except ProviderNotFoundError:
+                logger.warning(
+                    "LLM provider %s not found, falling back to simple parser",
+                    resolved_provider_id,
+                )
+                return await _fallback_to_simple(text)
+
+            response_text = await llm_provider.edit_prompt(
+                model_id=resolved_model_id,
+                prompt_before=full_prompt,
+                context={"mode": "prompt_analysis"},
+                account=None,
+                instance_config=provider_config or None,
+            )
 
         cleaned = _clean_json_response(response_text)
         result = json.loads(cleaned)

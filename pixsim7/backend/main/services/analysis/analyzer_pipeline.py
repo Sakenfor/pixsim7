@@ -109,7 +109,7 @@ def resolve_analyzer_execution(request: AnalyzerExecutionRequest) -> ResolvedAna
             explicit_provider_id=request.explicit_provider_id,
             analyzer_provider_id=analyzer.provider_id,
             user_provider_id=request.user_llm_provider_id,
-            fallback_provider_id=request.fallback_provider_id or "anthropic-llm",
+            fallback_provider_id=request.fallback_provider_id,
         )
         model_id = resolve_llm_model_id(
             explicit_model_id=request.explicit_model_id,

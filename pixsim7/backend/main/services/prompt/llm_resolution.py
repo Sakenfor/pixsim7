@@ -39,8 +39,8 @@ def resolve_llm_provider_id(
     explicit_provider_id: Optional[str],
     analyzer_provider_id: Optional[str],
     user_provider_id: Optional[str],
-    fallback_provider_id: str = "anthropic-llm",
-) -> str:
+    fallback_provider_id: Optional[str] = None,
+) -> Optional[str]:
     """
     Resolve effective LLM provider ID.
 
@@ -48,13 +48,13 @@ def resolve_llm_provider_id(
     1. explicit request/instance provider
     2. analyzer default provider
     3. user preference provider
-    4. fallback provider
+    4. fallback provider (optional)
     """
     return (
         normalize_llm_provider_id(explicit_provider_id)
         or normalize_llm_provider_id(analyzer_provider_id)
         or normalize_llm_provider_id(user_provider_id)
-        or fallback_provider_id
+        or normalize_llm_provider_id(fallback_provider_id)
     )
 
 
@@ -64,7 +64,7 @@ def resolve_llm_model_id(
     analyzer_model_id: Optional[str],
     user_model_id: Optional[str],
     user_provider_id: Optional[str],
-    resolved_provider_id: str,
+    resolved_provider_id: Optional[str],
 ) -> Optional[str]:
     """
     Resolve effective model ID.
@@ -74,6 +74,10 @@ def resolve_llm_model_id(
     """
     if explicit_model_id:
         return explicit_model_id
-    if user_model_id and normalize_llm_provider_id(user_provider_id) == resolved_provider_id:
+    if (
+        user_model_id
+        and resolved_provider_id
+        and normalize_llm_provider_id(user_provider_id) == resolved_provider_id
+    ):
         return user_model_id
     return analyzer_model_id

@@ -4,7 +4,7 @@ AI Hub Service - orchestrates LLM operations for prompt editing
 This service manages AI-assisted prompt editing using configured LLM providers.
 """
 import logging
-from typing import Optional
+from typing import Optional, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -12,6 +12,7 @@ from pixsim7.backend.main.domain import User, AiInteraction
 from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.services.llm.registry import llm_registry
 from pixsim7.backend.main.services.ai_model import ai_model_registry, get_default_model
+from pixsim7.backend.main.services.prompt.llm_resolution import normalize_llm_provider_id
 from pixsim7.backend.main.shared.schemas.ai_model_schemas import AiModelCapability
 from pixsim7.backend.main.shared.errors import (
     ProviderNotFoundError,
@@ -21,6 +22,17 @@ from pixsim7.backend.main.shared.errors import (
 import time
 
 logger = logging.getLogger(__name__)
+
+_PROVIDER_TO_AI_SETTINGS_KEY = {
+    "anthropic-llm": "anthropic_api_key",
+    "openai-llm": "openai_api_key",
+}
+
+_DEFAULT_MODEL_BY_PROVIDER = {
+    "anthropic-llm": "claude-sonnet-4-20250514",
+    "openai-llm": "gpt-4",
+    "local-llm": "smollm2-1.7b",
+}
 
 
 class AiHubService:
@@ -36,6 +48,229 @@ class AiHubService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def execute_prompt(
+        self,
+        *,
+        provider_id: str | None,
+        model_id: str | None,
+        prompt_before: str,
+        context: dict | None = None,
+        user: User | None = None,
+        user_id: int | None = None,
+        instance_id: int | None = None,
+        instance_config: dict | None = None,
+        enforce_rate_limit: bool = False,
+    ) -> dict:
+        """
+        Execute an LLM prompt call with centralized provider/model/account resolution.
+
+        This is the shared runtime path used by AI Hub and prompt analyzers.
+        """
+        resolved_user_id = user.id if user is not None else user_id
+        resolved_provider_id, resolved_model_id = await self._resolve_provider_and_model(
+            provider_id=provider_id,
+            model_id=model_id,
+        )
+
+        if enforce_rate_limit and resolved_user_id is not None:
+            self._apply_rate_limit(
+                user_id=resolved_user_id,
+                provider_id=resolved_provider_id,
+            )
+
+        try:
+            llm_provider = llm_registry.get(resolved_provider_id)
+        except ProviderNotFoundError:
+            logger.error(f"LLM provider not found: {resolved_provider_id}")
+            raise
+
+        resolved_user = user
+        if resolved_user is None and resolved_user_id is not None:
+            resolved_user = await self._get_user(resolved_user_id)
+
+        account = None
+        if resolved_user is not None:
+            account = await self._get_llm_account(resolved_user, resolved_provider_id)
+
+        resolved_instance_config: dict | None = None
+        if instance_id:
+            resolved_instance_config = await self._get_instance_config(
+                instance_id,
+                resolved_provider_id,
+            )
+
+        merged_config = {}
+        if isinstance(resolved_instance_config, dict):
+            merged_config.update(resolved_instance_config)
+        if isinstance(instance_config, dict):
+            merged_config.update(instance_config)
+
+        user_settings = await self._load_user_ai_settings(resolved_user_id)
+        effective_instance_config = self._inject_api_key_from_settings(
+            merged_config or None,
+            resolved_provider_id,
+            user_settings,
+        )
+
+        try:
+            prompt_after = await llm_provider.edit_prompt(
+                model_id=resolved_model_id,
+                prompt_before=prompt_before,
+                context=context,
+                account=account,
+                instance_config=effective_instance_config,
+            )
+        except Exception as e:
+            logger.error(f"LLM provider edit failed: {e}")
+            raise
+
+        return {
+            "prompt_after": prompt_after,
+            "provider_id": resolved_provider_id,
+            "model_id": resolved_model_id,
+        }
+
+    async def get_user_llm_preferences(
+        self,
+        user_id: int | None,
+    ) -> tuple[Optional[str], Optional[str]]:
+        """
+        Return normalized provider/model preferences from UserAISettings.
+        """
+        user_settings = await self._load_user_ai_settings(user_id)
+        if not user_settings:
+            return None, None
+        return (
+            normalize_llm_provider_id(getattr(user_settings, "llm_provider", None)),
+            getattr(user_settings, "llm_default_model", None),
+        )
+
+    async def resolve_provider_and_model(
+        self,
+        *,
+        provider_id: str | None,
+        model_id: str | None,
+    ) -> tuple[str, str]:
+        """
+        Public wrapper for centralized provider/model resolution policy.
+        """
+        return await self._resolve_provider_and_model(
+            provider_id=provider_id,
+            model_id=model_id,
+        )
+
+    async def _resolve_provider_and_model(
+        self,
+        *,
+        provider_id: str | None,
+        model_id: str | None,
+    ) -> tuple[str, str]:
+        """
+        Resolve effective provider/model for execution.
+
+        Policy:
+        - provider-bound calls stay provider-bound
+        - AI-model capability defaults apply only when both provider/model are missing
+        """
+        resolved_model_id = model_id
+        resolved_provider_id = normalize_llm_provider_id(provider_id) or provider_id
+        model_provider_id: Optional[str] = None
+
+        # If model is known in AI model catalog, infer provider from model.
+        if resolved_model_id:
+            try:
+                model = ai_model_registry.get(resolved_model_id)
+                if model:
+                    model_provider_id = (
+                        normalize_llm_provider_id(model.provider_id) or model.provider_id
+                    )
+            except Exception:
+                model_provider_id = None
+
+        if not resolved_provider_id and model_provider_id:
+            resolved_provider_id = model_provider_id
+
+        # If provider/model conflict, keep provider and drop model so we can
+        # deterministically resolve a provider-compatible default model.
+        if (
+            resolved_provider_id
+            and model_provider_id
+            and model_provider_id != resolved_provider_id
+        ):
+            logger.warning(
+                "llm_provider_model_mismatch provider=%s model=%s model_provider=%s",
+                resolved_provider_id,
+                resolved_model_id,
+                model_provider_id,
+            )
+            resolved_model_id = None
+
+        # Provider-known calls should stay provider-bound; resolve model from
+        # provider defaults rather than cross-provider global capability defaults.
+        if resolved_provider_id and not resolved_model_id:
+            resolved_model_id = _DEFAULT_MODEL_BY_PROVIDER.get(resolved_provider_id)
+
+        # Only fully-unspecified calls use AI model capability defaults.
+        if not resolved_provider_id and not resolved_model_id:
+            try:
+                default_model_id = await get_default_model(
+                    self.db,
+                    AiModelCapability.PROMPT_EDIT,
+                    scope_type="global",
+                    scope_id=None,
+                )
+                default_model = ai_model_registry.get(default_model_id)
+                if default_model:
+                    resolved_provider_id = (
+                        normalize_llm_provider_id(default_model.provider_id)
+                        or default_model.provider_id
+                    )
+                    resolved_model_id = default_model_id
+            except Exception as e:
+                logger.warning(
+                    f"Failed to lookup prompt-edit defaults: {e}"
+                )
+
+        if not resolved_provider_id:
+            resolved_provider_id = "openai-llm"
+
+        if not resolved_model_id:
+            resolved_model_id = _DEFAULT_MODEL_BY_PROVIDER.get(
+                resolved_provider_id,
+                "gpt-4",
+            )
+
+        return resolved_provider_id, resolved_model_id
+
+    def _apply_rate_limit(
+        self,
+        *,
+        user_id: int,
+        provider_id: str,
+    ) -> None:
+        """
+        Simple in-process per-user rate limiting for edit flows.
+        """
+        now = time.time()
+        if not hasattr(self, "_last_edit_ts"):
+            self._last_edit_ts: dict[int, float] = {}
+        last = self._last_edit_ts.get(user_id)
+        if last and (now - last) < 1.0:
+            raise ProviderError(
+                provider_id,
+                "Too many prompt edits; please wait a moment and try again.",
+            )
+        self._last_edit_ts[user_id] = now
+
+    async def _get_user(self, user_id: int) -> Optional[User]:
+        if not self.db:
+            return None
+        try:
+            return await self.db.get(User, user_id)
+        except Exception as e:
+            logger.warning(f"Failed to load user {user_id}: {e}")
+            return None
 
     async def edit_prompt(
         self,
@@ -71,94 +306,30 @@ class AiHubService:
             ProviderAuthenticationError: Authentication failed
             ProviderError: LLM API error
         """
-        # Resolve provider_id from AI model catalog if not specified
-        if not provider_id:
-            try:
-                # Get default model for prompt_edit capability
-                default_model_id = await get_default_model(
-                    self.db,
-                    AiModelCapability.PROMPT_EDIT,
-                    scope_type="global",
-                    scope_id=None
-                )
-                # Look up the model in the registry to get its provider_id
-                model = ai_model_registry.get(default_model_id)
-                if model:
-                    provider_id = model.provider_id
-                    logger.info(
-                        f"Using default model '{default_model_id}' with provider '{provider_id}' "
-                        f"for prompt editing"
-                    )
-                else:
-                    # Fallback to hardcoded default if model not found
-                    provider_id = "openai-llm"
-                    logger.warning(
-                        f"Default model '{default_model_id}' not found in registry, "
-                        f"falling back to '{provider_id}'"
-                    )
-            except Exception as e:
-                # Fallback to hardcoded default if lookup fails
-                provider_id = "openai-llm"
-                logger.warning(
-                    f"Failed to lookup default model for prompt editing: {e}, "
-                    f"falling back to '{provider_id}'"
-                )
-
         logger.info(
             f"AI Hub edit_prompt: user={user.id}, provider={provider_id}, "
             f"model={model_id}, gen_id={generation_id}"
         )
 
-        # Simple per-user rate limiting (in-process)
-        # Prevents accidental hammering from dev tools
-        now = time.time()
-        if not hasattr(self, "_last_edit_ts"):
-            self._last_edit_ts: dict[int, float] = {}
-        last = self._last_edit_ts.get(user.id)
-        # Require at least 1 second between edits per user/process
-        if last and (now - last) < 1.0:
-            raise ProviderError(
-                provider_id,
-                "Too many prompt edits; please wait a moment and try again.",
-            )
-        self._last_edit_ts[user.id] = now
-
-        # Get LLM provider from registry
-        try:
-            llm_provider = llm_registry.get(provider_id)
-        except ProviderNotFoundError:
-            logger.error(f"LLM provider not found: {provider_id}")
-            raise
-
-        # Get account for this provider (if configured)
-        # For now, we'll use API keys from environment
-        # Later, users can configure LLM accounts in the database
-        account = await self._get_llm_account(user, provider_id)
-
-        # Get instance config if instance_id is provided
-        instance_config = None
-        if instance_id:
-            instance_config = await self._get_instance_config(instance_id, provider_id)
-
-        # Call LLM provider to edit prompt
-        try:
-            prompt_after = await llm_provider.edit_prompt(
-                model_id=model_id,
-                prompt_before=prompt_before,
-                context=context,
-                account=account,
-                instance_config=instance_config,
-            )
-        except Exception as e:
-            logger.error(f"LLM provider edit failed: {e}")
-            raise
+        execution = await self.execute_prompt(
+            provider_id=provider_id,
+            model_id=model_id,
+            prompt_before=prompt_before,
+            context=context,
+            user=user,
+            instance_id=instance_id,
+            enforce_rate_limit=True,
+        )
+        prompt_after = execution["prompt_after"]
+        resolved_provider_id = execution["provider_id"]
+        resolved_model_id = execution["model_id"]
 
         # Log interaction to database
         interaction = AiInteraction(
             user_id=user.id,
             generation_id=generation_id,
-            provider_id=provider_id,
-            model_id=model_id,
+            provider_id=resolved_provider_id,
+            model_id=resolved_model_id,
             prompt_before=prompt_before,
             prompt_after=prompt_after,
         )
@@ -174,8 +345,8 @@ class AiHubService:
 
         return {
             "prompt_after": prompt_after,
-            "model_id": model_id,
-            "provider_id": provider_id,
+            "model_id": resolved_model_id,
+            "provider_id": resolved_provider_id,
             "interaction_id": interaction.id,
         }
 
@@ -221,77 +392,42 @@ class AiHubService:
             analysis_context=analysis_context,
         )
 
-        # Resolve provider_id and model_id
-        if not model_id:
-            try:
-                # Get default model for prompt_edit capability
-                model_id = await get_default_model(
-                    self.db,
-                    AiModelCapability.PROMPT_EDIT,
-                    scope_type="global",
-                    scope_id=None
-                )
-            except Exception as e:
-                # Fallback to a reasonable default
-                model_id = "gpt-4"
-                logger.warning(
-                    f"Failed to lookup default model for category discovery: {e}, "
-                    f"falling back to '{model_id}'"
-                )
-
-        # Get provider from model
-        provider_id: Optional[str] = None
-        try:
-            model = ai_model_registry.get(model_id)
-            if model:
-                provider_id = model.provider_id
-            else:
-                provider_id = "openai-llm"
-                logger.warning(
-                    f"Model '{model_id}' not found in registry, "
-                    f"falling back to '{provider_id}'"
-                )
-        except Exception:
-            provider_id = "openai-llm"
-
-        logger.info(
-            f"AI Hub category discovery: user={user.id}, provider={provider_id}, "
-            f"model={model_id}, prompt_len={len(prompt_text)}"
-        )
-
-        # Get LLM provider
-        try:
-            llm_provider = llm_registry.get(provider_id)
-        except ProviderNotFoundError:
-            logger.error(f"LLM provider not found: {provider_id}")
-            raise
-
-        # Get account
-        account = await self._get_llm_account(user, provider_id)
-
         # Build the full prompt with system + user instructions
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
         # Call LLM provider
-        # Note: We use edit_prompt's infrastructure but with our own prompt
         try:
-            # Call the provider directly with the analysis prompt
-            # Since edit_prompt expects prompt_before, we'll use a lower-level call
-            # For now, we'll use edit_prompt with a special context flag
             context = {
                 "mode": "category_analysis",
                 "analysis_context": analysis_context,
             }
-
-            response_text = await llm_provider.edit_prompt(
+            execution = await self.execute_prompt(
+                provider_id=None,
                 model_id=model_id,
                 prompt_before=full_prompt,
                 context=context,
-                account=account
+                user=user,
+            )
+            response_text = execution["prompt_after"]
+            resolved_provider_id = execution["provider_id"]
+            resolved_model_id = execution["model_id"]
+            logger.info(
+                f"AI Hub category discovery: user={user.id}, provider={resolved_provider_id}, "
+                f"model={resolved_model_id}, prompt_len={len(prompt_text)}"
             )
         except Exception as e:
             logger.error(f"LLM provider category suggestion failed: {e}")
-            raise ProviderError(provider_id, f"Category suggestion failed: {str(e)}")
+            provider_hint = "openai-llm"
+            if model_id:
+                try:
+                    model = ai_model_registry.get(model_id)
+                    if model:
+                        provider_hint = (
+                            normalize_llm_provider_id(model.provider_id) or model.provider_id
+                        )
+                except Exception:
+                    pass
+            raise ProviderError(provider_hint, f"Category suggestion failed: {str(e)}")
 
         # Parse the JSON response
         import json
@@ -465,6 +601,9 @@ Return your suggestions as a JSON object following the specified schema."""
             ProviderAccount if configured, None otherwise
             (falls back to environment API keys)
         """
+        if not self.db:
+            return None
+
         # Query for user's account for this LLM provider
         stmt = (
             select(ProviderAccount)
@@ -499,6 +638,9 @@ Return your suggestions as a JSON object following the specified schema."""
         Returns:
             Instance config dict if found and enabled, None otherwise
         """
+        if not self.db:
+            return None
+
         from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
 
         service = LlmInstanceService(self.db)
@@ -511,6 +653,51 @@ Return your suggestions as a JSON object following the specified schema."""
 
         logger.debug(f"Using LLM instance {instance_id} config for {provider_id}")
         return instance_config
+
+    async def _load_user_ai_settings(self, user_id: int | None) -> Optional[Any]:
+        """
+        Load UserAISettings for a user if available.
+        """
+        if not user_id or not self.db:
+            return None
+
+        try:
+            from pixsim7.backend.main.domain.core.user_ai_settings import UserAISettings
+
+            result = await self.db.execute(
+                select(UserAISettings).where(UserAISettings.user_id == user_id)
+            )
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.warning(f"Failed to load UserAISettings for user {user_id}: {e}")
+            return None
+
+    @staticmethod
+    def _inject_api_key_from_settings(
+        config: Optional[dict],
+        provider_id: str,
+        user_settings: Optional[Any],
+    ) -> Optional[dict]:
+        """
+        Inject provider API key from UserAISettings when config has no explicit key.
+        """
+        if config and config.get("api_key"):
+            return config
+
+        if not user_settings:
+            return config
+
+        settings_field = _PROVIDER_TO_AI_SETTINGS_KEY.get(provider_id)
+        if not settings_field:
+            return config
+
+        api_key = getattr(user_settings, settings_field, None)
+        if not api_key:
+            return config
+
+        merged = dict(config) if config else {}
+        merged["api_key"] = api_key
+        return merged
 
     def get_available_providers(self) -> list[dict]:
         """

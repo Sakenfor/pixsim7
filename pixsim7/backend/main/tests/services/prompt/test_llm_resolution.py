@@ -37,6 +37,24 @@ def test_resolve_llm_provider_id_precedence():
         )
         == "local-llm"
     )
+    assert (
+        resolve_llm_provider_id(
+            explicit_provider_id=None,
+            analyzer_provider_id=None,
+            user_provider_id=None,
+            fallback_provider_id="openai",
+        )
+        == "openai-llm"
+    )
+    assert (
+        resolve_llm_provider_id(
+            explicit_provider_id=None,
+            analyzer_provider_id=None,
+            user_provider_id=None,
+            fallback_provider_id=None,
+        )
+        is None
+    )
 
 
 def test_resolve_llm_model_id_uses_user_default_only_when_provider_matches():

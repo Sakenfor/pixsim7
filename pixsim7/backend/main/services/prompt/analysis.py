@@ -3,12 +3,6 @@ PromptAnalysisService
 
 Orchestrates prompt analysis and persistence.
 Keeps adapters pure (no DB), handles storage decisions here.
-
-Credential resolution for LLM analyzers:
-  When an LLM-kind analyzer runs (e.g. prompt:claude), the service looks up
-  UserAISettings for the requesting user's API keys, so credentials configured
-  in the Providers panel are automatically available — no need to duplicate
-  them in a separate AnalyzerInstance config.
 """
 
 import hashlib
@@ -41,15 +35,6 @@ from pixsim7.backend.main.services.prompt.semantic_context import (
     PromptSemanticContext,
     build_prompt_semantic_context,
 )
-from pixsim7.backend.main.services.prompt.llm_resolution import (
-    normalize_llm_provider_id,
-)
-
-# Maps LLM provider IDs to the corresponding UserAISettings field name
-_PROVIDER_TO_AI_SETTINGS_KEY: Dict[str, str] = {
-    "anthropic-llm": "anthropic_api_key",
-    "openai-llm": "openai_api_key",
-}
 
 logger = logging.getLogger(__name__)
 
@@ -384,22 +369,12 @@ class PromptAnalysisService:
         Run the specified analyzer on text.
 
         Dispatches to appropriate adapter based on analyzer_id.
-        For LLM analyzers, resolves user preferences from UserAISettings:
-        - API key: injected from Providers panel if not in analyzer config
-        - Provider: user's default llm_provider used as fallback
-        - Model: user's llm_default_model used when provider matches preference
+        For LLM analyzers, runtime execution is delegated to AI Hub shared logic.
         """
-        user_prefs = await self._load_user_ai_settings(user_id)
-        user_provider_id = (
-            normalize_llm_provider_id(getattr(user_prefs, "llm_provider", None))
-            if user_prefs
-            else None
-        )
-        user_model_id = (
-            getattr(user_prefs, "llm_default_model", None)
-            if user_prefs
-            else None
-        )
+        from pixsim7.backend.main.services.llm.ai_hub_service import AiHubService
+
+        ai_hub = AiHubService(self.db)
+        user_provider_id, user_model_id = await ai_hub.get_user_llm_preferences(user_id)
 
         try:
             resolved_execution = resolve_analyzer_execution(
@@ -453,13 +428,8 @@ class PromptAnalysisService:
             # Use LLM analyzer
             from pixsim7.backend.main.services.prompt.parser import analyze_prompt_with_llm
 
-            resolved_provider = resolved_execution.provider_id or "anthropic-llm"
+            resolved_provider = resolved_execution.provider_id
             resolved_model = resolved_execution.model_id
-
-            # Inject user AI credentials if not already in config
-            merged_config = self._inject_api_key_from_settings(
-                merged_config, resolved_provider, user_prefs,
-            )
 
             return await analyze_prompt_with_llm(
                 text=text,
@@ -467,6 +437,8 @@ class PromptAnalysisService:
                 model_id=resolved_model,
                 role_registry=role_registry,
                 instance_config=merged_config,
+                db=self.db,
+                user_id=user_id,
             )
 
         else:
@@ -477,68 +449,6 @@ class PromptAnalysisService:
                 text,
                 role_registry=role_registry,
             )
-
-    async def _load_user_ai_settings(self, user_id: Optional[int]) -> Optional[Any]:
-        """
-        Load UserAISettings for the given user.
-
-        Returns None if no user_id, no db session, or no settings found.
-        """
-        if not user_id or not self.db:
-            return None
-
-        try:
-            from pixsim7.backend.main.domain.core.user_ai_settings import UserAISettings
-
-            result = await self.db.execute(
-                select(UserAISettings).where(UserAISettings.user_id == user_id)
-            )
-            return result.scalar_one_or_none()
-        except Exception as e:
-            logger.warning(f"Failed to load UserAISettings for user {user_id}: {e}")
-            return None
-
-    @staticmethod
-    def _inject_api_key_from_settings(
-        config: Optional[Dict[str, Any]],
-        provider_id: str,
-        user_settings: Optional[Any],
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Inject the user's API key from UserAISettings into analyzer config.
-
-        Only injects if:
-        - user_settings is available
-        - the config doesn't already contain an api_key
-        - UserAISettings has a key for this provider
-
-        This bridges the Providers panel (where users store API keys) with the
-        analyzer system (which previously required separate AnalyzerInstance
-        configs with duplicated keys).
-        """
-        # Don't overwrite an explicitly-provided api_key
-        if config and config.get("api_key"):
-            return config
-
-        if not user_settings:
-            return config
-
-        settings_field = _PROVIDER_TO_AI_SETTINGS_KEY.get(provider_id)
-        if not settings_field:
-            return config
-
-        api_key = getattr(user_settings, settings_field, None)
-        if not api_key:
-            return config
-
-        logger.debug(
-            f"Injecting {settings_field} from UserAISettings into "
-            f"analyzer config for provider {provider_id}"
-        )
-
-        merged = dict(config) if config else {}
-        merged["api_key"] = api_key
-        return merged
 
     async def _resolve_role_registry(
         self,
