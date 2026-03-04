@@ -3,6 +3,14 @@ export { useContextHubState, useContextHubHostId } from "./hooks/contextHubConte
 export type { ContextHubState } from "./hooks/contextHubContext";
 export { useCapability, useCapabilityAll, useProvideCapability, usePanelContext } from "./hooks";
 export { useProjectContext } from "./hooks";
+export { useAuthoringContext } from "./hooks";
+export type {
+  AuthoringContext,
+  AuthoringContextSource,
+  PanelAuthoringContextOverride,
+} from "./hooks";
+export { useRequiredAuthoringWorld } from "./hooks";
+export type { RequiredAuthoringWorldResult } from "./hooks";
 export {
   CAP_ASSET,
   CAP_ASSET_LIST,
