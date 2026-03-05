@@ -34,6 +34,16 @@ def test_no_generation_template_seeds_constant():
     )
 
 
+def test_no_seed_key_runtime_constant():
+    """SEED_KEY must not exist as a runtime selector constant."""
+    from scripts.seeds.game.bananza.seed_data import __dict__ as seed_ns
+
+    assert "SEED_KEY" not in seed_ns, (
+        "seed_data still exports SEED_KEY. "
+        "Bananza bootstrap should not rely on seed-key runtime matching."
+    )
+
+
 def test_required_block_ids_is_nonempty_list():
     from scripts.seeds.game.bananza.seed_data import REQUIRED_BLOCK_IDS
 
