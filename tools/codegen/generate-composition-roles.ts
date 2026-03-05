@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 /**
- * Generates TypeScript constants from roles vocabulary
+ * Generates TypeScript constants from composition roles vocabulary
  *
- * Source:  pixsim7/backend/main/plugins/starter_pack/vocabularies/roles.yaml (single source of truth)
+ * Source:  merged plugin roles.yaml files under pixsim7/backend/main/plugins/<plugin>/vocabularies/
  * Output:  packages/shared/types/src/composition-roles.generated.ts
  *
  * Usage:
@@ -11,6 +11,11 @@
  *
  * This script is run during prebuild to ensure the generated file
  * is always present and current for CI/clean installs.
+ *
+ * Merge rules (same as runtime VocabularyRegistry):
+ *   - Roles are merged across plugins; duplicate role IDs cause a fatal error
+ *   - slug_mappings / namespace_mappings / category_mappings are merged (last wins)
+ *   - priority list is taken from the last plugin that provides one
  */
 
 import * as fs from 'node:fs';
@@ -25,56 +30,105 @@ const normalizedDir = process.platform === 'win32' && SCRIPT_DIR.startsWith('/')
   ? SCRIPT_DIR.slice(1)
   : SCRIPT_DIR;
 
-const YAML_PATH = path.resolve(normalizedDir, '../../pixsim7/backend/main/plugins/starter_pack/vocabularies/roles.yaml');
+const PLUGINS_DIR = path.resolve(normalizedDir, '../../pixsim7/backend/main/plugins');
 const OUT_PATH = path.resolve(normalizedDir, '../../packages/shared/types/src/composition-roles.generated.ts');
 
-// Validate YAML file exists
-if (!fs.existsSync(YAML_PATH)) {
-  console.error(`✗ Missing composition roles data: ${YAML_PATH}`);
-  console.error('  Ensure pixsim7/backend/main/plugins/starter_pack/vocabularies/roles.yaml exists.');
+// Validate plugins directory exists
+if (!fs.existsSync(PLUGINS_DIR)) {
+  console.error(`✗ Missing plugins directory: ${PLUGINS_DIR}`);
+  console.error('  Ensure pixsim7/backend/main/plugins exists.');
   process.exit(1);
 }
 
-// Parse YAML
-let data: Record<string, unknown>;
-try {
-  data = yaml.parse(fs.readFileSync(YAML_PATH, 'utf8'));
-} catch (err) {
-  console.error(`✗ Failed to parse ${YAML_PATH}:`);
-  console.error(`  ${err instanceof Error ? err.message : err}`);
-  process.exit(1);
-}
+// ── Merge roles from all plugin packs ────────────────────────────────────
 
-// Validate required keys
-const required = ['roles', 'priority', 'slug_mappings', 'namespace_mappings'];
-const missing = required.filter((k) => !(k in data));
-if (missing.length > 0) {
-  console.error(`✗ Missing required keys in ${YAML_PATH}: ${missing.join(', ')}`);
-  process.exit(1);
-}
-
-// Extract and normalize mappings (lowercase keys for consistency)
-const normalizeRoleId = (value: string) => (
-  value.startsWith('role:') ? value.slice(5) : value
-);
-const normalizeRoleMapping = (mapping: Record<string, string>) => (
-  Object.fromEntries(
-    Object.entries(mapping).map(([k, v]) => [k.toLowerCase(), normalizeRoleId(String(v))])
-  )
-);
-const slugMappings = normalizeRoleMapping(data.slug_mappings as Record<string, string>);
-const namespaceMappings = normalizeRoleMapping(data.namespace_mappings as Record<string, string>);
-const priority = (data.priority as string[]).map((role) => normalizeRoleId(role));
-
-// Extract roles - now an object with metadata
-const rolesData = data.roles as Record<string, {
+interface RoleEntry {
+  label?: string;
   description: string;
   color: string;
   default_layer?: number;
   defaultLayer?: number;
   tags?: string[];
   is_group?: boolean;
-}>;
+  aliases?: string[];
+  slots?: Record<string, unknown>;
+  default_influence?: string;
+}
+
+const mergedRoles: Record<string, RoleEntry> = {};
+const roleOwners: Record<string, string> = {};
+let mergedSlugMappings: Record<string, string> = {};
+let mergedNamespaceMappings: Record<string, string> = {};
+let mergedCategoryMappings: Record<string, string> = {};
+let mergedPriority: string[] = [];
+let sourcesFound = 0;
+
+for (const entry of fs.readdirSync(PLUGINS_DIR, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+  if (!entry.isDirectory()) continue;
+  const pluginId = entry.name;
+  const rolesYamlPath = path.join(PLUGINS_DIR, pluginId, 'vocabularies', 'roles.yaml');
+  if (!fs.existsSync(rolesYamlPath)) continue;
+
+  let data: Record<string, unknown>;
+  try {
+    data = yaml.parse(fs.readFileSync(rolesYamlPath, 'utf8'));
+  } catch (err) {
+    console.error(`✗ Failed to parse ${rolesYamlPath}:`);
+    console.error(`  ${err instanceof Error ? err.message : err}`);
+    process.exit(1);
+  }
+
+  sourcesFound++;
+
+  // Merge roles (fail on duplicate IDs)
+  const roles = (data.roles ?? {}) as Record<string, RoleEntry>;
+  for (const [rawId, roleData] of Object.entries(roles)) {
+    const roleId = normalizeRoleId(rawId);
+    const existing = roleOwners[roleId];
+    if (existing && existing !== pluginId) {
+      console.error(`✗ Duplicate composition role '${roleId}' across plugins '${existing}' and '${pluginId}'`);
+      process.exit(1);
+    }
+    roleOwners[roleId] = pluginId;
+    mergedRoles[`role:${roleId}`] = roleData;
+  }
+
+  // Merge mappings (last plugin wins for same key)
+  const slugs = (data.slug_mappings ?? {}) as Record<string, string>;
+  mergedSlugMappings = { ...mergedSlugMappings, ...slugs };
+
+  const namespaces = (data.namespace_mappings ?? {}) as Record<string, string>;
+  mergedNamespaceMappings = { ...mergedNamespaceMappings, ...namespaces };
+
+  const categories = (data.category_mappings ?? {}) as Record<string, string>;
+  mergedCategoryMappings = { ...mergedCategoryMappings, ...categories };
+
+  // Priority: last plugin with a priority list wins
+  const priority = data.priority as string[] | undefined;
+  if (Array.isArray(priority) && priority.length > 0) {
+    mergedPriority = priority;
+  }
+}
+
+if (sourcesFound === 0) {
+  console.error(`✗ No roles.yaml found in any plugin under ${PLUGINS_DIR}`);
+  console.error('  Ensure at least one plugin provides vocabularies/roles.yaml.');
+  process.exit(1);
+}
+
+// ── Normalize and extract ────────────────────────────────────────────────
+
+const normalizeRoleMapping = (mapping: Record<string, string>) => (
+  Object.fromEntries(
+    Object.entries(mapping).map(([k, v]) => [k.toLowerCase(), normalizeRoleId(String(v))])
+  )
+);
+
+const slugMappings = normalizeRoleMapping(mergedSlugMappings);
+const namespaceMappings = normalizeRoleMapping(mergedNamespaceMappings);
+const priority = mergedPriority.map((role) => normalizeRoleId(role));
+
+const rolesData = mergedRoles;
 const allRoleIds = Object.keys(rolesData).map((role) => normalizeRoleId(role));
 const roles = allRoleIds;
 const descriptions = Object.fromEntries(
@@ -105,9 +159,12 @@ for (const id of allRoleIds) {
   }
 }
 
-// Generate TypeScript output
-const output = `// Auto-generated from roles vocabulary - DO NOT EDIT
+// ── Generate TypeScript output ───────────────────────────────────────────
+
+const output = `// Auto-generated from composition roles vocabulary - DO NOT EDIT
 // Re-run: pnpm composition-roles:gen
+//
+// Source: merged plugin roles.yaml files under pixsim7/backend/main/plugins/<plugin>/vocabularies/
 //
 // ========================================================================
 // NOTE: For dynamic/plugin-aware data, prefer the runtime API:
@@ -275,3 +332,7 @@ fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true });
 // Write output
 fs.writeFileSync(OUT_PATH, output, 'utf8');
 console.log(`✓ Generated: ${OUT_PATH}`);
+
+function normalizeRoleId(value: string): string {
+  return value.startsWith('role:') ? value.slice(5) : value;
+}

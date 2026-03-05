@@ -1,5 +1,7 @@
-// Auto-generated from roles vocabulary - DO NOT EDIT
+// Auto-generated from composition roles vocabulary - DO NOT EDIT
 // Re-run: pnpm composition-roles:gen
+//
+// Source: merged plugin roles.yaml files under pixsim7/backend/main/plugins/<plugin>/vocabularies/
 //
 // ========================================================================
 // NOTE: For dynamic/plugin-aware data, prefer the runtime API:
@@ -265,7 +267,12 @@ export const SLUG_TO_COMPOSITION_ROLE = {
   "role:character": "entities:main_character",
   "char:npc": "entities:companion",
   "char:monster": "entities:companion",
-  "comic_frame": "materials:rendering"
+  "comic_frame": "materials:rendering",
+  "camera:fov": "camera:fov",
+  "camera:camera_lock": "camera:composition",
+  "camera:camera_stability": "camera:composition",
+  "camera:framing": "camera:composition",
+  "camera:depth": "camera:composition"
 } as const satisfies Record<string, ImageCompositionRole>;
 
 /**
@@ -290,7 +297,15 @@ export const NAMESPACE_TO_COMPOSITION_ROLE = {
   "place": "world:environment",
   "style": "materials:rendering",
   "lighting": "lighting:key",
-  "camera": "camera:angle"
+  "camera": "camera:angle",
+  "pose": "entities:subject",
+  "lock": "entities:subject",
+  "identity_lock": "entities:subject",
+  "framing_lock": "entities:subject",
+  "clothing_lock": "entities:subject",
+  "light": "lighting:key",
+  "color": "materials:atmosphere",
+  "character_pose": "entities:subject"
 } as const satisfies Record<string, ImageCompositionRole>;
 
 /**
