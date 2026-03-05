@@ -9,4 +9,4 @@ Welcome to the PixSim7 documentation hub. See [README.md](./README.md) for the f
 - [App Map JSDoc](./APP_MAP_JSDOC.md) - JSDoc tag format for module annotations
 - [Repository Map](./repo-map.md) - Codebase structure and import conventions
 - [Architecture](./architecture/README.md) - System design and specs
-- [Ongoing Work Status](./architecture/ongoing-work-status.md) - Current active lanes
+- [Ongoing Work Status](./plans/active/ongoing-work-status.md) - Current active lanes

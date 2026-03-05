@@ -7,15 +7,14 @@ This directory contains architectural documentation for PixSim7 — specs, desig
 ### Active Architecture Tracks
 
 **Execution Status**
-- [Ongoing Work Status](./ongoing-work-status.md) - Live status board for current in-progress lanes (planner, primitives cutover, seed validation, debug package).
+- [Ongoing Work Status](../plans/active/ongoing-work-status.md) - Live status board for current in-progress lanes.
 
 **Block & Prompt System**
 - [Block Primitives Evolution](./block-primitives-evolution.md) - **Canonical doc** for block systems. Covers BlockPrimitive model, PromptBlock retirement, composition paths, and migration status.
 - [Prompt Resolver `next_v1` Spec](./prompt-resolver-next-v1.md) - Parallel resolver architecture, interfaces, and migration strategy.
-- [Prompt Resolver Workbench Roadmap](./prompt-resolver-workbench-roadmap.md) - Multi-iteration implementation plan and handoff guide.
-- [Prompt Template Controls Backlog](./prompt-template-controls-backlog.md) - SlotKey migration, theme modifier packs.
+- [Prompt Resolver Workbench Roadmap](../plans/active/prompt-resolver-roadmap.md) - Multi-iteration implementation plan and handoff guide.
+- [Prompt Template Controls Backlog](../plans/active/prompt-template-controls.md) - SlotKey migration, theme modifier packs.
 - [Parser/Vocab Authority Analysis](./parser-vocab-authority.md) - Keyword authority across parser/vocabulary/ontology systems.
-- [Role Kernel Consolidation Task](./role-kernel-consolidation-task.md) - Task-oriented handoff plan for removing role stack redundancy (inference tables, legacy fallbacks, alias drift, codegen source drift).
 - [Versioning Systems Map](./versioning-systems-map.md) - Layered map of shared versioning core vs prompt git workflows.
 
 **Generation Pipeline**
@@ -25,7 +24,7 @@ This directory contains architectural documentation for PixSim7 — specs, desig
 
 **System Architecture**
 - [Scene Concepts Map](./scene-concepts-map.md) - Distinguishes Scene Prep vs game/runtime scenes vs legacy scene concepts.
-- [ContextHub Authoring Context Plan](./contexthub-authoring-context-implementation-plan.md) - Canonical rollout plan for project/world context inheritance across panels.
+- [ContextHub Authoring Context Plan](../plans/active/contexthub-implementation.md) - Canonical rollout plan for project/world context inheritance across panels.
 - [HMR Stability Plan](./hmr-stability.md) - Runtime identity hardening + wildcard barrel reduction strategy for stable frontend hot-reload behavior.
 - [Capability-Driven QuickGen](./capability-driven-quickgen.md) - ContextHub capability contracts for portable QuickGen panels.
 - [Generic Links](./generic-links.md) - Template-to-runtime link pattern (ObjectLink, FieldMapping, activation).
@@ -33,11 +32,12 @@ This directory contains architectural documentation for PixSim7 — specs, desig
   - [Plain English Summary](./backend-game-extraction-summary.md)
 - [Local LLM Prompt Analyzer](./local-llm-prompt-analyzer.md) - llama-cpp-python integration plan.
 - [Analyzer + AI Hub LLM Resolution Policy](./analyzer-aihub-llm-resolution-policy.md) - Canonical provider/model fallback policy for shared LLM runtime.
-- [Analyzer Shared Kernel Consolidation Plan](./analyzer-shared-kernel-consolidation-plan.md) - Roadmap for consolidating shared analyzer logic while keeping prompt and asset orchestrators separate.
-- [Extension Platform Unification Handoff](./extension-platform-unification-handoff.md) - Non-minimal plan for unifying plugins/analyzers/packs under one identity + lifecycle model.
-- [Extension Platform Program Tracker](./extension-platform-program-tracker.md) - Operational milestone/workstream tracker for execution and agent handoff continuity.
-- [EP-01.1 Claude Execution Prompt](./extension-platform-ep-01-1-claude-execution-prompt.md) - Ready-to-run prompt for first analyzer preset identity adoption slice.
 - [Asset Versioning System](./ASSET_VERSIONING_SYSTEM.md) - Asset version families and revision tracking.
+
+**Plans & Roadmaps** — see [`docs/plans/`](../plans/)
+- [Active plans](../plans/active/) — contexthub, prompt resolver, app map graph, template controls
+- [Parked plans](../plans/parked/) — extension platform unification
+- [Done](../plans/done/) — analyzer consolidation, role kernel consolidation
 
 ### Snapshots (historical reference)
 - [Prompt Pipeline Current State](./prompt-pipeline-current-state.md) - Pre-redesign snapshot of compiler/resolver pipeline. **Superseded by** [Block Primitives Evolution](./block-primitives-evolution.md) for current block system state.

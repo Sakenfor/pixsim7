@@ -719,6 +719,7 @@ async def _api_upsert_project_snapshot(
     duplicate_ids: List[int] = []
     deleted_duplicate_ids: List[int] = []
     duplicate_delete_failures: List[Dict[str, Any]] = []
+    migrated_from_legacy_seed = False
     if overwrite_project_id is None:
         snapshots = await _api_get_json(
             client,
@@ -736,16 +737,20 @@ async def _api_upsert_project_snapshot(
 
             if matching_name_snapshots:
                 matching_name_snapshots.sort(key=_snapshot_sort_key, reverse=True)
-                primary_id = _to_int(matching_name_snapshots[0].get("id"))
-                if primary_id is not None:
-                    overwrite_project_id = primary_id
+                non_legacy = [s for s in matching_name_snapshots if not _is_legacy_seed_snapshot(s)]
+                if non_legacy:
+                    primary_id = _to_int(non_legacy[0].get("id"))
+                    if primary_id is not None:
+                        overwrite_project_id = primary_id
+                else:
+                    migrated_from_legacy_seed = True
                 duplicate_ids = [
                     pid
                     for pid in (
                         _to_int(snapshot.get("id"))
-                        for snapshot in matching_name_snapshots[1:]
+                        for snapshot in matching_name_snapshots
                     )
-                    if pid is not None
+                    if pid is not None and pid != overwrite_project_id
                 ]
 
     payload: Dict[str, Any] = {
@@ -802,6 +807,7 @@ async def _api_upsert_project_snapshot(
         "name": str(saved.get("name") or project_name),
         "source_world_id": saved.get("source_world_id"),
         "overwritten": overwrite_project_id is not None,
+        "migrated_from_legacy_seed": migrated_from_legacy_seed,
         "bundle_mode": "full_export",
         "duplicate_candidates": len(duplicate_ids),
         "duplicates_deleted": len(deleted_duplicate_ids),
@@ -871,6 +877,13 @@ def _normalize_sync_mode(sync_mode: Optional[str]) -> str:
     if normalized in {"two_way", "backend_to_file", "file_to_backend", "none"}:
         return normalized
     return "two_way"
+
+
+def _is_legacy_seed_snapshot(snapshot: Dict[str, Any]) -> bool:
+    provenance = snapshot.get("provenance") if isinstance(snapshot.get("provenance"), dict) else {}
+    kind = str(provenance.get("kind") or "").strip().lower()
+    source_key = str(provenance.get("source_key") or "").strip()
+    return kind in {"seed", "demo"} or source_key == BOOTSTRAP_PROFILE
 
 
 async def sync_project_snapshot_file_via_api(
@@ -1129,6 +1142,7 @@ async def seed_bananza_boat_slice_via_api(
         f"name={project_summary['name']!r} "
         f"source_world_id={project_summary['source_world_id']} "
         f"overwritten={project_summary['overwritten']} "
+        f"migrated_from_legacy_seed={project_summary['migrated_from_legacy_seed']} "
         f"bundle_mode={project_summary['bundle_mode']}"
     )
     print(

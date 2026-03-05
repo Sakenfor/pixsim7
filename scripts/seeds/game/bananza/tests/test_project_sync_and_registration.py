@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
+import httpx
 import pytest
 
 from scripts.seeds.game.bananza.flows import api_flow
@@ -21,6 +22,15 @@ class _FakeAsyncClient:
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
         return False
+
+
+class _FakeDeleteClient:
+    def __init__(self) -> None:
+        self.deleted_paths: list[str] = []
+
+    async def delete(self, path: str) -> httpx.Response:
+        self.deleted_paths.append(path)
+        return httpx.Response(204, request=httpx.Request("DELETE", f"http://localhost{path}"))
 
 
 def _project_file_payload(bundle: Dict[str, Any], *, updated_at: str) -> Dict[str, Any]:
@@ -113,6 +123,59 @@ async def test_api_upsert_project_snapshot_uses_overwrite_without_provenance(
 
     assert captured_body.get("overwrite_project_id") == 30
     assert "provenance" not in captured_body
+
+
+@pytest.mark.asyncio
+async def test_api_upsert_project_snapshot_migrates_legacy_seed_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_body: Dict[str, Any] = {}
+
+    async def fake_get_json(client: Any, path: str, **kwargs: Any) -> Any:
+        if path.endswith("/project/export"):
+            return {"schema_version": 1, "core": {"world": {"name": "Bananza Boat", "meta": {}, "world_time": 0.0}}}
+        if path == "/api/v1/game/worlds/projects/snapshots":
+            return [
+                {
+                    "id": 30,
+                    "name": "Bananza Boat Seed Project",
+                    "updated_at": "2026-03-05T10:00:00+00:00",
+                    "provenance": {"kind": "seed", "source_key": BOOTSTRAP_PROFILE},
+                },
+                {
+                    "id": 29,
+                    "name": "Bananza Boat Seed Project",
+                    "updated_at": "2026-03-05T09:00:00+00:00",
+                    "provenance": {"kind": "seed", "source_key": BOOTSTRAP_PROFILE},
+                },
+            ]
+        raise AssertionError(f"unexpected path: {path}")
+
+    async def fake_post_json(client: Any, path: str, *, body: Dict[str, Any] | None = None, **kwargs: Any) -> Any:
+        assert path == "/api/v1/game/worlds/projects/snapshots"
+        captured_body.update(body or {})
+        return {"id": 31, "name": "Bananza Boat Seed Project", "source_world_id": 55}
+
+    monkeypatch.setattr(api_flow, "_api_get_json", fake_get_json)
+    monkeypatch.setattr(api_flow, "_api_post_json", fake_post_json)
+
+    client = _FakeDeleteClient()
+    result = await api_flow._api_upsert_project_snapshot(
+        client,
+        world_id=55,
+        world_name="Bananza Boat",
+        project_name="Bananza Boat Seed Project",
+        project_id=None,
+        prune_duplicates=True,
+    )
+
+    assert "overwrite_project_id" not in captured_body
+    assert captured_body.get("provenance", {}).get("kind") == "import"
+    assert result["migrated_from_legacy_seed"] is True
+    assert client.deleted_paths == [
+        "/api/v1/game/worlds/projects/snapshots/30",
+        "/api/v1/game/worlds/projects/snapshots/29",
+    ]
 
 
 @pytest.mark.asyncio

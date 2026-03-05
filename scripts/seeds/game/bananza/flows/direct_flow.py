@@ -47,6 +47,12 @@ from .common import (
 )
 
 
+def _is_legacy_seed_snapshot(snapshot: GameProjectSnapshot) -> bool:
+    kind = str(getattr(snapshot, "origin_kind", "") or "").strip().lower()
+    source_key = str(getattr(snapshot, "origin_source_key", "") or "").strip()
+    return kind in {"seed", "demo"} or source_key == BOOTSTRAP_PROFILE
+
+
 async def _ensure_world(
     db: AsyncSession,
     *,
@@ -393,6 +399,9 @@ async def _upsert_project_snapshot(
     bundle = await bundle_service.export_world_bundle(world_id)
 
     existing: Optional[GameProjectSnapshot] = None
+    duplicate_ids: List[int] = []
+    deleted_duplicate_count = 0
+    migrated_from_legacy_seed = False
     if project_id is not None:
         existing = await storage.get_project(
             owner_user_id=owner_user_id,
@@ -409,9 +418,20 @@ async def _upsert_project_snapshot(
                 GameProjectSnapshot.name == project_name,
             )
             .order_by(GameProjectSnapshot.id.desc())
-            .limit(1)
         )
-        existing = result.scalars().first()
+        same_name = result.scalars().all()
+        preferred_existing: Optional[GameProjectSnapshot] = next(
+            (snapshot for snapshot in same_name if not _is_legacy_seed_snapshot(snapshot)),
+            None,
+        )
+        if preferred_existing is None and same_name:
+            migrated_from_legacy_seed = True
+        existing = preferred_existing
+        duplicate_ids = [
+            int(snapshot.id)
+            for snapshot in same_name
+            if snapshot.id is not None and (existing is None or int(snapshot.id) != int(existing.id))
+        ]
 
     saved = await storage.save_project(
         owner_user_id=owner_user_id,
@@ -435,12 +455,24 @@ async def _upsert_project_snapshot(
             else None
         ),
     )
+    if duplicate_ids:
+        await db.execute(
+            delete(GameProjectSnapshot).where(
+                GameProjectSnapshot.owner_user_id == owner_user_id,
+                GameProjectSnapshot.id.in_(duplicate_ids),
+            )
+        )
+        await db.commit()
+        deleted_duplicate_count = len(duplicate_ids)
     return {
         "project_id": saved.id,
         "name": saved.name,
         "source_world_id": saved.source_world_id,
         "overwritten": existing is not None,
+        "migrated_from_legacy_seed": migrated_from_legacy_seed,
         "bundle_mode": "full_export",
+        "duplicate_candidates": len(duplicate_ids),
+        "duplicates_deleted": deleted_duplicate_count,
     }
 
 
@@ -500,7 +532,13 @@ async def seed_bananza_boat_slice(
         f"name={project_summary['name']!r} "
         f"source_world_id={project_summary['source_world_id']} "
         f"overwritten={project_summary['overwritten']} "
+        f"migrated_from_legacy_seed={project_summary['migrated_from_legacy_seed']} "
         f"bundle_mode={project_summary['bundle_mode']}"
+    )
+    print(
+        "  project_snapshot_dedup: "
+        f"candidates={project_summary['duplicate_candidates']} "
+        f"deleted={project_summary['duplicates_deleted']}"
     )
     print("  locations:")
     for key in sorted(locations_by_key.keys()):
