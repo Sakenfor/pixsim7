@@ -78,7 +78,15 @@ export {
 } from "./siblingResolution";
 
 // Panel actions
-export * from "./actions";
+export type {
+  PanelActionError,
+  PanelAction,
+  PanelActionsConfig,
+} from "./actions";
+export {
+  panelActionRegistry,
+  usePanelRegistryActions,
+} from "./actions";
 
 // Action adapters for converting canonical ActionDefinition to PanelAction
 export { toPanelAction, toPanelActions, type ToPanelActionOptions } from "./actionAdapters";

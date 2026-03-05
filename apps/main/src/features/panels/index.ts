@@ -35,7 +35,7 @@ export {
   useOpenPanels,
   usePanelManagerState,
   usePanelManagerEvents,
-  usePanelActions,
+  usePanelManagerActions,
   usePanel,
   useZoneActions,
   usePanelIs,
@@ -132,7 +132,15 @@ export { PanelHostLite } from "./components/host/PanelHostLite";
 export { PanelHostDockview, type PanelHostDockviewRef } from "./components/host/PanelHostDockview";
 
 // Panel actions
-export * from "./lib/actions";
+export type {
+  PanelActionError,
+  PanelAction,
+  PanelActionsConfig,
+} from "./lib/actions";
+export {
+  panelActionRegistry,
+  usePanelRegistryActions,
+} from "./lib/actions";
 
 // Panel Components
 export { PanelHeader } from "./components/shared/PanelHeader";
@@ -171,5 +179,47 @@ export {
   selectSelectedZoneConfig,
 } from "@features/scene3d/stores/model3DStore";
 
-// Re-export lib index for convenience
-export * from "./lib";
+// Explicit re-exports from lib/index.ts (replaces wildcard export)
+export {
+  panelSelectors,
+  dockWidgetSelectors,
+  panelGroupSelectors,
+  registerSimplePanel,
+  getPanelsByTag,
+  getPanelIdsByTag,
+  getPanelsForScope,
+  getPanelIdsForScope,
+  definePanel,
+  getPanelContexts,
+  panelBelongsToContext,
+  autoRegisterPanelGroups,
+  resolveSiblings,
+  filterOpenSiblings,
+  toPanelAction,
+  toPanelActions,
+  resolveSettings,
+  useResolvePanelSettings,
+  useResolveComponentSettings,
+  useResolveAllComponentSettings,
+  getInstanceId,
+  ScopeInstanceProvider,
+  useScopeInstanceId,
+  ScopeHost,
+} from "./lib";
+export type {
+  BasePanelDefinition,
+  PanelRegistryLike,
+  MutablePanelRegistryLike,
+  PanelAvailabilityPolicy,
+  PanelInstancePolicy,
+  DefinePanelOptions,
+  PanelModule,
+  PanelGroupLayoutConfig,
+  PanelSlots,
+  PanelTitleResolver,
+  PanelGroupModule,
+  SiblingCandidate,
+  ToPanelActionOptions,
+  ResolvedSettings,
+  ScopeHostProps,
+} from "./lib";

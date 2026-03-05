@@ -1,0 +1,25 @@
+{
+  "description": "Temporary allowlist for intentional wildcard re-exports during HMR stability migration.",
+  "entries": [
+    {
+      "file": "src/features/interactions/index.ts",
+      "source": "@pixsim7/shared.types/interactions",
+      "reason": "Shared package passthrough surface; defer until local wildcard cleanup is complete."
+    },
+    {
+      "file": "src/features/gizmos/lib/core/types.ts",
+      "source": "@pixsim7/interaction.gizmos",
+      "reason": "Shared package type surface passthrough."
+    },
+    {
+      "file": "src/features/generation/index.ts",
+      "source": "@pixsim7/shared.generation.core",
+      "reason": "Namespace passthrough for shared package API compatibility."
+    },
+    {
+      "file": "src/lib/dev/devtools/types.ts",
+      "source": "@pixsim7/shared.devtools.core",
+      "reason": "Shared devtools package passthrough."
+    }
+  ]
+}

@@ -1,0 +1,1804 @@
+{
+  "generatedAt": "2026-03-04T03:40:01.415Z",
+  "sourceRoot": "apps/main/src",
+  "totals": {
+    "all": 223,
+    "allowlisted": 4,
+    "remaining": 219,
+    "remainingLocal": 215,
+    "remainingExternal": 4
+  },
+  "remainingByArea": {
+    "lib": 114,
+    "features": 84,
+    "components": 10,
+    "domain": 9,
+    "types": 2
+  },
+  "entries": [
+    {
+      "file": "src/components/media/viewer/index.ts",
+      "line": 7,
+      "source": "./panels",
+      "namespace": null,
+      "isExternal": false,
+      "area": "components"
+    },
+    {
+      "file": "src/components/media/viewer/index.ts",
+      "line": 8,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "components"
+    },
+    {
+      "file": "src/components/media/viewer/index.ts",
+      "line": 9,
+      "source": "./capabilities",
+      "namespace": null,
+      "isExternal": false,
+      "area": "components"
+    },
+    {
+      "file": "src/components/media/viewer/index.ts",
+      "line": 12,
+      "source": "@features/mediaViewer",
+      "namespace": null,
+      "isExternal": true,
+      "area": "components"
+    },
+    {
+      "file": "src/components/media/viewer/tools/index.ts",
+      "line": 62,
+      "source": "./builtins",
+      "namespace": null,
+      "isExternal": false,
+      "area": "components"
+    },
+    {
+      "file": "src/components/media/viewer/utils/index.ts",
+      "line": 5,
+      "source": "./regionsToInputBindings",
+      "namespace": null,
+      "isExternal": false,
+      "area": "components"
+    },
+    {
+      "file": "src/components/media/viewer/utils/index.ts",
+      "line": 6,
+      "source": "./providerResolution",
+      "namespace": null,
+      "isExternal": false,
+      "area": "components"
+    },
+    {
+      "file": "src/components/surface-workbench/index.ts",
+      "line": 1,
+      "source": "./SurfaceWorkbench",
+      "namespace": null,
+      "isExternal": false,
+      "area": "components"
+    },
+    {
+      "file": "src/components/widget-builder/index.ts",
+      "line": 7,
+      "source": "./browse",
+      "namespace": null,
+      "isExternal": false,
+      "area": "components"
+    },
+    {
+      "file": "src/components/widget-builder/index.ts",
+      "line": 8,
+      "source": "./editors",
+      "namespace": null,
+      "isExternal": false,
+      "area": "components"
+    },
+    {
+      "file": "src/domain/campaign/index.ts",
+      "line": 1,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "domain"
+    },
+    {
+      "file": "src/domain/campaign/index.ts",
+      "line": 2,
+      "source": "./validation",
+      "namespace": null,
+      "isExternal": false,
+      "area": "domain"
+    },
+    {
+      "file": "src/domain/campaign/index.ts",
+      "line": 3,
+      "source": "./stores/campaignStore",
+      "namespace": null,
+      "isExternal": false,
+      "area": "domain"
+    },
+    {
+      "file": "src/domain/sceneArtifact/index.ts",
+      "line": 1,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "domain"
+    },
+    {
+      "file": "src/domain/sceneArtifact/index.ts",
+      "line": 2,
+      "source": "./stores/sceneArtifactStore",
+      "namespace": null,
+      "isExternal": false,
+      "area": "domain"
+    },
+    {
+      "file": "src/domain/sceneCollection/index.ts",
+      "line": 1,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "domain"
+    },
+    {
+      "file": "src/domain/sceneCollection/index.ts",
+      "line": 2,
+      "source": "./validation",
+      "namespace": null,
+      "isExternal": false,
+      "area": "domain"
+    },
+    {
+      "file": "src/domain/sceneCollection/index.ts",
+      "line": 3,
+      "source": "./stores/sceneCollectionStore",
+      "namespace": null,
+      "isExternal": false,
+      "area": "domain"
+    },
+    {
+      "file": "src/domain/validation/index.ts",
+      "line": 7,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "domain"
+    },
+    {
+      "file": "src/features/automation/index.ts",
+      "line": 21,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/automation/index.ts",
+      "line": 87,
+      "source": "./lib/core",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/automation/lib/core/index.ts",
+      "line": 5,
+      "source": "./automationService",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/devtools/index.ts",
+      "line": 19,
+      "source": "./plugins",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gallery/index.ts",
+      "line": 56,
+      "source": "./lib/core",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gallery/lib/core/index.ts",
+      "line": 6,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gallery/lib/core/index.ts",
+      "line": 9,
+      "source": "./surfaceRegistry",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gallery/lib/core/index.ts",
+      "line": 12,
+      "source": "./registerGallerySurfaces",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gallery/lib/core/index.ts",
+      "line": 15,
+      "source": "./registerGalleryTools",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gallery/lib/core/index.ts",
+      "line": 18,
+      "source": "./assetRoles",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gallery/lib/core/index.ts",
+      "line": 21,
+      "source": "./sourceTypes",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gallery/lib/core/index.ts",
+      "line": 22,
+      "source": "./assetSources",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gallery/lib/core/index.ts",
+      "line": 23,
+      "source": "./registerAssetSources",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gallery/lib/core/index.ts",
+      "line": 26,
+      "source": "./badgeConfigMerge",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/generation/index.ts",
+      "line": 9,
+      "source": "./models",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/generation/index.ts",
+      "line": 93,
+      "source": "./lib/core",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/generation/index.ts",
+      "line": 177,
+      "source": "@pixsim7/shared.generation.core",
+      "namespace": "Generation",
+      "isExternal": true,
+      "area": "features"
+    },
+    {
+      "file": "src/features/generation/lib/core/index.ts",
+      "line": 10,
+      "source": "./assetResolver",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/generation/lib/core/index.ts",
+      "line": 13,
+      "source": "./generationStatusConfig",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/generation/models/index.ts",
+      "line": 1,
+      "source": "./generation",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gizmos/hooks/index.ts",
+      "line": 1,
+      "source": "./gizmoSurfaceHooks",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gizmos/hooks/index.ts",
+      "line": 2,
+      "source": "./useToolWithOverrides",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gizmos/index.ts",
+      "line": 2,
+      "source": "./lib/core",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gizmos/index.ts",
+      "line": 5,
+      "source": "./lib/bodyMap/zones",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gizmos/index.ts",
+      "line": 7,
+      "source": "./lib/bodyMap/zones",
+      "namespace": "BodyMap",
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gizmos/lib/core/index.ts",
+      "line": 36,
+      "source": "./registry",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gizmos/lib/core/index.ts",
+      "line": 37,
+      "source": "./registry-rings",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gizmos/lib/core/index.ts",
+      "line": 38,
+      "source": "./registry-romance",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gizmos/lib/core/index.ts",
+      "line": 39,
+      "source": "./registry-water-banana",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gizmos/lib/core/index.ts",
+      "line": 40,
+      "source": "./renderers",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gizmos/lib/core/index.ts",
+      "line": 41,
+      "source": "./loadDefaultPacks",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/gizmos/lib/core/types.ts",
+      "line": 6,
+      "source": "@pixsim7/interaction.gizmos",
+      "namespace": null,
+      "isExternal": true,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 75,
+      "source": "./stores/graphStore/selectors",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 95,
+      "source": "./lib/editor/graphTemplates",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 96,
+      "source": "./lib/editor/types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 99,
+      "source": "./lib/builders/actionGraphBuilder",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 100,
+      "source": "./lib/builders/promptGraphBuilder",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 103,
+      "source": "./lib/nodeTypes/npcResponse",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 104,
+      "source": "./lib/nodeTypes/registry",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 105,
+      "source": "./lib/nodeTypes/sceneRegistry",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 106,
+      "source": "./lib/nodeTypes/arcRegistry",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 107,
+      "source": "./lib/nodeTypes/arc",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 108,
+      "source": "./lib/nodeTypes/builtin",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 111,
+      "source": "./lib/nodeTypes/registry",
+      "namespace": "NodeTypes",
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 114,
+      "source": "./lib/refs",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/index.ts",
+      "line": 117,
+      "source": "./lib/capabilities",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/lib/editor/types.ts",
+      "line": 7,
+      "source": "@pixsim7/shared.graph.editors",
+      "namespace": null,
+      "isExternal": true,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/lib/refs/index.ts",
+      "line": 7,
+      "source": "./graphRefs",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/lib/refs/index.ts",
+      "line": 8,
+      "source": "./objectLinks",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/models/arcGraph/index.ts",
+      "line": 7,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/graph/stores/graphStore/index.ts",
+      "line": 173,
+      "source": "./selectors",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/hud/index.ts",
+      "line": 75,
+      "source": "./lib/core",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/hud/lib/core/index.ts",
+      "line": 9,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/interactions/index.ts",
+      "line": 39,
+      "source": "@pixsim7/shared.types/interactions",
+      "namespace": null,
+      "isExternal": true,
+      "area": "features"
+    },
+    {
+      "file": "src/features/interactions/index.ts",
+      "line": 88,
+      "source": "./lib/intimacy/types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/interactions/index.ts",
+      "line": 89,
+      "source": "./lib/intimacy/nodeTypes",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/interactions/index.ts",
+      "line": 92,
+      "source": "./lib/intimacy/types",
+      "namespace": "Intimacy",
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/narrative/index.ts",
+      "line": 22,
+      "source": "./lib/types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/narrative/index.ts",
+      "line": 28,
+      "source": "./lib/types",
+      "namespace": "Narrative",
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/panels/index.ts",
+      "line": 135,
+      "source": "./lib/actions",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/panels/index.ts",
+      "line": 175,
+      "source": "./lib",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/panels/lib/index.ts",
+      "line": 81,
+      "source": "./actions",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/promptResolverWorkbench/index.ts",
+      "line": 1,
+      "source": "./PromptResolverWorkbenchPanel",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/promptResolverWorkbench/index.ts",
+      "line": 2,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/promptResolverWorkbench/index.ts",
+      "line": 3,
+      "source": "./fixtures",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/promptResolverWorkbench/index.ts",
+      "line": 4,
+      "source": "./snapshot",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/promptResolverWorkbench/index.ts",
+      "line": 5,
+      "source": "./api",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/prompts/index.ts",
+      "line": 24,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/providers/index.ts",
+      "line": 75,
+      "source": "./lib/core",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/providers/lib/core/index.ts",
+      "line": 7,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/providers/lib/core/index.ts",
+      "line": 8,
+      "source": "./capabilityRegistry",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/providers/lib/core/index.ts",
+      "line": 9,
+      "source": "./generationPlugins",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/routine-graph/index.ts",
+      "line": 15,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/settings/index.ts",
+      "line": 43,
+      "source": "./lib/core",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/settings/lib/core/index.ts",
+      "line": 7,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/settings/lib/core/index.ts",
+      "line": 8,
+      "source": "./registry",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/settings/lib/core/index.ts",
+      "line": 9,
+      "source": "./settingsSchemaRegistry",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/settings/lib/core/index.ts",
+      "line": 10,
+      "source": "./schemaUtils",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/settings/lib/core/types.ts",
+      "line": 7,
+      "source": "@lib/settingsSchema",
+      "namespace": null,
+      "isExternal": true,
+      "area": "features"
+    },
+    {
+      "file": "src/features/simulation/index.ts",
+      "line": 44,
+      "source": "./lib/core",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/simulation/lib/core/index.ts",
+      "line": 5,
+      "source": "./automationAPI",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/simulation/lib/core/index.ts",
+      "line": 6,
+      "source": "./constraints",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/simulation/lib/core/index.ts",
+      "line": 7,
+      "source": "./exportImport",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/simulation/lib/core/index.ts",
+      "line": 8,
+      "source": "./history",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/simulation/lib/core/index.ts",
+      "line": 9,
+      "source": "../../hooks",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/simulation/lib/core/index.ts",
+      "line": 10,
+      "source": "./multiRunStorage",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/features/simulation/lib/core/index.ts",
+      "line": 11,
+      "source": "./scenarios",
+      "namespace": null,
+      "isExternal": false,
+      "area": "features"
+    },
+    {
+      "file": "src/lib/analyzers/index.ts",
+      "line": 7,
+      "source": "./constants",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/analyzers/index.ts",
+      "line": 8,
+      "source": "./settingsStore",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 39,
+      "source": "./game",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 40,
+      "source": "./accounts",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 41,
+      "source": "./actionBlocks",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 42,
+      "source": "./assets",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 43,
+      "source": "./automation",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 44,
+      "source": "./composition",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 45,
+      "source": "./concepts",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 46,
+      "source": "./interactions",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 47,
+      "source": "./generations",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 48,
+      "source": "./generationOperations",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 49,
+      "source": "./analyzers",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 50,
+      "source": "./analyses",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 51,
+      "source": "./userPreferences",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 52,
+      "source": "./adminUsers",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 53,
+      "source": "./codegen",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 54,
+      "source": "./characters",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/api/index.ts",
+      "line": 56,
+      "source": "./tags",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/auth/index.ts",
+      "line": 8,
+      "source": "./authService",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/auth/index.ts",
+      "line": 19,
+      "source": "./googleAuth",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/auth/index.ts",
+      "line": 22,
+      "source": "./userRoles",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/capabilities/index.ts",
+      "line": 30,
+      "source": "./routeConstants",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/capabilities/index.ts",
+      "line": 31,
+      "source": "./pluginAdapter",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/capabilities/index.ts",
+      "line": 32,
+      "source": "./securityFilter",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/context/index.ts",
+      "line": 7,
+      "source": "./editorContext",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/context/index.ts",
+      "line": 8,
+      "source": "./deriveEditorState",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dev/devtools/index.ts",
+      "line": 7,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dev/devtools/index.ts",
+      "line": 8,
+      "source": "./devToolRegistry",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dev/devtools/index.ts",
+      "line": 9,
+      "source": "./registerDevTools",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dev/devtools/index.ts",
+      "line": 10,
+      "source": "./devToolContext",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dev/devtools/types.ts",
+      "line": 1,
+      "source": "@pixsim7/shared.devtools.core",
+      "namespace": null,
+      "isExternal": true,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dev/index.ts",
+      "line": 9,
+      "source": "./devtools",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dev/index.ts",
+      "line": 12,
+      "source": "./console",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/actions/index.ts",
+      "line": 47,
+      "source": "./panelActions",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/actions/index.ts",
+      "line": 48,
+      "source": "./layoutActions",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/actions/index.ts",
+      "line": 49,
+      "source": "./presetActions",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/actions/index.ts",
+      "line": 50,
+      "source": "./addPanelActions",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/actions/index.ts",
+      "line": 51,
+      "source": "./assetActions",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/actions/index.ts",
+      "line": 52,
+      "source": "./contextHubActions",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/actions/index.ts",
+      "line": 53,
+      "source": "./cubeActions",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/index.ts",
+      "line": 9,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/index.ts",
+      "line": 10,
+      "source": "./ContextMenuProvider",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/index.ts",
+      "line": 11,
+      "source": "./DockviewContextMenu",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/index.ts",
+      "line": 12,
+      "source": "./PanelPropertiesPopup",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/index.ts",
+      "line": 13,
+      "source": "./CustomTabComponent",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/index.ts",
+      "line": 14,
+      "source": "./DockviewIdContext",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/index.ts",
+      "line": 15,
+      "source": "./capabilityHelpers",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/index.ts",
+      "line": 16,
+      "source": "./buildDockviewContext",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/index.ts",
+      "line": 17,
+      "source": "./resolveCurrentDockview",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/index.ts",
+      "line": 20,
+      "source": "./autoContextPresets",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/contextMenu/index.ts",
+      "line": 23,
+      "source": "./actions",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/index.ts",
+      "line": 80,
+      "source": "./contextMenu",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/dockview/index.ts",
+      "line": 81,
+      "source": "./floatingPanelInterop",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/editing-core/index.ts",
+      "line": 1,
+      "source": "./unifiedConfig",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/editing-core/index.ts",
+      "line": 2,
+      "source": "./dataBinding",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/editing-core/index.ts",
+      "line": 3,
+      "source": "./dataBindingResolver",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/editing-core/index.ts",
+      "line": 4,
+      "source": "./bindingAdapters",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/editing-core/index.ts",
+      "line": 5,
+      "source": "./hooks/useUndoRedo",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/editing-core/index.ts",
+      "line": 6,
+      "source": "./utils/propertyPath",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/editing-core/index.ts",
+      "line": 7,
+      "source": "./presets",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/game/index.ts",
+      "line": 13,
+      "source": "./usePixSim7Core",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/game/index.ts",
+      "line": 16,
+      "source": "./interactions",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/game/index.ts",
+      "line": 19,
+      "source": "./npcPreferences",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/game/index.ts",
+      "line": 22,
+      "source": "./customHelpers",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/game/index.ts",
+      "line": 25,
+      "source": "./runtime",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/game/index.ts",
+      "line": 28,
+      "source": "./projectBundle",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/game/projectBundle/index.ts",
+      "line": 1,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/game/projectBundle/index.ts",
+      "line": 2,
+      "source": "./registry",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/game/projectBundle/index.ts",
+      "line": 3,
+      "source": "./service",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/game/projectBundle/index.ts",
+      "line": 4,
+      "source": "./contributors",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/game/projectBundle/index.ts",
+      "line": 5,
+      "source": "./autoDiscover",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/game/projectBundle/index.ts",
+      "line": 6,
+      "source": "./autosave",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/gameplay-ui-core/index.ts",
+      "line": 8,
+      "source": "./hudConfig",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/gameplay-ui-core/index.ts",
+      "line": 9,
+      "source": "./hudVisibility",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/models/index.ts",
+      "line": 7,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/models/index.ts",
+      "line": 8,
+      "source": "./zoneUtils",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/models/types.ts",
+      "line": 7,
+      "source": "@pixsim7/shared.models.core",
+      "namespace": null,
+      "isExternal": true,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/nodeSettings/index.ts",
+      "line": 1,
+      "source": "./registration",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/plugins/browsable/index.ts",
+      "line": 15,
+      "source": "./workspaceConfigs",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/plugins/browsable/index.ts",
+      "line": 16,
+      "source": "./toolsConfigs",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/plugins/browsable/index.ts",
+      "line": 17,
+      "source": "./widgetsConfigs",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/plugins/index.ts",
+      "line": 13,
+      "source": "./loader",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/plugins/index.ts",
+      "line": 19,
+      "source": "./manifestLoader",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/plugins/index.ts",
+      "line": 20,
+      "source": "./bundleRegistrar",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/plugins/types.ts",
+      "line": 2,
+      "source": "./bundleApi",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/plugins/types.ts",
+      "line": 3,
+      "source": "./descriptor",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/plugins/types.ts",
+      "line": 4,
+      "source": "./normalization",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/plugins/types.ts",
+      "line": 5,
+      "source": "./converters",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/plugins/types.ts",
+      "line": 6,
+      "source": "./validation",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/preview-bridge/index.ts",
+      "line": 1,
+      "source": "./messageTypes",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/preview-bridge/index.ts",
+      "line": 2,
+      "source": "./previewBridge",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/settingsSchema/index.ts",
+      "line": 1,
+      "source": "./types",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/theming/index.ts",
+      "line": 14,
+      "source": "./scifi-tokens",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/display/index.ts",
+      "line": 7,
+      "source": "./displaySpaces",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/index.ts",
+      "line": 10,
+      "source": "./overlay",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/index.ts",
+      "line": 15,
+      "source": "./composer",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/index.ts",
+      "line": 20,
+      "source": "../../features/panels/lib",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/index.ts",
+      "line": 25,
+      "source": "./display",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/index.ts",
+      "line": 30,
+      "source": "./promptCompanionSlot",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/index.ts",
+      "line": 35,
+      "source": "./forms",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/overlay/presets/index.ts",
+      "line": 7,
+      "source": "./mediaCard",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/overlay/presets/index.ts",
+      "line": 8,
+      "source": "./presetManager",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/overlay/presets/index.ts",
+      "line": 9,
+      "source": "./storage",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/overlay/widgets/index.ts",
+      "line": 7,
+      "source": "./BadgeWidget",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/overlay/widgets/index.ts",
+      "line": 8,
+      "source": "./ButtonWidget",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/overlay/widgets/index.ts",
+      "line": 9,
+      "source": "./PanelWidget",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/overlay/widgets/index.ts",
+      "line": 10,
+      "source": "./MenuWidget",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/overlay/widgets/index.ts",
+      "line": 11,
+      "source": "./VideoScrubWidget",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/overlay/widgets/index.ts",
+      "line": 12,
+      "source": "./ProgressWidget",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/overlay/widgets/index.ts",
+      "line": 13,
+      "source": "./UploadWidget",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/overlay/widgets/index.ts",
+      "line": 14,
+      "source": "./TooltipWidget",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/ui/overlay/widgets/index.ts",
+      "line": 15,
+      "source": "./SceneViewHost",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/utils/index.ts",
+      "line": 21,
+      "source": "./validation",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/lib/utils/validation/index.ts",
+      "line": 5,
+      "source": "./devValidation",
+      "namespace": null,
+      "isExternal": false,
+      "area": "lib"
+    },
+    {
+      "file": "src/types/index.ts",
+      "line": 37,
+      "source": "./game",
+      "namespace": null,
+      "isExternal": false,
+      "area": "types"
+    },
+    {
+      "file": "src/types/index.ts",
+      "line": 40,
+      "source": "./display",
+      "namespace": null,
+      "isExternal": false,
+      "area": "types"
+    }
+  ]
+}

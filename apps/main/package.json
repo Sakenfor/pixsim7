@@ -9,6 +9,8 @@
     "prebuild": "pnpm run build:deps",
     "build:deps": "pnpm -r --filter \"@pixsim7/shared.*\" --filter @pixsim7/game.engine --filter @pixsim7/game.components --filter @pixsim7/interaction.shapes --filter @pixsim7/interaction.gizmos run build --if-present",
     "build:check": "tsc -b && vite build",
+    "hmr:wildcards": "node ./scripts/hmr-wildcard-audit.mjs",
+    "hmr:wildcards:baseline": "node ./scripts/hmr-wildcard-audit.mjs --write-baseline",
     "lint": "eslint .",
     "preview": "vite preview",
     "prepare": "husky"
