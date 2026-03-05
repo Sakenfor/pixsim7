@@ -17,14 +17,32 @@ if not exist .env (
     echo.
 )
 
-REM Create data directories
+REM Create database data directories
 echo Creating data directories...
 if not exist data\postgres mkdir data\postgres
 if not exist data\redis mkdir data\redis
-if not exist data\storage mkdir data\storage
-if not exist data\logs mkdir data\logs
-if not exist data\cache mkdir data\cache
+if not exist data\timescaledb mkdir data\timescaledb
+
+REM Resolve PIXSIM_HOME runtime root
+if defined PIXSIM_HOME (
+    set "PIXSIM_HOME_DIR=%PIXSIM_HOME%"
+) else if defined LOCALAPPDATA (
+    set "PIXSIM_HOME_DIR=%LOCALAPPDATA%\PixSim7"
+) else (
+    set "PIXSIM_HOME_DIR=%USERPROFILE%\PixSim7"
+)
+
+if not exist "%PIXSIM_HOME_DIR%\media" mkdir "%PIXSIM_HOME_DIR%\media"
+if not exist "%PIXSIM_HOME_DIR%\logs" mkdir "%PIXSIM_HOME_DIR%\logs"
+if not exist "%PIXSIM_HOME_DIR%\exports" mkdir "%PIXSIM_HOME_DIR%\exports"
+if not exist "%PIXSIM_HOME_DIR%\cache" mkdir "%PIXSIM_HOME_DIR%\cache"
+if not exist "%PIXSIM_HOME_DIR%\temp" mkdir "%PIXSIM_HOME_DIR%\temp"
+if not exist "%PIXSIM_HOME_DIR%\settings" mkdir "%PIXSIM_HOME_DIR%\settings"
+if not exist "%PIXSIM_HOME_DIR%\models" mkdir "%PIXSIM_HOME_DIR%\models"
+if not exist "%PIXSIM_HOME_DIR%\automation\screenshots" mkdir "%PIXSIM_HOME_DIR%\automation\screenshots"
+
 echo Data directories ready
+echo Runtime data root: %PIXSIM_HOME_DIR%
 echo.
 
 REM Start all services

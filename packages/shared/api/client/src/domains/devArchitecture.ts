@@ -1,36 +1,39 @@
 /**
  * Dev Architecture API Domain Client
  *
- * Strict OpenAPI-backed client for architecture introspection endpoints.
+ * OpenAPI-backed client for architecture introspection endpoints.
  */
 import type { PixSimApiClient } from '../client';
 import type {
+  ArchitectureGraphMetrics,
+  ArchitectureGraphV1,
   ArchitectureMetrics,
   BackendArchitectureResponse,
-  BackendPluginInfo,
-  CapabilityInfo,
   FrontendArchitectureResponse,
-  FrontendFeatureEntry,
-  RouteInfo,
-  ServiceInfo,
-  SubServiceInfo,
-  UnifiedArchitectureBackend,
-  UnifiedArchitectureMetrics,
-  UnifiedArchitectureResponse,
+  Pixsim7BackendMainApiV1DevArchitectureBackendPluginInfo,
+  Pixsim7BackendMainApiV1DevArchitectureCapabilityInfo,
+  Pixsim7BackendMainApiV1DevArchitectureFrontendFeatureEntry,
+  Pixsim7BackendMainApiV1DevArchitectureRouteInfo,
+  Pixsim7BackendMainApiV1DevArchitectureServiceInfo,
+  Pixsim7BackendMainApiV1DevArchitectureSubServiceInfo,
 } from '@pixsim7/shared.api.model';
+
+// Backward-compatible aliases for existing consumers.
+export type RouteInfo = Pixsim7BackendMainApiV1DevArchitectureRouteInfo;
+export type CapabilityInfo = Pixsim7BackendMainApiV1DevArchitectureCapabilityInfo;
+export type SubServiceInfo = Pixsim7BackendMainApiV1DevArchitectureSubServiceInfo;
+export type ServiceInfo = Pixsim7BackendMainApiV1DevArchitectureServiceInfo;
+export type BackendPluginInfo = Pixsim7BackendMainApiV1DevArchitectureBackendPluginInfo;
+export type FrontendFeatureEntry = Pixsim7BackendMainApiV1DevArchitectureFrontendFeatureEntry;
+export type UnifiedArchitectureMetrics = ArchitectureGraphMetrics;
+export type UnifiedArchitectureResponse = ArchitectureGraphV1;
+
 export type {
+  ArchitectureGraphMetrics,
+  ArchitectureGraphV1,
   ArchitectureMetrics,
   BackendArchitectureResponse,
-  BackendPluginInfo,
-  CapabilityInfo,
   FrontendArchitectureResponse,
-  FrontendFeatureEntry,
-  RouteInfo,
-  ServiceInfo,
-  SubServiceInfo,
-  UnifiedArchitectureBackend,
-  UnifiedArchitectureMetrics,
-  UnifiedArchitectureResponse,
 };
 
 export function createDevArchitectureApi(client: PixSimApiClient) {
@@ -43,8 +46,13 @@ export function createDevArchitectureApi(client: PixSimApiClient) {
       return client.get<FrontendArchitectureResponse>('/dev/architecture/frontend');
     },
 
-    async getUnifiedArchitecture(): Promise<UnifiedArchitectureResponse> {
-      return client.get<UnifiedArchitectureResponse>('/dev/architecture/unified');
+    async getArchitectureGraph(): Promise<ArchitectureGraphV1> {
+      return client.get<ArchitectureGraphV1>('/dev/architecture/graph');
+    },
+
+    async getUnifiedArchitecture(): Promise<ArchitectureGraphV1> {
+      // Alias endpoint kept by backend for compatibility.
+      return client.get<ArchitectureGraphV1>('/dev/architecture/unified');
     },
 
     async getRoutesByTag(): Promise<Record<string, RouteInfo[]>> {

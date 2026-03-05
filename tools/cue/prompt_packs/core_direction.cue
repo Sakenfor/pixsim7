@@ -1,0 +1,82 @@
+package promptpacks
+
+pack: #PromptBlockPackV1 & {
+    version:      "1.0.0"
+    package_name: "core_direction"
+    defaults: {
+        is_public: true
+        source:    "system"
+    }
+    block_schema: {
+        id_prefix:    "core.direction"
+        category:     "direction"
+        capabilities: ["direction.axis"]
+        op: {
+            op_id_template: "direction.axis.{variant}"
+            modalities: ["both"]
+            refs: [
+                {
+                    key:        "subject"
+                    capability: "subject"
+                    required:   false
+                },
+            ]
+        }
+        text_template: "Direction token: {variant}."
+        tags: {
+            modifier_family:  "direction"
+            modality_support: "both"
+            temporal:         "neutral"
+        }
+        variants: [
+            {
+                key: "in"
+                tags: {
+                    direction: "in"
+                }
+            },
+            {
+                key: "out"
+                tags: {
+                    direction: "out"
+                }
+            },
+            {
+                key: "left"
+                tags: {
+                    direction: "left"
+                }
+            },
+            {
+                key: "right"
+                tags: {
+                    direction: "right"
+                }
+            },
+            {
+                key: "up"
+                tags: {
+                    direction: "up"
+                }
+            },
+            {
+                key: "down"
+                tags: {
+                    direction: "down"
+                }
+            },
+            {
+                key: "forward"
+                tags: {
+                    direction: "forward"
+                }
+            },
+            {
+                key: "backward"
+                tags: {
+                    direction: "backward"
+                }
+            },
+        ]
+    }
+}

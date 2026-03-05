@@ -44,6 +44,13 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     groups: ['types'],
   },
   {
+    id: 'prompt-pack-schemas',
+    description: 'Generate prompt block-pack schema.yaml files from CUE sources',
+    script: 'tools/codegen/generate-prompt-pack-schemas.ts',
+    supportsCheck: true,
+    groups: ['prompt'],
+  },
+  {
     id: 'app-map',
     description: 'Generate APP_MAP.md and action registry from code',
     script: 'packages/shared/app-map/src/cli.ts',

@@ -14,6 +14,7 @@
  *   pnpm openapi:check        # Check if outputs are up-to-date (CI/pre-commit)
  *   pnpm openapi:gen -- --service main-api
  *   pnpm openapi:gen -- --input ./path/to/openapi.json
+ *   pnpm openapi:gen -- --report
  *
  * Optional env overrides:
  *   OPENAPI_INPUT="./path/to/openapi.json"                      # Local JSON spec path
@@ -22,6 +23,11 @@
  *   OPENAPI_TYPES_OUT="packages/shared/api/model/src/generated/openapi"   # Legacy alias (backward compat)
  *   OPENAPI_ORVAL_MODE="tags-split"
  *   OPENAPI_ORVAL_CLIENT="axios"
+ *   OPENAPI_MODELS_ONLY="true"                                  # Keep only generated model DTO files
+ *   OPENAPI_INCLUDE_TAGS="assets,game-worlds"                   # Optional tag allowlist
+ *   OPENAPI_EXCLUDE_TAGS="dev,admin"                            # Optional tag denylist
+ *   OPENAPI_CHANGE_REPORT="true"                                 # Print file-level generation summary
+ *   OPENAPI_CHANGE_REPORT_MAX="8"                                # Sample file paths per change bucket
  *   OPENAPI_SERVICE="main-api"
  *   OPENAPI_SERVICES_ROOT="."
  *
@@ -33,6 +39,7 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 type BackendServiceConfig = {
   id: string;
   base_url_env?: string;
@@ -48,7 +55,9 @@ const DEFAULT_OPENAPI_URL = 'http://localhost:8000/openapi.json';
 const DEFAULT_ORVAL_OUT = 'packages/shared/api/model/src/generated/openapi';
 const DEFAULT_ORVAL_MODE = 'tags-split';
 const DEFAULT_ORVAL_CLIENT = 'axios';
+const DEFAULT_MODELS_ONLY = true;
 const DIR_COMPARE_IGNORE = new Set(['.schema-hash']);
+const OPENAPI_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace']);
 
 const SKIP_DIRS = new Set([
   '.git',
@@ -90,6 +99,26 @@ function getArgValue(flag: string, args: string[]): string | undefined {
     return args[index + 1];
   }
   return undefined;
+}
+
+function parseCsv(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(/[,\s]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (!value) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+function isHttpSource(source: string): boolean {
+  return source.startsWith('http://') || source.startsWith('https://');
 }
 
 async function readJson(pathname: string): Promise<any | null> {
@@ -250,9 +279,99 @@ async function pathExists(pathname: string): Promise<boolean> {
   }
 }
 
+async function loadOpenApiSpec(source: string): Promise<any> {
+  if (isHttpSource(source)) {
+    const response = await fetch(source);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch OpenAPI spec (${response.status}): ${source}`);
+    }
+    return response.json();
+  }
+
+  const raw = await fs.readFile(source, 'utf8');
+  return JSON.parse(raw);
+}
+
+function filterOpenApiByTags(
+  spec: any,
+  includeTags: string[],
+  excludeTags: string[]
+): any {
+  const include = new Set(includeTags);
+  const exclude = new Set(excludeTags);
+  if (include.size === 0 && exclude.size === 0) {
+    return spec;
+  }
+
+  const filtered = JSON.parse(JSON.stringify(spec));
+  const originalPaths = filtered.paths ?? {};
+  const nextPaths: Record<string, any> = {};
+  const usedTags = new Set<string>();
+
+  for (const [pathKey, pathItem] of Object.entries<any>(originalPaths)) {
+    const nextPathItem: Record<string, any> = {};
+    let keptMethodCount = 0;
+
+    for (const [methodKey, operation] of Object.entries<any>(pathItem ?? {})) {
+      const method = methodKey.toLowerCase();
+      if (!OPENAPI_METHODS.has(method)) {
+        nextPathItem[methodKey] = operation;
+        continue;
+      }
+
+      const tags: string[] = Array.isArray(operation?.tags)
+        ? operation.tags.map((tag: unknown) => String(tag))
+        : [];
+      const matchesInclude = include.size === 0 || tags.some((tag) => include.has(tag));
+      const matchesExclude = exclude.size > 0 && tags.some((tag) => exclude.has(tag));
+      if (!matchesInclude || matchesExclude) {
+        continue;
+      }
+
+      nextPathItem[methodKey] = operation;
+      keptMethodCount += 1;
+      for (const tag of tags) {
+        usedTags.add(tag);
+      }
+    }
+
+    if (keptMethodCount > 0) {
+      nextPaths[pathKey] = nextPathItem;
+    }
+  }
+
+  filtered.paths = nextPaths;
+  if (Array.isArray(filtered.tags)) {
+    filtered.tags = filtered.tags.filter((tagEntry: any) => usedTags.has(String(tagEntry?.name ?? '')));
+  }
+  return filtered;
+}
+
+async function pruneToModelOnly(outputDir: string): Promise<void> {
+  const entries = await fs.readdir(outputDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(outputDir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'model') continue;
+      await fs.rm(fullPath, { recursive: true, force: true });
+      continue;
+    }
+    await fs.rm(fullPath, { force: true });
+  }
+}
+
 type DirCompareResult = {
   equal: boolean;
   reason?: string;
+};
+
+type FileSnapshot = Map<string, string>;
+
+type OutputChangeReport = {
+  added: string[];
+  removed: string[];
+  changed: string[];
+  unchangedCount: number;
 };
 
 async function listFilesRecursive(root: string): Promise<string[]> {
@@ -319,6 +438,76 @@ async function compareDirectories(expectedDir: string, actualDir: string): Promi
   return { equal: true };
 }
 
+async function snapshotDirectory(root: string): Promise<FileSnapshot> {
+  const snapshot: FileSnapshot = new Map();
+  if (!(await pathExists(root))) {
+    return snapshot;
+  }
+
+  const files = await listFilesRecursive(root);
+  for (const relPath of files) {
+    const content = await fs.readFile(path.join(root, relPath));
+    const hash = createHash('sha1').update(content).digest('hex');
+    snapshot.set(relPath, hash);
+  }
+  return snapshot;
+}
+
+function buildOutputChangeReport(previous: FileSnapshot, next: FileSnapshot): OutputChangeReport {
+  const added: string[] = [];
+  const removed: string[] = [];
+  const changed: string[] = [];
+  let unchangedCount = 0;
+
+  for (const [pathKey, nextHash] of next.entries()) {
+    const prevHash = previous.get(pathKey);
+    if (!prevHash) {
+      added.push(pathKey);
+      continue;
+    }
+    if (prevHash !== nextHash) {
+      changed.push(pathKey);
+      continue;
+    }
+    unchangedCount += 1;
+  }
+
+  for (const pathKey of previous.keys()) {
+    if (!next.has(pathKey)) {
+      removed.push(pathKey);
+    }
+  }
+
+  added.sort();
+  removed.sort();
+  changed.sort();
+  return { added, removed, changed, unchangedCount };
+}
+
+function printOutputChangeReport(
+  outDir: string,
+  report: OutputChangeReport,
+  previousCount: number,
+  nextCount: number,
+  sampleLimit: number
+): void {
+  console.log(
+    `[report] OpenAPI output change summary for ${outDir}: ` +
+    `+${report.added.length} / -${report.removed.length} / ~${report.changed.length} / =${report.unchangedCount} ` +
+    `(files ${previousCount} -> ${nextCount})`
+  );
+
+  const printSample = (label: string, values: string[]) => {
+    if (values.length === 0) return;
+    const sample = values.slice(0, sampleLimit);
+    console.log(`  ${label} (${values.length}): ${sample.join(', ')}${values.length > sampleLimit ? ', ...' : ''}`);
+  };
+
+  printSample('added', report.added);
+  printSample('removed', report.removed);
+  printSample('changed', report.changed);
+}
+
 async function runOrval(
   source: string,
   outputDir: string,
@@ -359,6 +548,9 @@ async function generateOrvalSplit(
   outDir: string,
   mode: string,
   client: string,
+  modelsOnly: boolean,
+  changeReportEnabled: boolean,
+  changeReportSampleLimit: number,
   isCheckMode: boolean
 ): Promise<boolean> {
   if (isCheckMode) {
@@ -366,6 +558,9 @@ async function generateOrvalSplit(
     const tempOutDir = path.join(tempRoot, 'openapi');
     try {
       await runOrval(source, tempOutDir, mode, client);
+      if (modelsOnly) {
+        await pruneToModelOnly(tempOutDir);
+      }
       const comparison = await compareDirectories(tempOutDir, absOutDir);
       if (comparison.equal) {
         console.log(`[ok] Orval split output is up-to-date: ${outDir}`);
@@ -384,8 +579,23 @@ async function generateOrvalSplit(
 
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pixsim7-orval-gen-'));
   const tempOutDir = path.join(tempRoot, 'openapi');
+  const previousSnapshot = changeReportEnabled ? await snapshotDirectory(absOutDir) : null;
   try {
     await runOrval(source, tempOutDir, mode, client);
+    if (modelsOnly) {
+      await pruneToModelOnly(tempOutDir);
+    }
+    if (changeReportEnabled && previousSnapshot) {
+      const nextSnapshot = await snapshotDirectory(tempOutDir);
+      const report = buildOutputChangeReport(previousSnapshot, nextSnapshot);
+      printOutputChangeReport(
+        outDir,
+        report,
+        previousSnapshot.size,
+        nextSnapshot.size,
+        changeReportSampleLimit
+      );
+    }
     await fs.mkdir(path.dirname(absOutDir), { recursive: true });
     await fs.rm(absOutDir, { recursive: true, force: true });
     await fs.cp(tempOutDir, absOutDir, { recursive: true });
@@ -402,6 +612,14 @@ async function main() {
   const inputArg = getArgValue('--input', args);
 
   const serviceId = getArgValue('--service', args) ?? process.env.OPENAPI_SERVICE;
+  const includeTags = parseCsv(getArgValue('--include-tags', args) ?? process.env.OPENAPI_INCLUDE_TAGS);
+  const excludeTags = parseCsv(getArgValue('--exclude-tags', args) ?? process.env.OPENAPI_EXCLUDE_TAGS);
+  const modelsOnly = parseBoolean(process.env.OPENAPI_MODELS_ONLY, DEFAULT_MODELS_ONLY);
+  const changeReportEnabled = args.includes('--report') || parseBoolean(process.env.OPENAPI_CHANGE_REPORT, false);
+  const parsedSampleLimit = Number(process.env.OPENAPI_CHANGE_REPORT_MAX ?? '8');
+  const changeReportSampleLimit = Number.isFinite(parsedSampleLimit) && parsedSampleLimit > 0
+    ? Math.floor(parsedSampleLimit)
+    : 8;
   const servicesRoot =
     process.env.OPENAPI_SERVICES_ROOT ||
     process.env.OPENAPI_SERVICES_CONFIG ||
@@ -430,6 +648,7 @@ async function main() {
     DEFAULT_OPENAPI_URL;
 
   let orvalSource = resolvedUrl;
+  let filteredSpecTempDir: string | null = null;
 
   if (openapiInput) {
     const absInputPath = path.resolve(process.cwd(), openapiInput);
@@ -443,14 +662,36 @@ async function main() {
     console.log(`Using OpenAPI URL: ${resolvedUrl}`);
   }
 
+  if (includeTags.length > 0 || excludeTags.length > 0) {
+    const spec = await loadOpenApiSpec(orvalSource);
+    const beforePathCount = Object.keys(spec.paths ?? {}).length;
+    const filteredSpec = filterOpenApiByTags(spec, includeTags, excludeTags);
+    const afterPathCount = Object.keys(filteredSpec.paths ?? {}).length;
+    filteredSpecTempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pixsim7-openapi-filtered-'));
+    const filteredSpecPath = path.join(filteredSpecTempDir, 'openapi.filtered.json');
+    await fs.writeFile(filteredSpecPath, `${JSON.stringify(filteredSpec, null, 2)}\n`, 'utf8');
+    orvalSource = filteredSpecPath;
+    console.log(
+      `[info] Applied tag filter: paths ${beforePathCount} -> ${afterPathCount} ` +
+      `(include=${includeTags.join(',') || '-'}, exclude=${excludeTags.join(',') || '-'})`
+    );
+  }
+
   const orvalOk = await generateOrvalSplit(
     orvalSource,
     absOrvalOutDir,
     orvalOutDir,
     orvalMode,
     orvalClient,
+    modelsOnly,
+    changeReportEnabled,
+    changeReportSampleLimit,
     isCheckMode
   );
+
+  if (filteredSpecTempDir) {
+    await fs.rm(filteredSpecTempDir, { recursive: true, force: true });
+  }
 
   if (isCheckMode && !orvalOk) {
     process.exit(1);

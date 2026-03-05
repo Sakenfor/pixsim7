@@ -54,6 +54,8 @@ export type {
   BlockTagFacetsQuery,
   ReloadContentPacksQuery,
   ReloadContentPacksResponse,
+  ContentPackMatrixManifest,
+  ContentPackMatrixPreset,
   PromptBlockResponse,
   BlockRoleSummary,
 } from './blockTemplates';

@@ -21,14 +21,22 @@ This folder centralizes code generation tooling for the workspace.
 - `tools/codegen/generate-prompt-roles.ts`
 - `tools/codegen/generate-branded-types.ts`
 - `tools/codegen/generate-upload-context.ts`
+- `tools/codegen/generate-prompt-pack-schemas.ts`
 - `tools/codegen/run-plugin-codegen.ts`
 
 ### OpenAPI Generator Notes
 
 - The OpenAPI generator uses Orval to produce split output: `packages/shared/api/model/src/generated/openapi`
+- By default, generation keeps only model DTO files (`OPENAPI_MODELS_ONLY=true` behavior in the generator).
 - You can use a local spec file instead of a live backend:
   - `pnpm openapi:gen -- --input ./path/to/openapi.json`
   - or `OPENAPI_INPUT=./path/to/openapi.json`
+- You can optionally filter paths by OpenAPI tags:
+  - `pnpm openapi:gen -- --include-tags assets,game-worlds`
+  - `pnpm openapi:gen -- --exclude-tags dev,admin`
+- You can print a generation diff summary:
+  - `pnpm openapi:gen -- --report`
+  - or `OPENAPI_CHANGE_REPORT=true pnpm openapi:gen`
 
 ## Notes
 
