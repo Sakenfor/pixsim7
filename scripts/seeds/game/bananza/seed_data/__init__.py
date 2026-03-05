@@ -9,7 +9,8 @@ DEMO_PACK = "bananza_boat_demo"
 CORE_PACK = "core_scene_primitives"
 GENRE_PACK = "genre_tone_primitives"
 DEMO_PROJECT_NAME = "Bananza Boat Seed Project"
-SEED_KEY = "bananza_boat_slice_v1"
+BOOTSTRAP_SOURCE_KEY = "bananza.bootstrap"
+BOOTSTRAP_PROFILE = "bananza_boat_slice_v1"
 
 
 @dataclass(frozen=True)
@@ -141,6 +142,31 @@ REQUIRED_TEMPLATE_SLUGS: List[str] = [
     "bananza-scene-compose-scaffold-v1",
     "bananza-scene-refine-scaffold-v1",
 ]
+
+
+# Explicit pack registration for Bananza project bootstrap.
+# These registrations are carried into world/project metadata so Bananza
+# custom blocks/templates are project-scoped, never implicitly assumed.
+REGISTERED_SOURCE_PACKS: List[str] = [
+    DEMO_PACK,
+    CORE_PACK,
+    GENRE_PACK,
+]
+
+REGISTERED_TEMPLATE_PACKS: List[str] = [
+    DEMO_PACK,
+]
+
+
+def expected_source_pack_for_block_id(block_id: str) -> str | None:
+    normalized = str(block_id or "").strip()
+    if normalized.startswith("bananza."):
+        return DEMO_PACK
+    if normalized.startswith("core."):
+        return CORE_PACK
+    if normalized.startswith("genre."):
+        return GENRE_PACK
+    return None
 
 
 BEHAVIOR_TEMPLATE: Dict[str, Any] = {
@@ -314,7 +340,7 @@ SIMULATION_TEMPLATE: Dict[str, Any] = {
         "dormant": {"maxNpcs": 5000, "description": "Dormant world population"},
     },
     "pauseSimulation": False,
-    "meta": {"seed_key": SEED_KEY},
+    "meta": {"bootstrap_source": BOOTSTRAP_SOURCE_KEY},
 }
 
 

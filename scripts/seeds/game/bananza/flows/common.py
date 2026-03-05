@@ -12,9 +12,12 @@ from pixsim7.backend.main.services.game.npc_schedule_projection import (
 
 from ..seed_data import (
     BEHAVIOR_TEMPLATE,
+    BOOTSTRAP_PROFILE,
+    BOOTSTRAP_SOURCE_KEY,
     NPC_BEHAVIOR_BINDINGS,
     NPC_SEEDS,
-    SEED_KEY,
+    REGISTERED_SOURCE_PACKS,
+    REGISTERED_TEMPLATE_PACKS,
 )
 
 
@@ -55,7 +58,6 @@ def build_behavior_config() -> Dict[str, Any]:
         behavior_config,
         projections,
         source="compiled_from_npc_schedule",
-        seed_key=SEED_KEY,
     )
 
     if compiled_routines:
@@ -64,7 +66,7 @@ def build_behavior_config() -> Dict[str, Any]:
     meta = behavior_config.get("meta")
     if not isinstance(meta, dict):
         meta = {}
-    meta["seed_key"] = SEED_KEY
+    meta["bootstrap_source"] = BOOTSTRAP_SOURCE_KEY
     meta["routine_source"] = "compiled_from_npc_schedules"
     behavior_config["meta"] = meta
     return behavior_config
@@ -76,7 +78,6 @@ def now_utc() -> datetime:
 
 def base_world_meta() -> Dict[str, Any]:
     return {
-        "seed_key": SEED_KEY,
         "genre": "comedy_adventure",
         "premise": (
             "A silly turn-based cruise where Gorilla and Banana trade jokes, "
@@ -84,4 +85,13 @@ def base_world_meta() -> Dict[str, Any]:
         ),
         "style": "leisure-suit-larry-inspired parody tone",
         "turn_model": "turn_based",
+        "project_content_packs": {
+            "registration_mode": "explicit",
+            "registered_source_packs": list(REGISTERED_SOURCE_PACKS),
+            "registered_template_packs": list(REGISTERED_TEMPLATE_PACKS),
+        },
+        "bootstrap": {
+            "source": BOOTSTRAP_SOURCE_KEY,
+            "profile": BOOTSTRAP_PROFILE,
+        },
     }

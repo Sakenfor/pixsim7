@@ -29,18 +29,21 @@ from pixsim7.backend.main.services.prompt.block.template_service import (
 )
 
 from ..seed_data import (
+    BOOTSTRAP_PROFILE,
+    BOOTSTRAP_SOURCE_KEY,
     LOCATION_SEEDS,
     NPC_BEHAVIOR_BINDINGS,
     NPC_SEEDS,
+    REGISTERED_SOURCE_PACKS,
+    REGISTERED_TEMPLATE_PACKS,
     REQUIRED_BLOCK_IDS,
     REQUIRED_TEMPLATE_SLUGS,
-    SEED_KEY,
     SIMULATION_TEMPLATE,
+    expected_source_pack_for_block_id,
 )
 from .common import (
     base_world_meta,
     build_behavior_config,
-    now_utc,
 )
 
 
@@ -82,10 +85,9 @@ async def _ensure_world(
 
     state = await db.get(GameWorldState, world.id)
     if state is None:
-        db.add(GameWorldState(world_id=world.id, world_time=0.0, meta={"seeded": True}))
+        db.add(GameWorldState(world_id=world.id, world_time=0.0, meta={}))
     else:
         state.meta = dict(state.meta or {})
-        state.meta["seeded"] = True
         db.add(state)
 
     await db.commit()
@@ -97,6 +99,7 @@ async def _upsert_locations(
     db: AsyncSession,
     *,
     world_id: int,
+    world_name: str,
 ) -> Dict[str, GameLocation]:
     locations_by_key: Dict[str, GameLocation] = {}
 
@@ -115,7 +118,8 @@ async def _upsert_locations(
                 x=seed.x,
                 y=seed.y,
                 meta={
-                    "seed_key": SEED_KEY,
+                    "bootstrap_source": BOOTSTRAP_SOURCE_KEY,
+                    "bootstrap_world_name": world_name,
                     "location_key": seed.key,
                     "description": seed.description,
                 },
@@ -128,7 +132,8 @@ async def _upsert_locations(
             meta = dict(location.meta or {})
             meta.update(
                 {
-                    "seed_key": SEED_KEY,
+                    "bootstrap_source": BOOTSTRAP_SOURCE_KEY,
+                    "bootstrap_world_name": world_name,
                     "location_key": seed.key,
                     "description": seed.description,
                 }
@@ -149,6 +154,7 @@ async def _upsert_npcs_and_schedules(
     db: AsyncSession,
     *,
     world_id: int,
+    world_name: str,
     locations_by_key: Dict[str, GameLocation],
 ) -> Dict[str, GameNPC]:
     npcs_by_key: Dict[str, GameNPC] = {}
@@ -165,7 +171,8 @@ async def _upsert_npcs_and_schedules(
         seed_personality = dict(seed.personality)
         seed_personality.update(
             {
-                "seed_key": SEED_KEY,
+                "bootstrap_source": BOOTSTRAP_SOURCE_KEY,
+                "bootstrap_world_name": world_name,
                 "npc_key": seed.key,
             }
         )
@@ -190,10 +197,10 @@ async def _upsert_npcs_and_schedules(
             raise RuntimeError(f"failed_to_upsert_npc:{seed.name}")
         npcs_by_key[seed.key] = npc
 
-    # Keep schedules deterministic by replacing schedules for seeded NPCs.
-    seeded_npc_ids = [npc.id for npc in npcs_by_key.values() if npc.id is not None]
-    if seeded_npc_ids:
-        await db.execute(delete(NPCSchedule).where(NPCSchedule.npc_id.in_(seeded_npc_ids)))
+    # Keep schedules deterministic by replacing schedules for bootstrapped NPCs.
+    bootstrapped_npc_ids = [npc.id for npc in npcs_by_key.values() if npc.id is not None]
+    if bootstrapped_npc_ids:
+        await db.execute(delete(NPCSchedule).where(NPCSchedule.npc_id.in_(bootstrapped_npc_ids)))
 
     for seed in NPC_SEEDS:
         npc = npcs_by_key[seed.key]
@@ -211,7 +218,8 @@ async def _upsert_npcs_and_schedules(
                     end_time=sched.end_time,
                     location_id=location.id,
                     rule={
-                        "seed_key": SEED_KEY,
+                        "bootstrap_source": BOOTSTRAP_SOURCE_KEY,
+                        "bootstrap_world_name": world_name,
                         "label": sched.label,
                     },
                 )
@@ -262,7 +270,8 @@ async def _upsert_behavior_templates(
         personality["archetypeId"] = binding["archetypeId"]
         personality["routineId"] = binding["routineId"]
         personality["behavior"] = behavior
-        personality["seed_key"] = SEED_KEY
+        personality["bootstrap_source"] = BOOTSTRAP_SOURCE_KEY
+        personality["bootstrap_world_name"] = world.name
 
         npc.personality = personality
         db.add(npc)
@@ -284,14 +293,31 @@ async def _upsert_behavior_templates(
 async def _verify_required_blocks() -> Dict[str, Any]:
     """Verify all required block IDs exist in the blocks DB."""
     missing: List[str] = []
+    wrong_source_pack: List[str] = []
 
     async with get_async_blocks_session() as blocks_db:
         for block_id in REQUIRED_BLOCK_IDS:
             result = await blocks_db.execute(
-                select(BlockPrimitive.block_id).where(BlockPrimitive.block_id == block_id)
+                select(BlockPrimitive).where(BlockPrimitive.block_id == block_id)
             )
-            if result.scalar_one_or_none() is None:
+            row = result.scalar_one_or_none()
+            if row is None:
                 missing.append(block_id)
+                continue
+
+            tags = row.tags if isinstance(getattr(row, "tags", None), dict) else {}
+            source_pack = tags.get("source_pack")
+            source_pack_text = str(source_pack).strip() if source_pack is not None else ""
+            expected_pack = expected_source_pack_for_block_id(block_id)
+            if expected_pack and source_pack_text != expected_pack:
+                wrong_source_pack.append(
+                    f"{block_id}: expected source_pack={expected_pack!r}, got {source_pack_text!r}"
+                )
+                continue
+            if source_pack_text and source_pack_text not in REGISTERED_SOURCE_PACKS:
+                wrong_source_pack.append(
+                    f"{block_id}: source_pack={source_pack_text!r} is not explicitly registered"
+                )
 
     if missing:
         raise RuntimeError(
@@ -300,18 +326,37 @@ async def _verify_required_blocks() -> Dict[str, Any]:
             f"  Missing: {missing}"
         )
 
-    return {"verified": len(REQUIRED_BLOCK_IDS), "missing": 0}
+    if wrong_source_pack:
+        raise RuntimeError(
+            "Required block primitives found with unexpected source pack mapping. "
+            "Register expected packs explicitly and reload content packs.\n"
+            f"  Errors: {wrong_source_pack}"
+        )
+
+    return {
+        "verified": len(REQUIRED_BLOCK_IDS),
+        "missing": 0,
+        "registered_source_packs": list(REGISTERED_SOURCE_PACKS),
+    }
 
 
 async def _verify_required_templates(db: AsyncSession) -> Dict[str, Any]:
     """Verify all required template slugs exist in the templates DB."""
     service = BlockTemplateService(db)
     missing: List[str] = []
+    wrong_source_pack: List[str] = []
 
     for slug in REQUIRED_TEMPLATE_SLUGS:
         existing = await service.get_template_by_slug(slug)
         if existing is None:
             missing.append(slug)
+            continue
+
+        package_name = str(getattr(existing, "package_name", "") or "").strip()
+        if package_name and package_name not in REGISTERED_TEMPLATE_PACKS:
+            wrong_source_pack.append(
+                f"{slug}: package_name={package_name!r} is not explicitly registered"
+            )
 
     if missing:
         raise RuntimeError(
@@ -320,7 +365,17 @@ async def _verify_required_templates(db: AsyncSession) -> Dict[str, Any]:
             f"  Missing: {missing}"
         )
 
-    return {"verified": len(REQUIRED_TEMPLATE_SLUGS), "missing": 0}
+    if wrong_source_pack:
+        raise RuntimeError(
+            "Required templates found with unexpected package registration.\n"
+            f"  Errors: {wrong_source_pack}"
+        )
+
+    return {
+        "verified": len(REQUIRED_TEMPLATE_SLUGS),
+        "missing": 0,
+        "registered_template_packs": list(REGISTERED_TEMPLATE_PACKS),
+    }
 
 
 async def _upsert_project_snapshot(
@@ -364,13 +419,20 @@ async def _upsert_project_snapshot(
         bundle=bundle,
         source_world_id=world_id,
         overwrite_project_id=(existing.id if existing is not None else None),
-        provenance=ProjectProvenance(
-            kind=ProjectOriginKind.DEMO,
-            source_key=SEED_KEY,
-            meta={
-                "seed_key": SEED_KEY,
-                "seed_world_name": world_name,
-            },
+        provenance=(
+            ProjectProvenance(
+                kind=ProjectOriginKind.IMPORT,
+                source_key=BOOTSTRAP_SOURCE_KEY,
+                meta={
+                    "bootstrap_mode": "explicit_initialization",
+                    "bootstrap_profile": BOOTSTRAP_PROFILE,
+                    "bootstrap_world_name": world_name,
+                    "registered_source_packs": list(REGISTERED_SOURCE_PACKS),
+                    "registered_template_packs": list(REGISTERED_TEMPLATE_PACKS),
+                },
+            )
+            if existing is None
+            else None
         ),
     )
     return {
@@ -388,7 +450,7 @@ async def seed_bananza_boat_slice(
     world_name: str,
     project_name: str,
     project_id: Optional[int] = None,
-) -> None:
+) -> Dict[str, Any]:
     # Validate that required content is loaded before proceeding
     block_check = await _verify_required_blocks()
 
@@ -399,10 +461,15 @@ async def seed_bananza_boat_slice(
         if world.id is None:
             raise RuntimeError("world_missing_id")
 
-        locations_by_key = await _upsert_locations(db, world_id=world.id)
+        locations_by_key = await _upsert_locations(
+            db,
+            world_id=world.id,
+            world_name=world_name,
+        )
         npcs_by_key = await _upsert_npcs_and_schedules(
             db,
             world_id=world.id,
+            world_name=world_name,
             locations_by_key=locations_by_key,
         )
         behavior_summary = await _upsert_behavior_templates(
@@ -455,3 +522,10 @@ async def seed_bananza_boat_slice(
         "  POST /api/v1/game/dialogue/actions/select with "
         "lead_npc_id, partner_npc_id, world_id, location_tag, mood, pose"
     )
+
+    return {
+        "world_id": world.id,
+        "project_id": project_summary["project_id"],
+        "project_name": project_summary["name"],
+        "source_world_id": project_summary["source_world_id"],
+    }

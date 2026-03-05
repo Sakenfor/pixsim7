@@ -1,18 +1,26 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
 
 from ..seed_data import (
+    BOOTSTRAP_PROFILE,
+    BOOTSTRAP_SOURCE_KEY,
     LOCATION_SEEDS,
     NPC_BEHAVIOR_BINDINGS,
     NPC_SEEDS,
+    REGISTERED_SOURCE_PACKS,
+    REGISTERED_TEMPLATE_PACKS,
     REQUIRED_BLOCK_IDS,
     REQUIRED_TEMPLATE_SLUGS,
-    SEED_KEY,
     SIMULATION_TEMPLATE,
+    expected_source_pack_for_block_id,
 )
 from .common import (
     base_world_meta,
@@ -103,30 +111,74 @@ def _to_int(value: Any) -> Optional[int]:
         return None
 
 
-def _snapshot_matches_seed(
-    snapshot: Dict[str, Any],
-    *,
-    world_name: str,
-) -> bool:
-    if not isinstance(snapshot, dict):
-        return False
+def _parse_iso_timestamp(value: Any) -> datetime:
+    text = str(value or "").strip()
+    if not text:
+        return datetime.fromtimestamp(0, tz=timezone.utc)
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.fromtimestamp(0, tz=timezone.utc)
 
-    provenance = snapshot.get("provenance")
-    if not isinstance(provenance, dict):
-        provenance = {}
-    source_key = str(provenance.get("source_key") or "").strip()
-    meta = provenance.get("meta")
-    if not isinstance(meta, dict):
-        meta = {}
-    meta_seed_key = str(meta.get("seed_key") or "").strip()
-    meta_seed_world_name = str(meta.get("seed_world_name") or "").strip()
 
-    seed_match = source_key == SEED_KEY or meta_seed_key == SEED_KEY
-    world_match = (not meta_seed_world_name) or (meta_seed_world_name == world_name)
-    if seed_match and world_match:
-        return True
+def _snapshot_sort_key(snapshot: Dict[str, Any]) -> tuple[datetime, int]:
+    updated_at = _parse_iso_timestamp(snapshot.get("updated_at"))
+    snapshot_id = _to_int(snapshot.get("id")) or 0
+    return updated_at, snapshot_id
 
-    return False
+
+def _canonical_json(payload: Any) -> str:
+    return json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+
+
+def _bundle_hash(bundle: Dict[str, Any]) -> str:
+    return hashlib.sha256(_canonical_json(bundle).encode("utf-8")).hexdigest()
+
+
+def _normalize_project_file_path(project_file: Optional[str], *, project_name: str) -> Path:
+    raw = str(project_file or "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve()
+
+    safe_name = "".join(ch if ch.isalnum() or ch in ("_", "-", ".") else "_" for ch in project_name.strip())
+    safe_name = safe_name or "bananza_project"
+    return (Path.cwd() / ".pixsim7" / "bananza" / f"{safe_name}.json").resolve()
+
+
+def _build_project_file_payload(snapshot_detail: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+        "project": {
+            "id": snapshot_detail.get("id"),
+            "name": snapshot_detail.get("name"),
+            "source_world_id": snapshot_detail.get("source_world_id"),
+            "updated_at": snapshot_detail.get("updated_at"),
+            "schema_version": snapshot_detail.get("schema_version"),
+            "provenance": snapshot_detail.get("provenance") or {},
+        },
+        "bundle": snapshot_detail.get("bundle") or {},
+    }
+
+
+def _read_project_file(project_file: Path) -> Dict[str, Any]:
+    with open(project_file, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise RuntimeError(f"project_file_invalid:{project_file}")
+    bundle = data.get("bundle")
+    if not isinstance(bundle, dict):
+        raise RuntimeError(f"project_file_missing_bundle:{project_file}")
+    return data
+
+
+def _write_project_file(project_file: Path, payload: Dict[str, Any]) -> str:
+    project_file.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload, indent=2, ensure_ascii=True, sort_keys=True)
+    with open(project_file, "w", encoding="utf-8") as f:
+        f.write(text)
+        f.write("\n")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 async def _resolve_auth_token(
@@ -157,6 +209,21 @@ async def _resolve_auth_token(
         if not token:
             raise RuntimeError("login_succeeded_but_no_access_token")
         return token
+
+
+async def resolve_api_auth_token(
+    *,
+    api_base: str,
+    auth_token: Optional[str] = None,
+    username: str = "admin",
+    password: str = "admin",
+) -> str:
+    return await _resolve_auth_token(
+        api_base=_normalize_api_base(api_base),
+        explicit_token=auth_token,
+        username=username,
+        password=password,
+    )
 
 
 async def _api_ensure_world(
@@ -245,9 +312,9 @@ async def _api_upsert_locations(
         if not isinstance(detail, dict):
             continue
         meta = detail.get("meta") if isinstance(detail.get("meta"), dict) else {}
-        if meta.get("seed_key") != SEED_KEY:
+        if meta.get("bootstrap_source") != BOOTSTRAP_SOURCE_KEY:
             continue
-        if meta.get("seed_world_name") != world_name:
+        if meta.get("bootstrap_world_name") != world_name:
             continue
         location_key = meta.get("location_key")
         if isinstance(location_key, str) and location_key in expected_keys:
@@ -259,8 +326,8 @@ async def _api_upsert_locations(
 
     for seed in LOCATION_SEEDS:
         seed_meta = {
-            "seed_key": SEED_KEY,
-            "seed_world_name": world_name,
+            "bootstrap_source": BOOTSTRAP_SOURCE_KEY,
+            "bootstrap_world_name": world_name,
             "location_key": seed.key,
             "description": seed.description,
         }
@@ -338,9 +405,9 @@ async def _api_upsert_npcs_and_schedules(
         if not isinstance(detail, dict):
             continue
         personality = detail.get("personality") if isinstance(detail.get("personality"), dict) else {}
-        if personality.get("seed_key") != SEED_KEY:
+        if personality.get("bootstrap_source") != BOOTSTRAP_SOURCE_KEY:
             continue
-        if personality.get("seed_world_name") != world_name:
+        if personality.get("bootstrap_world_name") != world_name:
             continue
         npc_key = personality.get("npc_key")
         if isinstance(npc_key, str) and npc_key in expected_keys:
@@ -359,8 +426,8 @@ async def _api_upsert_npcs_and_schedules(
         seed_personality = dict(seed.personality)
         seed_personality.update(
             {
-                "seed_key": SEED_KEY,
-                "seed_world_name": world_name,
+                "bootstrap_source": BOOTSTRAP_SOURCE_KEY,
+                "bootstrap_world_name": world_name,
                 "npc_key": seed.key,
             }
         )
@@ -416,7 +483,7 @@ async def _api_upsert_npcs_and_schedules(
                     "end_time": schedule_seed.end_time,
                     "location_id": int(location["id"]),
                     "rule": {
-                        "seed_key": SEED_KEY,
+                        "bootstrap_source": BOOTSTRAP_SOURCE_KEY,
                         "label": schedule_seed.label,
                     },
                 }
@@ -456,7 +523,11 @@ async def _api_apply_behavior(
     if isinstance(existing_simulation, dict):
         merged_simulation.update(existing_simulation)
     world_meta["simulation"] = merged_simulation
-    world_meta.setdefault("seed_key", SEED_KEY)
+    world_meta["project_content_packs"] = {
+        "registration_mode": "explicit",
+        "registered_source_packs": list(REGISTERED_SOURCE_PACKS),
+        "registered_template_packs": list(REGISTERED_TEMPLATE_PACKS),
+    }
 
     await _api_put_json(
         client,
@@ -487,8 +558,8 @@ async def _api_apply_behavior(
         personality["archetypeId"] = binding["archetypeId"]
         personality["routineId"] = binding["routineId"]
         personality["behavior"] = behavior
-        personality["seed_key"] = SEED_KEY
-        personality["seed_world_name"] = world_name
+        personality["bootstrap_source"] = BOOTSTRAP_SOURCE_KEY
+        personality["bootstrap_world_name"] = world_name
         personality["npc_key"] = npc_key
 
         payload = {
@@ -518,18 +589,43 @@ async def _api_apply_behavior(
 async def _api_verify_required_blocks(client: httpx.AsyncClient) -> Dict[str, Any]:
     """Verify all required block IDs exist. Fails fast with missing IDs."""
     missing: List[str] = []
+    wrong_source_pack: List[str] = []
     for block_id in REQUIRED_BLOCK_IDS:
-        try:
-            await _api_get_json(
-                client,
-                f"/api/v1/block-templates/blocks/by-block-id/{block_id}",
-                context=f"verify_block:{block_id}",
+        rows = await _api_get_json(
+            client,
+            "/api/v1/block-templates/meta/blocks/catalog",
+            params={"q": block_id, "limit": 200},
+            context=f"verify_block:{block_id}",
+        )
+        if not isinstance(rows, list):
+            raise RuntimeError(f"unexpected_block_catalog_payload:{block_id}")
+
+        row: Optional[Dict[str, Any]] = None
+        for candidate in rows:
+            if not isinstance(candidate, dict):
+                continue
+            if str(candidate.get("block_id") or "").strip() == block_id:
+                row = candidate
+                break
+
+        if row is None:
+            missing.append(block_id)
+            continue
+
+        expected_pack = expected_source_pack_for_block_id(block_id)
+        tags = row.get("tags")
+        tags_map = tags if isinstance(tags, dict) else {}
+        source_pack = str(tags_map.get("source_pack") or row.get("package_name") or "").strip()
+
+        if expected_pack and source_pack != expected_pack:
+            wrong_source_pack.append(
+                f"{block_id}: expected source_pack={expected_pack!r}, got {source_pack!r}"
             )
-        except RuntimeError as exc:
-            if _is_http_not_found_error(exc):
-                missing.append(block_id)
-            else:
-                raise
+            continue
+        if source_pack and source_pack not in REGISTERED_SOURCE_PACKS:
+            wrong_source_pack.append(
+                f"{block_id}: source_pack={source_pack!r} is not explicitly registered"
+            )
 
     if missing:
         raise RuntimeError(
@@ -538,15 +634,27 @@ async def _api_verify_required_blocks(client: httpx.AsyncClient) -> Dict[str, An
             f"  Missing: {missing}"
         )
 
-    return {"verified": len(REQUIRED_BLOCK_IDS), "missing": 0}
+    if wrong_source_pack:
+        raise RuntimeError(
+            "Required block primitives found with unexpected source pack mapping. "
+            "Register expected packs explicitly and reload content packs.\n"
+            f"  Errors: {wrong_source_pack}"
+        )
+
+    return {
+        "verified": len(REQUIRED_BLOCK_IDS),
+        "missing": 0,
+        "registered_source_packs": list(REGISTERED_SOURCE_PACKS),
+    }
 
 
 async def _api_verify_required_templates(client: httpx.AsyncClient) -> Dict[str, Any]:
     """Verify all required template slugs exist. Fails fast with missing slugs."""
     missing: List[str] = []
+    wrong_source_pack: List[str] = []
     for slug in REQUIRED_TEMPLATE_SLUGS:
         try:
-            await _api_get_json(
+            template = await _api_get_json(
                 client,
                 f"/api/v1/block-templates/by-slug/{slug}",
                 context=f"verify_template:{slug}",
@@ -556,6 +664,16 @@ async def _api_verify_required_templates(client: httpx.AsyncClient) -> Dict[str,
                 missing.append(slug)
             else:
                 raise
+            continue
+
+        if not isinstance(template, dict):
+            raise RuntimeError(f"unexpected_template_payload:{slug}")
+
+        package_name = str(template.get("package_name") or "").strip()
+        if package_name and package_name not in REGISTERED_TEMPLATE_PACKS:
+            wrong_source_pack.append(
+                f"{slug}: package_name={package_name!r} is not explicitly registered"
+            )
 
     if missing:
         raise RuntimeError(
@@ -564,7 +682,17 @@ async def _api_verify_required_templates(client: httpx.AsyncClient) -> Dict[str,
             f"  Missing: {missing}"
         )
 
-    return {"verified": len(REQUIRED_TEMPLATE_SLUGS), "missing": 0}
+    if wrong_source_pack:
+        raise RuntimeError(
+            "Required templates found with unexpected package registration.\n"
+            f"  Errors: {wrong_source_pack}"
+        )
+
+    return {
+        "verified": len(REQUIRED_TEMPLATE_SLUGS),
+        "missing": 0,
+        "registered_template_packs": list(REGISTERED_TEMPLATE_PACKS),
+    }
 
 
 async def _api_upsert_project_snapshot(
@@ -584,6 +712,8 @@ async def _api_upsert_project_snapshot(
         f"/api/v1/game/worlds/{world_id}/project/export",
         context="export_world_project_bundle",
     )
+    if not isinstance(bundle, dict):
+        raise RuntimeError("unexpected_world_bundle_payload")
 
     overwrite_project_id: Optional[int] = project_id
     duplicate_ids: List[int] = []
@@ -597,52 +727,46 @@ async def _api_upsert_project_snapshot(
             context="list_project_snapshots",
         )
         if isinstance(snapshots, list):
-            matching_seed_snapshots: List[Dict[str, Any]] = []
             matching_name_snapshots: List[Dict[str, Any]] = []
             for snapshot in snapshots:
                 if not isinstance(snapshot, dict):
                     continue
-                if _snapshot_matches_seed(
-                    snapshot,
-                    world_name=world_name,
-                ):
-                    matching_seed_snapshots.append(snapshot)
-                    continue
                 if str(snapshot.get("name") or "").strip() == project_name:
                     matching_name_snapshots.append(snapshot)
 
-            if matching_seed_snapshots:
-                primary_id = _to_int(matching_seed_snapshots[0].get("id"))
+            if matching_name_snapshots:
+                matching_name_snapshots.sort(key=_snapshot_sort_key, reverse=True)
+                primary_id = _to_int(matching_name_snapshots[0].get("id"))
                 if primary_id is not None:
                     overwrite_project_id = primary_id
                 duplicate_ids = [
                     pid
                     for pid in (
                         _to_int(snapshot.get("id"))
-                        for snapshot in matching_seed_snapshots[1:]
+                        for snapshot in matching_name_snapshots[1:]
                     )
                     if pid is not None
                 ]
-            elif matching_name_snapshots:
-                primary_id = _to_int(matching_name_snapshots[0].get("id"))
-                if primary_id is not None:
-                    overwrite_project_id = primary_id
 
     payload: Dict[str, Any] = {
         "name": project_name,
         "bundle": bundle,
         "source_world_id": world_id,
-        "provenance": {
-            "kind": "demo",
-            "source_key": SEED_KEY,
-            "meta": {
-                "seed_key": SEED_KEY,
-                "seed_world_name": world_name,
-            },
-        },
     }
     if overwrite_project_id is not None:
         payload["overwrite_project_id"] = int(overwrite_project_id)
+    else:
+        payload["provenance"] = {
+            "kind": "import",
+            "source_key": BOOTSTRAP_SOURCE_KEY,
+            "meta": {
+                "bootstrap_mode": "explicit_initialization",
+                "bootstrap_profile": BOOTSTRAP_PROFILE,
+                "bootstrap_world_name": world_name,
+                "registered_source_packs": list(REGISTERED_SOURCE_PACKS),
+                "registered_template_packs": list(REGISTERED_TEMPLATE_PACKS),
+            },
+        }
 
     saved = await _api_post_json(
         client,
@@ -686,6 +810,250 @@ async def _api_upsert_project_snapshot(
     }
 
 
+async def _api_get_saved_project_detail(
+    client: httpx.AsyncClient,
+    *,
+    project_id: int,
+) -> Optional[Dict[str, Any]]:
+    try:
+        detail = await _api_get_json(
+            client,
+            f"/api/v1/game/worlds/projects/snapshots/{int(project_id)}",
+            context=f"get_project_snapshot:{project_id}",
+        )
+    except RuntimeError as exc:
+        if _is_http_not_found_error(exc):
+            return None
+        raise
+
+    if not isinstance(detail, dict):
+        raise RuntimeError(f"unexpected_project_snapshot_detail:{project_id}")
+    return detail
+
+
+async def _api_find_project_snapshot_detail(
+    client: httpx.AsyncClient,
+    *,
+    project_name: str,
+    project_id: Optional[int] = None,
+) -> Optional[Dict[str, Any]]:
+    if project_id is not None:
+        return await _api_get_saved_project_detail(client, project_id=int(project_id))
+
+    snapshots = await _api_get_json(
+        client,
+        "/api/v1/game/worlds/projects/snapshots",
+        params={"offset": 0, "limit": 500},
+        context="list_project_snapshots",
+    )
+    if not isinstance(snapshots, list):
+        raise RuntimeError("unexpected_project_snapshots_payload")
+
+    matching: List[Dict[str, Any]] = []
+    for snapshot in snapshots:
+        if not isinstance(snapshot, dict):
+            continue
+        if str(snapshot.get("name") or "").strip() == project_name:
+            matching.append(snapshot)
+
+    if not matching:
+        return None
+
+    matching.sort(key=_snapshot_sort_key, reverse=True)
+    resolved_id = _to_int(matching[0].get("id"))
+    if resolved_id is None:
+        return None
+    return await _api_get_saved_project_detail(client, project_id=resolved_id)
+
+
+def _normalize_sync_mode(sync_mode: Optional[str]) -> str:
+    normalized = str(sync_mode or "two_way").strip().lower()
+    if normalized in {"two_way", "backend_to_file", "file_to_backend", "none"}:
+        return normalized
+    return "two_way"
+
+
+async def sync_project_snapshot_file_via_api(
+    *,
+    api_base: str,
+    auth_token: Optional[str],
+    username: str,
+    password: str,
+    project_name: str,
+    project_id: Optional[int] = None,
+    source_world_id: Optional[int] = None,
+    project_file: Optional[str] = None,
+    sync_mode: str = "two_way",
+) -> Dict[str, Any]:
+    normalized_mode = _normalize_sync_mode(sync_mode)
+    if normalized_mode == "none":
+        return {"action": "noop", "reason": "sync_mode_none"}
+
+    normalized_api_base = _normalize_api_base(api_base)
+    token = await _resolve_auth_token(
+        api_base=normalized_api_base,
+        explicit_token=auth_token,
+        username=username,
+        password=password,
+    )
+    project_file_path = _normalize_project_file_path(project_file, project_name=project_name)
+
+    headers = {"Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(
+        base_url=normalized_api_base,
+        timeout=120.0,
+        headers=headers,
+    ) as client:
+        snapshot = await _api_find_project_snapshot_detail(
+            client,
+            project_name=project_name,
+            project_id=project_id,
+        )
+        file_payload: Optional[Dict[str, Any]] = None
+        if project_file_path.exists():
+            file_payload = _read_project_file(project_file_path)
+
+        file_mtime = datetime.fromtimestamp(0, tz=timezone.utc)
+        if project_file_path.exists():
+            file_mtime = datetime.fromtimestamp(project_file_path.stat().st_mtime, tz=timezone.utc)
+
+        if snapshot is None and file_payload is None:
+            return {
+                "action": "noop",
+                "reason": "project_snapshot_and_file_missing",
+                "project_file": str(project_file_path),
+            }
+
+        if snapshot is None:
+            if normalized_mode == "backend_to_file":
+                return {
+                    "action": "noop",
+                    "reason": "backend_snapshot_missing_for_backend_to_file_mode",
+                    "project_file": str(project_file_path),
+                }
+            bundle = file_payload["bundle"] if file_payload else {}
+            file_project = file_payload.get("project") if isinstance(file_payload.get("project"), dict) else {}
+            payload: Dict[str, Any] = {
+                "name": str(file_project.get("name") or project_name),
+                "bundle": bundle,
+            }
+            resolved_world_id = _to_int(file_project.get("source_world_id")) or _to_int(source_world_id)
+            if resolved_world_id is not None:
+                payload["source_world_id"] = resolved_world_id
+            saved = await _api_post_json(
+                client,
+                "/api/v1/game/worlds/projects/snapshots",
+                body=payload,
+                context="sync_create_project_snapshot_from_file",
+            )
+            if not isinstance(saved, dict):
+                raise RuntimeError("unexpected_sync_save_project_payload")
+            saved_id = _to_int(saved.get("id"))
+            if saved_id is None:
+                raise RuntimeError("sync_created_project_missing_id")
+            snapshot = await _api_get_saved_project_detail(client, project_id=saved_id)
+            if snapshot is None:
+                raise RuntimeError("sync_created_project_missing_detail")
+            written_hash = _write_project_file(project_file_path, _build_project_file_payload(snapshot))
+            return {
+                "action": "pushed",
+                "project_id": saved_id,
+                "project_name": snapshot.get("name"),
+                "project_file": str(project_file_path),
+                "mode": normalized_mode,
+                "bundle_hash": written_hash,
+            }
+
+        if file_payload is None:
+            if normalized_mode == "file_to_backend":
+                return {
+                    "action": "noop",
+                    "reason": "project_file_missing_for_file_to_backend_mode",
+                    "project_id": snapshot.get("id"),
+                    "project_file": str(project_file_path),
+                }
+            written_hash = _write_project_file(project_file_path, _build_project_file_payload(snapshot))
+            return {
+                "action": "pulled",
+                "project_id": snapshot.get("id"),
+                "project_name": snapshot.get("name"),
+                "project_file": str(project_file_path),
+                "mode": normalized_mode,
+                "bundle_hash": written_hash,
+            }
+
+        snapshot_bundle = snapshot.get("bundle") if isinstance(snapshot.get("bundle"), dict) else {}
+        file_bundle = file_payload.get("bundle") if isinstance(file_payload.get("bundle"), dict) else {}
+        backend_hash = _bundle_hash(snapshot_bundle)
+        file_hash = _bundle_hash(file_bundle)
+        if backend_hash == file_hash:
+            return {
+                "action": "noop",
+                "reason": "already_in_sync",
+                "project_id": snapshot.get("id"),
+                "project_name": snapshot.get("name"),
+                "project_file": str(project_file_path),
+                "mode": normalized_mode,
+                "bundle_hash": backend_hash,
+            }
+
+        file_project = file_payload.get("project") if isinstance(file_payload.get("project"), dict) else {}
+        file_updated_at = _parse_iso_timestamp(file_project.get("updated_at"))
+        backend_updated_at = _parse_iso_timestamp(snapshot.get("updated_at"))
+
+        push_file_to_backend = False
+        if normalized_mode == "file_to_backend":
+            push_file_to_backend = True
+        elif normalized_mode == "two_way":
+            push_file_to_backend = (file_updated_at > backend_updated_at) or (file_mtime > backend_updated_at)
+
+        if push_file_to_backend:
+            payload: Dict[str, Any] = {
+                "name": str(file_project.get("name") or snapshot.get("name") or project_name),
+                "bundle": file_bundle,
+                "overwrite_project_id": int(snapshot["id"]),
+            }
+            resolved_world_id = (
+                _to_int(file_project.get("source_world_id"))
+                or _to_int(snapshot.get("source_world_id"))
+                or _to_int(source_world_id)
+            )
+            if resolved_world_id is not None:
+                payload["source_world_id"] = resolved_world_id
+
+            saved = await _api_post_json(
+                client,
+                "/api/v1/game/worlds/projects/snapshots",
+                body=payload,
+                context="sync_push_project_file_to_backend",
+            )
+            if not isinstance(saved, dict):
+                raise RuntimeError("unexpected_sync_push_project_payload")
+            saved_id = _to_int(saved.get("id")) or int(snapshot["id"])
+            updated_snapshot = await _api_get_saved_project_detail(client, project_id=saved_id)
+            if updated_snapshot is None:
+                raise RuntimeError("sync_push_project_missing_detail")
+            written_hash = _write_project_file(project_file_path, _build_project_file_payload(updated_snapshot))
+            return {
+                "action": "pushed",
+                "project_id": updated_snapshot.get("id"),
+                "project_name": updated_snapshot.get("name"),
+                "project_file": str(project_file_path),
+                "mode": normalized_mode,
+                "bundle_hash": written_hash,
+            }
+
+        written_hash = _write_project_file(project_file_path, _build_project_file_payload(snapshot))
+        return {
+            "action": "pulled",
+            "project_id": snapshot.get("id"),
+            "project_name": snapshot.get("name"),
+            "project_file": str(project_file_path),
+            "mode": normalized_mode,
+            "bundle_hash": written_hash,
+        }
+
+
 async def seed_bananza_boat_slice_via_api(
     *,
     world_name: str,
@@ -696,7 +1064,7 @@ async def seed_bananza_boat_slice_via_api(
     auth_token: Optional[str] = None,
     username: str = "admin",
     password: str = "admin",
-) -> None:
+) -> Dict[str, Any]:
     normalized_api_base = _normalize_api_base(api_base)
     token = await _resolve_auth_token(
         api_base=normalized_api_base,
@@ -800,3 +1168,11 @@ async def seed_bananza_boat_slice_via_api(
         "  POST /api/v1/game/dialogue/actions/select with "
         "lead_npc_id, partner_npc_id, world_id, location_tag, mood, pose"
     )
+
+    return {
+        "world_id": world_id,
+        "project_id": project_summary["project_id"],
+        "project_name": project_summary["name"],
+        "source_world_id": project_summary["source_world_id"],
+        "api_base": normalized_api_base,
+    }
