@@ -3,13 +3,18 @@
 Supports both legacy PromptBlock (role + category) and BlockPrimitive
 (category only) via the category-only fallback table.
 
+Registry-driven: all mapping tables are loaded from VocabularyRegistry
+(roles.yaml slug_mappings, namespace_mappings, category_mappings) and
+the prompt_role→composition_role mapping. A tiny bootstrap fallback is
+kept for safety when the registry is unavailable.
+
 Pure function — no DB, no async, no side-effects.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Mapping
+from typing import Any, Dict, Literal, Mapping
 
 InferenceConfidence = Literal["exact", "heuristic", "ambiguous", "unknown"]
 
@@ -22,119 +27,64 @@ class CompositionRoleInference:
     candidates: tuple[str, ...] = ()
 
 
-# ── Tag-based exact mappings ────────────────────────────────────────────────
-# Mirror the frontend SLUG_TO_COMPOSITION_ROLE / NAMESPACE_TO_COMPOSITION_ROLE.
-# Keys are tag *keys* (not values) that appear in slot tag_constraints / tags.
+# ── Registry-driven mappings (loaded once at import) ──────────────────────
 
-_TAG_KEY_EXACT: dict[str, str] = {
-    # lock-type tags → entities:subject
-    "pose": "entities:subject",
-    "lock": "entities:subject",
-    "identity_lock": "entities:subject",
-    "framing_lock": "entities:subject",
-    "clothing_lock": "entities:subject",
-}
+def _load_registry_mappings() -> dict[str, Dict[str, str]]:
+    """Load all inference mapping tables from the vocab registry.
 
-_TAG_VALUE_EXACT: dict[tuple[str, str], str] = {
-    # camera tag values → camera:angle
-    ("camera", "drift_behind"): "camera:angle",
-    ("camera", "drift_left"): "camera:angle",
-    ("camera", "drift_right"): "camera:angle",
-    ("camera", "drift_up"): "camera:angle",
-    ("camera", "sway"): "camera:angle",
-    ("camera", "angle"): "camera:angle",
-    ("camera", "closeup"): "camera:angle",
-    ("camera", "detail"): "camera:angle",
-    ("camera", "fov"): "camera:fov",
-    ("camera", "camera_lock"): "camera:composition",
-    ("camera", "camera_stability"): "camera:composition",
-    ("camera", "framing"): "camera:composition",
-    ("camera", "depth"): "camera:composition",
-}
+    Returns a dict with keys:
+      slug_mappings, namespace_mappings, category_mappings,
+      role_to_composition (merged from prompt roles + composition aliases)
+    """
+    try:
+        from pixsim7.backend.main.shared.composition import (
+            TAG_SLUG_TO_COMPOSITION_ROLE,
+            TAG_NAMESPACE_TO_COMPOSITION_ROLE,
+            CATEGORY_TO_COMPOSITION_ROLE,
+            PROMPT_ROLE_TO_COMPOSITION_ROLE,
+            COMPOSITION_ROLE_ALIASES,
+        )
+        # Build a combined role mapping: aliases first, then prompt roles override.
+        # This ensures that prompt-role-level composition_role takes precedence,
+        # but roles without an explicit mapping still resolve via aliases.
+        role_map: Dict[str, str] = dict(COMPOSITION_ROLE_ALIASES)
+        role_map.update(PROMPT_ROLE_TO_COMPOSITION_ROLE)
+        return {
+            "slug_mappings": dict(TAG_SLUG_TO_COMPOSITION_ROLE),
+            "namespace_mappings": dict(TAG_NAMESPACE_TO_COMPOSITION_ROLE),
+            "category_mappings": dict(CATEGORY_TO_COMPOSITION_ROLE),
+            "role_to_composition": role_map,
+        }
+    except Exception:
+        return {
+            "slug_mappings": {},
+            "namespace_mappings": {},
+            "category_mappings": {},
+            "role_to_composition": {},
+        }
 
-# ── (role, category) pair table ─────────────────────────────────────────────
 
-_ROLE_CATEGORY_TABLE: dict[tuple[str, str], str] = {
-    # subject / lock categories
-    ("subject", "pose_lock"): "entities:subject",
-    ("subject", "identity_lock"): "entities:subject",
-    ("subject", "framing_lock"): "entities:subject",
-    ("subject", "clothing_lock"): "entities:subject",
-    # character categories
-    ("character", "creature"): "entities:companion",
-    ("character", "human"): "entities:main_character",
-    ("character", "character_desc"): "entities:main_character",
-    ("character", "reaction"): "entities:main_character",
-    # action categories
-    ("action", "entrance"): "animation:action",
-    ("action", "approach"): "animation:action",
-    ("action", "mount"): "animation:action",
-    ("action", "main_action"): "animation:action",
-    ("action", "interaction_beat"): "animation:action",
-    ("action", "motion_beat"): "animation:action",
-    ("action", "sway"): "animation:action",
-    ("action", "desk_activity"): "animation:action",
-    ("action", "interruption_entry"): "animation:action",
-    ("action", "scene_build"): "animation:action",
-    ("action", "hold_attitude"): "animation:pose",
-    # camera categories
-    ("camera", "drift"): "camera:angle",
-    ("camera", "angle"): "camera:angle",
-    ("camera", "closeup"): "camera:angle",
-    ("camera", "sway_camera"): "camera:angle",
-    ("camera", "detail"): "camera:angle",
-    ("camera", "fov"): "camera:fov",
-    ("camera", "camera_lock"): "camera:composition",
-    ("camera", "camera_stability"): "camera:composition",
-    ("camera", "framing"): "camera:composition",
-    ("camera", "depth"): "camera:composition",
-    # lighting categories
-    ("lighting", "key"): "lighting:key",
-    ("lighting", "fill"): "lighting:fill",
-    # style categories
-    ("style", "rendering"): "materials:rendering",
-    ("style", "atmosphere"): "materials:atmosphere",
-    ("style", "wardrobe"): "materials:wardrobe",
-    # composition
-    ("composition", "layer_order"): "camera:composition",
-}
+_REGISTRY = _load_registry_mappings()
 
-# Wildcard role mappings: any category under this role maps to the target.
-_ROLE_WILDCARD: dict[str, str] = {
-    "placement": "entities:placed",
-    "environment": "world:environment",
-    "setting": "world:environment",
-    "mood": "materials:atmosphere",
-    "romance": "materials:romance",
-}
 
-# ── Category-only fallback (primitives — no role field) ────────────────────
+# ── Minimal bootstrap fallback (used only when registry is empty) ─────────
+# This is intentionally tiny — just enough to avoid total failure if the
+# vocabulary system is somehow unavailable. Do NOT expand this table;
+# add new mappings to roles.yaml instead.
 
-_CATEGORY_FALLBACK: dict[str, str] = {
-    "light": "lighting:key",
-    "color": "materials:atmosphere",
-    "camera": "camera:angle",
-    "environment": "world:environment",
-    "location": "world:environment",
-    "character_pose": "entities:subject",
-    "pose": "entities:subject",
-}
-
-# ── Role-only fallback ──────────────────────────────────────────────────────
-
-_ROLE_FALLBACK: dict[str, str] = {
+_BOOTSTRAP_ROLE_FALLBACK: dict[str, str] = {
     "subject": "entities:subject",
     "character": "entities:main_character",
     "action": "animation:action",
     "camera": "camera:angle",
     "lighting": "lighting:key",
-    "style": "materials:rendering",
     "environment": "world:environment",
-    "setting": "world:environment",
-    "placement": "entities:placed",
-    "composition": "camera:composition",
-    "mood": "materials:atmosphere",
-    "romance": "materials:romance",
+}
+
+_BOOTSTRAP_CATEGORY_FALLBACK: dict[str, str] = {
+    "light": "lighting:key",
+    "camera": "camera:angle",
+    "environment": "world:environment",
 }
 
 
@@ -148,10 +98,13 @@ def infer_composition_role(
 
     Priority chain (strict precedence):
     1. Tag-based exact match   → confidence "exact"
-    2. (role, category) pair   → confidence "heuristic"
-    3. Role-only fallback      → confidence "heuristic" (weaker reason)
+       a. slug match (tag_key:tag_value)
+       b. namespace match (tag_key alone)
+    2. Category refinement     → confidence "heuristic"
+    3. Role mapping            → confidence "heuristic"
     4. Category-only fallback  → confidence "heuristic" (primitives)
-    5. Unknown                 → confidence "unknown", role_id=None
+    5. Bootstrap fallback      → confidence "heuristic" (emergency only)
+    6. Unknown                 → confidence "unknown", role_id=None
     """
     norm_role = role.strip().lower() if role else None
     norm_cat = category.strip().lower() if category else None
@@ -159,21 +112,28 @@ def infer_composition_role(
     if tags:
         norm_tags = {k.strip().lower(): v for k, v in tags.items()}
 
+    slug_mappings = _REGISTRY["slug_mappings"]
+    namespace_mappings = _REGISTRY["namespace_mappings"]
+    category_mappings = _REGISTRY["category_mappings"]
+    role_map = _REGISTRY["role_to_composition"]
+
     # ── 1. Tag-based exact match ────────────────────────────────────────
     if norm_tags:
         tag_hits: set[str] = set()
 
-        # Check tag key exact matches
-        for tag_key in norm_tags:
-            if tag_key in _TAG_KEY_EXACT:
-                tag_hits.add(_TAG_KEY_EXACT[tag_key])
-
-        # Check (tag_key, tag_value) exact matches
         for tag_key, tag_value in norm_tags.items():
+            slug_matched = False
+
+            # 1a. Slug match: "tag_key:tag_value" (most specific)
             if isinstance(tag_value, str):
-                pair = (tag_key, tag_value.strip().lower())
-                if pair in _TAG_VALUE_EXACT:
-                    tag_hits.add(_TAG_VALUE_EXACT[pair])
+                slug = f"{tag_key}:{tag_value.strip().lower()}"
+                if slug in slug_mappings:
+                    tag_hits.add(slug_mappings[slug])
+                    slug_matched = True
+
+            # 1b. Namespace match: tag_key alone (only if no slug matched)
+            if not slug_matched and tag_key in namespace_mappings:
+                tag_hits.add(namespace_mappings[tag_key])
 
         if len(tag_hits) == 1:
             hit = next(iter(tag_hits))
@@ -191,44 +151,50 @@ def infer_composition_role(
                 candidates=sorted_hits,
             )
 
-    # ── 2. (role, category) pair ────────────────────────────────────────
-    if norm_role and norm_cat:
-        pair_key = (norm_role, norm_cat)
-        if pair_key in _ROLE_CATEGORY_TABLE:
-            hit = _ROLE_CATEGORY_TABLE[pair_key]
-            return CompositionRoleInference(
-                role_id=hit,
-                confidence="heuristic",
-                reason=f"({norm_role}, {norm_cat}) → {hit}",
-            )
-        # Check wildcard roles
-        if norm_role in _ROLE_WILDCARD:
-            hit = _ROLE_WILDCARD[norm_role]
-            return CompositionRoleInference(
-                role_id=hit,
-                confidence="heuristic",
-                reason=f"({norm_role}, *) → {hit}",
-            )
+    # ── 2. Category refinement (when role is present) ───────────────────
+    if norm_role and norm_cat and norm_cat in category_mappings:
+        hit = category_mappings[norm_cat]
+        return CompositionRoleInference(
+            role_id=hit,
+            confidence="heuristic",
+            reason=f"({norm_role}, {norm_cat}) → {hit}",
+        )
 
-    # ── 3. Role-only fallback ───────────────────────────────────────────
-    if norm_role and norm_role in _ROLE_FALLBACK:
-        hit = _ROLE_FALLBACK[norm_role]
+    # ── 3. Role mapping (prompt_role → composition_role) ────────────────
+    if norm_role and norm_role in role_map:
+        hit = role_map[norm_role]
         return CompositionRoleInference(
             role_id=hit,
             confidence="heuristic",
             reason=f"role-only: {norm_role} → {hit}",
         )
 
-    # ── 4. Category-only fallback (primitives) ─────────────────────────
-    if norm_cat and norm_cat in _CATEGORY_FALLBACK:
-        hit = _CATEGORY_FALLBACK[norm_cat]
+    # ── 4. Category-only fallback (primitives — no role field) ──────────
+    if norm_cat and norm_cat in category_mappings:
+        hit = category_mappings[norm_cat]
         return CompositionRoleInference(
             role_id=hit,
             confidence="heuristic",
             reason=f"category-only: {norm_cat} → {hit}",
         )
 
-    # ── 5. Unknown ──────────────────────────────────────────────────────
+    # ── 5. Bootstrap fallback (emergency — registry was empty) ──────────
+    if norm_role and norm_role in _BOOTSTRAP_ROLE_FALLBACK:
+        hit = _BOOTSTRAP_ROLE_FALLBACK[norm_role]
+        return CompositionRoleInference(
+            role_id=hit,
+            confidence="heuristic",
+            reason=f"bootstrap: {norm_role} → {hit}",
+        )
+    if norm_cat and norm_cat in _BOOTSTRAP_CATEGORY_FALLBACK:
+        hit = _BOOTSTRAP_CATEGORY_FALLBACK[norm_cat]
+        return CompositionRoleInference(
+            role_id=hit,
+            confidence="heuristic",
+            reason=f"bootstrap: {norm_cat} → {hit}",
+        )
+
+    # ── 6. Unknown ──────────────────────────────────────────────────────
     parts = []
     if norm_role:
         parts.append(f"role={norm_role}")

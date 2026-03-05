@@ -12,6 +12,7 @@ import yaml
 from pixsim7.backend.main.lib.registry.simple import SimpleRegistry
 from pixsim7.backend.main.lib.registry.layered import LayeredNestedRegistry
 from pixsim7.backend.main.lib.registry.pack import PackRegistryBase
+from pixsim7.backend.main.shared.path_registry import get_path_registry
 from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     SlotDef,
     RoleDef,
@@ -78,9 +79,7 @@ class VocabularyRegistry:
         if vocab_dir is None:
             vocab_dir = Path(__file__).parent
         if plugins_dir is None:
-            # registry.py lives at backend/main/shared/ontology/vocabularies
-            # so plugins live at backend/main/plugins (one level above shared).
-            plugins_dir = Path(__file__).parent.parent.parent.parent / "plugins"
+            plugins_dir = get_path_registry().feature_plugins_dir
 
         self._vocab_dir = vocab_dir
         self._plugins_dir = plugins_dir
@@ -105,6 +104,7 @@ class VocabularyRegistry:
         self._role_priority: List[str] = []
         self._role_slug_mappings: Dict[str, str] = {}
         self._role_namespace_mappings: Dict[str, str] = {}
+        self._role_category_mappings: Dict[str, str] = {}
         self._progression_tension: Dict[str, Any] = {}
         self._progression_constraints: Dict[str, Any] = {}
 
@@ -304,6 +304,11 @@ class VocabularyRegistry:
         namespace_mappings = data.get("namespace_mappings", {})
         if namespace_mappings:
             self._role_namespace_mappings.update(namespace_mappings)
+
+        # Category mappings (block category → composition role)
+        category_mappings = data.get("category_mappings", {})
+        if category_mappings:
+            self._role_category_mappings.update(category_mappings)
 
     def _load_scoring(self, directory: Path) -> None:
         """Load scoring configuration from scoring.yaml."""
@@ -745,6 +750,11 @@ class VocabularyRegistry:
     def role_namespace_mappings(self) -> Dict[str, str]:
         self._ensure_loaded()
         return self._role_namespace_mappings
+
+    @property
+    def role_category_mappings(self) -> Dict[str, str]:
+        self._ensure_loaded()
+        return self._role_category_mappings
 
     @property
     def scoring(self) -> ScoringConfig:

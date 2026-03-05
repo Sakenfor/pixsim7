@@ -62,7 +62,7 @@ roles:
       provides: [slot:secondary_subject, slot:character_presence]
       requires: [slot:spatial_context]
     tags: [character, placed, positioned]
-    aliases: []
+    aliases: [placement]
 
   role:entities:prop:
     label: "Prop"
@@ -158,7 +158,7 @@ roles:
       provides: [slot:visual_effect]
       requires: []
     tags: [camera, composition, depth]
-    aliases: []
+    aliases: [composition]
 
   # =========================================================================
   # LIGHTING (amber) — light sources
@@ -327,6 +327,12 @@ slug_mappings:
   "char:npc": role:entities:companion
   "char:monster": role:entities:companion
   comic_frame: role:materials:rendering
+  # Camera tag-value refinements (key:value slug format)
+  "camera:fov": role:camera:fov
+  "camera:camera_lock": role:camera:composition
+  "camera:camera_stability": role:camera:composition
+  "camera:framing": role:camera:composition
+  "camera:depth": role:camera:composition
 
 # Tag namespace -> role mapping (prefix match)
 namespace_mappings:
@@ -347,3 +353,43 @@ namespace_mappings:
   style: role:materials:rendering
   lighting: role:lighting:key
   camera: role:camera:angle
+  # Tag-key inference: lock-type tags → entities:subject
+  pose: role:entities:subject
+  lock: role:entities:subject
+  identity_lock: role:entities:subject
+  framing_lock: role:entities:subject
+  clothing_lock: role:entities:subject
+  # Primitive category fallbacks
+  light: role:lighting:key
+  color: role:materials:atmosphere
+  character_pose: role:entities:subject
+
+# Category -> composition role mapping (block category refinement)
+# Used by inference when a block's category narrows the composition role
+# beyond the default prompt-role mapping.
+category_mappings:
+  # Action refinements (default: animation:action)
+  hold_attitude: role:animation:pose
+  # Character refinements (default: entities:main_character)
+  creature: role:entities:companion
+  # Camera refinements (default: camera:angle)
+  fov: role:camera:fov
+  camera_lock: role:camera:composition
+  camera_stability: role:camera:composition
+  framing: role:camera:composition
+  depth: role:camera:composition
+  # Lighting refinements (default: lighting:key)
+  fill: role:lighting:fill
+  # Style refinements (default: materials:rendering)
+  atmosphere: role:materials:atmosphere
+  wardrobe: role:materials:wardrobe
+  rendering: role:materials:rendering
+  # Composition
+  layer_order: role:camera:composition
+  # Primitive category → role (no prompt-role context)
+  light: role:lighting:key
+  color: role:materials:atmosphere
+  environment: role:world:environment
+  location: role:world:environment
+  character_pose: role:entities:subject
+  pose: role:entities:subject

@@ -114,12 +114,21 @@ def _load_role_data() -> Dict[str, Any]:
     else:
         priority = sorted(leaf_ids)
 
+    # Category mappings
+    category_mappings: Dict[str, str] = {}
+    try:
+        raw_cat = registry.role_category_mappings
+        category_mappings = {str(k).lower(): _strip_role_prefix(str(v)) for k, v in raw_cat.items()}
+    except Exception:
+        pass
+
     return {
         "roles": roles_data,
         "priority": priority,
         "slugMappings": slug_mappings,
         "namespaceMappings": namespace_mappings,
         "aliases": aliases,
+        "categoryMappings": category_mappings,
     }
 
 
@@ -170,6 +179,7 @@ ImageCompositionRole = _build_composition_role_enum()
 COMPOSITION_ROLE_ALIASES: Dict[str, str] = _ROLE_DATA_SNAPSHOT["aliases"]
 TAG_NAMESPACE_TO_COMPOSITION_ROLE: Dict[str, str] = _ROLE_DATA_SNAPSHOT["namespaceMappings"]
 TAG_SLUG_TO_COMPOSITION_ROLE: Dict[str, str] = _ROLE_DATA_SNAPSHOT["slugMappings"]
+CATEGORY_TO_COMPOSITION_ROLE: Dict[str, str] = _ROLE_DATA_SNAPSHOT["categoryMappings"]
 COMPOSITION_ROLE_PRIORITY: List[str] = _ROLE_DATA_SNAPSHOT["priority"]
 
 

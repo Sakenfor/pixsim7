@@ -7,6 +7,9 @@ import pytest
 from pixsim7.backend.main.services.prompt.block.composition_role_inference import (
     CompositionRoleInference,
     infer_composition_role,
+    _REGISTRY,
+    _BOOTSTRAP_ROLE_FALLBACK,
+    _BOOTSTRAP_CATEGORY_FALLBACK,
 )
 
 
@@ -206,3 +209,65 @@ class TestTagPrecedenceOverRoleCategory:
         )
         assert result.role_id == "entities:subject"
         assert result.confidence == "exact"
+
+
+class TestRegistryDriven:
+    """Verify inference tables are loaded from registry, not hardcoded."""
+
+    def test_registry_mappings_populated(self):
+        """Registry should have loaded slug, namespace, category, and role mappings."""
+        assert len(_REGISTRY["slug_mappings"]) > 0
+        assert len(_REGISTRY["namespace_mappings"]) > 0
+        assert len(_REGISTRY["category_mappings"]) > 0
+        assert len(_REGISTRY["role_to_composition"]) > 0
+
+    def test_slug_mappings_contain_camera_refinements(self):
+        """Camera tag-value entries should be in slug_mappings from roles.yaml."""
+        slugs = _REGISTRY["slug_mappings"]
+        assert slugs.get("camera:fov") == "camera:fov"
+        assert slugs.get("camera:camera_lock") == "camera:composition"
+
+    def test_namespace_mappings_contain_lock_tags(self):
+        """Lock-type tag keys should be in namespace_mappings from roles.yaml."""
+        ns = _REGISTRY["namespace_mappings"]
+        assert ns.get("lock") == "entities:subject"
+        assert ns.get("pose") == "entities:subject"
+
+    def test_category_mappings_contain_refinements(self):
+        """Category refinement entries should be loaded from roles.yaml."""
+        cats = _REGISTRY["category_mappings"]
+        assert cats.get("hold_attitude") == "animation:pose"
+        assert cats.get("creature") == "entities:companion"
+        assert cats.get("fill") == "lighting:fill"
+
+    def test_role_map_includes_prompt_roles_and_aliases(self):
+        """Combined role map should contain both prompt role mappings and aliases."""
+        role_map = _REGISTRY["role_to_composition"]
+        # From prompt role packs
+        assert role_map.get("character") == "entities:main_character"
+        assert role_map.get("action") == "animation:action"
+        # From composition role aliases
+        assert role_map.get("placement") == "entities:placed"
+        assert role_map.get("subject") == "entities:subject"
+
+    def test_slug_takes_priority_over_namespace(self):
+        """When a tag matches both slug and namespace, slug wins."""
+        result = infer_composition_role(
+            role=None, category=None, tags={"camera": "framing"}
+        )
+        assert result.role_id == "camera:composition"
+        assert result.confidence == "exact"
+
+    def test_bootstrap_fallback_is_minimal(self):
+        """Bootstrap fallback tables should be small (<=6 entries each)."""
+        assert len(_BOOTSTRAP_ROLE_FALLBACK) <= 6
+        assert len(_BOOTSTRAP_CATEGORY_FALLBACK) <= 3
+
+    def test_no_hardcoded_role_category_table(self):
+        """The old _ROLE_CATEGORY_TABLE should no longer exist in the module."""
+        import pixsim7.backend.main.services.prompt.block.composition_role_inference as mod
+        assert not hasattr(mod, "_ROLE_CATEGORY_TABLE")
+        assert not hasattr(mod, "_TAG_KEY_EXACT")
+        assert not hasattr(mod, "_TAG_VALUE_EXACT")
+        assert not hasattr(mod, "_ROLE_WILDCARD")
+        assert not hasattr(mod, "_ROLE_FALLBACK")
