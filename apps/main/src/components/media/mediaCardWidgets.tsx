@@ -48,10 +48,8 @@ export {
 } from './mediaCardBadges';
 
 export {
-  createGenerationMenu,
   createGenerationButtonGroup,
   createGenerationStatusWidget,
-  buildGenerationMenuItems,
   GenerationButtonGroupContent,
 } from './mediaCardGeneration';
 export {

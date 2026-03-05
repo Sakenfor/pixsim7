@@ -14,7 +14,7 @@
  */
 
 import type { OverlayWidget } from '@lib/ui/overlay';
-import { createMenuWidget, type MenuItem, type BadgeWidgetConfig } from '@lib/ui/overlay';
+import { type BadgeWidgetConfig } from '@lib/ui/overlay';
 import { createBadgeWidget } from '@lib/ui/overlay';
 
 import { useCapability, CAP_CHARACTER_INGEST_ACTION, type CharacterIngestActionContext } from '@features/contextHub';
@@ -51,112 +51,6 @@ export {
 export { SourceAssetsPreview } from './SourceAssetsPreview';
 export { useGenerationCardHandlers } from './useGenerationCardHandlers';
 export type { UseGenerationCardHandlersArgs } from './useGenerationCardHandlers';
-
-// Local import for use in createGenerationButtonGroup
-
-/**
- * Build generation menu items based on media type and available actions
- */
-export function buildGenerationMenuItems(
-  id: number,
-  mediaType: MediaCardResolvedProps['mediaType'],
-  actions: MediaCardResolvedProps['actions']
-): MenuItem[] {
-  if (!actions) return [];
-
-  const menuItems: MenuItem[] = [];
-
-  // Image operations
-  if (mediaType === 'image') {
-    if (actions.onImageToImage) {
-      menuItems.push({
-        id: 'img2img',
-        label: 'Queue Image to Image',
-        icon: 'image',
-        onClick: () => actions.onImageToImage?.(id),
-      });
-    }
-    if (actions.onImageToVideo) {
-      menuItems.push({
-        id: 'img2vid',
-        label: 'Queue Image to Video',
-        icon: 'video',
-        onClick: () => actions.onImageToVideo?.(id),
-      });
-    }
-  }
-
-  // Video operations
-  if (mediaType === 'video' && actions.onVideoExtend) {
-    menuItems.push({
-      id: 'extend',
-      label: 'Queue Extend in Quick Gen',
-      icon: 'arrowRight',
-      onClick: () => actions.onVideoExtend?.(id),
-    });
-  }
-
-  // Universal operations
-  if (actions.onAddToTransition) {
-    menuItems.push({
-      id: 'transition',
-      label: 'Queue in Transition',
-      icon: 'shuffle',
-      onClick: () => actions.onAddToTransition?.(id),
-    });
-  }
-
-  if (actions.onAddToGenerate) {
-    menuItems.push({
-      id: 'generate',
-      label: 'Queue in Current Mode',
-      icon: 'zap',
-      onClick: () => actions.onAddToGenerate?.(id),
-    });
-  }
-
-  return menuItems;
-}
-
-/**
- * Create generation actions menu widget
- */
-export function createGenerationMenu(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { id, mediaType, actions, badgeConfig, presetCapabilities } = props;
-
-  // Only show the generation menu if preset capabilities enable it
-  if (!presetCapabilities?.showsGenerationMenu) {
-    return null;
-  }
-
-  const showGenerationBadge = badgeConfig?.showGenerationBadge ?? true;
-
-  if (!showGenerationBadge || !actions) {
-    return null;
-  }
-
-  const menuItems = buildGenerationMenuItems(id, mediaType, actions);
-
-  if (menuItems.length === 0) {
-    return null;
-  }
-
-  return createMenuWidget({
-    id: 'generation-menu',
-    position: { anchor: 'bottom-right', offset: { x: -8, y: -8 } },
-    visibility: { trigger: 'hover-container' },
-    items: menuItems,
-    trigger: {
-      icon: 'zap',
-      variant: 'button',
-      label: 'Generate',
-      className: 'bg-accent hover:bg-accent-hover text-accent-text',
-    },
-    triggerType: 'click',
-    placement: 'top-right',
-    priority: 35,
-  });
-}
 
 /**
  * Create generation button group widget (bottom-center)

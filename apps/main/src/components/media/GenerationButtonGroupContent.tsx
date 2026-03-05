@@ -4,14 +4,13 @@
  * Handles smart action, menu, slot picker, and regenerate functionality.
  */
 
-import { ActionHintBadge, ButtonGroup, DropdownItem, DropdownDivider, Popover, PortalFloat, useToast, type ButtonGroupItem } from '@pixsim7/shared.ui';
+import { ActionHintBadge, ButtonGroup, DropdownItem, DropdownDivider, Popover, useToast, type ButtonGroupItem } from '@pixsim7/shared.ui';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 
 import { uploadAssetToProvider } from '@lib/api/assets';
 import { getArrayParamLimits, type ParamSpec } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 import { resolveButtonState, makeAsyncStates, UPLOAD_BUTTON_STATES } from '@lib/ui/buttonStates';
-import type { MenuItem } from '@lib/ui/overlay';
 
 import type { AssetModel } from '@features/assets';
 import { hydrateAssetModel } from '@features/assets/lib/hydrateAssetModel';
@@ -33,7 +32,6 @@ import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 import type { MediaCardResolvedProps } from './MediaCard';
 import type { MediaCardActionMode } from './mediaCardActionModeStore';
 import { useMediaCardActionModeStore } from './mediaCardActionModeStore';
-import { buildGenerationMenuItems } from './mediaCardGeneration';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
 import { getSmartActionLabel, resolveMaxSlotsForModel, SlotPickerGrid } from './SlotPicker';
 import { SourceAssetsPreview } from './SourceAssetsPreview';
@@ -50,14 +48,12 @@ type UploadTargetOption = {
 };
 
 export function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroupContentProps) {
-  const { id, mediaType, actions } = cardProps;
+  const { id, mediaType } = cardProps;
   const toast = useToast();
 
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProviderMenuOpen, setIsProviderMenuOpen] = useState(false);
   const [providerMenuPos, setProviderMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
   const storedActionMode = useMediaCardActionModeStore((s) => s.byAssetId[id]);
   const setStoredActionMode = useMediaCardActionModeStore((s) => s.setMode);
@@ -191,39 +187,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     mediaType,
   });
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    if (!isMenuOpen) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        menuRef.current &&
-        !menuRef.current.contains(event.target as Node) &&
-        triggerRef.current &&
-        !triggerRef.current.contains(event.target as Node)
-      ) {
-        setIsMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isMenuOpen]);
-
-  // Handle keyboard navigation
-  useEffect(() => {
-    if (!isMenuOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isMenuOpen]);
-
   const handleSmartAction = useCallback(() => {
     void (async () => {
       const resolvedAsset = await resolveInputAsset(inputAsset);
@@ -241,11 +204,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     e.preventDefault();
     void handleSelectSlot(inputAsset, 0);
     setWidgetOpen?.(true);
-  };
-
-  const handleMenuItemClick = (item: MenuItem) => {
-    item.onClick?.(data);
-    setIsMenuOpen(false);
   };
 
   const handleSelectSlot = useCallback(async (selectedAsset: AssetModel, slotIndex: number) => {
@@ -370,67 +328,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const assetAcceptsInput = assetOpType
     ? (OPERATION_METADATA[assetOpType]?.acceptsInput?.length ?? 0) > 0
     : false;
-  const menuItems = useMemo<MenuItem[]>(() => {
-    const items = buildGenerationMenuItems(id, mediaType, actions);
-
-    if (hasGenContext) {
-      items.push({
-        id: 'load-to-quick-gen',
-        label: 'Load to Quick Gen',
-        icon: 'edit',
-        onClick: () => {
-          void handleLoadToQuickGen();
-        },
-        disabled: isLoadingSource,
-      });
-      items.push({
-        id: 'regenerate-now',
-        label: 'Regenerate Now',
-        icon: 'rotateCcw',
-        onClick: () => {
-          void handleRegenerate();
-        },
-        disabled: isRegenerating,
-      });
-    }
-
-    if (mediaType === 'video' && hasGenContext) {
-      items.unshift(
-        {
-          id: 'extend-active-prompt-now',
-          label: 'Extend Active Prompt',
-          icon: 'edit',
-          onClick: () => {
-            void handleExtendWithActivePrompt();
-          },
-          disabled: isExtending,
-        },
-        {
-          id: 'extend-same-prompt-now',
-          label: 'Extend Same Prompt',
-          icon: 'arrowRight',
-          onClick: () => {
-            void handleExtendWithSamePrompt();
-          },
-          disabled: isExtending,
-        },
-      );
-    }
-
-    return items;
-  }, [
-    id,
-    mediaType,
-    actions,
-    hasGenContext,
-    handleLoadToQuickGen,
-    isLoadingSource,
-    handleRegenerate,
-    isRegenerating,
-    handleExtendWithSamePrompt,
-    handleExtendWithActivePrompt,
-    isExtending,
-  ]);
 
   // Quick generate requires: capability enabled, widget available, and asset accessible to provider.
   // Providers with asset_upload feature (e.g. Pixverse) require the asset uploaded to their platform first.
@@ -519,14 +416,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     });
   }
 
-  if (menuItems.length > 0) {
-    buttonItems.push({
-      id: 'menu',
-      icon: <Icon name="chevronDown" size={12} />,
-      onClick: () => setIsMenuOpen(!isMenuOpen),
-      title: 'More actions',
-    });
-  }
   if (activeActionMode === 'character-ingest' && mediaType === 'image' && characterIngestAction?.addAssetsToIngest) {
     const characterLabel = characterIngestAction.characterLabel || characterIngestAction.characterId;
     buttonItems.push({
@@ -706,47 +595,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
           preferredVisibleId="smart-action"
         />
       </div>
-
-      {/* Menu dropdown — portaled to escape overflow/stacking-context constraints */}
-      {isMenuOpen && menuItems.length > 0 && (
-        <PortalFloat
-          anchor={triggerRef.current}
-          placement="top"
-          offset={4}
-          className="
-            min-w-[180px]
-            bg-white dark:bg-neutral-800
-            border border-neutral-200 dark:border-neutral-700
-            rounded-lg shadow-lg
-            py-1
-            overflow-hidden
-          "
-        >
-          <div ref={menuRef}>
-            {menuItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => handleMenuItemClick(item)}
-                disabled={item.disabled}
-                className="
-                  w-full px-3 py-2 flex items-center gap-2 text-sm text-left
-                  hover:bg-neutral-100 dark:hover:bg-neutral-700
-                  transition-colors cursor-pointer
-                "
-              >
-                {item.icon && (
-                  <Icon
-                    name={item.icon as any}
-                    size={14}
-                    className="text-neutral-500 dark:text-neutral-400"
-                  />
-                )}
-                <span className="flex-1">{item.label}</span>
-              </button>
-            ))}
-          </div>
-        </PortalFloat>
-      )}
 
       {/* Provider picker dropdown (right-click on upload button) */}
       {providerMenuPos && (
