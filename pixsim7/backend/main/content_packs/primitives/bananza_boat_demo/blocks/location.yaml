@@ -1,0 +1,10 @@
+blocks:
+  - block_id: bananza.location.deck_railing
+    category: location
+    text: "Character positioned near deck railing with ocean horizon behind."
+    tags: { position: deck_railing, setting: main_deck, source_pack: bananza_boat_demo, world: bananza_boat, duration_sec: "5.0" }
+
+  - block_id: bananza.location.bar_counter
+    category: location
+    text: "Character anchored at banana bar counter with props in foreground."
+    tags: { position: bar_counter, setting: banana_bar, source_pack: bananza_boat_demo, world: bananza_boat, duration_sec: "5.0" }

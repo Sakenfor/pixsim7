@@ -1,0 +1,20 @@
+blocks:
+  - block_id: genre.comedy.mood.slapstick_flirt
+    category: mood
+    text: "Comedic flirtation energy with mischievous timing and light teasing."
+    tags: { mood: playful, arc: comedy, tone: slapstick, scope: global, source_pack: genre_tone_primitives, duration_sec: "4.0" }
+
+  - block_id: genre.comedy.mood.awkward_pause
+    category: mood
+    text: "Awkward beat with expressive silence before the next punchline."
+    tags: { mood: awkward, arc: comedy, tone: comic_pause, scope: global, source_pack: genre_tone_primitives, duration_sec: "4.0" }
+
+  - block_id: genre.sensual.nudge.eye_contact_hold
+    category: mood
+    text: "Sustain eye contact for a beat, then transition into a subtle approach without abrupt motion."
+    tags: { scope: global, arc: sensual, mood: intimate, nudge: eye_contact_hold, source_pack: genre_tone_primitives, duration_sec: "10.0" }
+
+  - block_id: genre.sensual.nudge.distance_reduce
+    category: mood
+    text: "Reduce distance gradually with soft body language and controlled pacing."
+    tags: { scope: global, arc: sensual, mood: intimate, nudge: distance_reduce, source_pack: genre_tone_primitives, duration_sec: "10.0" }

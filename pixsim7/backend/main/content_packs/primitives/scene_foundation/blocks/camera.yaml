@@ -13,3 +13,13 @@ blocks:
     category: camera
     text: "overhead bird's-eye view, looking straight down"
     tags: { angle: overhead, effect: detached }
+
+  - block_id: core.camera.two_shot_medium_tracking
+    category: camera
+    text: "Medium two-shot framing two subjects with gentle forward camera tracking."
+    tags: { framing: two_shot_medium, scope: global, source_pack: core_scene_primitives, duration_sec: "6.0" }
+
+  - block_id: core.camera.establishing_wide
+    category: camera
+    text: "Wide establishing framing that reveals scene scale and spatial layout."
+    tags: { framing: wide_establishing, scope: global, source_pack: core_scene_primitives, duration_sec: "6.0" }

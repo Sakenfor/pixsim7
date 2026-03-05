@@ -1,0 +1,10 @@
+blocks:
+  - block_id: bananza.pose.gorilla.relaxed_standing
+    category: character_pose
+    text: "Gorilla stands relaxed with exaggerated confidence and open shoulders."
+    tags: { stance: standing, actor: gorilla, source_pack: bananza_boat_demo, world: bananza_boat, duration_sec: "6.0" }
+
+  - block_id: bananza.pose.banana.confident_standing
+    category: character_pose
+    text: "Banana stands with playful confidence and sharp expression timing."
+    tags: { stance: standing, actor: banana, source_pack: bananza_boat_demo, world: bananza_boat, duration_sec: "6.0" }

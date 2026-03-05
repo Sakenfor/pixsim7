@@ -6,18 +6,17 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from ..seed_data import (
-    GENERATION_TEMPLATE_SEEDS,
     LOCATION_SEEDS,
     NPC_BEHAVIOR_BINDINGS,
     NPC_SEEDS,
-    PRIMITIVE_SEEDS,
+    REQUIRED_BLOCK_IDS,
+    REQUIRED_TEMPLATE_SLUGS,
     SEED_KEY,
     SIMULATION_TEMPLATE,
 )
 from .common import (
     base_world_meta,
     build_behavior_config,
-    generation_template_payload,
 )
 
 
@@ -91,23 +90,43 @@ async def _api_put_json(
     return response.json()
 
 
-async def _api_patch_json(
-    client: httpx.AsyncClient,
-    path: str,
-    *,
-    body: Optional[Dict[str, Any]] = None,
-    params: Optional[Dict[str, Any]] = None,
-    context: str,
-) -> Any:
-    response = await client.patch(path, json=(body or {}), params=params)
-    _raise_http_error(response, context=context)
-    if response.status_code == 204:
-        return None
-    return response.json()
-
-
 def _is_http_not_found_error(exc: Exception) -> bool:
     return "HTTP 404" in str(exc)
+
+
+def _to_int(value: Any) -> Optional[int]:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _snapshot_matches_seed(
+    snapshot: Dict[str, Any],
+    *,
+    world_name: str,
+) -> bool:
+    if not isinstance(snapshot, dict):
+        return False
+
+    provenance = snapshot.get("provenance")
+    if not isinstance(provenance, dict):
+        provenance = {}
+    source_key = str(provenance.get("source_key") or "").strip()
+    meta = provenance.get("meta")
+    if not isinstance(meta, dict):
+        meta = {}
+    meta_seed_key = str(meta.get("seed_key") or "").strip()
+    meta_seed_world_name = str(meta.get("seed_world_name") or "").strip()
+
+    seed_match = source_key == SEED_KEY or meta_seed_key == SEED_KEY
+    world_match = (not meta_seed_world_name) or (meta_seed_world_name == world_name)
+    if seed_match and world_match:
+        return True
+
+    return False
 
 
 async def _resolve_auth_token(
@@ -496,94 +515,66 @@ async def _api_apply_behavior(
     }
 
 
-async def _api_upsert_primitives(client: httpx.AsyncClient) -> Dict[str, int]:
-    created = 0
-    updated = 0
-    for primitive in PRIMITIVE_SEEDS:
-        block_id = str(primitive.get("block_id") or "").strip()
-        if not block_id:
-            continue
-        payload = {
-            "category": primitive.get("category"),
-            "text": primitive.get("text"),
-            "tags": dict(primitive.get("tags") or {}),
-            "source": "system",
-            "is_public": True,
-            "avg_rating": 4.0,
-        }
-        upserted = await _api_put_json(
-            client,
-            f"/api/v1/block-templates/blocks/by-block-id/{block_id}",
-            params={"create_if_missing": True},
-            body=payload,
-            context=f"upsert_primitive:{block_id}",
-        )
-        status = upserted.get("status") if isinstance(upserted, dict) else None
-        if status == "created":
-            created += 1
-        else:
-            updated += 1
-
-    return {"created": created, "updated": updated, "total": len(PRIMITIVE_SEEDS)}
-
-
-async def _api_upsert_generation_templates(client: httpx.AsyncClient) -> Dict[str, int]:
-    created = 0
-    updated = 0
-
-    for seed in GENERATION_TEMPLATE_SEEDS:
-        payload = generation_template_payload(seed)
-        slug = str(payload.get("slug") or "").strip()
-        if not slug:
-            continue
-
-        existing: Optional[Dict[str, Any]] = None
+async def _api_verify_required_blocks(client: httpx.AsyncClient) -> Dict[str, Any]:
+    """Verify all required block IDs exist. Fails fast with missing IDs."""
+    missing: List[str] = []
+    for block_id in REQUIRED_BLOCK_IDS:
         try:
-            fetched = await _api_get_json(
+            await _api_get_json(
                 client,
-                f"/api/v1/block-templates/by-slug/{slug}",
-                context=f"get_template_by_slug:{slug}",
+                f"/api/v1/block-templates/blocks/by-block-id/{block_id}",
+                context=f"verify_block:{block_id}",
             )
-            if isinstance(fetched, dict):
-                existing = fetched
         except RuntimeError as exc:
-            if not _is_http_not_found_error(exc):
+            if _is_http_not_found_error(exc):
+                missing.append(block_id)
+            else:
                 raise
 
-        existing_id = existing.get("id") if isinstance(existing, dict) else None
-        if existing_id:
-            update_payload = dict(payload)
-            update_payload.pop("slug", None)
-            await _api_patch_json(
-                client,
-                f"/api/v1/block-templates/{existing_id}",
-                body=update_payload,
-                context=f"update_template:{slug}",
-            )
-            updated += 1
-            continue
-
-        await _api_post_json(
-            client,
-            "/api/v1/block-templates",
-            body=payload,
-            context=f"create_template:{slug}",
+    if missing:
+        raise RuntimeError(
+            f"Required block primitives missing ({len(missing)}/{len(REQUIRED_BLOCK_IDS)}). "
+            f"Load content packs before running seed.\n"
+            f"  Missing: {missing}"
         )
-        created += 1
 
-    return {
-        "created": created,
-        "updated": updated,
-        "total": len(GENERATION_TEMPLATE_SEEDS),
-    }
+    return {"verified": len(REQUIRED_BLOCK_IDS), "missing": 0}
+
+
+async def _api_verify_required_templates(client: httpx.AsyncClient) -> Dict[str, Any]:
+    """Verify all required template slugs exist. Fails fast with missing slugs."""
+    missing: List[str] = []
+    for slug in REQUIRED_TEMPLATE_SLUGS:
+        try:
+            await _api_get_json(
+                client,
+                f"/api/v1/block-templates/by-slug/{slug}",
+                context=f"verify_template:{slug}",
+            )
+        except RuntimeError as exc:
+            if _is_http_not_found_error(exc):
+                missing.append(slug)
+            else:
+                raise
+
+    if missing:
+        raise RuntimeError(
+            f"Required generation templates missing ({len(missing)}/{len(REQUIRED_TEMPLATE_SLUGS)}). "
+            f"Load content packs before running seed.\n"
+            f"  Missing: {missing}"
+        )
+
+    return {"verified": len(REQUIRED_TEMPLATE_SLUGS), "missing": 0}
 
 
 async def _api_upsert_project_snapshot(
     client: httpx.AsyncClient,
     *,
     world_id: int,
+    world_name: str,
     project_name: str,
     project_id: Optional[int],
+    prune_duplicates: bool = True,
 ) -> Dict[str, Any]:
     if world_id <= 0:
         raise RuntimeError("world_id_missing_for_project_snapshot")
@@ -595,6 +586,9 @@ async def _api_upsert_project_snapshot(
     )
 
     overwrite_project_id: Optional[int] = project_id
+    duplicate_ids: List[int] = []
+    deleted_duplicate_ids: List[int] = []
+    duplicate_delete_failures: List[Dict[str, Any]] = []
     if overwrite_project_id is None:
         snapshots = await _api_get_json(
             client,
@@ -603,19 +597,49 @@ async def _api_upsert_project_snapshot(
             context="list_project_snapshots",
         )
         if isinstance(snapshots, list):
+            matching_seed_snapshots: List[Dict[str, Any]] = []
+            matching_name_snapshots: List[Dict[str, Any]] = []
             for snapshot in snapshots:
                 if not isinstance(snapshot, dict):
                     continue
-                if str(snapshot.get("name")) == project_name:
-                    snapshot_id = snapshot.get("id")
-                    if snapshot_id is not None:
-                        overwrite_project_id = int(snapshot_id)
-                    break
+                if _snapshot_matches_seed(
+                    snapshot,
+                    world_name=world_name,
+                ):
+                    matching_seed_snapshots.append(snapshot)
+                    continue
+                if str(snapshot.get("name") or "").strip() == project_name:
+                    matching_name_snapshots.append(snapshot)
+
+            if matching_seed_snapshots:
+                primary_id = _to_int(matching_seed_snapshots[0].get("id"))
+                if primary_id is not None:
+                    overwrite_project_id = primary_id
+                duplicate_ids = [
+                    pid
+                    for pid in (
+                        _to_int(snapshot.get("id"))
+                        for snapshot in matching_seed_snapshots[1:]
+                    )
+                    if pid is not None
+                ]
+            elif matching_name_snapshots:
+                primary_id = _to_int(matching_name_snapshots[0].get("id"))
+                if primary_id is not None:
+                    overwrite_project_id = primary_id
 
     payload: Dict[str, Any] = {
         "name": project_name,
         "bundle": bundle,
         "source_world_id": world_id,
+        "provenance": {
+            "kind": "demo",
+            "source_key": SEED_KEY,
+            "meta": {
+                "seed_key": SEED_KEY,
+                "seed_world_name": world_name,
+            },
+        },
     }
     if overwrite_project_id is not None:
         payload["overwrite_project_id"] = int(overwrite_project_id)
@@ -629,12 +653,36 @@ async def _api_upsert_project_snapshot(
     if not isinstance(saved, dict):
         raise RuntimeError("unexpected_project_snapshot_payload")
 
+    saved_project_id = int(saved.get("id") or 0)
+    if prune_duplicates:
+        for duplicate_id in duplicate_ids:
+            if duplicate_id == saved_project_id:
+                continue
+            response = await client.delete(
+                f"/api/v1/game/worlds/projects/snapshots/{duplicate_id}",
+            )
+            if response.status_code in (200, 202, 204, 404):
+                if response.status_code != 404:
+                    deleted_duplicate_ids.append(duplicate_id)
+                continue
+            duplicate_delete_failures.append(
+                {
+                    "project_id": duplicate_id,
+                    "status": response.status_code,
+                    "body": _response_excerpt(response),
+                }
+            )
+
     return {
-        "project_id": int(saved.get("id") or 0),
+        "project_id": saved_project_id,
         "name": str(saved.get("name") or project_name),
         "source_world_id": saved.get("source_world_id"),
         "overwritten": overwrite_project_id is not None,
         "bundle_mode": "full_export",
+        "duplicate_candidates": len(duplicate_ids),
+        "duplicates_deleted": len(deleted_duplicate_ids),
+        "deleted_duplicate_ids": deleted_duplicate_ids,
+        "duplicate_delete_failures": duplicate_delete_failures,
     }
 
 
@@ -643,6 +691,7 @@ async def seed_bananza_boat_slice_via_api(
     world_name: str,
     project_name: str,
     project_id: Optional[int] = None,
+    prune_duplicate_projects: bool = True,
     api_base: str,
     auth_token: Optional[str] = None,
     username: str = "admin",
@@ -662,6 +711,10 @@ async def seed_bananza_boat_slice_via_api(
         timeout=120.0,
         headers=headers,
     ) as client:
+        # Validate that required content is loaded before proceeding
+        block_check = await _api_verify_required_blocks(client)
+        template_check = await _api_verify_required_templates(client)
+
         world = await _api_ensure_world(client, world_name=world_name)
         world_id = int(world.get("id") or 0)
         if world_id <= 0:
@@ -684,19 +737,24 @@ async def seed_bananza_boat_slice_via_api(
             world_name=world_name,
             npcs_by_key=npcs_by_key,
         )
-        primitive_summary = await _api_upsert_primitives(client)
-        template_summary = await _api_upsert_generation_templates(client)
 
         project_summary = await _api_upsert_project_snapshot(
             client,
             world_id=world_id,
+            world_name=world_name,
             project_name=project_name,
             project_id=project_id,
+            prune_duplicates=prune_duplicate_projects,
         )
 
     print("Seed complete: Bananza Boat slice (API mode)")
     print(f"  api_base: {normalized_api_base}")
     print(f"  world_id: {world_id}")
+    print(
+        "  content_check: "
+        f"blocks_verified={block_check['verified']} "
+        f"templates_verified={template_check['verified']}"
+    )
     print(
         "  project_snapshot: "
         f"id={project_summary['project_id']} "
@@ -704,6 +762,12 @@ async def seed_bananza_boat_slice_via_api(
         f"source_world_id={project_summary['source_world_id']} "
         f"overwritten={project_summary['overwritten']} "
         f"bundle_mode={project_summary['bundle_mode']}"
+    )
+    print(
+        "  project_snapshot_dedup: "
+        f"candidates={project_summary['duplicate_candidates']} "
+        f"deleted={project_summary['duplicates_deleted']} "
+        f"failed={len(project_summary['duplicate_delete_failures'])}"
     )
     print(
         "  locations: "
@@ -729,18 +793,6 @@ async def seed_bananza_boat_slice_via_api(
         f"activities={behavior_summary['activities']} "
         f"routines={behavior_summary['routines']} "
         f"npcs_bound={behavior_summary['npcs_bound']}"
-    )
-    print(
-        "  primitives: "
-        f"created={primitive_summary['created']} "
-        f"updated={primitive_summary['updated']} "
-        f"total_seed={primitive_summary['total']}"
-    )
-    print(
-        "  templates: "
-        f"created={template_summary['created']} "
-        f"updated={template_summary['updated']} "
-        f"total_seed={template_summary['total']}"
     )
     print("")
     print("Next step example:")

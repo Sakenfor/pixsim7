@@ -1,0 +1,5 @@
+blocks:
+  - block_id: core.motion.forward_progress_small
+    category: motion
+    text: "Advance the scene by a small natural action step while preserving continuity."
+    tags: { scope: global, progression: forward_small, source_pack: core_scene_primitives, duration_sec: "10.0" }

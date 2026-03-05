@@ -1,0 +1,10 @@
+blocks:
+  - block_id: bananza.wardrobe.gorilla.leisure_suit
+    category: wardrobe
+    text: "Turquoise leisure suit with loud lapels and intentionally bad taste."
+    tags: { intimacy_level: romantic, outfit: gorilla_leisure_suit, source_pack: bananza_boat_demo, world: bananza_boat, duration_sec: "4.0" }
+
+  - block_id: bananza.wardrobe.banana.sun_dress
+    category: wardrobe
+    text: "Bright yellow sun dress styled for tropical evening banter scenes."
+    tags: { intimacy_level: romantic, outfit: banana_sun_dress, source_pack: bananza_boat_demo, world: bananza_boat, duration_sec: "4.0" }

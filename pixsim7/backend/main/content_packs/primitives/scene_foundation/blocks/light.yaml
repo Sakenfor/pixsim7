@@ -13,3 +13,13 @@ blocks:
     category: light
     text: "warm golden hour glow, long amber rays, rich warm highlights"
     tags: { hardness: soft, warmth: warm, time_of_day: golden_hour }
+
+  - block_id: core.light.daylight_crisp
+    category: light
+    text: "Crisp tropical noon lighting with high contrast and bright highlights."
+    tags: { lighting: daylight_hard, scope: global, source_pack: core_scene_primitives, duration_sec: "5.0" }
+
+  - block_id: core.light.sunset_reflections
+    category: light
+    text: "Golden sunset light reflecting off water and polished wood."
+    tags: { lighting: golden_hour, mood: romantic, scope: global, source_pack: core_scene_primitives, duration_sec: "5.0" }

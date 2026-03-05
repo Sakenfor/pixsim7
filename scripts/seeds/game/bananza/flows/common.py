@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from pixsim7.backend.main.services.game.npc_schedule_projection import (
     NPCScheduleProjection,
@@ -72,31 +72,6 @@ def build_behavior_config() -> Dict[str, Any]:
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def generation_template_payload(seed: Dict[str, Any]) -> Dict[str, Any]:
-    payload: Dict[str, Any] = {
-        "name": str(seed.get("name") or "").strip(),
-        "slug": str(seed.get("slug") or "").strip(),
-        "description": (
-            str(seed.get("description")).strip()
-            if seed.get("description") is not None
-            else None
-        ),
-        "slots": deepcopy(seed.get("slots") or []),
-        "composition_strategy": str(seed.get("composition_strategy") or "sequential"),
-        "package_name": (
-            str(seed.get("package_name") or "").strip() or None
-        ),
-        "tags": [str(tag) for tag in (seed.get("tags") or []) if str(tag).strip()],
-        "is_public": bool(seed.get("is_public", True)),
-        "template_metadata": deepcopy(seed.get("template_metadata") or {}),
-        "character_bindings": deepcopy(seed.get("character_bindings") or {}),
-    }
-    metadata = payload["template_metadata"]
-    if isinstance(metadata, dict):
-        metadata.setdefault("seed_key", SEED_KEY)
-    return payload
 
 
 def base_world_meta() -> Dict[str, Any]:

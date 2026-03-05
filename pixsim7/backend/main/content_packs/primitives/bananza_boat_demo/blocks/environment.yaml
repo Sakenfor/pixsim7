@@ -1,0 +1,10 @@
+blocks:
+  - block_id: bananza.environment.main_deck.day
+    category: environment
+    text: "Sunlit cruise deck with bright railings and comic tropical energy."
+    tags: { setting: main_deck, mood: playful, source_pack: bananza_boat_demo, world: bananza_boat, duration_sec: "6.0" }
+
+  - block_id: bananza.environment.captain_cabin.evening
+    category: environment
+    text: "Cozy captain cabin with nautical clutter and warm evening glow."
+    tags: { setting: captain_cabin, mood: cozy, source_pack: bananza_boat_demo, world: bananza_boat, duration_sec: "6.0" }

@@ -29,18 +29,17 @@ from pixsim7.backend.main.services.prompt.block.template_service import (
 )
 
 from ..seed_data import (
-    GENERATION_TEMPLATE_SEEDS,
     LOCATION_SEEDS,
     NPC_BEHAVIOR_BINDINGS,
     NPC_SEEDS,
-    PRIMITIVE_SEEDS,
+    REQUIRED_BLOCK_IDS,
+    REQUIRED_TEMPLATE_SLUGS,
     SEED_KEY,
     SIMULATION_TEMPLATE,
 )
 from .common import (
     base_world_meta,
     build_behavior_config,
-    generation_template_payload,
     now_utc,
 )
 
@@ -282,80 +281,46 @@ async def _upsert_behavior_templates(
     }
 
 
-async def _upsert_primitives() -> Dict[str, int]:
-    created = 0
-    updated = 0
+async def _verify_required_blocks() -> Dict[str, Any]:
+    """Verify all required block IDs exist in the blocks DB."""
+    missing: List[str] = []
 
     async with get_async_blocks_session() as blocks_db:
-        for seed in PRIMITIVE_SEEDS:
-            block_id = str(seed["block_id"])
+        for block_id in REQUIRED_BLOCK_IDS:
             result = await blocks_db.execute(
-                select(BlockPrimitive).where(BlockPrimitive.block_id == block_id)
+                select(BlockPrimitive.block_id).where(BlockPrimitive.block_id == block_id)
             )
-            block = result.scalars().first()
+            if result.scalar_one_or_none() is None:
+                missing.append(block_id)
 
-            tags = dict(seed.get("tags") or {})
-            category = str(seed["category"])
-            text = str(seed["text"])
-            source = "system"
-            now = now_utc()
+    if missing:
+        raise RuntimeError(
+            f"Required block primitives missing ({len(missing)}/{len(REQUIRED_BLOCK_IDS)}). "
+            f"Load content packs before running seed.\n"
+            f"  Missing: {missing}"
+        )
 
-            if block is None:
-                block = BlockPrimitive(
-                    block_id=block_id,
-                    category=category,
-                    text=text,
-                    tags=tags,
-                    source=source,
-                    is_public=True,
-                    avg_rating=4.0,
-                    usage_count=0,
-                    created_at=now,
-                    updated_at=now,
-                )
-                blocks_db.add(block)
-                created += 1
-            else:
-                block.category = category
-                block.text = text
-                block.tags = tags
-                block.source = source
-                block.is_public = True
-                if block.avg_rating is None:
-                    block.avg_rating = 4.0
-                block.updated_at = now
-                blocks_db.add(block)
-                updated += 1
-
-        await blocks_db.commit()
-
-    return {"created": created, "updated": updated, "total": len(PRIMITIVE_SEEDS)}
+    return {"verified": len(REQUIRED_BLOCK_IDS), "missing": 0}
 
 
-async def _upsert_generation_templates(db: AsyncSession) -> Dict[str, int]:
+async def _verify_required_templates(db: AsyncSession) -> Dict[str, Any]:
+    """Verify all required template slugs exist in the templates DB."""
     service = BlockTemplateService(db)
-    created = 0
-    updated = 0
+    missing: List[str] = []
 
-    for seed in GENERATION_TEMPLATE_SEEDS:
-        payload = generation_template_payload(seed)
-        slug = str(payload.get("slug") or "").strip()
-        if not slug:
-            continue
-
+    for slug in REQUIRED_TEMPLATE_SLUGS:
         existing = await service.get_template_by_slug(slug)
         if existing is None:
-            await service.create_template(data=payload, created_by="system")
-            created += 1
-            continue
+            missing.append(slug)
 
-        if existing.id is None:
-            raise RuntimeError(f"template_missing_id:{slug}")
+    if missing:
+        raise RuntimeError(
+            f"Required generation templates missing ({len(missing)}/{len(REQUIRED_TEMPLATE_SLUGS)}). "
+            f"Load content packs before running seed.\n"
+            f"  Missing: {missing}"
+        )
 
-        await service.update_template(existing.id, payload)
-        updated += 1
-
-    return {"created": created, "updated": updated, "total": len(GENERATION_TEMPLATE_SEEDS)}
+    return {"verified": len(REQUIRED_TEMPLATE_SLUGS), "missing": 0}
 
 
 async def _upsert_project_snapshot(
@@ -424,7 +389,12 @@ async def seed_bananza_boat_slice(
     project_name: str,
     project_id: Optional[int] = None,
 ) -> None:
+    # Validate that required content is loaded before proceeding
+    block_check = await _verify_required_blocks()
+
     async with get_async_session() as db:
+        template_check = await _verify_required_templates(db)
+
         world = await _ensure_world(db, owner_user_id=owner_user_id, world_name=world_name)
         if world.id is None:
             raise RuntimeError("world_missing_id")
@@ -440,7 +410,6 @@ async def seed_bananza_boat_slice(
             world_id=world.id,
             npcs_by_key=npcs_by_key,
         )
-        template_summary = await _upsert_generation_templates(db)
         project_summary = await _upsert_project_snapshot(
             db,
             owner_user_id=owner_user_id,
@@ -450,11 +419,14 @@ async def seed_bananza_boat_slice(
             project_id=project_id,
         )
 
-    primitive_summary = await _upsert_primitives()
-
     print("Seed complete: Bananza Boat slice")
     print(f"  world_id: {world.id}")
     print(f"  owner_user_id: {owner_user_id}")
+    print(
+        "  content_check: "
+        f"blocks_verified={block_check['verified']} "
+        f"templates_verified={template_check['verified']}"
+    )
     print(
         "  project_snapshot: "
         f"id={project_summary['project_id']} "
@@ -476,18 +448,6 @@ async def seed_bananza_boat_slice(
         f"activities={behavior_summary['activities']} "
         f"routines={behavior_summary['routines']} "
         f"npcs_bound={behavior_summary['npcs_bound']}"
-    )
-    print(
-        "  primitives: "
-        f"created={primitive_summary['created']} "
-        f"updated={primitive_summary['updated']} "
-        f"total_seed={primitive_summary['total']}"
-    )
-    print(
-        "  templates: "
-        f"created={template_summary['created']} "
-        f"updated={template_summary['updated']} "
-        f"total_seed={template_summary['total']}"
     )
     print("")
     print("Next step example:")

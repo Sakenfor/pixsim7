@@ -1,0 +1,10 @@
+blocks:
+  - block_id: core.continuity.identity_lock
+    category: continuity
+    text: "Preserve character identity, facial features, and body silhouette across the next segment."
+    tags: { scope: global, continuity: identity, source_pack: core_scene_primitives, duration_sec: "10.0" }
+
+  - block_id: core.continuity.wardrobe_lock
+    category: continuity
+    text: "Keep wardrobe, accessories, and outfit materials consistent unless explicitly overridden."
+    tags: { scope: global, continuity: wardrobe, source_pack: core_scene_primitives, duration_sec: "10.0" }

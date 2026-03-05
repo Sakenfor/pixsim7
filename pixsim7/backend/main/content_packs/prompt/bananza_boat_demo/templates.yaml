@@ -1,0 +1,234 @@
+version: "1.0.0"
+
+templates:
+  - slug: bananza-scene-explore-scaffold-v1
+    name: "Bananza Scene Explore Scaffold"
+    description: "Scaffold template for Bananza scene explore passes."
+    composition_strategy: sequential
+    package_name: bananza_boat_demo
+    tags: [bananza, scene_prep, scaffold, "stage:explore"]
+    is_public: true
+    template_metadata:
+      seed_key: bananza_boat_slice_v1
+      stage: explore
+      scaffold: true
+      notes: "Initial scaffold seeded by content pack; expand slot tuning iteratively."
+    character_bindings: {}
+    slots:
+      - key: environment
+        label: Environment
+        role: environment
+        category: environment
+        block_source: primitives
+        package_name: bananza_boat_demo
+        tags:
+          all: { world: bananza_boat }
+        selection_strategy: uniform
+        optional: false
+
+      - key: light
+        label: Lighting
+        role: lighting
+        category: light
+        block_source: primitives
+        tags:
+          any: { source_pack: [core_scene_primitives, bananza_boat_demo] }
+        selection_strategy: uniform
+        optional: false
+
+      - key: camera
+        label: Camera
+        role: camera
+        category: camera
+        block_source: primitives
+        tags:
+          any: { source_pack: [core_scene_primitives, bananza_boat_demo] }
+        selection_strategy: uniform
+        optional: false
+
+      - key: mood
+        label: Mood
+        role: style
+        category: mood
+        block_source: primitives
+        tags:
+          any: { source_pack: [genre_tone_primitives, bananza_boat_demo] }
+        selection_strategy: uniform
+        optional: false
+
+  - slug: bananza-scene-compose-scaffold-v1
+    name: "Bananza Scene Compose Scaffold"
+    description: "Scaffold template for Bananza scene compose passes."
+    composition_strategy: sequential
+    package_name: bananza_boat_demo
+    tags: [bananza, scene_prep, scaffold, "stage:compose"]
+    is_public: true
+    template_metadata:
+      seed_key: bananza_boat_slice_v1
+      stage: compose
+      scaffold: true
+      notes: "Composition scaffold with location + wardrobe/pose hooks."
+    character_bindings: {}
+    slots:
+      - key: environment
+        label: Environment
+        role: environment
+        category: environment
+        block_source: primitives
+        package_name: bananza_boat_demo
+        tags:
+          all: { world: bananza_boat }
+        selection_strategy: uniform
+        optional: false
+
+      - key: location
+        label: Location Anchor
+        role: location
+        category: location
+        block_source: primitives
+        package_name: bananza_boat_demo
+        tags:
+          all: { world: bananza_boat }
+        selection_strategy: uniform
+        optional: false
+
+      - key: camera
+        label: Camera
+        role: camera
+        category: camera
+        block_source: primitives
+        tags:
+          any: { source_pack: [core_scene_primitives, bananza_boat_demo] }
+        selection_strategy: uniform
+        optional: false
+
+      - key: lead_pose
+        label: Lead Pose
+        role: subject
+        category: character_pose
+        block_source: primitives
+        package_name: bananza_boat_demo
+        tags:
+          all: { world: bananza_boat, actor: banana }
+        selection_strategy: uniform
+        optional: false
+
+      - key: partner_pose
+        label: Partner Pose
+        role: subject
+        category: character_pose
+        block_source: primitives
+        package_name: bananza_boat_demo
+        tags:
+          all: { world: bananza_boat, actor: gorilla }
+        selection_strategy: uniform
+        optional: false
+
+      - key: wardrobe
+        label: Wardrobe
+        role: style
+        category: wardrobe
+        block_source: primitives
+        package_name: bananza_boat_demo
+        tags:
+          all: { world: bananza_boat }
+        selection_strategy: uniform
+        optional: true
+
+      - key: mood
+        label: Mood
+        role: style
+        category: mood
+        block_source: primitives
+        tags:
+          any: { source_pack: [genre_tone_primitives, bananza_boat_demo] }
+        selection_strategy: uniform
+        optional: false
+
+  - slug: bananza-scene-refine-scaffold-v1
+    name: "Bananza Scene Refine Scaffold"
+    description: "Scaffold template for Bananza scene refine passes."
+    composition_strategy: sequential
+    package_name: bananza_boat_demo
+    tags: [bananza, scene_prep, scaffold, "stage:refine"]
+    is_public: true
+    template_metadata:
+      seed_key: bananza_boat_slice_v1
+      stage: refine
+      scaffold: true
+      notes: "Refine scaffold kept minimal so authored text can be layered later."
+    character_bindings: {}
+    slots:
+      - key: environment
+        label: Environment
+        role: environment
+        category: environment
+        block_source: primitives
+        package_name: bananza_boat_demo
+        tags:
+          all: { world: bananza_boat }
+        selection_strategy: uniform
+        optional: false
+
+      - key: light
+        label: Lighting
+        role: lighting
+        category: light
+        block_source: primitives
+        tags:
+          any: { source_pack: [core_scene_primitives, bananza_boat_demo] }
+        selection_strategy: uniform
+        optional: false
+
+      - key: camera
+        label: Camera
+        role: camera
+        category: camera
+        block_source: primitives
+        tags:
+          any: { source_pack: [core_scene_primitives, bananza_boat_demo] }
+        selection_strategy: uniform
+        optional: false
+
+      - key: location
+        label: Location Anchor
+        role: location
+        category: location
+        block_source: primitives
+        package_name: bananza_boat_demo
+        tags:
+          all: { world: bananza_boat }
+        selection_strategy: uniform
+        optional: false
+
+      - key: lead_pose
+        label: Lead Pose
+        role: subject
+        category: character_pose
+        block_source: primitives
+        package_name: bananza_boat_demo
+        tags:
+          all: { world: bananza_boat, actor: banana }
+        selection_strategy: uniform
+        optional: false
+
+      - key: partner_pose
+        label: Partner Pose
+        role: subject
+        category: character_pose
+        block_source: primitives
+        package_name: bananza_boat_demo
+        tags:
+          all: { world: bananza_boat, actor: gorilla }
+        selection_strategy: uniform
+        optional: false
+
+      - key: mood
+        label: Mood
+        role: style
+        category: mood
+        block_source: primitives
+        tags:
+          any: { source_pack: [genre_tone_primitives, bananza_boat_demo] }
+        selection_strategy: uniform
+        optional: false

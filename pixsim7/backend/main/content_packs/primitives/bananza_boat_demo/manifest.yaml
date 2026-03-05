@@ -1,0 +1,9 @@
+id: bananza_boat_demo
+version: "1.0.0"
+description: "Bananza Boat demo-specific primitives"
+
+categories:
+  - environment
+  - character_pose
+  - location
+  - wardrobe
