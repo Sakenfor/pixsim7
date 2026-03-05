@@ -14,6 +14,8 @@ import {
   getSavedGameProject,
   renameSavedGameProject,
   saveGameProject,
+  type SaveGameProjectRequest,
+  type SavedGameProjectSummary,
 } from '@lib/api';
 import { useEditorContext } from '@lib/context/editorContext';
 import {
@@ -63,6 +65,143 @@ type LastProjectAction =
       coreWarnings: string[];
       extensionReport: ProjectBundleExtensionImportReport;
     };
+
+type BananzaSeederMode = 'api' | 'direct';
+type BananzaSyncMode = 'two_way' | 'backend_to_file' | 'file_to_backend' | 'none';
+
+interface BananzaRuntimePreferences {
+  seederMode: BananzaSeederMode;
+  syncMode: BananzaSyncMode;
+  watchEnabled: boolean;
+}
+
+const DEFAULT_BANANZA_RUNTIME_PREFERENCES: BananzaRuntimePreferences = {
+  seederMode: 'api',
+  syncMode: 'two_way',
+  watchEnabled: true,
+};
+
+const BANANZA_RUNTIME_META_KEY = 'bananza_runtime';
+const BANANZA_META_SEEDER_MODE = 'bananza_seeder_mode';
+const BANANZA_META_SYNC_MODE = 'bananza_sync_mode';
+const BANANZA_META_WATCH_ENABLED = 'bananza_watch_enabled';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeBananzaSeederMode(value: unknown): BananzaSeederMode | null {
+  if (value === 'api' || value === 'direct') {
+    return value;
+  }
+  return null;
+}
+
+function normalizeBananzaSyncMode(value: unknown): BananzaSyncMode | null {
+  if (
+    value === 'two_way' ||
+    value === 'backend_to_file' ||
+    value === 'file_to_backend' ||
+    value === 'none'
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function normalizeBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  return null;
+}
+
+function readBananzaRuntimePreferences(
+  project: SavedGameProjectSummary | null | undefined,
+): BananzaRuntimePreferences {
+  const provenance = project?.provenance;
+  const meta = isRecord(provenance?.meta) ? provenance.meta : {};
+  const runtime: Record<string, unknown> = isRecord(meta[BANANZA_RUNTIME_META_KEY])
+    ? meta[BANANZA_RUNTIME_META_KEY]
+    : {};
+
+  const seederMode =
+    normalizeBananzaSeederMode(runtime.seeder_mode) ??
+    normalizeBananzaSeederMode(meta[BANANZA_META_SEEDER_MODE]) ??
+    DEFAULT_BANANZA_RUNTIME_PREFERENCES.seederMode;
+
+  const syncMode =
+    normalizeBananzaSyncMode(runtime.sync_mode) ??
+    normalizeBananzaSyncMode(meta[BANANZA_META_SYNC_MODE]) ??
+    DEFAULT_BANANZA_RUNTIME_PREFERENCES.syncMode;
+
+  const watchEnabled =
+    normalizeBoolean(runtime.watch_enabled) ??
+    normalizeBoolean(meta[BANANZA_META_WATCH_ENABLED]) ??
+    DEFAULT_BANANZA_RUNTIME_PREFERENCES.watchEnabled;
+
+  return { seederMode, syncMode, watchEnabled };
+}
+
+function hasExplicitBananzaRuntimePreferences(
+  project: SavedGameProjectSummary | null | undefined,
+): boolean {
+  const provenance = project?.provenance;
+  const meta = isRecord(provenance?.meta) ? provenance.meta : {};
+  const runtime: Record<string, unknown> = isRecord(meta[BANANZA_RUNTIME_META_KEY])
+    ? meta[BANANZA_RUNTIME_META_KEY]
+    : {};
+  return (
+    runtime.seeder_mode !== undefined ||
+    runtime.sync_mode !== undefined ||
+    runtime.watch_enabled !== undefined ||
+    meta[BANANZA_META_SEEDER_MODE] !== undefined ||
+    meta[BANANZA_META_SYNC_MODE] !== undefined ||
+    meta[BANANZA_META_WATCH_ENABLED] !== undefined
+  );
+}
+
+function buildProjectProvenanceRequest(
+  existingProject: SavedGameProjectSummary | null,
+  preferences: BananzaRuntimePreferences,
+): SaveGameProjectRequest['provenance'] {
+  const existingProvenance = existingProject?.provenance;
+  const existingMeta = isRecord(existingProvenance?.meta) ? existingProvenance.meta : {};
+  const existingRuntime: Record<string, unknown> = isRecord(existingMeta[BANANZA_RUNTIME_META_KEY])
+    ? existingMeta[BANANZA_RUNTIME_META_KEY]
+    : {};
+
+  const mergedMeta: Record<string, unknown> = {
+    ...existingMeta,
+    [BANANZA_RUNTIME_META_KEY]: {
+      ...existingRuntime,
+      seeder_mode: preferences.seederMode,
+      sync_mode: preferences.syncMode,
+      watch_enabled: preferences.watchEnabled,
+    },
+    [BANANZA_META_SEEDER_MODE]: preferences.seederMode,
+    [BANANZA_META_SYNC_MODE]: preferences.syncMode,
+    [BANANZA_META_WATCH_ENABLED]: preferences.watchEnabled,
+  };
+
+  return {
+    kind: existingProvenance?.kind ?? 'user',
+    source_key: existingProvenance?.source_key ?? null,
+    parent_project_id: existingProvenance?.parent_project_id ?? null,
+    meta: mergedMeta,
+  };
+}
+
+function buildBananzaSeederPresetCommand(preferences: BananzaRuntimePreferences): string {
+  let command = `python -m scripts.seeds.game.bananza.cli --mode ${preferences.seederMode}`;
+  if (preferences.seederMode === 'api') {
+    command += ` --sync-mode ${preferences.syncMode}`;
+  }
+  if (preferences.watchEnabled) {
+    command += ' --watch';
+  }
+  return command;
+}
 
 function formatTimestamp(value: number | null): string {
   if (!value) return 'Never';
@@ -130,6 +269,15 @@ export function ProjectPanel() {
   const [busy, setBusy] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [worldNameOverride, setWorldNameOverride] = useState('');
+  const [bananzaSeederMode, setBananzaSeederMode] = useState<BananzaSeederMode>(
+    DEFAULT_BANANZA_RUNTIME_PREFERENCES.seederMode,
+  );
+  const [bananzaSyncMode, setBananzaSyncMode] = useState<BananzaSyncMode>(
+    DEFAULT_BANANZA_RUNTIME_PREFERENCES.syncMode,
+  );
+  const [bananzaWatchEnabled, setBananzaWatchEnabled] = useState<boolean>(
+    DEFAULT_BANANZA_RUNTIME_PREFERENCES.watchEnabled,
+  );
   const [lastAction, setLastAction] = useState<LastProjectAction | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>('save-load');
 
@@ -167,6 +315,30 @@ export function ProjectPanel() {
   const selectedProject = useMemo(
     () => savedProjects.find((entry) => entry.id === selectedProjectId) ?? null,
     [savedProjects, selectedProjectId],
+  );
+  const currentProjectSummary = useMemo(
+    () => savedProjects.find((entry) => entry.id === currentProjectId) ?? null,
+    [savedProjects, currentProjectId],
+  );
+  const currentBananzaPreferences = useMemo<BananzaRuntimePreferences>(
+    () => ({
+      seederMode: bananzaSeederMode,
+      syncMode: bananzaSyncMode,
+      watchEnabled: bananzaWatchEnabled,
+    }),
+    [bananzaSeederMode, bananzaSyncMode, bananzaWatchEnabled],
+  );
+  const selectedProjectBananzaPreferences = useMemo(
+    () => readBananzaRuntimePreferences(selectedProject),
+    [selectedProject],
+  );
+  const selectedProjectHasBananzaPreferences = useMemo(
+    () => hasExplicitBananzaRuntimePreferences(selectedProject),
+    [selectedProject],
+  );
+  const bananzaSeederPresetCommand = useMemo(
+    () => buildBananzaSeederPresetCommand(currentBananzaPreferences),
+    [currentBananzaPreferences],
   );
   const runtimeSessionId = useMemo(() => {
     const value = editorContext.runtime.sessionId;
@@ -224,6 +396,16 @@ export function ProjectPanel() {
     selectSavedProject(currentProjectId);
   }, [currentProjectId, savedProjects, selectSavedProject]);
 
+  useEffect(() => {
+    if (!selectedProject) {
+      return;
+    }
+    const preferences = readBananzaRuntimePreferences(selectedProject);
+    setBananzaSeederMode(preferences.seederMode);
+    setBananzaSyncMode(preferences.syncMode);
+    setBananzaWatchEnabled(preferences.watchEnabled);
+  }, [selectedProject?.id, selectedProject?.updated_at]);
+
   const handleSaveCurrent = async () => {
     if (!worldId) {
       toast.warning('Select a world before saving a project');
@@ -238,13 +420,21 @@ export function ProjectPanel() {
     try {
       const { bundle, extensionReport } = await exportWorldProjectWithExtensions(worldId);
       const resolvedName = currentProjectName || String(bundle.core.world.name || `world_${worldId}`);
-
-      const saved = await saveGameProject({
+      const provenanceBaseProject =
+        currentProjectSummary ??
+        (selectedProject?.id === currentProjectId ? selectedProject : null);
+      const saveRequest: SaveGameProjectRequest = {
         name: resolvedName,
         bundle,
         source_world_id: worldId,
         overwrite_project_id: currentProjectId,
-      });
+        provenance: buildProjectProvenanceRequest(
+          provenanceBaseProject,
+          currentBananzaPreferences,
+        ),
+      };
+
+      const saved = await saveGameProject(saveRequest);
 
       upsertSavedProject(saved);
       selectSavedProject(saved.id);
@@ -303,13 +493,19 @@ export function ProjectPanel() {
         projectName.trim() ||
         selectedProject?.name ||
         String(bundle.core.world.name || `world_${worldId}`);
-
-      const saved = await saveGameProject({
+      const provenanceBaseProject = overwrite ? selectedProject : null;
+      const saveRequest: SaveGameProjectRequest = {
         name: resolvedName,
         bundle,
         source_world_id: worldId,
         ...(overwrite && selectedProjectId ? { overwrite_project_id: selectedProjectId } : {}),
-      });
+        provenance: buildProjectProvenanceRequest(
+          provenanceBaseProject,
+          currentBananzaPreferences,
+        ),
+      };
+
+      const saved = await saveGameProject(saveRequest);
 
       upsertSavedProject(saved);
       selectSavedProject(saved.id);
@@ -564,6 +760,10 @@ export function ProjectPanel() {
 
       upsertSavedProject(project);
       selectSavedProject(project.id);
+      const loadedPreferences = readBananzaRuntimePreferences(project);
+      setBananzaSeederMode(loadedPreferences.seederMode);
+      setBananzaSyncMode(loadedPreferences.syncMode);
+      setBananzaWatchEnabled(loadedPreferences.watchEnabled);
 
       setLastAction({
         kind: 'load',
@@ -646,6 +846,69 @@ export function ProjectPanel() {
                   className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 w-full"
                 />
               </FormField>
+
+              <FormField
+                label="Bananza seeder mode"
+                size="sm"
+                helpText="Saved with project provenance and used as CLI default preference."
+              >
+                <select
+                  value={bananzaSeederMode}
+                  onChange={(event) =>
+                    setBananzaSeederMode(
+                      event.target.value === 'direct' ? 'direct' : 'api',
+                    )
+                  }
+                  className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 w-full"
+                >
+                  <option value="api">API (recommended)</option>
+                  <option value="direct">Direct DB (advanced)</option>
+                </select>
+              </FormField>
+
+              <FormField
+                label="Bananza sync mode"
+                size="sm"
+                helpText="Applies to API mode seeding/sync workflows."
+              >
+                <select
+                  value={bananzaSyncMode}
+                  onChange={(event) =>
+                    setBananzaSyncMode(
+                      event.target.value === 'backend_to_file' ||
+                        event.target.value === 'file_to_backend' ||
+                        event.target.value === 'none'
+                        ? event.target.value
+                        : 'two_way',
+                    )
+                  }
+                  className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 w-full"
+                >
+                  <option value="two_way">Two-way (default)</option>
+                  <option value="backend_to_file">Backend to file</option>
+                  <option value="file_to_backend">File to backend</option>
+                  <option value="none">None</option>
+                </select>
+              </FormField>
+
+              <FormField
+                label="Bananza watch default"
+                size="sm"
+                helpText="Controls whether watcher mode is preferred for Bananza seeder runs."
+              >
+                <select
+                  value={bananzaWatchEnabled ? 'enabled' : 'disabled'}
+                  onChange={(event) => setBananzaWatchEnabled(event.target.value === 'enabled')}
+                  className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 w-full"
+                >
+                  <option value="enabled">Enabled</option>
+                  <option value="disabled">Disabled</option>
+                </select>
+              </FormField>
+
+              <div className="text-[11px] text-neutral-500 dark:text-neutral-400 break-all">
+                CLI preset: <code>{bananzaSeederPresetCommand}</code>
+              </div>
 
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -740,6 +1003,10 @@ export function ProjectPanel() {
                     const nextProject = savedProjects.find((entry) => entry.id === nextId);
                     if (nextProject) {
                       setProjectName(nextProject.name);
+                      const nextPreferences = readBananzaRuntimePreferences(nextProject);
+                      setBananzaSeederMode(nextPreferences.seederMode);
+                      setBananzaSyncMode(nextPreferences.syncMode);
+                      setBananzaWatchEnabled(nextPreferences.watchEnabled);
                     }
                   }}
                   className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 w-full"
@@ -791,6 +1058,18 @@ export function ProjectPanel() {
                   <div>Schema: {selectedProject.schema_version}</div>
                   <div>Source world: {selectedProject.source_world_id ?? 'N/A'}</div>
                   <div>Saved: {formatIsoTimestamp(selectedProject.updated_at)}</div>
+                  <div>
+                    Bananza seeder: {selectedProjectBananzaPreferences.seederMode}
+                    {!selectedProjectHasBananzaPreferences ? ' (default)' : ''}
+                  </div>
+                  <div>
+                    Bananza sync: {selectedProjectBananzaPreferences.syncMode}
+                    {!selectedProjectHasBananzaPreferences ? ' (default)' : ''}
+                  </div>
+                  <div>
+                    Bananza watch: {selectedProjectBananzaPreferences.watchEnabled ? 'enabled' : 'disabled'}
+                    {!selectedProjectHasBananzaPreferences ? ' (default)' : ''}
+                  </div>
                 </div>
               )}
 
