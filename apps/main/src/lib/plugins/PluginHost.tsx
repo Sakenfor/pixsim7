@@ -7,9 +7,11 @@
  * - Handles plugin menu items and notifications
  */
 
-import React, { createContext, useContext, useEffect, useState, useCallback, Component, type ReactNode, type ErrorInfo } from 'react';
+import React, { useContext, useEffect, useState, useCallback, Component, type ReactNode, type ErrorInfo } from 'react';
 
 import { Icon } from '@lib/icons';
+import { createHmrSafeContext } from '@lib/utils';
+
 
 import type { GameSessionDTO, GameWorldDetail, GameLocationDetail, NpcPresenceDTO } from '../api/game';
 
@@ -100,7 +102,7 @@ interface PluginHostContext {
   showNotification: (notification: PluginNotification) => void;
 }
 
-const PluginHostContext = createContext<PluginHostContext | null>(null);
+const PluginHostContext = createHmrSafeContext<PluginHostContext | null>('pluginHost', null);
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const usePluginHost = () => {

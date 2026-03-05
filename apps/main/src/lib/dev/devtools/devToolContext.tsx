@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Dev Tool Context
  *
@@ -7,7 +8,10 @@
  * - Global dev tool state
  */
 
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+
+import { createHmrSafeContext } from '@lib/utils';
+
 import type { DevToolId } from './types';
 
 const RECENT_TOOLS_KEY = 'dev-tools-recent';
@@ -36,7 +40,7 @@ export interface DevToolContextValue {
   toggleQuickAccess: () => void;
 }
 
-const DevToolContext = createContext<DevToolContextValue | null>(null);
+const DevToolContext = createHmrSafeContext<DevToolContextValue | null>('devTool', null);
 
 export interface DevToolProviderProps {
   children: ReactNode;

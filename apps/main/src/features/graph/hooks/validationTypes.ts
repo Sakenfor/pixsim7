@@ -4,7 +4,7 @@
  * Separated from component file to satisfy react-refresh eslint rule.
  */
 
-import { createContext } from 'react';
+import { createHmrSafeContext } from '@lib/utils';
 
 import type { ValidationIssue } from '@domain/sceneBuilder/validation';
 
@@ -26,4 +26,4 @@ export interface ValidationContextValue {
   hasWarnings: boolean;
 }
 
-export const ValidationContext = createContext<ValidationContextValue | null>(null);
+export const ValidationContext = createHmrSafeContext<ValidationContextValue | null>('validation', null);

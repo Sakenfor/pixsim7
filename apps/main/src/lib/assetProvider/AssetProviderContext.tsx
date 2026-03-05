@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Asset Provider Context
  *
@@ -28,15 +29,18 @@
  * ```
  */
 
-import React, { createContext, useContext, useMemo, type ReactNode } from 'react';
 import type { IAssetProvider, AssetServiceConfig } from '@pixsim7/shared.types';
+import React, { useContext, useMemo, type ReactNode } from 'react';
+
+import { createHmrSafeContext } from '@lib/utils';
+
 import { AssetService, createAssetService } from './AssetService';
 
 // ============================================================================
 // Context
 // ============================================================================
 
-const AssetProviderContext = createContext<IAssetProvider | null>(null);
+const AssetProviderContext = createHmrSafeContext<IAssetProvider | null>('assetProvider', null);
 
 // ============================================================================
 // Provider Component

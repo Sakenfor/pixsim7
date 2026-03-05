@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Prompt Companion Slot
  *
@@ -47,7 +48,6 @@
  */
 
 import React, {
-  createContext,
   useContext,
   useState,
   useCallback,
@@ -57,6 +57,8 @@ import React, {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+
+import { createHmrSafeContext } from '@lib/utils';
 
 // ============================================================================
 // Types
@@ -299,7 +301,7 @@ export const promptSurfaceRegistry = new PromptSurfaceRegistry();
 // Context
 // ============================================================================
 
-const PromptCompanionCtx = createContext<PromptCompanionContext | null>(null);
+const PromptCompanionCtx = createHmrSafeContext<PromptCompanionContext | null>('promptCompanion', null);
 
 /**
  * Hook to access prompt companion context from within a plugin
@@ -427,7 +429,7 @@ interface PromptSurfaceContextValue {
   registerInput: (getValue: () => string, setValue: (v: string) => void) => void;
 }
 
-const PromptSurfaceCtx = createContext<PromptSurfaceContextValue | null>(null);
+const PromptSurfaceCtx = createHmrSafeContext<PromptSurfaceContextValue | null>('promptSurface', null);
 
 export interface PromptSurfaceProviderProps {
   /** Surface identifier */

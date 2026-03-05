@@ -13,7 +13,9 @@ import type {
   ImportSourceController,
   SourceControllerType,
 } from '@pixsim7/shared.sources.core';
-import { createContext, useContext, type ReactNode } from 'react';
+import { useContext, type ReactNode } from 'react';
+
+import { createHmrSafeContext } from '@lib/utils';
 
 
 // ============================================================================
@@ -27,7 +29,7 @@ interface SourceControllerContextValue<TAsset = unknown> {
   controllerType: SourceControllerType;
 }
 
-const SourceControllerContext = createContext<SourceControllerContextValue | null>(null);
+const SourceControllerContext = createHmrSafeContext<SourceControllerContextValue | null>('sourceController', null);
 
 // ============================================================================
 // Provider Component

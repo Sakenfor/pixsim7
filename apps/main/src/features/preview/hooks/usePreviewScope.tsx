@@ -1,6 +1,10 @@
-import { createContext, useContext, useMemo } from "react";
-import type { PreviewSettingsStoreHook } from "../stores/previewSettingsStore";
+/* eslint-disable react-refresh/only-export-components */
+import { useContext, useMemo } from "react";
+
+import { createHmrSafeContext } from "@lib/utils";
+
 import { getPreviewSettingsStore } from "../stores/previewScopeStores";
+import type { PreviewSettingsStoreHook } from "../stores/previewSettingsStore";
 
 export interface PreviewScopeStores {
   id: string;
@@ -15,7 +19,7 @@ const GLOBAL_SCOPE: PreviewScopeStores = {
   useSettingsStore: getPreviewSettingsStore("global"),
 };
 
-const PreviewScopeContext = createContext<PreviewScopeStores | null>(null);
+const PreviewScopeContext = createHmrSafeContext<PreviewScopeStores | null>('previewScope', null);
 
 /**
  * Hook to access preview scope stores.
