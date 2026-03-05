@@ -30,6 +30,8 @@ ENV/
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example
 
 # IDE
 .vscode/
@@ -137,10 +139,14 @@ apps/pixsim7-android/*.keystore
 apps/pixsim7-android/captures/
 apps/pixsim7-android/.cxx/
 apps/pixsim7-android/.externalNativeBuild/
-docs/plans/
 
 # Claude Code temp files
 tmpclaude-*-cwd
+.tmp-*/
+.tmp_*/
+tmp_pytest*/
+pytest_tmp*/
+pytest_basetemp/
 
 # MkDocs output
 site-docs/
