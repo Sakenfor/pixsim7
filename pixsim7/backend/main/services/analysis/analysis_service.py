@@ -35,6 +35,8 @@ from pixsim7.backend.main.services.analysis.analyzer_pipeline import (
     resolve_analyzer_execution,
 )
 from pixsim7.backend.main.services.analysis.chain_executor import execute_first_success
+from pixsim7.backend.main.services.analysis.observability import log_analyzer_run
+from pixsim7.backend.main.services.analysis.result_envelope import build_provenance
 from pixsim7.backend.main.services.analysis.analyzer_instance_service import AnalyzerInstanceService
 from pixsim7.backend.main.services.analysis.analysis_result_applier import AnalysisResultApplier
 from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerTarget
@@ -159,6 +161,8 @@ class AnalysisService:
         )
 
         explicit_analyzer_id = analyzer_id.strip() if isinstance(analyzer_id, str) else None
+        chain_result = None
+        candidate_count = 1
         if explicit_analyzer_id:
             resolved_execution = await self._resolve_execution_config(
                 user_id=user.id,
@@ -173,6 +177,7 @@ class AnalysisService:
                 intent=analyzer_intent,
                 analysis_point=resolved_analysis_point,
             )
+            candidate_count = len(candidate_analyzer_ids)
 
             chain_result = await execute_first_success(
                 candidates=candidate_analyzer_ids,
@@ -197,6 +202,22 @@ class AnalysisService:
                     f"First default candidate: {fallback_id}. "
                     f"Details: {chain_result.error_summary}"
                 )
+
+        # Build provenance envelope
+        if chain_result is not None:
+            provenance = build_provenance(
+                chain_result,
+                provider_id=resolved_execution.provider_id,
+                model_id=resolved_execution.model_id,
+            )
+        else:
+            # Explicit analyzer — no chain, build minimal provenance
+            from pixsim7.backend.main.services.analysis.result_envelope import AnalyzerProvenance
+            provenance = AnalyzerProvenance(
+                analyzer_id=resolved_execution.analyzer_id,
+                provider_id=resolved_execution.provider_id,
+                model_id=resolved_execution.model_id,
+            )
 
         dedupe_key = self._compute_dedupe_key(
             asset_id=asset.id,
@@ -248,13 +269,17 @@ class AnalysisService:
         await self.db.commit()
         await self.db.refresh(analysis)
 
-        logger.info(
-            "analysis_created analysis_id=%s asset_id=%s analyzer_id=%s provider_id=%s analysis_point=%s",
-            analysis.id,
-            asset_id,
-            resolved_execution.analyzer_id,
-            resolved_execution.provider_id,
-            resolved_analysis_point,
+        # Emit structured observability log
+        log_analyzer_run(
+            provenance,
+            path="asset",
+            success=True,
+            candidate_count=candidate_count,
+            extra={
+                "analysis_id": analysis.id,
+                "asset_id": asset_id,
+                "analysis_point": resolved_analysis_point,
+            },
         )
 
         await event_bus.publish(
@@ -269,6 +294,7 @@ class AnalysisService:
                 "analyzer_definition_version": resolved_execution.analyzer_definition_version,
                 "effective_config_hash": resolved_execution.effective_config_hash,
                 "dedupe_key": dedupe_key,
+                "provenance": provenance.to_dict(),
             },
         )
 

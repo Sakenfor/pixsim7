@@ -18,7 +18,11 @@ from pixsim7.backend.main.services.prompt.parser import (
     AnalyzerInfo,
     AnalyzerKind,
     AnalyzerTarget,
+    AnalyzerInputModality,
+    AnalyzerTaskFamily,
     InstanceOptionDescriptor,
+    infer_input_modality,
+    infer_task_family,
 )
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
@@ -77,6 +81,24 @@ def _definition_to_info(definition: AnalyzerDefinition) -> Optional[AnalyzerInfo
         )
         return None
 
+    try:
+        input_modality = (
+            AnalyzerInputModality(definition.input_modality)
+            if definition.input_modality
+            else infer_input_modality(definition.analyzer_id, target, kind)
+        )
+    except ValueError:
+        input_modality = infer_input_modality(definition.analyzer_id, target, kind)
+
+    try:
+        task_family = (
+            AnalyzerTaskFamily(definition.task_family)
+            if definition.task_family
+            else infer_task_family(definition.analyzer_id, target, kind)
+        )
+    except ValueError:
+        task_family = infer_task_family(definition.analyzer_id, target, kind)
+
     config = definition.config or {}
     if definition.preset_id:
         config = {**config, "preset_id": definition.preset_id}
@@ -92,6 +114,8 @@ def _definition_to_info(definition: AnalyzerDefinition) -> Optional[AnalyzerInfo
         description=definition.description or "",
         kind=kind,
         target=target,
+        input_modality=input_modality,
+        task_family=task_family,
         provider_id=definition.provider_id,
         model_id=definition.model_id,
         source_plugin_id=definition.source_plugin_id,
@@ -172,6 +196,8 @@ class AnalyzerDefinitionService:
         description: Optional[str],
         kind: AnalyzerKind,
         target: AnalyzerTarget,
+        input_modality: Optional[AnalyzerInputModality],
+        task_family: Optional[AnalyzerTaskFamily],
         provider_id: Optional[str],
         model_id: Optional[str],
         config: Optional[dict],
@@ -206,6 +232,16 @@ class AnalyzerDefinitionService:
             description=description,
             kind=kind.value,
             target=target.value,
+            input_modality=(
+                input_modality.value
+                if input_modality is not None
+                else infer_input_modality(analyzer_id, target, kind).value
+            ),
+            task_family=(
+                task_family.value
+                if task_family is not None
+                else infer_task_family(analyzer_id, target, kind).value
+            ),
             provider_id=provider_id,
             model_id=model_id,
             config=config or {},
@@ -242,6 +278,8 @@ class AnalyzerDefinitionService:
         description: Optional[str] = None,
         kind: Optional[AnalyzerKind] = None,
         target: Optional[AnalyzerTarget] = None,
+        input_modality: Optional[AnalyzerInputModality] = None,
+        task_family: Optional[AnalyzerTaskFamily] = None,
         provider_id: Optional[str] = None,
         model_id: Optional[str] = None,
         config: Optional[dict] = None,
@@ -258,37 +296,76 @@ class AnalyzerDefinitionService:
         if enabled is False and is_default is True:
             raise AnalyzerDefinitionError("Disabled analyzers cannot be default")
 
+        changed = False
+
         if name is not None:
             definition.name = name
+            changed = True
         if description is not None:
             definition.description = description
+            changed = True
         if kind is not None:
             definition.kind = kind.value
+            changed = True
         if target is not None:
             definition.target = target.value
+            changed = True
+        metadata_should_recompute = kind is not None or target is not None
+        if input_modality is not None:
+            definition.input_modality = input_modality.value
+            changed = True
+        elif metadata_should_recompute or not definition.input_modality:
+            inferred_modality = infer_input_modality(
+                definition.analyzer_id,
+                AnalyzerTarget(definition.target),
+                AnalyzerKind(definition.kind),
+            )
+            definition.input_modality = inferred_modality.value
+            changed = True
+        if task_family is not None:
+            definition.task_family = task_family.value
+            changed = True
+        elif metadata_should_recompute or not definition.task_family:
+            inferred_task = infer_task_family(
+                definition.analyzer_id,
+                AnalyzerTarget(definition.target),
+                AnalyzerKind(definition.kind),
+            )
+            definition.task_family = inferred_task.value
+            changed = True
         if provider_id is not None:
             definition.provider_id = provider_id
+            changed = True
         if model_id is not None:
             definition.model_id = model_id
+            changed = True
         if config is not None:
             if not isinstance(config, dict):
                 raise AnalyzerDefinitionError("Config must be a dictionary")
             definition.config = config
+            changed = True
         if base_analyzer_id is not None:
             if base_analyzer_id == analyzer_id:
                 raise AnalyzerDefinitionError("Base analyzer cannot reference itself")
             definition.base_analyzer_id = base_analyzer_id
+            changed = True
         if preset_id is not None:
             definition.preset_id = preset_id
+            changed = True
         if instance_options is not None:
             definition.instance_options = instance_options
+            changed = True
         if enabled is not None:
             definition.enabled = enabled
             if enabled is False:
                 definition.is_default = False
+            changed = True
         if is_default is not None:
             definition.is_default = is_default
+            changed = True
 
+        if changed:
+            definition.version = max(1, definition.version or 1) + 1
         definition.updated_at = utcnow()
 
         definitions_by_id = await self._get_definitions_map()

@@ -1,10 +1,11 @@
 """
 Shared analyzer resolve/validate pipeline stages.
 
-Stage 1 scope:
+Scope:
 - Resolve canonical analyzer ID
 - Validate analyzer existence / target / enabled state
 - Resolve provider/model for execution (including LLM provider/model precedence)
+- Validate capability contract (Phase 4)
 """
 
 from __future__ import annotations
@@ -12,6 +13,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+from pixsim7.backend.main.services.analysis.capability_contract import (
+    CapabilityMismatchError,
+    CapabilityRequest,
+    validate_analyzer_capability,
+)
 from pixsim7.backend.main.services.analysis.execution_policy import (
     ProviderModelPrecedenceRequest,
     resolve_provider_model_precedence,
@@ -62,6 +68,7 @@ class AnalyzerExecutionRequest:
     user_llm_provider_id: Optional[str] = None
     user_llm_model_id: Optional[str] = None
     require_provider: bool = True
+    capability_request: Optional[CapabilityRequest] = None
 
 
 @dataclass(frozen=True)
@@ -93,7 +100,14 @@ def resolve_analyzer_definition(request: AnalyzerDefinitionRequest) -> ResolvedA
 
 
 def resolve_analyzer_execution(request: AnalyzerExecutionRequest) -> ResolvedAnalyzerExecution:
-    """Resolve canonical analyzer + provider/model for execution."""
+    """Resolve canonical analyzer + provider/model for execution.
+
+    When ``request.capability_request`` is set, validates the analyzer's
+    declared capabilities against the request before proceeding.  A
+    ``CapabilityMismatchError`` (subclass of ``Exception``) is raised on
+    mismatch — the chain executor classifies this as ``INVALID_INPUT``
+    and tries the next candidate.
+    """
     resolved_def = resolve_analyzer_definition(
         AnalyzerDefinitionRequest(
             analyzer_id=request.analyzer_id,
@@ -102,6 +116,10 @@ def resolve_analyzer_execution(request: AnalyzerExecutionRequest) -> ResolvedAna
         )
     )
     analyzer = resolved_def.analyzer
+
+    # Phase 4: capability validation (fail fast)
+    if request.capability_request is not None:
+        validate_analyzer_capability(analyzer, request.capability_request)
 
     if analyzer.kind == AnalyzerKind.LLM:
         precedence = resolve_provider_model_precedence(

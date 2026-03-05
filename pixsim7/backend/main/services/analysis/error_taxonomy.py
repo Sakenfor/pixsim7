@@ -17,6 +17,7 @@ from __future__ import annotations
 from enum import Enum
 
 from pixsim7.backend.main.services.analysis.analyzer_pipeline import AnalyzerPipelineError
+from pixsim7.backend.main.services.analysis.capability_contract import CapabilityMismatchError
 from pixsim7.backend.main.shared.errors import (
     InvalidOperationError,
     ProviderAuthenticationError,
@@ -57,6 +58,7 @@ _ERROR_CATEGORY_MAP: list[tuple[type, AnalyzerErrorCategory]] = [
     (ProviderNotFoundError, AnalyzerErrorCategory.PROVIDER_UNAVAILABLE),
     (UnsupportedOperationError, AnalyzerErrorCategory.PROVIDER_UNAVAILABLE),
     (ProviderContentFilteredError, AnalyzerErrorCategory.CONTENT_FILTERED),
+    (CapabilityMismatchError, AnalyzerErrorCategory.INVALID_INPUT),
     (AnalyzerPipelineError, AnalyzerErrorCategory.INVALID_INPUT),
     (InvalidOperationError, AnalyzerErrorCategory.INVALID_INPUT),
     (ValidationError, AnalyzerErrorCategory.INVALID_INPUT),

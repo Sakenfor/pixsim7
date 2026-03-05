@@ -72,6 +72,36 @@ class AssetAnalysis(SQLModel, table=True):
         sa_column=Column(JSON),
         description="Additional parameters for the analysis",
     )
+    analysis_point: str = Field(
+        default="manual",
+        max_length=120,
+        index=True,
+        description="Routing point/context for analysis invocation",
+    )
+    analyzer_definition_version: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        index=True,
+        description="Analyzer definition version token at execution time",
+    )
+    effective_config_hash: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        index=True,
+        description="Hash of effective analyzer execution config",
+    )
+    input_fingerprint: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        index=True,
+        description="Input fingerprint used for idempotency dedupe",
+    )
+    dedupe_key: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        index=True,
+        description="Stable idempotency key over dedupe tuple",
+    )
 
     # Lifecycle
     status: AnalysisStatus = Field(
@@ -97,6 +127,15 @@ class AssetAnalysis(SQLModel, table=True):
 
     __table_args__ = (
         Index("idx_analysis_asset_analyzer", "asset_id", "analyzer_id"),
+        Index(
+            "idx_analysis_dedupe_lookup",
+            "asset_id",
+            "analysis_point",
+            "analyzer_id",
+            "effective_config_hash",
+            "input_fingerprint",
+            "status",
+        ),
         Index("idx_analysis_user_status", "user_id", "status", "created_at"),
         Index("idx_analysis_status_created", "status", "created_at"),
     )

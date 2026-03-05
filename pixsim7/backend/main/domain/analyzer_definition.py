@@ -49,6 +49,18 @@ class AnalyzerDefinition(SQLModel, table=True):
     # Store enums as strings to avoid domain-layer coupling.
     kind: str = Field(max_length=20, index=True, description="Analyzer kind (parser/llm/vision)")
     target: str = Field(max_length=20, index=True, description="Analyzer target (prompt/asset)")
+    input_modality: Optional[str] = Field(
+        default=None,
+        max_length=20,
+        index=True,
+        description="Primary input modality (text/image/video/audio/multimodal)",
+    )
+    task_family: Optional[str] = Field(
+        default=None,
+        max_length=32,
+        index=True,
+        description="Primary task family (parse/tag/caption/ocr/detection/moderation/embedding/custom)",
+    )
 
     provider_id: Optional[str] = Field(
         default=None,
@@ -82,6 +94,11 @@ class AnalyzerDefinition(SQLModel, table=True):
     enabled: bool = Field(default=True, index=True, description="Whether this analyzer is enabled")
     is_default: bool = Field(default=False, index=True, description="Default analyzer for its target")
     is_legacy: bool = Field(default=False, description="Legacy alias entry")
+    version: int = Field(
+        default=1,
+        index=True,
+        description="Monotonic definition version incremented on updates",
+    )
 
     created_by_user_id: Optional[int] = Field(
         default=None,

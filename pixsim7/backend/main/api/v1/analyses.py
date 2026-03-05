@@ -10,6 +10,8 @@ from datetime import datetime
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, AnalysisGatewaySvc
 from pixsim7.backend.main.domain.assets.analysis import AnalysisStatus
+from pixsim7.backend.main.domain.assets.analysis_backfill import AnalysisBackfillStatus
+from pixsim7.backend.main.services.analysis import AnalysisBackfillService
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOperationError
 
 router = APIRouter()
@@ -35,6 +37,16 @@ class CreateAnalysisRequest(BaseModel):
         description=(
             "Optional asset-analysis intent key used to resolve a more specific "
             "default analyzer from user preferences (e.g. 'character_ingest_face')."
+        ),
+    )
+    analysis_point: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=120,
+        description=(
+            "Optional analysis point key for routing/idempotency (e.g. "
+            "'character_ingest_face'). If omitted, analyzer_intent or a "
+            "derived manual point is used."
         ),
     )
     prompt: Optional[str] = Field(
@@ -63,6 +75,11 @@ class AnalysisResponse(BaseModel):
     provider_id: str
     prompt: Optional[str]
     params: Dict[str, Any]
+    analysis_point: str
+    analyzer_definition_version: Optional[str]
+    effective_config_hash: Optional[str]
+    input_fingerprint: Optional[str]
+    dedupe_key: Optional[str]
     status: str
     priority: int
     result: Optional[Dict[str, Any]]
@@ -79,6 +96,139 @@ class AnalysisListResponse(BaseModel):
     """Response for listing analyses"""
     items: List[AnalysisResponse]
     total: int
+
+
+class CreateAnalysisBackfillRequest(BaseModel):
+    """Request to create a durable analysis backfill run."""
+
+    media_type: Optional[str] = Field(
+        None,
+        description="Optional media type filter (image|video|audio|3d_model)",
+    )
+    analyzer_id: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=100,
+        description="Optional explicit analyzer ID for all assets in the run",
+    )
+    analyzer_intent: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=100,
+        description="Optional intent key used to resolve analyzer defaults",
+    )
+    analysis_point: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=120,
+        description="Optional fixed analysis point used for all created analyses",
+    )
+    prompt: Optional[str] = Field(
+        None,
+        description="Optional analysis prompt passed to each analysis",
+    )
+    params: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional params payload passed to each analysis",
+    )
+    priority: int = Field(
+        5,
+        ge=0,
+        le=10,
+        description="Job priority for created analyses (0=highest, 10=lowest)",
+    )
+    batch_size: int = Field(
+        100,
+        ge=1,
+        le=1000,
+        description="Assets processed per worker batch",
+    )
+
+
+class AnalysisBackfillResponse(BaseModel):
+    """Response schema for analysis backfill runs."""
+
+    id: int
+    user_id: int
+    status: str
+    media_type: Optional[str]
+    analyzer_id: Optional[str]
+    analyzer_intent: Optional[str]
+    analysis_point: Optional[str]
+    prompt: Optional[str]
+    params: Dict[str, Any]
+    priority: int
+    batch_size: int
+    cursor_asset_id: int
+    total_assets: int
+    processed_assets: int
+    created_analyses: int
+    deduped_assets: int
+    failed_assets: int
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    last_error: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class AnalysisBackfillListResponse(BaseModel):
+    items: List[AnalysisBackfillResponse]
+    total: int
+
+
+# ===== SERIALIZATION HELPERS =====
+
+def _build_analysis_response(analysis) -> AnalysisResponse:
+    return AnalysisResponse(
+        id=analysis.id,
+        asset_id=analysis.asset_id,
+        user_id=analysis.user_id,
+        analyzer_id=analysis.analyzer_id,
+        model_id=analysis.model_id,
+        provider_id=analysis.provider_id,
+        prompt=analysis.prompt,
+        params=analysis.params or {},
+        analysis_point=analysis.analysis_point,
+        analyzer_definition_version=analysis.analyzer_definition_version,
+        effective_config_hash=analysis.effective_config_hash,
+        input_fingerprint=analysis.input_fingerprint,
+        dedupe_key=analysis.dedupe_key,
+        status=analysis.status.value,
+        priority=analysis.priority,
+        result=analysis.result,
+        error_message=analysis.error_message,
+        created_at=analysis.created_at,
+        started_at=analysis.started_at,
+        completed_at=analysis.completed_at,
+    )
+
+
+def _build_backfill_response(run) -> AnalysisBackfillResponse:
+    return AnalysisBackfillResponse(
+        id=run.id,
+        user_id=run.user_id,
+        status=run.status.value if hasattr(run.status, "value") else str(run.status),
+        media_type=run.media_type,
+        analyzer_id=run.analyzer_id,
+        analyzer_intent=run.analyzer_intent,
+        analysis_point=run.analysis_point,
+        prompt=run.prompt,
+        params=run.params or {},
+        priority=run.priority,
+        batch_size=run.batch_size,
+        cursor_asset_id=run.cursor_asset_id,
+        total_assets=run.total_assets,
+        processed_assets=run.processed_assets,
+        created_analyses=run.created_analyses,
+        deduped_assets=run.deduped_assets,
+        failed_assets=run.failed_assets,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+        last_error=run.last_error,
+        created_at=run.created_at,
+        updated_at=run.updated_at,
+    )
 
 
 # ===== ENDPOINTS =====
@@ -113,28 +263,13 @@ async def create_analysis(
             asset_id=asset_id,
             analyzer_id=request.analyzer_id,
             analyzer_intent=request.analyzer_intent,
+            analysis_point=request.analysis_point,
             prompt=request.prompt,
             params=request.params,
             priority=request.priority,
         )
 
-        return AnalysisResponse(
-            id=analysis.id,
-            asset_id=analysis.asset_id,
-            user_id=analysis.user_id,
-            analyzer_id=analysis.analyzer_id,
-            model_id=analysis.model_id,
-            provider_id=analysis.provider_id,
-            prompt=analysis.prompt,
-            params=analysis.params or {},
-            status=analysis.status.value,
-            priority=analysis.priority,
-            result=analysis.result,
-            error_message=analysis.error_message,
-            created_at=analysis.created_at,
-            started_at=analysis.started_at,
-            completed_at=analysis.completed_at,
-        )
+        return _build_analysis_response(analysis)
 
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -184,26 +319,7 @@ async def list_asset_analyses(
             limit=limit,
         )
 
-        items = [
-            AnalysisResponse(
-                id=a.id,
-                asset_id=a.asset_id,
-                user_id=a.user_id,
-                analyzer_id=a.analyzer_id,
-                model_id=a.model_id,
-                provider_id=a.provider_id,
-                prompt=a.prompt,
-                params=a.params or {},
-                status=a.status.value,
-                priority=a.priority,
-                result=a.result,
-                error_message=a.error_message,
-                created_at=a.created_at,
-                started_at=a.started_at,
-                completed_at=a.completed_at,
-            )
-            for a in analyses
-        ]
+        items = [_build_analysis_response(a) for a in analyses]
 
         return AnalysisListResponse(
             items=items,
@@ -244,23 +360,7 @@ async def get_analysis(
         if analysis.user_id != user.id:
             raise HTTPException(status_code=403, detail="Not authorized to view this analysis")
 
-        return AnalysisResponse(
-            id=analysis.id,
-            asset_id=analysis.asset_id,
-            user_id=analysis.user_id,
-            analyzer_id=analysis.analyzer_id,
-            model_id=analysis.model_id,
-            provider_id=analysis.provider_id,
-            prompt=analysis.prompt,
-            params=analysis.params or {},
-            status=analysis.status.value,
-            priority=analysis.priority,
-            result=analysis.result,
-            error_message=analysis.error_message,
-            created_at=analysis.created_at,
-            started_at=analysis.started_at,
-            completed_at=analysis.completed_at,
-        )
+        return _build_analysis_response(analysis)
 
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -290,24 +390,189 @@ async def cancel_analysis(
         analysis_service = analysis_gateway.local
         analysis = await analysis_service.cancel_analysis(analysis_id, user)
 
-        return AnalysisResponse(
-            id=analysis.id,
-            asset_id=analysis.asset_id,
-            user_id=analysis.user_id,
-            analyzer_id=analysis.analyzer_id,
-            model_id=analysis.model_id,
-            provider_id=analysis.provider_id,
-            prompt=analysis.prompt,
-            params=analysis.params or {},
-            status=analysis.status.value,
-            priority=analysis.priority,
-            result=analysis.result,
-            error_message=analysis.error_message,
-            created_at=analysis.created_at,
-            started_at=analysis.started_at,
-            completed_at=analysis.completed_at,
-        )
+        return _build_analysis_response(analysis)
 
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/analyses/backfills", response_model=AnalysisBackfillResponse, status_code=201)
+async def create_analysis_backfill(
+    request: CreateAnalysisBackfillRequest,
+    req: Request,
+    user: CurrentUser,
+    analysis_gateway: AnalysisGatewaySvc,
+):
+    """Create a durable analysis backfill run and enqueue its first batch."""
+    try:
+        proxy = await analysis_gateway.proxy(
+            req,
+            "POST",
+            "/api/v1/analyses/backfills",
+            json=request.model_dump(mode="json"),
+        )
+        if proxy.called:
+            return AnalysisBackfillResponse.model_validate(proxy.data)
+
+        service = AnalysisBackfillService(analysis_gateway.local.db)
+        run = await service.create_run(
+            user=user,
+            media_type=request.media_type,
+            analyzer_id=request.analyzer_id,
+            analyzer_intent=request.analyzer_intent,
+            analysis_point=request.analysis_point,
+            prompt=request.prompt,
+            params=request.params,
+            priority=request.priority,
+            batch_size=request.batch_size,
+            enqueue=True,
+        )
+        return _build_backfill_response(run)
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/analyses/backfills", response_model=AnalysisBackfillListResponse)
+async def list_analysis_backfills(
+    req: Request,
+    user: CurrentUser,
+    analysis_gateway: AnalysisGatewaySvc,
+    status: Optional[AnalysisBackfillStatus] = Query(
+        None,
+        description="Filter by status",
+    ),
+    limit: int = Query(50, ge=1, le=200, description="Maximum results to return"),
+):
+    """List analysis backfill runs for the current user."""
+    try:
+        proxy = await analysis_gateway.proxy(
+            req,
+            "GET",
+            "/api/v1/analyses/backfills",
+            params={
+                k: v
+                for k, v in {
+                    "status": status.value if status else None,
+                    "limit": limit,
+                }.items()
+                if v is not None
+            },
+        )
+        if proxy.called:
+            return AnalysisBackfillListResponse.model_validate(proxy.data)
+
+        service = AnalysisBackfillService(analysis_gateway.local.db)
+        runs = await service.list_runs(
+            user_id=user.id,
+            status=status,
+            limit=limit,
+        )
+        items = [_build_backfill_response(run) for run in runs]
+        return AnalysisBackfillListResponse(items=items, total=len(items))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/analyses/backfills/{run_id}", response_model=AnalysisBackfillResponse)
+async def get_analysis_backfill(
+    run_id: int,
+    req: Request,
+    user: CurrentUser,
+    analysis_gateway: AnalysisGatewaySvc,
+):
+    """Get a single analysis backfill run."""
+    try:
+        proxy = await analysis_gateway.proxy(
+            req,
+            "GET",
+            f"/api/v1/analyses/backfills/{run_id}",
+        )
+        if proxy.called:
+            return AnalysisBackfillResponse.model_validate(proxy.data)
+
+        service = AnalysisBackfillService(analysis_gateway.local.db)
+        run = await service.get_run_for_user(run_id=run_id, user_id=user.id)
+        return _build_backfill_response(run)
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/analyses/backfills/{run_id}/pause", response_model=AnalysisBackfillResponse)
+async def pause_analysis_backfill(
+    run_id: int,
+    req: Request,
+    user: CurrentUser,
+    analysis_gateway: AnalysisGatewaySvc,
+):
+    """Pause an analysis backfill run."""
+    try:
+        proxy = await analysis_gateway.proxy(
+            req,
+            "POST",
+            f"/api/v1/analyses/backfills/{run_id}/pause",
+        )
+        if proxy.called:
+            return AnalysisBackfillResponse.model_validate(proxy.data)
+
+        service = AnalysisBackfillService(analysis_gateway.local.db)
+        run = await service.pause_run(run_id=run_id, user=user)
+        return _build_backfill_response(run)
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/analyses/backfills/{run_id}/resume", response_model=AnalysisBackfillResponse)
+async def resume_analysis_backfill(
+    run_id: int,
+    req: Request,
+    user: CurrentUser,
+    analysis_gateway: AnalysisGatewaySvc,
+):
+    """Resume a paused analysis backfill run."""
+    try:
+        proxy = await analysis_gateway.proxy(
+            req,
+            "POST",
+            f"/api/v1/analyses/backfills/{run_id}/resume",
+        )
+        if proxy.called:
+            return AnalysisBackfillResponse.model_validate(proxy.data)
+
+        service = AnalysisBackfillService(analysis_gateway.local.db)
+        run = await service.resume_run(run_id=run_id, user=user)
+        return _build_backfill_response(run)
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/analyses/backfills/{run_id}/cancel", response_model=AnalysisBackfillResponse)
+async def cancel_analysis_backfill(
+    run_id: int,
+    req: Request,
+    user: CurrentUser,
+    analysis_gateway: AnalysisGatewaySvc,
+):
+    """Cancel an analysis backfill run."""
+    try:
+        proxy = await analysis_gateway.proxy(
+            req,
+            "POST",
+            f"/api/v1/analyses/backfills/{run_id}/cancel",
+        )
+        if proxy.called:
+            return AnalysisBackfillResponse.model_validate(proxy.data)
+
+        service = AnalysisBackfillService(analysis_gateway.local.db)
+        run = await service.cancel_run(run_id=run_id, user=user)
+        return _build_backfill_response(run)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidOperationError as e:

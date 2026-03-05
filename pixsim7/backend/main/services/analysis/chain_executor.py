@@ -15,6 +15,7 @@ error classification, and provenance tracking are consistent.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Awaitable, Callable, Optional, Sequence
@@ -44,6 +45,7 @@ class ChainStepOutcome:
     result: Any = None
     error: Optional[Exception] = None
     error_category: Optional[AnalyzerErrorCategory] = None
+    duration_ms: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,19 @@ class ChainResult:
     result: Any = None
     selected_analyzer_id: Optional[str] = None
     steps: list[ChainStepOutcome] = field(default_factory=list)
+    total_duration_ms: Optional[float] = None
+
+    @property
+    def fallback_used(self) -> bool:
+        """True if the successful step was not the first candidate tried."""
+        return self.success and len(self.steps) > 1
+
+    @property
+    def fallback_depth(self) -> int:
+        """Number of failed steps before success (0 = first candidate won)."""
+        if not self.success:
+            return len(self.steps)
+        return len(self.steps) - 1
 
     @property
     def error_summary(self) -> str:
@@ -90,33 +105,41 @@ async def execute_first_success(
     """
     steps: list[ChainStepOutcome] = []
     seen: set[str] = set()
+    chain_start = time.monotonic()
 
     for analyzer_id in candidates:
         if analyzer_id in seen:
             continue
         seen.add(analyzer_id)
 
+        step_start = time.monotonic()
         try:
             result = await step_fn(analyzer_id)
+            step_ms = (time.monotonic() - step_start) * 1000
             step = ChainStepOutcome(
                 analyzer_id=analyzer_id,
                 success=True,
                 result=result,
+                duration_ms=step_ms,
             )
             steps.append(step)
+            total_ms = (time.monotonic() - chain_start) * 1000
             return ChainResult(
                 success=True,
                 result=result,
                 selected_analyzer_id=analyzer_id,
                 steps=steps,
+                total_duration_ms=total_ms,
             )
         except Exception as exc:
+            step_ms = (time.monotonic() - step_start) * 1000
             category = classify_analyzer_error(exc)
             step = ChainStepOutcome(
                 analyzer_id=analyzer_id,
                 success=False,
                 error=exc,
                 error_category=category,
+                duration_ms=step_ms,
             )
             steps.append(step)
 
@@ -126,7 +149,8 @@ async def execute_first_success(
                     category.value,
                     analyzer_id,
                 )
-                return ChainResult(success=False, steps=steps)
+                total_ms = (time.monotonic() - chain_start) * 1000
+                return ChainResult(success=False, steps=steps, total_duration_ms=total_ms)
 
             logger.debug(
                 "chain_executor_skip category=%s analyzer=%s",
@@ -134,4 +158,5 @@ async def execute_first_success(
                 analyzer_id,
             )
 
-    return ChainResult(success=False, steps=steps)
+    total_ms = (time.monotonic() - chain_start) * 1000
+    return ChainResult(success=False, steps=steps, total_duration_ms=total_ms)
