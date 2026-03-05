@@ -28,10 +28,6 @@ export interface ServerMediaSettings {
   frame_extraction_upload: 'source_provider' | 'always' | 'never';
   /** Default provider for uploads when frame_extraction_upload is 'always' */
   default_upload_provider: string;
-  /** Generate CLIP embeddings during asset ingestion */
-  generate_embeddings: boolean;
-  /** Command for CLIP embedding generation */
-  clip_embedding_command: string;
 }
 
 interface MediaSettingsState {
@@ -79,8 +75,6 @@ const DEFAULT_SERVER_SETTINGS: ServerMediaSettings = {
   preview_size: [800, 800],
   frame_extraction_upload: 'source_provider',
   default_upload_provider: 'pixverse',
-  generate_embeddings: false,
-  clip_embedding_command: '',
 };
 
 export const useMediaSettingsStore = create<MediaSettingsState>()(

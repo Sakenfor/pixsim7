@@ -29,6 +29,7 @@ import type { OperationType } from '@/types/operations';
 
 
 import { GenerationScopeProvider } from '../hooks/useGenerationScope';
+import { useGenerationScopeStores } from '../hooks/useGenerationScope';
 import { useProvideGenerationWidget } from '../hooks/useProvideGenerationWidget';
 import { useQuickGenPanelLayout } from '../hooks/useQuickGenPanelLayout';
 import { useQuickGenScopeSync } from '../hooks/useQuickGenScopeSync';
@@ -163,6 +164,8 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
     },
     ref,
   ) {
+    const { id: scopeId } = useGenerationScopeStores();
+
     // Step 3: Widget provision — controller + scoped stores + CAP_GENERATION_WIDGET
     const {
       operationType,
@@ -239,9 +242,10 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
       () => ({
         targetProviderId: widgetProviderId,
         sourceLabel: label,
+        generationScopeId: scopeId,
         ...extraContext,
       }),
-      [widgetProviderId, label, extraContext],
+      [widgetProviderId, label, scopeId, extraContext],
     );
 
     // Step 7: Build render context for children

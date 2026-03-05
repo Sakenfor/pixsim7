@@ -18,7 +18,12 @@
 import type { DockviewApi } from 'dockview-core';
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 
-import { getDockviewGroupCount, getDockviewGroups, type DockviewHost } from '@lib/dockview';
+import {
+  getDockviewGroupCount,
+  getDockviewGroups,
+  getDockviewPanels,
+  type DockviewHost,
+} from '@lib/dockview';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import type { ViewerAsset } from '@features/assets';

@@ -14,6 +14,7 @@ import {
   SET_STRATEGIES,
   isSetStrategy,
   type CombinationStrategy,
+  type EachStrategy,
 } from '../../lib/combinationStrategies';
 import {
   BUILTIN_FANOUT_PRESETS,
@@ -161,15 +162,16 @@ export function EachSplitButton({
                 disabled
                   ? 'text-white bg-neutral-400'
                   : isActive
-                  ? btn.secondary
-                  : 'text-white/70 bg-neutral-500 hover:bg-neutral-400',
+                  ? btn.primary
+                  : 'text-white/50 bg-neutral-600 hover:text-white/80 hover:bg-neutral-500',
               )}
               style={{ transition: 'none', animation: 'none' }}
-              title={isActive ? `Run: ${s.description} (planned: ${plannedGroupCount ?? '?'})` : s.description}
+              title={buildStrategyTooltip(s.id, s.description, isActive, inputCount, currentRunOptions.repeatCount, plannedGroupCount)}
             >
-              <span className="inline-flex justify-center">
+              <span className="inline-flex items-center justify-center gap-0.5">
+                {isActive && canRun && !showProgress && <Icon name="play" size={9} color="#fff" />}
                 {s.shortLabel}
-                {isActive && !showProgress && currentRunOptions.repeatCount > 1 ? `x${currentRunOptions.repeatCount}` : ''}
+                {isActive && !showProgress && plannedGroupCount != null && plannedGroupCount > 1 ? ` ×${plannedGroupCount}` : ''}
               </span>
             </button>
           );
@@ -216,12 +218,13 @@ export function EachSplitButton({
         align="end"
         offset={6}
         triggerRef={triggerRef}
-        className="w-[460px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl max-h-[70vh] flex flex-col"
+        className="w-[460px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl"
       >
-        {/* Scrollable content area */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
-        {/* Two-column layout: Set Strategies | Presets */}
-        <div className="flex divide-x divide-neutral-200 dark:divide-neutral-700">
+        <div className="flex flex-col max-h-[70vh]">
+          {/* Scrollable content area */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {/* Two-column layout: Set Strategies | Presets */}
+            <div className="flex divide-x divide-neutral-200 dark:divide-neutral-700">
           {/* Left column: Set strategies (input strategies are now button slices) */}
           <div className="flex-1 min-w-0">
             <DropdownSectionHeader first>Asset Set Strategies</DropdownSectionHeader>
@@ -342,28 +345,28 @@ export function EachSplitButton({
               </button>
             </div>
           </div>
-        </div>
+            </div>
 
-        {/* Status bar */}
-        <div className="px-2 py-1 border-t border-neutral-200 dark:border-neutral-700 flex items-center gap-2 text-[10px] text-neutral-500">
-          <span>
-            Preset:{' '}
-            <span className="font-semibold text-neutral-700 dark:text-neutral-200">
-              {selectedPreset
-                ? `${selectedPreset.label}${presetDraftModified ? ' (modified)' : ''}`
-                : 'Ad hoc draft'}
-            </span>
-          </span>
-          <span className="text-neutral-300 dark:text-neutral-600">|</span>
-          <span>
-            Planned: <span className="font-semibold text-neutral-700 dark:text-neutral-200">{plannedGroupCount ?? '?'}</span>
-            {needsSet && selectedSet?.kind === 'smart' ? ' (smart)' : ''}
-          </span>
-        </div>
-        </div>{/* end scrollable area */}
+            {/* Status bar */}
+            <div className="px-2 py-1 border-t border-neutral-200 dark:border-neutral-700 flex items-center gap-2 text-[10px] text-neutral-500">
+              <span>
+                Preset:{' '}
+                <span className="font-semibold text-neutral-700 dark:text-neutral-200">
+                  {selectedPreset
+                    ? `${selectedPreset.label}${presetDraftModified ? ' (modified)' : ''}`
+                    : 'Ad hoc draft'}
+                </span>
+              </span>
+              <span className="text-neutral-300 dark:text-neutral-600">|</span>
+              <span>
+                Planned: <span className="font-semibold text-neutral-700 dark:text-neutral-200">{plannedGroupCount ?? '?'}</span>
+                {needsSet && selectedSet?.kind === 'smart' ? ' (smart)' : ''}
+              </span>
+            </div>
+          </div>
 
-        {/* Options grid — sticky at bottom */}
-        <div className="flex-shrink-0 border-t border-neutral-200 dark:border-neutral-700 px-2 py-1.5 grid grid-cols-2 gap-1.5 text-[10px] bg-neutral-50 dark:bg-neutral-800/50 rounded-b-lg">
+          {/* Options grid — sticky at bottom */}
+          <div className="flex-shrink-0 border-t border-neutral-200 dark:border-neutral-700 px-2 py-1.5 grid grid-cols-2 gap-1.5 text-[10px] bg-neutral-50 dark:bg-neutral-800 rounded-b-lg">
           <label className="flex flex-col gap-0.5">
               <span className="text-neutral-500">Repeat</span>
               <input
@@ -468,6 +471,7 @@ export function EachSplitButton({
               </label>
             </>
           )}
+          </div>
         </div>
       </Popover>
 
@@ -535,4 +539,46 @@ function estimatePlannedGroupCount(args: {
     effectiveSetCount = Math.min(effectiveSetCount, Math.max(0, args.setPickCount));
   }
   return effectiveSetCount * repeat;
+}
+
+function buildStrategyTooltip(
+  strategy: EachStrategy,
+  description: string,
+  isActive: boolean,
+  inputCount: number,
+  repeatCount: number,
+  plannedGroupCount: number | null,
+): string {
+  const n = inputCount;
+  const r = repeatCount;
+
+  if (!isActive) {
+    // Inactive: explain what the strategy does with current inputs
+    const breakdown = strategyBreakdown(strategy, n);
+    return `${description}\n${breakdown}`;
+  }
+
+  // Active: show what clicking will fire
+  const breakdown = strategyBreakdown(strategy, n);
+  const repeatNote = r > 1 ? ` × ${r} repeats` : '';
+  const total = plannedGroupCount ?? '?';
+  return `Click to run ${total} generation${plannedGroupCount === 1 ? '' : 's'}\n${breakdown}${repeatNote}\n\n${description}`;
+}
+
+function strategyBreakdown(strategy: EachStrategy, n: number): string {
+  switch (strategy) {
+    case 'each':
+      return `${n} input${n !== 1 ? 's' : ''} → ${n} group${n !== 1 ? 's' : ''} (one per input)`;
+    case 'anchor_sweep':
+      if (n < 2) return `${n} input — need 2+ for anchor sweep`;
+      return `${n} inputs → ${n - 1} pairs (input #1 paired with each other)`;
+    case 'sequential_pairs':
+      if (n < 2) return `${n} input — need 2+ for pairs`;
+      return `${n} inputs → ${n - 1} pairs ([1,2], [2,3], …)`;
+    case 'all_pairs':
+      if (n < 2) return `${n} input — need 2+ for pairs`;
+      return `${n} inputs → ${(n * (n - 1)) / 2} unique pairs`;
+    default:
+      return `${n} input${n !== 1 ? 's' : ''}`;
+  }
 }

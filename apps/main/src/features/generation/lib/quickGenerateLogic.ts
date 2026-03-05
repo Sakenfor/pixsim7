@@ -175,16 +175,18 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
 
   const resolveSingleSourceAssetId = (options: {
     allowVideo?: boolean;
+    allowImage?: boolean;
     allowVideoFallback?: boolean;
   } = {}): number | undefined => {
     const allowVideo = options.allowVideo ?? false;
+    const allowImage = options.allowImage ?? true;
     // allowVideoFallback controls whether activeAsset fallback accepts videos
     // Default to false - only explicit input slots should accept videos
     const allowVideoFallback = options.allowVideoFallback ?? false;
     let sourceAssetId = asPositiveAssetId(dynamicParams.source_asset_id);
     const inputAssetId =
       currentInput && (
-        currentInput.asset.mediaType === 'image' ||
+        (allowImage && currentInput.asset.mediaType === 'image') ||
         (allowVideo && currentInput.asset.mediaType === 'video')
       )
         ? asPositiveAssetId(currentInput.asset.id)
@@ -198,7 +200,7 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
       const isVideo = activeAsset.type === 'video';
       // Only allow video fallback if explicitly enabled (e.g., for video_extend)
       // For image_to_video, activeAsset fallback should only accept images
-      if (isImage || (allowVideoFallback && isVideo)) {
+      if ((allowImage && isImage) || (allowVideoFallback && isVideo)) {
         sourceAssetId = asPositiveAssetId(activeAsset.id);
       }
     }
@@ -418,10 +420,10 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
         ? dynamicParams.composition_assets
         : undefined;
     const hasQueuedCompositionAssets = !!(queuedVideoCompositionAssets && queuedVideoCompositionAssets.length > 0);
-    // allowVideo: true, allowVideoFallback: true - needs a video source
+    // Video-only: reject images, accept videos from input and fallback
     const sourceAssetId = explicitCompositionAssets
       ? undefined
-      : resolveSingleSourceAssetId({ allowVideo: true, allowVideoFallback: true });
+      : resolveSingleSourceAssetId({ allowVideo: true, allowImage: false, allowVideoFallback: true });
 
     if (!sourceAssetId && !explicitCompositionAssets && !hasQueuedCompositionAssets) {
       const label = OPERATION_METADATA[operationType].label;
