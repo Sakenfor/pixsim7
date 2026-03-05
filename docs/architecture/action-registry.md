@@ -5,11 +5,12 @@ Includes actions defined inline or as consts in the same module file.
 
 | Action ID | Title | Feature | Route | Shortcut | Icon | Visibility | Contexts | Category | Tags | Description | Sources |
 |-----------|-------|---------|-------|----------|------|------------|----------|----------|------|-------------|---------|
-| app-map.open | Open App Map | app-map | `/app-map` | `Ctrl+Shift+M` | map | - | `background` | quick-add | - | View live app architecture and plugin ecosystem | `apps/main/src/features/devtools/routes/index.ts` |
 | assets.open-gallery | Open Gallery | assets | - | `Ctrl+Shift+A` | image | - | `background` | quick-add | - | Open the asset gallery | `apps/main/src/features/assets/module.ts` |
 | assets.search | Search Assets | assets | - | `Ctrl+K` | search | - | - | - | - | Search for assets | `apps/main/src/features/assets/module.ts` |
 | assets.upload | Upload Asset | assets | - | - | upload | - | - | - | - | Upload a new asset | `apps/main/src/features/assets/module.ts` |
 | automation.open | Open Automation | automation | `/automation` | - | bot | - | `background` | quick-add | - | Manage Android devices and automation loops | `apps/main/src/features/automation/module.ts` |
+| codegen.open | Open Codegen | codegen | `/devtools` | - | code | - | `background` | quick-add | - | Run and verify workspace code generation tasks | `apps/main/src/features/devtools/routes/index.ts` |
+| devtools.open | Open DevTools | devtools | `/devtools` | `Ctrl+Shift+M` | code | - | `background` | quick-add | - | Open the dedicated developer tools workspace | `apps/main/src/features/devtools/routes/index.ts` |
 | game.enter-world | Enter Game World | game | - | - | map | - | `background` | quick-add | - | Open the game world | `apps/main/src/features/worldTools/module.ts` |
 | game.npc-editor | NPC Editor | game | - | - | brain | - | `background` | quick-add | - | Open the NPC brain lab | `apps/main/src/features/worldTools/module.ts` |
 | generation.open-presets | Open Presets | generation | - | - | palette | - | `background` | quick-add | - | Open generation presets | `apps/main/src/features/generation/routes/index.ts` |

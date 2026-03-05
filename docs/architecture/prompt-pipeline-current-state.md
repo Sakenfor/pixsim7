@@ -270,7 +270,8 @@ curation_status: "curated", is_public: True
 ### Discovery:
 
 `discover_content_packs()` scans `content_packs/prompt/` for direct child dirs
-containing `blocks.yaml`, `blocks/*.yaml`, `templates.yaml`, `templates/*.yaml`,
+containing block schema sources (`schema.yaml`, `blocks.schema.yaml`,
+`blocks/**/*.schema.yaml`), `templates.yaml` / `templates/*.yaml`,
 or `characters.yaml` / `characters/*.yaml`.
 
 ## 9. Schema Coupling Summary

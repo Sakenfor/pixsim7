@@ -126,7 +126,7 @@ PixSim7 implements a **custom structured logging system** with these components:
    - Critical events (ERROR, CRITICAL) always logged
 
 6. **Database Ingestion**
-   - Logs written to files: `data/logs/pixsim7.log`
+   - Logs written to files: `<PIXSIM_HOME>/logs/pixsim7.log`
    - Background worker ingests logs into PostgreSQL
    - `log` table with JSONB column for flexible querying
    - Developer tools UI provides real-time log viewer
@@ -287,3 +287,4 @@ This system was built from the start. Ongoing work:
 For complete field catalog and usage examples, see inline documentation in:
 - `pixsim_logging/__init__.py` - Field definitions
 - `pixsim7/backend/main/services/submission/pipeline.py` - Stage taxonomy examples
+

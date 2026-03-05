@@ -98,7 +98,7 @@ Design:
 - **Async bridge**: `asyncio.to_thread(...)` around sync llama call path
 - **Model resolution chain**:
   1. explicit `settings.local_llm_model_path`
-  2. `${storage_base_path}/models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf`
+  2. `<PIXSIM_HOME>/models/SmolLM2-1.7B-Instruct-Q4_K_M.gguf`
   3. optional download only when `local_llm_auto_download=True`
 - **Per-instance engine overrides** (from analyzer/LLM instance config):
   - `model_path` or `local_llm_model_path`

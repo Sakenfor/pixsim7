@@ -45,10 +45,11 @@ Heavy model with many fields most systems don't use:
 ### BlockPrimitive Model (New)
 Deliberately simple:
 - `block_id`, `category`, `text`, `tags` — core content
+- `capabilities` — explicit runtime/composition capability IDs used by compiler/resolver gating
 - `owner_id`, `source` (system/user/imported) — ownership
 - `is_public`, `avg_rating`, `usage_count` — discovery
 - `embedding` (768-dim) — semantic search
-- No role, no intent, no sequencing, no complexity
+- No separate role/intent/sequencing columns; these remain tag/capability/composer concerns
 
 ### What's Already Wired
 - Template slots and runtime resolution now use primitives as the active source.
@@ -128,6 +129,47 @@ Some primitive categories are **generic modifiers** — they work with any other
 | `camera` | No | Camera-specific |
 | `wardrobe` | No | Character-specific |
 | `environment` | No | Scene-specific |
+
+---
+
+## Pack Stratification Baseline (March 4, 2026)
+
+To avoid world-pack bloat, Bananza seed scaffolding now follows a 3-pack split:
+
+- `core_scene_primitives` (`core.*`) for reusable scene fundamentals
+- `genre_tone_primitives` (`genre.*`) for tone/arc nudges shared across worlds
+- `bananza_boat_demo` (`bananza.*`) for world/character/location-specific blocks only
+
+### Initial Core/Genre Baseline
+
+Added as shared primitives:
+
+- `core.light.daylight_crisp`
+- `core.light.sunset_reflections`
+- `core.camera.two_shot_medium_tracking`
+- `core.camera.establishing_wide`
+- `core.continuity.identity_lock`
+- `core.continuity.wardrobe_lock`
+- `core.motion.forward_progress_small`
+- `genre.comedy.mood.slapstick_flirt`
+- `genre.comedy.mood.awkward_pause`
+- `genre.sensual.nudge.eye_contact_hold`
+- `genre.sensual.nudge.distance_reduce`
+
+### Bananza-to-Shared Migration Map (Seed IDs)
+
+| Previous Bananza ID | New Shared ID | Pack |
+|---|---|---|
+| `bananza.light.tropical_noon` | `core.light.daylight_crisp` | `core_scene_primitives` |
+| `bananza.light.sunset_reflections` | `core.light.sunset_reflections` | `core_scene_primitives` |
+| `bananza.camera.two_shot.deck` | `core.camera.two_shot_medium_tracking` | `core_scene_primitives` |
+| `bananza.camera.wide_boat_reveal` | `core.camera.establishing_wide` | `core_scene_primitives` |
+| `bananza.mood.slapstick_flirt` | `genre.comedy.mood.slapstick_flirt` | `genre_tone_primitives` |
+| `bananza.mood.awkward_pause` | `genre.comedy.mood.awkward_pause` | `genre_tone_primitives` |
+
+### Scaffold Slot Implications
+
+Scene scaffold slots for `light`, `camera`, and `mood` are now configured as multi-pack selectors (via `tags.any.source_pack`) instead of strict `world=bananza_boat` filters. This keeps Bananza templates compatible while allowing shared-pack evolution.
 
 ---
 

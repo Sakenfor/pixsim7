@@ -55,7 +55,7 @@ The prompt block/template system is **production-capable** with a complete verti
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        YAML CONTENT PACKS                           │
 │  pixsim7/backend/main/content_packs/prompt/<pack>/                  │
-│    ├── blocks.yaml       (PromptBlock definitions)                  │
+│    ├── schema.yaml / blocks.schema.yaml (PromptBlock schema defs)   │
 │    ├── templates.yaml    (BlockTemplate definitions)                │
 │    └── characters.yaml   (Character definitions)                    │
 └────────────────────┬────────────────────────────────────────────────┘
@@ -238,7 +238,7 @@ File: `api/v1/block_templates.py` (~530 lines)
 | `/block-templates/blocks/tags` | GET | Tag facets (distinct keys and values) |
 | `/block-templates/meta/packages` | GET | Distinct block package names |
 | `/block-templates/meta/content-packs` | GET | Discovered content packs on disk |
-| `/block-templates/meta/content-packs/reload` | POST | Hot-reload packs (force, prune options) |
+| `/block-templates/meta/content-packs/reload` | POST | Hot-reload packs (force, prune options, admin only) |
 
 ### Slot Normalization / Schema Migration
 
@@ -382,7 +382,7 @@ Zustand store with:
 
 | Concept | Definition | Where it lives | Notes |
 |---------|-----------|-----------------|-------|
-| **Content Pack** | A directory of YAML files (blocks.yaml, templates.yaml, characters.yaml) | Filesystem → DB | Source of truth for curated content; DB rows stamped with `content_pack` source |
+| **Content Pack** | A directory of pack files (`schema.yaml`/`blocks.schema.yaml` for blocks, plus `templates.yaml`, `characters.yaml`) | Filesystem → DB | Source of truth for curated content; DB rows stamped with `content_pack` source |
 | **Package** | A `package_name` string grouping related blocks/templates | `PromptBlock.package_name`, `BlockTemplate.package_name` | Scoping mechanism for queries; not a first-class entity |
 | **PromptBlock** | A reusable text fragment with role/category/tags | `action_blocks` table | Has embeddings (Vector(768)), provenance tracking, quality metrics |
 | **BlockTemplate** | A recipe of ordered slots that select blocks + compose them | `block_templates` table | Slots stored as embedded JSON array; no independent slot table |
@@ -635,5 +635,3 @@ Zustand store with:
 ---
 
 *End of document.*
-
-

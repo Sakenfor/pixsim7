@@ -50,7 +50,7 @@ python -m launcher_gui.launcher
 - Logs appear in console
 
 **Check the logs:**
-Look for this message in `data/logs/launcher/launcher.log`:
+Look for this message in `<PIXSIM_HOME>/logs/launcher/launcher.log`:
 ```json
 {"event": "launcher_using_new_core", "message": "Using launcher_core managers"}
 ```
@@ -200,8 +200,8 @@ Test error scenarios:
 ### Problem: Services won't start
 
 **Check:**
-1. Look at service-specific logs in `data/logs/console/`
-2. Check `data/logs/launcher/launcher.log` for errors
+1. Look at service-specific logs in `<PIXSIM_HOME>/logs/console/`
+2. Check `<PIXSIM_HOME>/logs/launcher/launcher.log` for errors
 3. Verify required tools installed (docker, pnpm, python)
 
 ### Problem: Health always shows "STARTING"
@@ -215,7 +215,7 @@ Test error scenarios:
 
 **Check:**
 1. Select a service (click service card)
-2. Check log files exist: `data/logs/console/backend.log`
+2. Check log files exist: `<PIXSIM_HOME>/logs/console/backend.log`
 3. Try starting service from command line to verify it outputs
 
 ---

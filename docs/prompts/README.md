@@ -4,6 +4,7 @@ Documentation for prompt templates, block systems, versioning, and generation gu
 
 ## Template & Block System
 
+- **[BLOCK_PRIMITIVES_API_AGENT_QUICKSTART.md](./BLOCK_PRIMITIVES_API_AGENT_QUICKSTART.md)** - Agent quickstart for block primitives and template APIs
 - **[template-system-current-state.md](./template-system-current-state.md)** - Current state architecture (slots, controls, compiler, resolver)
 - **[template-system-target-architecture.md](./template-system-target-architecture.md)** - Target architecture for multi-image providers, shareability
 - **[tag-dictionary-alias-api.md](./tag-dictionary-alias-api.md)** - Tag vocabulary source of truth and alias API design

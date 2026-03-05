@@ -84,7 +84,7 @@ async def process_automation(execution_id: int) -> dict:
             account = await db.get(ProviderAccount, execution.account_id) if execution.account_id else None
 
             # Build execution context with auto-injected credentials
-            screenshots_dir = Path(settings.storage_base_path) / settings.automation_screenshots_dir / f"exec-{execution.id}"
+            screenshots_dir = get_path_registry().automation_screenshots_root / f"exec-{execution.id}"
 
             # Start with existing context or empty dict
             variables = dict(execution.execution_context or {})

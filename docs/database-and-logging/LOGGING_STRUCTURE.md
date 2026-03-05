@@ -28,7 +28,7 @@ For production, use log rotation to manage disk space:
 Create `/etc/logrotate.d/pixsim7`:
 
 ```bash
-/path/to/pixsim7/data/logs/*.log {
+<PIXSIM_HOME>/logs/*.log {
     daily
     rotate 14
     compress
@@ -48,7 +48,7 @@ Create `/etc/logrotate.d/pixsim7`:
 
 ```bash
 # Rotate logs manually
-cd data/logs
+cd <PIXSIM_HOME>/logs
 mv backend.log backend.log.$(date +%Y%m%d)
 mv worker.log worker.log.$(date +%Y%m%d)
 mv errors.log errors.log.$(date +%Y%m%d)
@@ -115,22 +115,22 @@ with LogContext(user_id=user.id, job_id=job.id):
 
 **Find all errors for a specific job:**
 ```bash
-grep "job_id.*123" data/logs/errors.log
+grep "job_id.*123" <PIXSIM_HOME>/logs/errors.log
 ```
 
 **Watch worker activity in real-time:**
 ```bash
-tail -f data/logs/worker.log | grep process_job
+tail -f <PIXSIM_HOME>/logs/worker.log | grep process_job
 ```
 
 **Count requests per minute:**
 ```bash
-grep "$(date +%Y-%m-%d\ %H:%M)" data/logs/backend.log | wc -l
+grep "$(date +%Y-%m-%d\ %H:%M)" <PIXSIM_HOME>/logs/backend.log | wc -l
 ```
 
 **Find slow operations:**
 ```bash
-grep "duration" data/logs/backend.log | grep -E "[0-9]{3,}"
+grep "duration" <PIXSIM_HOME>/logs/backend.log | grep -E "[0-9]{3,}"
 ```
 
 ---
@@ -327,3 +327,4 @@ PIXSIM_LOG_SAMPLING_PROVIDER_STATUS=5 python tests/test_structured_logging.py
 - Trace job lifecycle end-to-end
 
 **Launcher log tab:** http://localhost:5173/logs 🎨
+
