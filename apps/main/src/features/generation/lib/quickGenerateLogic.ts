@@ -9,7 +9,7 @@ import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import type { InputItem } from '@features/generation';
 
 import { useCompositionPackageStore } from '@/stores/compositionPackageStore';
-import type { OperationType } from '@/types/operations';
+import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
 import { pickFromSet } from './pickFromSet';
 
@@ -115,6 +115,7 @@ export function buildCompositionAssetsFromAssetIds(
   const validIds = assetIds.filter((id) => Number.isFinite(id) && Math.floor(id) > 0);
   if (validIds.length === 0) return undefined;
 
+  // Special cases with per-item layer/role logic
   switch (operationType) {
     case 'image_to_image':
     case 'fusion':
@@ -125,20 +126,6 @@ export function buildCompositionAssetsFromAssetIds(
         media_type: 'image',
       }));
 
-    case 'image_to_video':
-      return validIds.map((id) => ({
-        asset: `asset:${id}`,
-        role: 'source_image',
-        media_type: 'image',
-      }));
-
-    case 'video_extend':
-      return validIds.map((id) => ({
-        asset: `asset:${id}`,
-        role: 'source_video',
-        media_type: 'video',
-      }));
-
     case 'video_transition':
       return validIds.map((id, index) => ({
         asset: `asset:${id}`,
@@ -146,10 +133,17 @@ export function buildCompositionAssetsFromAssetIds(
         role: 'transition_input',
         media_type: 'image',
       }));
-
-    default:
-      return undefined;
   }
+
+  // Generic path: use metadata-driven role and media type
+  const meta = OPERATION_METADATA[operationType];
+  if (!meta?.compositionRole || !meta.inputMediaType) return undefined;
+
+  return validIds.map((id) => ({
+    asset: `asset:${id}`,
+    role: meta.compositionRole!,
+    media_type: meta.inputMediaType!,
+  }));
 }
 
 /**
@@ -418,20 +412,21 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
     }
   }
 
-  if (operationType === 'video_extend') {
+  if (operationType === 'video_extend' || operationType === 'video_modify') {
     const explicitCompositionAssets =
       Array.isArray(dynamicParams.composition_assets) && dynamicParams.composition_assets.length > 0
         ? dynamicParams.composition_assets
         : undefined;
     const hasQueuedCompositionAssets = !!(queuedVideoCompositionAssets && queuedVideoCompositionAssets.length > 0);
-    // allowVideo: true, allowVideoFallback: true - video_extend needs a video source
+    // allowVideo: true, allowVideoFallback: true - needs a video source
     const sourceAssetId = explicitCompositionAssets
       ? undefined
       : resolveSingleSourceAssetId({ allowVideo: true, allowVideoFallback: true });
 
     if (!sourceAssetId && !explicitCompositionAssets && !hasQueuedCompositionAssets) {
+      const label = OPERATION_METADATA[operationType].label;
       return {
-        error: 'No video selected. Click "Video Extend" on a gallery video to extend it.',
+        error: `No video selected. Click "${label}" on a gallery video to use it.`,
         finalPrompt: trimmedPrompt,
       };
     }
@@ -542,8 +537,9 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
     }
   }
 
+  // --- Composition assets assembly ---
+  // Special cases first (fusion has role stripping, transition has multi-prompt)
   if (operationType === 'fusion') {
-    // Simple mode when no input has an explicit role override
     const fusionHasRoles = operationInputs.some((item) => !!item.roleOverride);
 
     const inputCompositionAssets = queuedImageCompositionAssets;
@@ -564,9 +560,7 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
         return next;
       });
     }
-  }
-
-  if (operationType === 'video_transition') {
+  } else if (operationType === 'video_transition') {
     if (!params.composition_assets) {
       if (queuedImageCompositionAssets && queuedImageCompositionAssets.length > 0) {
         params.composition_assets = queuedImageCompositionAssets.map((entry) => ({
@@ -581,30 +575,20 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
     if (transitionDurations && transitionDurations.length) {
       params.durations = transitionDurations;
     }
-  }
-
-  if (operationType === 'image_to_video') {
-    if (!params.composition_assets) {
-      if (queuedImageCompositionAssets && queuedImageCompositionAssets.length > 0) {
-        params.composition_assets = queuedImageCompositionAssets.map((entry) => ({
+  } else {
+    // Generic path: use metadata-driven role and media type
+    const meta = OPERATION_METADATA[operationType];
+    if (meta?.compositionRole && !params.composition_assets) {
+      const queued = meta.inputMediaType === 'video'
+        ? queuedVideoCompositionAssets
+        : queuedImageCompositionAssets;
+      if (queued && queued.length > 0) {
+        params.composition_assets = queued.map((entry) => ({
           ...entry,
-          role: 'source_image',
+          role: meta.compositionRole!,
         }));
       } else {
-        params.composition_assets = buildCompositionAssetsFromAssetIds('image_to_video', extractSourceIds());
-      }
-    }
-  }
-
-  if (operationType === 'video_extend') {
-    if (!params.composition_assets) {
-      if (queuedVideoCompositionAssets && queuedVideoCompositionAssets.length > 0) {
-        params.composition_assets = queuedVideoCompositionAssets.map((entry) => ({
-          ...entry,
-          role: 'source_video',
-        }));
-      } else {
-        params.composition_assets = buildCompositionAssetsFromAssetIds('video_extend', extractSourceIds());
+        params.composition_assets = buildCompositionAssetsFromAssetIds(operationType, extractSourceIds());
       }
     }
   }

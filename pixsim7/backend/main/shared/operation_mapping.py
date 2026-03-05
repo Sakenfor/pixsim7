@@ -92,6 +92,12 @@ OPERATION_REGISTRY: Dict[OperationType, OperationSpec] = {
     required_inputs=["composition_assets", "prompts"],
     generation_type_aliases=["video_transition"],  # Canonical
   ),
+  OperationType.VIDEO_MODIFY: OperationSpec(
+    operation_type=OperationType.VIDEO_MODIFY,
+    output_media="video",
+    required_inputs=["composition_assets"],
+    generation_type_aliases=["video_modify"],  # Canonical
+  ),
   OperationType.FUSION: OperationSpec(
     operation_type=OperationType.FUSION,
     output_media="video",
@@ -146,6 +152,7 @@ _CANONICAL_ALIASES: Dict[str, OperationType] = {
   "image_to_image": OperationType.IMAGE_TO_IMAGE,  # Canonical name for image transformations
   "video_extend": OperationType.VIDEO_EXTEND,
   "video_transition": OperationType.VIDEO_TRANSITION,
+  "video_modify": OperationType.VIDEO_MODIFY,
   "fusion": OperationType.FUSION,
 }
 

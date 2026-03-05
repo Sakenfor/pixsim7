@@ -478,6 +478,12 @@ def build_operation_parameter_spec() -> dict:
         "video_transition": {
             "parameters": [composition_assets_image, prompts, model, quality, transition_duration]
         },
+        "video_modify": {
+            "parameters": [
+                base_prompt, composition_assets_video, original_video_id,
+                model_extend, quality, seed,
+            ]
+        },
         "fusion": {
             "parameters": [base_prompt, composition_assets_fusion, model_fusion, quality, duration, aspect_ratio, seed]
         },

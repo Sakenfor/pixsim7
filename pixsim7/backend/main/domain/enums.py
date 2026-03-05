@@ -84,6 +84,7 @@ class OperationType(str, Enum):
     IMAGE_TO_VIDEO = "image_to_video"
     VIDEO_EXTEND = "video_extend"
     VIDEO_TRANSITION = "video_transition"
+    VIDEO_MODIFY = "video_modify"
     FUSION = "fusion"
     FRAME_EXTRACTION = "frame_extraction"  # Extract frame from video
     IMAGE_EDIT = "image_edit"              # Multi-image edit/combine

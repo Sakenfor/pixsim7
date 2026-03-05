@@ -140,6 +140,7 @@ class PixverseProvider(
             OperationType.IMAGE_TO_VIDEO,
             OperationType.VIDEO_EXTEND,
             OperationType.VIDEO_TRANSITION,
+            OperationType.VIDEO_MODIFY,
             OperationType.FUSION,
         ]
 
@@ -224,6 +225,7 @@ class PixverseProvider(
             OperationType.TEXT_TO_IMAGE,
             OperationType.IMAGE_TO_IMAGE,
             OperationType.VIDEO_TRANSITION,
+            OperationType.VIDEO_MODIFY,
         }
         if requires_webapi:
             if api_override == PixverseApiMode.OPENAPI:
@@ -315,7 +317,7 @@ class PixverseProvider(
                 OperationType.FUSION,
             }:
                 media_type_filter = "image"
-            elif operation_type == OperationType.VIDEO_EXTEND:
+            elif operation_type in {OperationType.VIDEO_EXTEND, OperationType.VIDEO_MODIFY}:
                 media_type_filter = "video"
                 logger.info(
                     "pixverse_extend_debug",
@@ -344,7 +346,7 @@ class PixverseProvider(
                     result_params["image_urls"] = resolved_urls
                     if len(resolved_urls) == 1:
                         result_params["image_url"] = resolved_urls[0]
-                elif operation_type == OperationType.VIDEO_EXTEND:
+                elif operation_type in {OperationType.VIDEO_EXTEND, OperationType.VIDEO_MODIFY}:
                     result_params["video_url"] = resolved_urls[0]
                     if not result_params.get("original_video_id") and composition_assets:
                         first_asset = composition_assets[0] if composition_assets else {}

@@ -1,5 +1,7 @@
 import type { ParamSpec } from '@lib/generation-ui';
 
+import { OPERATION_METADATA, type OperationType } from '@/types/operations';
+
 const PRIMARY_ADVANCED_EXCLUSIONS = new Set([
   'model',
   'quality',
@@ -21,6 +23,9 @@ const ADVANCED_HIDDEN_DEFAULTS = new Set([
   'composition_assets',
 ]);
 
+/** Operations that inherit aspect ratio from their source asset */
+const INHERITS_ASPECT_RATIO = new Set<OperationType>(['image_to_video', 'video_extend', 'video_modify']);
+
 export function filterQuickGenStyleParamSpecs(
   paramSpecs: ParamSpec[],
   operationType: string,
@@ -28,12 +33,13 @@ export function filterQuickGenStyleParamSpecs(
 ): ParamSpec[] {
   const hideParams = new Set<string>(excludeParams);
 
-  if (operationType === 'video_transition') {
-    hideParams.add('duration');
+  // Add metadata-driven hidden params
+  const meta = OPERATION_METADATA[operationType as OperationType];
+  if (meta?.hiddenParams) {
+    for (const p of meta.hiddenParams) hideParams.add(p);
   }
 
-  const inheritsAspectRatio = new Set(['image_to_video', 'video_extend']);
-  if (inheritsAspectRatio.has(operationType)) {
+  if (INHERITS_ASPECT_RATIO.has(operationType as OperationType)) {
     hideParams.add('aspect_ratio');
   }
 

@@ -79,6 +79,15 @@ export interface VideoTransitionParams extends QualityParams, AspectParams, Dura
   transition_style?: string;
 }
 
+export interface VideoModifyParams extends QualityParams, DurationParams {
+  kind: 'video_modify';
+  prompt: string;
+  composition_assets: CompositionAsset[];
+  auto_mask_info?: Record<string, unknown>[];
+  original_video_id?: string;
+  seed?: number;
+}
+
 export interface FusionParams extends QualityParams, DurationParams {
   kind: 'fusion';
   composition_assets: CompositionAsset[];
@@ -97,6 +106,7 @@ export type OperationParams =
   | ImageToImageParams
   | VideoExtendParams
   | VideoTransitionParams
+  | VideoModifyParams
   | FusionParams;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -110,6 +120,7 @@ export const OPERATION_TYPES = [
   'image_to_image',
   'video_extend',
   'video_transition',
+  'video_modify',
   'fusion',
 ] as const;
 
@@ -147,6 +158,21 @@ export interface OperationMetadata {
   promptRequired: boolean;
   /** Whether prompt is supported (optional) */
   promptSupported: boolean;
+  /**
+   * Role assigned to composition_assets when building params.
+   * null = no composition_assets (text_to_* operations).
+   * Used by generic param assembly in quickGenerateLogic.
+   */
+  compositionRole: string | null;
+  /**
+   * Primary input media type for source asset resolution.
+   * 'video' = resolve video inputs, 'image' = resolve image inputs, null = no source.
+   */
+  inputMediaType: 'video' | 'image' | null;
+  /** Params to hide in the settings panel (e.g. duration for transitions) */
+  hiddenParams?: string[];
+  /** Allow duplicate assets in input list (e.g. transitions) */
+  allowDuplicateInputs?: boolean;
 }
 
 /**
@@ -162,6 +188,8 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     outputType: 'image',
     promptRequired: true,
     promptSupported: true,
+    compositionRole: null,
+    inputMediaType: null,
   },
   text_to_video: {
     label: 'Text to Video',
@@ -171,6 +199,8 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     outputType: 'video',
     promptRequired: true,
     promptSupported: true,
+    compositionRole: null,
+    inputMediaType: null,
   },
   image_to_video: {
     label: 'Image to Video',
@@ -180,6 +210,8 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     outputType: 'video',
     promptRequired: false,
     promptSupported: true,
+    compositionRole: 'source_image',
+    inputMediaType: 'image',
   },
   image_to_image: {
     label: 'Image Generation',
@@ -189,6 +221,8 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     outputType: 'image',
     promptRequired: true,
     promptSupported: true,
+    compositionRole: 'source_image',
+    inputMediaType: 'image',
   },
   video_extend: {
     label: 'Video Extend',
@@ -198,6 +232,8 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     outputType: 'video',
     promptRequired: false,
     promptSupported: true,
+    compositionRole: 'source_video',
+    inputMediaType: 'video',
   },
   video_transition: {
     label: 'Video Transition',
@@ -207,6 +243,21 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     outputType: 'video',
     promptRequired: true,
     promptSupported: true,
+    compositionRole: 'transition_input',
+    inputMediaType: 'image',
+    hiddenParams: ['duration'],
+    allowDuplicateInputs: true,
+  },
+  video_modify: {
+    label: 'Video Modify',
+    description: 'Modify a video with mask-based editing',
+    multiAssetMode: 'optional',
+    acceptsInput: ['video'],
+    outputType: 'video',
+    promptRequired: true,
+    promptSupported: true,
+    compositionRole: 'source_video',
+    inputMediaType: 'video',
   },
   fusion: {
     label: 'Fusion',
@@ -216,6 +267,8 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     outputType: 'video',
     promptRequired: false,
     promptSupported: true,
+    compositionRole: 'source_image',
+    inputMediaType: 'image',
   },
 };
 
@@ -223,6 +276,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
  * Check if an operation supports multiple input assets.
  * Always true — all operations use the multi-input path.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function isMultiAssetOperation(_operationType: OperationType): boolean {
   return true;
 }
@@ -295,29 +349,28 @@ export function isFusion(params: unknown): params is FusionParams {
  * Check if operation requires a prompt
  */
 export function operationRequiresPrompt(operationType: OperationType): boolean {
-  return operationType === 'text_to_image' || operationType === 'text_to_video' || operationType === 'image_to_image';
+  return OPERATION_METADATA[operationType]?.promptRequired ?? false;
 }
 
 /**
  * Check if operation supports optional prompt
  */
 export function operationSupportsPrompt(operationType: OperationType): boolean {
-  const supportsPrompt: OperationType[] = ['text_to_image', 'text_to_video', 'image_to_video', 'image_to_image', 'video_extend', 'fusion'];
-  return supportsPrompt.includes(operationType);
+  return OPERATION_METADATA[operationType]?.promptSupported ?? false;
 }
 
 /**
  * Check if operation requires an image input
  */
 export function operationRequiresImage(operationType: OperationType): boolean {
-  return operationType === 'image_to_video' || operationType === 'image_to_image';
+  return OPERATION_METADATA[operationType]?.inputMediaType === 'image';
 }
 
 /**
  * Check if operation requires a video input
  */
 export function operationRequiresVideo(operationType: OperationType): boolean {
-  return operationType === 'video_extend';
+  return OPERATION_METADATA[operationType]?.inputMediaType === 'video';
 }
 
 /**

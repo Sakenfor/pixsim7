@@ -135,6 +135,7 @@ export function useMediaGenerationActions() {
   const queueImageToImage = useMemo(() => createQueueAction('image_to_image'), [createQueueAction]);
   const queueImageToVideo = useMemo(() => createQueueAction('image_to_video'), [createQueueAction]);
   const queueVideoExtend = useMemo(() => createQueueAction('video_extend'), [createQueueAction]);
+  const queueVideoModify = useMemo(() => createQueueAction('video_modify'), [createQueueAction]);
   const queueAddToTransition = useMemo(() => createQueueAction('video_transition'), [createQueueAction]);
 
   const queueAutoGenerate = useCallback(
@@ -251,6 +252,7 @@ export function useMediaGenerationActions() {
     queueImageToImage,
     queueImageToVideo,
     queueVideoExtend,
+    queueVideoModify,
     queueAddToTransition,
     queueAutoGenerate,
     queueSilentAdd,

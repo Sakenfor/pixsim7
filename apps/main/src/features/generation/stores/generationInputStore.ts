@@ -13,7 +13,7 @@ import { hmrSingleton } from '@lib/utils';
 
 import { assetEvents, fromAssetResponse, type AssetModel } from '@features/assets';
 
-import type { OperationType } from '@/types/operations';
+import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
 export type PickStrategy = 'random' | 'sequential' | 'no_repeat';
 
@@ -149,7 +149,7 @@ function getOperationInputs(
 }
 
 function allowDuplicates(operationType: OperationType): boolean {
-  return operationType === 'video_transition';
+  return OPERATION_METADATA[operationType]?.allowDuplicateInputs ?? false;
 }
 
 export function createGenerationInputStore(storageKey: string): GenerationInputStoreHook {

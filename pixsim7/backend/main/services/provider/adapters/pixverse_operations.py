@@ -209,6 +209,15 @@ def _ensure_required_params(operation_type: OperationType, params: Dict[str, Any
             raise ProviderError(
                 "Pixverse VIDEO_EXTEND requires video_url or original_video_id."
             )
+    elif operation_type == OperationType.VIDEO_MODIFY:
+        if not params.get("video_url") and not params.get("original_video_id"):
+            raise ProviderError(
+                "Pixverse VIDEO_MODIFY requires video_url or original_video_id."
+            )
+        if not params.get("prompt"):
+            raise ProviderError(
+                "Pixverse VIDEO_MODIFY requires a prompt."
+            )
     elif operation_type == OperationType.FUSION:
         if not params.get("image_references"):
             raise ProviderError(
@@ -277,6 +286,7 @@ class PixverseOperationsMixin:
                 OperationType.IMAGE_TO_IMAGE: self._generate_image_to_image,
                 OperationType.VIDEO_EXTEND: self._extend_video,
                 OperationType.VIDEO_TRANSITION: self._generate_transition,
+                OperationType.VIDEO_MODIFY: self._generate_modify,
                 OperationType.FUSION: self._generate_fusion,
             }
 
@@ -606,6 +616,34 @@ class PixverseOperationsMixin:
         )
 
         return await client.transition(**options.model_dump())
+
+
+    async def _generate_modify(
+        self,
+        client: Any,
+        params: Dict[str, Any]
+    ):
+        """Generate video modify (mask-based editing)."""
+        kwargs: Dict[str, Any] = {
+            "video_url": params.get("video_url", ""),
+            "prompt": params.get("prompt", ""),
+            "auto_mask_info": params.get("auto_mask_info", []),
+        }
+
+        if params.get("original_video_id"):
+            kwargs["original_video_id"] = int(params["original_video_id"])
+        if params.get("first_frame_url"):
+            kwargs["first_frame_url"] = params["first_frame_url"]
+        if params.get("video_duration"):
+            kwargs["video_duration"] = int(params["video_duration"])
+        if params.get("model"):
+            kwargs["model"] = params["model"]
+        if params.get("quality"):
+            kwargs["quality"] = params["quality"]
+        if params.get("seed"):
+            kwargs["seed"] = int(params["seed"])
+
+        return await client.modify_video(**kwargs)
 
 
     async def _generate_fusion(
