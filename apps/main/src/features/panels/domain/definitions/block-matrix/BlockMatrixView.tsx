@@ -47,7 +47,9 @@ export interface BlockMatrixViewProps {
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const AXIS_OPTIONS_PRIMITIVES = [
+  { value: 'composition_role', label: 'Composition Role' },
   { value: 'category', label: 'Category' },
+  { value: 'package_name', label: 'Package' },
   { value: 'source', label: 'Source' },
 ];
 
@@ -108,6 +110,13 @@ function heatmapClass(count: number, maxCount: number): string {
   return 'bg-blue-900/20 text-blue-400';
 }
 
+function presetSourceBadgeClass(source: BlockMatrixPreset['source']): string {
+  if (source === 'pack') return 'border-emerald-700/40 text-emerald-300';
+  if (source === 'template') return 'border-cyan-700/40 text-cyan-300';
+  if (source === 'context') return 'border-amber-700/40 text-amber-300';
+  return 'border-neutral-700 text-neutral-400';
+}
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 export function BlockMatrixView({
@@ -120,13 +129,16 @@ export function BlockMatrixView({
 }: BlockMatrixViewProps) {
   // ── State ──────────────────────────────────────────────────────────────
 
-  const [query, setQuery] = useState<BlockMatrixQuery>(() => ({
-    ...DEFAULT_QUERY,
-    ...initialQuery,
-    source: 'primitives',
-    role: undefined,
-    kind: undefined,
-  }));
+  const [query, setQuery] = useState<BlockMatrixQuery>(() => {
+    const next: BlockMatrixQuery = {
+      ...DEFAULT_QUERY,
+      ...initialQuery,
+      source: 'primitives',
+      composition_role: undefined,
+      kind: undefined,
+    };
+    return next;
+  });
   const [data, setData] = useState<BlockMatrixResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -177,7 +189,7 @@ export function BlockMatrixView({
       try {
         const result = await getBlockTagDictionary({
           package_name: query.package_name,
-          role: query.role,
+          role: query.composition_role,
           category: query.category,
           include_values: false,
           include_usage_examples: false,
@@ -192,7 +204,7 @@ export function BlockMatrixView({
         }
       }
     })();
-  }, [query.package_name, query.role, query.category]);
+  }, [query.package_name, query.composition_role, query.category]);
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -290,7 +302,7 @@ export function BlockMatrixView({
         : {}),
       ...preset.query,
       source: 'primitives',
-      role: undefined,
+      composition_role: undefined,
       kind: undefined,
     }));
   };
@@ -490,10 +502,18 @@ export function BlockMatrixView({
                 key={p.id ?? p.label}
                 type="button"
                 onClick={() => applyPreset(p)}
-                className="text-[10px] px-1.5 py-0.5 rounded border border-neutral-700 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100"
+                className="text-[10px] px-1.5 py-0.5 rounded border border-neutral-700 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 inline-flex items-center gap-1"
                 title={p.description}
               >
-                {p.label}
+                <span>{p.label}</span>
+                <span
+                  className={clsx(
+                    'px-1 py-0.5 rounded border text-[9px] uppercase tracking-wide',
+                    presetSourceBadgeClass(p.source),
+                  )}
+                >
+                  {p.source ?? 'preset'}
+                </span>
               </button>
             ))}
           </div>
@@ -810,7 +830,7 @@ function SampleRow({
       <div className="text-[10px] text-neutral-200 font-mono truncate">{sample.block_id}</div>
       <div className="text-[9px] text-neutral-500 truncate">
         {sample.category ?? 'no cat'}
-        {sample.role && ` | ${sample.role}`}
+        {sample.composition_role && ` | ${sample.composition_role}`}
         {sample.package_name && ` | ${sample.package_name}`}
       </div>
     </button>

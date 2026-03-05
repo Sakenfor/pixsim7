@@ -78,7 +78,7 @@ interface RoleNode {
 function buildRoleTree(summaries: BlockRoleSummary[]): RoleNode[] {
   const map = new Map<string, { category: string | null; label: string; count: number }[]>();
   for (const s of summaries) {
-    const role = s.role ?? 'uncategorized';
+    const role = s.composition_role ?? 'uncategorized';
     if (!map.has(role)) map.set(role, []);
     map.get(role)!.push({
       category: s.category ?? null,
@@ -123,7 +123,7 @@ function BlockDetail({
   block: PromptBlockResponse;
   resolveTagValue: (raw: string) => ResolvedTag;
 }) {
-  const color = roleColor(block.role);
+  const color = roleColor(block.composition_role);
   const badgeClass = COLOR_BADGE[color] ?? COLOR_BADGE.gray;
 
   return (
@@ -132,7 +132,7 @@ function BlockDetail({
       <div>
         <div className="flex items-center gap-2 flex-wrap mb-2">
           <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${badgeClass}`}>
-            {block.role}:{block.category}
+            {block.composition_role}:{block.category}
           </span>
           {block.default_intent && (
             <span className="text-[10px] text-neutral-500 bg-neutral-800 px-1.5 py-0.5 rounded">
@@ -212,7 +212,7 @@ function BlockList({
   return (
     <div className="divide-y divide-neutral-800/50">
       {blocks.map((block) => {
-        const color = roleColor(block.role);
+        const color = roleColor(block.composition_role);
         const dotClass = COLOR_DOT[color] ?? COLOR_DOT.gray;
         const isSelected = block.block_id === selectedId;
 

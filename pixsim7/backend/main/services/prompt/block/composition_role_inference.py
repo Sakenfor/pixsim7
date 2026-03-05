@@ -67,27 +67,6 @@ def _load_registry_mappings() -> dict[str, Dict[str, str]]:
 _REGISTRY = _load_registry_mappings()
 
 
-# ── Minimal bootstrap fallback (used only when registry is empty) ─────────
-# This is intentionally tiny — just enough to avoid total failure if the
-# vocabulary system is somehow unavailable. Do NOT expand this table;
-# add new mappings to roles.yaml instead.
-
-_BOOTSTRAP_ROLE_FALLBACK: dict[str, str] = {
-    "subject": "entities:subject",
-    "character": "entities:main_character",
-    "action": "animation:action",
-    "camera": "camera:angle",
-    "lighting": "lighting:key",
-    "environment": "world:environment",
-}
-
-_BOOTSTRAP_CATEGORY_FALLBACK: dict[str, str] = {
-    "light": "lighting:key",
-    "camera": "camera:angle",
-    "environment": "world:environment",
-}
-
-
 def infer_composition_role(
     *,
     role: str | None,
@@ -178,23 +157,7 @@ def infer_composition_role(
             reason=f"category-only: {norm_cat} → {hit}",
         )
 
-    # ── 5. Bootstrap fallback (emergency — registry was empty) ──────────
-    if norm_role and norm_role in _BOOTSTRAP_ROLE_FALLBACK:
-        hit = _BOOTSTRAP_ROLE_FALLBACK[norm_role]
-        return CompositionRoleInference(
-            role_id=hit,
-            confidence="heuristic",
-            reason=f"bootstrap: {norm_role} → {hit}",
-        )
-    if norm_cat and norm_cat in _BOOTSTRAP_CATEGORY_FALLBACK:
-        hit = _BOOTSTRAP_CATEGORY_FALLBACK[norm_cat]
-        return CompositionRoleInference(
-            role_id=hit,
-            confidence="heuristic",
-            reason=f"bootstrap: {norm_cat} → {hit}",
-        )
-
-    # ── 6. Unknown ──────────────────────────────────────────────────────
+    # ── 5. Unknown ──────────────────────────────────────────────────────
     parts = []
     if norm_role:
         parts.append(f"role={norm_role}")

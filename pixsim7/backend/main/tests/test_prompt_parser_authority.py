@@ -58,23 +58,15 @@ def test_parser_runtime_has_no_ontology_keyword_authority_imports():
     assert "parser.ontology import ROLE_KEYWORDS" not in role_registry_source
 
 
-def test_prompt_role_registry_bootstrap_is_minimal():
-    """Bootstrap fallback should only contain 'other' — all real roles come from vocab."""
-    from pixsim7.backend.main.services.prompt.role_registry import (
-        _BOOTSTRAP_PRIORITIES,
-        _BOOTSTRAP_DESCRIPTIONS,
-    )
-
-    assert list(_BOOTSTRAP_PRIORITIES.keys()) == ["other"]
-    assert list(_BOOTSTRAP_DESCRIPTIONS.keys()) == ["other"]
-
-
 def test_prompt_role_registry_no_hardcoded_rich_defaults():
-    """The old DEFAULT_ROLE_PRIORITIES/DEFAULT_ROLE_DESCRIPTIONS should not exist."""
+    """The old DEFAULT_ROLE_PRIORITIES/DEFAULT_ROLE_DESCRIPTIONS should not exist.
+    Only minimal _BOOTSTRAP_* dicts remain for 'other' fallback."""
     import pixsim7.backend.main.services.prompt.role_registry as mod
 
     assert not hasattr(mod, "DEFAULT_ROLE_PRIORITIES")
     assert not hasattr(mod, "DEFAULT_ROLE_DESCRIPTIONS")
+    assert list(mod._BOOTSTRAP_PRIORITIES.keys()) == ["other"]
+    assert list(mod._BOOTSTRAP_DESCRIPTIONS.keys()) == ["other"]
 
 
 def test_prompt_role_registry_vocab_driven():

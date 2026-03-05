@@ -98,8 +98,6 @@ export interface BlockMatrixQuery {
   col_key: string;
   source?: 'primitives';
   composition_role?: string;
-  /** Deprecated alias for composition_role. */
-  role?: string;
   category?: string;
   kind?: string;
   package_name?: string;
@@ -117,8 +115,6 @@ export interface PromptBlockResponse {
   id: string;
   block_id: string;
   composition_role: string | null;
-  /** @deprecated Use composition_role instead. */
-  role: string | null;
   category: string | null;
   kind: string;
   default_intent: string | null;
@@ -133,8 +129,6 @@ export interface PromptBlockResponse {
 
 export interface BlockRoleSummary {
   composition_role: string | null;
-  /** @deprecated Use composition_role instead. */
-  role: string | null;
   category: string | null;
   count: number;
 }
@@ -143,8 +137,6 @@ export interface BlockCatalogRow {
   id: string;
   block_id: string;
   composition_role: string | null;
-  /** @deprecated Use composition_role instead. */
-  role: string | null;
   category: string | null;
   package_name: string | null;
   kind: string;
@@ -160,8 +152,6 @@ export interface BlockMatrixCellSample {
   block_id: string;
   package_name: string | null;
   composition_role: string | null;
-  /** @deprecated Use composition_role instead. */
-  role: string | null;
   category: string | null;
 }
 

@@ -6,15 +6,16 @@ import {
   getTemplateDiagnostics,
   getTemplate,
   listBlockPackages,
+  listContentPackManifests,
   listBlockRoles,
-  listContentPacks,
-  listTemplates,
   type BlockRoleSummary,
   type TemplateDiagnosticsResponse,
   type BlockTemplateDetail,
   type BlockTemplateSummary,
+  type ContentPackMatrixManifest,
 } from '@lib/api/blockTemplates';
 import { Icon } from '@lib/icons';
+import { resolveBlockTemplates, resolveContentPacks } from '@lib/resolvers';
 
 import { useWorkspaceStore } from '@features/workspace';
 
@@ -25,6 +26,7 @@ import { BlockMatrixView } from '../block-matrix/BlockMatrixView';
 import {
   DEFAULT_BLOCK_MATRIX_PRESETS,
   mergeBlockMatrixPresets,
+  readContentPackMatrixPresets,
   readTemplateMatrixPresets,
   type BlockMatrixPreset,
 } from '../block-matrix/presets';
@@ -103,6 +105,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
   const [error, setError] = useState<string | null>(null);
 
   const [contentPacks, setContentPacks] = useState<string[]>([]);
+  const [contentPackManifests, setContentPackManifests] = useState<ContentPackMatrixManifest[]>([]);
   const [blockPackages, setBlockPackages] = useState<string[]>([]);
   const [templates, setTemplates] = useState<BlockTemplateSummary[]>([]);
 
@@ -122,12 +125,17 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
     setLoading(true);
     setError(null);
     try {
-      const [packs, dbPkgs, rows] = await Promise.all([
-        listContentPacks(),
+      const [packs, manifests, dbPkgs, rows] = await Promise.all([
+        resolveContentPacks({ consumerId: 'PromptLibraryInspectorPanel.loadContentPacks' }),
+        listContentPackManifests(),
         listBlockPackages(),
-        listTemplates({ limit: 200 }),
+        resolveBlockTemplates(
+          { limit: 200 },
+          { consumerId: 'PromptLibraryInspectorPanel.loadTemplates' },
+        ),
       ]);
       setContentPacks(packs);
+      setContentPackManifests(manifests);
       setBlockPackages(dbPkgs);
       setTemplates(rows);
       setSelectedPackage((prev) => (prev && [...packs, ...dbPkgs].includes(prev) ? prev : (packs[0] ?? dbPkgs[0] ?? null)));
@@ -200,8 +208,8 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
     void listBlockRoles(selectedPackage)
       .then((rows) => {
         const blockCount = rows.reduce((sum, r) => sum + (r.count ?? 0), 0);
-        const roleCount = new Set(rows.map((r) => r.role ?? 'uncategorized')).size;
-        const categoryCount = new Set(rows.map((r) => `${r.role ?? ''}:${r.category ?? ''}`)).size;
+        const roleCount = new Set(rows.map((r) => r.composition_role ?? 'uncategorized')).size;
+        const categoryCount = new Set(rows.map((r) => `${r.composition_role ?? ''}:${r.category ?? ''}`)).size;
         setPackageStats((prev) => ({
           ...prev,
           [selectedPackage]: { loading: false, error: null, blockCount, roleCount, categoryCount, roles: rows },
@@ -278,9 +286,13 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
     () => readTemplateMatrixPresets(templateMeta),
     [templateMeta],
   );
+  const packMatrixPresets = useMemo(
+    () => readContentPackMatrixPresets(contentPackManifests, { packName: selectedPackage }),
+    [contentPackManifests, selectedPackage],
+  );
   const matrixPresets = useMemo<BlockMatrixPreset[]>(
-    () => mergeBlockMatrixPresets(DEFAULT_BLOCK_MATRIX_PRESETS, templateMatrixPresets),
-    [templateMatrixPresets],
+    () => mergeBlockMatrixPresets(DEFAULT_BLOCK_MATRIX_PRESETS, packMatrixPresets, templateMatrixPresets),
+    [packMatrixPresets, templateMatrixPresets],
   );
   const source = (templateMeta.source ?? {}) as Record<string, unknown>;
   const dependencies = (templateMeta.dependencies ?? {}) as Record<string, unknown>;
@@ -441,21 +453,21 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
                     {!currentPackageStats?.error && (
                       <div className="space-y-1 max-h-80 overflow-y-auto">
                         {(currentPackageStats?.roles ?? []).map((r, i) => (
-                          <div key={`${r.role ?? 'none'}:${r.category ?? 'none'}:${i}`} className="flex items-center justify-between text-xs border-b border-neutral-100 dark:border-neutral-800 py-1">
+                          <div key={`${r.composition_role ?? 'none'}:${r.category ?? 'none'}:${i}`} className="flex items-center justify-between text-xs border-b border-neutral-100 dark:border-neutral-800 py-1">
                             <div className="min-w-0 flex items-center gap-1.5">
-                              {r.role ? (() => {
-                                const roleDef = compositionRoleMap.get(r.role);
+                              {r.composition_role ? (() => {
+                                const roleDef = compositionRoleMap.get(r.composition_role);
                                 return (
                                   <button
                                     type="button"
-                                    onClick={() => openCompositionRole(r.role!)}
+                                    onClick={() => openCompositionRole(r.composition_role!)}
                                     className={clsx(
                                       'text-[10px] px-1 py-0.5 rounded border shrink-0',
                                       roleBadgeClasses(roleDef?.color),
                                     )}
                                     title={roleDef ? `Open Composition Roles (${roleDef.label})` : 'Open Composition Roles'}
                                   >
-                                    {roleDef?.label ?? r.role}
+                                    {roleDef?.label ?? r.composition_role}
                                   </button>
                                 );
                               })() : (

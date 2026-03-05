@@ -8,8 +8,6 @@ from pixsim7.backend.main.services.prompt.block.composition_role_inference impor
     CompositionRoleInference,
     infer_composition_role,
     _REGISTRY,
-    _BOOTSTRAP_ROLE_FALLBACK,
-    _BOOTSTRAP_CATEGORY_FALLBACK,
 )
 
 
@@ -258,16 +256,13 @@ class TestRegistryDriven:
         assert result.role_id == "camera:composition"
         assert result.confidence == "exact"
 
-    def test_bootstrap_fallback_is_minimal(self):
-        """Bootstrap fallback tables should be small (<=6 entries each)."""
-        assert len(_BOOTSTRAP_ROLE_FALLBACK) <= 6
-        assert len(_BOOTSTRAP_CATEGORY_FALLBACK) <= 3
-
-    def test_no_hardcoded_role_category_table(self):
-        """The old _ROLE_CATEGORY_TABLE should no longer exist in the module."""
+    def test_no_hardcoded_tables(self):
+        """No hardcoded mapping tables should exist in the module."""
         import pixsim7.backend.main.services.prompt.block.composition_role_inference as mod
         assert not hasattr(mod, "_ROLE_CATEGORY_TABLE")
         assert not hasattr(mod, "_TAG_KEY_EXACT")
         assert not hasattr(mod, "_TAG_VALUE_EXACT")
         assert not hasattr(mod, "_ROLE_WILDCARD")
         assert not hasattr(mod, "_ROLE_FALLBACK")
+        assert not hasattr(mod, "_BOOTSTRAP_ROLE_FALLBACK")
+        assert not hasattr(mod, "_BOOTSTRAP_CATEGORY_FALLBACK")

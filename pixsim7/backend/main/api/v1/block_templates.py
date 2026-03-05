@@ -684,7 +684,6 @@ class BlockResponse(BaseModel):
     id: UUID
     block_id: str
     composition_role: Optional[str] = None
-    role: Optional[str] = Field(None, deprecated=True, description="Deprecated: use composition_role")
     category: Optional[str] = None
     kind: str = "single_state"
     default_intent: Optional[str] = None
@@ -725,7 +724,6 @@ class BlockCatalogRowResponse(BaseModel):
     id: UUID
     block_id: str
     composition_role: Optional[str] = None
-    role: Optional[str] = Field(None, deprecated=True, description="Deprecated: use composition_role")
     category: Optional[str] = None
     package_name: Optional[str] = None
     kind: str = "single_state"
@@ -741,7 +739,6 @@ class BlockMatrixCellSampleResponse(BaseModel):
     block_id: str
     package_name: Optional[str] = None
     composition_role: Optional[str] = None
-    role: Optional[str] = Field(None, deprecated=True, description="Deprecated: use composition_role")
     category: Optional[str] = None
 
 
@@ -866,7 +863,7 @@ def _resolve_block_matrix_value(
         return missing_label
 
     top_level_keys = {
-        "role", "composition_role", "category", "package_name", "kind",
+        "composition_role", "category", "package_name", "kind",
         "default_intent", "complexity_level", "source",
     }
     tags = getattr(block, "tags", None)
@@ -875,7 +872,7 @@ def _resolve_block_matrix_value(
     if key.startswith("tag:"):
         tag_key = key[4:]
         value = tags_dict.get(tag_key)
-    elif key in {"role", "composition_role"}:
+    elif key == "composition_role":
         value = _infer_block_composition_role(block)
     elif key == "package_name":
         source_pack = tags_dict.get("source_pack")
@@ -929,7 +926,6 @@ def _extend_axis_values_from_canonical_dictionary(
         return
 
     top_level_keys = {
-        "role",
         "composition_role",
         "category",
         "package_name",
@@ -966,7 +962,6 @@ def _axis_key_to_tag_key(axis_key: str) -> Optional[str]:
     if axis_key.startswith("tag:"):
         return axis_key[4:].strip() or None
     top_level_keys = {
-        "role",
         "composition_role",
         "category",
         "package_name",
@@ -1302,7 +1297,6 @@ def _to_block_response(block: Any) -> BlockResponse:
         id=block.id,
         block_id=block.block_id,
         composition_role=role,
-        role=role,  # deprecated alias
         category=getattr(block, "category", None),
         kind=str(getattr(block, "kind", "single_state") or "single_state"),
         default_intent=default_intent_text,
@@ -1569,7 +1563,6 @@ async def get_block_catalog(
                 id=b.id,
                 block_id=b.block_id,
                 composition_role=inferred.role_id,
-                role=inferred.role_id,  # deprecated alias
                 category=getattr(b, "category", None),
                 package_name=package,
                 kind="single_state",
@@ -1589,7 +1582,6 @@ async def get_block_matrix(
     col_key: str = Query(..., description="Matrix column axis key (tag key or top-level field; use tag:<key> for tags)"),
     source: str = Query("primitives", description='Block source: "primitives"'),
     composition_role: Optional[str] = Query(None, description="Filter by inferred composition role id"),
-    role: Optional[str] = Query(None, description="Deprecated alias for composition_role"),
     category: Optional[str] = Query(None, description="Filter by category"),
     kind: Optional[str] = Query(None, description="Ignored for primitives matrix"),
     package_name: Optional[str] = Query(None, description="Filter by package via tags.source_pack"),
@@ -1637,8 +1629,6 @@ async def get_block_matrix(
     effective_composition_role = None
     if isinstance(composition_role, str) and composition_role.strip():
         effective_composition_role = composition_role.strip()
-    elif isinstance(role, str) and role.strip():
-        effective_composition_role = role.strip()
     if effective_composition_role:
         blocks = [b for b in blocks if _infer_block_composition_role(b) == effective_composition_role]
 
@@ -1720,7 +1710,6 @@ async def get_block_matrix(
                     block_id=b.block_id,
                     package_name=package,
                     composition_role=inferred.role_id,
-                    role=inferred.role_id,  # deprecated alias
                     category=b.category,
                 )
             )
@@ -1742,7 +1731,6 @@ async def get_block_matrix(
         filters={
             "source": source,
             "composition_role": effective_composition_role,
-            "role": effective_composition_role,
             "category": category,
             "kind": kind,
             "package_name": package_name,
@@ -1795,7 +1783,7 @@ async def list_block_roles(
         counts[key] = counts.get(key, 0) + 1
 
     rows = [
-        {"composition_role": role, "role": role, "category": category, "count": count}
+        {"composition_role": role, "category": category, "count": count}
         for (role, category), count in counts.items()
     ]
     rows.sort(key=lambda row: (str(row["composition_role"] or ""), str(row["category"] or "")))
@@ -2028,7 +2016,6 @@ async def get_block_tag_dictionary(
         scope={
             "package_name": package_name,
             "composition_role": role,
-            "role": role,  # deprecated alias
             "category": category,
         },
         keys=responses,

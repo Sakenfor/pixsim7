@@ -1,11 +1,11 @@
-import type { BlockMatrixQuery } from '@lib/api/blockTemplates';
+import type { BlockMatrixQuery, ContentPackMatrixManifest } from '@lib/api/blockTemplates';
 
 export interface BlockMatrixPreset {
   id?: string;
   label: string;
   description?: string;
   query: Partial<BlockMatrixQuery>;
-  source?: 'builtin' | 'template' | 'context';
+  source?: 'builtin' | 'template' | 'pack' | 'context';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -19,6 +19,7 @@ function parsePresetQuery(value: unknown): Partial<BlockMatrixQuery> | null {
   const strFields: Array<keyof BlockMatrixQuery> = [
     'row_key',
     'col_key',
+    'composition_role',
     'role',
     'category',
     'kind',
@@ -54,9 +55,9 @@ export const DEFAULT_BLOCK_MATRIX_PRESETS: BlockMatrixPreset[] = [
     id: 'role-category',
     source: 'builtin',
     label: 'Role x Category',
-    description: 'Overview of all blocks by role and category',
+    description: 'Overview of all blocks by composition role and category',
     query: {
-      row_key: 'role',
+      row_key: 'composition_role',
       col_key: 'category',
       include_empty: false,
     },
@@ -65,10 +66,10 @@ export const DEFAULT_BLOCK_MATRIX_PRESETS: BlockMatrixPreset[] = [
     id: 'package-role',
     source: 'builtin',
     label: 'Package x Role',
-    description: 'Block distribution across packages and roles',
+    description: 'Block distribution across packages and composition roles',
     query: {
       row_key: 'package_name',
-      col_key: 'role',
+      col_key: 'composition_role',
       include_empty: false,
     },
   },
@@ -81,7 +82,7 @@ export const DEFAULT_BLOCK_MATRIX_PRESETS: BlockMatrixPreset[] = [
       row_key: 'tag:rigidity',
       col_key: 'tag:approach',
       package_name: 'shared',
-      role: 'subject',
+      composition_role: 'entities:subject',
       category: 'pose_lock',
       include_empty: true,
       expected_row_values: 'minimal,low,medium,high,maximum',
@@ -123,6 +124,40 @@ export function readTemplateMatrixPresets(templateMetadata: unknown): BlockMatri
       source: 'template',
     });
   }
+  return presets;
+}
+
+export function readContentPackMatrixPresets(
+  manifests: readonly ContentPackMatrixManifest[],
+  options: { packName?: string | null } = {},
+): BlockMatrixPreset[] {
+  const packFilter = typeof options.packName === 'string' && options.packName.trim()
+    ? options.packName.trim()
+    : null;
+  const presets: BlockMatrixPreset[] = [];
+
+  for (const manifest of manifests) {
+    if (packFilter && manifest.pack_name !== packFilter) continue;
+    const sourcePath = manifest.source || 'manifest';
+    for (let i = 0; i < (manifest.matrix_presets ?? []).length; i += 1) {
+      const item = manifest.matrix_presets[i];
+      const label = typeof item.label === 'string' ? item.label.trim() : '';
+      if (!label) continue;
+      const query = parsePresetQuery(item.query);
+      if (!query || !query.row_key || !query.col_key) continue;
+      presets.push({
+        id: `${manifest.pack_name}:${sourcePath}:${i}:${label.toLowerCase().replace(/\s+/g, '-')}`,
+        label: `${manifest.pack_name} · ${label}`,
+        description:
+          typeof manifest.description === 'string' && manifest.description.trim()
+            ? manifest.description.trim()
+            : undefined,
+        query,
+        source: 'pack',
+      });
+    }
+  }
+
   return presets;
 }
 

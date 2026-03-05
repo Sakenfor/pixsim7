@@ -9,8 +9,15 @@
 import type { CompositionRoleDefinition } from '@pixsim7/shared.types';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { getTemplate, listBlockRoles, listTemplates, type BlockRoleSummary, type BlockTemplateDetail } from '@lib/api/blockTemplates';
+import {
+  getTemplate,
+  listBlockRoles,
+  type BlockRoleSummary,
+  type BlockTemplateDetail,
+  type BlockTemplateSummary,
+} from '@lib/api/blockTemplates';
 import { Icon } from '@lib/icons';
+import { resolveBlockTemplates } from '@lib/resolvers';
 
 import {
   SidebarTreeGroup,
@@ -463,7 +470,7 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
   const [activePackageIds, setActivePackageIds] = useState<Set<string> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const templateDetailsCacheRef = useRef<Map<string, BlockTemplateDetail>>(new Map());
-  const [allTemplateSummaries, setAllTemplateSummaries] = useState<Awaited<ReturnType<typeof listTemplates>> | null>(null);
+  const [allTemplateSummaries, setAllTemplateSummaries] = useState<BlockTemplateSummary[] | null>(null);
   const [allBlockRoleSummaries, setAllBlockRoleSummaries] = useState<BlockRoleSummary[] | null>(null);
   const [roleUsageById, setRoleUsageById] = useState<Record<string, RoleUsageSummary>>({});
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
@@ -587,7 +594,10 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
   // Eagerly load template summaries on mount (needed for unmapped role indicators)
   useEffect(() => {
     if (allTemplateSummaries) return;
-    void listTemplates({ limit: 200 }).then(setAllTemplateSummaries);
+    void resolveBlockTemplates(
+      { limit: 200 },
+      { consumerId: 'CompositionRolesPanel.loadTemplateSummaries' },
+    ).then(setAllTemplateSummaries);
   }, [allTemplateSummaries]);
 
   // Compute set of composition role IDs used by at least one template slot
@@ -637,7 +647,10 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
 
         let templateSummaries = allTemplateSummaries;
         if (!templateSummaries) {
-          templateSummaries = await listTemplates({ limit: 200 });
+          templateSummaries = await resolveBlockTemplates(
+            { limit: 200 },
+            { consumerId: 'CompositionRolesPanel.loadTemplateSummariesForUsage' },
+          );
           if (!cancelled) {
             setAllTemplateSummaries(templateSummaries);
           }
@@ -653,7 +666,7 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
           templateDetailsCacheRef.current.set(t.id, detail);
         }
 
-        const blockRows = (roleSummaries ?? []).filter((r) => (r.role ?? 'uncategorized') === selectedId);
+        const blockRows = (roleSummaries ?? []).filter((r) => (r.composition_role ?? 'uncategorized') === selectedId);
         const blockTotal = blockRows.reduce((sum, r) => sum + (r.count ?? 0), 0);
         const blockCategories = blockRows
           .map((r) => ({ category: r.category ?? null, count: r.count ?? 0 }))
