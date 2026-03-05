@@ -91,7 +91,11 @@ export {
 
 // Lib - Editor Core APIs (explicit - these are the main APIs)
 export { graphEditorRegistry, graphEditorSelectors } from './lib/editor/registry';
-export type { GraphEditorDefinition } from './lib/editor/types';
+export type {
+  GraphEditorId,
+  GraphEditorComponent,
+  GraphEditorDefinition,
+} from './lib/editor/types';
 export {
   nodeRendererRegistry,
   sceneNodeRendererRegistry,
@@ -106,21 +110,85 @@ export type { TemplateUsageStats, RefactoringHint } from './stores/templateAnaly
 export { useTemplateStore } from './stores/templatesStore';
 export { graphClipboard } from './lib/editor/clipboard';
 
-// Lib - Editor Utilities (wildcard - many helper functions)
-export * from './lib/editor/graphTemplates';
-export * from './lib/editor/types';
+// Lib - Editor Utilities
+export type {
+  TemplateSource,
+  TemplateCategory,
+  TemplateParameter,
+  GraphTemplate,
+  TemplatePack,
+  TemplatePackExport,
+  TemplatePreconditions,
+  TemplateSelection,
+  CaptureTemplateMetadata,
+  ApplyTemplateOptions,
+  ApplyTemplateResult,
+} from './lib/editor/graphTemplates';
+export {
+  captureTemplate,
+  applyTemplate,
+  validateTemplate,
+  validatePreconditions,
+  generateTemplatePreview,
+  exportTemplatePack,
+  importTemplatePack,
+  downloadTemplatePack,
+} from './lib/editor/graphTemplates';
 
 // Lib - Graph Builders
-export * from './lib/builders/actionGraphBuilder';
-export * from './lib/builders/promptGraphBuilder';
+export type { BuildActionGraphOptions } from './lib/builders/actionGraphBuilder';
+export {
+  buildActionBlockGraph,
+  getNodeColorByComplexity,
+  getCompositeNodeStyle,
+  getActionEdgeStyle,
+} from './lib/builders/actionGraphBuilder';
+export type { BuildPromptGraphOptions } from './lib/builders/promptGraphBuilder';
+export {
+  buildPromptCandidateGraph,
+  getNodeColorByRole,
+  getEdgeStyle,
+} from './lib/builders/promptGraphBuilder';
 
 // Lib - Node Types (from @pixsim7/shared.types migration)
-export * from './lib/nodeTypes/npcResponse';
-export * from './lib/nodeTypes/registry';
-export * from './lib/nodeTypes/sceneRegistry';
-export * from './lib/nodeTypes/arcRegistry';
-export * from './lib/nodeTypes/arc';
-export * from './lib/nodeTypes/builtin';
+export type {
+  ResponseGraphNode,
+  ResponseGraphConnection,
+  ResponseNodeType,
+  NpcResponseMetadata,
+  ResponseGraphTemplate,
+} from './lib/nodeTypes/npcResponse';
+export {
+  RESPONSE_TEMPLATES,
+  registerNpcResponseNode,
+} from './lib/nodeTypes/npcResponse';
+export type {
+  PortDefinition,
+  PortConfig,
+  NodeTypeDefinition,
+  NodeTypeRegistryOptions,
+} from './lib/nodeTypes/registry';
+export {
+  NodeTypeRegistry,
+  createNodeTypeRegistry,
+} from './lib/nodeTypes/registry';
+export type {
+  SceneRuntimeNode,
+  SceneNodeTypeDefinition,
+} from './lib/nodeTypes/sceneRegistry';
+export {
+  sceneNodeTypeRegistry,
+  nodeTypeRegistry,
+} from './lib/nodeTypes/sceneRegistry';
+export type { ArcNodeTypeDefinition } from './lib/nodeTypes/arcRegistry';
+export { arcNodeTypeRegistry } from './lib/nodeTypes/arcRegistry';
+export type {
+  ArcNodeMetadata,
+  QuestNodeMetadata,
+  MilestoneNodeMetadata,
+} from './lib/nodeTypes/arc';
+export { registerArcNodeTypes } from './lib/nodeTypes/arc';
+export { registerBuiltinNodeTypes } from './lib/nodeTypes/builtin';
 
 // Namespace export for node types
 export * as NodeTypes from './lib/nodeTypes/registry';
