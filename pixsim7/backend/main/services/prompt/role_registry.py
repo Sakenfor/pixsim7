@@ -10,35 +10,13 @@ from typing import Dict, Iterable, List, Optional
 from pixsim7.backend.main.lib.registry import SimpleRegistry
 
 
-DEFAULT_ROLE_PRIORITIES: Dict[str, int] = {
-    "romance": 60,
-    "mood": 50,
-    "setting": 40,
-    "action": 30,
-    "subject": 25,
-    "character": 20,
-    "placement": 18,
-    "environment": 16,
-    "style": 14,
-    "lighting": 12,
-    "camera": 10,
-    "composition": 5,
+# Minimal bootstrap — only used when vocab load fails entirely.
+# Do NOT expand; add role definitions in prompt_roles_* plugin packs.
+_BOOTSTRAP_PRIORITIES: Dict[str, int] = {
     "other": 0,
 }
 
-DEFAULT_ROLE_DESCRIPTIONS: Dict[str, str] = {
-    "character": "Descriptions of people, creatures, or beings",
-    "action": "Actions, movement, behaviors, or interactions",
-    "setting": "Environment, location, or time of day",
-    "mood": "Emotional tone or atmosphere",
-    "romance": "Romantic or intimate content",
-    "camera": "Camera angle and field of view",
-    "subject": "Subject preservation locks (pose, identity, framing)",
-    "placement": "Depth positioning and placed character descriptions",
-    "environment": "Scene backgrounds and location descriptions",
-    "style": "Visual aesthetics — wardrobe, rendering, atmosphere",
-    "lighting": "Key and fill light sources",
-    "composition": "Layer ordering and spatial structure",
+_BOOTSTRAP_DESCRIPTIONS: Dict[str, str] = {
     "other": "Unclassified or technical content",
 }
 
@@ -170,12 +148,12 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
                 )
                 priority = getattr(role, "priority", None)
                 if priority is None:
-                    priority = DEFAULT_ROLE_PRIORITIES.get(role_id, DEFAULT_DYNAMIC_PRIORITY)
+                    priority = DEFAULT_DYNAMIC_PRIORITY
                 self.register_role(
                     PromptRoleDefinition(
                         id=role_id,
                         label=label or role_id.replace("_", " ").title(),
-                        description=description or DEFAULT_ROLE_DESCRIPTIONS.get(role_id),
+                        description=description or None,
                         keywords=merged_keywords,
                         action_verbs=merged_action_verbs,
                         aliases=list(getattr(role, "aliases", []) or []),
@@ -183,29 +161,17 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
                     )
                 )
         else:
-            for role_id, priority in DEFAULT_ROLE_PRIORITIES.items():
-                if role_id == "other":
-                    continue
-                self.register_role(
-                    PromptRoleDefinition(
-                        id=role_id,
-                        label=role_id.replace("_", " ").title(),
-                        description=DEFAULT_ROLE_DESCRIPTIONS.get(role_id),
-                        keywords=[],
-                        action_verbs=[],
-                        priority=priority,
-                    )
-                )
+            pass  # No vocab available; only bootstrap 'other' below.
 
         if not self.has("other"):
             self.register_role(
                 PromptRoleDefinition(
                     id="other",
                     label="Other",
-                    description=DEFAULT_ROLE_DESCRIPTIONS.get("other"),
+                    description=_BOOTSTRAP_DESCRIPTIONS.get("other"),
                     keywords=[],
                     action_verbs=[],
-                    priority=DEFAULT_ROLE_PRIORITIES.get("other", 0),
+                    priority=_BOOTSTRAP_PRIORITIES.get("other", 0),
                 )
             )
 
@@ -304,7 +270,7 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
                     PromptRoleDefinition(
                         id=role_id,
                         label=role_id.replace("_", " ").title(),
-                        description=DEFAULT_ROLE_DESCRIPTIONS.get(role_id),
+                        description=None,
                         keywords=[],
                         action_verbs=[],
                         priority=DEFAULT_DYNAMIC_PRIORITY,

@@ -56,3 +56,43 @@ def test_parser_runtime_has_no_ontology_keyword_authority_imports():
 
     assert "from .ontology import ACTION_VERBS" not in simple_source
     assert "parser.ontology import ROLE_KEYWORDS" not in role_registry_source
+
+
+def test_prompt_role_registry_bootstrap_is_minimal():
+    """Bootstrap fallback should only contain 'other' — all real roles come from vocab."""
+    from pixsim7.backend.main.services.prompt.role_registry import (
+        _BOOTSTRAP_PRIORITIES,
+        _BOOTSTRAP_DESCRIPTIONS,
+    )
+
+    assert list(_BOOTSTRAP_PRIORITIES.keys()) == ["other"]
+    assert list(_BOOTSTRAP_DESCRIPTIONS.keys()) == ["other"]
+
+
+def test_prompt_role_registry_no_hardcoded_rich_defaults():
+    """The old DEFAULT_ROLE_PRIORITIES/DEFAULT_ROLE_DESCRIPTIONS should not exist."""
+    import pixsim7.backend.main.services.prompt.role_registry as mod
+
+    assert not hasattr(mod, "DEFAULT_ROLE_PRIORITIES")
+    assert not hasattr(mod, "DEFAULT_ROLE_DESCRIPTIONS")
+
+
+def test_prompt_role_registry_vocab_driven():
+    """Registry should load roles from vocab, not from hardcoded fallback."""
+    from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
+
+    registry = PromptRoleRegistry.default()
+
+    # These roles should come from vocab prompt_roles_* packs
+    assert registry.has_role("character")
+    assert registry.has_role("action")
+    assert registry.has_role("camera")
+    assert registry.has_role("mood")
+    assert registry.has_role("romance")
+    assert registry.has_role("setting")
+    assert registry.has_role("other")
+
+    # Verify they have priority from vocab, not from bootstrap
+    camera = registry.get_role("camera")
+    assert camera is not None
+    assert camera.priority == 10  # from prompt_roles_camera pack
