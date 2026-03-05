@@ -3,24 +3,87 @@
  */
 
 // Gallery tool types
-export * from './types';
+export type {
+  GalleryToolCategory,
+  GalleryAsset,
+  GalleryToolContext,
+  GalleryToolPlugin,
+  GalleryUiToolPlugin,
+} from './types';
+export {
+  GalleryToolRegistry,
+  galleryToolRegistry,
+} from './types';
 
 // Gallery surface types
-export * from './surfaceRegistry';
+export type {
+  GallerySurfaceId,
+  GallerySurfaceCategory,
+  MediaType,
+  GallerySurfaceDefinition,
+} from './surfaceRegistry';
+export {
+  GallerySurfaceRegistry,
+  gallerySurfaceRegistry,
+} from './surfaceRegistry';
 
 // Gallery surface registration
-export * from './registerGallerySurfaces';
+export { registerGallerySurfaces } from './registerGallerySurfaces';
 
 // Gallery tools registration
-export * from './registerGalleryTools';
+export { registerGalleryTools } from './registerGalleryTools';
 
 // Asset roles and tag utilities (Task 99.1)
-export * from './assetRoles';
+export type {
+  AssetCharacterId,
+  AssetLocationId,
+  AssetRole,
+} from './assetRoles';
+export {
+  getAssetRoles,
+  getAssetCharacters,
+  getAssetLocations,
+  hasAssetRole,
+  hasAssetCharacter,
+  hasAssetLocation,
+  getAssetCameraTags,
+  getAssetIdentities,
+  filterAssetsByRole,
+  filterAssetsByCharacter,
+  filterAssetsByLocation,
+  filterAssetsByRoleAndIdentity,
+  inferCompositionRoleFromAsset,
+} from './assetRoles';
 
 // Asset sources (order matters for initialization)
-export * from './sourceTypes';
-export * from './assetSources';
-export * from './registerAssetSources';
+export type {
+  SourceTypeId,
+  SourceCategory,
+  SourceTypeDefinition,
+} from './sourceTypes';
+export {
+  sourceTypeRegistry,
+  registerSourceType,
+  getSourceType,
+  getAllSourceTypes,
+  getDefaultInstanceId,
+} from './sourceTypes';
+export type {
+  AssetSourceId,
+  AssetSourceInfo,
+  AssetSourceComponentProps,
+  AssetSourceDefinition,
+} from './assetSources';
+export {
+  assetSourceRegistry,
+  registerAssetSource,
+  getAssetSource,
+  getAllAssetSources,
+} from './assetSources';
+export { registerAssetSources } from './registerAssetSources';
 
 // Badge config utilities
-export * from './badgeConfigMerge';
+export {
+  mergeBadgeConfig,
+  deriveOverlayPresetIdFromBadgeConfig,
+} from './badgeConfigMerge';
