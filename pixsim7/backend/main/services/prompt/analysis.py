@@ -25,6 +25,7 @@ from pixsim7.backend.main.services.analysis.analyzer_pipeline import (
     AnalyzerPipelineError,
     resolve_analyzer_execution,
 )
+from pixsim7.backend.main.services.analysis.chain_executor import execute_first_success
 from pixsim7.backend.main.services.prompt.parser import (
     analyzer_registry,
     AnalyzerKind,
@@ -376,10 +377,10 @@ class PromptAnalysisService:
         ai_hub = AiHubService(self.db)
         user_provider_id, user_model_id = await ai_hub.get_user_llm_preferences(user_id)
 
-        try:
-            resolved_execution = resolve_analyzer_execution(
+        async def _resolve_candidate(candidate_id: str):
+            return resolve_analyzer_execution(
                 AnalyzerExecutionRequest(
-                    analyzer_id=analyzer_id,
+                    analyzer_id=candidate_id,
                     target=AnalyzerTarget.PROMPT,
                     require_enabled=False,
                     explicit_provider_id=provider_id,
@@ -389,21 +390,28 @@ class PromptAnalysisService:
                     require_provider=False,
                 )
             )
+
+        chain_result = await execute_first_success(
+            candidates=[analyzer_id, DEFAULT_PROMPT_ANALYZER_ID],
+            step_fn=_resolve_candidate,
+        )
+
+        if chain_result.success:
+            resolved_execution = chain_result.result
             analyzer_id = resolved_execution.analyzer_id
             analyzer_info = resolved_execution.analyzer
-        except AnalyzerPipelineError:
-            logger.warning(f"Unknown analyzer {analyzer_id}, falling back to prompt:simple")
-            analyzer_id = "prompt:simple"
+        else:
+            logger.warning(
+                "All prompt analyzer candidates failed, using prompt:simple. %s",
+                chain_result.error_summary,
+            )
+            analyzer_id = DEFAULT_PROMPT_ANALYZER_ID
             analyzer_info = analyzer_registry.get(analyzer_id)
             resolved_execution = resolve_analyzer_execution(
                 AnalyzerExecutionRequest(
                     analyzer_id=analyzer_id,
                     target=AnalyzerTarget.PROMPT,
                     require_enabled=False,
-                    explicit_provider_id=provider_id,
-                    explicit_model_id=model_id,
-                    user_llm_provider_id=user_provider_id,
-                    user_llm_model_id=user_model_id,
                     require_provider=False,
                 )
             )

@@ -34,6 +34,7 @@ from pixsim7.backend.main.services.analysis.analyzer_pipeline import (
     AnalyzerPipelineError,
     resolve_analyzer_execution,
 )
+from pixsim7.backend.main.services.analysis.chain_executor import execute_first_success
 from pixsim7.backend.main.services.analysis.analyzer_instance_service import AnalyzerInstanceService
 from pixsim7.backend.main.services.analysis.analysis_result_applier import AnalysisResultApplier
 from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerTarget
@@ -173,30 +174,28 @@ class AnalysisService:
                 analysis_point=resolved_analysis_point,
             )
 
-            resolved_execution: Optional[ResolvedAnalysisExecution] = None
-            errors: list[str] = []
-            for candidate_analyzer_id in candidate_analyzer_ids:
-                try:
-                    resolved_execution = await self._resolve_execution_config(
-                        user_id=user.id,
-                        asset=asset,
-                        analyzer_id=candidate_analyzer_id,
-                    )
-                    break
-                except InvalidOperationError as e:
-                    errors.append(f"{candidate_analyzer_id}: {e}")
+            chain_result = await execute_first_success(
+                candidates=candidate_analyzer_ids,
+                step_fn=lambda aid: self._resolve_execution_config(
+                    user_id=user.id,
+                    asset=asset,
+                    analyzer_id=aid,
+                ),
+            )
 
-            if not resolved_execution:
+            if chain_result.success:
+                resolved_execution = chain_result.result
+            else:
                 fallback_id = resolve_asset_default_analyzer_id(
                     getattr(user, "preferences", None),
                     media_type=media_type,
                     intent=analyzer_intent,
                     analysis_point=resolved_analysis_point,
                 )
-                error_details = "; ".join(errors) if errors else "no candidates were resolvable"
                 raise InvalidOperationError(
                     "No executable analyzer resolved from defaults. "
-                    f"First default candidate: {fallback_id}. Details: {error_details}"
+                    f"First default candidate: {fallback_id}. "
+                    f"Details: {chain_result.error_summary}"
                 )
 
         dedupe_key = self._compute_dedupe_key(

@@ -224,6 +224,38 @@ Exit criteria:
 - Observability hooks (Phase 3)
 - Capability contract (Phase 4)
 
+### Phase 2 (`kernel-chain-executor`) — Completed 2026-03-05
+
+**Deliverables:**
+
+- New module: `services/analysis/error_taxonomy.py`
+  - `AnalyzerErrorCategory` enum: `transient`, `auth`, `quota`, `invalid_input`, `provider_unavailable`, `content_filtered`, `unknown`
+  - `classify_analyzer_error()` — maps existing PixSim error hierarchy to categories
+  - `should_try_next_in_chain()` — chain continuation decision
+  - `is_retryable()` — worker retry decision
+
+- New module: `services/analysis/chain_executor.py`
+  - `ChainStrategy` enum: `first_success`, `run_all`
+  - `execute_first_success()` — async chain executor with error classification, deduplication, and step-level provenance
+  - `ChainResult` / `ChainStepOutcome` — provenance tracking per step
+
+- Wired both orchestrators:
+  - `AnalysisService.create_analysis_with_meta()` — inline candidate loop replaced with `execute_first_success()` call
+  - `PromptAnalysisService._run_analyzer()` — inline fallback replaced with `execute_first_success([requested, "prompt:simple"])` chain
+
+- Tests: 40 new tests across two files:
+  - `test_error_taxonomy.py` (22 tests): classification for all error subtypes, chain continuation logic, retryability
+  - `test_chain_executor.py` (10 tests): happy path, failure paths, chain stopping on transient errors, deduplication, provenance tracking
+- All 46 existing tests pass with zero regressions
+
+**What is NOT in this slice:**
+
+- `run_all` strategy implementation (interface defined, no current consumer)
+- Worker-side consumption of `is_retryable()` (ready for adoption)
+- Result envelope / provenance (Phase 3)
+- Observability hooks (Phase 3)
+- Capability contract (Phase 4)
+
 ## Completion Signal
 
 This plan is complete when prompt and asset orchestrators are thin coordinators over the same shared analyzer kernel for all cross-cutting behavior, while preserving their distinct runtime lifecycles.
