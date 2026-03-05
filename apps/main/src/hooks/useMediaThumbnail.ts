@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { authService } from '@lib/auth';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
+import { hmrSingleton } from '@lib/utils';
 
 import { useMediaSettingsStore } from '@features/assets';
 import { assetEvents, useAssetViewerStore } from '@features/assets';
@@ -14,7 +15,20 @@ import { BACKEND_BASE } from '../lib/api/client';
 // thumbnails render instantly when cards scroll back into view.
 // LRU eviction revokes the oldest URLs to cap memory (~200 thumbnails).
 const BLOB_CACHE_MAX = 200;
-const _blobCache = new Map<string, string>(); // fetchUrl → blobUrl
+const _blobCache = hmrSingleton('useMediaThumbnail:blobCache', () => new Map<string, string>());
+
+function clearBlobCache(): void {
+  for (const blobUrl of _blobCache.values()) {
+    URL.revokeObjectURL(blobUrl);
+  }
+  _blobCache.clear();
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    clearBlobCache();
+  });
+}
 
 function getCachedBlob(fetchUrl: string): string | undefined {
   const blobUrl = _blobCache.get(fetchUrl);

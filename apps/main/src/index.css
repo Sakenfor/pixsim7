@@ -389,12 +389,7 @@ button {
     grid-column: 1 / -1;
   }
   .gen-panel-action-group {
-    flex-direction: row;
-    align-items: stretch;
-  }
-  .gen-panel-action-group > * {
-    flex: 1;
-    min-width: 0;
+    flex-direction: column;
   }
 }
 

@@ -40,7 +40,7 @@ const PAGE_NAV_HINTS: Record<string, PageNavHints> = {
     featureTagHints: ['dev', 'debug', 'diagnostics', 'tools', 'interaction'],
   },
   workspace: {
-    panelIds: ['scene-management', 'inspector', 'scene'],
+    panelIds: ['scene-management', 'inspector'],
     routePageIds: ['arc-graph', 'routine-graph-page', 'interaction-studio'],
     featureTagHints: ['scene', 'workspace', 'editor'],
   },
