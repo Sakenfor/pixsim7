@@ -26,6 +26,7 @@ import {
 import { assetActions } from './assetActions';
 import { contextHubActions } from './contextHubActions';
 import { cubeActions } from './cubeActions';
+import { debugActions } from './debugActions';
 import {
   splitPanelAction,
   movePanelAction,
@@ -33,7 +34,9 @@ import {
 import {
   floatPanelAction,
   focusPanelAction,
+  pinTabAction,
   registerPanelActionCapabilities,
+  unpinTabAction,
 } from './panelActions';
 import {
   savePresetAction,
@@ -44,13 +47,57 @@ import {
 } from './presetActions';
 
 // Export individual action modules
-export * from './panelActions';
-export * from './layoutActions';
-export * from './presetActions';
-export * from './addPanelActions';
-export * from './assetActions';
-export * from './contextHubActions';
-export * from './cubeActions';
+export {
+  closePanelAction,
+  maximizePanelAction,
+  restorePanelAction,
+  floatPanelAction,
+  pinTabAction,
+  unpinTabAction,
+  focusPanelAction,
+  propertiesAction,
+  panelPropertiesAction,
+  closeOtherPanelsAction,
+  closeAllInGroupAction,
+  panelActionDefinitions,
+  registerPanelActionCapabilities,
+  panelActions,
+} from './panelActions';
+export {
+  splitRightAction,
+  splitDownAction,
+  moveToNewGroupAction,
+  joinLeftGroupAction,
+  joinRightGroupAction,
+  splitPanelAction,
+  movePanelAction,
+  layoutActions,
+} from './layoutActions';
+export type { LayoutPreset, PresetScope } from './presetActions';
+export {
+  getScopeLabel,
+  savePresetAction,
+  loadPresetAction,
+  deletePresetAction,
+  resetLayoutAction,
+  presetActionDefinitions,
+  registerPresetActionCapabilities,
+  presetActions,
+} from './presetActions';
+export {
+  getDefaultScopePanelSubmenu,
+  addPanelAction,
+  getQuickAddActions,
+  getEditQuickAddActions,
+  quickAddActions,
+  quickAddActionDefinitions,
+  registerQuickAddActionCapabilities,
+  addPanelActions,
+} from './addPanelActions';
+export { assetActions } from './assetActions';
+export { contextHubActions } from './contextHubActions';
+export { cubeActions } from './cubeActions';
+export { debugActions } from './debugActions';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Composite Submenus
@@ -204,6 +251,8 @@ export const allActions = [
   ...assetActions,
   // Panel top-level: Float Panel (close/maximize/restore/properties via capabilities)
   floatPanelAction,
+  pinTabAction,
+  unpinTabAction,
   // Composite submenus
   panelsSubmenuAction,
   layoutPresetsSubmenuAction,
@@ -211,6 +260,8 @@ export const allActions = [
   ...contextHubActions,
   // Cube spawn
   ...cubeActions,
+  // Dockview debug
+  ...debugActions,
 ];
 
 let actionsRegistered = false;
@@ -234,6 +285,7 @@ export function registerContextMenuActions() {
     'panels': 5,
     'preset': 10,
     'panel': 15,
+    'debug': 90,
   });
 
   // Wire history provider for recently used actions

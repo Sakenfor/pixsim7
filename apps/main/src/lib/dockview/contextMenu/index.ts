@@ -5,23 +5,96 @@
  * Pure re-exports from shared packages + app-specific modules.
  */
 
-// App-specific modules
-export * from './types';
-export * from './ContextMenuProvider';
-export * from './DockviewContextMenu';
-export * from './PanelPropertiesPopup';
-export * from './CustomTabComponent';
-export * from './DockviewIdContext';
-export * from './capabilityHelpers';
-export * from './buildDockviewContext';
-export * from './resolveCurrentDockview';
+// Side-effect import: registers auto-context presets at module load.
+import './autoContextPresets';
 
-// Auto-context presets (app-specific registrations)
-export * from './autoContextPresets';
+// App-specific modules
+export type {
+  ContextMenuContextBase,
+  MenuActionContextBase,
+  MenuActionBase,
+  ContextMenuContext,
+  MenuItem,
+  PanelRegistryLike,
+  MenuActionContext,
+  MenuAction,
+} from './types';
+export type { DockviewLayout } from './ContextMenuProvider';
+export type { AppContextMenuServices } from './ContextMenuProvider';
+export { ContextMenuProvider } from './ContextMenuProvider';
+export { ContextMenuPortal } from './DockviewContextMenu';
+export {
+  usePropertiesPopupStore,
+  PropertiesPopup,
+  PanelPropertiesPopup,
+} from './PanelPropertiesPopup';
+export { CustomTabComponent } from './CustomTabComponent';
+export {
+  DockviewIdProvider,
+  useDockviewId,
+  useDockviewContext,
+} from './DockviewIdContext';
+export {
+  getCapability,
+  hasCapability,
+  getRegistryChain,
+  getAllProviders,
+  resolveProvider,
+  hasLiveState,
+} from './capabilityHelpers';
+export type { RegistryScope, ProviderEntry } from './capabilityHelpers';
+export type { DockviewContextBase, DockviewContextOverrides } from './buildDockviewContext';
+export { buildDockviewContext } from './buildDockviewContext';
+export { resolveCurrentDockview, resolveCurrentDockviewApi } from './resolveCurrentDockview';
 
 // Actions - import to register with the global registry
-export * from './actions';
-export { registerContextMenuActions } from './actions';
+export type { LayoutPreset, PresetScope } from './actions';
+export {
+  closePanelAction,
+  maximizePanelAction,
+  restorePanelAction,
+  floatPanelAction,
+  pinTabAction,
+  unpinTabAction,
+  focusPanelAction,
+  propertiesAction,
+  panelPropertiesAction,
+  closeOtherPanelsAction,
+  closeAllInGroupAction,
+  panelActionDefinitions,
+  registerPanelActionCapabilities,
+  panelActions,
+  splitRightAction,
+  splitDownAction,
+  moveToNewGroupAction,
+  joinLeftGroupAction,
+  joinRightGroupAction,
+  splitPanelAction,
+  movePanelAction,
+  layoutActions,
+  getScopeLabel,
+  savePresetAction,
+  loadPresetAction,
+  deletePresetAction,
+  resetLayoutAction,
+  presetActionDefinitions,
+  registerPresetActionCapabilities,
+  presetActions,
+  getDefaultScopePanelSubmenu,
+  addPanelAction,
+  getQuickAddActions,
+  getEditQuickAddActions,
+  quickAddActions,
+  quickAddActionDefinitions,
+  registerQuickAddActionCapabilities,
+  addPanelActions,
+  assetActions,
+  contextHubActions,
+  cubeActions,
+  debugActions,
+  allActions,
+  registerContextMenuActions,
+} from './actions';
 
 // Re-exports from shared context-menu package
 export { ContextMenuRegistry, contextMenuRegistry } from '@pixsim7/shared.ui.context-menu';
