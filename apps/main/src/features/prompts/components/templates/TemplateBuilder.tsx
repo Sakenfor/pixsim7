@@ -10,9 +10,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { listBlockPackages, reloadContentPacks, type ReloadContentPacksResponse } from '@lib/api/blockTemplates';
 import { listCharacters, type CharacterSummary } from '@lib/api/characters';
+import { isAdminUser } from '@lib/auth/userRoles';
 import { Icon } from '@lib/icons';
 
 import { OPERATION_TYPES } from '@/types/operations';
+import { useAuthStore } from '@/stores/authStore';
 
 import {
   applyControlDefaultsToSlots,
@@ -74,6 +76,8 @@ function getReloadFailedPacks(response: ReloadContentPacksResponse | null): Arra
 }
 
 export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, className }: TemplateBuilderProps) {
+  const currentUser = useAuthStore((s) => s.user);
+  const canReloadContentPacks = isAdminUser(currentUser);
   const activeTemplate = useBlockTemplateStore((s) => s.activeTemplate);
   const draftSlots = useBlockTemplateStore((s) => s.draftSlots);
   const addDraftSlot = useBlockTemplateStore((s) => s.addDraftSlot);
@@ -152,6 +156,10 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
   }, []);
 
   const handleReloadYaml = useCallback(async () => {
+    if (!canReloadContentPacks) {
+      setYamlReloadError('Admin role is required to reload content packs.');
+      return;
+    }
     setYamlReloading(true);
     setYamlReloadError(null);
     setYamlReloadMessage(null);
@@ -171,7 +179,7 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
     } finally {
       setYamlReloading(false);
     }
-  }, [fetchTemplates]);
+  }, [canReloadContentPacks, fetchTemplates]);
 
   const yamlReloadFailedPacks = useMemo(
     () => getReloadFailedPacks(yamlReloadResult),
@@ -391,9 +399,13 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
             <button
               type="button"
               onClick={() => void handleReloadYaml()}
-              disabled={yamlReloading}
+              disabled={yamlReloading || !canReloadContentPacks}
               className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
-              title="Reload content-pack YAML from disk (force + prune). Does not overwrite your current draft slots."
+              title={
+                canReloadContentPacks
+                  ? 'Reload content-pack YAML from disk (force + prune). Does not overwrite your current draft slots.'
+                  : 'Admin role required to reload content packs.'
+              }
             >
               <Icon name="refresh" size={10} className={clsx('inline mr-1', yamlReloading && 'animate-spin')} />
               {yamlReloading ? 'Reloading YAML...' : 'Reload YAML'}

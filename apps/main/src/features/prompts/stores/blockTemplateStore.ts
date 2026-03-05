@@ -15,13 +15,13 @@ import type {
   TemplatePreset,
 } from '@lib/api/blockTemplates';
 import {
-  listTemplates,
   getTemplate,
   createTemplate,
   updateTemplate as apiUpdateTemplate,
   deleteTemplate as apiDeleteTemplate,
   rollTemplate,
 } from '@lib/api/blockTemplates';
+import { resolveBlockTemplates } from '@lib/resolvers';
 
 interface BlockTemplateState {
   // Template list
@@ -165,7 +165,13 @@ export const useBlockTemplateStore = create<BlockTemplateState>()(persist((set, 
   fetchTemplates: async () => {
     set({ templatesLoading: true });
     try {
-      const templates = await listTemplates({ limit: 200 });
+      const templates = await resolveBlockTemplates(
+        { limit: 200 },
+        {
+          consumerId: 'blockTemplateStore.fetchTemplates',
+          bypassCache: true,
+        },
+      );
       set({ templates });
     } finally {
       set({ templatesLoading: false });

@@ -33,6 +33,8 @@ export type {
   BlockTagNormalizeResponse,
   ReloadContentPacksQuery,
   ReloadContentPacksResponse,
+  ContentPackMatrixManifest,
+  ContentPackMatrixPreset,
   TemplateDiagnosticsResponse,
   TemplateSlotDiagnostics,
   TemplateSlotPackageCount,
@@ -53,6 +55,7 @@ export const rollTemplate = blockTemplatesApi.rollTemplate;
 export const previewSlot = blockTemplatesApi.previewSlot;
 export const listBlockPackages = blockTemplatesApi.listBlockPackages;
 export const listContentPacks = blockTemplatesApi.listContentPacks;
+export const listContentPackManifests = blockTemplatesApi.listContentPackManifests;
 export const reloadContentPacks = blockTemplatesApi.reloadContentPacks;
 export const searchBlocks = blockTemplatesApi.searchBlocks;
 export const listBlockRoles = blockTemplatesApi.listBlockRoles;

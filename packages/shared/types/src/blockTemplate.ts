@@ -65,6 +65,7 @@ export interface TemplateSlot {
   tags?: TemplateSlotTagQuery | null;
   tag_constraints?: Record<string, unknown> | null;
   min_rating?: number | null;
+  required_capabilities?: string[] | null;
   preferences?: TemplateSlotPreferences | null;
   selection_strategy: TemplateSlotSelectionStrategy;
   selection_config?: TemplateSlotSelectionConfig | null;
