@@ -12,11 +12,6 @@ from pixsim7.backend.main.domain import User, AiInteraction
 from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.services.llm.registry import llm_registry
 from pixsim7.backend.main.services.ai_model import ai_model_registry, get_default_model
-from pixsim7.backend.main.services.analysis.execution_policy import (
-    DEFAULT_MODEL_BY_PROVIDER,
-    ProviderModelPrecedenceRequest,
-    resolve_provider_model_precedence,
-)
 from pixsim7.backend.main.services.prompt.llm_resolution import normalize_llm_provider_id
 from pixsim7.backend.main.shared.schemas.ai_model_schemas import AiModelCapability
 from pixsim7.backend.main.shared.errors import (
@@ -172,6 +167,14 @@ class AiHubService:
         then applies async capability defaults and hardcoded global fallback
         for fully-unspecified calls.
         """
+        # Lazy import to avoid circular: ai_hub_service → analysis/__init__
+        # → analyzer_defaults → prompt/parser (which imports ai_hub_service).
+        from pixsim7.backend.main.services.analysis.execution_policy import (
+            DEFAULT_MODEL_BY_PROVIDER,
+            ProviderModelPrecedenceRequest,
+            resolve_provider_model_precedence,
+        )
+
         precedence = resolve_provider_model_precedence(
             ProviderModelPrecedenceRequest(
                 explicit_provider_id=provider_id,

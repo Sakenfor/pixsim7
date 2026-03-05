@@ -18,7 +18,7 @@ from pixsim7.backend.main.domain.prompt import PromptVersion
 from pixsim7.backend.main.services.analysis.analyzer_defaults import (
     DEFAULT_PROMPT_ANALYZER_ID,
     normalize_analyzer_id_for_target,
-    resolve_prompt_default_analyzer_id,
+    resolve_prompt_default_analyzer_ids,
 )
 from pixsim7.backend.main.services.analysis.analyzer_pipeline import (
     AnalyzerExecutionRequest,
@@ -99,13 +99,13 @@ class PromptAnalysisService:
                 "analyzer_id": "prompt:simple"
             }
         """
-        analyzer_id = await self._resolve_effective_prompt_analyzer_id(
+        candidates = await self._resolve_prompt_analyzer_candidates(
             analyzer_id=analyzer_id,
             user_id=user_id,
         )
         normalized = text.strip()
 
-        logger.debug(f"Analyzing prompt with {analyzer_id}, len={len(normalized)}")
+        logger.debug(f"Analyzing prompt with candidates=%s, len={len(normalized)}", candidates)
 
         # Dispatch to appropriate analyzer
         role_registry = await self._resolve_role_registry(
@@ -113,9 +113,9 @@ class PromptAnalysisService:
             semantic_context=semantic_context,
         )
 
-        analysis = await self._run_analyzer(
+        analysis, selected_id = await self._run_analyzer(
             normalized,
-            analyzer_id,
+            candidates,
             role_registry=role_registry,
             preset_id=preset_id,
             provider_id=provider_id,
@@ -125,7 +125,7 @@ class PromptAnalysisService:
         )
 
         # Ensure analyzer_id is in result
-        analysis["analyzer_id"] = analyzer_id
+        analysis["analyzer_id"] = selected_id
 
         return analysis
 
@@ -176,10 +176,11 @@ class PromptAnalysisService:
         if precomputed_analysis:
             effective_analyzer = precomputed_analysis.get("source", "composition")
         else:
-            effective_analyzer = await self._resolve_effective_prompt_analyzer_id(
+            candidates = await self._resolve_prompt_analyzer_candidates(
                 analyzer_id=analyzer_id,
                 user_id=user_id,
             )
+            effective_analyzer = candidates[0]
 
         normalized = text.strip()
         prompt_hash = self._compute_hash(normalized)
@@ -284,7 +285,7 @@ class PromptAnalysisService:
         if not self.db:
             raise RuntimeError("Database session required for reanalyze_version")
 
-        analyzer_id = await self._resolve_effective_prompt_analyzer_id(
+        candidates = await self._resolve_prompt_analyzer_candidates(
             analyzer_id=analyzer_id,
             user_id=user_id,
         )
@@ -298,11 +299,12 @@ class PromptAnalysisService:
             logger.warning(f"PromptVersion {version_id} not found for re-analysis")
             return None
 
-        logger.info(f"Re-analyzing PromptVersion {version_id} with {analyzer_id}")
+        effective_analyzer = candidates[0]
+        logger.info(f"Re-analyzing PromptVersion {version_id} with {effective_analyzer}")
 
         analysis = await self.analyze(
             version.prompt_text,
-            analyzer_id,
+            effective_analyzer,
             pack_ids=pack_ids,
             semantic_context=semantic_context,
             user_id=user_id,
@@ -313,12 +315,21 @@ class PromptAnalysisService:
 
         return version
 
-    async def _resolve_effective_prompt_analyzer_id(
+    async def _resolve_prompt_analyzer_candidates(
         self,
         *,
         analyzer_id: Optional[str],
         user_id: Optional[int],
-    ) -> str:
+    ) -> List[str]:
+        """Resolve ordered list of prompt analyzer candidates.
+
+        When an explicit analyzer_id is given, it is placed first.
+        The full user-preference list and hardcoded fallback are always
+        appended so the chain executor can try them if the explicit
+        pick fails.
+        """
+        candidates: List[str] = []
+
         if analyzer_id:
             resolved = normalize_analyzer_id_for_target(
                 analyzer_id,
@@ -326,17 +337,12 @@ class PromptAnalysisService:
                 require_enabled=False,
             )
             if resolved:
-                return resolved
-
-            logger.warning(
-                "Unknown prompt analyzer '%s', falling back to %s",
-                analyzer_id,
-                DEFAULT_PROMPT_ANALYZER_ID,
-            )
-            return DEFAULT_PROMPT_ANALYZER_ID
+                candidates.append(resolved)
 
         user_preferences = await self._load_user_preferences(user_id)
-        return resolve_prompt_default_analyzer_id(user_preferences)
+        candidates.extend(resolve_prompt_default_analyzer_ids(user_preferences))
+
+        return candidates
 
     async def _load_user_preferences(self, user_id: Optional[int]) -> Optional[Dict[str, Any]]:
         """Load users.preferences dict for analyzer-default resolution."""
@@ -357,7 +363,7 @@ class PromptAnalysisService:
     async def _run_analyzer(
         self,
         text: str,
-        analyzer_id: str,
+        candidates: List[str],
         *,
         role_registry: Optional[PromptRoleRegistry] = None,
         preset_id: Optional[str] = None,
@@ -365,12 +371,11 @@ class PromptAnalysisService:
         model_id: Optional[str] = None,
         instance_config: Optional[Dict[str, Any]] = None,
         user_id: Optional[int] = None,
-    ) -> Dict[str, Any]:
+    ) -> Tuple[Dict[str, Any], str]:
         """
-        Run the specified analyzer on text.
+        Run the first resolvable analyzer from *candidates* on text.
 
-        Dispatches to appropriate adapter based on analyzer_id.
-        For LLM analyzers, runtime execution is delegated to AI Hub shared logic.
+        Returns ``(analysis_result, selected_analyzer_id)``.
         """
         from pixsim7.backend.main.services.llm.ai_hub_service import AiHubService
 
@@ -392,7 +397,7 @@ class PromptAnalysisService:
             )
 
         chain_result = await execute_first_success(
-            candidates=[analyzer_id, DEFAULT_PROMPT_ANALYZER_ID],
+            candidates=candidates,
             step_fn=_resolve_candidate,
         )
 
@@ -424,39 +429,36 @@ class PromptAnalysisService:
 
         # Dispatch based on analyzer kind
         if analyzer_info and analyzer_info.kind == AnalyzerKind.PARSER:
-            # Use simple parser adapter
             from pixsim7.backend.main.services.prompt.parser import analyze_prompt
-            return await analyze_prompt(
+            result = await analyze_prompt(
                 text,
                 role_registry=role_registry,
                 parser_config=merged_config,
             )
+            return result, analyzer_id
 
         elif analyzer_info and analyzer_info.kind == AnalyzerKind.LLM:
-            # Use LLM analyzer
             from pixsim7.backend.main.services.prompt.parser import analyze_prompt_with_llm
 
-            resolved_provider = resolved_execution.provider_id
-            resolved_model = resolved_execution.model_id
-
-            return await analyze_prompt_with_llm(
+            result = await analyze_prompt_with_llm(
                 text=text,
-                provider_id=resolved_provider,
-                model_id=resolved_model,
+                provider_id=resolved_execution.provider_id,
+                model_id=resolved_execution.model_id,
                 role_registry=role_registry,
                 instance_config=merged_config,
                 db=self.db,
                 user_id=user_id,
             )
+            return result, analyzer_id
 
         else:
-            # Unknown - fall back to simple
             logger.warning(f"No handler for analyzer {analyzer_id}, using simple parser")
             from pixsim7.backend.main.services.prompt.parser import analyze_prompt
-            return await analyze_prompt(
+            result = await analyze_prompt(
                 text,
                 role_registry=role_registry,
             )
+            return result, analyzer_id
 
     async def _resolve_role_registry(
         self,
