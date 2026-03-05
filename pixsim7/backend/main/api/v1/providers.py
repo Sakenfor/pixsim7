@@ -16,7 +16,6 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from urllib.parse import urlparse
 import json
-from pathlib import Path
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 # Import registry from providers domain (canonical location)
@@ -27,6 +26,7 @@ from pixsim7.backend.main.services.generation.pixverse_pricing import (
     estimate_video_credit_change,
     pixverse_calculate_cost,
 )
+from pixsim7.backend.main.shared.path_registry import get_path_registry
 try:  # pragma: no cover - optional SDK dependency
     from pixverse.models import VideoModel, ImageModel  # type: ignore
 except Exception:  # pragma: no cover
@@ -34,9 +34,8 @@ except Exception:  # pragma: no cover
 
 router = APIRouter()
 
-# Provider settings storage (simple file-based for now)
-# Directory created lazily on first write (not at import time)
-PROVIDER_SETTINGS_FILE = Path("data/provider_settings.json")
+# Provider settings storage (path registry source of truth)
+PROVIDER_SETTINGS_FILE = get_path_registry().provider_settings_file
 
 
 def _method_overridden(provider: Provider, method_name: str) -> bool:

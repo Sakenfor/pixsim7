@@ -108,6 +108,7 @@ from .ai_interaction import AiInteraction
 
 # Asset analysis
 from .assets.analysis import AssetAnalysis, AnalysisStatus
+from .assets.analysis_backfill import AnalysisBackfillRun, AnalysisBackfillStatus
 
 __all__ = [
     # Enums
@@ -162,4 +163,6 @@ __all__ = [
     # Asset analysis
     "AssetAnalysis",
     "AnalysisStatus",
+    "AnalysisBackfillRun",
+    "AnalysisBackfillStatus",
 ]

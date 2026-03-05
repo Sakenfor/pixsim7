@@ -14,6 +14,7 @@ from pixsim7.backend.main.api.dependencies import CurrentAdminUser
 from pixsim7.backend.main.infrastructure.database.session import get_log_db
 from pixsim7.backend.main.services.log_service import LogService
 from pixsim7.backend.main.domain import LogEntry
+from pixsim7.backend.main.shared.path_registry import get_path_registry
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -438,10 +439,11 @@ async def list_log_files(
     """List available log files."""
     import os
 
+    logs_root = get_path_registry().logs_root
     log_dirs = [
-        "data/logs",
-        "data/logs/console",
-        "data/logs/launcher"
+        str(logs_root),
+        str((logs_root / "console").resolve()),
+        str((logs_root / "launcher").resolve()),
     ]
 
     files = []
@@ -467,7 +469,7 @@ async def list_log_files(
 @router.get("/files/tail")
 async def tail_log_file(
     # admin: CurrentAdminUser,  # Commented out for local dev access
-    path: str = Query(..., description="Log file path (e.g., data/logs/console/backend.log)"),
+    path: str = Query(..., description="Log file path (e.g., <PIXSIM_HOME>/logs/console/backend.log)"),
     lines: int = Query(100, ge=1, le=10000, description="Number of lines to return"),
 ):
     """Get last N lines from a log file (like tail -n)."""
@@ -475,12 +477,12 @@ async def tail_log_file(
     from collections import deque
     from pathlib import Path
 
-    base_dir = Path("data/logs").resolve()
+    base_dir = get_path_registry().logs_root.resolve()
     target_path = Path(path).resolve()
 
-    # Security: only allow reading from data/logs directory
+    # Security: only allow reading from logs root directory
     if base_dir != target_path and base_dir not in target_path.parents:
-        raise HTTPException(status_code=403, detail="Access denied: can only read from data/logs/")
+        raise HTTPException(status_code=403, detail="Access denied: can only read from logs root")
 
     if not target_path.exists():
         raise HTTPException(status_code=404, detail=f"Log file not found: {path}")

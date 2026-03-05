@@ -24,6 +24,7 @@ from pixsim7.backend.main.workers.job_processor import process_generation
 from pixsim7.backend.main.workers.automation import process_automation, run_automation_loops, queue_pending_executions
 from pixsim7.backend.main.workers.status_poller import poll_job_statuses, requeue_pending_generations, reconcile_account_counters
 from pixsim7.backend.main.workers.analysis_processor import process_analysis, requeue_pending_analyses
+from pixsim7.backend.main.workers.analysis_backfill import run_analysis_backfill_batch
 from pixsim7.backend.main.services.automation.device_sync_service import poll_device_ads
 from pixsim7.backend.main.workers.health import update_heartbeat, get_health_tracker
 from pixsim7.backend.main.workers.world_simulation import tick_active_worlds, SIMULATION_ENABLED
@@ -114,6 +115,7 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_component_registered", component="process_generation")
     logger.info("worker_component_registered", component="process_automation")
     logger.info("worker_component_registered", component="process_analysis")
+    logger.info("worker_component_registered", component="run_analysis_backfill_batch")
     logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/10s")
     logger.info("worker_component_registered", component="run_automation_loops", schedule="*/30s")
     logger.info("worker_component_registered", component="queue_pending_executions", schedule="*/15s")
@@ -215,6 +217,7 @@ class WorkerSettings:
         process_generation,
         process_automation,
         process_analysis,
+        run_analysis_backfill_batch,
         poll_job_statuses,
         run_automation_loops,
         queue_pending_executions,

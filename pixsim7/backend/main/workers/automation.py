@@ -13,9 +13,8 @@ from pixsim7.backend.main.domain.automation import AutomationExecution, Automati
 from pixsim7.backend.main.infrastructure.database.session import get_db
 from pixsim7.backend.main.services.automation import ExecutionLoopService
 from sqlalchemy import select
-from pathlib import Path
-from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.services.automation.action_executor import ActionExecutor, ExecutionContext, ExecutionError
+from pixsim7.backend.main.shared.path_registry import get_path_registry
 
 logger = configure_logging("worker").bind(channel="cron")
 
@@ -134,7 +133,7 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
             try:
 
                 # Build execution context with auto-injected account credentials
-                screenshots_dir = Path(settings.storage_base_path) / settings.automation_screenshots_dir / f"exec-{execution.id}"
+                screenshots_dir = get_path_registry().automation_screenshots_root / f"exec-{execution.id}"
 
                 # Start with existing context or empty dict
                 variables = dict(execution.execution_context or {})

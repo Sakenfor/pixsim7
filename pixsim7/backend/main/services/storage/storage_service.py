@@ -28,6 +28,7 @@ import aiofiles
 import aiofiles.os
 
 from pixsim_logging import get_logger
+from pixsim7.backend.main.shared.path_registry import get_path_registry
 
 logger = get_logger()
 
@@ -123,13 +124,15 @@ class LocalStorageService(StorageService):
     organized by the key path structure.
     """
 
-    def __init__(self, root_path: str = "data/media"):
+    def __init__(self, root_path: str | Path | None = None):
         """
         Initialize local storage.
 
         Args:
-            root_path: Root directory for file storage
+            root_path: Root directory for file storage (defaults to path registry media root)
         """
+        if root_path is None:
+            root_path = get_path_registry().media_root
         self.root_path = Path(root_path)
         self.root_path.mkdir(parents=True, exist_ok=True)
         logger.info(
@@ -444,9 +447,7 @@ def get_storage_service() -> StorageService:
     global _storage_service
 
     if _storage_service is None:
-        # Get root path from environment or use default
-        root_path = os.getenv("PIXSIM_MEDIA_STORAGE_PATH", "data/media")
-        _storage_service = LocalStorageService(root_path)
+        _storage_service = LocalStorageService()
 
     return _storage_service
 

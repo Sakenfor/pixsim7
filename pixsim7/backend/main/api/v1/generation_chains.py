@@ -706,9 +706,9 @@ async def _run_chain_background(
     Delegates to ChainExecutor.execute() which owns the full orchestration
     loop (template rolling, guidance compilation, step submission, asset piping).
     """
-    from pixsim7.backend.main.database import async_session_factory
+    from pixsim7.backend.main.infrastructure.database.session import get_async_session
 
-    async with async_session_factory() as db:
+    async with get_async_session() as db:
         # Load chain and pre-created execution
         chain = await db.get(GenerationChain, chain_id)
         execution = await db.get(ChainExecution, execution_id)
@@ -758,9 +758,9 @@ async def _run_ephemeral_chain_background(
     A synthetic GenerationChain object is created in-memory and passed to
     ChainExecutor while reusing the pre-created ChainExecution record.
     """
-    from pixsim7.backend.main.database import async_session_factory
+    from pixsim7.backend.main.infrastructure.database.session import get_async_session
 
-    async with async_session_factory() as db:
+    async with get_async_session() as db:
         execution = await db.get(ChainExecution, execution_id)
         if not execution:
             return
@@ -813,9 +813,9 @@ async def _run_ephemeral_fanout_background(
     """
     Run an ephemeral fanout payload in background.
     """
-    from pixsim7.backend.main.database import async_session_factory
+    from pixsim7.backend.main.infrastructure.database.session import get_async_session
 
-    async with async_session_factory() as db:
+    async with get_async_session() as db:
         execution = await db.get(ChainExecution, execution_id)
         if not execution:
             return

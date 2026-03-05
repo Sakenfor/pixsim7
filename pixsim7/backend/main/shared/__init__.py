@@ -15,6 +15,19 @@ from pixsim7.backend.main.shared.namespaced_id import (
     make_namespaced_id,
     get_namespace,
 )
+from pixsim7.backend.main.shared.extension_contract import (
+    ExtensionKind,
+    ExtensionScope,
+    ExtensionLifecycleStatus,
+    ExtensionIdentity,
+    is_canonical_extension_id,
+    parse_extension_identity,
+    build_extension_identity,
+    is_editable_lifecycle,
+    can_submit_lifecycle,
+    can_approve_lifecycle,
+    can_publish_lifecycle,
+)
 
 __all__ = [
     "AuthClaims",
@@ -26,4 +39,15 @@ __all__ = [
     "parse_namespaced_id",
     "make_namespaced_id",
     "get_namespace",
+    "ExtensionKind",
+    "ExtensionScope",
+    "ExtensionLifecycleStatus",
+    "ExtensionIdentity",
+    "is_canonical_extension_id",
+    "parse_extension_identity",
+    "build_extension_identity",
+    "is_editable_lifecycle",
+    "can_submit_lifecycle",
+    "can_approve_lifecycle",
+    "can_publish_lifecycle",
 ]

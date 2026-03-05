@@ -476,7 +476,7 @@ def build_operation_parameter_spec() -> dict:
         },
         # video_transition: aspect ratio is determined by source images
         "video_transition": {
-            "parameters": [composition_assets_image, prompts, model, quality, transition_duration]
+            "parameters": [composition_assets_image, prompts, model, quality, transition_duration, seed, audio, off_peak]
         },
         "video_modify": {
             "parameters": [

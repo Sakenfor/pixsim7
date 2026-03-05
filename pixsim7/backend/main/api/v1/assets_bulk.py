@@ -17,6 +17,7 @@ from typing import List
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOperationError
+from pixsim7.backend.main.shared.path_registry import get_path_registry
 from pixsim_logging import get_logger
 
 router = APIRouter(tags=["assets-bulk"])
@@ -172,7 +173,7 @@ async def bulk_export_assets(
                     continue
 
         # Move ZIP to permanent storage
-        export_dir = Path("data/exports")
+        export_dir = get_path_registry().exports_root
         export_dir.mkdir(parents=True, exist_ok=True)
 
         zip_filename = f"export_{user.id}_{int(datetime.now(timezone.utc).timestamp())}.zip"
@@ -223,7 +224,7 @@ async def download_export(
     if not filename.startswith(f"export_{user.id}_"):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    export_path = Path("data/exports") / filename
+    export_path = get_path_registry().exports_root / filename
 
     if not export_path.exists():
         raise HTTPException(status_code=404, detail="Export file not found")

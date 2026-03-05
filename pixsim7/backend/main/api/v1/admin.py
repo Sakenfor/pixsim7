@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, DatabaseSession
 from pixsim7.backend.main.infrastructure.redis import check_redis_connection, get_redis
+from pixsim7.backend.main.shared.path_registry import get_path_registry
 
 router = APIRouter()
 
@@ -407,7 +408,7 @@ async def get_logs(
     Reads from JSON log file and filters based on criteria.
     Supports pagination and multiple filter conditions.
     """
-    log_file = os.getenv("LOG_FILE", "data/logs/backend.log")
+    log_file = os.getenv("LOG_FILE", str(get_path_registry().logs_root / "backend.log"))
     log_path = Path(log_file)
 
     logs: List[LogEntry] = []
@@ -543,7 +544,7 @@ async def stream_logs(websocket):
 
     await websocket.accept()
 
-    log_file = os.getenv("LOG_FILE", "data/logs/backend.log")
+    log_file = os.getenv("LOG_FILE", str(get_path_registry().logs_root / "backend.log"))
     log_path = Path(log_file)
 
     # Send connection success

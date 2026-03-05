@@ -611,8 +611,11 @@ class PixverseOperationsMixin:
         options = TransitionOptions(
             prompts=params["prompts"],
             image_urls=params["image_urls"],
+            model=params.get("model", "v5"),
             quality=params.get("quality", "360p"),
             durations=durations,
+            seed=params.get("seed"),
+            audio=params.get("audio"),
         )
 
         return await client.transition(**options.model_dump())

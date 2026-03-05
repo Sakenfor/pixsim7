@@ -236,12 +236,16 @@ if __name__ == "__main__":
         host=settings.host,
         port=settings.port,
         reload=settings.debug,
-        # Limit hot-reload to backend sources and ignore data/logs and build outputs
+        # Limit hot-reload to backend sources and ignore local runtime/build outputs
         reload_dirs=[str(Path(__file__).parent)],
         reload_includes=["*.py"],
         reload_excludes=[
             "data/*",
             "data/**",
+            ".pixsim/*",
+            ".pixsim/**",
+            ".pixsim7/*",
+            ".pixsim7/**",
             "**/*.log",
             "**/logs/**",
             "**/node_modules/**",

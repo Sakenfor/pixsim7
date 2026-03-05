@@ -336,10 +336,14 @@ class Settings(BaseSettings):
         description="Max retry attempts"
     )
 
-    # ===== STORAGE =====
-    storage_base_path: str = Field(
-        default="./storage",
-        description="Base path for local file storage"
+    # ===== PATHS =====
+    pixsim_home: str | Path | None = Field(
+        default=None,
+        description=(
+            "Optional app-managed data root. "
+            "If unset, backend uses OS-specific user data directories "
+            "(e.g. %LOCALAPPDATA%/PixSim7, ~/.local/share/pixsim7)."
+        ),
     )
     max_file_size_mb: int = Field(
         default=500,
@@ -395,10 +399,6 @@ class Settings(BaseSettings):
     adb_path: str = Field(
         default="adb",
         description="Path to ADB executable (or 'adb' if in PATH)"
-    )
-    automation_screenshots_dir: str = Field(
-        default="automation_screenshots",
-        description="Relative folder under storage_base_path for screenshots"
     )
 
     # ===== WEBHOOKS =====
@@ -481,6 +481,22 @@ class Settings(BaseSettings):
         "external_plugins_dir",
         "route_plugins_dir",
         "middleware_dir",
+        "pixsim_home",
+        mode="before"
+    )
+    @classmethod
+    def normalize_optional_root(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
+    @field_validator(
+        "domain_models_dir",
+        "feature_plugins_dir",
+        "external_plugins_dir",
+        "route_plugins_dir",
+        "middleware_dir",
+        "pixsim_home",
         mode="before"
     )
     @classmethod
@@ -496,6 +512,8 @@ class Settings(BaseSettings):
             FEATURE_PLUGINS_DIR="custom/plugins"  # Relative path
             DOMAIN_MODELS_DIR="/opt/pixsim/models"  # Absolute path
         """
+        if v is None:
+            return None
         if isinstance(v, str):
             candidate = Path(v)
             if candidate.is_absolute():

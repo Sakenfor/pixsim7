@@ -22,6 +22,7 @@ from pixsim7.backend.main.services.asset import (
     get_media_settings,
 )
 from pixsim7.backend.main.services.storage import get_storage_service
+from pixsim7.backend.main.shared.path_registry import get_path_registry
 from pixsim_logging import get_logger
 
 router = APIRouter()
@@ -49,8 +50,6 @@ class MediaSettingsResponse(BaseModel):
     default_upload_provider: str = Field(
         description="Default provider for uploads when frame_extraction_upload is 'always'"
     )
-    generate_embeddings: bool = Field(description="Generate CLIP embeddings during ingestion")
-    clip_embedding_command: str = Field(description="Command for CLIP embedding generation")
 
 
 class MediaSettingsUpdate(BaseModel):
@@ -68,12 +67,10 @@ class MediaSettingsUpdate(BaseModel):
     preview_size: Optional[list[int]] = None
     frame_extraction_upload: Optional[str] = None
     default_upload_provider: Optional[str] = None
-    generate_embeddings: Optional[bool] = None
-    clip_embedding_command: Optional[str] = None
 
 
 @router.get("/media/settings", response_model=MediaSettingsResponse)
-async def get_settings(user: CurrentUser):
+async def get_settings(_user: CurrentUser):
     """
     Get media settings.
 
@@ -517,8 +514,8 @@ async def get_storage_info(user: CurrentUser):
 
     storage = get_storage_service()
 
-    # For local storage, scan directory
-    root_path = os.getenv("PIXSIM_MEDIA_STORAGE_PATH", "data/media")
+    # For local storage, scan directory from path registry
+    root_path = get_path_registry().media_root
 
     total_files = 0
     total_size = 0

@@ -34,6 +34,7 @@ from pixsim7.backend.main.domain import Asset
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 from pixsim7.backend.main.services.storage import get_storage_service
 from pixsim7.backend.main.shared.storage_utils import compute_sha256 as shared_compute_sha256
+from pixsim7.backend.main.shared.path_registry import get_path_registry
 from pixsim7.backend.main.services.asset.content import ensure_content_blob
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import normalize_url
 from pixsim_logging import get_logger
@@ -63,7 +64,7 @@ class MediaSettings:
     def _load(self) -> None:
         """Load settings from file."""
         import json
-        settings_path = Path("data/media_settings.json")
+        settings_path = get_path_registry().media_settings_file
 
         if settings_path.exists():
             try:
@@ -80,7 +81,7 @@ class MediaSettings:
     def _save(self) -> None:
         """Save settings to file."""
         import json
-        settings_path = Path("data/media_settings.json")
+        settings_path = get_path_registry().media_settings_file
         settings_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
@@ -178,16 +179,6 @@ class MediaSettings:
         """Default provider for uploads when frame_extraction_upload is 'always'."""
         return self._settings.get("default_upload_provider", "pixverse")
 
-    @property
-    def generate_embeddings(self) -> bool:
-        """Generate CLIP embeddings during asset ingestion."""
-        return self._settings.get("generate_embeddings", False)
-
-    @property
-    def clip_embedding_command(self) -> str:
-        """Command that accepts JSON on stdin and returns embeddings on stdout."""
-        return self._settings.get("clip_embedding_command", "")
-
     def update(self, updates: Dict[str, Any]) -> None:
         """Update settings and save."""
         self._settings.update(updates)
@@ -209,8 +200,6 @@ class MediaSettings:
             "preview_size": list(self.preview_size),
             "frame_extraction_upload": self.frame_extraction_upload,
             "default_upload_provider": self.default_upload_provider,
-            "generate_embeddings": self.generate_embeddings,
-            "clip_embedding_command": self.clip_embedding_command,
         }
 
 
@@ -1131,20 +1120,6 @@ class AssetIngestionService:
             return
 
         await analysis_service.mark_completed(analysis.id, output_data)
-
-        # For embedding analyzers: copy vector to asset
-        if instance.analyzer_id == "asset:embedding":
-            embeddings = output_data.get("embeddings")
-            if embeddings and len(embeddings) >= 1:
-                embedding = embeddings[0]
-                if len(embedding) == 768:
-                    asset.embedding = embedding
-                    asset.embedding_generated_at = datetime.now(timezone.utc)
-                    logger.info(
-                        "on_ingest_embedding_applied",
-                        asset_id=asset.id,
-                        dimensions=len(embedding),
-                    )
 
     def _guess_extension(self, asset: Asset) -> str:
         """Guess file extension from asset info."""

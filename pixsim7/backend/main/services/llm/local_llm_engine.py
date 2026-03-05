@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from pixsim7.backend.main.shared.config import settings
+from pixsim7.backend.main.shared.path_registry import get_path_registry
 
 logger = logging.getLogger(__name__)
 
@@ -116,11 +117,7 @@ class LocalLlmEngine:
             source = "instance model_path" if self._model_path_override else "LOCAL_LLM_MODEL_PATH"
             raise FileNotFoundError(f"Configured {source} does not exist: {candidate}")
 
-        default_path = (
-            Path(settings.storage_base_path).expanduser().resolve()
-            / "models"
-            / DEFAULT_MODEL_FILENAME
-        )
+        default_path = get_path_registry().models_root / DEFAULT_MODEL_FILENAME
         if default_path.exists():
             return default_path
 

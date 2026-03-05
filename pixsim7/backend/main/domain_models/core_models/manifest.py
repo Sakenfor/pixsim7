@@ -22,6 +22,7 @@ manifest = DomainModelManifest(
         "pixsim7.backend.main.domain.assets.metadata",
         "pixsim7.backend.main.domain.assets.lineage",
         "pixsim7.backend.main.domain.assets.analysis",
+        "pixsim7.backend.main.domain.assets.analysis_backfill",
         "pixsim7.backend.main.domain.assets.tag",
         "pixsim7.backend.main.domain.analyzer_definition",
         "pixsim7.backend.main.domain.analyzer_preset",
