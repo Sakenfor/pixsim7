@@ -4,7 +4,24 @@
  * Provides types, utilities, and helpers for working with arc graphs.
  */
 
-export * from './types';
+export type {
+  RelationshipRequirement,
+  QuestFlagRequirement,
+  BaseArcNodeData,
+  ArcNodeData,
+  QuestNodeData,
+  MilestoneNodeData,
+  ArcGroupNodeData,
+  ArcGraphNode,
+  ArcGraphEdge,
+  ArcGraph,
+} from './types';
+export {
+  isArcNode,
+  isQuestNode,
+  isMilestoneNode,
+  isArcGroupNode,
+} from './types';
 export {
   createEmptyArcGraph,
   exportArcGraph,

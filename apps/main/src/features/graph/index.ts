@@ -72,7 +72,22 @@ export { ValidationProvider } from './hooks/ValidationContext';
 export { useValidationContext, useValidationContextOptional } from './hooks/useValidationContext';
 
 // Store Selectors
-export * from './stores/graphStore/selectors';
+export {
+  selectCurrentScene,
+  selectCurrentSceneId,
+  selectScenes,
+  selectSceneCount,
+  selectCurrentNodes,
+  selectCurrentEdges,
+  selectNodeCount,
+  selectEdgeCount,
+  selectNodeActions,
+  selectSceneActions,
+  selectNodeGroupActions,
+  selectNavigationActions,
+  selectGraphStats,
+  actionsEqual,
+} from './stores/graphStore/selectors';
 
 // Lib - Editor Core APIs (explicit - these are the main APIs)
 export { graphEditorRegistry, graphEditorSelectors } from './lib/editor/registry';
@@ -111,7 +126,73 @@ export * from './lib/nodeTypes/builtin';
 export * as NodeTypes from './lib/nodeTypes/registry';
 
 // Lib - Refs (canonical IDs and ObjectLinks)
-export * from './lib/refs';
+export type {
+  NormalizeResult,
+  NormalizeOptions,
+  NpcId,
+  CharacterId,
+  InstanceId,
+  SceneId,
+  LocationId,
+  AssetId,
+  NpcRef,
+  CharacterRef,
+  InstanceRef,
+  SceneIdRef,
+  LocationRef,
+  AssetRef,
+  EntityRef,
+  ParsedRef,
+  NodeLinkInfo,
+  ResolvedLink,
+  TemplateRef,
+  TemplateKind,
+  RuntimeKind,
+  SyncDirection,
+} from './lib/refs';
+export {
+  normalizeNpcRef,
+  extractNpcIdFromRef,
+  normalizeInstanceRef,
+  extractInstanceIdFromRef,
+  normalizeCharacterRef,
+  extractCharacterIdFromRef,
+  normalizeSceneRef,
+  extractSceneIdFromRef,
+  normalizeLocationRef,
+  extractLocationIdFromRef,
+  normalizeAssetRef,
+  extractAssetIdFromRef,
+  tryParseEntityRef,
+  isAnyEntityRef,
+  normalizeRefBatch,
+  Ref,
+  parseRef,
+  isUUID,
+  createTemplateRef,
+  createNpcLinkInfo,
+  createItemLinkInfo,
+  createPropLinkInfo,
+  resolveLinkInfo,
+  extractLinksFromMetadata,
+  buildRuntimeTemplateRefs,
+  buildRuntimeLinkMap,
+  createMappingId,
+  createTemplateRefKey,
+  parseTemplateRefKey,
+} from './lib/refs';
 
 // Lib - Capabilities (ContextHub integration)
-export * from './lib/capabilities';
+export type {
+  GraphActionsContext,
+  GraphNodePosition,
+  InsertNodeOptions,
+  InsertNodeResult,
+  RefValidationResult,
+} from './lib/capabilities';
+export {
+  CAP_GRAPH_ACTIONS,
+  createGraphActionsProvider,
+  nullGraphActionsContext,
+  useGraphCapabilityBridge,
+} from './lib/capabilities';

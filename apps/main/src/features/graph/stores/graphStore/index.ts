@@ -170,4 +170,19 @@ export const useGraphStoreCanRedo = () => useGraphStore.temporal.getState().futu
 export type { GraphState, NodeGroupManagementState, NavigationState } from './types';
 
 // Re-export selectors for convenience
-export * from './selectors';
+export {
+  selectCurrentScene,
+  selectCurrentSceneId,
+  selectScenes,
+  selectSceneCount,
+  selectCurrentNodes,
+  selectCurrentEdges,
+  selectNodeCount,
+  selectEdgeCount,
+  selectNodeActions,
+  selectSceneActions,
+  selectNodeGroupActions,
+  selectNavigationActions,
+  selectGraphStats,
+  actionsEqual,
+} from './selectors';
