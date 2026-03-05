@@ -101,6 +101,8 @@ from .simulation import (
 from .project_bundle import (
     PROJECT_BUNDLE_SCHEMA_VERSION,
     ProjectImportMode,
+    ProjectOriginKind,
+    ProjectProvenance,
     BundleWorldData,
     BundleHotspotData,
     BundleLocationData,
@@ -204,6 +206,8 @@ __all__ = [
     # Project bundle schemas
     "PROJECT_BUNDLE_SCHEMA_VERSION",
     "ProjectImportMode",
+    "ProjectOriginKind",
+    "ProjectProvenance",
     "BundleWorldData",
     "BundleHotspotData",
     "BundleLocationData",

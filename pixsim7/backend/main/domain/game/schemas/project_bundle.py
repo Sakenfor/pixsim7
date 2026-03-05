@@ -14,6 +14,23 @@ class ProjectImportMode(str, Enum):
     CREATE_NEW_WORLD = "create_new_world"
 
 
+class ProjectOriginKind(str, Enum):
+    USER = "user"
+    SEED = "seed"
+    DEMO = "demo"
+    IMPORT = "import"
+    DUPLICATE = "duplicate"
+    DRAFT = "draft"
+    UNKNOWN = "unknown"
+
+
+class ProjectProvenance(BaseModel):
+    kind: ProjectOriginKind = ProjectOriginKind.UNKNOWN
+    source_key: Optional[str] = Field(default=None, max_length=160)
+    parent_project_id: Optional[int] = None
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
 class BundleWorldData(BaseModel):
     name: str
     meta: Dict[str, Any] = Field(default_factory=dict)
@@ -167,6 +184,7 @@ class SaveGameProjectRequest(BaseModel):
     bundle: GameProjectBundle
     source_world_id: Optional[int] = None
     overwrite_project_id: Optional[int] = None
+    provenance: Optional[ProjectProvenance] = None
 
 
 class RenameSavedGameProjectRequest(BaseModel):
@@ -182,6 +200,7 @@ class SavedGameProjectSummary(BaseModel):
     name: str
     source_world_id: Optional[int] = None
     schema_version: int = PROJECT_BUNDLE_SCHEMA_VERSION
+    provenance: ProjectProvenance = Field(default_factory=ProjectProvenance)
     created_at: datetime
     updated_at: datetime
 
@@ -203,4 +222,3 @@ class DraftSummary(BaseModel):
     schema_version: int = PROJECT_BUNDLE_SCHEMA_VERSION
     created_at: datetime
     updated_at: datetime
-

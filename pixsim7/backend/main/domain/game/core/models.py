@@ -251,6 +251,17 @@ class GameProjectSnapshot(SQLModel, table=True):
     schema_version: int = Field(default=1)
     is_draft: bool = Field(default=False, index=True)
     draft_source_project_id: Optional[int] = Field(default=None, index=True)
+    origin_kind: str = Field(default="unknown", max_length=32, index=True)
+    origin_source_key: Optional[str] = Field(default=None, max_length=160, index=True)
+    origin_parent_project_id: Optional[int] = Field(
+        default=None,
+        foreign_key="game_project_snapshots.id",
+        index=True,
+    )
+    origin_meta: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False),
+    )
     bundle: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
     created_at: datetime = Field(default_factory=utcnow, index=True)
     updated_at: datetime = Field(

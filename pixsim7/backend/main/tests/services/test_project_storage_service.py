@@ -99,3 +99,94 @@ async def test_upsert_draft_recovers_from_integrity_race() -> None:
     assert first_added.draft_source_project_id == 5
 
 
+@pytest.mark.asyncio
+async def test_save_project_defaults_new_snapshot_to_user_provenance() -> None:
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+
+    service = GameProjectStorageService(db)
+    bundle = _Bundle()
+
+    await service.save_project(
+        owner_user_id=1,
+        name="New Project",
+        bundle=bundle,
+    )
+
+    added = db.add.call_args.args[0]
+    assert added.origin_kind == "user"
+    assert added.origin_source_key is None
+    assert added.origin_parent_project_id is None
+    assert added.origin_meta == {}
+
+
+@pytest.mark.asyncio
+async def test_save_project_overwrite_preserves_existing_provenance_without_request() -> None:
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+
+    existing = SimpleNamespace(
+        id=7,
+        name="Existing",
+        source_world_id=1,
+        schema_version=1,
+        bundle={},
+        origin_kind="seed",
+        origin_source_key="bananza_boat_slice_v1",
+        origin_parent_project_id=None,
+        origin_meta={"seed_key": "bananza_boat_slice_v1"},
+    )
+
+    service = GameProjectStorageService(db)
+    service.get_project = AsyncMock(return_value=existing)
+    bundle = _Bundle()
+
+    await service.save_project(
+        owner_user_id=1,
+        name="Existing Updated",
+        bundle=bundle,
+        overwrite_project_id=7,
+    )
+
+    assert existing.origin_kind == "seed"
+    assert existing.origin_source_key == "bananza_boat_slice_v1"
+    assert existing.origin_parent_project_id is None
+    assert existing.origin_meta == {"seed_key": "bananza_boat_slice_v1"}
+
+
+@pytest.mark.asyncio
+async def test_duplicate_project_sets_duplicate_provenance() -> None:
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+
+    source = SimpleNamespace(
+        id=11,
+        source_world_id=3,
+        schema_version=1,
+        origin_source_key="bananza_boat_slice_v1",
+        origin_meta={"seed_key": "bananza_boat_slice_v1"},
+        bundle={"core": {"world": {"name": "Bananza"}}},
+    )
+
+    service = GameProjectStorageService(db)
+    service.get_project = AsyncMock(return_value=source)
+
+    await service.duplicate_project(
+        owner_user_id=1,
+        project_id=11,
+        name="Copy",
+    )
+
+    added = db.add.call_args.args[0]
+    assert added.origin_kind == "duplicate"
+    assert added.origin_parent_project_id == 11
+    assert added.origin_source_key == "bananza_boat_slice_v1"
+    assert added.origin_meta.get("duplicated_from_project_id") == 11
+
+

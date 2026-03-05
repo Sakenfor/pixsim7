@@ -17,6 +17,8 @@ from pixsim7.backend.main.domain.game.schemas.project_bundle import (
     GameProjectBundle,
     GameProjectImportRequest,
     GameProjectImportResponse,
+    ProjectOriginKind,
+    ProjectProvenance,
     SaveGameProjectRequest,
     RenameSavedGameProjectRequest,
     DuplicateSavedGameProjectRequest,
@@ -88,25 +90,56 @@ async def _build_world_detail(
 
 
 def _to_saved_project_summary(project) -> SavedGameProjectSummary:
+    provenance = _to_project_provenance(project)
     return SavedGameProjectSummary(
         id=project.id,
         name=project.name,
         source_world_id=project.source_world_id,
         schema_version=project.schema_version,
+        provenance=provenance,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
 
 
 def _to_saved_project_detail(project) -> SavedGameProjectDetail:
+    provenance = _to_project_provenance(project)
     return SavedGameProjectDetail(
         id=project.id,
         name=project.name,
         source_world_id=project.source_world_id,
         schema_version=project.schema_version,
+        provenance=provenance,
         created_at=project.created_at,
         updated_at=project.updated_at,
         bundle=GameProjectBundle.model_validate(project.bundle),
+    )
+
+
+def _to_project_provenance(project) -> ProjectProvenance:
+    raw_kind = getattr(project, "origin_kind", None)
+    normalized_kind = str(raw_kind or "").strip().lower()
+    try:
+        kind = ProjectOriginKind(normalized_kind) if normalized_kind else ProjectOriginKind.UNKNOWN
+    except ValueError:
+        kind = ProjectOriginKind.UNKNOWN
+
+    source_key_raw = getattr(project, "origin_source_key", None)
+    source_key = str(source_key_raw).strip() if source_key_raw is not None else None
+    if source_key == "":
+        source_key = None
+
+    meta = getattr(project, "origin_meta", None)
+    if not isinstance(meta, dict):
+        meta = {}
+
+    parent_project_id = getattr(project, "origin_parent_project_id", None)
+
+    return ProjectProvenance(
+        kind=kind,
+        source_key=source_key,
+        parent_project_id=parent_project_id,
+        meta=dict(meta),
     )
 
 
@@ -349,12 +382,14 @@ async def list_saved_projects(
     user: CurrentGamePrincipal,
     offset: int = 0,
     limit: int = 100,
+    origin_kind: Optional[ProjectOriginKind] = None,
 ) -> List[SavedGameProjectSummary]:
     storage = GameProjectStorageService(game_world_service.db)
     projects = await storage.list_projects(
         owner_user_id=user.id,
         offset=offset,
         limit=limit,
+        origin_kind=origin_kind,
     )
     return [_to_saved_project_summary(project) for project in projects]
 
@@ -390,6 +425,7 @@ async def save_project_snapshot(
             bundle=req.bundle,
             source_world_id=req.source_world_id,
             overwrite_project_id=req.overwrite_project_id,
+            provenance=req.provenance,
         )
     except ValueError as e:
         msg = str(e)
@@ -1333,5 +1369,4 @@ async def get_world_config_endpoint(
     config = get_world_config(world.meta)
 
     return config
-
 

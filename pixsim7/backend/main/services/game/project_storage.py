@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.game import GameProjectSnapshot, GameWorld
-from pixsim7.backend.main.domain.game.schemas.project_bundle import GameProjectBundle
+from pixsim7.backend.main.domain.game.schemas.project_bundle import (
+    GameProjectBundle,
+    ProjectOriginKind,
+    ProjectProvenance,
+)
 
 
 class GameProjectStorageService:
@@ -22,22 +26,70 @@ class GameProjectStorageService:
             raise ValueError("project_name_required")
         return normalized_name
 
+    @staticmethod
+    def _normalize_origin_kind(kind: Optional[Any]) -> str:
+        if isinstance(kind, ProjectOriginKind):
+            return kind.value
+        text = str(kind or "").strip().lower()
+        if not text:
+            return ProjectOriginKind.UNKNOWN.value
+        try:
+            return ProjectOriginKind(text).value
+        except ValueError:
+            return ProjectOriginKind.UNKNOWN.value
+
+    @staticmethod
+    def _normalize_origin_source_key(value: Optional[Any]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    @staticmethod
+    def _normalize_origin_meta(value: Optional[Any]) -> Dict[str, Any]:
+        if isinstance(value, dict):
+            return dict(value)
+        return {}
+
+    def _apply_provenance(self, project: GameProjectSnapshot, provenance: ProjectProvenance) -> None:
+        project.origin_kind = self._normalize_origin_kind(provenance.kind)
+        project.origin_source_key = self._normalize_origin_source_key(provenance.source_key)
+        project.origin_parent_project_id = provenance.parent_project_id
+        project.origin_meta = self._normalize_origin_meta(provenance.meta)
+
+    @staticmethod
+    def _draft_provenance(draft_source_project_id: Optional[int]) -> ProjectProvenance:
+        meta: Dict[str, Any] = {}
+        if draft_source_project_id is not None:
+            meta["draft_source_project_id"] = draft_source_project_id
+        return ProjectProvenance(
+            kind=ProjectOriginKind.DRAFT,
+            parent_project_id=draft_source_project_id,
+            meta=meta,
+        )
+
     async def list_projects(
         self,
         *,
         owner_user_id: int,
         offset: int = 0,
         limit: int = 100,
+        origin_kind: Optional[ProjectOriginKind] = None,
     ) -> List[GameProjectSnapshot]:
         limit = min(max(1, limit), 500)
         offset = max(0, offset)
 
-        result = await self.db.execute(
-            select(GameProjectSnapshot)
-            .where(
-                GameProjectSnapshot.owner_user_id == owner_user_id,
-                GameProjectSnapshot.is_draft == False,  # noqa: E712
+        filters = [
+            GameProjectSnapshot.owner_user_id == owner_user_id,
+            GameProjectSnapshot.is_draft == False,  # noqa: E712
+        ]
+        if origin_kind is not None:
+            filters.append(
+                GameProjectSnapshot.origin_kind == self._normalize_origin_kind(origin_kind),
             )
+
+        result = await self.db.execute(
+            select(GameProjectSnapshot).where(*filters)
             .order_by(GameProjectSnapshot.updated_at.desc(), GameProjectSnapshot.id.desc())
             .offset(offset)
             .limit(limit)
@@ -71,6 +123,7 @@ class GameProjectStorageService:
         bundle: GameProjectBundle,
         source_world_id: Optional[int] = None,
         overwrite_project_id: Optional[int] = None,
+        provenance: Optional[ProjectProvenance] = None,
     ) -> GameProjectSnapshot:
         normalized_name = self._normalize_project_name(name)
 
@@ -88,6 +141,7 @@ class GameProjectStorageService:
             if not project:
                 raise ValueError("project_not_found")
 
+        is_new = project is None
         if not project:
             project = GameProjectSnapshot(owner_user_id=owner_user_id)
 
@@ -95,6 +149,13 @@ class GameProjectStorageService:
         project.source_world_id = source_world_id
         project.schema_version = int(bundle.schema_version)
         project.bundle = bundle.model_dump(mode="json")
+        if provenance is not None:
+            self._apply_provenance(project, provenance)
+        elif is_new:
+            self._apply_provenance(
+                project,
+                ProjectProvenance(kind=ProjectOriginKind.USER),
+            )
 
         self.db.add(project)
         await self.db.commit()
@@ -152,6 +213,17 @@ class GameProjectStorageService:
             source_world_id=source_project.source_world_id,
             name=normalized_name,
             schema_version=source_project.schema_version,
+            origin_kind=ProjectOriginKind.DUPLICATE.value,
+            origin_source_key=source_project.origin_source_key,
+            origin_parent_project_id=source_project.id,
+            origin_meta={
+                **self._normalize_origin_meta(source_project.origin_meta),
+                **(
+                    {"duplicated_from_project_id": source_project.id}
+                    if source_project.id is not None
+                    else {}
+                ),
+            },
             bundle=deepcopy(source_project.bundle or {}),
         )
 
@@ -181,6 +253,7 @@ class GameProjectStorageService:
             existing.bundle = bundle_json
             existing.schema_version = schema_version
             existing.source_world_id = source_world_id
+            self._apply_provenance(existing, self._draft_provenance(draft_source_project_id))
             self.db.add(existing)
             await self.db.commit()
             await self.db.refresh(existing)
@@ -195,6 +268,7 @@ class GameProjectStorageService:
             is_draft=True,
             draft_source_project_id=draft_source_project_id,
         )
+        self._apply_provenance(draft, self._draft_provenance(draft_source_project_id))
         self.db.add(draft)
         try:
             await self.db.commit()
@@ -214,6 +288,7 @@ class GameProjectStorageService:
             existing.bundle = bundle_json
             existing.schema_version = schema_version
             existing.source_world_id = source_world_id
+            self._apply_provenance(existing, self._draft_provenance(draft_source_project_id))
             self.db.add(existing)
             await self.db.commit()
             await self.db.refresh(existing)
@@ -259,5 +334,4 @@ class GameProjectStorageService:
         await self.db.delete(draft)
         await self.db.commit()
         return True
-
 
