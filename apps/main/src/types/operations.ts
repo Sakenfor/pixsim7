@@ -144,8 +144,10 @@ export type MultiAssetMode = 'optional' | 'required';
 export interface OperationMetadata {
   /** Display label */
   label: string;
-  /** Optional icon name for UI display */
+  /** Icon name for UI display (omit for text-only operations) */
   icon?: string;
+  /** Brand color for buttons/badges (omit for text-only operations) */
+  color?: string;
   /** Short description */
   description: string;
   /** Multi-asset behavior */
@@ -173,6 +175,16 @@ export interface OperationMetadata {
   hiddenParams?: string[];
   /** Allow duplicate assets in input list (e.g. transitions) */
   allowDuplicateInputs?: boolean;
+  /** Whether source asset is optional (operation falls back to text-only) */
+  flexibleInput?: boolean;
+  /** Whether aspect ratio is inherited from source (hides aspect_ratio param) */
+  inheritsAspectRatio?: boolean;
+  /** Default prompt placeholder text */
+  promptPlaceholder?: string;
+  /** Prompt placeholder when asset is loaded (overrides default) */
+  promptPlaceholderWithAsset?: string;
+  /** Fallback max input slots when provider specs aren't loaded */
+  maxSlots?: number;
 }
 
 /**
@@ -190,6 +202,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     promptSupported: true,
     compositionRole: null,
     inputMediaType: null,
+    promptPlaceholder: 'Describe the image you want to create...',
   },
   text_to_video: {
     label: 'Text to Video',
@@ -201,9 +214,12 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     promptSupported: true,
     compositionRole: null,
     inputMediaType: null,
+    promptPlaceholder: 'Describe the video you want to create...',
   },
   image_to_video: {
     label: 'Image to Video',
+    icon: 'film',
+    color: '#2563EB',
     description: 'Animate an image into a video',
     multiAssetMode: 'optional',
     acceptsInput: ['image', 'video'], // video via frame extraction
@@ -212,20 +228,32 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     promptSupported: true,
     compositionRole: 'source_image',
     inputMediaType: 'image',
+    flexibleInput: true,
+    inheritsAspectRatio: true,
+    promptPlaceholder: 'Describe the video...',
+    promptPlaceholderWithAsset: 'Describe the motion...',
   },
   image_to_image: {
     label: 'Image Generation',
+    icon: 'image',
+    color: '#8B5CF6',
     description: 'Transform or edit an image',
-    multiAssetMode: 'optional', // Can use multiple source images for composition/style
+    multiAssetMode: 'optional',
     acceptsInput: ['image', 'video'], // video via frame extraction
     outputType: 'image',
     promptRequired: true,
     promptSupported: true,
     compositionRole: 'source_image',
     inputMediaType: 'image',
+    flexibleInput: true,
+    maxSlots: 7,
+    promptPlaceholder: 'Describe the image...',
+    promptPlaceholderWithAsset: 'Describe the transformation...',
   },
   video_extend: {
     label: 'Video Extend',
+    icon: 'arrowRight',
+    color: '#0891B2',
     description: 'Extend a video with additional frames',
     multiAssetMode: 'optional',
     acceptsInput: ['video'],
@@ -234,9 +262,13 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     promptSupported: true,
     compositionRole: 'source_video',
     inputMediaType: 'video',
+    inheritsAspectRatio: true,
+    promptPlaceholder: 'Describe how to continue the video...',
   },
   video_transition: {
     label: 'Video Transition',
+    icon: 'arrowRightLeft',
+    color: '#D97706',
     description: 'Create transitions between multiple images',
     multiAssetMode: 'required',
     acceptsInput: ['image', 'video'], // video via frame extraction
@@ -247,9 +279,13 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     inputMediaType: 'image',
     hiddenParams: ['duration'],
     allowDuplicateInputs: true,
+    maxSlots: 7,
+    promptPlaceholder: 'Describe the motion...',
   },
   video_modify: {
     label: 'Video Modify',
+    icon: 'pencil',
+    color: '#0D9488',
     description: 'Modify a video with mask-based editing',
     multiAssetMode: 'optional',
     acceptsInput: ['video'],
@@ -258,9 +294,13 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     promptSupported: true,
     compositionRole: 'source_video',
     inputMediaType: 'video',
+    inheritsAspectRatio: true,
+    promptPlaceholder: 'Describe the edit to apply...',
   },
   fusion: {
     label: 'Fusion',
+    icon: 'layers',
+    color: '#DC2626',
     description: 'Blend multiple assets together',
     multiAssetMode: 'optional',
     acceptsInput: ['image', 'video'],
@@ -269,6 +309,8 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     promptSupported: true,
     compositionRole: 'source_image',
     inputMediaType: 'image',
+    maxSlots: 3,
+    promptPlaceholder: 'Describe the fusion...',
   },
 };
 

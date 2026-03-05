@@ -3,6 +3,8 @@ import React, { useMemo, useState, useEffect } from 'react';
 
 import { useCostHints, useCostEstimate, useProviderIdForModel } from '@features/providers';
 
+import { OPERATION_METADATA, type OperationType } from '@/types/operations';
+
 import type { ParamSpec } from '../types';
 import { getDurationOptions, COMMON_ASPECT_RATIOS } from '../utils/parameterUtils';
 
@@ -296,11 +298,7 @@ export function GenerationSettingsBar({
                   <span>◆</span>
                   <span>{creditEstimate.toFixed(1)}</span>
                 </>
-              ) : (operationType === 'text_to_video' ||
-                  operationType === 'image_to_video' ||
-                  operationType === 'video_extend' ||
-                  operationType === 'video_transition' ||
-                  operationType === 'fusion') &&
+              ) : OPERATION_METADATA[operationType as OperationType]?.outputType === 'video' &&
                   costHints?.per_second !== undefined &&
                   dynamicParams.duration ? (
                 <>

@@ -25,9 +25,11 @@ import {
 import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, GENERATION_SCOPE_ID } from '@features/panels';
 import { PromptComposer, useQuickGenerateController } from '@features/prompts';
 
+import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
-import { FLEXIBLE_OPERATIONS, type QuickGenPanelProps } from './quickGenPanelTypes';
+
+import { type QuickGenPanelProps } from './quickGenPanelTypes';
 
 
 export function PromptPanel(props: QuickGenPanelProps) {
@@ -79,7 +81,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
     operationType = resolvedOperationType,
     operationInputIndex = resolvedOperationInputIndex,
     displayAssets = defaultDisplayAssets,
-    isFlexibleOperation: _isFlexibleOperation = FLEXIBLE_OPERATIONS.has(operationType),
+    isFlexibleOperation: _isFlexibleOperation = OPERATION_METADATA[operationType as OperationType]?.flexibleInput === true,
     transitionPrompts = controller.prompts,
     setTransitionPrompts = controller.setPrompts,
     transitionDurations = controller.transitionDurations,
@@ -239,17 +241,9 @@ export function PromptPanel(props: QuickGenPanelProps) {
           placeholder={
             isTransitionMode
               ? (transitionCount > 0 ? 'Describe the motion...' : 'Add one more image...')
-              : operationType === 'image_to_video'
-              ? (hasAsset ? 'Describe the motion...' : 'Describe the video...')
-              : operationType === 'image_to_image'
-              ? (hasAsset ? 'Describe the transformation...' : 'Describe the image...')
-              : operationType === 'text_to_image'
-              ? 'Describe the image you want to create...'
-              : operationType === 'text_to_video'
-              ? 'Describe the video you want to create...'
-              : operationType === 'video_extend'
-              ? 'Describe how to continue the video...'
-              : 'Describe the fusion...'
+              : (hasAsset && OPERATION_METADATA[operationType as OperationType]?.promptPlaceholderWithAsset)
+                || OPERATION_METADATA[operationType as OperationType]?.promptPlaceholder
+                || 'Enter prompt...'
           }
           className="h-full"
         />

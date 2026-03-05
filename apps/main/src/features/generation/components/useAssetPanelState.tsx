@@ -45,7 +45,7 @@ import { OPERATION_METADATA } from '@/types/operations';
 
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 
-import { FLEXIBLE_OPERATIONS, EMPTY_INPUTS, type QuickGenPanelProps } from './quickGenPanelTypes';
+import { EMPTY_INPUTS, type QuickGenPanelProps } from './quickGenPanelTypes';
 
 export function useAssetPanelState(props: QuickGenPanelProps) {
   const ctx = props.context;
@@ -103,7 +103,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   } = ctx || {};
 
   const operationType = ctx?.operationType ?? controller.operationType;
-  const isFlexibleOperation = ctx?.isFlexibleOperation ?? FLEXIBLE_OPERATIONS.has(operationType);
+  const isFlexibleOperation = ctx?.isFlexibleOperation ?? (OPERATION_METADATA[operationType]?.flexibleInput === true);
   const operationMeta = OPERATION_METADATA[operationType];
   const removeInput = ctxRemoveInput ?? controller.removeInput;
   const workbench = useGenerationWorkbench({ operationType });
@@ -242,7 +242,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     // Fallback: source_asset_id is persisted but lastSelectedAsset is not.
     // Create a stub so the hydration effect can fetch the real asset.
     if (hasSourceAssetId) {
-      const mediaType = operationType === 'video_extend' ? 'video' : 'image';
+      const mediaType = OPERATION_METADATA[operationType]?.inputMediaType ?? 'image';
       const cached = cache.get(sourceAssetId);
       if (cached) return [cached];
       return [buildFallbackAsset({ id: sourceAssetId, type: mediaType, url: '' })];
@@ -302,9 +302,8 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   );
 
   const multiAssetParamName = useMemo(() => {
-    if (operationType === 'video_transition') return 'composition_assets';
-    if (operationType === 'image_to_image' || operationType === 'fusion') return 'composition_assets';
-    return null;
+    const meta = OPERATION_METADATA[operationType];
+    return meta?.compositionRole ? 'composition_assets' : null;
   }, [operationType]);
 
   const multiAssetLimits = useMemo(() => {

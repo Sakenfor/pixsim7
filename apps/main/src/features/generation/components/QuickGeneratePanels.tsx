@@ -6,7 +6,7 @@
  * Existing consumers continue importing from this file unchanged.
  */
 export type { QuickGenPanelId, QuickGenPanelContext, QuickGenPanelProps } from './quickGenPanelTypes';
-export { FLEXIBLE_OPERATIONS, EMPTY_INPUTS } from './quickGenPanelTypes';
+export { EMPTY_INPUTS } from './quickGenPanelTypes';
 export { AssetPanel } from './AssetPanel';
 export { PromptPanel } from './PromptPanel';
 export { SettingsPanel, BlocksPanel } from './SettingsBlocksPanels';

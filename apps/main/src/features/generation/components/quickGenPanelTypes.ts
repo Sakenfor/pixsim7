@@ -53,6 +53,7 @@ export interface QuickGenPanelContext {
 
   // Target toggle
   targetProviderId?: string;
+  generationScopeId?: string;
 
   // History panel source label
   sourceLabel?: string;
@@ -69,5 +70,4 @@ export interface QuickGenPanelProps extends IDockviewPanelProps {
   panelId: string;
 }
 
-export const FLEXIBLE_OPERATIONS = new Set<OperationType>(['image_to_video', 'image_to_image']);
 export const EMPTY_INPUTS: InputItem[] = [];

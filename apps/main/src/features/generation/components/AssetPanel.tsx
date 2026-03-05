@@ -68,7 +68,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
         {header}
         <div className="flex-1 flex items-center justify-center p-3">
           <div className="text-xs text-neutral-500 italic text-center">
-            {state.operationType === 'video_extend' ? 'Select video' :
+            {state.operationMeta?.inputMediaType === 'video' ? 'Select video' :
              state.operationMeta?.multiAssetMode === 'required' ? '+ Add images' :
              state.isFlexibleOperation ? '+ Image (optional)' : '+ Add image'}
           </div>

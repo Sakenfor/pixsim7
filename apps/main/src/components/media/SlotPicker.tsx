@@ -31,7 +31,7 @@ import { EMPTY_INPUTS } from './mediaCardGeneration.utils';
  */
 export function getSmartActionLabel(mediaType: MediaType, operationType: OperationType): string {
   const metadata = OPERATION_METADATA[operationType];
-  const needsFrameExtraction = mediaType === 'video' && operationType !== 'video_extend';
+  const needsFrameExtraction = mediaType === 'video' && OPERATION_METADATA[operationType]?.inputMediaType !== 'video';
   const suffix = needsFrameExtraction ? ' (extract frame)' : '';
   return `Add to ${metadata.label}${suffix}`;
 }
@@ -81,9 +81,7 @@ export function resolveMaxSlotsFromSpecs(
  * The real limits come from provider operation specs (per_model_max_items).
  */
 export function resolveMaxSlotsForModel(operationType: OperationType, _model?: string): number { // eslint-disable-line @typescript-eslint/no-unused-vars
-  if (operationType === 'video_transition' || operationType === 'image_to_image') return 7;
-  if (operationType === 'fusion') return 3;
-  return 3;
+  return OPERATION_METADATA[operationType]?.maxSlots ?? 3;
 }
 
 /**

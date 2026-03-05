@@ -441,6 +441,14 @@ const videoExtendAction = createGenerationAction(
   'video',
 );
 
+const videoModifyAction = createGenerationAction(
+  'asset:video-modify',
+  'Modify Video',
+  'pencil',
+  'video_modify',
+  'video',
+);
+
 const addToTransitionAction = createGenerationAction(
   'asset:add-to-transition',
   'Add to Transition',
@@ -735,7 +743,7 @@ const generateSubmenuAction: MenuAction = {
     }
 
     // Generation shortcuts (Image→Video, Extend, Transition)
-    const shortcuts = [imageToVideoAction, videoExtendAction, addToTransitionAction]
+    const shortcuts = [imageToVideoAction, videoExtendAction, videoModifyAction, addToTransitionAction]
       .filter(a => hasGenWidget && a.visible?.(ctx) !== false)
       .map(a => ({ ...a, category: undefined, requiredCapabilities: undefined }));
     if (shortcuts.length > 0) {

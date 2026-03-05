@@ -6,7 +6,7 @@
 
 import type { AssetModel } from '@features/assets';
 
-import type { OperationType } from '@/types/operations';
+import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
 import type { InputItem } from '../stores/generationInputStore';
 
@@ -90,9 +90,7 @@ export function resolveDisplayAssets({
 
   if (lastSelectedAsset) {
     const matchesOperation =
-      (operationType === 'image_to_video' && lastSelectedAsset.type === 'image') ||
-      (operationType === 'image_to_image' && lastSelectedAsset.type === 'image') ||
-      (operationType === 'video_extend' && lastSelectedAsset.type === 'video');
+      OPERATION_METADATA[operationType]?.inputMediaType === lastSelectedAsset.type;
 
     if (matchesOperation || allowAnySelected) {
       return [buildFallbackAsset(lastSelectedAsset)];
