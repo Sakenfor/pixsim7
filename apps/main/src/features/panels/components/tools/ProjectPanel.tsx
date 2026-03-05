@@ -1,4 +1,9 @@
-import { Button, useToast } from '@pixsim7/shared.ui';
+import {
+  Button,
+  FormField,
+  SidebarContentLayout,
+  useToast,
+} from '@pixsim7/shared.ui';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
@@ -7,7 +12,6 @@ import {
   duplicateSavedGameProject,
   getProjectDraft,
   getSavedGameProject,
-  listSavedGameProjects,
   renameSavedGameProject,
   saveGameProject,
 } from '@lib/api';
@@ -23,6 +27,7 @@ import {
   type ProjectBundleExtensionExportReport,
   type ProjectBundleExtensionImportReport,
 } from '@lib/game';
+import { resolveSavedGameProjects } from '@lib/resolvers';
 
 import { useProjectIndexStore, useProjectSessionStore, useWorldContextStore } from '@features/scene';
 
@@ -72,6 +77,19 @@ function formatIsoTimestamp(value: string): string {
   return new Date(parsed).toLocaleString();
 }
 
+function toNullableId(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) {
+      return Math.trunc(parsed);
+    }
+  }
+  return null;
+}
+
 function confirmDiscardUnsavedAuthoringChanges(): boolean {
   return window.confirm(
     'You have unsaved authoring changes. Loading a project may overwrite them. Continue?',
@@ -96,12 +114,24 @@ function formatAvailabilityValue(item: AvailabilityItem): string {
   return item.detail || 'OK';
 }
 
+type SectionId = 'save-load' | 'saved-projects' | 'availability' | 'session' | 'last-operation' | 'debug';
+
+const SECTION_NAV_ITEMS = [
+  { id: 'save-load', label: 'Save / Load' },
+  { id: 'saved-projects', label: 'Projects' },
+  { id: 'availability', label: 'Availability' },
+  { id: 'session', label: 'Session' },
+  { id: 'last-operation', label: 'Last Operation' },
+  { id: 'debug', label: 'Debug' },
+] as const;
+
 export function ProjectPanel() {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [worldNameOverride, setWorldNameOverride] = useState('');
   const [lastAction, setLastAction] = useState<LastProjectAction | null>(null);
+  const [activeSection, setActiveSection] = useState<SectionId>('save-load');
 
   const { worldId, setWorldId, setLocationId } = useWorldContextStore();
   const editorContext = useEditorContext();
@@ -152,7 +182,13 @@ export function ProjectPanel() {
 
   const loadSavedProjects = async (opts?: { silent?: boolean }) => {
     try {
-      const projects = await listSavedGameProjects({ limit: 200 });
+      const projects = await resolveSavedGameProjects(
+        { limit: 200 },
+        {
+          consumerId: 'ProjectPanel.loadSavedProjects',
+          bypassCache: true,
+        },
+      );
       setSavedProjects(projects);
 
       if (
@@ -429,7 +465,7 @@ export function ProjectPanel() {
 
       setWorldId(response.world_id);
       const firstLocationId = Object.values(response.id_maps.locations)[0];
-      setLocationId(firstLocationId ?? null);
+      setLocationId(toNullableId(firstLocationId));
 
       setLastAction({
         kind: 'load',
@@ -524,7 +560,7 @@ export function ProjectPanel() {
       // Move authoring context to the imported world for immediate continuity.
       setWorldId(response.world_id);
       const firstLocationId = Object.values(response.id_maps.locations)[0];
-      setLocationId(firstLocationId ?? null);
+      setLocationId(toNullableId(firstLocationId));
 
       upsertSavedProject(project);
       selectSavedProject(project.id);
@@ -592,307 +628,340 @@ export function ProjectPanel() {
         <WorldContextSelector />
       </div>
 
-      <div className="p-3 space-y-3 border-b border-neutral-200 dark:border-neutral-800">
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-neutral-600 dark:text-neutral-300">Project name</span>
-          <input
-            value={projectName}
-            onChange={(event) => setProjectName(event.target.value)}
-            placeholder="Default: world name"
-            className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
-          />
-        </label>
+      <SidebarContentLayout
+        sections={SECTION_NAV_ITEMS as unknown as { id: string; label: string }[]}
+        activeSectionId={activeSection}
+        onSelectSection={(id) => setActiveSection(id as SectionId)}
+        sidebarWidth="w-36"
+        variant="light"
+        contentClassName="p-3 text-xs space-y-3"
+      >
+          {activeSection === 'save-load' && (
+            <>
+              <FormField label="Project name" size="sm">
+                <input
+                  value={projectName}
+                  onChange={(event) => setProjectName(event.target.value)}
+                  placeholder="Default: world name"
+                  className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 w-full"
+                />
+              </FormField>
 
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              void handleSaveProject(false);
-            }}
-            disabled={busy || !worldId}
-          >
-            Save As New
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              void handleSaveProject(true);
-            }}
-            disabled={busy || !worldId || !selectedProjectId}
-          >
-            Overwrite Selected
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              void handleSaveCurrent();
-            }}
-            disabled={busy || !worldId || currentProjectId == null}
-          >
-            Save Current
-          </Button>
-        </div>
-      </div>
-
-      <div className="p-3 space-y-3 border-b border-neutral-200 dark:border-neutral-800">
-        <div className="flex items-center justify-between text-xs">
-          <div className="font-semibold">Saved Projects</div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              void loadSavedProjects();
-            }}
-            disabled={busy}
-          >
-            Refresh
-          </Button>
-        </div>
-
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-neutral-600 dark:text-neutral-300">Select project</span>
-          <select
-            value={selectedProjectId ?? ''}
-            onChange={(event) => {
-              const nextValue = Number(event.target.value);
-              const nextId = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : null;
-              selectSavedProject(nextId);
-              const nextProject = savedProjects.find((entry) => entry.id === nextId);
-              if (nextProject) {
-                setProjectName(nextProject.name);
-              }
-            }}
-            className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
-          >
-            <option value="">Select a saved project...</option>
-            {savedProjects.map((project) => (
-              <option key={project.id} value={project.id}>
-                #{project.id} {project.name}{project.id === currentProjectId ? ' (active)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              void handleRenameSelectedProject();
-            }}
-            disabled={busy || !selectedProjectId}
-          >
-            Rename Selected
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              void handleDuplicateSelectedProject();
-            }}
-            disabled={busy || !selectedProjectId}
-          >
-            Duplicate Selected
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              void handleDeleteSelectedProject();
-            }}
-            disabled={busy || !selectedProjectId}
-          >
-            Delete Selected
-          </Button>
-        </div>
-
-        {selectedProject && (
-          <div className="text-xs text-neutral-600 dark:text-neutral-300 space-y-1">
-            <div>Schema: {selectedProject.schema_version}</div>
-            <div>Source world: {selectedProject.source_world_id ?? 'N/A'}</div>
-            <div>Saved: {formatIsoTimestamp(selectedProject.updated_at)}</div>
-          </div>
-        )}
-
-        {currentProjectId != null && (
-          <div className="text-xs text-neutral-600 dark:text-neutral-300 space-y-1">
-            <div className="flex items-center gap-1.5">
-              <span
-                className={`inline-block w-2 h-2 rounded-full ${dirty ? 'bg-amber-500' : 'bg-green-500'}`}
-              />
-              Current project: #{currentProjectId}
-              {currentProjectName ? ` ${currentProjectName}` : ''}
-              {dirty && <span className="text-amber-600 dark:text-amber-400">(unsaved changes)</span>}
-            </div>
-            <div>Current source world: {currentProjectSourceWorldId ?? 'N/A'}</div>
-            <div>
-              Current updated:{' '}
-              {currentProjectUpdatedAt ? formatIsoTimestamp(currentProjectUpdatedAt) : 'Unknown'}
-            </div>
-          </div>
-        )}
-
-        <label className="flex flex-col gap-1 text-xs">
-          <span className="text-neutral-600 dark:text-neutral-300">Load world name override (optional)</span>
-          <input
-            value={worldNameOverride}
-            onChange={(event) => setWorldNameOverride(event.target.value)}
-            placeholder="Use project world name when empty"
-            className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
-          />
-        </label>
-
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              void handleLoadSelectedProject();
-            }}
-            disabled={busy || !selectedProjectId}
-          >
-            Load Selected Project
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              void handleRecoverDraft();
-            }}
-            disabled={busy}
-          >
-            Recover Draft
-          </Button>
-        </div>
-      </div>
-
-      <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 text-xs">
-        <ActionSelectionDebugSection
-          defaultWorldId={worldId}
-          defaultSessionId={runtimeSessionId}
-        />
-      </div>
-
-      <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 text-xs">
-        <div className="flex items-center justify-between gap-2">
-          <div className="font-semibold">Availability Snapshot</div>
-          <div className="flex items-center gap-2">
-            <span className="text-neutral-500 dark:text-neutral-400">
-              {availabilityLastRefreshedAtMs
-                ? `Updated ${formatTimestamp(availabilityLastRefreshedAtMs)}`
-                : 'Not refreshed yet'}
-            </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                void refreshAvailability();
-              }}
-              disabled={availabilityLoading}
-            >
-              Refresh
-            </Button>
-          </div>
-        </div>
-        <div className="mt-2 space-y-1">
-          {availabilityItems.map((item) => (
-            <div key={item.key} className="flex items-start justify-between gap-3">
-              <span className="text-neutral-600 dark:text-neutral-300">{item.label}</span>
-              <span
-                className={
-                  item.status === 'error'
-                    ? 'text-right text-red-600 dark:text-red-400'
-                    : 'text-right text-neutral-700 dark:text-neutral-200'
-                }
-              >
-                {formatAvailabilityValue(item)}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 text-xs">
-        <div className="font-semibold mb-1">Registered Extensions</div>
-        {registeredExtensions.length > 0 ? (
-          <div className="text-neutral-600 dark:text-neutral-300">
-            {registeredExtensions.join(', ')}
-          </div>
-        ) : (
-          <div className="text-neutral-500 dark:text-neutral-400">None</div>
-        )}
-      </div>
-
-      <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 text-xs space-y-1">
-        <div className="font-semibold mb-1">Project Session</div>
-        <div>Status: {dirty ? 'Dirty' : 'Clean'}</div>
-        <div>Last operation: {lastOperation ?? 'none'}</div>
-        <div>Bundle schema: {schemaVersion ?? 'Unknown'}</div>
-        <div>Source project: {sourceFileName || 'N/A'}</div>
-        <div>
-          Current project: {currentProjectId != null ? `#${currentProjectId}` : 'N/A'}
-          {currentProjectName ? ` (${currentProjectName})` : ''}
-        </div>
-        <div>Last import: {formatTimestamp(lastImportedAt)}</div>
-        <div>Last export: {formatTimestamp(lastExportedAt)}</div>
-        <div>
-          Session warnings: core {sessionCoreWarnings.length}, extensions {sessionExtensionWarnings.length}
-        </div>
-      </div>
-
-      <div className="p-3 text-xs overflow-y-auto">
-        <div className="font-semibold mb-2">Last Operation</div>
-        {!lastAction && <div className="text-neutral-500 dark:text-neutral-400">No project operation yet.</div>}
-
-        {lastAction?.kind === 'save' && (
-          <div className="space-y-1">
-            <div>
-              Saved project: <b>{lastAction.projectName}</b> (#{lastAction.projectId})
-              {lastAction.overwritten ? ' [updated]' : ''}
-            </div>
-            <div>World source: <b>{lastAction.worldName}</b></div>
-            <div>
-              Core counts: locations {lastAction.counts.locations}, npcs {lastAction.counts.npcs}, scenes {lastAction.counts.scenes}, items {lastAction.counts.items}
-            </div>
-            <div>
-              Extensions: included {lastAction.extensionReport.included.length}, skipped {lastAction.extensionReport.skipped.length}, warnings {lastAction.extensionReport.warnings.length}
-            </div>
-          </div>
-        )}
-
-        {lastAction?.kind === 'load' && (
-          <div className="space-y-1">
-            <div>
-              Loaded project: <b>{lastAction.projectName}</b> (#{lastAction.projectId})
-            </div>
-            <div>
-              Imported world: <b>{lastAction.worldName}</b> (#{lastAction.worldId})
-            </div>
-            <div>
-              Core counts: locations {lastAction.counts.locations}, hotspots {lastAction.counts.hotspots}, npcs {lastAction.counts.npcs}, scenes {lastAction.counts.scenes}, nodes {lastAction.counts.nodes}, edges {lastAction.counts.edges}, items {lastAction.counts.items}
-            </div>
-            <div>
-              Extensions: applied {lastAction.extensionReport.applied.length}, skipped {lastAction.extensionReport.skipped.length}, unknown {lastAction.extensionReport.unknown.length}{lastAction.extensionReport.migrated.length > 0 ? `, migrated ${lastAction.extensionReport.migrated.length}` : ''}{lastAction.extensionReport.failed.length > 0 ? `, failed ${lastAction.extensionReport.failed.length}` : ''}, warnings {lastAction.extensionReport.warnings.length}
-            </div>
-            {(lastAction.coreWarnings.length > 0 || lastAction.extensionReport.warnings.length > 0) && (
-              <div className="pt-2">
-                <div className="font-semibold mb-1">Warnings</div>
-                <ul className="list-disc ml-4 space-y-1 text-neutral-600 dark:text-neutral-300">
-                  {lastAction.coreWarnings.map((warning, index) => (
-                    <li key={`core-${index}`}>{warning}</li>
-                  ))}
-                  {lastAction.extensionReport.warnings.map((warning, index) => (
-                    <li key={`ext-${index}`}>{warning}</li>
-                  ))}
-                </ul>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    void handleSaveProject(false);
+                  }}
+                  disabled={busy || !worldId}
+                >
+                  Save As New
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    void handleSaveProject(true);
+                  }}
+                  disabled={busy || !worldId || !selectedProjectId}
+                >
+                  Overwrite Selected
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    void handleSaveCurrent();
+                  }}
+                  disabled={busy || !worldId || currentProjectId == null}
+                >
+                  Save Current
+                </Button>
               </div>
-            )}
-          </div>
-        )}
-      </div>
+
+              <FormField label="World name override" size="sm" helpText="Used when loading a project">
+                <input
+                  value={worldNameOverride}
+                  onChange={(event) => setWorldNameOverride(event.target.value)}
+                  placeholder="Use project world name when empty"
+                  className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 w-full"
+                />
+              </FormField>
+
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    void handleLoadSelectedProject();
+                  }}
+                  disabled={busy || !selectedProjectId}
+                >
+                  Load Selected
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    void handleRecoverDraft();
+                  }}
+                  disabled={busy}
+                >
+                  Recover Draft
+                </Button>
+              </div>
+            </>
+          )}
+
+          {activeSection === 'saved-projects' && (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="font-semibold">Saved Projects</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    void loadSavedProjects();
+                  }}
+                  disabled={busy}
+                >
+                  Refresh
+                </Button>
+              </div>
+
+              <FormField label="Select project" size="sm">
+                <select
+                  value={selectedProjectId ?? ''}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    const nextId = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : null;
+                    selectSavedProject(nextId);
+                    const nextProject = savedProjects.find((entry) => entry.id === nextId);
+                    if (nextProject) {
+                      setProjectName(nextProject.name);
+                    }
+                  }}
+                  className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 w-full"
+                >
+                  <option value="">Select a saved project...</option>
+                  {savedProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      #{project.id} {project.name}{project.id === currentProjectId ? ' (active)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    void handleRenameSelectedProject();
+                  }}
+                  disabled={busy || !selectedProjectId}
+                >
+                  Rename
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    void handleDuplicateSelectedProject();
+                  }}
+                  disabled={busy || !selectedProjectId}
+                >
+                  Duplicate
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    void handleDeleteSelectedProject();
+                  }}
+                  disabled={busy || !selectedProjectId}
+                >
+                  Delete
+                </Button>
+              </div>
+
+              {selectedProject && (
+                <div className="text-neutral-600 dark:text-neutral-300 space-y-1">
+                  <div>Schema: {selectedProject.schema_version}</div>
+                  <div>Source world: {selectedProject.source_world_id ?? 'N/A'}</div>
+                  <div>Saved: {formatIsoTimestamp(selectedProject.updated_at)}</div>
+                </div>
+              )}
+
+              {currentProjectId != null && (
+                <div className="text-neutral-600 dark:text-neutral-300 space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full ${dirty ? 'bg-amber-500' : 'bg-green-500'}`}
+                    />
+                    Current project: #{currentProjectId}
+                    {currentProjectName ? ` ${currentProjectName}` : ''}
+                    {dirty && <span className="text-amber-600 dark:text-amber-400">(unsaved changes)</span>}
+                  </div>
+                  <div>Current source world: {currentProjectSourceWorldId ?? 'N/A'}</div>
+                  <div>
+                    Current updated:{' '}
+                    {currentProjectUpdatedAt ? formatIsoTimestamp(currentProjectUpdatedAt) : 'Unknown'}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeSection === 'availability' && (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="font-semibold">Availability Snapshot</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    void refreshAvailability();
+                  }}
+                  disabled={availabilityLoading}
+                >
+                  Refresh
+                </Button>
+              </div>
+              <div className="text-neutral-500 dark:text-neutral-400">
+                {availabilityLastRefreshedAtMs
+                  ? `Updated ${formatTimestamp(availabilityLastRefreshedAtMs)}`
+                  : 'Not refreshed yet'}
+              </div>
+              <div className="space-y-1">
+                {availabilityItems.map((item) => (
+                  <div key={item.key} className="flex items-start justify-between gap-3">
+                    <span className="text-neutral-600 dark:text-neutral-300">{item.label}</span>
+                    <span
+                      className={
+                        item.status === 'error'
+                          ? 'text-right text-red-600 dark:text-red-400'
+                          : 'text-right text-neutral-700 dark:text-neutral-200'
+                      }
+                    >
+                      {formatAvailabilityValue(item)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {activeSection === 'session' && (
+            <div className="space-y-1">
+              <div>Status: {dirty ? 'Dirty' : 'Clean'}</div>
+              <div>Last operation: {lastOperation ?? 'none'}</div>
+              <div>Bundle schema: {schemaVersion ?? 'Unknown'}</div>
+              <div>Source project: {sourceFileName || 'N/A'}</div>
+              <div>
+                Current project: {currentProjectId != null ? `#${currentProjectId}` : 'N/A'}
+                {currentProjectName ? ` (${currentProjectName})` : ''}
+              </div>
+              <div>Last import: {formatTimestamp(lastImportedAt)}</div>
+              <div>Last export: {formatTimestamp(lastExportedAt)}</div>
+              <div>
+                Session warnings: core {sessionCoreWarnings.length}, extensions{' '}
+                {sessionExtensionWarnings.length}
+              </div>
+              <div className="pt-2">
+                <div className="font-semibold mb-1">Registered Extensions</div>
+                {registeredExtensions.length > 0 ? (
+                  <div className="text-neutral-600 dark:text-neutral-300">
+                    {registeredExtensions.join(', ')}
+                  </div>
+                ) : (
+                  <div className="text-neutral-500 dark:text-neutral-400">None</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeSection === 'last-operation' && (
+            <>
+              {!lastAction && (
+                <div className="text-neutral-500 dark:text-neutral-400">No project operation yet.</div>
+              )}
+
+              {lastAction?.kind === 'save' && (
+                <div className="space-y-1">
+                  <div>
+                    Saved project: <b>{lastAction.projectName}</b> (#{lastAction.projectId})
+                    {lastAction.overwritten ? ' [updated]' : ''}
+                  </div>
+                  <div>
+                    World source: <b>{lastAction.worldName}</b>
+                  </div>
+                  <div>
+                    Core counts: locations {lastAction.counts.locations}, npcs{' '}
+                    {lastAction.counts.npcs}, scenes {lastAction.counts.scenes}, items{' '}
+                    {lastAction.counts.items}
+                  </div>
+                  <div>
+                    Extensions: included {lastAction.extensionReport.included.length}, skipped{' '}
+                    {lastAction.extensionReport.skipped.length}, warnings{' '}
+                    {lastAction.extensionReport.warnings.length}
+                  </div>
+                </div>
+              )}
+
+              {lastAction?.kind === 'load' && (
+                <div className="space-y-1">
+                  <div>
+                    Loaded project: <b>{lastAction.projectName}</b> (#{lastAction.projectId})
+                  </div>
+                  <div>
+                    Imported world: <b>{lastAction.worldName}</b> (#{lastAction.worldId})
+                  </div>
+                  <div>
+                    Core counts: locations {lastAction.counts.locations}, hotspots{' '}
+                    {lastAction.counts.hotspots}, npcs {lastAction.counts.npcs}, scenes{' '}
+                    {lastAction.counts.scenes}, nodes {lastAction.counts.nodes}, edges{' '}
+                    {lastAction.counts.edges}, items {lastAction.counts.items}
+                  </div>
+                  <div>
+                    Extensions: applied {lastAction.extensionReport.applied.length}, skipped{' '}
+                    {lastAction.extensionReport.skipped.length}, unknown{' '}
+                    {lastAction.extensionReport.unknown.length}
+                    {lastAction.extensionReport.migrated.length > 0
+                      ? `, migrated ${lastAction.extensionReport.migrated.length}`
+                      : ''}
+                    {lastAction.extensionReport.failed.length > 0
+                      ? `, failed ${lastAction.extensionReport.failed.length}`
+                      : ''}
+                    , warnings {lastAction.extensionReport.warnings.length}
+                  </div>
+                  {(lastAction.coreWarnings.length > 0 ||
+                    lastAction.extensionReport.warnings.length > 0) && (
+                    <div className="pt-2">
+                      <div className="font-semibold mb-1">Warnings</div>
+                      <ul className="list-disc ml-4 space-y-1 text-neutral-600 dark:text-neutral-300">
+                        {lastAction.coreWarnings.map((warning, index) => (
+                          <li key={`core-${index}`}>{warning}</li>
+                        ))}
+                        {lastAction.extensionReport.warnings.map((warning, index) => (
+                          <li key={`ext-${index}`}>{warning}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {activeSection === 'debug' && (
+            <ActionSelectionDebugSection
+              defaultWorldId={worldId}
+              defaultSessionId={runtimeSessionId}
+            />
+          )}
+      </SidebarContentLayout>
     </div>
   );
 }

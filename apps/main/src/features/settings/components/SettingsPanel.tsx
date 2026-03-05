@@ -4,7 +4,7 @@
  * Sidebar-based settings panel with expandable sub-sections.
  * Modules register themselves and provide their own UI components.
  */
-import { HierarchicalSidebarNav, SidebarPaneShell } from '@pixsim7/shared.ui';
+import { SidebarContentLayout } from '@pixsim7/shared.ui';
 import { useState, useEffect, Suspense, type ReactNode } from 'react';
 
 import { Icon } from '@lib/icons';
@@ -151,32 +151,27 @@ export function SettingsPanel() {
 
   return (
     <div className="h-full w-full flex bg-white dark:bg-neutral-900">
-      <SidebarPaneShell title="Settings" variant="light" widthClassName="w-48">
-        <HierarchicalSidebarNav
-          className="space-y-0.5"
-          items={navItems}
-          expandedItemIds={expandedModules}
-          onSelectItem={handleSelectModule}
-          onToggleExpand={handleToggleExpand}
-          onSelectChild={handleSelectSubSection}
-          getItemState={(item) => {
-            if (activeTabId !== item.id) return 'inactive';
-            return activeSubSection ? 'ancestor' : 'active';
-          }}
-          getChildState={(item, child) =>
-            activeTabId === item.id && activeSubSection === child.id ? 'active' : 'inactive'
-          }
-        />
-      </SidebarPaneShell>
-
-      {/* Content area */}
-      {activeModule ? (
-        <SettingsContent module={activeModule} subSectionId={activeSubSection} />
-      ) : (
-        <div className="flex-1 flex items-center justify-center text-neutral-500 dark:text-neutral-400 text-sm">
-          No settings modules registered
-        </div>
-      )}
+      <SidebarContentLayout
+        sections={navItems}
+        activeSectionId={activeTabId ?? ''}
+        onSelectSection={handleSelectModule}
+        activeChildId={activeSubSection ?? undefined}
+        onSelectChild={handleSelectSubSection}
+        expandedSectionIds={expandedModules}
+        onToggleExpand={handleToggleExpand}
+        sidebarTitle="Settings"
+        sidebarWidth="w-48"
+        variant="light"
+        navClassName="space-y-0.5"
+      >
+        {activeModule ? (
+          <SettingsContent module={activeModule} subSectionId={activeSubSection} />
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-neutral-500 dark:text-neutral-400 text-sm">
+            No settings modules registered
+          </div>
+        )}
+      </SidebarContentLayout>
     </div>
   );
 }
