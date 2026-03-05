@@ -96,7 +96,9 @@ export interface BlockCatalogQuery {
 export interface BlockMatrixQuery {
   row_key: string;
   col_key: string;
-  source?: 'primitives' | 'action_blocks';
+  source?: 'primitives';
+  composition_role?: string;
+  /** Deprecated alias for composition_role. */
   role?: string;
   category?: string;
   kind?: string;
@@ -114,12 +116,15 @@ export interface BlockMatrixQuery {
 export interface PromptBlockResponse {
   id: string;
   block_id: string;
+  composition_role: string | null;
+  /** @deprecated Use composition_role instead. */
   role: string | null;
   category: string | null;
   kind: string;
   default_intent: string | null;
   text: string;
   tags: Record<string, unknown>;
+  capabilities: string[];
   complexity_level: string | null;
   package_name: string | null;
   description: string | null;
@@ -127,6 +132,8 @@ export interface PromptBlockResponse {
 }
 
 export interface BlockRoleSummary {
+  composition_role: string | null;
+  /** @deprecated Use composition_role instead. */
   role: string | null;
   category: string | null;
   count: number;
@@ -135,12 +142,15 @@ export interface BlockRoleSummary {
 export interface BlockCatalogRow {
   id: string;
   block_id: string;
+  composition_role: string | null;
+  /** @deprecated Use composition_role instead. */
   role: string | null;
   category: string | null;
   package_name: string | null;
   kind: string;
   default_intent: string | null;
   tags: Record<string, unknown>;
+  capabilities: string[];
   word_count: number;
   text_preview: string;
 }
@@ -149,6 +159,8 @@ export interface BlockMatrixCellSample {
   id: string;
   block_id: string;
   package_name: string | null;
+  composition_role: string | null;
+  /** @deprecated Use composition_role instead. */
   role: string | null;
   category: string | null;
 }
@@ -292,6 +304,20 @@ export interface ContentPackInfo {
   blocks: number;
   templates: number;
   characters: number;
+}
+
+export interface ContentPackMatrixPreset {
+  label: string;
+  query: Record<string, unknown>;
+}
+
+export interface ContentPackMatrixManifest {
+  pack_name: string;
+  source: string;
+  id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  matrix_presets: ContentPackMatrixPreset[];
 }
 
 export interface ContentPackInventory {
@@ -440,6 +466,14 @@ export function createBlockTemplatesApi(client: PixSimApiClient) {
     async listContentPacks(): Promise<string[]> {
       const response = await client.get<readonly string[]>(
         '/block-templates/meta/content-packs',
+      );
+      return [...response];
+    },
+
+    async listContentPackManifests(pack?: string): Promise<ContentPackMatrixManifest[]> {
+      const response = await client.get<readonly ContentPackMatrixManifest[]>(
+        '/block-templates/meta/content-packs/manifests',
+        { params: pack ? { pack } : undefined },
       );
       return [...response];
     },

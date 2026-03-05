@@ -33,6 +33,10 @@ from pixsim7.backend.main.domain.user import User
 from pixsim7.backend.main.services.prompt.block.composition_role_inference import (
     infer_composition_role,
 )
+from pixsim7.backend.main.services.prompt.block.capabilities import (
+    derive_block_capabilities,
+    normalize_capability_ids,
+)
 from pixsim7.backend.main.services.prompt.block.tag_dictionary import (
     get_canonical_block_tag_dictionary,
     get_block_tag_alias_key_map,
@@ -679,12 +683,14 @@ async def list_block_packages(
 class BlockResponse(BaseModel):
     id: UUID
     block_id: str
-    role: Optional[str] = None
+    composition_role: Optional[str] = None
+    role: Optional[str] = Field(None, deprecated=True, description="Deprecated: use composition_role")
     category: Optional[str] = None
     kind: str = "single_state"
     default_intent: Optional[str] = None
     text: str = ""
     tags: Dict[str, Any] = Field(default_factory=dict)
+    capabilities: List[str] = Field(default_factory=list)
     complexity_level: Optional[str] = None
     package_name: Optional[str] = None
     description: Optional[str] = None
@@ -698,6 +704,7 @@ class UpsertPrimitiveBlockRequest(BaseModel):
     category: str = Field(..., min_length=1, max_length=64)
     text: str = Field(..., min_length=1)
     tags: Dict[str, Any] = Field(default_factory=dict)
+    capabilities: List[str] = Field(default_factory=list)
     source: Literal["system", "user", "imported"] = "imported"
     is_public: bool = True
     avg_rating: Optional[float] = None
@@ -717,12 +724,14 @@ class DeletePrimitiveBlockResponse(BaseModel):
 class BlockCatalogRowResponse(BaseModel):
     id: UUID
     block_id: str
-    role: Optional[str] = None
+    composition_role: Optional[str] = None
+    role: Optional[str] = Field(None, deprecated=True, description="Deprecated: use composition_role")
     category: Optional[str] = None
     package_name: Optional[str] = None
     kind: str = "single_state"
     default_intent: Optional[str] = None
     tags: Dict[str, Any] = Field(default_factory=dict)
+    capabilities: List[str] = Field(default_factory=list)
     word_count: int = 0
     text_preview: str = ""
 
@@ -731,7 +740,8 @@ class BlockMatrixCellSampleResponse(BaseModel):
     id: UUID
     block_id: str
     package_name: Optional[str] = None
-    role: Optional[str] = None
+    composition_role: Optional[str] = None
+    role: Optional[str] = Field(None, deprecated=True, description="Deprecated: use composition_role")
     category: Optional[str] = None
 
 
@@ -823,6 +833,21 @@ def _parse_tag_csv(tags: Optional[str]) -> Dict[str, str]:
     return tag_constraints
 
 
+def _infer_block_composition_role(block: Any) -> Optional[str]:
+    """Infer composition role id for a block row."""
+    tags = getattr(block, "tags", None)
+    tags_dict: Dict[str, Any] = tags if isinstance(tags, dict) else {}
+    inferred = infer_composition_role(
+        role=None,
+        category=getattr(block, "category", None),
+        tags=tags_dict,
+    )
+    role_id = inferred.role_id
+    if isinstance(role_id, str) and role_id.strip():
+        return role_id.strip()
+    return None
+
+
 def _resolve_block_matrix_value(
     block: Any,
     key: str,
@@ -841,7 +866,7 @@ def _resolve_block_matrix_value(
         return missing_label
 
     top_level_keys = {
-        "role", "category", "package_name", "kind",
+        "role", "composition_role", "category", "package_name", "kind",
         "default_intent", "complexity_level", "source",
     }
     tags = getattr(block, "tags", None)
@@ -850,6 +875,14 @@ def _resolve_block_matrix_value(
     if key.startswith("tag:"):
         tag_key = key[4:]
         value = tags_dict.get(tag_key)
+    elif key in {"role", "composition_role"}:
+        value = _infer_block_composition_role(block)
+    elif key == "package_name":
+        source_pack = tags_dict.get("source_pack")
+        if isinstance(source_pack, str) and source_pack.strip():
+            value = source_pack.strip()
+        else:
+            value = getattr(block, "package_name", None)
     elif key in top_level_keys:
         value = getattr(block, key, None)
         if key == "default_intent" and value is not None:
@@ -895,7 +928,15 @@ def _extend_axis_values_from_canonical_dictionary(
     if not axis_key:
         return
 
-    top_level_keys = {"role", "category", "package_name", "kind", "default_intent", "complexity_level"}
+    top_level_keys = {
+        "role",
+        "composition_role",
+        "category",
+        "package_name",
+        "kind",
+        "default_intent",
+        "complexity_level",
+    }
     tag_key: Optional[str] = None
     if axis_key.startswith("tag:"):
         tag_key = axis_key[4:].strip()
@@ -924,7 +965,15 @@ def _axis_key_to_tag_key(axis_key: str) -> Optional[str]:
         return None
     if axis_key.startswith("tag:"):
         return axis_key[4:].strip() or None
-    top_level_keys = {"role", "category", "package_name", "kind", "default_intent", "complexity_level"}
+    top_level_keys = {
+        "role",
+        "composition_role",
+        "category",
+        "package_name",
+        "kind",
+        "default_intent",
+        "complexity_level",
+    }
     return None if axis_key in top_level_keys else axis_key
 
 
@@ -1252,12 +1301,14 @@ def _to_block_response(block: Any) -> BlockResponse:
     return BlockResponse(
         id=block.id,
         block_id=block.block_id,
-        role=role,
+        composition_role=role,
+        role=role,  # deprecated alias
         category=getattr(block, "category", None),
         kind=str(getattr(block, "kind", "single_state") or "single_state"),
         default_intent=default_intent_text,
         text=text,
         tags=tags,
+        capabilities=normalize_capability_ids(getattr(block, "capabilities", None)),
         complexity_level=getattr(block, "complexity_level", None),
         package_name=package_name,
         description=getattr(block, "description", None),
@@ -1359,6 +1410,12 @@ async def upsert_block_by_block_id(
         raise HTTPException(status_code=400, detail="text_required")
 
     tags = dict(request.tags or {})
+    declared_capabilities = normalize_capability_ids(request.capabilities)
+    capabilities = derive_block_capabilities(
+        category=category,
+        tags=tags,
+        declared=declared_capabilities,
+    )
     now = datetime.now(timezone.utc)
 
     from pixsim7.backend.main.domain.blocks import BlockPrimitive
@@ -1382,6 +1439,7 @@ async def upsert_block_by_block_id(
                 category=category,
                 text=text,
                 tags=tags,
+                capabilities=capabilities,
                 source=request.source,
                 is_public=request.is_public,
                 avg_rating=request.avg_rating,
@@ -1402,6 +1460,7 @@ async def upsert_block_by_block_id(
         block.category = category
         block.text = text
         block.tags = tags
+        block.capabilities = capabilities
         block.source = request.source
         block.is_public = request.is_public
         if request.avg_rating is not None:
@@ -1509,12 +1568,14 @@ async def get_block_catalog(
             BlockCatalogRowResponse(
                 id=b.id,
                 block_id=b.block_id,
-                role=inferred.role_id,
+                composition_role=inferred.role_id,
+                role=inferred.role_id,  # deprecated alias
                 category=getattr(b, "category", None),
                 package_name=package,
                 kind="single_state",
                 default_intent=None,
                 tags=tags_map,
+                capabilities=normalize_capability_ids(getattr(b, "capabilities", None)),
                 word_count=len([token for token in full_text.split() if token]),
                 text_preview=text,
             )
@@ -1527,7 +1588,8 @@ async def get_block_matrix(
     row_key: str = Query(..., description="Matrix row axis key (tag key or top-level field; use tag:<key> for tags)"),
     col_key: str = Query(..., description="Matrix column axis key (tag key or top-level field; use tag:<key> for tags)"),
     source: str = Query("primitives", description='Block source: "primitives"'),
-    role: Optional[str] = Query(None, description="Ignored for primitives matrix"),
+    composition_role: Optional[str] = Query(None, description="Filter by inferred composition role id"),
+    role: Optional[str] = Query(None, description="Deprecated alias for composition_role"),
     category: Optional[str] = Query(None, description="Filter by category"),
     kind: Optional[str] = Query(None, description="Ignored for primitives matrix"),
     package_name: Optional[str] = Query(None, description="Filter by package via tags.source_pack"),
@@ -1571,6 +1633,14 @@ async def get_block_matrix(
     async with get_async_blocks_session() as blocks_db:
         result = await blocks_db.execute(query)
         blocks = list(result.scalars().all())
+
+    effective_composition_role = None
+    if isinstance(composition_role, str) and composition_role.strip():
+        effective_composition_role = composition_role.strip()
+    elif isinstance(role, str) and role.strip():
+        effective_composition_role = role.strip()
+    if effective_composition_role:
+        blocks = [b for b in blocks if _infer_block_composition_role(b) == effective_composition_role]
 
     # --- Auto-expected values from family schema (legacy only) ---
     family_schema = _get_prompt_block_family_schema((tag_constraints or {}).get("sequence_family"))
@@ -1649,7 +1719,8 @@ async def get_block_matrix(
                     id=b.id,
                     block_id=b.block_id,
                     package_name=package,
-                    role=inferred.role_id,
+                    composition_role=inferred.role_id,
+                    role=inferred.role_id,  # deprecated alias
                     category=b.category,
                 )
             )
@@ -1670,7 +1741,8 @@ async def get_block_matrix(
         total_blocks=len(blocks),
         filters={
             "source": source,
-            "role": role,
+            "composition_role": effective_composition_role,
+            "role": effective_composition_role,
             "category": category,
             "kind": kind,
             "package_name": package_name,
@@ -1723,10 +1795,10 @@ async def list_block_roles(
         counts[key] = counts.get(key, 0) + 1
 
     rows = [
-        {"role": role, "category": category, "count": count}
+        {"composition_role": role, "role": role, "category": category, "count": count}
         for (role, category), count in counts.items()
     ]
-    rows.sort(key=lambda row: (str(row["role"] or ""), str(row["category"] or "")))
+    rows.sort(key=lambda row: (str(row["composition_role"] or ""), str(row["category"] or "")))
     return rows
 
 
@@ -1955,7 +2027,8 @@ async def get_block_tag_dictionary(
         generated_at=datetime.utcnow().isoformat() + "Z",
         scope={
             "package_name": package_name,
-            "role": role,
+            "composition_role": role,
+            "role": role,  # deprecated alias
             "category": category,
         },
         keys=responses,
