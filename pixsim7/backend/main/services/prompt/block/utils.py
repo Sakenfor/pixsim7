@@ -8,6 +8,7 @@ from typing import Optional
 from datetime import datetime, timezone
 
 from pixsim7.backend.main.domain.blocks import BlockPrimitive
+from pixsim7.backend.main.services.prompt.block.capabilities import derive_block_capabilities
 from pixsim7.backend.main.services.prompt.candidates import candidate_from_suggested_action_block
 from pixsim7.backend.main.shared.schemas.discovery_schemas import (
     PromptBlockCandidate,
@@ -106,6 +107,11 @@ def build_draft_action_block_from_candidate(
         category=category,
         text=candidate.text,
         tags=tags,
+        capabilities=derive_block_capabilities(
+            category=category,
+            tags=tags,
+            declared=None,
+        ),
         source=source,
         is_public=False,
         usage_count=0,

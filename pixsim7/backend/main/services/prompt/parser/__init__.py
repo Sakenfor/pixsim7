@@ -22,7 +22,11 @@ from .registry import (
     AnalyzerInfo,
     AnalyzerKind,
     AnalyzerTarget,
+    AnalyzerInputModality,
+    AnalyzerTaskFamily,
     InstanceOptionDescriptor,
+    infer_input_modality,
+    infer_task_family,
     get_effective_instance_options,
 )
 from .analyzer_plugins import setup_analyzer_plugin_hooks
@@ -62,7 +66,11 @@ __all__ = [
     "AnalyzerInfo",
     "AnalyzerKind",
     "AnalyzerTarget",
+    "AnalyzerInputModality",
+    "AnalyzerTaskFamily",
     "InstanceOptionDescriptor",
+    "infer_input_modality",
+    "infer_task_family",
     "get_effective_instance_options",
     "setup_analyzer_plugin_hooks",
     # DSL Adapter

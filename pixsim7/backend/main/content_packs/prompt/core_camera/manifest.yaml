@@ -1,0 +1,19 @@
+id: core-camera
+title: Core Camera
+description: Canonical camera motion primitives. Direction is intentionally split into core_direction.
+
+matrix_presets:
+  - label: Camera Motion Variants
+    query:
+      row_key: "tag:modifier_family"
+      col_key: "tag:variant"
+      package_name: "core_camera"
+      include_empty: true
+
+  - label: Camera Motion by Modality
+    query:
+      row_key: "category"
+      col_key: "tag:variant"
+      package_name: "core_camera"
+      tags: "modality_support:video"
+      include_empty: true

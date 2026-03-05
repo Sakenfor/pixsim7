@@ -15,6 +15,8 @@ from typing import Optional
 
 from watchfiles import awatch, Change
 
+from pixsim7.backend.main.shared.path_registry import get_path_registry
+
 from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
     CONTENT_PACKS_DIR,
     discover_content_packs,
@@ -26,8 +28,8 @@ logger = logging.getLogger(__name__)
 _watcher_task: Optional[asyncio.Task] = None
 _vocab_watcher_task: Optional[asyncio.Task] = None
 
-# plugins/ lives alongside shared/ — derive from content_packs path
-_PLUGINS_DIR = CONTENT_PACKS_DIR.parent.parent / "plugins"
+# Watch backend feature plugin vocabularies from canonical path registry.
+_PLUGINS_DIR = get_path_registry().feature_plugins_dir
 
 
 async def _watch_content_dirs() -> None:

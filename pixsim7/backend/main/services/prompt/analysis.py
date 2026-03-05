@@ -26,6 +26,8 @@ from pixsim7.backend.main.services.analysis.analyzer_pipeline import (
     resolve_analyzer_execution,
 )
 from pixsim7.backend.main.services.analysis.chain_executor import execute_first_success
+from pixsim7.backend.main.services.analysis.observability import log_analyzer_run
+from pixsim7.backend.main.services.analysis.result_envelope import build_provenance
 from pixsim7.backend.main.services.prompt.parser import (
     analyzer_registry,
     AnalyzerKind,
@@ -113,7 +115,7 @@ class PromptAnalysisService:
             semantic_context=semantic_context,
         )
 
-        analysis, selected_id = await self._run_analyzer(
+        analysis, selected_id, provenance = await self._run_analyzer(
             normalized,
             candidates,
             role_registry=role_registry,
@@ -126,6 +128,7 @@ class PromptAnalysisService:
 
         # Ensure analyzer_id is in result
         analysis["analyzer_id"] = selected_id
+        analysis["provenance"] = provenance.to_dict()
 
         return analysis
 
@@ -371,13 +374,14 @@ class PromptAnalysisService:
         model_id: Optional[str] = None,
         instance_config: Optional[Dict[str, Any]] = None,
         user_id: Optional[int] = None,
-    ) -> Tuple[Dict[str, Any], str]:
+    ) -> Tuple[Dict[str, Any], str, "AnalyzerProvenance"]:
         """
         Run the first resolvable analyzer from *candidates* on text.
 
-        Returns ``(analysis_result, selected_analyzer_id)``.
+        Returns ``(analysis_result, selected_analyzer_id, provenance)``.
         """
         from pixsim7.backend.main.services.llm.ai_hub_service import AiHubService
+        from pixsim7.backend.main.services.analysis.result_envelope import AnalyzerProvenance
 
         ai_hub = AiHubService(self.db)
         user_provider_id, user_model_id = await ai_hub.get_user_llm_preferences(user_id)
@@ -421,6 +425,13 @@ class PromptAnalysisService:
                 )
             )
 
+        # Build provenance from chain result
+        provenance = build_provenance(
+            chain_result,
+            provider_id=resolved_execution.provider_id,
+            model_id=resolved_execution.model_id,
+        )
+
         merged_config = _resolve_analyzer_config(
             analyzer_info.config if analyzer_info else None,
             instance_config,
@@ -435,8 +446,6 @@ class PromptAnalysisService:
                 role_registry=role_registry,
                 parser_config=merged_config,
             )
-            return result, analyzer_id
-
         elif analyzer_info and analyzer_info.kind == AnalyzerKind.LLM:
             from pixsim7.backend.main.services.prompt.parser import analyze_prompt_with_llm
 
@@ -449,8 +458,6 @@ class PromptAnalysisService:
                 db=self.db,
                 user_id=user_id,
             )
-            return result, analyzer_id
-
         else:
             logger.warning(f"No handler for analyzer {analyzer_id}, using simple parser")
             from pixsim7.backend.main.services.prompt.parser import analyze_prompt
@@ -458,7 +465,17 @@ class PromptAnalysisService:
                 text,
                 role_registry=role_registry,
             )
-            return result, analyzer_id
+
+        # Emit structured log
+        log_analyzer_run(
+            provenance,
+            path="prompt",
+            success=True,
+            candidate_count=len(candidates),
+            empty_result=not result.get("candidates"),
+        )
+
+        return result, analyzer_id, provenance
 
     async def _resolve_role_registry(
         self,

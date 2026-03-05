@@ -42,10 +42,12 @@ async def test_prompt_analysis_routes_local_analyzer_to_local_provider(monkeypat
 
     monkeypatch.setattr(prompt_parser, "analyze_prompt_with_llm", _fake_analyze_prompt_with_llm)
 
-    result, selected_id = await service._run_analyzer("sample prompt", ["prompt:local"])
+    result, selected_id, provenance = await service._run_analyzer("sample prompt", ["prompt:local"])
     assert result["prompt"] == "sample prompt"
     assert captured["provider_id"] == "local-llm"
     assert selected_id == "prompt:local"
+    assert provenance.analyzer_id == "prompt:local"
+    assert provenance.provider_id == "local-llm"
 
 
 @pytest.mark.asyncio

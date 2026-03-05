@@ -23,6 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
+from pixsim7.backend.main.services.prompt.block.capabilities import (
+    derive_block_capabilities,
+    normalize_capability_ids,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +78,19 @@ def _parse_blocks_from_yaml(yaml_path: Path) -> List[Dict[str, Any]]:
         # Normalize tag values to strings (YAML may parse as int/bool)
         normalized_tags = {str(k): str(v) for k, v in tags.items()}
 
+        declared_capabilities = normalize_capability_ids(block.get("capabilities"))
+        capabilities = derive_block_capabilities(
+            category=category,
+            tags=normalized_tags,
+            declared=declared_capabilities,
+        )
+
         parsed.append({
             "block_id": block_id,
             "category": category,
             "text": text,
             "tags": normalized_tags,
+            "capabilities": capabilities,
             "source": "system",
             "is_public": block.get("is_public", True),
             "_package_name": package_name,
@@ -169,6 +181,7 @@ async def _upsert_primitives(
             row.category = item["category"]
             row.text = item["text"]
             row.tags = item["tags"]
+            row.capabilities = item["capabilities"]
             row.source = item["source"]
             row.is_public = item["is_public"]
             row.updated_at = now
@@ -180,6 +193,7 @@ async def _upsert_primitives(
                 category=item["category"],
                 text=item["text"],
                 tags=item["tags"],
+                capabilities=item["capabilities"],
                 source=item["source"],
                 is_public=item["is_public"],
                 created_at=now,

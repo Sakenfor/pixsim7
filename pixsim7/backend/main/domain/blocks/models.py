@@ -44,6 +44,11 @@ class BlockPrimitive(SQLModel, table=True):
         sa_column=Column(JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
         description="Structured tags for filtering and composition",
     )
+    capabilities: List[str] = Field(
+        default_factory=list,
+        sa_column=Column(JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
+        description="Explicit composition/runtime capabilities declared by this primitive",
+    )
 
     # Ownership
     owner_id: Optional[UUID] = Field(
@@ -90,4 +95,5 @@ class BlockPrimitive(SQLModel, table=True):
     # Table-level indexes
     __table_args__ = (
         Index("ix_block_primitives_tags", "tags", postgresql_using="gin"),
+        Index("ix_block_primitives_capabilities", "capabilities", postgresql_using="gin"),
     )

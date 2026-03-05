@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from ..capabilities import derive_block_capabilities, normalize_capability_ids
 from ..block_query import normalize_tag_query
 from ..resolution_core.types import (
     CandidateBlock,
@@ -55,33 +56,53 @@ def slot_tag_constraint_groups(slot: Dict[str, Any]) -> Dict[str, Dict[str, Any]
     }
 
 
-def prompt_block_to_candidate(block: Any) -> CandidateBlock:
-    """Convert a prompt block DB object into a resolver CandidateBlock."""
+def primitive_block_to_candidate(block: Any) -> CandidateBlock:
+    """Convert a primitive row into a resolver CandidateBlock."""
     tags = block.tags if isinstance(getattr(block, "tags", None), dict) else {}
-    capabilities: List[str] = []
     category = getattr(block, "category", None)
-    if isinstance(category, str) and category.strip():
-        capabilities.append(category.strip())
-        if category.strip().endswith("_modifier"):
-            capabilities.append(
-                "wardrobe_modifier" if category.strip() == "wardrobe_modifier" else category.strip()
-            )
-    role = getattr(block, "role", None)
-    if isinstance(role, str) and role.strip():
-        capabilities.append(f"role:{role.strip()}")
+    block_metadata = (
+        getattr(block, "block_metadata", None)
+        if isinstance(getattr(block, "block_metadata", None), dict)
+        else {}
+    )
+    op_metadata = block_metadata.get("op") if isinstance(block_metadata, dict) else None
+    package_name = None
+    source_pack = tags.get("source_pack") if isinstance(tags, dict) else None
+    if isinstance(source_pack, str) and source_pack.strip():
+        package_name = source_pack.strip()
+    capabilities = derive_block_capabilities(
+        category=(str(category) if category is not None else None),
+        tags=tags,
+        declared=getattr(block, "capabilities", None),
+    )
     return CandidateBlock(
         block_id=str(getattr(block, "block_id", "") or ""),
         text=str(getattr(block, "text", "") or ""),
-        package_name=(str(block.package_name) if getattr(block, "package_name", None) is not None else None),
+        package_name=package_name,
         tags=dict(tags),
         category=(str(category) if category is not None else None),
         avg_rating=(float(block.avg_rating) if isinstance(getattr(block, "avg_rating", None), (int, float)) else None),
         features={},
-        capabilities=sorted(set(capabilities)),
+        capabilities=capabilities,
         metadata={
             "db_id": str(getattr(block, "id", "")) if getattr(block, "id", None) is not None else None,
+            **({"op": dict(op_metadata)} if isinstance(op_metadata, dict) else {}),
         },
     )
+
+
+# Back-compat export name used by compiler_core.__init__ and older imports.
+prompt_block_to_candidate = primitive_block_to_candidate
+
+
+def _slot_required_capabilities(slot: Dict[str, Any], target_category: Optional[str]) -> List[str]:
+    """Return explicit slot capability requirements, with category fallback."""
+    required = normalize_capability_ids(slot.get("required_capabilities"))
+    if required:
+        return required
+    if isinstance(target_category, str) and target_category.strip():
+        return [target_category.strip()]
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +165,8 @@ class CompilerV1:
                 target_caps.append(target_category)
             if target_role:
                 target_caps.append(f"role:{target_role}")
+            target_caps.extend(normalize_capability_ids(slot.get("required_capabilities")))
+            target_caps = normalize_capability_ids(target_caps)
 
             targets.append(
                 ResolutionTarget(
@@ -163,8 +186,9 @@ class CompilerV1:
             )
 
             # -- Required capabilities
-            if target_category:
-                required_capabilities_by_target[target_key] = [target_category]
+            required_caps = _slot_required_capabilities(slot, target_category)
+            if required_caps:
+                required_capabilities_by_target[target_key] = required_caps
 
             # -- Candidates
             slot_with_excludes = dict(slot)
@@ -186,7 +210,7 @@ class CompilerV1:
                 slot_with_excludes["exclude_block_ids"] = None
             candidates = await service.find_candidates(slot_with_excludes, limit=candidate_limit)
             candidates_by_target[target_key] = [
-                prompt_block_to_candidate(block)
+                primitive_block_to_candidate(block)
                 for block in candidates
                 if str(getattr(block, "block_id", "") or "").strip()
             ]

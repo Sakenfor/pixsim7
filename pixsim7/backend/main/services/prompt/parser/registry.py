@@ -10,7 +10,7 @@ Analyzer ID convention:
 """
 
 from typing import Any, Dict, List, Optional, Set
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from enum import Enum
 
 from pixsim7.backend.main.lib.registry import SimpleRegistry
@@ -27,6 +27,74 @@ class AnalyzerTarget(str, Enum):
     """What the analyzer operates on."""
     PROMPT = "prompt"    # Text/prompt analysis
     ASSET = "asset"      # Media/asset analysis
+
+
+class AnalyzerInputModality(str, Enum):
+    """Primary input modality accepted by analyzer."""
+    TEXT = "text"
+    IMAGE = "image"
+    VIDEO = "video"
+    AUDIO = "audio"
+    MULTIMODAL = "multimodal"
+
+
+class AnalyzerTaskFamily(str, Enum):
+    """Primary task family produced by analyzer."""
+    PARSE = "parse"
+    TAG = "tag"
+    CAPTION = "caption"
+    OCR = "ocr"
+    DETECTION = "detection"
+    MODERATION = "moderation"
+    EMBEDDING = "embedding"
+    CUSTOM = "custom"
+
+
+def infer_input_modality(
+    analyzer_id: str,
+    target: AnalyzerTarget,
+    kind: AnalyzerKind,
+) -> AnalyzerInputModality:
+    """Infer input modality from analyzer metadata."""
+    if target == AnalyzerTarget.PROMPT:
+        return AnalyzerInputModality.TEXT
+
+    lowered = analyzer_id.lower()
+    if "video" in lowered:
+        return AnalyzerInputModality.VIDEO
+    if "audio" in lowered:
+        return AnalyzerInputModality.AUDIO
+    if "multi" in lowered:
+        return AnalyzerInputModality.MULTIMODAL
+
+    if kind == AnalyzerKind.VISION:
+        return AnalyzerInputModality.IMAGE
+    return AnalyzerInputModality.MULTIMODAL
+
+
+def infer_task_family(
+    analyzer_id: str,
+    target: AnalyzerTarget,
+    kind: AnalyzerKind,
+) -> AnalyzerTaskFamily:
+    """Infer task family from analyzer metadata."""
+    lowered = analyzer_id.lower()
+
+    if kind == AnalyzerKind.PARSER or target == AnalyzerTarget.PROMPT:
+        return AnalyzerTaskFamily.PARSE
+    if "ocr" in lowered:
+        return AnalyzerTaskFamily.OCR
+    if "caption" in lowered:
+        return AnalyzerTaskFamily.CAPTION
+    if "moderation" in lowered:
+        return AnalyzerTaskFamily.MODERATION
+    if "embed" in lowered:
+        return AnalyzerTaskFamily.EMBEDDING
+    if "detect" in lowered:
+        return AnalyzerTaskFamily.DETECTION
+    if "tag" in lowered:
+        return AnalyzerTaskFamily.TAG
+    return AnalyzerTaskFamily.CUSTOM
 
 
 class InstanceOptionDescriptor(BaseModel):
@@ -61,6 +129,8 @@ class AnalyzerInfo(BaseModel):
     description: str
     kind: AnalyzerKind
     target: AnalyzerTarget = AnalyzerTarget.PROMPT
+    input_modality: AnalyzerInputModality | None = None
+    task_family: AnalyzerTaskFamily | None = None
     provider_id: Optional[str] = None  # For LLM/vision analyzers
     model_id: Optional[str] = None     # Default model
     source_plugin_id: Optional[str] = None  # Plugin that registered this analyzer
@@ -69,6 +139,18 @@ class AnalyzerInfo(BaseModel):
     is_default: bool = False
     is_legacy: bool = False  # Legacy aliases
     instance_options: List[InstanceOptionDescriptor] = Field(default_factory=list)
+    # Capability contract (Phase 4)
+    supports_batch: bool = False
+    supports_streaming: bool = False
+    output_schema_id: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _fill_metadata_defaults(self) -> "AnalyzerInfo":
+        if self.input_modality is None:
+            self.input_modality = infer_input_modality(self.id, self.target, self.kind)
+        if self.task_family is None:
+            self.task_family = infer_task_family(self.id, self.target, self.kind)
+        return self
 
 
 def get_effective_instance_options(analyzer: AnalyzerInfo) -> List[InstanceOptionDescriptor]:

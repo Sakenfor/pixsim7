@@ -171,6 +171,7 @@ class TemplateSlotSpec(BaseModel):
     # Legacy field accepted at the API edge and migrated to ``tags``.
     tag_constraints: Optional[Dict[str, Any]] = None
     min_rating: Optional[float] = None
+    required_capabilities: Optional[List[str]] = None
     preferences: Optional[TemplateSlotPreferencesSpec] = None
     selection_strategy: SlotSelectionStrategy = "uniform"
     selection_config: Optional[TemplateSlotSelectionConfigSpec] = None
@@ -405,6 +406,10 @@ def normalize_template_slot(
     result["tags"] = normalize_slot_tag_query(result.get("tags"))
     result["preferences"] = normalize_slot_preferences(result.get("preferences"))
     result["selection_config"] = normalize_slot_selection_config(result.get("selection_config"))
+    result["required_capabilities"] = _normalize_string_list(
+        result.get("required_capabilities"),
+        field_name="slot.required_capabilities",
+    )
     result.pop("tag_constraints", None)
     if not isinstance(result.get("label"), str):
         result["label"] = ""

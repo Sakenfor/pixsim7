@@ -6,14 +6,25 @@ from pixsim7.backend.main.api.v1.block_templates import _build_block_matrix_drif
 from pixsim7.backend.main.api.v1.block_templates import _resolve_block_matrix_value
 
 
-def _b(block_id: str, *, tags) -> SimpleNamespace:
-    return SimpleNamespace(block_id=block_id, tags=tags)
+def _b(block_id: str, *, tags, **extra) -> SimpleNamespace:
+    return SimpleNamespace(block_id=block_id, tags=tags, **extra)
 
 
 def test_resolve_block_matrix_value_handles_non_dict_tags() -> None:
     block = _b("b1", tags=["not", "a", "dict"])
     assert _resolve_block_matrix_value(block, "sequence_family", missing_label="__m__") == "__m__"
     assert _resolve_block_matrix_value(block, "tag:sequence_family", missing_label="__m__") == "__m__"
+
+
+def test_resolve_block_matrix_value_derives_package_name_from_source_pack() -> None:
+    block = _b("b1", tags={"source_pack": "core_scene_primitives"}, category="light")
+    assert _resolve_block_matrix_value(block, "package_name", missing_label="__m__") == "core_scene_primitives"
+
+
+def test_resolve_block_matrix_value_derives_composition_role_aliases() -> None:
+    block = _b("b1", tags={}, category="light")
+    assert _resolve_block_matrix_value(block, "composition_role", missing_label="__m__") == "lighting:key"
+    assert _resolve_block_matrix_value(block, "role", missing_label="__m__") == "lighting:key"
 
 
 def test_build_block_matrix_drift_report_axis_and_tag_drift() -> None:

@@ -3,18 +3,20 @@ Content-pack loader — discovers and loads blocks, templates, and characters
 from content_packs/prompt/ directories into the database.
 
 Layout:
-    Single-file (legacy, still supported):
-        content_packs/prompt/<pack_name>/blocks.yaml
+    Block schemas (required for blocks):
+        content_packs/prompt/<pack_name>/schema.yaml
+        content_packs/prompt/<pack_name>/blocks.schema.yaml
+        content_packs/prompt/<pack_name>/blocks/**/*.schema.yaml
+
+    Single-file:
         content_packs/prompt/<pack_name>/templates.yaml
         content_packs/prompt/<pack_name>/characters.yaml
 
     Multi-file (authoring convenience):
-        content_packs/prompt/<pack_name>/blocks/*.yaml
         content_packs/prompt/<pack_name>/templates/*.yaml
         content_packs/prompt/<pack_name>/characters/*.yaml
 
-    When both a single file and a directory exist (e.g. blocks.yaml + blocks/*.yaml),
-    all sources are merged (single file first, then directory files in name order).
+    For blocks, legacy ``blocks.yaml`` and ``blocks/*.yaml`` sources are not loaded.
 
 Auto-discovered by startup.py during optional seeding.
 Also usable from CLI via scripts/load_content_pack.py.
@@ -34,11 +36,16 @@ from sqlmodel import SQLModel
 
 from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
+from pixsim7.backend.main.shared.path_registry import get_path_registry
 from pixsim7.backend.main.services.prompt.block.template_controls import (
     expand_control_presets,
 )
 from pixsim7.backend.main.services.prompt.block.template_features import (
     expand_template_feature_presets,
+)
+from pixsim7.backend.main.services.prompt.block.capabilities import (
+    derive_block_capabilities,
+    normalize_capability_ids,
 )
 from pixsim7.backend.main.services.prompt.block.template_slots import (
     TEMPLATE_SLOT_SCHEMA_VERSION,
@@ -54,9 +61,19 @@ from pixsim7.backend.main.services.prompt.block.family_contract_validation impor
 
 logger = logging.getLogger(__name__)
 
-CONTENT_PACKS_DIR = Path(__file__).resolve().parents[3] / "content_packs" / "prompt"
+CONTENT_PACKS_DIR = get_path_registry().prompt_content_packs_dir
 CONTENT_PACK_SOURCE_KEY = "content_pack"
 _YAML_SUFFIXES = (".yaml", ".yml")
+_BLOCK_SCHEMA_FILENAMES = (
+    "schema.yaml",
+    "schema.yml",
+    "blocks.schema.yaml",
+    "blocks.schema.yml",
+)
+_BLOCK_SCHEMA_FRAGMENT_SUFFIXES = (
+    ".schema.yaml",
+    ".schema.yml",
+)
 
 
 class ContentPackValidationError(ValueError):
@@ -71,6 +88,7 @@ _BLOCK_FIELDS: Dict[str, Any] = {
     "category": "uncategorized",
     "text": "",
     "tags": {},
+    "capabilities": [],
     "source": "system",
     "is_public": True,
 }
@@ -117,8 +135,25 @@ def _load_yaml(path: Path) -> Dict[str, Any]:
 
 def _iter_pack_sources(content_dir: Path, stem: str) -> List[Path]:
     """Return ordered YAML sources for a pack section (blocks/templates/characters)."""
-    sources: List[Path] = []
+    if stem == "blocks":
+        sources: List[Path] = []
+        for filename in _BLOCK_SCHEMA_FILENAMES:
+            schema_source = content_dir / filename
+            if schema_source.exists():
+                sources.append(schema_source)
+        fragments_dir = content_dir / stem
+        if fragments_dir.is_dir():
+            fragments: List[Path] = []
+            for suffix in _BLOCK_SCHEMA_FRAGMENT_SUFFIXES:
+                fragments.extend(
+                    p
+                    for p in fragments_dir.rglob(f"*{suffix}")
+                    if p.is_file()
+                )
+            sources.extend(sorted(fragments))
+        return sources
 
+    sources: List[Path] = []
     # Prefer .yaml, then .yml; include at most one single-file source.
     for suffix in _YAML_SUFFIXES:
         single = content_dir / f"{stem}{suffix}"
@@ -142,6 +177,17 @@ def _iter_pack_sources(content_dir: Path, stem: str) -> List[Path]:
 
 
 def _has_any_pack_source(content_dir: Path, stem: str) -> bool:
+    if stem == "blocks":
+        if any((content_dir / name).exists() for name in _BLOCK_SCHEMA_FILENAMES):
+            return True
+        fragments_dir = content_dir / stem
+        if not fragments_dir.is_dir():
+            return False
+        return any(
+            f.is_file() and any(f.name.endswith(suffix) for suffix in _BLOCK_SCHEMA_FRAGMENT_SUFFIXES)
+            for f in fragments_dir.rglob("*")
+        )
+
     if any((content_dir / f"{stem}{suffix}").exists() for suffix in _YAML_SUFFIXES):
         return True
     fragments_dir = content_dir / stem
@@ -151,6 +197,26 @@ def _has_any_pack_source(content_dir: Path, stem: str) -> bool:
         f.is_file() and f.suffix in _YAML_SUFFIXES
         for f in fragments_dir.rglob("*")
     )
+
+
+def _iter_legacy_block_sources(content_dir: Path) -> List[Path]:
+    """Return legacy prompt block files that are no longer supported."""
+    legacy: List[Path] = []
+    for suffix in _YAML_SUFFIXES:
+        single = content_dir / f"blocks{suffix}"
+        if single.exists():
+            legacy.append(single)
+
+    blocks_dir = content_dir / "blocks"
+    if blocks_dir.is_dir():
+        for suffix in _YAML_SUFFIXES:
+            legacy.extend(
+                p
+                for p in blocks_dir.rglob(f"*{suffix}")
+                if p.is_file()
+                and not any(p.name.endswith(schema_suffix) for schema_suffix in _BLOCK_SCHEMA_FRAGMENT_SUFFIXES)
+            )
+    return sorted(legacy)
 
 
 def _required_non_empty_string(
@@ -240,13 +306,23 @@ def discover_content_packs() -> List[str]:
 
 
 def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
-    """Parse blocks YAML sources, merging defaults into each block."""
+    """Parse block schema sources, merging defaults into each block."""
+    legacy_sources = _iter_legacy_block_sources(content_dir)
+    if legacy_sources:
+        source_list = ", ".join(str(path.name) for path in legacy_sources[:5])
+        if len(legacy_sources) > 5:
+            source_list = f"{source_list}, ..."
+        raise ContentPackValidationError(
+            f"{content_dir}: found unsupported legacy block source(s): {source_list}. "
+            "Use schema.yaml, blocks.schema.yaml, or blocks/**/*.schema.yaml."
+        )
+
     sources = _iter_pack_sources(content_dir, "blocks")
     if not sources:
         return []
 
-    # Pack-level defaults can be provided by the single-file source (blocks.yaml)
-    # and apply to all fragment files too.
+    # Pack-level defaults can be provided by the first root schema source and
+    # apply to all schema fragment files too.
     pack_defaults: Dict[str, Any] = {}
     pack_defaults_source: Path | None = None
     pack_package_name: str | None = None
@@ -268,8 +344,12 @@ def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
                     f"{src}: package_name '{src_package_name}' conflicts with '{pack_package_name}' from {pack_package_name_source}"
                 )
 
-        # Treat the first single-file source as pack defaults (if present).
-        if pack_defaults_source is None and src.parent == content_dir and src.stem == "blocks":
+        # Treat the first root schema source as pack defaults (if present).
+        if (
+            pack_defaults_source is None
+            and src.parent == content_dir
+            and src.name in _BLOCK_SCHEMA_FILENAMES
+        ):
             defaults = data.get("defaults", {})
             if defaults is None:
                 defaults = {}
@@ -296,6 +376,8 @@ def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
             raw_blocks = []
         if not isinstance(raw_blocks, list):
             raise ContentPackValidationError(f"{src}: blocks must be a list")
+        raw_blocks = list(raw_blocks)
+        raw_blocks.extend(_compile_schema_blocks(block_schema=data.get("block_schema"), src=src))
 
         effective_defaults = {**pack_defaults, **defaults}
 
@@ -329,6 +411,12 @@ def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
                     raise ContentPackValidationError(
                         f"{src}: blocks[{index}].{field_name} must be a string"
                     )
+            raw_capabilities = block.get("capabilities")
+            if raw_capabilities is not None and not isinstance(raw_capabilities, (str, list)):
+                raise ContentPackValidationError(
+                    f"{src}: blocks[{index}].capabilities must be a string or list"
+                )
+            block["capabilities"] = normalize_capability_ids(raw_capabilities)
 
             tags = block.get("tags")
             if tags is None:
@@ -402,9 +490,482 @@ def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
     return blocks
 
 
+def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, Any]]:
+    """Compile schema-first block definitions into normalized block objects.
+
+    Supported shape:
+      block_schema:
+        id_prefix: core.camera.motion
+        text_template: "Camera motion token: {variant}."
+        category: camera
+        role: camera
+        capabilities: [camera.motion]
+        tags: {modifier_family: camera_motion}
+        variants:
+          - key: zoom
+            tags: {camera_motion: zoom}
+    """
+    def _normalize_op_modalities(*, value: Any, field: str) -> List[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list) or not value:
+            raise ContentPackValidationError(f"{src}: {field} must be a non-empty list")
+
+        normalized: List[str] = []
+        for idx, raw in enumerate(value):
+            if not isinstance(raw, str) or not raw.strip():
+                raise ContentPackValidationError(
+                    f"{src}: {field}[{idx}] must be a non-empty string"
+                )
+            token = raw.strip().lower()
+            if token not in {"image", "video", "both"}:
+                raise ContentPackValidationError(
+                    f"{src}: {field}[{idx}] must be one of: image, video, both"
+                )
+            if token == "both":
+                for expanded in ("image", "video"):
+                    if expanded not in normalized:
+                        normalized.append(expanded)
+            elif token not in normalized:
+                normalized.append(token)
+        return normalized
+
+    def _derive_modality_support_tag(modalities: List[str]) -> str | None:
+        has_image = "image" in modalities
+        has_video = "video" in modalities
+        if has_image and has_video:
+            return "both"
+        if has_image:
+            return "image"
+        if has_video:
+            return "video"
+        return None
+
+    def _normalize_schema_op(*, value: Any) -> Dict[str, Any] | None:
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ContentPackValidationError(f"{src}: block_schema.op must be an object")
+
+        op_id = value.get("op_id")
+        if op_id is not None and (not isinstance(op_id, str) or not op_id.strip()):
+            raise ContentPackValidationError(f"{src}: block_schema.op.op_id must be a non-empty string")
+        op_id_text = op_id.strip() if isinstance(op_id, str) else None
+
+        op_id_template = value.get("op_id_template")
+        if op_id_template is not None and (not isinstance(op_id_template, str) or not op_id_template.strip()):
+            raise ContentPackValidationError(
+                f"{src}: block_schema.op.op_id_template must be a non-empty string"
+            )
+        op_id_template_text = op_id_template.strip() if isinstance(op_id_template, str) else None
+
+        if bool(op_id_text) == bool(op_id_template_text):
+            raise ContentPackValidationError(
+                f"{src}: block_schema.op requires exactly one of op_id or op_id_template"
+            )
+
+        refs = value.get("refs")
+        normalized_refs: List[Dict[str, Any]] = []
+        if refs is not None:
+            if not isinstance(refs, list):
+                raise ContentPackValidationError(f"{src}: block_schema.op.refs must be a list")
+            for idx, raw_ref in enumerate(refs):
+                if not isinstance(raw_ref, dict):
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.refs[{idx}] must be an object"
+                    )
+                ref_key = raw_ref.get("key")
+                if not isinstance(ref_key, str) or not ref_key.strip():
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.refs[{idx}].key must be a non-empty string"
+                    )
+                ref_capability = raw_ref.get("capability")
+                if not isinstance(ref_capability, str) or not ref_capability.strip():
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.refs[{idx}].capability must be a non-empty string"
+                    )
+                required = raw_ref.get("required", False)
+                if not isinstance(required, bool):
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.refs[{idx}].required must be a boolean"
+                    )
+                many = raw_ref.get("many", False)
+                if not isinstance(many, bool):
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.refs[{idx}].many must be a boolean"
+                    )
+                description = raw_ref.get("description")
+                if description is not None and not isinstance(description, str):
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.refs[{idx}].description must be a string"
+                    )
+
+                normalized_ref = dict(raw_ref)
+                normalized_ref["key"] = ref_key.strip()
+                normalized_ref["capability"] = ref_capability.strip()
+                normalized_ref["required"] = required
+                normalized_ref["many"] = many
+                normalized_refs.append(normalized_ref)
+
+        params = value.get("params")
+        normalized_params: List[Dict[str, Any]] = []
+        if params is not None:
+            if not isinstance(params, list):
+                raise ContentPackValidationError(f"{src}: block_schema.op.params must be a list")
+            for idx, raw_param in enumerate(params):
+                if not isinstance(raw_param, dict):
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.params[{idx}] must be an object"
+                    )
+
+                param_key = raw_param.get("key")
+                if not isinstance(param_key, str) or not param_key.strip():
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.params[{idx}].key must be a non-empty string"
+                    )
+                param_type = raw_param.get("type")
+                if not isinstance(param_type, str) or not param_type.strip():
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.params[{idx}].type must be a non-empty string"
+                    )
+                param_type = param_type.strip().lower()
+                if param_type not in {"string", "number", "integer", "boolean", "enum", "ref"}:
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.params[{idx}].type must be one of: string, number, integer, boolean, enum, ref"
+                    )
+
+                required = raw_param.get("required", False)
+                if not isinstance(required, bool):
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.params[{idx}].required must be a boolean"
+                    )
+                description = raw_param.get("description")
+                if description is not None and not isinstance(description, str):
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.params[{idx}].description must be a string"
+                    )
+
+                enum_values = raw_param.get("enum")
+                if enum_values is not None:
+                    if not isinstance(enum_values, list) or not enum_values:
+                        raise ContentPackValidationError(
+                            f"{src}: block_schema.op.params[{idx}].enum must be a non-empty list"
+                        )
+                    for enum_index, enum_item in enumerate(enum_values):
+                        if not isinstance(enum_item, str) or not enum_item.strip():
+                            raise ContentPackValidationError(
+                                f"{src}: block_schema.op.params[{idx}].enum[{enum_index}] must be a non-empty string"
+                            )
+
+                if param_type == "enum" and enum_values is None:
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.params[{idx}] type=enum requires enum values"
+                    )
+
+                ref_capability = raw_param.get("ref_capability")
+                if param_type == "ref":
+                    if not isinstance(ref_capability, str) or not ref_capability.strip():
+                        raise ContentPackValidationError(
+                            f"{src}: block_schema.op.params[{idx}] type=ref requires ref_capability"
+                        )
+                elif ref_capability is not None and not isinstance(ref_capability, str):
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.params[{idx}].ref_capability must be a string"
+                    )
+
+                minimum = raw_param.get("minimum")
+                if minimum is not None and not isinstance(minimum, (int, float)):
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.params[{idx}].minimum must be a number"
+                    )
+                maximum = raw_param.get("maximum")
+                if maximum is not None and not isinstance(maximum, (int, float)):
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.params[{idx}].maximum must be a number"
+                    )
+
+                normalized_param = dict(raw_param)
+                normalized_param["key"] = param_key.strip()
+                normalized_param["type"] = param_type
+                normalized_param["required"] = required
+                if enum_values is not None:
+                    normalized_param["enum"] = [str(item).strip() for item in enum_values]
+                if isinstance(ref_capability, str):
+                    normalized_param["ref_capability"] = ref_capability.strip()
+                normalized_params.append(normalized_param)
+
+        default_args = value.get("default_args")
+        if default_args is None:
+            normalized_default_args: Dict[str, Any] = {}
+        else:
+            if not isinstance(default_args, dict):
+                raise ContentPackValidationError(f"{src}: block_schema.op.default_args must be an object")
+            normalized_default_args = {}
+            for raw_key, raw_value in default_args.items():
+                key_text = str(raw_key).strip()
+                if not key_text:
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.default_args keys must be non-empty strings"
+                    )
+                normalized_default_args[key_text] = raw_value
+
+        normalized_op: Dict[str, Any] = {}
+        for key, entry in value.items():
+            if key in {"op_id", "op_id_template", "modalities", "refs", "params", "default_args"}:
+                continue
+            normalized_op[key] = entry
+
+        if op_id_text is not None:
+            normalized_op["op_id"] = op_id_text
+        if op_id_template_text is not None:
+            normalized_op["op_id_template"] = op_id_template_text
+
+        modalities = _normalize_op_modalities(value=value.get("modalities"), field="block_schema.op.modalities")
+        if modalities:
+            normalized_op["modalities"] = modalities
+        if normalized_refs:
+            normalized_op["refs"] = normalized_refs
+        if normalized_params:
+            normalized_op["params"] = normalized_params
+        if normalized_default_args:
+            normalized_op["default_args"] = normalized_default_args
+        return normalized_op
+
+    if block_schema is None:
+        return []
+    if not isinstance(block_schema, dict):
+        raise ContentPackValidationError(f"{src}: block_schema must be an object")
+
+    id_prefix = block_schema.get("id_prefix")
+    if not isinstance(id_prefix, str) or not id_prefix.strip():
+        raise ContentPackValidationError(f"{src}: block_schema.id_prefix must be a non-empty string")
+    id_prefix = id_prefix.strip().rstrip(".")
+    if not id_prefix:
+        raise ContentPackValidationError(f"{src}: block_schema.id_prefix must not be empty")
+
+    text_template = block_schema.get("text_template")
+    if text_template is not None and not isinstance(text_template, str):
+        raise ContentPackValidationError(f"{src}: block_schema.text_template must be a string")
+
+    base_tags = block_schema.get("tags", {})
+    if base_tags is None:
+        base_tags = {}
+    if not isinstance(base_tags, dict):
+        raise ContentPackValidationError(f"{src}: block_schema.tags must be an object")
+
+    variants = block_schema.get("variants")
+    if not isinstance(variants, list) or not variants:
+        raise ContentPackValidationError(f"{src}: block_schema.variants must be a non-empty list")
+
+    schema_op = _normalize_schema_op(value=block_schema.get("op"))
+
+    reserved_schema_keys = {"id_prefix", "text_template", "tags", "variants", "op"}
+    base_block = {k: v for k, v in block_schema.items() if k not in reserved_schema_keys}
+
+    compiled: List[Dict[str, Any]] = []
+    for i, variant in enumerate(variants):
+        if not isinstance(variant, dict):
+            raise ContentPackValidationError(f"{src}: block_schema.variants[{i}] must be an object")
+
+        variant_key_raw = variant.get("key", variant.get("id"))
+        if not isinstance(variant_key_raw, str) or not variant_key_raw.strip():
+            raise ContentPackValidationError(
+                f"{src}: block_schema.variants[{i}].key is required and must be a non-empty string"
+            )
+        variant_key = variant_key_raw.strip()
+
+        explicit_block_id = variant.get("block_id")
+        if explicit_block_id is not None and (not isinstance(explicit_block_id, str) or not explicit_block_id.strip()):
+            raise ContentPackValidationError(
+                f"{src}: block_schema.variants[{i}].block_id must be a non-empty string when provided"
+            )
+        block_id = explicit_block_id.strip() if isinstance(explicit_block_id, str) else f"{id_prefix}.{variant_key}"
+
+        variant_tags = variant.get("tags", {})
+        if variant_tags is None:
+            variant_tags = {}
+        if not isinstance(variant_tags, dict):
+            raise ContentPackValidationError(f"{src}: block_schema.variants[{i}].tags must be an object")
+
+        text = variant.get("text")
+        if text is not None and not isinstance(text, str):
+            raise ContentPackValidationError(f"{src}: block_schema.variants[{i}].text must be a string")
+        if text is None and text_template is not None:
+            try:
+                text = text_template.format(variant=variant_key)
+            except Exception as exc:
+                raise ContentPackValidationError(
+                    f"{src}: block_schema.text_template failed for variant '{variant_key}': {exc}"
+                ) from exc
+
+        variant_op_id = variant.get("op_id")
+        if variant_op_id is not None and (not isinstance(variant_op_id, str) or not variant_op_id.strip()):
+            raise ContentPackValidationError(
+                f"{src}: block_schema.variants[{i}].op_id must be a non-empty string"
+            )
+        variant_op_id_text = variant_op_id.strip() if isinstance(variant_op_id, str) else None
+
+        variant_op_args_raw = variant.get("op_args")
+        if variant_op_args_raw is None:
+            variant_op_args: Dict[str, Any] = {}
+        elif not isinstance(variant_op_args_raw, dict):
+            raise ContentPackValidationError(
+                f"{src}: block_schema.variants[{i}].op_args must be an object"
+            )
+        else:
+            variant_op_args = {}
+            for raw_key, raw_value in variant_op_args_raw.items():
+                arg_key = str(raw_key).strip()
+                if not arg_key:
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.variants[{i}].op_args keys must be non-empty strings"
+                    )
+                variant_op_args[arg_key] = raw_value
+
+        variant_ref_bindings_raw = variant.get("ref_bindings")
+        if variant_ref_bindings_raw is None:
+            variant_ref_bindings: Dict[str, str] = {}
+        elif not isinstance(variant_ref_bindings_raw, dict):
+            raise ContentPackValidationError(
+                f"{src}: block_schema.variants[{i}].ref_bindings must be an object"
+            )
+        else:
+            variant_ref_bindings = {}
+            for raw_key, raw_value in variant_ref_bindings_raw.items():
+                ref_key = str(raw_key).strip()
+                if not ref_key:
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.variants[{i}].ref_bindings keys must be non-empty strings"
+                    )
+                if not isinstance(raw_value, str) or not raw_value.strip():
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.variants[{i}].ref_bindings.{ref_key} must be a non-empty string"
+                    )
+                variant_ref_bindings[ref_key] = raw_value.strip()
+
+        variant_op_modalities = _normalize_op_modalities(
+            value=variant.get("op_modalities"),
+            field=f"block_schema.variants[{i}].op_modalities",
+        )
+
+        reserved_variant_keys = {
+            "key", "id", "block_id", "text", "tags",
+            "op_id", "op_modalities", "op_args", "ref_bindings",
+        }
+        block = dict(base_block)
+        for key, value in variant.items():
+            if key in reserved_variant_keys:
+                continue
+            block[key] = value
+
+        tags = dict(base_tags)
+        tags.update(variant_tags)
+        tags.setdefault("variant", variant_key)
+
+        effective_op_id: str | None = variant_op_id_text
+        if effective_op_id is None and schema_op is not None:
+            template_id = schema_op.get("op_id_template")
+            fixed_op_id = schema_op.get("op_id")
+            if isinstance(template_id, str) and template_id:
+                try:
+                    effective_op_id = template_id.format(variant=variant_key)
+                except Exception as exc:
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.op_id_template failed for variant '{variant_key}': {exc}"
+                    ) from exc
+            elif isinstance(fixed_op_id, str) and fixed_op_id:
+                effective_op_id = fixed_op_id
+
+        has_variant_op_fields = any(
+            field in variant
+            for field in ("op_id", "op_modalities", "op_args", "ref_bindings")
+        )
+        if effective_op_id is None and has_variant_op_fields:
+            raise ContentPackValidationError(
+                f"{src}: block_schema.variants[{i}] defines op fields but no op_id could be resolved"
+            )
+
+        schema_modalities: List[str] = []
+        if schema_op is not None:
+            schema_modalities = list(schema_op.get("modalities") or [])
+
+        effective_modalities = variant_op_modalities or schema_modalities
+
+        schema_default_args: Dict[str, Any] = {}
+        if schema_op is not None and isinstance(schema_op.get("default_args"), dict):
+            schema_default_args = dict(schema_op.get("default_args") or {})
+        effective_op_args = dict(schema_default_args)
+        effective_op_args.update(variant_op_args)
+
+        schema_refs: List[Dict[str, Any]] = []
+        if schema_op is not None and isinstance(schema_op.get("refs"), list):
+            schema_refs = [dict(item) for item in schema_op.get("refs") or [] if isinstance(item, dict)]
+
+        schema_params: List[Dict[str, Any]] = []
+        if schema_op is not None and isinstance(schema_op.get("params"), list):
+            schema_params = [dict(item) for item in schema_op.get("params") or [] if isinstance(item, dict)]
+
+        if effective_op_id is not None:
+            op_payload: Dict[str, Any] = {"op_id": effective_op_id}
+            if effective_modalities:
+                op_payload["modalities"] = effective_modalities
+            if schema_refs:
+                op_payload["refs"] = schema_refs
+            if schema_params:
+                op_payload["params"] = schema_params
+            if effective_op_args:
+                op_payload["args"] = effective_op_args
+            if variant_ref_bindings:
+                op_payload["ref_bindings"] = variant_ref_bindings
+
+            block_metadata = block.get("block_metadata")
+            if block_metadata is None:
+                normalized_metadata: Dict[str, Any] = {}
+            elif not isinstance(block_metadata, dict):
+                raise ContentPackValidationError(
+                    f"{src}: block_schema.variants[{i}].block_metadata must be an object"
+                )
+            else:
+                normalized_metadata = dict(block_metadata)
+            normalized_metadata["op"] = op_payload
+            block["block_metadata"] = normalized_metadata
+
+            tags.setdefault("op_id", effective_op_id)
+            op_namespace = effective_op_id.split(".", 1)[0].strip()
+            if op_namespace:
+                tags.setdefault("op_namespace", op_namespace)
+            if effective_modalities:
+                tags.setdefault("op_modalities", ",".join(effective_modalities))
+                modality_support_tag = _derive_modality_support_tag(effective_modalities)
+                if modality_support_tag:
+                    tags.setdefault("modality_support", modality_support_tag)
+
+            op_capabilities = [f"op:{effective_op_id}"]
+            ref_capabilities: List[str] = []
+            for ref in schema_refs:
+                capability = ref.get("capability")
+                if isinstance(capability, str) and capability.strip():
+                    ref_cap = capability.strip()
+                    ref_capabilities.append(ref_cap)
+                    op_capabilities.append(f"ref:{ref_cap}")
+            if ref_capabilities:
+                tags.setdefault("op_ref_capabilities", ",".join(ref_capabilities))
+            existing_caps = normalize_capability_ids(block.get("capabilities"))
+            block["capabilities"] = normalize_capability_ids(existing_caps + op_capabilities)
+
+        block["block_id"] = block_id
+        block["tags"] = tags
+        if text is not None:
+            block["text"] = text
+
+        compiled.append(block)
+
+    return compiled
+
+
 # ── Manifest query field type sets ──────────────────────────────────────────
 _MANIFEST_QUERY_STRING_FIELDS: frozenset[str] = frozenset({
-    "role", "category", "package_name", "tags",
+    "role", "composition_role", "category", "package_name", "tags",
     "expected_row_values", "expected_col_values",
     "expected_tag_keys", "required_tag_keys",
 })
@@ -457,6 +1018,14 @@ def _normalize_manifest_query(
             raise ContentPackValidationError(
                 f"{src}: matrix_presets[{preset_index}].query.{field} must be an integer"
             )
+
+    # Canonicalize legacy role filter key.
+    if (
+        isinstance(normalized.get("role"), str)
+        and normalized.get("role")
+        and not isinstance(normalized.get("composition_role"), str)
+    ):
+        normalized["composition_role"] = normalized["role"]
 
     return normalized
 
@@ -654,7 +1223,8 @@ def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]
           - query: object   (required)
               - row_key: str               (required, non-empty)
               - col_key: str               (required, non-empty)
-              - role: str?
+              - composition_role: str?     (preferred inferred-role filter)
+              - role: str?                 (deprecated alias)
               - category: str?
               - package_name: str?
               - tags: str?                 (compact "key:value,..." filter)
@@ -965,6 +1535,12 @@ def _project_block_to_primitive(block: Dict[str, Any], *, plugin_name: str) -> D
     if not category:
         category = "uncategorized"
 
+    capabilities = derive_block_capabilities(
+        category=category,
+        tags=tags,
+        declared=normalize_capability_ids(block.get("capabilities")),
+    )
+
     text = block.get("text")
     if not isinstance(text, str):
         text = ""
@@ -984,6 +1560,7 @@ def _project_block_to_primitive(block: Dict[str, Any], *, plugin_name: str) -> D
         "category": category,
         "text": text,
         "tags": tags,
+        "capabilities": capabilities,
         "source": source,
         "is_public": is_public,
     }
