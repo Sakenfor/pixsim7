@@ -412,7 +412,7 @@ async def test_compile_template_slug_not_found_returns_404():
     """compile-template returns 404 when the slug matches no template in DB."""
     mock_db = AsyncMock()
     with patch(
-        "pixsim7.backend.main.api.v1.block_templates.BlockTemplateService"
+        "pixsim7.backend.main.api.v1.block_templates.routes_templates.BlockTemplateService"
     ) as MockService:
         mock_svc = MagicMock()
         mock_svc.get_template_by_slug = AsyncMock(return_value=None)
