@@ -3,9 +3,9 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 
 import {
   createGameWorld,
-  listGameLocations,
   type GameLocationSummary,
 } from '@lib/api';
+import { resolveGameLocations } from '@lib/resolvers';
 
 import { useWorldContextStore } from '@features/scene';
 
@@ -39,19 +39,25 @@ export function WorldContextSelector() {
     locationIdRef.current = locationId;
   }, [locationId]);
 
-  const loadLocationsForWorld = useCallback(async () => {
+  const loadLocationsForWorld = useCallback(async (activeWorldId: number) => {
     setIsLoadingLocations(true);
     try {
-      const data = await listGameLocations();
+      const data = await resolveGameLocations(
+        { worldId: activeWorldId },
+        { consumerId: 'WorldContextSelector.loadLocations' },
+      );
 
-      // Filter by world_id if the location meta has it
-      // For now, show all locations (can be enhanced with meta.world_id filter)
       const list = Array.isArray(data) ? data : [];
       setLocations(list);
 
       // Auto-select first location if none selected
       if (list.length > 0 && locationIdRef.current === null) {
         setLocationId(list[0].id);
+      } else if (
+        locationIdRef.current != null &&
+        !list.some((location) => location.id === locationIdRef.current)
+      ) {
+        setLocationId(null);
       }
     } catch (error) {
       toastRef.current.error(
@@ -72,7 +78,7 @@ export function WorldContextSelector() {
   // Load locations when world changes
   useEffect(() => {
     if (worldId !== null) {
-      void loadLocationsForWorld();
+      void loadLocationsForWorld(worldId);
     } else {
       setLocations((prev) => (prev.length === 0 ? prev : []));
       if (locationIdRef.current !== null) {

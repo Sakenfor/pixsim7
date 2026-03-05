@@ -1,11 +1,19 @@
-import { useEffect, useState } from 'react';
-import { Button, Panel, Input, Select } from '@pixsim7/shared.ui';
-import type { GameLocationSummary, GameLocationDetail, GameHotspotDTO, GameWorldSummary, GameWorldDetail } from '../lib/api/game';
-import { listGameLocations, getGameLocation, saveGameLocationHotspots, listGameWorlds, getGameWorld } from '../lib/api/game';
 import type { HotspotActionType } from '@pixsim7/game.engine';
-import { NpcSlotEditor } from '../components/NpcSlotEditor';
-import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
+import { Button, Panel, Input, Select } from '@pixsim7/shared.ui';
+import { useEffect, useState } from 'react';
+
+import { resolveGameLocations, resolveGameWorlds } from '@lib/resolvers';
+
 import { InteractionPresetUsagePanel } from '@/components/game/panels/InteractionPresetUsagePanel';
+
+import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
+import { NpcSlotEditor } from '../components/NpcSlotEditor';
+import type { GameLocationSummary, GameLocationDetail, GameHotspotDTO, GameWorldSummary, GameWorldDetail } from '../lib/api/game';
+import { getGameLocation, saveGameLocationHotspots, getGameWorld } from '../lib/api/game';
+
+
+
+
 
 export function GameWorld() {
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);
@@ -24,8 +32,8 @@ export function GameWorld() {
       try {
         setError(null);
         const [locs, worldsList] = await Promise.all([
-          listGameLocations(),
-          listGameWorlds(),
+          resolveGameLocations({}, { consumerId: 'GameWorld.loadLocations' }),
+          resolveGameWorlds({ consumerId: 'GameWorld.loadWorlds' }),
         ]);
         setLocations(locs);
         setWorlds(worldsList);

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { listGameWorlds, type GameWorldSummary } from "@lib/api";
+import type { GameWorldSummary } from "@lib/api";
 import { useEditorContext } from "@lib/context";
+import { resolveGameWorlds } from "@lib/resolvers";
 
 import { useWorldContextStore } from "@features/scene";
 
@@ -40,7 +41,9 @@ export function useSharedWorldSelection(
     setWorldLoadError(null);
 
     try {
-      const worldList = await listGameWorlds();
+      const worldList = await resolveGameWorlds({
+        consumerId: 'useSharedWorldSelection.loadWorlds',
+      });
       setWorlds(worldList);
 
       if (autoSelectFirst && worldList.length > 0 && selectedWorldIdRef.current == null) {

@@ -16,13 +16,12 @@ import { useState, useEffect, useMemo } from 'react';
 
 import {
   getGameWorld,
-  listGameNpcs,
-  listGameLocations,
   saveGameWorldMeta,
   type GameWorldDetail,
   type GameNpcSummary,
   type GameLocationSummary,
 } from '@lib/api/game';
+import { resolveGameLocations, resolveGameNpcs } from '@lib/resolvers';
 
 import { useAssetPickerStore } from '@features/assets';
 import type { SelectedAsset as PickerSelectedAsset } from '@features/assets/stores/assetPickerStore';
@@ -153,8 +152,14 @@ export function WorldVisualRolesPanel() {
 
         // Load NPCs and locations
         const [npcList, locationList] = await Promise.all([
-          listGameNpcs(),
-          listGameLocations(),
+          resolveGameNpcs(
+            { worldId: selectedWorldId },
+            { consumerId: 'WorldVisualRolesPanel.loadNpcs' },
+          ),
+          resolveGameLocations(
+            { worldId: selectedWorldId },
+            { consumerId: 'WorldVisualRolesPanel.loadLocations' },
+          ),
         ]);
         setNpcs(npcList);
         setLocations(locationList);

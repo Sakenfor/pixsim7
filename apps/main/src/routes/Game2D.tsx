@@ -41,6 +41,7 @@ import { useSearchParams } from 'react-router-dom';
 
 import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 import type { Scene, SessionFlags } from '@lib/registries';
+import { resolveGameLocations, resolveGameWorlds } from '@lib/resolvers';
 
 
 import { getAsset, fromAssetResponse, getAssetDisplayUrls, type AssetModel } from '@features/assets';
@@ -64,14 +65,12 @@ import { SimpleDialogue } from '../components/game/DialogueUI';
 import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
 import {
-  listGameLocations,
   getGameLocation,
   getGameScene,
   getNpcExpressions,
   createGameSession,
   getGameSession,
   updateGameSession,
-  listGameWorlds,
   createGameWorld,
   getNpcSlots,
   getWorldNpcRoles,
@@ -312,7 +311,9 @@ export function Game2D() {
   useEffect(() => {
     (async () => {
       try {
-        const locs = await listGameLocations();
+        const locs = await resolveGameLocations({}, {
+          consumerId: 'Game2D.loadLocations',
+        });
         setLocations(locs);
         const locationIdParam = searchParams.get('locationId');
         const locFromParam = locationIdParam ? Number(locationIdParam) : null;
@@ -329,7 +330,9 @@ export function Game2D() {
     // Load worlds list (runtime handles session restoration)
     (async () => {
       try {
-        const ws = await listGameWorlds();
+        const ws = await resolveGameWorlds({
+          consumerId: 'Game2D.loadWorlds',
+        });
         setWorlds(ws);
 
         // If runtime hasn't loaded a world yet, initialize from URL or first world

@@ -2,7 +2,6 @@ import { Button, Panel, Input, Select } from '@pixsim7/shared.ui';
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 
 import {
-  listGameNpcs,
   getNpcExpressions,
   saveNpcExpressions,
   listNpcSurfacePackages,
@@ -13,6 +12,7 @@ import {
   type NpcExpressionDTO,
   type NpcSurfacePackage,
 } from '@lib/api/game';
+import { resolveGameNpcs } from '@lib/resolvers';
 
 import { useWorkspaceStore } from '@features/workspace';
 
@@ -48,7 +48,9 @@ export function NpcPortraits() {
   useEffect(() => {
     (async () => {
       try {
-        const list = await listGameNpcs();
+        const list = await resolveGameNpcs({}, {
+          consumerId: 'NpcPortraits.loadNpcs',
+        });
         setNpcs(list);
         if (!selectedNpcId && list.length > 0) {
           setSelectedNpcId(list[0].id);

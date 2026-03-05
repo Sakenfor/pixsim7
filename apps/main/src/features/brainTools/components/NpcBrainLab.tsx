@@ -4,10 +4,11 @@ import { Panel, Button, Select } from '@pixsim7/shared.ui';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { listGameSessions, type GameSessionSummary } from '@lib/api/game';
+import type { GameSessionSummary } from '@lib/api/game';
 import type { BrainState } from '@lib/core/types';
 import { usePixSim7Core } from '@lib/game/usePixSim7Core';
 import { brainToolSelectors } from '@lib/plugins/catalogSelectors';
+import { resolveGameSessions } from '@lib/resolvers';
 
 import { BrainToolsPanel } from '@/components/brain/BrainToolsPanel';
 import { BrainShape } from '@/components/shapes/BrainShape';
@@ -70,7 +71,9 @@ export function NpcBrainLab({ npcId: contextNpcId, sessionId: contextSessionId }
   useEffect(() => {
     (async () => {
       try {
-        const sessionList = await listGameSessions();
+        const sessionList = await resolveGameSessions({
+          consumerId: 'NpcBrainLab.loadSessions',
+        });
         setSessions(sessionList);
 
         // Auto-select first session if none selected

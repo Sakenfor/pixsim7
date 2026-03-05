@@ -1,8 +1,9 @@
 import { FormField, Select, Switch } from '@pixsim7/shared.ui';
 import { useEffect, useState } from 'react';
 
-import { listGameNpcs, type GameNpcSummary } from '@lib/api/game';
 import type { CharacterDetail } from '@lib/api/characters';
+import type { GameNpcSummary } from '@lib/api/game';
+import { resolveGameNpcs } from '@lib/resolvers';
 
 export interface GameLinkTabProps {
   character: Partial<CharacterDetail>;
@@ -13,7 +14,7 @@ export function GameLinkTab({ character, onChange }: GameLinkTabProps) {
   const [npcs, setNpcs] = useState<GameNpcSummary[]>([]);
 
   useEffect(() => {
-    listGameNpcs()
+    resolveGameNpcs({}, { consumerId: 'GameLinkTab.loadNpcs' })
       .then(setNpcs)
       .catch(() => {});
   }, []);

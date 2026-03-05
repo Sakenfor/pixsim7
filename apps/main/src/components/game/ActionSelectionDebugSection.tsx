@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   buildActionSelectionRequestFromBehavior,
   type BuildActionSelectionRequestFromBehaviorRequest,
-  listGameNpcs,
   selectActionBlocksFromBehavior,
 } from '@lib/api';
+import { resolveGameNpcs } from '@lib/resolvers';
 
 type NpcChoice = {
   id: number;
@@ -104,7 +104,9 @@ export function ActionSelectionDebugSection({
 
     const loadNpcs = async () => {
       try {
-        const list = await listGameNpcs();
+        const list = await resolveGameNpcs({}, {
+          consumerId: 'ActionSelectionDebugSection.loadNpcs',
+        });
         if (cancelled) return;
 
         const mapped = list

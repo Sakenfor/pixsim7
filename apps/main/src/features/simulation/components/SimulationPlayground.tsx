@@ -10,9 +10,6 @@ import { Button, Panel, Select } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
-  listGameLocations,
-  listGameNpcs,
-  listGameWorlds,
   type GameLocationSummary,
   type GameNpcSummary,
   type GameWorldSummary,
@@ -28,6 +25,7 @@ import {
 } from '@lib/game/runtime';
 import { usePixSim7Core } from '@lib/game/usePixSim7Core';
 import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
+import { resolveGameLocations, resolveGameNpcs, resolveGameWorlds } from '@lib/resolvers';
 
 import type { BrainToolContext } from '@features/brainTools/lib/types';
 import { ExportImportPanel } from '@features/panels/components/tools/ExportImportPanel';
@@ -252,9 +250,9 @@ export function SimulationPlayground() {
     (async () => {
       try {
         const [worldList, npcList, locationList] = await Promise.all([
-          listGameWorlds(),
-          listGameNpcs(),
-          listGameLocations(),
+          resolveGameWorlds({ consumerId: 'SimulationPlayground.loadWorlds' }),
+          resolveGameNpcs({}, { consumerId: 'SimulationPlayground.loadNpcs' }),
+          resolveGameLocations({}, { consumerId: 'SimulationPlayground.loadLocations' }),
         ]);
         setWorlds(worldList);
         setNpcs(npcList);
