@@ -12,6 +12,8 @@
 import type { IDockviewPanelHeaderProps } from 'dockview-core';
 import { useCallback } from 'react';
 
+import { getDockviewApi } from './hostRegistry';
+import { getDockviewGroups } from './panelAdd';
 import { CustomTabComponent, useContextMenuOptional } from './contextMenu';
 import { buildDockviewContext } from './contextMenu/buildDockviewContext';
 
@@ -57,7 +59,42 @@ export function useDockviewContextMenu(
     (e: React.MouseEvent) => {
       if (!contextMenuActive || !contextMenuRef.current) return;
       if (e.ctrlKey || e.metaKey) return;
+
+      // Ignore events originating from nested dockviews.
+      // Each dockview should handle its own background context menu.
+      const targetElement = e.target instanceof HTMLElement ? e.target : null;
+      const nestedDockview = targetElement?.closest?.('[data-smart-dockview]') as HTMLElement | null;
+      const thisDockview = (e.currentTarget as HTMLElement).closest('[data-smart-dockview]');
+      if (nestedDockview && nestedDockview !== thisDockview) {
+        return;
+      }
+
       e.preventDefault();
+      e.stopPropagation();
+
+      const groupElement = targetElement?.closest?.('.dv-groupview') as HTMLElement | null;
+      const api = getDockviewApi(dockviewId);
+      const matchedGroup =
+        api && groupElement
+          ? getDockviewGroups(api).find((group: any) => (group as any)?.element === groupElement)
+          : undefined;
+      const resolvedGroupId = typeof (matchedGroup as any)?.id === 'string'
+        ? (matchedGroup as any).id
+        : undefined;
+
+      const targetClassName =
+        typeof targetElement?.className === 'string' ? targetElement.className : null;
+      const groupClassName =
+        typeof groupElement?.className === 'string' ? groupElement.className : null;
+      const backgroundTarget = {
+        targetTag: targetElement?.tagName?.toLowerCase() ?? null,
+        targetClassName,
+        groupClassName,
+        groupId: resolvedGroupId ?? null,
+        tabsHidden: !!groupElement?.classList?.contains('dv-tabs-hidden'),
+        hasWatermark: !!groupElement?.querySelector?.('.dv-watermark'),
+      };
+
       const baseContext = {
         currentDockviewId: dockviewId,
         panelRegistry: getDockviewPanelRegistry(),
@@ -69,6 +106,10 @@ export function useDockviewContextMenu(
         buildDockviewContext(baseContext, {
           contextType: 'background',
           position: { x: e.clientX, y: e.clientY },
+          groupId: resolvedGroupId,
+          data: {
+            dockviewBackgroundTarget: backgroundTarget,
+          },
         }),
       );
     },

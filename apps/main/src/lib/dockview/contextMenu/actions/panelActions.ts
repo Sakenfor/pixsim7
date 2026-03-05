@@ -9,11 +9,13 @@
  */
 
 import { menuActionsToCapabilityActions } from '@pixsim7/shared.ui.context-menu';
+import { isTabPinned, setTabPinned } from '@pixsim7/shared.ui.dockview';
 
 import { registerActionsFromDefinitions } from '@lib/capabilities';
 import {
   buildFloatingOriginMetaRecord,
   deriveFloatingGroupRestoreHint,
+  removePanelAndPruneEmptyGroup,
   readFloatingHostContextPayload,
 } from '@lib/dockview/floatingPanelInterop';
 
@@ -133,26 +135,44 @@ export const floatPanelAction: MenuAction = {
     const panel = api.getPanel(panelId) ?? (api as any)?.activePanel;
     if (!panel) return;
 
-    const resolvedPanelId = resolveDockviewPanelDefinitionId(panel) ?? panelId;
+    const resolvedPanelId = resolveDockviewPanelDefinitionId(panel);
+    if (!resolvedPanelId) {
+      console.warn("[panel:float] Could not resolve panel definition id", {
+        panelId,
+        dockviewId: ctx.currentDockviewId ?? null,
+      });
+      return;
+    }
     const existingContext =
       typeof (panel as any)?.params === 'object' && (panel as any).params !== null
         ? (panel as any).params
         : {};
     const floatingHostContext = readFloatingHostContextPayload(panel);
+    const existingPanelContext =
+      typeof existingContext.context === "object" && existingContext.context !== null
+        ? (existingContext.context as Record<string, unknown>)
+        : undefined;
+    const mergedPanelContext = floatingHostContext
+      ? {
+          ...(existingPanelContext ?? {}),
+          ...floatingHostContext,
+        }
+      : existingPanelContext;
     const sourceGroupRestoreHint = deriveFloatingGroupRestoreHint(api, ctx.groupId ?? panel?.group?.id);
     const floatOptions = {
       width: 600,
       height: 400,
       context: {
         ...existingContext,
-        ...(existingContext.context == null && floatingHostContext
-          ? { context: floatingHostContext }
-          : {}),
+        ...(mergedPanelContext ? { context: mergedPanelContext } : {}),
         ...buildFloatingOriginMetaRecord({
           sourceDockviewId: ctx.currentDockviewId ?? null,
           sourceGroupId: ctx.groupId ?? null,
-          sourceDockPanelId: panelId,
-          sourcePanelId: resolvedPanelId,
+          sourceInstanceId:
+            ctx.currentDockviewId && ctx.currentDockviewId.length > 0
+              ? `${ctx.currentDockviewId}:${panelId}`
+              : panelId,
+          sourceDefinitionId: resolvedPanelId,
           sourceGroupRestoreHint,
         }),
       },
@@ -160,7 +180,16 @@ export const floatPanelAction: MenuAction = {
 
     if (ctx.floatPanelHandler) {
       // Call the dockview's float handler with panel info
-      ctx.floatPanelHandler(panelId, panel, floatOptions);
+      try {
+        ctx.floatPanelHandler(panelId, panel, floatOptions);
+      } catch (error) {
+        console.warn("[panel:float] Float handler failed", {
+          panelId,
+          dockviewId: ctx.currentDockviewId ?? null,
+          error,
+        });
+        return;
+      }
     } else if (ctx.workspaceStore && resolvedPanelId) {
       ctx.workspaceStore.getState().openFloatingPanel(resolvedPanelId, floatOptions);
     } else {
@@ -168,7 +197,41 @@ export const floatPanelAction: MenuAction = {
     }
 
     // Close from dockview after floating
-    api.removePanel(panel);
+    removePanelAndPruneEmptyGroup(api, panel, {
+      sourceGroupId: ctx.groupId ?? panel?.group?.id ?? null,
+    });
+  },
+};
+
+export const pinTabAction: MenuAction = {
+  id: 'panel:pin-tab',
+  label: 'Pin Tab',
+  icon: 'pin',
+  category: 'panel',
+  availableIn: ['tab', 'panel-content'],
+  visible: (ctx) => {
+    if (!ctx.panelId) return false;
+    return !isTabPinned(ctx.panelId);
+  },
+  execute: (ctx) => {
+    if (!ctx.panelId) return;
+    setTabPinned(ctx.panelId, true);
+  },
+};
+
+export const unpinTabAction: MenuAction = {
+  id: 'panel:unpin-tab',
+  label: 'Unpin Tab',
+  icon: 'pin',
+  category: 'panel',
+  availableIn: ['tab', 'panel-content'],
+  visible: (ctx) => {
+    if (!ctx.panelId) return false;
+    return isTabPinned(ctx.panelId);
+  },
+  execute: (ctx) => {
+    if (!ctx.panelId) return;
+    setTabPinned(ctx.panelId, false);
   },
 };
 
@@ -359,6 +422,8 @@ const panelActionDescriptions: Record<string, string> = {
   [maximizePanelAction.id]: 'Maximize the current panel',
   [restorePanelAction.id]: 'Restore the current panel',
   [floatPanelAction.id]: 'Float the current panel',
+  [pinTabAction.id]: 'Keep this tab visible in compact mode',
+  [unpinTabAction.id]: 'Remove this tab from pinned compact visibility',
   [propertiesAction.id]: 'Show properties for the current context',
 };
 
@@ -369,6 +434,8 @@ const panelCapabilityActions: MenuAction[] = [
   maximizePanelAction,
   restorePanelAction,
   floatPanelAction,
+  pinTabAction,
+  unpinTabAction,
   propertiesAction,
 ];
 
@@ -394,5 +461,7 @@ export function registerPanelActionCapabilities() {
  */
 export const panelActions: MenuAction[] = [
   floatPanelAction,
+  pinTabAction,
+  unpinTabAction,
   focusPanelAction,
 ];

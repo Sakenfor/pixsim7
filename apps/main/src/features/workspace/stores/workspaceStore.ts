@@ -2,7 +2,7 @@ import type { DockviewApi } from "dockview-core";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { addDockviewPanel, focusPanel, getDockviewApi } from "@lib/dockview";
+import { addDockviewPanel, focusPanel, getDockviewApi, getDockviewGroups } from "@lib/dockview";
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { createBackendStorage } from "../../../lib/backendStorage";
@@ -144,6 +144,34 @@ export interface WorkspaceActions {
 }
 
 const STORAGE_KEY = "workspace_v9"; // v9: remove gallery from pinned (duplicate of page nav)
+
+function getDockviewGroupPanelCount(group: any): number {
+  if (!group) return 0;
+  const panels = group.panels;
+  if (Array.isArray(panels)) return panels.length;
+  if (panels && typeof panels.length === "number") return panels.length;
+  const model = group.model;
+  if (typeof model?.size === "number") return model.size;
+  return 0;
+}
+
+function pruneNewEmptyGroups(api: DockviewApi, baselineGroupIds: Set<string>): void {
+  const removeGroup = (api as any).removeGroup;
+  if (typeof removeGroup !== "function") return;
+
+  const groups = getDockviewGroups(api);
+  for (const group of groups) {
+    const groupId = typeof (group as any)?.id === "string" ? (group as any).id : null;
+    if (!groupId || baselineGroupIds.has(groupId)) continue;
+    if (getDockviewGroupPanelCount(group) > 0) continue;
+    if (getDockviewGroups(api).length <= 1) break;
+    try {
+      removeGroup.call(api, group);
+    } catch {
+      // best effort cleanup
+    }
+  }
+}
 
 export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
   persist(
@@ -358,10 +386,29 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         const existing = get().floatingPanels.find((p) => p.id === panelId);
         if (existing) {
           const maxZ = Math.max(...get().floatingPanels.map((p) => p.zIndex), 0);
+          const nextWidth = width ?? existing.width;
+          const nextHeight = height ?? existing.height;
+          const rawX = x ?? existing.x;
+          const rawY = y ?? existing.y;
+          const nextX = Math.max(0, Math.min(rawX, window.innerWidth - Math.min(nextWidth, 100)));
+          const nextY = Math.max(0, Math.min(rawY, window.innerHeight - Math.min(nextHeight, 40)));
+          const nextContext =
+            context != null
+              ? { ...(existing.context ?? {}), ...context }
+              : existing.context;
           set({
             floatingPanels: get().floatingPanels.map((p) =>
               p.id === panelId
-                ? { ...p, zIndex: maxZ + 1, context: context ?? p.context }
+                ? {
+                    ...p,
+                    x: nextX,
+                    y: nextY,
+                    width: nextWidth,
+                    height: nextHeight,
+                    minimized: false,
+                    zIndex: maxZ + 1,
+                    context: nextContext,
+                  }
                 : p,
             ),
           });
@@ -464,19 +511,11 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         // Resolve definition ID (strips ::N suffix for multi-instance panels)
         const defId = getFloatingDefinitionId(panelId);
 
-        // Save geometry before removing (keyed by definition ID)
-        set({
-          floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
-          lastFloatingPanelStates: {
-            ...get().lastFloatingPanelStates,
-            [defId]: { x: floatingPanel.x, y: floatingPanel.y, width: floatingPanel.width, height: floatingPanel.height },
-          },
-        });
-
         // Get target dockview API (defaults to "workspace" for backward compat)
-        const api = getDockviewApi(position.targetDockviewId ?? "workspace");
+        const targetDockviewId = position.targetDockviewId ?? "workspace";
+        const api = getDockviewApi(targetDockviewId);
         if (!api) {
-          console.warn("[dockFloatingPanel] Dockview not available:", position.targetDockviewId ?? "workspace");
+          console.warn("[dockFloatingPanel] Dockview not available:", targetDockviewId);
           return;
         }
 
@@ -485,11 +524,49 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           ? defId.slice("dev-tool:".length)
           : defId;
 
+        const baselineGroupIds = new Set(
+          getDockviewGroups(api)
+            .map((group: any) => (typeof group?.id === "string" ? group.id : null))
+            .filter((id: string | null): id is string => id !== null),
+        );
+        const wasAlreadyDocked = !!api.getPanel(actualPanelId);
+
         // Add panel to dockview at the specified position
-        addDockviewPanel(api, actualPanelId, {
-          allowMultiple: false,
-          position,
-          params: floatingPanel.context,
+        try {
+          addDockviewPanel(api, actualPanelId, {
+            allowMultiple: false,
+            position,
+            params: floatingPanel.context,
+          });
+        } catch (error) {
+          pruneNewEmptyGroups(api, baselineGroupIds);
+          console.warn("[dockFloatingPanel] Failed to dock panel:", {
+            panelId,
+            defId,
+            targetDockviewId,
+            error,
+          });
+          return;
+        }
+
+        const isDocked = !!api.getPanel(actualPanelId);
+        if (!isDocked && !wasAlreadyDocked) {
+          pruneNewEmptyGroups(api, baselineGroupIds);
+          console.warn("[dockFloatingPanel] Dock request produced no panel. Keeping floating panel.", {
+            panelId,
+            defId,
+            targetDockviewId,
+          });
+          return;
+        }
+
+        // Save geometry and remove floating only after successful docking.
+        set({
+          floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
+          lastFloatingPanelStates: {
+            ...get().lastFloatingPanelStates,
+            [defId]: { x: floatingPanel.x, y: floatingPanel.y, width: floatingPanel.width, height: floatingPanel.height },
+          },
         });
       },
     }),
@@ -543,4 +620,3 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
     },
   ),
 );
-

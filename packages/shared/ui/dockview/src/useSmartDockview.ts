@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { DockviewApi } from "dockview-core";
 import { getGroups as getDockviewGroups } from "@pixsim7/shared.dockview.core";
+import { isTabPinned, subscribeTabPins } from "./tabPinState";
 export interface UseSmartDockviewOptions {
   /** Storage key for persisting layout (optional) */
   storageKey?: string;
@@ -59,20 +60,49 @@ export function useSmartDockview(
     const api = apiRef.current;
     if (!api) return;
 
+    const getGroupPanels = (group: any): any[] => {
+      if (Array.isArray(group?.panels)) return group.panels;
+      if (group?.panels && typeof group.panels.values === "function") {
+        return Array.from(group.panels.values());
+      }
+      const model = group?.model;
+      if (model && typeof model.values === "function") {
+        return Array.from(model.values());
+      }
+      return [];
+    };
+
+    const clearCompactState = (groupElement: HTMLElement | null) => {
+      if (!groupElement) return;
+      groupElement.classList.remove("dv-tabs-compact");
+      groupElement.classList.remove("dv-tabs-compact-has-hidden");
+
+      const header = groupElement.querySelector(".dv-tabs-and-actions-container") as HTMLElement | null;
+      if (header) {
+        delete (header as any).dataset.compactHiddenCount;
+      }
+
+      const tabElements = groupElement.querySelectorAll(".dv-tabs-container .dv-default-tab");
+      tabElements.forEach((tabElement) => {
+        tabElement.classList.remove("dv-tab-compact-visible");
+        tabElement.classList.remove("dv-tab-pinned");
+      });
+    };
+
     getDockviewGroups(api).forEach((group) => {
+      const groupPanels = getGroupPanels(group);
       const model = (group as any).model;
-      const modelSize =
-        typeof model?.size === "number"
-          ? model.size
-          : undefined;
+      const modelSize = typeof model?.size === "number" ? model.size : undefined;
       const panelCount =
-        typeof modelSize === "number"
-          ? modelSize
-          : Array.isArray((group as any).panels)
-            ? (group as any).panels.length
-            : typeof (group as any).panels?.length === "number"
+        groupPanels.length > 0
+          ? groupPanels.length
+          : typeof modelSize === "number"
+            ? modelSize
+            : Array.isArray((group as any).panels)
               ? (group as any).panels.length
-              : 0;
+              : typeof (group as any).panels?.length === "number"
+                ? (group as any).panels.length
+                : 0;
       const shouldShowTabs = panelCount >= minPanelsForTabs;
 
       // Toggle CSS class on the group element to hide/show tabs.
@@ -82,6 +112,54 @@ export function useSmartDockview(
       const groupElement = (group as any).element;
       if (groupElement && groupElement.classList) {
         groupElement.classList.toggle("dv-tabs-hidden", !shouldShowTabs);
+      }
+
+      if (!groupElement) return;
+      if (!shouldShowTabs || panelCount <= 1) {
+        clearCompactState(groupElement);
+        return;
+      }
+
+      groupElement.classList.add("dv-tabs-compact");
+
+      const header = groupElement.querySelector(".dv-tabs-and-actions-container") as HTMLElement | null;
+      const tabElements = Array.from(
+        groupElement.querySelectorAll<HTMLElement>(".dv-tabs-container .dv-default-tab"),
+      );
+
+      const activePanelId =
+        typeof (group as any)?.activePanel?.id === "string"
+          ? (group as any).activePanel.id
+          : typeof model?.activePanel?.id === "string"
+            ? model.activePanel.id
+            : null;
+
+      let visibleCount = 0;
+      for (let i = 0; i < tabElements.length; i += 1) {
+        const tabEl = tabElements[i];
+        const panelId = typeof groupPanels[i]?.id === "string" ? groupPanels[i].id : null;
+        const pinned = panelId ? isTabPinned(panelId) : false;
+        const isActive = panelId ? panelId === activePanelId : i === 0;
+        const shouldStayVisible = isActive || pinned;
+        if (shouldStayVisible) visibleCount += 1;
+        tabEl.classList.toggle("dv-tab-compact-visible", shouldStayVisible);
+        tabEl.classList.toggle("dv-tab-pinned", pinned);
+      }
+
+      // Guard against transient states where active panel isn't resolved yet.
+      if (visibleCount === 0 && tabElements.length > 0) {
+        tabElements[0].classList.add("dv-tab-compact-visible");
+        visibleCount = 1;
+      }
+
+      const hiddenCount = Math.max(0, panelCount - visibleCount);
+      groupElement.classList.toggle("dv-tabs-compact-has-hidden", hiddenCount > 0);
+      if (header) {
+        if (hiddenCount > 0) {
+          header.dataset.compactHiddenCount = String(hiddenCount);
+        } else {
+          delete header.dataset.compactHiddenCount;
+        }
       }
     });
   }, [minPanelsForTabs]);
@@ -188,6 +266,21 @@ export function useSmartDockview(
         requestAnimationFrame(updateTabVisibility);
       });
       disposablesRef.current.push(layoutFromJsonDisposable);
+
+      const activePanelChange = (api as any).onDidActivePanelChange;
+      if (typeof activePanelChange === "function") {
+        const activePanelDisposable = activePanelChange.call(api, () => {
+          requestAnimationFrame(updateTabVisibility);
+        });
+        if (activePanelDisposable && typeof activePanelDisposable.dispose === "function") {
+          disposablesRef.current.push(activePanelDisposable);
+        }
+      }
+
+      const unsubscribePinnedTabs = subscribeTabPins(() => {
+        requestAnimationFrame(updateTabVisibility);
+      });
+      disposablesRef.current.push({ dispose: unsubscribePinnedTabs });
 
       // Initial tab visibility update
       requestAnimationFrame(updateTabVisibility);

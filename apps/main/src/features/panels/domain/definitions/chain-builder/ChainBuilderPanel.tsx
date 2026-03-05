@@ -10,9 +10,9 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { BlockTemplateSummary } from '@lib/api/blockTemplates';
-import { listTemplates } from '@lib/api/blockTemplates';
 import type { ChainSummary, ChainStepDefinition } from '@lib/api/chains';
 import { Icon } from '@lib/icons';
+import { resolveBlockTemplates } from '@lib/resolvers';
 
 import { AssetPickerField, type PickedAsset } from '@features/assets/components/pickers';
 import {
@@ -67,7 +67,10 @@ export function ChainBuilderPanel() {
 
   // Load templates for step editor dropdowns
   useEffect(() => {
-    void listTemplates({ limit: 200 }).then(setTemplates).catch(() => {});
+    void resolveBlockTemplates(
+      { limit: 200 },
+      { consumerId: 'ChainBuilderPanel.loadTemplates' },
+    ).then(setTemplates).catch(() => {});
   }, []);
 
   // Sync edit form when activeChain changes

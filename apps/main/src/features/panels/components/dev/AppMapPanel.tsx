@@ -9,7 +9,8 @@
  * - System health metrics
  */
 
-import type { AppMapMetadata, ArchitectureGraphV1 } from '@pixsim7/shared.types';
+import type { ArchitectureGraphV1 } from '@pixsim7/shared.api.model';
+import type { AppMapMetadata } from '@pixsim7/shared.types';
 import React, {
   useState,
   useMemo,
@@ -21,6 +22,9 @@ import React, {
 
 import { canRunCodegen } from '@lib/auth/userRoles';
 import {
+  type ActionCapability,
+  type FeatureCapability,
+  type RouteCapability,
   useFeatures,
   useFeatureRoutes,
   useRoutes,
@@ -161,7 +165,7 @@ export function AppMapPanel() {
   const allFeatures = useFeatures();
   const allActions = useActions();
   const allRoutes = useRoutes();
-  const selectedFeatureRoutes = useFeatureRoutes(selectedFeatureId || '');
+  const localSelectedFeatureRoutes = useFeatureRoutes(selectedFeatureId || '');
 
   // Data from plugin catalog
   useEffect(() => {
@@ -178,9 +182,76 @@ export function AppMapPanel() {
     };
   }, []);
 
+  // Feature-specific actions
+  const localSelectedFeatureActions = useMemo(() => {
+    if (!selectedFeatureId) return [];
+    return allActions.filter((a) => a.featureId === selectedFeatureId);
+  }, [allActions, selectedFeatureId]);
+
+  // Prefer architecture graph data when available, fall back to local registries.
+  const graphEntries = graphData?.frontend?.entries ?? [];
+  const graphPlugins = graphData?.backend?.plugins ?? [];
+  const graphWarnings = graphData?.metrics?.drift_warnings ?? [];
+  const useGraphFeatures = graphEntries.length > 0;
+  const useGraphPlugins = graphPlugins.length > 0;
+
+  const graphFeatureRoutesById = useMemo(() => {
+    const byId: Record<string, RouteCapability[]> = {};
+    for (const entry of graphEntries) {
+      const entryId = entry.id;
+      if (!entryId) continue;
+      byId[entryId] = (entry.routes ?? []).map((path) => ({
+        path,
+        name: path,
+        description: 'Route reference from ArchitectureGraph',
+        featureId: entryId,
+      }));
+    }
+    return byId;
+  }, [graphEntries]);
+
+  const graphFeatureCapabilities = useMemo<FeatureCapability[]>(() => {
+    return graphEntries.map((entry) => ({
+      id: entry.id,
+      name: entry.label || entry.id,
+      description: 'Feature metadata from ArchitectureGraph',
+      category: 'architecture',
+      appMap: {
+        docs: entry.docs ?? [],
+        frontend: entry.frontend ?? [],
+        backend: entry.backend ?? [],
+        notes: entry.notes ?? [],
+      },
+      metadata: {
+        sources: entry.sources ?? [],
+      },
+      routes: graphFeatureRoutesById[entry.id] ?? [],
+    }));
+  }, [graphEntries, graphFeatureRoutesById]);
+
+  const graphPluginDescriptors = useMemo<UnifiedPluginDescriptor[]>(() => {
+    return graphPlugins.map((plugin) => ({
+      id: plugin.id,
+      name: plugin.name,
+      description: plugin.description,
+      version: plugin.version,
+      family: 'helper',
+      origin: 'plugin-dir',
+      category: 'backend',
+      tags: ['backend-route-plugin'],
+      permissions: plugin.permissions ?? [],
+      canDisable: true,
+      isActive: true,
+      isBuiltin: true,
+    }));
+  }, [graphPlugins]);
+
+  const displayedFeatures = useGraphFeatures ? graphFeatureCapabilities : allFeatures;
+  const displayedPlugins = useGraphPlugins ? graphPluginDescriptors : allPlugins;
+
   // Filter plugins
   const filteredPlugins = useMemo(() => {
-    let plugins = allPlugins;
+    let plugins = displayedPlugins;
 
     if (familyFilter !== 'all') {
       plugins = plugins.filter((plugin) => plugin.family === familyFilter);
@@ -195,21 +266,28 @@ export function AppMapPanel() {
     }
 
     return plugins;
-  }, [allPlugins, familyFilter, originFilter, searchQuery]);
+  }, [displayedPlugins, familyFilter, originFilter, searchQuery]);
 
-  // Feature-specific actions
-  const selectedFeatureActions = useMemo(() => {
+  const selectedFeature = displayedFeatures.find((f) => f.id === selectedFeatureId);
+  const selectedFeatureRoutes = useMemo<RouteCapability[]>(() => {
     if (!selectedFeatureId) return [];
-    return allActions.filter((a) => a.featureId === selectedFeatureId);
-  }, [allActions, selectedFeatureId]);
+    if (useGraphFeatures) {
+      return graphFeatureRoutesById[selectedFeatureId] ?? [];
+    }
+    return localSelectedFeatureRoutes;
+  }, [selectedFeatureId, useGraphFeatures, graphFeatureRoutesById, localSelectedFeatureRoutes]);
+
+  const selectedFeatureActions = useMemo<ActionCapability[]>(() => {
+    if (!selectedFeatureId) return [];
+    if (useGraphFeatures) return [];
+    return localSelectedFeatureActions;
+  }, [selectedFeatureId, useGraphFeatures, localSelectedFeatureActions]);
 
   // Statistics
-  const pluginCounts = useMemo(() => getPluginCounts(allPlugins), [allPlugins]);
-  const originCounts = useMemo(() => getOriginCounts(allPlugins), [allPlugins]);
-  const pluginHealth = useMemo(() => getPluginHealth(allPlugins), [allPlugins]);
-  const featureUsageStats = useMemo(() => getFeatureUsageStats(allPlugins), [allPlugins]);
-
-  const selectedFeature = allFeatures.find((f) => f.id === selectedFeatureId);
+  const pluginCounts = useMemo(() => getPluginCounts(displayedPlugins), [displayedPlugins]);
+  const originCounts = useMemo(() => getOriginCounts(displayedPlugins), [displayedPlugins]);
+  const pluginHealth = useMemo(() => getPluginHealth(displayedPlugins), [displayedPlugins]);
+  const featureUsageStats = useMemo(() => getFeatureUsageStats(displayedPlugins), [displayedPlugins]);
   const docsUrl = useMemo(() => {
     const envUrl = import.meta.env.VITE_DOCS_URL as string | undefined;
     if (envUrl && envUrl.trim()) {
@@ -230,9 +308,11 @@ export function AppMapPanel() {
     const appMapData = {
       version: '1.0',
       timestamp: new Date().toISOString(),
-      features: allFeatures.map((f) => {
-        // Get routes from registry (feature.routes is not populated)
-        const featureRoutes = allRoutes.filter((r) => r.featureId === f.id);
+      source: graphSource ?? 'local_registry',
+      features: displayedFeatures.map((f) => {
+        const featureRoutes = useGraphFeatures
+          ? (f.routes ?? [])
+          : allRoutes.filter((r) => r.featureId === f.id);
         return {
           id: f.id,
           name: f.name,
@@ -250,14 +330,14 @@ export function AppMapPanel() {
           })),
         };
       }),
-      actions: allActions.map((a) => ({
+      actions: (useGraphFeatures ? [] : allActions).map((a) => ({
         id: a.id,
         name: a.name,
         description: a.description,
         featureId: a.featureId,
         shortcut: a.shortcut,
       })),
-      plugins: allPlugins.map((p) => ({
+      plugins: displayedPlugins.map((p) => ({
         id: p.id,
         name: p.name,
         description: p.description,
@@ -283,10 +363,12 @@ export function AppMapPanel() {
         extensions: p.extensions,
       })),
       stats: {
-        featureCount: allFeatures.length,
-        actionCount: allActions.length,
-        pluginCount: allPlugins.length,
-        routeCount: allRoutes.length,
+        featureCount: displayedFeatures.length,
+        actionCount: useGraphFeatures ? 0 : allActions.length,
+        pluginCount: displayedPlugins.length,
+        routeCount: useGraphFeatures
+          ? displayedFeatures.reduce((acc, feature) => acc + (feature.routes?.length ?? 0), 0)
+          : allRoutes.length,
         pluginCounts,
         originCounts,
         featureUsageStats,
@@ -321,9 +403,9 @@ export function AppMapPanel() {
             <div className="flex gap-3 items-center">
               <div className="flex items-center gap-3 text-sm text-neutral-600 dark:text-neutral-400">
                 <span>
-                  <span className="font-medium">{allFeatures.length}</span> features
-                  {' • '}
-                  <span className="font-medium">{allPlugins.length}</span> plugins
+                  <span className="font-medium">{displayedFeatures.length}</span> features
+                  {' | '}
+                  <span className="font-medium">{displayedPlugins.length}</span> plugins
                 </span>
                 {graphSource && (
                   <span
@@ -369,6 +451,16 @@ export function AppMapPanel() {
             </div>
           </div>
 
+          {graphWarnings.length > 0 && (
+            <div className="mt-3 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800 dark:border-yellow-900/40 dark:bg-yellow-900/20 dark:text-yellow-200">
+              {graphWarnings.map((warning) => (
+                <div key={`${warning.code}-${warning.message}`}>
+                  [{warning.severity}] {warning.message}
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Tab Navigation */}
           <div className="flex gap-2 mt-4 flex-wrap">
             {TABS.map((tab) => (
@@ -391,7 +483,7 @@ export function AppMapPanel() {
         <div className="flex-1 overflow-hidden">
           {activeTab === 'features' && (
             <FeaturesView
-              features={allFeatures}
+              features={displayedFeatures}
               selectedFeature={selectedFeature}
               selectedFeatureRoutes={selectedFeatureRoutes}
               selectedFeatureActions={selectedFeatureActions}
@@ -401,7 +493,7 @@ export function AppMapPanel() {
 
           {activeTab === 'plugins' && (
             <PluginsView
-              allPlugins={allPlugins}
+              allPlugins={displayedPlugins}
               filteredPlugins={filteredPlugins}
               familyFilter={familyFilter}
               originFilter={originFilter}
@@ -415,7 +507,7 @@ export function AppMapPanel() {
           {activeTab === 'registries' && <RegistriesView />}
 
           {activeTab === 'graph' && (
-            <DependencyGraphPanel features={allFeatures} plugins={allPlugins} />
+            <DependencyGraphPanel features={displayedFeatures} plugins={displayedPlugins} />
           )}
 
           {activeTab === 'testing' && (
@@ -432,8 +524,8 @@ export function AppMapPanel() {
               originCounts={originCounts}
               pluginHealth={pluginHealth}
               featureUsageStats={featureUsageStats}
-              allFeatures={allFeatures}
-              allActions={allActions}
+              allFeatures={displayedFeatures}
+              allActions={useGraphFeatures ? [] : allActions}
             />
           )}
 

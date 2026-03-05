@@ -1,5 +1,5 @@
 import { IconButton } from "@pixsim7/shared.ui";
-import { memo, useCallback, useState, useRef } from "react";
+import { memo, useCallback, useState, useRef, useEffect } from "react";
 import { Rnd } from "react-rnd";
 
 import { readFloatingOriginMeta, stripFloatingOriginMeta } from "@lib/dockview/floatingPanelInterop";
@@ -16,6 +16,7 @@ import { panelPlacementCoordinator } from "@features/workspace/lib/panelPlacemen
 import { DevToolDynamicPanel } from "@/components/dev/DevToolDynamicPanel";
 
 import { useDragToDock, type DropZone, type DragToDockTarget } from "../../hooks/useDragToDock";
+import { ScopeHost } from "../scope/ScopeHost";
 
 import { DropZoneOverlay } from "./DropZoneOverlay";
 
@@ -66,6 +67,35 @@ function formatDockviewOriginLabel(dockviewId: string | null | undefined): strin
   return known[dockviewId] ?? dockviewId;
 }
 
+function normalizeDockviewId(value: string | null | undefined): string {
+  return (value ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+}
+
+function dockviewIdMatches(a: string, b: string): boolean {
+  return normalizeDockviewId(a) === normalizeDockviewId(b);
+}
+
+function readGenerationScopeIdFromContext(
+  context: Record<string, unknown> | undefined,
+): string | null {
+  if (!context) return null;
+
+  const direct = context.generationScopeId;
+  if (typeof direct === "string" && direct.length > 0) {
+    return direct;
+  }
+
+  const nested = context.context;
+  if (nested && typeof nested === "object") {
+    const nestedScopeId = (nested as Record<string, unknown>).generationScopeId;
+    if (typeof nestedScopeId === "string" && nestedScopeId.length > 0) {
+      return nestedScopeId;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Provides panel context as a capability for floating panels,
  * matching SmartDockview's pattern.
@@ -94,9 +124,10 @@ function FloatingPanelContextProvider({
 interface FloatingPanelProps {
   panel: FloatingPanelState;
   onDragStateChange: (panelId: string, isDragging: boolean, zone: DropZone | null, target: DragToDockTarget | null) => void;
+  catalogVersion: number;
 }
 
-const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: FloatingPanelProps) {
+const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, catalogVersion: _catalogVersion }: FloatingPanelProps) {
   const minimizeFloatingPanel = useWorkspaceStore((s) => s.minimizeFloatingPanel);
   const updateFloatingPanelPosition = useWorkspaceStore(
     (s) => s.updateFloatingPanelPosition
@@ -116,8 +147,12 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
     const isDevTool = typeof definitionId === "string" && definitionId.startsWith("dev-tool:");
     if (isDevTool) return true; // dev tools can dock anywhere
     const panelDef = panelSelectors.get(definitionId);
-    if (!panelDef?.availableIn || panelDef.availableIn.length === 0) return true; // no restriction
-    return panelDef.availableIn.includes(dockviewId);
+    if (!panelDef) return false;
+    if (panelDef.isInternal && (!panelDef.availableIn || panelDef.availableIn.length === 0)) {
+      return false; // floating-only/internal panels without dock scopes are not dock targets
+    }
+    if (!panelDef.availableIn || panelDef.availableIn.length === 0) return true; // no restriction
+    return panelDef.availableIn.some((scope) => dockviewIdMatches(scope, dockviewId));
   }, [definitionId]);
 
   const {
@@ -126,7 +161,12 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
     onDragStart,
     onDrag,
     onDragStop,
-  } = useDragToDock({ panelId: panel.id, canDockInto });
+  } = useDragToDock({
+    panelId: panel.id,
+    canDockInto,
+    holdDelayMs: 520,
+    activationInsetPx: 24,
+  });
 
   // Keep activeDropZone/activeTarget in refs so handleDrag always reads the latest value
   const activeDropZoneRef = useRef<DropZone | null>(null);
@@ -167,10 +207,43 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
     title = panelDef.title;
   }
 
-  const originLabel = floatingOriginMeta?.sourcePanelId
-    ? (panelSelectors.get(floatingOriginMeta.sourcePanelId)?.title ?? floatingOriginMeta.sourcePanelId)
+  const originLabel = floatingOriginMeta?.sourceDefinitionId
+    ? (panelSelectors.get(floatingOriginMeta.sourceDefinitionId)?.title ?? floatingOriginMeta.sourceDefinitionId)
     : formatDockviewOriginLabel(floatingOriginMeta?.sourceDockviewId);
-  const canReturnToOrigin = !!floatingOriginMeta?.sourceDockviewId;
+  const canReturnToOrigin =
+    !!floatingOriginMeta?.sourceDockviewId && !!floatingOriginMeta?.sourceDefinitionId;
+  const sourceInstanceId =
+    typeof floatingOriginMeta?.sourceInstanceId === "string" &&
+    floatingOriginMeta.sourceInstanceId.length > 0
+      ? floatingOriginMeta.sourceInstanceId
+      : null;
+  const sourceGenerationScopeId = readGenerationScopeIdFromContext(basePanelContext);
+  const floatingInstanceId = `floating:${panel.id}`;
+  const scopeInstanceId = sourceGenerationScopeId ?? sourceInstanceId ?? floatingInstanceId;
+  const scopeDockviewId = floatingOriginMeta?.sourceDockviewId ?? "floating";
+  const panelDefForScope = !isDevToolPanel ? panelSelectors.get(definitionId) : null;
+
+  const renderPanelContent = () => {
+    if (isDevToolPanel) {
+      return <Component context={panelContext} />;
+    }
+
+    const rendered = <Component {...panelContext} />;
+    if (!panelDefForScope) return rendered;
+
+    return (
+      <ScopeHost
+        panelId={definitionId}
+        instanceId={scopeInstanceId}
+        dockviewId={scopeDockviewId}
+        declaredScopes={panelDefForScope.settingScopes}
+        tags={panelDefForScope.tags}
+        category={panelDefForScope.category}
+      >
+        {rendered}
+      </ScopeHost>
+    );
+  };
 
   const handleDragStart = () => {
     onDragStart();
@@ -302,17 +375,13 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
         {/* Content — hidden when minimized */}
         {!panel.minimized && (
           <div className="flex-1 overflow-auto">
-            <ContextHubHost hostId={`floating:${panel.id}`}>
+            <ContextHubHost hostId={floatingInstanceId}>
               <FloatingPanelContextProvider
                 context={panelContext}
-                instanceId={`floating:${panel.id}`}
+                instanceId={floatingInstanceId}
               >
                 <PanelErrorBoundary panelId={definitionId}>
-                  {isDevToolPanel ? (
-                    <Component context={panelContext} />
-                  ) : (
-                    <Component {...panelContext} />
-                  )}
+                  {renderPanelContent()}
                 </PanelErrorBoundary>
               </FloatingPanelContextProvider>
             </ContextHubHost>
@@ -325,6 +394,15 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
 
 export function FloatingPanelsManager() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
+  const [catalogVersion, setCatalogVersion] = useState(0);
+
+  // HMR resilience: force memoized FloatingPanel instances to re-render when
+  // panel definitions are re-registered in the plugin catalog.
+  useEffect(() => {
+    return panelSelectors.subscribe(() => {
+      setCatalogVersion((v) => v + 1);
+    });
+  }, []);
 
   // Track drag state across all panels to show the overlay
   const [dragState, setDragState] = useState<{
@@ -357,6 +435,7 @@ export function FloatingPanelsManager() {
           key={panel.id}
           panel={panel}
           onDragStateChange={handleDragStateChange}
+          catalogVersion={catalogVersion}
         />
       ))}
       <DropZoneOverlay

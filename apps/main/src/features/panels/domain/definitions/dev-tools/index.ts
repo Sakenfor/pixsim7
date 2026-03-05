@@ -2,6 +2,7 @@ import { DevToolsPanel } from '@features/panels/components/dev/DevToolsPanel';
 
 import { definePanel } from '../../../lib/definePanel';
 
+
 export default definePanel({
   id: 'dev-tools',
   title: 'Dev Tools',

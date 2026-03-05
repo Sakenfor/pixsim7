@@ -34,6 +34,15 @@ export type { PanelPosition, PanelSizeConstraints } from './types';
 export { useDockviewPanelRegistry } from './useDockviewPanelRegistry';
 export type { DockviewPanelRegistry, DockviewPanelRegistryEntry } from './useDockviewPanelRegistry';
 
+// Compact tab pin state
+export {
+  isTabPinned,
+  setTabPinned,
+  toggleTabPinned,
+  subscribeTabPins,
+  getPinnedTabIds,
+} from './tabPinState';
+
 // Drag-to-dock utilities
 export { useDragToDock } from './useDragToDock';
 export type { UseDragToDockOptions, UseDragToDockReturn, DropZone, DragToDockTarget } from './useDragToDock';

@@ -40,13 +40,16 @@ export function useAppDockviewIntegration(
   const capabilities = useMemo(
     () => ({
       floatPanelHandler: (dockviewPanelId: string, panel: any, options?: any) => {
-        panelPlacementCoordinator.openFloatingFromDockviewPanel({
+        const floatingDefinitionId = panelPlacementCoordinator.openFloatingFromDockviewPanel({
           panel,
           dockPanelId: dockviewPanelId,
           sourceDockviewId: dockviewId ?? readSourceDockviewId(options) ?? null,
           sourceGroupId: readSourceGroupId(options),
           options,
         });
+        if (!floatingDefinitionId) {
+          throw new Error("Failed to open floating panel: unresolved panel definition");
+        }
       },
     }),
     [dockviewId]

@@ -72,8 +72,8 @@ describe("panelPlacementCommands", () => {
     const panel = {
       id: "workspace:quickGenerate",
       defId: "quickGenerate",
-      params: { foo: 1 },
-      __pixsimFloatingContextPayload: { currentAssetId: "asset-1" },
+      params: { foo: 1, context: { sourceLabel: "Quick Generate" } },
+      __pixsimFloatingContextPayload: { currentAssetId: "asset-1", generationScopeId: "controlCenter:quickGenerate" },
     };
 
     const result = commands.openFloatingFromDockviewPanelPlacement({
@@ -103,13 +103,17 @@ describe("panelPlacementCommands", () => {
         width: 700,
         context: expect.objectContaining({
           foo: 1,
-          context: { currentAssetId: "asset-1" },
+          context: {
+            sourceLabel: "Quick Generate",
+            currentAssetId: "asset-1",
+            generationScopeId: "controlCenter:quickGenerate",
+          },
           customFlag: true,
           __floatingMeta: {
             sourceDockviewId: "workspace",
             sourceGroupId: "group-1",
-            sourceDockPanelId: "workspace:quickGenerate",
-            sourcePanelId: "quickGenerate",
+            sourceInstanceId: "workspace:quickGenerate",
+            sourceDefinitionId: "quickGenerate",
             sourceGroupRestoreHint: {
               referenceGroupId: "bottom-group",
               direction: "above",
@@ -148,7 +152,8 @@ describe("panelPlacementCommands", () => {
         context: {
           __floatingMeta: {
             sourceDockviewId: "workspace",
-            sourcePanelId: "quickGenerate",
+            sourceInstanceId: "workspace:quickGenerate",
+            sourceDefinitionId: "quickGenerate",
           },
         },
       },
@@ -171,8 +176,8 @@ describe("panelPlacementCommands", () => {
         foo: 1,
         __floatingMeta: {
           sourceDockviewId: "workspace",
-          sourceDockPanelId: "workspace:dev-tool:console::1",
-          sourcePanelId: "dev-tool:console",
+          sourceInstanceId: "workspace:dev-tool:console::1",
+          sourceDefinitionId: "dev-tool:console",
         },
       },
     };
@@ -233,7 +238,7 @@ describe("panelPlacementCommands", () => {
           __floatingMeta: {
             sourceDockviewId: "asset-viewer",
             sourceGroupId: "removed-top-group",
-            sourcePanelId: "media-preview",
+            sourceDefinitionId: "media-preview",
             sourceGroupRestoreHint: {
               referenceGroupId: "bottom-group",
               direction: "above",

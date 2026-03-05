@@ -10,6 +10,11 @@
 .smartDockview {
   height: 100%;
   width: 100%;
+  --dv-float-handle-size: 14px;
+  --dv-float-handle-inset: 2px;
+  --dv-float-handle-color: rgba(37, 99, 235, 0.92);
+  --dv-float-handle-bg: rgba(37, 99, 235, 0.14);
+  --dv-float-handle-bg-hover: rgba(37, 99, 235, 0.24);
 }
 
 /* Clean background */
@@ -57,8 +62,64 @@
   background-color: rgba(255, 255, 255, 0.1);
 }
 
+/* Compact tabs: keep only active + pinned visible until group hover/focus.
+   Hidden-count badge (+N) indicates collapsed tabs are available. */
+.smartDockview :global(.dv-tabs-compact .dv-tabs-container .dv-default-tab) {
+  display: none;
+}
+
+.smartDockview :global(.dv-tabs-compact .dv-tabs-container .dv-default-tab.dv-tab-compact-visible) {
+  display: flex;
+}
+
+.smartDockview :global(.dv-tabs-compact:hover .dv-tabs-container .dv-default-tab),
+.smartDockview :global(.dv-tabs-compact:focus-within .dv-tabs-container .dv-default-tab) {
+  display: flex;
+}
+
+.smartDockview :global(.dv-tabs-compact-has-hidden .dv-tabs-and-actions-container) {
+  position: relative;
+  padding-right: 30px;
+}
+
+.smartDockview :global(.dv-tabs-compact-has-hidden .dv-tabs-and-actions-container)::after {
+  content: "+" attr(data-compact-hidden-count);
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.72);
+  pointer-events: none;
+}
+
+.smartDockview :global(.dv-tabs-compact-has-hidden:hover .dv-tabs-and-actions-container)::after,
+.smartDockview :global(.dv-tabs-compact-has-hidden:focus-within .dv-tabs-and-actions-container)::after {
+  opacity: 0;
+}
+
+.smartDockview :global(.dv-default-tab.dv-tab-pinned)::after {
+  content: "";
+  width: 4px;
+  height: 4px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.8;
+}
+
+:global(.dark) .smartDockview :global(.dv-tabs-compact-has-hidden .dv-tabs-and-actions-container)::after {
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.9);
+}
+
 /* Tab container - compact height */
-.smartDockview :global(.tabs-and-actions-container) {
+.smartDockview :global(.dv-tabs-and-actions-container) {
   min-height: 28px;
   padding: 2px 4px;
 }
@@ -72,8 +133,122 @@
 
 /* Compact the header when tabs are hidden (no padding/min-height needed) */
 .smartDockview :global(.dv-tabs-hidden .dv-tabs-and-actions-container) {
-  min-height: 0;
+  min-height: 0 !important;
+  height: 0 !important;
+  padding: 0 !important;
+  position: relative;
+  overflow: visible;
+}
+
+/* In tabs-hidden mode, overlay left actions (drag handle) inside content area
+   instead of reserving a full header row. */
+.smartDockview :global(.dv-tabs-hidden .dv-left-actions-container) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.smartDockview :global(.dv-tabs-hidden .dv-left-actions-container .dv-react-part) {
+  position: relative;
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none;
+}
+
+/* The void header drag strip is unnecessary when tabs are hidden. */
+.smartDockview :global(.dv-tabs-hidden .dv-void-container) {
+  display: none;
+}
+
+/* Show the group drag-to-float handle only when tabs are hidden. */
+.smartDockview :global(.dv-group-float-drag-handle) {
+  display: none !important;
+}
+
+.smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-handle) {
+  display: inline-flex !important;
+  position: absolute;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  width: var(--dv-float-handle-size);
+  height: var(--dv-float-handle-size);
   padding: 0;
+  border-radius: 0 0 0 4px;
+  background: var(--dv-float-handle-bg);
+  color: var(--dv-float-handle-color);
+  opacity: 0.58;
+  transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-handle[data-dv-float-corner="top-right"]) {
+  top: var(--dv-float-handle-inset);
+  right: var(--dv-float-handle-inset);
+  border-radius: 0 0 0 4px;
+}
+
+.smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-handle[data-dv-float-corner="top-left"]) {
+  top: var(--dv-float-handle-inset);
+  left: var(--dv-float-handle-inset);
+  border-radius: 0 0 4px 0;
+}
+
+.smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-handle[data-dv-float-corner="bottom-right"]) {
+  bottom: var(--dv-float-handle-inset);
+  right: var(--dv-float-handle-inset);
+  border-radius: 4px 0 0 0;
+}
+
+.smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-handle[data-dv-float-corner="bottom-left"]) {
+  bottom: var(--dv-float-handle-inset);
+  left: var(--dv-float-handle-inset);
+  border-radius: 0 4px 0 0;
+}
+
+.smartDockview :global(.dv-tabs-hidden .dv-groupview:hover .dv-group-float-drag-handle),
+.smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-handle:hover),
+.smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-handle:active) {
+  opacity: 1;
+  background: var(--dv-float-handle-bg-hover);
+}
+
+.smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-corner) {
+  width: 7px;
+  height: 7px;
+  border-top: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  border-top-right-radius: 2px;
+  transform-origin: center;
+}
+
+.smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-handle[data-dv-float-corner="top-left"] .dv-group-float-drag-corner) {
+  transform: scaleX(-1);
+}
+
+.smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-handle[data-dv-float-corner="bottom-right"] .dv-group-float-drag-corner) {
+  transform: scaleY(-1);
+}
+
+.smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-handle[data-dv-float-corner="bottom-left"] .dv-group-float-drag-corner) {
+  transform: scale(-1, -1);
+}
+
+:global(.dark) .smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-handle) {
+  --dv-float-handle-color: rgba(125, 211, 252, 0.96);
+  --dv-float-handle-bg: rgba(125, 211, 252, 0.18);
+  --dv-float-handle-bg-hover: rgba(125, 211, 252, 0.3);
+}
+
+:global(.dark) .smartDockview :global(.dv-tabs-hidden .dv-groupview:hover .dv-group-float-drag-handle),
+:global(.dark) .smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-handle:hover),
+:global(.dark) .smartDockview :global(.dv-tabs-hidden .dv-group-float-drag-handle:active) {
+  opacity: 1;
 }
 
 /* Hide default tab close buttons (optional - can be enabled per-panel) */

@@ -31,6 +31,12 @@ export interface UseDragToDockOptions {
   throttleMs?: number;
   /** Hold delay in ms before dock zones appear (default: 400ms). Set 0 to disable. */
   holdDelayMs?: number;
+  /**
+   * Inner inset (px) applied to dockview bounds for activation.
+   * Creates a "moat" near edges where drag does not activate docking.
+   * Default: 0 (no inset).
+   */
+  activationInsetPx?: number;
 }
 
 export interface UseDragToDockReturn {
@@ -96,7 +102,8 @@ function throttle<T extends (...args: any[]) => void>(
 function detectDropZone(
   panelRect: DOMRect,
   workspaceRect: DOMRect,
-  edgeThreshold: number
+  edgeThreshold: number,
+  activationInsetPx: number,
 ): DropZone | null {
   // Check if panel overlaps with workspace
   const overlaps = !(
@@ -112,11 +119,33 @@ function detectDropZone(
   const cx = panelRect.x + panelRect.width / 2;
   const cy = panelRect.y + panelRect.height / 2;
 
+  // Optional activation inset (dead zone near container edges)
+  const maxInset = Math.max(
+    0,
+    Math.min(
+      activationInsetPx,
+      workspaceRect.width / 2 - 1,
+      workspaceRect.height / 2 - 1,
+    ),
+  );
+
+  const activeLeft = workspaceRect.x + maxInset;
+  const activeRight = workspaceRect.x + workspaceRect.width - maxInset;
+  const activeTop = workspaceRect.y + maxInset;
+  const activeBottom = workspaceRect.y + workspaceRect.height - maxInset;
+
+  // If center is inside container but only in the moat area, don't dock.
+  if (cx < activeLeft || cx > activeRight || cy < activeTop || cy > activeBottom) {
+    return null;
+  }
+
   // Zone bounds based on threshold
-  const left = workspaceRect.x + workspaceRect.width * edgeThreshold;
-  const right = workspaceRect.x + workspaceRect.width * (1 - edgeThreshold);
-  const top = workspaceRect.y + workspaceRect.height * edgeThreshold;
-  const bottom = workspaceRect.y + workspaceRect.height * (1 - edgeThreshold);
+  const activeWidth = activeRight - activeLeft;
+  const activeHeight = activeBottom - activeTop;
+  const left = activeLeft + activeWidth * edgeThreshold;
+  const right = activeLeft + activeWidth * (1 - edgeThreshold);
+  const top = activeTop + activeHeight * edgeThreshold;
+  const bottom = activeTop + activeHeight * (1 - edgeThreshold);
 
   if (cx < left) return 'left';
   if (cx > right) return 'right';
@@ -148,6 +177,7 @@ function getWorkspaceElement(dockviewId: string): HTMLElement | null {
 function findBestTarget(
   panelRect: DOMRect,
   edgeThreshold: number,
+  activationInsetPx: number,
   candidateIds: string[],
   canDockInto?: (id: string) => boolean,
 ): DragToDockTarget | null {
@@ -165,7 +195,7 @@ function findBestTarget(
     const area = rect.width * rect.height;
     if (area <= 0) continue;
 
-    const zone = detectDropZone(panelRect, rect, edgeThreshold);
+    const zone = detectDropZone(panelRect, rect, edgeThreshold, activationInsetPx);
     if (zone && area < bestArea) {
       best = { dockviewId: id, rect, zone };
       bestArea = area;
@@ -182,6 +212,7 @@ export function useDragToDock({
   edgeThreshold = 0.2,
   throttleMs = 16,
   holdDelayMs = 400,
+  activationInsetPx = 0,
 }: UseDragToDockOptions): UseDragToDockReturn {
   const [isDragging, setIsDragging] = useState(false);
   const [activeDropZone, setActiveDropZone] = useState<DropZone | null>(null);
@@ -244,7 +275,13 @@ export function useDragToDock({
         ? [workspaceDockviewId]
         : getDockviewHostIds();
 
-      const target = findBestTarget(panelRect, edgeThreshold, candidateIds, canDockInto);
+      const target = findBestTarget(
+        panelRect,
+        edgeThreshold,
+        activationInsetPx,
+        candidateIds,
+        canDockInto,
+      );
 
       if (!target) {
         // Left all dockviews — clear everything
@@ -302,7 +339,7 @@ export function useDragToDock({
         commitTarget(target);
       }, holdDelayMs);
     }, throttleMs);
-  }, [workspaceDockviewId, canDockInto, edgeThreshold, throttleMs, holdDelayMs]);
+  }, [workspaceDockviewId, canDockInto, edgeThreshold, throttleMs, holdDelayMs, activationInsetPx]);
 
   const onDrag = useCallback((panelRect: DOMRect) => {
     throttledDetectRef.current?.(panelRect);

@@ -9,13 +9,121 @@
 
 import { resolvePanelDefinitionId } from '@pixsim7/shared.ui.dockview';
 import type { IDockviewHeaderActionsProps } from 'dockview-core';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 
 import { useDockviewContext } from './contextMenu/DockviewIdContext';
-import { buildFloatingOriginMetaRecord, deriveFloatingGroupRestoreHint } from './floatingPanelInterop';
+import {
+  buildFloatingOriginMetaRecord,
+  deriveFloatingGroupRestoreHint,
+  removePanelAndPruneEmptyGroup,
+} from './floatingPanelInterop';
 
-const DRAG_THRESHOLD = 12;
+const HANDLE_SIZE = 14;
+const HANDLE_INSET = 2;
+const HANDLE_GUARD_GAP = 6;
+
+type HandleCorner = 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+
+const CORNER_ORDER: HandleCorner[] = ['top-right', 'top-left', 'bottom-right', 'bottom-left'];
+
+type RectLike = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+};
+
+function intersectArea(a: RectLike, b: RectLike): number {
+  const left = Math.max(a.left, b.left);
+  const top = Math.max(a.top, b.top);
+  const right = Math.min(a.right, b.right);
+  const bottom = Math.min(a.bottom, b.bottom);
+  const width = right - left;
+  const height = bottom - top;
+  return width > 0 && height > 0 ? width * height : 0;
+}
+
+function expandRect(rect: RectLike, amount: number): RectLike {
+  return {
+    left: rect.left - amount,
+    top: rect.top - amount,
+    right: rect.right + amount,
+    bottom: rect.bottom + amount,
+  };
+}
+
+function getCornerRect(scope: RectLike, corner: HandleCorner): RectLike {
+  const left = corner.endsWith('left')
+    ? scope.left + HANDLE_INSET
+    : scope.right - HANDLE_INSET - HANDLE_SIZE;
+  const top = corner.startsWith('top')
+    ? scope.top + HANDLE_INSET
+    : scope.bottom - HANDLE_INSET - HANDLE_SIZE;
+  return {
+    left,
+    top,
+    right: left + HANDLE_SIZE,
+    bottom: top + HANDLE_SIZE,
+  };
+}
+
+function isVisibleElement(el: HTMLElement): boolean {
+  if (!el.isConnected) return false;
+  if (el.closest('.dv-group-float-drag-handle')) return false;
+  const style = window.getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+    return false;
+  }
+  const rect = el.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
+function chooseBestCorner(rootEl: HTMLElement): HandleCorner {
+  const groupEl = rootEl.closest('.dv-groupview') as HTMLElement | null;
+  if (!groupEl) return 'top-right';
+
+  const contentEl = groupEl.querySelector('.dv-content-container') as HTMLElement | null;
+  const scopeEl = contentEl ?? groupEl;
+  const scope = scopeEl.getBoundingClientRect();
+  if (scope.width < HANDLE_SIZE + 4 || scope.height < HANDLE_SIZE + 4) return 'top-right';
+
+  const blockerSelector = [
+    'button',
+    '[role="button"]',
+    'a[href]',
+    'input',
+    'textarea',
+    'select',
+    '[contenteditable="true"]',
+    '.floating-panel-header',
+    '[data-float-handle-blocker]',
+  ].join(',');
+
+  const blockers = Array.from(scopeEl.querySelectorAll<HTMLElement>(blockerSelector))
+    .filter(isVisibleElement)
+    .map((el) => el.getBoundingClientRect());
+
+  let bestCorner: HandleCorner = 'top-right';
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (let i = 0; i < CORNER_ORDER.length; i += 1) {
+    const corner = CORNER_ORDER[i];
+    const rect = getCornerRect(scope, corner);
+    const guardedRect = expandRect(rect, HANDLE_GUARD_GAP);
+    let score = i * 0.001; // deterministic tie-break by preferred order
+    for (const blocker of blockers) {
+      score += intersectArea(guardedRect, blocker);
+      if (score >= bestScore) break;
+    }
+    if (score < bestScore) {
+      bestScore = score;
+      bestCorner = corner;
+    }
+  }
+
+  return bestCorner;
+}
 
 export function GroupDragHandle({
   containerApi,
@@ -24,127 +132,136 @@ export function GroupDragHandle({
 }: IDockviewHeaderActionsProps) {
   const { dockviewId, dockviewApi, floatPanelHandler } = useDockviewContext();
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const dragCandidateRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    panelId: string;
-    groupId: string | undefined;
-  } | null>(null);
-  const dragMoveListenerRef = useRef<((e: PointerEvent) => void) | null>(null);
-  const dragUpListenerRef = useRef<((e: PointerEvent) => void) | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const [corner, setCorner] = useState<HandleCorner>('top-right');
 
-  const cleanupDragListeners = useCallback(() => {
-    if (dragMoveListenerRef.current) {
-      window.removeEventListener('pointermove', dragMoveListenerRef.current, true);
-      dragMoveListenerRef.current = null;
-    }
-    if (dragUpListenerRef.current) {
-      window.removeEventListener('pointerup', dragUpListenerRef.current, true);
-      window.removeEventListener('pointercancel', dragUpListenerRef.current, true);
-      dragUpListenerRef.current = null;
-    }
-    dragCandidateRef.current = null;
+  const recalculateCorner = useCallback(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const next = chooseBestCorner(root);
+    setCorner((prev) => (prev === next ? prev : next));
   }, []);
 
-  useEffect(() => cleanupDragListeners, [cleanupDragListeners]);
+  const floatActivePanel = useCallback((sourceGroupId: string | null | undefined) => {
+    if (!floatPanelHandler || !activePanel) return;
+
+    const candidatePanelId = activePanel.id;
+    const api = containerApi ?? dockviewApi;
+    const panel = (api as any)?.getPanel?.(candidatePanelId) ?? activePanel;
+    if (!panel) return;
+
+    const resolvedDefinitionId = resolvePanelDefinitionId(panel);
+    if (!resolvedDefinitionId) {
+      console.warn('[GroupDragHandle] Could not resolve panel definition for float', {
+        panelId: candidatePanelId,
+        dockviewId,
+      });
+      return;
+    }
+
+    try {
+      const sourceGroupRestoreHint = deriveFloatingGroupRestoreHint(api, sourceGroupId);
+      floatPanelHandler(candidatePanelId, panel, {
+        width: 600,
+        height: 400,
+        context: {
+          ...buildFloatingOriginMetaRecord({
+            sourceDockviewId: dockviewId ?? null,
+            sourceGroupId: sourceGroupId ?? null,
+            sourceInstanceId:
+              dockviewId && dockviewId.length > 0
+                ? `${dockviewId}:${candidatePanelId}`
+                : candidatePanelId,
+            sourceDefinitionId: resolvedDefinitionId,
+            sourceGroupRestoreHint,
+          }),
+        },
+      });
+      removePanelAndPruneEmptyGroup(api, panel, {
+        sourceGroupId: sourceGroupId ?? null,
+      });
+    } catch (error) {
+      console.warn('[GroupDragHandle] Failed to float panel', {
+        panelId: candidatePanelId,
+        dockviewId,
+        error,
+      });
+    }
+  }, [activePanel, containerApi, dockviewApi, dockviewId, floatPanelHandler]);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return undefined;
+
+    const group = root.closest('.dv-groupview') as HTMLElement | null;
+    if (!group) return undefined;
+
+    const content = group.querySelector('.dv-content-container') as HTMLElement | null;
+    const observedRoot = content ?? group;
+
+    const scheduleRecalc = () => {
+      if (rafRef.current != null) return;
+      rafRef.current = window.requestAnimationFrame(() => {
+        rafRef.current = null;
+        recalculateCorner();
+      });
+    };
+
+    scheduleRecalc();
+
+    const resizeObserver = new ResizeObserver(() => scheduleRecalc());
+    resizeObserver.observe(group);
+    if (content && content !== group) resizeObserver.observe(content);
+
+    const mutationObserver = new MutationObserver(() => scheduleRecalc());
+    mutationObserver.observe(observedRoot, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'hidden', 'aria-hidden'],
+    });
+
+    window.addEventListener('scroll', scheduleRecalc, true);
+
+    return () => {
+      if (rafRef.current != null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      window.removeEventListener('scroll', scheduleRecalc, true);
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+    };
+  }, [activePanel?.id, recalculateCorner]);
 
   if (!floatPanelHandler || !activePanel) return null;
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Prevent text selection or parent drag behavior from this handle.
+    e.preventDefault();
+    e.stopPropagation();
+  };
 
-    cleanupDragListeners();
-
-    const panelId = activePanel.id;
-    dragCandidateRef.current = {
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startY: e.clientY,
-      panelId,
-      groupId: groupApi?.id,
-    };
-
-    const onPointerMove = () => {
-      // movement evaluated on pointerup
-    };
-
-    const onPointerUp = (ev: PointerEvent) => {
-      const candidate = dragCandidateRef.current;
-      cleanupDragListeners();
-      if (!candidate) return;
-      if (ev.pointerId !== candidate.pointerId) return;
-
-      const dx = ev.clientX - candidate.startX;
-      const dy = ev.clientY - candidate.startY;
-      if ((dx * dx + dy * dy) < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
-
-      const dockRoot =
-        rootRef.current?.closest('[data-smart-dockview]') as HTMLElement | null;
-      if (!dockRoot) return;
-
-      const rect = dockRoot.getBoundingClientRect();
-      const releasedOutside =
-        ev.clientX < rect.left ||
-        ev.clientX > rect.right ||
-        ev.clientY < rect.top ||
-        ev.clientY > rect.bottom;
-      if (!releasedOutside) return;
-
-      const api = containerApi ?? dockviewApi;
-      const panel =
-        (api as any)?.getPanel?.(candidate.panelId) ?? activePanel;
-      if (!panel) return;
-      const resolvedPanelId = resolvePanelDefinitionId(panel) ?? candidate.panelId;
-
-      try {
-        const sourceGroupRestoreHint = deriveFloatingGroupRestoreHint(api, candidate.groupId);
-        floatPanelHandler(candidate.panelId, panel, {
-          width: 600,
-          height: 400,
-          context: {
-            ...buildFloatingOriginMetaRecord({
-              sourceDockviewId: dockviewId ?? null,
-              sourceGroupId: candidate.groupId ?? null,
-              sourceDockPanelId: candidate.panelId,
-              sourcePanelId: resolvedPanelId,
-              sourceGroupRestoreHint,
-            }),
-          },
-        });
-        (api as any)?.removePanel?.(panel);
-      } catch (error) {
-        console.warn('[GroupDragHandle] Failed to float dragged-out panel', {
-          panelId: candidate.panelId,
-          dockviewId,
-          error,
-        });
-      }
-    };
-
-    dragMoveListenerRef.current = onPointerMove;
-    dragUpListenerRef.current = onPointerUp;
-    window.addEventListener('pointermove', onPointerMove, true);
-    window.addEventListener('pointerup', onPointerUp, true);
-    window.addEventListener('pointercancel', onPointerUp, true);
+  const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    floatActivePanel(groupApi?.id ?? null);
   };
 
   return (
     <div
       ref={rootRef}
       onPointerDown={handlePointerDown}
-      className="flex items-center px-1 cursor-grab active:cursor-grabbing text-neutral-500 hover:text-neutral-300 transition-colors"
-      title="Drag to float panel"
+      onDoubleClick={handleDoubleClick}
+      onMouseEnter={recalculateCorner}
+      className="dv-group-float-drag-handle cursor-pointer"
+      title="Double-click to float panel"
+      aria-label="Double-click to float panel"
+      role="button"
+      data-dv-float-corner={corner}
     >
-      <svg width="6" height="10" viewBox="0 0 6 10" fill="currentColor">
-        <circle cx="1" cy="1" r="1" />
-        <circle cx="5" cy="1" r="1" />
-        <circle cx="1" cy="5" r="1" />
-        <circle cx="5" cy="5" r="1" />
-        <circle cx="1" cy="9" r="1" />
-        <circle cx="5" cy="9" r="1" />
-      </svg>
+      <span className="dv-group-float-drag-corner" aria-hidden="true" />
     </div>
   );
 }

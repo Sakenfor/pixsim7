@@ -11,8 +11,8 @@ export interface FloatingGroupRestoreHint {
 export interface FloatingOriginMeta {
   sourceDockviewId?: string | null;
   sourceGroupId?: string | null;
-  sourceDockPanelId?: string | null;
-  sourcePanelId?: string | null;
+  sourceInstanceId?: string | null;
+  sourceDefinitionId?: string | null;
   sourceGroupRestoreHint?: FloatingGroupRestoreHint | null;
 }
 
@@ -27,8 +27,8 @@ export function buildFloatingOriginMetaRecord(
     [FLOATING_ORIGIN_META_KEY]: {
       sourceDockviewId: meta.sourceDockviewId ?? null,
       sourceGroupId: meta.sourceGroupId ?? null,
-      sourceDockPanelId: meta.sourceDockPanelId ?? null,
-      sourcePanelId: meta.sourcePanelId ?? null,
+      sourceInstanceId: meta.sourceInstanceId ?? null,
+      sourceDefinitionId: meta.sourceDefinitionId ?? null,
       sourceGroupRestoreHint: meta.sourceGroupRestoreHint ?? null,
     },
   };
@@ -94,6 +94,49 @@ function getGroupRect(group: unknown): DOMRect | null {
   } catch {
     return null;
   }
+}
+
+function getDockviewGroupPanelCount(group: unknown): number {
+  if (!isRecord(group)) return 0;
+  const panels = (group as any).panels;
+  if (Array.isArray(panels)) return panels.length;
+  if (panels && typeof panels.length === "number") return panels.length;
+  const model = (group as any).model;
+  if (typeof model?.size === "number") return model.size;
+  return 0;
+}
+
+export function removePanelAndPruneEmptyGroup(
+  api: unknown,
+  panel: unknown,
+  options?: { sourceGroupId?: string | null },
+): void {
+  if (!isRecord(api)) return;
+  const removePanel = (api as any).removePanel;
+  if (typeof removePanel !== "function") return;
+
+  const sourceGroupId =
+    options?.sourceGroupId ??
+    (typeof (panel as any)?.group?.id === "string"
+      ? (panel as any).group.id
+      : null);
+
+  removePanel.call(api, panel);
+
+  if (!sourceGroupId) return;
+
+  const getGroup = (api as any).getGroup;
+  const removeGroup = (api as any).removeGroup;
+  if (typeof getGroup !== "function" || typeof removeGroup !== "function") return;
+
+  const sourceGroup = getGroup.call(api, sourceGroupId);
+  if (!sourceGroup) return;
+  if (getDockviewGroupPanelCount(sourceGroup) > 0) return;
+
+  // Keep a single empty root group so background actions remain available.
+  if (getDockviewGroupsRaw(api).length <= 1) return;
+
+  removeGroup.call(api, sourceGroup);
 }
 
 export function deriveFloatingGroupRestoreHint(

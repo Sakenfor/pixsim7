@@ -12,7 +12,11 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useContextHubState } from '@features/contextHub';
 
 
-import { buildFloatingOriginMetaRecord, deriveFloatingGroupRestoreHint } from '../floatingPanelInterop';
+import {
+  buildFloatingOriginMetaRecord,
+  deriveFloatingGroupRestoreHint,
+  removePanelAndPruneEmptyGroup,
+} from '../floatingPanelInterop';
 
 import { buildDockviewContext } from './buildDockviewContext';
 import { useDockviewContext } from './DockviewIdContext';
@@ -142,7 +146,14 @@ export function CustomTabComponent(props: IDockviewPanelHeaderProps) {
         (containerApi as any)?.getPanel?.(candidate.panelId) ??
         (props as any)?.api;
       if (!panel) return;
-      const resolvedPanelId = resolveDockviewPanelDefinitionId(panel) ?? candidate.panelId;
+      const resolvedDefinitionId = resolveDockviewPanelDefinitionId(panel);
+      if (!resolvedDefinitionId) {
+        console.warn('[CustomTabComponent] Could not resolve panel definition for float', {
+          panelId: candidate.panelId,
+          currentDockviewId,
+        });
+        return;
+      }
 
       try {
         const sourceGroupRestoreHint = deriveFloatingGroupRestoreHint(containerApi, candidate.groupId);
@@ -153,13 +164,18 @@ export function CustomTabComponent(props: IDockviewPanelHeaderProps) {
             ...buildFloatingOriginMetaRecord({
               sourceDockviewId: currentDockviewId ?? null,
               sourceGroupId: candidate.groupId ?? null,
-              sourceDockPanelId: candidate.panelId,
-              sourcePanelId: resolvedPanelId,
+              sourceInstanceId:
+                currentDockviewId && currentDockviewId.length > 0
+                  ? `${currentDockviewId}:${candidate.panelId}`
+                  : candidate.panelId,
+              sourceDefinitionId: resolvedDefinitionId,
               sourceGroupRestoreHint,
             }),
           },
         });
-        (containerApi as any)?.removePanel?.(panel);
+        removePanelAndPruneEmptyGroup(containerApi, panel, {
+          sourceGroupId: candidate.groupId ?? null,
+        });
       } catch (error) {
         console.warn('[CustomTabComponent] Failed to float dragged-out tab', {
           panelId: candidate.panelId,

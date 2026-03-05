@@ -404,7 +404,7 @@ function toPanelActionFromCapability(
 /**
  * React hook for using panel actions in components
  */
-export function usePanelActions(panelId: string) {
+export function usePanelRegistryActions(panelId: string) {
   const [actions, setActions] = React.useState<PanelAction[]>([]);
   const [config, setConfig] = React.useState<PanelActionsConfig | undefined>();
 

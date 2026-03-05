@@ -4,13 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   buildActionSelectionRequestFromBehavior,
-  listGameNpcs,
   selectActionBlocksFromBehavior,
   type ActionSelectionResponsePayload,
   type BuildActionSelectionRequestFromBehaviorRequest,
   type BuildActionSelectionRequestFromBehaviorResponse,
 } from '@lib/api';
 import { useEditorContext } from '@lib/context';
+import { resolveGameNpcs } from '@lib/resolvers';
 
 type NpcChoice = {
   id: number;
@@ -302,11 +302,13 @@ export function ScenePlanPanel() {
     let cancelled = false;
     const loadNpcs = async () => {
       try {
-        const list = await listGameNpcs();
+        const list = await resolveGameNpcs({}, {
+          consumerId: 'ScenePlanPanel.loadNpcs',
+        });
         if (cancelled) return;
         const mapped = list
           .map((npc) => {
-            const row = npc as Record<string, unknown>;
+            const row = npc as unknown as Record<string, unknown>;
             const id = asNumber(row.id);
             if (id == null) return null;
             const worldId = asNumber(row.world_id ?? row.worldId) ?? null;

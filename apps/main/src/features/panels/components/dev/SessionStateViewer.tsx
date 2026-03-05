@@ -5,9 +5,9 @@ import { useState, useEffect } from "react";
 
 import {
   getGameSession,
-  listGameSessions,
   type GameSessionDTO,
 } from "@lib/api/game";
+import { resolveGameSessions } from "@lib/resolvers";
 
 
 /**
@@ -53,7 +53,9 @@ export function SessionStateViewer() {
 
   const loadSessions = async () => {
     try {
-      const data = await listGameSessions();
+      const data = await resolveGameSessions({
+        consumerId: 'SessionStateViewer.loadSessions',
+      });
       setSessions(data);
       if (data.length > 0 && !selectedSessionId) {
         setSelectedSessionId(data[0].id);

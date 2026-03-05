@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { BlockTemplateSummary, CharacterBindings } from '@lib/api/blockTemplates';
 import { getTemplate, reloadContentPacks } from '@lib/api/blockTemplates';
+import { isAdminUser } from '@lib/auth/userRoles';
 import { Icon } from '@lib/icons';
 
 import {
@@ -30,10 +31,13 @@ import {
   useBlockTemplateStore,
   createEmptySlot,
 } from '@features/prompts/stores/blockTemplateStore';
+import { useAuthStore } from '@/stores/authStore';
 
 type PanelView = 'list' | 'edit' | 'roll' | 'cast';
 
 export function TemplateBuilderPanel() {
+  const currentUser = useAuthStore((s) => s.user);
+  const canReloadContentPacks = isAdminUser(currentUser);
   const templates = useBlockTemplateStore((s) => s.templates);
   const templatesLoading = useBlockTemplateStore((s) => s.templatesLoading);
   const fetchTemplates = useBlockTemplateStore((s) => s.fetchTemplates);
@@ -168,6 +172,10 @@ export function TemplateBuilderPanel() {
   );
 
   const handleReloadPinnedPack = useCallback(async () => {
+    if (!canReloadContentPacks) {
+      setReloadPinnedPackMessage('Admin role is required to reload content packs.');
+      return;
+    }
     if (!pinnedTemplatePack || reloadingPinnedPack) return;
     setReloadingPinnedPack(true);
     setReloadPinnedPackMessage(null);
@@ -197,7 +205,7 @@ export function TemplateBuilderPanel() {
     } finally {
       setReloadingPinnedPack(false);
     }
-  }, [fetchTemplate, fetchTemplates, pinnedTemplateId, pinnedTemplatePack, reloadingPinnedPack]);
+  }, [canReloadContentPacks, fetchTemplate, fetchTemplates, pinnedTemplateId, pinnedTemplatePack, reloadingPinnedPack]);
 
   const handleNew = useCallback(() => {
     setActiveTemplate(null);
@@ -384,15 +392,21 @@ export function TemplateBuilderPanel() {
                     <button
                       type="button"
                       onClick={() => void handleReloadPinnedPack()}
-                      disabled={reloadingPinnedPack}
+                      disabled={reloadingPinnedPack || !canReloadContentPacks}
                       className={clsx(
                         'px-1.5 py-0.5 rounded border text-[10px] transition-colors shrink-0',
                         'border-accent/30 text-accent',
                         reloadingPinnedPack
                           ? 'opacity-60 cursor-wait'
-                          : 'hover:bg-accent/20',
+                          : !canReloadContentPacks
+                            ? 'opacity-60 cursor-not-allowed'
+                            : 'hover:bg-accent/20',
                       )}
-                      title={`Force-reload content pack '${pinnedTemplatePack}' (updated count reflects rewritten rows, not semantic diffs)`}
+                      title={
+                        canReloadContentPacks
+                          ? `Force-reload content pack '${pinnedTemplatePack}' (updated count reflects rewritten rows, not semantic diffs)`
+                          : 'Admin role required to reload content packs.'
+                      }
                     >
                       <Icon name={reloadingPinnedPack ? 'loader' : 'refreshCw'} size={9} className="inline mr-1" />
                       {reloadingPinnedPack ? 'Reloading…' : 'Reload Pack'}

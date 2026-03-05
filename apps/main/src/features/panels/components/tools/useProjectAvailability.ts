@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
-  listGameWorlds,
-  listSavedGameProjects,
   exportWorldProject,
   pixsimClient,
 } from '@lib/api';
 import {
-  getBlockCatalog,
-  listContentPacks,
-  listTemplates,
-} from '@lib/api/blockTemplates';
+  resolveBlockPrimitives,
+  resolveBlockTemplates,
+  resolveContentPacks,
+  resolveGameWorlds,
+  resolveSavedGameProjects,
+} from '@lib/resolvers';
 
 import { useSceneArtifactStore } from '@/domain/sceneArtifact';
 
@@ -135,7 +135,9 @@ function buildTaskSpecs(selectedWorldId: number | null): RemoteTaskSpec[] {
     {
       key: 'worlds',
       label: REMOTE_LABELS.worlds,
-      load: async () => ({ count: (await listGameWorlds()).length }),
+      load: async () => ({
+        count: (await resolveGameWorlds({ consumerId: 'useProjectAvailability.loadWorlds' })).length,
+      }),
     },
     {
       key: 'locations',
@@ -163,7 +165,10 @@ function buildTaskSpecs(selectedWorldId: number | null): RemoteTaskSpec[] {
       key: 'saved_projects',
       label: REMOTE_LABELS.saved_projects,
       load: async () => {
-        const rows = await listSavedGameProjects({ limit: QUERY_LIMIT });
+        const rows = await resolveSavedGameProjects(
+          { limit: QUERY_LIMIT },
+          { consumerId: 'useProjectAvailability.savedProjects' },
+        );
         return { count: rows.length, sampled: rows.length >= QUERY_LIMIT };
       },
     },
@@ -171,7 +176,10 @@ function buildTaskSpecs(selectedWorldId: number | null): RemoteTaskSpec[] {
       key: 'block_templates',
       label: REMOTE_LABELS.block_templates,
       load: async () => {
-        const rows = await listTemplates({ limit: QUERY_LIMIT });
+        const rows = await resolveBlockTemplates(
+          { limit: QUERY_LIMIT },
+          { consumerId: 'useProjectAvailability.blockTemplates' },
+        );
         return { count: rows.length, sampled: rows.length >= QUERY_LIMIT };
       },
     },
@@ -179,14 +187,21 @@ function buildTaskSpecs(selectedWorldId: number | null): RemoteTaskSpec[] {
       key: 'block_primitives',
       label: REMOTE_LABELS.block_primitives,
       load: async () => {
-        const rows = await getBlockCatalog({ limit: QUERY_LIMIT });
+        const rows = await resolveBlockPrimitives(
+          { limit: QUERY_LIMIT },
+          { consumerId: 'useProjectAvailability.blockPrimitives' },
+        );
         return { count: rows.length, sampled: rows.length >= QUERY_LIMIT };
       },
     },
     {
       key: 'content_packs',
       label: REMOTE_LABELS.content_packs,
-      load: async () => ({ count: (await listContentPacks()).length }),
+      load: async () => ({
+        count: (
+          await resolveContentPacks({ consumerId: 'useProjectAvailability.contentPacks' })
+        ).length,
+      }),
     },
   ];
 

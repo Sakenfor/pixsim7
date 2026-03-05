@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+
 import { panelManager } from '../lib/PanelManager';
 import type {
   PanelState,
@@ -132,7 +133,7 @@ export function usePanelManagerEvents(
 /**
  * Get panel manager actions as stable callbacks
  */
-export function usePanelActions(panelId: string) {
+export function usePanelManagerActions(panelId: string) {
   const open = useCallback(
     (options?: OpenPanelOptions) => {
       panelManager.openPanel(panelId, options);
@@ -191,7 +192,7 @@ export function usePanelActions(panelId: string) {
  */
 export function usePanel(panelId: string) {
   const state = usePanelState(panelId);
-  const actions = usePanelActions(panelId);
+  const actions = usePanelManagerActions(panelId);
 
   return useMemo(
     () => ({

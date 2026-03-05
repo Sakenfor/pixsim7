@@ -5,7 +5,11 @@
  * with offline fallback to the local generated artifact.
  */
 
-import type { ArchitectureGraphV1, FrontendSourceKind } from '@pixsim7/shared.types';
+import { createDevArchitectureApi } from '@pixsim7/shared.api.client/domains';
+import type { ArchitectureGraphV1 } from '@pixsim7/shared.api.model';
+import { pixsimClient } from '@lib/api/client';
+
+const devArchitectureApi = createDevArchitectureApi(pixsimClient);
 
 export type GraphLoadSource = 'backend' | 'fallback_local';
 
@@ -26,11 +30,8 @@ export interface GraphLoadResult {
 export async function loadArchitectureGraph(): Promise<GraphLoadResult> {
   // Try backend first
   try {
-    const res = await fetch('/dev/architecture/graph');
-    if (res.ok) {
-      const graph: ArchitectureGraphV1 = await res.json();
-      return { graph, loadSource: 'backend' };
-    }
+    const graph = await devArchitectureApi.getArchitectureGraph();
+    return { graph, loadSource: 'backend' };
   } catch {
     // Backend unreachable — fall through to local fallback
   }
@@ -41,8 +42,8 @@ export async function loadArchitectureGraph(): Promise<GraphLoadResult> {
 
 async function buildFallbackGraph(): Promise<GraphLoadResult> {
   const now = new Date().toISOString();
-  let entries: ArchitectureGraphV1['frontend']['entries'] = [];
-  let frontendKind: FrontendSourceKind = 'fallback_local';
+  let entries: NonNullable<ArchitectureGraphV1['frontend']['entries']> = [];
+  let frontendKind: 'generated_artifact' | 'fallback_local' = 'fallback_local';
   let generatedAt: string | null = null;
   let error: string | undefined;
 

@@ -484,18 +484,29 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     return () => { _epochState.cbs.delete(cb); };
   }, []);
 
+  const RECOVERY_POLL_INTERVAL_MS = 50;
+  const RECOVERY_POLL_MAX_ATTEMPTS = 120; // 6s max
+
   // Recovery poll: if we mounted with no panels (HMR remount while catalog is
   // still rebuilding), poll until the catalog is populated. This handles all
   // edge cases where subscription-based notification is lost (module re-eval
   // creates a new panelSelectors object, orphaning the old subscription).
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     if (!hasNoPanels || hadPanelsRef.current) return;
+    let attempts = 0;
     const timer = setInterval(() => {
+      attempts += 1;
       const count = panelSelectors.getPublicPanels().length;
       if (count > 0) {
         setGlobalRegistryVersion((v) => v + 1);
+        clearInterval(timer);
+        return;
       }
-    }, 50);
+      if (attempts >= RECOVERY_POLL_MAX_ATTEMPTS) {
+        clearInterval(timer);
+      }
+    }, RECOVERY_POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [hasNoPanels, scope, panelManagerId]);
 
