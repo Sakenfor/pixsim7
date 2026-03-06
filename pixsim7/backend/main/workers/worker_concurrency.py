@@ -444,6 +444,55 @@ async def _release_adaptive_provider_probe_lock(
 
 
 # ---------------------------------------------------------------------------
+# Per-account effective cap hint (consumed by account wake logic)
+# ---------------------------------------------------------------------------
+
+def _account_effective_cap_hint_key(account_id: int) -> str:
+    return f"generation:account_effective_cap_hint:{account_id}"
+
+
+async def _set_account_effective_cap_hint(
+    account_id: int,
+    effective_cap: int,
+    configured_cap: int,
+    *,
+    gen_logger=None,
+) -> None:
+    """Store the effective cap hint so the account wake logic can throttle wakes."""
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_redis
+
+        redis_client = await get_redis()
+        key = _account_effective_cap_hint_key(account_id)
+        if effective_cap >= configured_cap:
+            # No adaptive restriction — clear the hint
+            await redis_client.delete(key)
+        else:
+            await redis_client.set(
+                key,
+                str(max(1, effective_cap)),
+                ex=_adaptive_provider_concurrency_state_ttl_seconds(),
+            )
+    except Exception as e:
+        if gen_logger:
+            gen_logger.debug("account_effective_cap_hint_set_failed", error=str(e))
+
+
+async def get_account_effective_cap_hint(account_id: int) -> int | None:
+    """Read the per-account effective cap hint. Returns None if not set."""
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_redis
+
+        redis_client = await get_redis()
+        raw = await redis_client.get(_account_effective_cap_hint_key(account_id))
+        if raw is None:
+            return None
+        return max(1, int(raw))
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Pre-submit gate
 # ---------------------------------------------------------------------------
 
@@ -583,12 +632,17 @@ async def _adaptive_provider_concurrency_record_limit_error(
         previous_in_cap_rejects + 1 if not is_probe_level_reject else previous_in_cap_rejects
     )
     lower_after_rejects = _adaptive_provider_concurrency_lower_after_consecutive_rejects()
-    should_lower = (
-        existing_effective > 1
-        and not is_probe_level_reject
-        and consecutive_in_cap_rejects >= lower_after_rejects
-    )
-    new_effective = existing_effective - 1 if should_lower else existing_effective
+    # Immediately clamp effective cap to observed provider limit on in-cap
+    # rejects.  Waiting for N consecutive rejects is too slow during bursts —
+    # each wasted submit hits the provider API and gets rejected.  The probe
+    # mechanism will recover the cap if the rejection was transient.
+    if not is_probe_level_reject and existing_effective > 1:
+        new_effective = _clamp_provider_cap(
+            min(existing_effective, observed_cap), configured_cap
+        )
+    else:
+        new_effective = existing_effective
+    cap_lowered = new_effective < existing_effective
     now_ts = int(datetime.now(timezone.utc).timestamp())
     probe_delay = _adaptive_probe_delay_seconds_for_gap(
         configured_cap=configured_cap,
@@ -604,9 +658,9 @@ async def _adaptive_provider_concurrency_record_limit_error(
             "last_error_at_ts": now_ts,
             "last_reject_local_concurrency": observed_local,
             "last_limit_reject_attempted_level": attempted_level,
-            "consecutive_limit_rejects": 0 if should_lower else consecutive_rejects,
-            "consecutive_limit_rejects_level": 0 if should_lower else attempted_level,
-            "consecutive_in_cap_limit_rejects": 0 if should_lower else consecutive_in_cap_rejects,
+            "consecutive_limit_rejects": 0 if cap_lowered else consecutive_rejects,
+            "consecutive_limit_rejects_level": 0 if cap_lowered else attempted_level,
+            "consecutive_in_cap_limit_rejects": 0 if cap_lowered else consecutive_in_cap_rejects,
             "consecutive_probe_successes": 0,
             "consecutive_probe_successes_level": 0,
             "next_probe_at_ts": next_probe_at_ts,
@@ -615,6 +669,9 @@ async def _adaptive_provider_concurrency_record_limit_error(
         gen_logger=gen_logger,
     )
     await _release_adaptive_provider_probe_lock(state["state_key"], gen_logger=gen_logger)
+    await _set_account_effective_cap_hint(
+        account.id, new_effective, configured_cap, gen_logger=gen_logger,
+    )
 
     return {
         "state_key": state["state_key"],
@@ -629,7 +686,7 @@ async def _adaptive_provider_concurrency_record_limit_error(
         "consecutive_in_cap_limit_rejects": consecutive_in_cap_rejects,
         "lower_after_consecutive_rejects": lower_after_rejects,
         "is_probe_level_reject": is_probe_level_reject,
-        "cap_lowered": should_lower,
+        "cap_lowered": cap_lowered,
         "next_probe_at_ts": next_probe_at_ts,
         "next_probe_delay_seconds": probe_delay,
         "adaptive_active": new_effective < configured_cap,
@@ -732,6 +789,9 @@ async def _adaptive_provider_concurrency_record_submit_success(
             gen_logger=gen_logger,
         )
         await _release_adaptive_provider_probe_lock(state["state_key"], gen_logger=gen_logger)
+        await _set_account_effective_cap_hint(
+            account.id, new_effective, configured_cap, gen_logger=gen_logger,
+        )
         gen_logger.info(
             "adaptive_concurrency_cap_raised",
             account_id=account.id,
