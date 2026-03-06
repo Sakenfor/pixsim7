@@ -45,8 +45,9 @@ The following seed-specific behaviors are still active at runtime by design:
 1. Project Panel now persists and reloads Bananza runtime preferences in project provenance meta (`seeder_mode`, `sync_mode`, `watch_enabled`).
 2. Bananza CLI now resolves runtime config with precedence: explicit CLI flags > saved project preferences > defaults.
 3. CLI project-preference lookup now prefers non-legacy snapshot rows when duplicate project names exist.
-4. Direct mode now forces `sync_mode=none` to avoid accidental API-sync expectations.
-5. Added tests for CLI preference parsing, precedence resolution, and duplicate legacy snapshot selection behavior.
+4. Direct mode now forces `sync_mode=none` to avoid accidental API-sync expectations and surfaces a clear schema-compatibility error when blocks DB schema drifts.
+5. Two-way pull now writes `<project-file>.bak` before replacing a changed local file.
+6. Added tests for CLI preference parsing, precedence resolution, duplicate legacy snapshot selection behavior, watch file diffing/filtering, pull-backup creation, and direct-mode schema drift handling.
 
 ## Verification
 
@@ -70,8 +71,11 @@ Coverage now includes:
 3. Run CLI without mode/sync/watch flags to consume saved project preferences automatically.
 4. Use API mode for watch/sync loops and reserve direct mode for bootstrap/debug fallback.
 
+### Local verification note (2026-03-06)
+
+Checked local DB rows by querying `game_project_snapshots` for `%bananza%`: currently one row (`Bananza Boat Seed Project`, `origin_kind=import`, `origin_source_key=bananza.bootstrap`). No duplicate Bananza snapshots were present at check time.
+
 ## Residual Risks / TODO
 
-1. Direct mode can drift from backend schema changes (example seen: missing `block_primitives.capabilities` in older local DBs).
-2. `two_way` sync is timestamp/hash based and not a structural merge strategy.
-3. Watch loop is polling-based; long-running shared usage may need adaptive/backoff behavior.
+1. `two_way` sync is still timestamp/hash based and not a structural merge strategy.
+2. Watch loop is polling-based; long-running shared usage may need adaptive/backoff behavior.
