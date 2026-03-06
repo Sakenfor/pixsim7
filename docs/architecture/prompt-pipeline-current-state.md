@@ -13,6 +13,7 @@
 Template (slots + controls)
   → CompilerV1 (expand slots, apply controls, fetch candidates)
   → ResolutionRequest IR (targets + candidates + constraints)
+  → LinkBackedRefBinder (bind op refs, prune unresolvable candidates)
   → NextV1Resolver (score candidates, pick winners per target)
   → Assembly (concatenate selected block texts in slot order)
   → Final prompt string
@@ -79,6 +80,123 @@ if block.role:
 ```
 
 Resolver enforces `required_capabilities` against this list.
+
+## 2b. LinkBackedRefBinder (Ref Binding Stage)
+
+**File:** `services/prompt/block/ref_binding_adapter.py`
+
+Inserted between compiler output and resolver input. Enriches compiled
+`ResolutionRequest` candidates with bound op refs and optionally prunes
+candidates whose required refs cannot be satisfied.
+
+### Purpose
+
+Blocks may carry `op` metadata declaring refs (entity references the operation
+needs at runtime) and ref-typed params. The binder resolves these against
+available context before the resolver scores candidates, so the resolver only
+sees candidates that can actually execute.
+
+### Pipeline Position
+
+```
+CompilerV1
+  → ResolutionRequest (candidates carry op.refs / op.params metadata)
+  → LinkBackedRefBinder.bind_request()
+      - resolves refs from available_refs, link lookups, character_bindings
+      - writes resolved_refs / resolved_params into candidate metadata
+      - prunes candidates with unsatisfied required refs (in required mode)
+      - stamps ref_binding stats into request.context
+  → NextV1Resolver (operates on filtered, enriched candidates)
+```
+
+### Binding Modes
+
+| Mode | Behavior |
+|------|----------|
+| `required` (default) | Candidates with unresolvable required refs are **pruned** (removed from candidate pool). Unknown mode values fall back to `required`. |
+| `advisory` | Candidates with unresolvable required refs are **kept** but a warning is emitted. Stats still track missing refs. |
+| `off` | No ref resolution or pruning. Stats object is still stamped (with zero counts). |
+
+### Config / Inputs
+
+Provided via `template_metadata` on the `BlockTemplate`, passed through
+`roll_template()` into `binder.bind_request(context=..., mode=...)`:
+
+| Input | Source | Description |
+|-------|--------|-------------|
+| `available_refs` | `template_metadata.available_refs` | Dict mapping capability keys to lists of ref tokens (e.g. `{"camera_target": ["asset:42"]}`) |
+| `link_context` | `template_metadata.link_context` | Dict passed to `ObjectLinkResolver.resolve_template_to_runtime()` for link-system lookups (e.g. `{"scene_id": 99}`) |
+| `ref_binding_mode` | `template_metadata.ref_binding_mode` | One of `"off"`, `"advisory"`, `"required"`. Defaults to `"required"` if absent or unrecognized. |
+| `character_bindings` | Roll-time bindings | Character binding map also feeds into ref resolution via `context["character_bindings"]`. |
+
+### Op Metadata Shape (on blocks)
+
+Blocks declare refs and ref-typed params in `block_metadata.op`:
+
+```python
+{
+    "op_id": "camera.motion.pan",
+    "refs": [
+        {"key": "subject", "capability": "subject", "required": True},
+        {"key": "targets", "capability": "camera_target", "required": False, "many": True},
+    ],
+    "params": [
+        {"key": "focus_target", "type": "ref", "ref_capability": "camera_target", "required": True},
+    ],
+    "args": {"focus_target": "asset:99"},       # explicit param values
+    "ref_bindings": {"subject": {"template_kind": "characterInstance", "template_id": "abc"}},
+}
+```
+
+- `refs[].many=true` produces a list binding instead of a single value.
+- `params` with `type=ref` + `ref_capability` are resolved the same way as refs
+  but written to `resolved_params` instead of `resolved_refs`.
+
+### Outputs / Diagnostics
+
+After binding, the binder stamps `request.context["ref_binding"]` with
+`RefBindingStats`:
+
+```python
+{
+    "mode": "required",
+    "candidates_checked": 3,
+    "candidates_pruned": 1,
+    "required_refs_missing": 1,
+    "optional_refs_missing": 0,
+    "resolved_ref_count": 2,
+    "warnings": []
+}
+```
+
+This propagates into the roll result as `metadata.ref_binding`.
+
+Successfully bound candidates have their `metadata.op` enriched:
+
+```python
+candidate.metadata["op"]["resolved_refs"] = {
+    "subject": {"kind": "entity", "value": "npc:7", "source": "link"}
+}
+candidate.metadata["op"]["resolved_params"] = {
+    "focus_target": {"kind": "entity", "value": "asset:99", "source": "direct"}
+}
+```
+
+The selected block's enriched `op` payload (including `resolved_refs` /
+`resolved_params`) is preserved through assembly into the final roll result's
+`block_metadata.op`.
+
+### Resolution Strategy
+
+For each ref/param, tokens are collected in priority order:
+
+1. Explicit values (`op.args` for params, `op.ref_bindings` for refs)
+2. `available_refs` matching by capability key
+3. `available_refs` matching by ref key
+4. `character_bindings` matching by capability or ref key
+5. Link-system lookup (for `template_kind`/`template_id` tokens)
+
+First match wins for single refs; all unique matches collected for `many=true`.
 
 ## 3. Block Query Builder
 

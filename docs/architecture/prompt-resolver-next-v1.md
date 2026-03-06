@@ -33,10 +33,21 @@ shared content (blocks + templates)
          ↓
   ResolutionRequest (neutral IR)
          ↓
+  LinkBackedRefBinder          ← bind op refs, prune unresolvable candidates
+         ↓
   legacy_v1 / next_v1 / ...   ← independently evolvable
          ↓
   ResolutionResult
 ```
+
+> **Note (March 2026):** `LinkBackedRefBinder` is now an implemented stage
+> between compiler and resolver. It enriches `CandidateBlock.metadata.op` with
+> `resolved_refs` / `resolved_params` and prunes candidates that cannot satisfy
+> required refs. Binding mode (`off` | `advisory` | `required`) is controlled
+> via `template_metadata.ref_binding_mode`. See
+> `services/prompt/block/ref_binding_adapter.py` and
+> [`prompt-pipeline-current-state.md`](./prompt-pipeline-current-state.md#2b-linkbackedrefbinder-ref-binding-stage)
+> for details.
 
 Multiple compilers all emit the same IR schema.
 Multiple resolvers all consume the same IR schema.
@@ -74,9 +85,10 @@ That makes it harder to:
 
 1. `Content` — blocks, templates, vocabularies (shared source of truth)
 2. `Compiler` — reads content, emits `ResolutionRequest` (neutral IR)
-3. `Resolver` — consumes IR, applies solving strategy, returns `ResolutionResult`
-4. `Assembler` — composes prompt/output from result
-5. `UI` — edits intent/controls only; does not know about resolver internals
+3. `RefBinder` — enriches candidates with bound op refs; prunes unresolvable (mode-dependent)
+4. `Resolver` — consumes enriched IR, applies solving strategy, returns `ResolutionResult`
+5. `Assembler` — composes prompt/output from result
+6. `UI` — edits intent/controls only; does not know about resolver internals
 
 ---
 

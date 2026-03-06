@@ -32,7 +32,7 @@ The prompt block/template system is **production-capable** with a complete verti
 
 1. **No template versioning/revision tracking** — BlockTemplate has no family/version linkage despite PromptVersion infrastructure existing for prompts.
 2. **No shareable template artifacts** — `is_public` flag exists but no export/import, fork, or share-by-link mechanism.
-3. **No reference image bindings** — character bindings resolve to text only; no mapping to provider image slots (`image #N`).
+3. **No reference image bindings** — character bindings resolve to text only; no mapping to provider image slots (`image #N`). (Note: op-level entity ref bindings are now supported via `LinkBackedRefBinder`, but these are semantic refs for operations, not provider image slots.)
 4. **Control effects are tag-only** — no "locked" controls that force slot parameters (role, category, complexity) rather than just tag preferences.
 5. **Semantic Packs reference blocks/families but not templates** — the shareable bundle model doesn't include block templates.
 6. **Block ↔ Composition Role alignment is implicit** — block `role` field uses `PromptSegmentRole` enum while composition uses `ImageCompositionRole`; no formal mapping.
@@ -120,21 +120,22 @@ The prompt block/template system is **production-capable** with a complete verti
 
 ```
 Frontend:                                Backend:
- ┌──────────────┐    POST /roll         ┌─────────────────────────┐
- │ Roll button  │ ──────────────────►   │ BlockTemplateService    │
- │ (or pinned   │    {seed,             │   .roll_template()      │
- │  auto-roll)  │     exclude_ids,      │                         │
- └──────────────┘     char_bindings,    │ 1. Load template        │
-                      control_values}   │ 2. Normalize slots      │
-                                        │ 3. Apply controls       │
-                                        │ 4. Per-slot:            │
-                                        │    a. build_slot_query   │
-                                        │    b. find_candidates    │
-                                        │    c. select_candidate   │
-                                        │ 5. Compose              │
-                                        │ 6. Expand characters    │
-                                        │ 7. Return RollResult    │
-                                        └─────────────────────────┘
+ ┌──────────────┐    POST /roll         ┌──────────────────────────────┐
+ │ Roll button  │ ──────────────────►   │ BlockTemplateService         │
+ │ (or pinned   │    {seed,             │   .roll_template()           │
+ │  auto-roll)  │     exclude_ids,      │                              │
+ └──────────────┘     char_bindings,    │ 1. Load template             │
+                      control_values}   │ 2. Normalize slots           │
+                                        │ 3. Apply controls            │
+                                        │ 4. CompilerV1 → candidates   │
+                                        │ 5. LinkBackedRefBinder       │
+                                        │    (bind op refs, prune)     │
+                                        │ 6. NextV1Resolver            │
+                                        │    (score, pick winners)     │
+                                        │ 7. Compose + expand chars    │
+                                        │ 8. Return RollResult         │
+                                        │    (incl. ref_binding stats) │
+                                        └──────────────────────────────┘
 ```
 
 ### Generation Path with runContext
@@ -210,6 +211,7 @@ File: `domain/prompt/enums.py`
 | Service | File | Responsibilities |
 |---------|------|-----------------|
 | `BlockTemplateService` | `services/prompt/block/template_service.py` (~900 lines) | CRUD, roll_template, diagnostics, selection strategies, control effects, preview |
+| `LinkBackedRefBinder` | `services/prompt/block/ref_binding_adapter.py` | Binds op refs on compiled candidates against available_refs / link lookups; prunes unresolvable candidates in `required` mode; stamps `ref_binding` diagnostics into roll metadata |
 | `CharacterBindingExpander` | `services/prompt/block/character_expander.py` | `{{role.attr}}` expansion with species vocabulary lookups |
 | `composition_engine` helpers | `services/prompt/block/composition_engine.py` | Derived analysis from selected blocks (legacy class removed) |
 | `ContentPackLoader` | `services/prompt/block/content_pack_loader.py` (~530 lines) | YAML discovery, parsing, DB upsert, pruning, rehoming |
@@ -390,7 +392,7 @@ Zustand store with:
 | **Character** | A named entity with species, vocabulary, visual/behavioral traits | `characters` table (via content packs) | Used by character bindings for `{{role.attr}}` expansion |
 | **Character Binding** | Maps a template role name to a character_id + cast spec | `BlockTemplate.character_bindings` (JSON) | `cast.filter_species` / `filter_category` for CastPanel dropdowns |
 | **Template Control** | A slider that modifies slot behavior at roll time | `BlockTemplate.template_metadata.controls[]` | Only slider type implemented; effects: `slot_intensity`, `slot_tag_boost` |
-| **Roll Result** | Output of rolling a template: assembled prompt + per-slot results | Ephemeral (API response) | Metadata persisted via `runContext` in generation records |
+| **Roll Result** | Output of rolling a template: assembled prompt + per-slot results + ref_binding diagnostics | Ephemeral (API response) | Metadata persisted via `runContext` in generation records. `metadata.ref_binding` carries binding stats (mode, candidates_checked/pruned, resolved_ref_count, warnings). Selected block payloads carry `block_metadata.op.resolved_refs` / `resolved_params`. |
 | **runContext** | Metadata object attached to generation requests | `GenerationConfig.run_context` | Carries `block_template_id`, `character_bindings`; receives `selected_block_ids`, `seed`, `assembled_prompt` after rolling |
 | **Composition Role** | A typed role in the visual composition taxonomy | `composition-roles.generated.ts`, runtime via `/api/v1/concepts/role` | Hierarchical: `entities:main_character`, `camera:angle`, etc. |
 | **Semantic Pack** | A shareable bundle referencing blocks + prompt families | `semantic_packs` table | References by ID, not copies; has `parser_hints`, `status` lifecycle |
@@ -417,6 +419,7 @@ Zustand store with:
 | Hot-reload watcher | **Implemented** | `content_pack_watcher.py` | watchfiles + debounce; reloads on .yaml change |
 | Block template CRUD | **Implemented** | `template_service.py`, API routes | Full REST API with search/filter |
 | Template rolling with selection strategies | **Implemented** | `template_service.py:691-900+` | uniform, weighted_rating, weighted_tags, diverse |
+| Op ref binding (LinkBackedRefBinder) | **Implemented** | `ref_binding_adapter.py`, `template_service.py` | Binds op refs/params, prunes candidates; modes: off/advisory/required; diagnostics in roll metadata |
 | Slot schema normalization (v1→v2) | **Implemented** | `template_slots.py` | Auto-migrates legacy tag_constraints to canonical form |
 | Slot presets | **Implemented** | `template_slots.py:22-68` | subject_preservation, pose_lock_graduated, camera_stability, etc. |
 | Character binding expansion | **Implemented** | `character_expander.py` | {{role}}, {{role.attr}}, {{role.pronoun.x}}, species vocab |
