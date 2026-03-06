@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from scripts.seeds.game.bananza import cli
 
 
@@ -123,3 +125,36 @@ def test_select_runtime_preference_snapshot_uses_latest_legacy_when_needed() -> 
 
     assert selected is not None
     assert selected["id"] == 9
+
+
+def test_iter_watch_files_filters_extensions_and_pycache(tmp_path: Path) -> None:
+    (tmp_path / "keep.py").write_text("print('ok')\n", encoding="utf-8")
+    (tmp_path / "keep.yaml").write_text("x: 1\n", encoding="utf-8")
+    (tmp_path / "skip.txt").write_text("ignore\n", encoding="utf-8")
+    pycache_dir = tmp_path / "__pycache__"
+    pycache_dir.mkdir()
+    (pycache_dir / "cached.py").write_text("print('cached')\n", encoding="utf-8")
+
+    observed = sorted(path.relative_to(tmp_path).as_posix() for path in cli._iter_watch_files(tmp_path))
+
+    assert observed == ["keep.py", "keep.yaml"]
+
+
+def test_watch_snapshot_diff_detects_add_remove_and_modify(tmp_path: Path) -> None:
+    alpha = tmp_path / "alpha.py"
+    beta = tmp_path / "beta.json"
+    alpha.write_text("alpha = 1\n", encoding="utf-8")
+    beta.write_text("{\"v\":1}\n", encoding="utf-8")
+
+    before = cli._build_watch_snapshot(tmp_path)
+
+    alpha.write_text("alpha = 2\n", encoding="utf-8")
+    beta.unlink()
+    (tmp_path / "gamma.md").write_text("# note\n", encoding="utf-8")
+
+    after = cli._build_watch_snapshot(tmp_path)
+    changed = cli._diff_watch_snapshot(before, after)
+
+    assert "alpha.py" in changed
+    assert "beta.json" in changed
+    assert "gamma.md" in changed
