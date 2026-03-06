@@ -4,10 +4,13 @@ import argparse
 import asyncio
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
-from .seed_data import DEMO_PROJECT_NAME, DEMO_WORLD_NAME
+import httpx
+
+from .seed_data import BOOTSTRAP_PROFILE, DEMO_PROJECT_NAME, DEMO_WORLD_NAME
 
 
 def _parse_args() -> argparse.Namespace:
@@ -21,11 +24,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         choices=["api", "direct"],
-        default="api",
+        default=None,
         help=(
             "Seeder mode. "
             "'api' uses HTTP endpoints (recommended). "
-            "'direct' writes world rows directly, but snapshot bundles still use export format."
+            "'direct' writes world rows directly, but snapshot bundles still use export format. "
+            "When omitted, project preference is used when available."
         ),
     )
     parser.add_argument(
@@ -73,18 +77,20 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sync-mode",
         choices=["two_way", "backend_to_file", "file_to_backend", "none"],
-        default="two_way",
+        default=None,
         help=(
             "API mode project sync strategy: "
-            "'two_way' (default), 'backend_to_file', 'file_to_backend', or 'none'."
+            "'two_way', 'backend_to_file', 'file_to_backend', or 'none'. "
+            "When omitted, project preference is used when available."
         ),
     )
     parser.add_argument(
         "--watch",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help=(
             "Watch Bananza seed files and rerun seeding automatically when they change. "
-            "Useful for live authoring loops."
+            "Useful for live authoring loops. When omitted, project preference is used when available."
         ),
     )
     parser.add_argument(
@@ -120,24 +126,278 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+BANANZA_RUNTIME_META_KEY = "bananza_runtime"
+BANANZA_META_SEEDER_MODE = "bananza_seeder_mode"
+BANANZA_META_SYNC_MODE = "bananza_sync_mode"
+BANANZA_META_WATCH_ENABLED = "bananza_watch_enabled"
+
+
+def _is_record(value: Any) -> bool:
+    return isinstance(value, dict)
+
+
+def _parse_iso_timestamp(value: Any) -> datetime:
+    text = str(value or "").strip()
+    if not text:
+        return datetime.fromtimestamp(0, tz=timezone.utc)
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.fromtimestamp(0, tz=timezone.utc)
+
+
+def _snapshot_sort_key(snapshot: Dict[str, Any]) -> tuple[datetime, int]:
+    updated_at = _parse_iso_timestamp(snapshot.get("updated_at"))
+    snapshot_id = _to_optional_int(snapshot.get("id")) or 0
+    return updated_at, snapshot_id
+
+
+def _is_legacy_seed_snapshot(snapshot: Dict[str, Any]) -> bool:
+    provenance = snapshot.get("provenance") if _is_record(snapshot.get("provenance")) else {}
+    kind = str(provenance.get("kind") or "").strip().lower()
+    source_key = str(provenance.get("source_key") or "").strip()
+    return kind in {"seed", "demo"} or source_key == BOOTSTRAP_PROFILE
+
+
+def _select_runtime_preference_snapshot(
+    snapshots: list[Dict[str, Any]],
+    *,
+    project_name: str,
+) -> Optional[Dict[str, Any]]:
+    matching: list[Dict[str, Any]] = []
+    for row in snapshots:
+        if not _is_record(row):
+            continue
+        if str(row.get("name") or "").strip() != project_name:
+            continue
+        matching.append(row)
+
+    if not matching:
+        return None
+
+    matching.sort(key=_snapshot_sort_key, reverse=True)
+    non_legacy = [snapshot for snapshot in matching if not _is_legacy_seed_snapshot(snapshot)]
+    if non_legacy:
+        return non_legacy[0]
+    return matching[0]
+
+
+def _normalize_mode(value: Optional[str]) -> Optional[str]:
+    text = str(value or "").strip().lower()
+    if text in {"api", "direct"}:
+        return text
+    return None
+
+
+def _normalize_sync_mode(value: Optional[str]) -> Optional[str]:
+    text = str(value or "").strip().lower()
+    if text in {"two_way", "backend_to_file", "file_to_backend", "none"}:
+        return text
+    return None
+
+
+def _normalize_bool(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on", "enabled"}:
+            return True
+        if normalized in {"false", "0", "no", "off", "disabled"}:
+            return False
+    return None
+
+
+def _read_runtime_preferences_from_snapshot(snapshot: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not _is_record(snapshot):
+        return {"mode": None, "sync_mode": None, "watch": None}
+
+    provenance = snapshot.get("provenance") if _is_record(snapshot.get("provenance")) else {}
+    meta = provenance.get("meta") if _is_record(provenance.get("meta")) else {}
+    runtime = meta.get(BANANZA_RUNTIME_META_KEY) if _is_record(meta.get(BANANZA_RUNTIME_META_KEY)) else {}
+
+    mode = _normalize_mode(
+        runtime.get("seeder_mode") if _is_record(runtime) else None,
+    ) or _normalize_mode(meta.get(BANANZA_META_SEEDER_MODE) if _is_record(meta) else None)
+
+    sync_mode = _normalize_sync_mode(
+        runtime.get("sync_mode") if _is_record(runtime) else None,
+    ) or _normalize_sync_mode(meta.get(BANANZA_META_SYNC_MODE) if _is_record(meta) else None)
+
+    watch = _normalize_bool(
+        runtime.get("watch_enabled") if _is_record(runtime) else None,
+    )
+    if watch is None:
+        watch = _normalize_bool(meta.get(BANANZA_META_WATCH_ENABLED) if _is_record(meta) else None)
+
+    return {"mode": mode, "sync_mode": sync_mode, "watch": watch}
+
+
+def _resolve_runtime_config(
+    *,
+    explicit_mode: Optional[str],
+    explicit_sync_mode: Optional[str],
+    explicit_watch: Optional[bool],
+    project_preferences: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    pref_mode = _normalize_mode(project_preferences.get("mode")) if _is_record(project_preferences) else None
+    pref_sync_mode = _normalize_sync_mode(project_preferences.get("sync_mode")) if _is_record(project_preferences) else None
+    pref_watch = _normalize_bool(project_preferences.get("watch")) if _is_record(project_preferences) else None
+
+    resolved_mode = _normalize_mode(explicit_mode) or pref_mode or "api"
+    resolved_sync_mode = _normalize_sync_mode(explicit_sync_mode) or pref_sync_mode or "two_way"
+    resolved_watch = (
+        explicit_watch
+        if isinstance(explicit_watch, bool)
+        else (pref_watch if isinstance(pref_watch, bool) else False)
+    )
+
+    return {
+        "mode": resolved_mode,
+        "sync_mode": resolved_sync_mode,
+        "watch": resolved_watch,
+        "used_project_mode": _normalize_mode(explicit_mode) is None and pref_mode is not None,
+        "used_project_sync_mode": _normalize_sync_mode(explicit_sync_mode) is None and pref_sync_mode is not None,
+        "used_project_watch": not isinstance(explicit_watch, bool) and isinstance(pref_watch, bool),
+    }
+
+
+async def _load_project_runtime_preferences_via_api(
+    *,
+    api_base: str,
+    auth_token: Optional[str],
+    username: str,
+    password: str,
+    project_name: str,
+    project_id: Optional[int],
+) -> Dict[str, Any]:
+    from .flows.api_flow import resolve_api_auth_token
+
+    token = await resolve_api_auth_token(
+        api_base=api_base,
+        auth_token=auth_token,
+        username=username,
+        password=password,
+    )
+
+    headers = {"Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(
+        base_url=api_base.rstrip("/"),
+        timeout=45.0,
+        headers=headers,
+    ) as client:
+        snapshot: Optional[Dict[str, Any]] = None
+        if project_id is not None:
+            response = await client.get(f"/api/v1/game/worlds/projects/snapshots/{int(project_id)}")
+            if response.status_code == 200:
+                payload = response.json()
+                if _is_record(payload):
+                    snapshot = payload
+        else:
+            response = await client.get(
+                "/api/v1/game/worlds/projects/snapshots",
+                params={"offset": 0, "limit": 500},
+            )
+            if response.status_code == 200:
+                payload = response.json()
+                rows = payload if isinstance(payload, list) else []
+                snapshot = _select_runtime_preference_snapshot(rows, project_name=project_name)
+
+        if not _is_record(snapshot):
+            return {"found": False, "project_id": None, "project_name": project_name}
+
+        preferences = _read_runtime_preferences_from_snapshot(snapshot)
+        return {
+            "found": True,
+            "project_id": _to_optional_int(snapshot.get("id")),
+            "project_name": snapshot.get("name") or project_name,
+            **preferences,
+            "auth_token": token,
+        }
+
+
 def main() -> None:
     args = _parse_args()
-    mode = str(args.mode)
+    explicit_mode = _normalize_mode(args.mode if args.mode is not None else None)
+    explicit_sync_mode = _normalize_sync_mode(args.sync_mode if args.sync_mode is not None else None)
+    explicit_watch = args.watch if isinstance(args.watch, bool) else None
+
     world_name = str(args.world_name).strip() or DEMO_WORLD_NAME
     project_name = str(args.project_name).strip() or DEMO_PROJECT_NAME
     project_id = int(args.project_id) if args.project_id is not None else None
     api_base = str(args.api_base).strip()
     username = str(args.username).strip() or "admin"
     password = str(args.password).strip() or "admin"
-    explicit_auth_token = (str(args.auth_token).strip() if args.auth_token is not None else None)
+    explicit_auth_token = (str(args.auth_token).strip() if args.auth_token is not None else None) or None
     project_file = (str(args.project_file).strip() if args.project_file is not None else None) or None
-    sync_mode = str(args.sync_mode).strip().lower()
     cached_auth_token: Optional[str] = explicit_auth_token
+
+    project_preferences: Dict[str, Any] = {}
+    should_resolve_project_preferences = (
+        explicit_mode is None
+        or explicit_watch is None
+        or (explicit_sync_mode is None and explicit_mode != "direct")
+    )
+    if should_resolve_project_preferences:
+        try:
+            preference_result = asyncio.run(
+                _load_project_runtime_preferences_via_api(
+                    api_base=api_base,
+                    auth_token=explicit_auth_token,
+                    username=username,
+                    password=password,
+                    project_name=project_name,
+                    project_id=project_id,
+                )
+            )
+            if isinstance(preference_result, dict):
+                project_preferences = {
+                    "mode": preference_result.get("mode"),
+                    "sync_mode": preference_result.get("sync_mode"),
+                    "watch": preference_result.get("watch"),
+                }
+                token_from_preferences = preference_result.get("auth_token")
+                if isinstance(token_from_preferences, str) and token_from_preferences.strip():
+                    cached_auth_token = token_from_preferences.strip()
+                if preference_result.get("found"):
+                    print(
+                        "[runtime] loaded project preferences "
+                        f"project={preference_result.get('project_name')!r} "
+                        f"id={preference_result.get('project_id')} "
+                        f"mode={project_preferences.get('mode')} "
+                        f"sync_mode={project_preferences.get('sync_mode')} "
+                        f"watch={project_preferences.get('watch')}"
+                    )
+        except Exception as exc:
+            print(f"[runtime] unable to load project preferences via API: {exc}")
+
+    runtime_config = _resolve_runtime_config(
+        explicit_mode=explicit_mode,
+        explicit_sync_mode=explicit_sync_mode,
+        explicit_watch=explicit_watch,
+        project_preferences=project_preferences,
+    )
+    mode = str(runtime_config["mode"])
+    sync_mode = str(runtime_config["sync_mode"])
+    watch_enabled = bool(runtime_config["watch"])
 
     if mode != "direct" and int(args.owner_user_id) != 1:
         print("note: --owner-user-id is ignored in API mode.")
     if mode == "direct" and sync_mode != "none":
-        print("note: --sync-mode applies only to API mode; ignoring in direct mode.")
+        print("note: --sync-mode applies only to API mode; forcing sync_mode=none in direct mode.")
+        sync_mode = "none"
+
+    if (
+        runtime_config.get("used_project_mode")
+        or runtime_config.get("used_project_sync_mode")
+        or runtime_config.get("used_project_watch")
+    ):
+        print(
+            "[runtime] resolved config "
+            f"mode={mode} "
+            f"sync_mode={sync_mode} "
+            f"watch={watch_enabled}"
+        )
 
     def _get_api_auth_token() -> str:
         nonlocal cached_auth_token
@@ -225,7 +485,7 @@ def main() -> None:
         if sync_result.get("bundle_hash"):
             print(f"[sync] bundle_hash={sync_result.get('bundle_hash')}")
 
-    if not bool(args.watch):
+    if not watch_enabled:
         seed_result = _run_once()
         sync_result = _sync_once(source_world_id=_to_optional_int(seed_result.get("source_world_id")))
         _print_sync_result(sync_result)
