@@ -484,6 +484,8 @@ def main() -> None:
         )
         if sync_result.get("bundle_hash"):
             print(f"[sync] bundle_hash={sync_result.get('bundle_hash')}")
+        if sync_result.get("backup_file"):
+            print(f"[sync] backup_file={sync_result.get('backup_file')}")
 
     if not watch_enabled:
         seed_result = _run_once()

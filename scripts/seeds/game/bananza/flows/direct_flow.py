@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import OperationalError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.blocks import BlockPrimitive
@@ -301,29 +302,35 @@ async def _verify_required_blocks() -> Dict[str, Any]:
     missing: List[str] = []
     wrong_source_pack: List[str] = []
 
-    async with get_async_blocks_session() as blocks_db:
-        for block_id in REQUIRED_BLOCK_IDS:
-            result = await blocks_db.execute(
-                select(BlockPrimitive).where(BlockPrimitive.block_id == block_id)
-            )
-            row = result.scalar_one_or_none()
-            if row is None:
-                missing.append(block_id)
-                continue
+    try:
+        async with get_async_blocks_session() as blocks_db:
+            for block_id in REQUIRED_BLOCK_IDS:
+                result = await blocks_db.execute(
+                    select(BlockPrimitive).where(BlockPrimitive.block_id == block_id)
+                )
+                row = result.scalar_one_or_none()
+                if row is None:
+                    missing.append(block_id)
+                    continue
 
-            tags = row.tags if isinstance(getattr(row, "tags", None), dict) else {}
-            source_pack = tags.get("source_pack")
-            source_pack_text = str(source_pack).strip() if source_pack is not None else ""
-            expected_pack = expected_source_pack_for_block_id(block_id)
-            if expected_pack and source_pack_text != expected_pack:
-                wrong_source_pack.append(
-                    f"{block_id}: expected source_pack={expected_pack!r}, got {source_pack_text!r}"
-                )
-                continue
-            if source_pack_text and source_pack_text not in REGISTERED_SOURCE_PACKS:
-                wrong_source_pack.append(
-                    f"{block_id}: source_pack={source_pack_text!r} is not explicitly registered"
-                )
+                tags = row.tags if isinstance(getattr(row, "tags", None), dict) else {}
+                source_pack = tags.get("source_pack")
+                source_pack_text = str(source_pack).strip() if source_pack is not None else ""
+                expected_pack = expected_source_pack_for_block_id(block_id)
+                if expected_pack and source_pack_text != expected_pack:
+                    wrong_source_pack.append(
+                        f"{block_id}: expected source_pack={expected_pack!r}, got {source_pack_text!r}"
+                    )
+                    continue
+                if source_pack_text and source_pack_text not in REGISTERED_SOURCE_PACKS:
+                    wrong_source_pack.append(
+                        f"{block_id}: source_pack={source_pack_text!r} is not explicitly registered"
+                    )
+    except (OperationalError, ProgrammingError, SQLAlchemyError) as exc:
+        raise RuntimeError(
+            "direct_mode_blocks_schema_incompatible: blocks schema is not compatible with "
+            "direct mode checks. Use API mode, or run/migrate the blocks DB to current schema."
+        ) from exc
 
     if missing:
         raise RuntimeError(

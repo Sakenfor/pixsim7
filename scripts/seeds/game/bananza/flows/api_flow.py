@@ -181,6 +181,16 @@ def _write_project_file(project_file: Path, payload: Dict[str, Any]) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _backup_project_file(project_file: Path, payload: Dict[str, Any]) -> Path:
+    project_file.parent.mkdir(parents=True, exist_ok=True)
+    backup_path = project_file.with_suffix(f"{project_file.suffix}.bak")
+    text = json.dumps(payload, indent=2, ensure_ascii=True, sort_keys=True)
+    with open(backup_path, "w", encoding="utf-8") as f:
+        f.write(text)
+        f.write("\n")
+    return backup_path
+
+
 async def _resolve_auth_token(
     *,
     api_base: str,
@@ -1056,6 +1066,7 @@ async def sync_project_snapshot_file_via_api(
                 "bundle_hash": written_hash,
             }
 
+        backup_path = _backup_project_file(project_file_path, file_payload)
         written_hash = _write_project_file(project_file_path, _build_project_file_payload(snapshot))
         return {
             "action": "pulled",
@@ -1064,6 +1075,7 @@ async def sync_project_snapshot_file_via_api(
             "project_file": str(project_file_path),
             "mode": normalized_mode,
             "bundle_hash": written_hash,
+            "backup_file": str(backup_path),
         }
 
 

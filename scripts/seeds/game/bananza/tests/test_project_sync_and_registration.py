@@ -287,6 +287,13 @@ async def test_sync_two_way_pulls_backend_when_backend_is_newer(
     )
 
     assert result["action"] == "pulled"
+    backup_file = project_file.with_suffix(".json.bak")
+    assert result.get("backup_file") == str(backup_file)
+    assert backup_file.exists()
+    with open(backup_file, "r", encoding="utf-8") as fh:
+        backup_payload = json.load(fh)
+    assert backup_payload["bundle"] == stale_file_bundle
+
     with open(project_file, "r", encoding="utf-8") as fh:
         written = json.load(fh)
     assert written["bundle"] == backend_bundle
