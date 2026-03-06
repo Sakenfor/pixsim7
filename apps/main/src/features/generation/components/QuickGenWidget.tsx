@@ -197,9 +197,7 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
     const storageKey = useMemo(() => {
       if (storageKeyOverride) return storageKeyOverride;
       const prefix = storageKeyPrefix ?? widgetId;
-      // v3 resets legacy tab-stacked quickgen layouts so Prompt/Settings
-      // return to split-groups and avoid duplicate nested header chrome.
-      const version = operationType === 'video_transition' ? 'v3t' : 'v3';
+      const version = operationType === 'video_transition' ? 'v2t' : 'v2';
       const assetMode = layout.supportsInputs ? 'with-asset' : 'no-asset';
       const base = `dockview:${prefix}:${version}:${assetMode}`;
       return operationType ? `${base}:${operationType}` : base;

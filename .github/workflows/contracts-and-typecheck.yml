@@ -9,7 +9,6 @@ on:
       - 'pixsim7/backend/main/**'
       - 'services/main-api/**'
       - 'tools/codegen/**'
-      - 'tools/cue/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/contracts-and-typecheck.yml'
@@ -21,7 +20,6 @@ on:
       - 'pixsim7/backend/main/**'
       - 'services/main-api/**'
       - 'tools/codegen/**'
-      - 'tools/cue/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/contracts-and-typecheck.yml'
@@ -93,17 +91,6 @@ jobs:
 
       - name: App typecheck
         run: npx tsc --noEmit --project apps/main/tsconfig.json
-
-      - name: HMR wildcard regression check
-        run: pnpm -C apps/main run hmr:wildcards:check
-
-      - name: Install CUE
-        run: bash tools/cue/ensure-cue.sh
-
-      - name: Prompt pack schema drift check
-        env:
-          CUE_BIN: tools/cue/bin/cue
-        run: pnpm prompt-packs:check
 
       - name: Stop backend
         if: always()

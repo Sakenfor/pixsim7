@@ -148,10 +148,5 @@ tmp_pytest*/
 pytest_tmp*/
 pytest_basetemp/
 
-# CUE local binaries (use tools/cue/ensure-cue.* to install)
-tools/cue/cue
-tools/cue/cue.exe
-tools/cue/bin/
-
 # MkDocs output
 site-docs/
