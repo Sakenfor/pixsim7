@@ -1,57 +1,77 @@
 # Bananza Project-First Hardening
 
-**Status:** In Progress  
-**Date:** 2026-03-05  
-**Scope:** Bananza seed/runtime hardening only (no analyzer or block-language expansion).
+**Status:** In Progress (core hardening complete, rollout/ops cleanup ongoing)  
+**Dates:** 2026-03-05 to 2026-03-06  
+**Scope:** Bananza seed/runtime hardening only (no analyzer or block-language work).
 
-## Audit Findings
+## Baseline Reviewed
 
-Checked baseline behavior introduced/changed around commit `0e2ca287` and current Bananza runtime codepaths:
+Primary commits reviewed for this hardening thread:
 
-1. Seed identity selectors were still present in Bananza runtime metadata (`SEED_KEY` era assumptions).
-2. Project snapshot overwrite/matching still depended on seed-era conventions in parts of the flow.
-3. CLI watch mode only reseeded on script/source changes; it did not maintain ongoing project file/backend sync.
-4. Custom block/template acceptance could still pass without strict explicit pack-registration guarantees if only existence was checked.
-5. Direct flow world-state metadata still wrote seed-style marker state on every run (`seeded` flag).
+1. `0e2ca287` (`refactor(seed): move Bananza primitive/template definitions to content packs`)
+2. `0a76f8f5` (`refactor(bananza): harden bootstrap and project-first runtime flows`)
+3. `0f4ceb0b` (`feat(bananza): add project-file sync controls to seeder cli`)
+4. `81f21454` (`test(bananza): cover project sync provenance and registration gates`)
+5. `eceeb2fe` (`fix(bananza): migrate and prune legacy seed snapshots`)
+
+## Runtime Audit: Seed-Specific Behavior Still Active
+
+The following seed-specific behaviors are still active at runtime by design:
+
+1. Legacy snapshot migration logic still runs during save/upsert to prefer non-legacy project rows and prune duplicates.
+2. Bootstrap metadata is still stamped on bootstrapped world/NPC/location/schedule entities to preserve provenance for initial demo content ownership.
+3. Seeder defaults still target demo naming (`Bananza Boat`, `Bananza Boat Seed Project`) unless project/user settings override them.
+4. Seeder watch loop remains a dev-authoring bootstrap tool and still reseeds on source changes.
+5. Direct mode remains available as a fallback bootstrap path, but is not the preferred project-sync runtime path.
+
+## Runtime Audit: Seed-Era Behavior Removed
+
+1. No runtime `SEED_KEY` selector path remains in Bananza seed data/runtime flow.
+2. Primitive/template authoring is removed from Bananza seed scripts; content packs are the only authority.
+3. Save/load now uses normal project snapshot contracts (full export bundle), not custom seed payload shapes.
+4. Bootstrap provenance is set on create only, not repeatedly restamped on overwrite.
+5. Implicit custom block/template acceptance is blocked; required IDs/slugs must come from explicitly registered packs.
 
 ## Decisions
 
-1. Bananza bootstrap is explicit initialization only:
-- Bootstrap metadata uses `bootstrap_source` + `bootstrap_profile`.
-- No runtime `SEED_KEY` selectors.
+1. Bananza is project-first at runtime: project snapshot state is the source of truth for persistence/reload.
+2. Seed/demo behavior is bootstrap-only: initialization can seed content, but ongoing runtime is normal project behavior.
+3. API mode is the primary runtime path for sync/filewatch loops; direct mode is maintenance fallback only.
+4. Custom blocks/templates must be explicitly pack-registered; implicit injection is not allowed.
+5. Project-level runtime preferences (mode/sync/watch) are persisted in project provenance metadata and reused by CLI.
 
-2. Project persistence is project-first:
-- Save/load uses normal project snapshot contracts (export bundle + save snapshot).
-- Bootstrap provenance (`kind=import`) is set on create only, not restamped on overwrite.
+## Implementation Updates (2026-03-06)
 
-3. Custom block/template usage is explicit:
-- Required block IDs/templates must resolve from explicitly registered source/template packs.
-- Implicit custom block/template injection is rejected.
-
-4. API watch flow includes sync loop:
-- Watch keeps reseed-on-source-change behavior.
-- API sync runs continuously per watch tick so UI/backend edits can flow to file and file edits can flow back.
-
-## Migration Steps
-
-1. Remove remaining seed-key runtime constant usage; keep only bootstrap metadata.
-2. Ensure both API/direct flows write bootstrap metadata, not seed-mode flags.
-3. Enforce explicit pack-registration checks in required block/template verification.
-4. Add API project-file sync behavior for `two_way`, `backend_to_file`, `file_to_backend`, `none`.
-5. Wire CLI args (`--project-file`, `--sync-mode`) and watch loop sync behavior.
-6. Add tests for snapshot create/overwrite provenance, sync push/pull logic, and pack-registration rejection.
+1. Project Panel now persists and reloads Bananza runtime preferences in project provenance meta (`seeder_mode`, `sync_mode`, `watch_enabled`).
+2. Bananza CLI now resolves runtime config with precedence: explicit CLI flags > saved project preferences > defaults.
+3. CLI project-preference lookup now prefers non-legacy snapshot rows when duplicate project names exist.
+4. Direct mode now forces `sync_mode=none` to avoid accidental API-sync expectations.
+5. Added tests for CLI preference parsing, precedence resolution, and duplicate legacy snapshot selection behavior.
 
 ## Verification
 
-Targeted tests cover:
+Executed:
+
+1. `pytest scripts/seeds/game/bananza/tests/test_cli_runtime_preferences.py -q`
+2. `pytest scripts/seeds/game/bananza/tests -q`
+
+Coverage now includes:
 
 1. Snapshot create vs overwrite provenance behavior.
-2. Two-way sync decisions for push/pull based on backend timestamp + file timestamp/hash.
-3. Required block/template rejection when source/template packs are not explicitly registered.
-4. Authority assertions that Bananza seed data no longer exports runtime `SEED_KEY`.
+2. Two-way sync push/pull decisions (`file_to_backend`, `backend_to_file`, `two_way`).
+3. Pack-registration rejection for required custom blocks/templates.
+4. Runtime preference parsing (`bananza_runtime` + flat key fallback) and precedence semantics.
+5. Duplicate project-name preference resolution that avoids legacy seed snapshots when non-legacy rows exist.
+
+## Migration Steps
+
+1. Keep one canonical Bananza project snapshot per name; prune older legacy rows where safe.
+2. Save Bananza project settings in UI so provenance meta includes runtime mode/sync/watch preferences.
+3. Run CLI without mode/sync/watch flags to consume saved project preferences automatically.
+4. Use API mode for watch/sync loops and reserve direct mode for bootstrap/debug fallback.
 
 ## Residual Risks / TODO
 
-1. Direct mode still remains a maintenance path; API mode is the primary project-first path for sync/filewatch loops.
-2. Sync conflict policy in `two_way` currently uses timestamp + hash heuristics (not full merge); manual edits can still require operator judgement.
-3. CLI watch loop polls API each interval for sync; acceptable for dev loops but may need adaptive backoff if used continuously in shared environments.
+1. Direct mode can drift from backend schema changes (example seen: missing `block_primitives.capabilities` in older local DBs).
+2. `two_way` sync is timestamp/hash based and not a structural merge strategy.
+3. Watch loop is polling-based; long-running shared usage may need adaptive/backoff behavior.
