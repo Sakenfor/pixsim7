@@ -867,7 +867,7 @@ export function ProjectPanel() {
               </FormField>
 
               <FormField
-                label="Bananza seeder mode"
+                label="Runtime mode"
                 size="sm"
                 helpText="Saved with project provenance and used as CLI default preference."
               >
@@ -886,9 +886,9 @@ export function ProjectPanel() {
               </FormField>
 
               <FormField
-                label="Bananza sync mode"
+                label="Sync mode"
                 size="sm"
-                helpText="Applies to API mode seeding/sync workflows."
+                helpText="Applies when runtime mode is API."
               >
                 <select
                   value={bananzaSyncMode}
@@ -911,9 +911,9 @@ export function ProjectPanel() {
               </FormField>
 
               <FormField
-                label="Bananza watch default"
+                label="Watch default"
                 size="sm"
-                helpText="Controls whether watcher mode is preferred for Bananza seeder runs."
+                helpText="Controls whether watch mode is preferred for CLI/runtime workflows."
               >
                 <select
                   value={bananzaWatchEnabled ? 'enabled' : 'disabled'}
@@ -926,7 +926,7 @@ export function ProjectPanel() {
               </FormField>
 
               <div className="text-[11px] text-neutral-500 dark:text-neutral-400 break-all">
-                CLI preset: <code>{bananzaSeederPresetCommand}</code>
+                Runtime CLI preset: <code>{bananzaSeederPresetCommand}</code>
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -1093,15 +1093,15 @@ export function ProjectPanel() {
                   <div>Source world: {selectedProject.source_world_id ?? 'N/A'}</div>
                   <div>Saved: {formatIsoTimestamp(selectedProject.updated_at)}</div>
                   <div>
-                    Bananza seeder: {selectedProjectBananzaPreferences.seederMode}
+                    Runtime mode: {selectedProjectBananzaPreferences.seederMode}
                     {!selectedProjectHasBananzaPreferences ? ' (default)' : ''}
                   </div>
                   <div>
-                    Bananza sync: {selectedProjectBananzaPreferences.syncMode}
+                    Sync mode: {selectedProjectBananzaPreferences.syncMode}
                     {!selectedProjectHasBananzaPreferences ? ' (default)' : ''}
                   </div>
                   <div>
-                    Bananza watch: {selectedProjectBananzaPreferences.watchEnabled ? 'enabled' : 'disabled'}
+                    Watch default: {selectedProjectBananzaPreferences.watchEnabled ? 'enabled' : 'disabled'}
                     {!selectedProjectHasBananzaPreferences ? ' (default)' : ''}
                   </div>
                 </div>
