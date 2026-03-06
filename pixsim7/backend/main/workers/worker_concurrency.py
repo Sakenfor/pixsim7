@@ -632,18 +632,22 @@ async def _adaptive_provider_concurrency_record_limit_error(
         previous_in_cap_rejects + 1 if not is_probe_level_reject else previous_in_cap_rejects
     )
     lower_after_rejects = _adaptive_provider_concurrency_lower_after_consecutive_rejects()
-    # Immediately clamp effective cap to observed provider limit on in-cap
-    # rejects.  Waiting for N consecutive rejects is too slow during bursts —
-    # each wasted submit hits the provider API and gets rejected.  The probe
-    # mechanism will recover the cap if the rejection was transient.
-    if not is_probe_level_reject and existing_effective > 1:
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    last_error_ts = int(state.get("last_error_at_ts") or 0)
+    # Immediately clamp effective cap to observed provider limit on the first
+    # in-cap reject.  But don't cascade further if another reject arrives
+    # within a short window — multiple in-flight jobs getting rejected
+    # simultaneously would otherwise drive the cap down to 1.
+    # The probe mechanism recovers the cap if the drop was too aggressive.
+    _CAP_LOWER_COOLDOWN_SECONDS = 10
+    recently_lowered = (now_ts - last_error_ts) < _CAP_LOWER_COOLDOWN_SECONDS
+    if not is_probe_level_reject and existing_effective > 1 and not recently_lowered:
         new_effective = _clamp_provider_cap(
             min(existing_effective, observed_cap), configured_cap
         )
     else:
         new_effective = existing_effective
     cap_lowered = new_effective < existing_effective
-    now_ts = int(datetime.now(timezone.utc).timestamp())
     probe_delay = _adaptive_probe_delay_seconds_for_gap(
         configured_cap=configured_cap,
         effective_cap=new_effective,
