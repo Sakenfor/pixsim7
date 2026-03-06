@@ -36,8 +36,6 @@ import { useProjectIndexStore, useProjectSessionStore, useWorldContextStore } fr
 import { ActionSelectionDebugSection } from '@/components/game/ActionSelectionDebugSection';
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
 
-import { PanelHeader } from '../shared/PanelHeader';
-
 import { useProjectAvailability, type AvailabilityItem } from './useProjectAvailability';
 
 type LastProjectAction =
@@ -355,15 +353,6 @@ export function ProjectPanel() {
     const next = typeof value === 'number' ? value : Number(value ?? NaN);
     return Number.isFinite(next) ? next : null;
   }, [editorContext.runtime.sessionId]);
-  const activeProjectContextLabel = useMemo(() => {
-    if (currentProjectId == null) {
-      return 'Active project: none';
-    }
-    if (currentProjectName && currentProjectName.trim().length > 0) {
-      return `Active project: ${currentProjectName}`;
-    }
-    return `Active project: #${currentProjectId}`;
-  }, [currentProjectId, currentProjectName]);
   const {
     items: availabilityItems,
     isLoading: availabilityLoading,
@@ -845,26 +834,6 @@ export function ProjectPanel() {
 
   return (
     <div className="h-full w-full flex flex-col bg-neutral-50 dark:bg-neutral-950">
-      <PanelHeader
-        title="Project"
-        category="workspace"
-        contextLabel={activeProjectContextLabel}
-        statusIcon={
-          dirty ? (
-            <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
-          ) : currentProjectId != null ? (
-            <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
-          ) : undefined
-        }
-        statusLabel={
-          dirty
-            ? 'Unsaved'
-            : worldId != null
-              ? `World #${worldId}`
-              : undefined
-        }
-      />
-
       <div className="p-3 border-b border-neutral-200 dark:border-neutral-800">
         <WorldContextSelector />
       </div>

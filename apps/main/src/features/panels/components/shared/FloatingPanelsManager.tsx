@@ -9,6 +9,7 @@ import { devToolSelectors, panelSelectors } from "@lib/plugins/catalogSelectors"
 import { hmrSingleton } from "@lib/utils/hmrSafe";
 
 import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@features/contextHub";
+import { useProjectSessionStore } from "@features/scene";
 import { useWorkspaceStore, type FloatingPanelState } from "@features/workspace";
 import { getFloatingDefinitionId } from "@features/workspace/lib/floatingPanelUtils";
 import { panelPlacementCoordinator } from "@features/workspace/lib/panelPlacementCoordinator";
@@ -127,7 +128,8 @@ interface FloatingPanelProps {
   catalogVersion: number;
 }
 
-const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, catalogVersion: _catalogVersion }: FloatingPanelProps) {
+const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, catalogVersion }: FloatingPanelProps) {
+  void catalogVersion;
   const minimizeFloatingPanel = useWorkspaceStore((s) => s.minimizeFloatingPanel);
   const updateFloatingPanelPosition = useWorkspaceStore(
     (s) => s.updateFloatingPanelPosition
@@ -138,6 +140,8 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
   const bringFloatingPanelToFront = useWorkspaceStore(
     (s) => s.bringFloatingPanelToFront
   );
+  const activeProjectId = useProjectSessionStore((s) => s.currentProjectId);
+  const activeProjectName = useProjectSessionStore((s) => s.currentProjectName);
 
   // Resolve definition ID (strips ::N suffix for multi-instance floating panels)
   const definitionId = getFloatingDefinitionId(panel.id);
@@ -181,6 +185,8 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
 
   let Component: React.ComponentType<any>;
   let title: string;
+  let panelCategoryBadge: string | null = null;
+  let panelContextSummary: string | null = null;
 
   const floatingOriginMeta = readFloatingOriginMeta(panel.context);
   const basePanelContext = stripFloatingOriginMeta(panel.context) ?? {};
@@ -205,6 +211,20 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
 
     Component = getStableComponent(definitionId, panelDef.component);
     title = panelDef.title;
+    panelCategoryBadge =
+      typeof panelDef.category === "string" && panelDef.category.length > 0
+        ? panelDef.category.toUpperCase()
+        : null;
+
+    if (definitionId === "project") {
+      if (typeof activeProjectName === "string" && activeProjectName.trim().length > 0) {
+        panelContextSummary = `Active project: ${activeProjectName}`;
+      } else if (typeof activeProjectId === "number") {
+        panelContextSummary = `Active project: #${activeProjectId}`;
+      } else {
+        panelContextSummary = "Active project: none";
+      }
+    }
   }
 
   const originLabel = floatingOriginMeta?.sourceDefinitionId
@@ -316,9 +336,19 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
             <span className={`font-semibold text-neutral-800 dark:text-neutral-200 truncate ${panel.minimized ? "text-xs" : "text-sm"}`}>
               {title}
             </span>
+            {!panel.minimized && panelCategoryBadge && (
+              <span className="shrink-0 px-1.5 py-0.5 text-[10px] bg-neutral-200/70 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded font-medium uppercase tracking-wide">
+                {panelCategoryBadge}
+              </span>
+            )}
             {!panel.minimized && (
               <span className="shrink-0 px-1.5 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded font-medium">
                 FLOATING
+              </span>
+            )}
+            {!panel.minimized && panelContextSummary && (
+              <span className="shrink-0 text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
+                {panelContextSummary}
               </span>
             )}
             {!panel.minimized && originLabel && (
