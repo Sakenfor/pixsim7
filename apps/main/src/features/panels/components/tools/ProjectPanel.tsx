@@ -229,6 +229,10 @@ function toNullableId(value: unknown): number | null {
   return null;
 }
 
+function parseSettingsChildId(value: unknown): SettingsChildId {
+  return value === 'load' ? 'load' : 'save';
+}
+
 function confirmDiscardUnsavedAuthoringChanges(): boolean {
   return window.confirm(
     'You have unsaved authoring changes. Loading a project may overwrite them. Continue?',
@@ -253,10 +257,18 @@ function formatAvailabilityValue(item: AvailabilityItem): string {
   return item.detail || 'OK';
 }
 
-type SectionId = 'save-load' | 'saved-projects' | 'availability' | 'session' | 'last-operation' | 'debug';
+type SettingsChildId = 'save' | 'load';
+type SectionId = 'settings' | 'saved-projects' | 'availability' | 'session' | 'last-operation' | 'debug';
 
 const SECTION_NAV_ITEMS = [
-  { id: 'save-load', label: 'Save / Load' },
+  {
+    id: 'settings',
+    label: 'Settings',
+    children: [
+      { id: 'save', label: 'Save' },
+      { id: 'load', label: 'Load' },
+    ],
+  },
   { id: 'saved-projects', label: 'Projects' },
   { id: 'availability', label: 'Availability' },
   { id: 'session', label: 'Session' },
@@ -279,7 +291,8 @@ export function ProjectPanel() {
     DEFAULT_BANANZA_RUNTIME_PREFERENCES.watchEnabled,
   );
   const [lastAction, setLastAction] = useState<LastProjectAction | null>(null);
-  const [activeSection, setActiveSection] = useState<SectionId>('save-load');
+  const [activeSection, setActiveSection] = useState<SectionId>('settings');
+  const [activeSettingsChild, setActiveSettingsChild] = useState<SettingsChildId>('save');
 
   const { worldId, setWorldId, setLocationId } = useWorldContextStore();
   const editorContext = useEditorContext();
@@ -345,6 +358,15 @@ export function ProjectPanel() {
     const next = typeof value === 'number' ? value : Number(value ?? NaN);
     return Number.isFinite(next) ? next : null;
   }, [editorContext.runtime.sessionId]);
+  const activeProjectContextLabel = useMemo(() => {
+    if (currentProjectId == null) {
+      return 'Active project: none';
+    }
+    if (currentProjectName && currentProjectName.trim().length > 0) {
+      return `Active project: ${currentProjectName}`;
+    }
+    return `Active project: #${currentProjectId}`;
+  }, [currentProjectId, currentProjectName]);
   const {
     items: availabilityItems,
     isLoading: availabilityLoading,
@@ -405,6 +427,28 @@ export function ProjectPanel() {
     setBananzaSyncMode(preferences.syncMode);
     setBananzaWatchEnabled(preferences.watchEnabled);
   }, [selectedProject?.id, selectedProject?.updated_at]);
+
+  const selectProjectById = (nextId: number | null) => {
+    selectSavedProject(nextId);
+    const nextProject = savedProjects.find((entry) => entry.id === nextId);
+    if (!nextProject) {
+      if (nextId == null) {
+        setProjectName('');
+      }
+      return;
+    }
+    setProjectName(nextProject.name);
+    const nextPreferences = readBananzaRuntimePreferences(nextProject);
+    setBananzaSeederMode(nextPreferences.seederMode);
+    setBananzaSyncMode(nextPreferences.syncMode);
+    setBananzaWatchEnabled(nextPreferences.watchEnabled);
+  };
+
+  const handleProjectSelectValue = (value: string) => {
+    const nextValue = Number(value);
+    const nextId = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : null;
+    selectProjectById(nextId);
+  };
 
   const handleSaveCurrent = async () => {
     if (!worldId) {
@@ -807,7 +851,7 @@ export function ProjectPanel() {
       <PanelHeader
         title="Project"
         category="workspace"
-        contextLabel={worldId ? `World #${worldId}` : 'No world selected'}
+        contextLabel={activeProjectContextLabel}
         statusIcon={
           dirty ? (
             <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
@@ -818,8 +862,8 @@ export function ProjectPanel() {
         statusLabel={
           dirty
             ? 'Unsaved'
-            : currentProjectId != null
-              ? currentProjectName ?? undefined
+            : worldId != null
+              ? `World #${worldId}`
               : undefined
         }
       />
@@ -832,11 +876,20 @@ export function ProjectPanel() {
         sections={SECTION_NAV_ITEMS as unknown as { id: string; label: string }[]}
         activeSectionId={activeSection}
         onSelectSection={(id) => setActiveSection(id as SectionId)}
+        activeChildId={activeSection === 'settings' ? activeSettingsChild : undefined}
+        onSelectChild={(parentId, childId) => {
+          if (parentId !== 'settings') {
+            return;
+          }
+          setActiveSection('settings');
+          setActiveSettingsChild(parseSettingsChildId(childId));
+        }}
+        expandedSectionIds={new Set(['settings'])}
         sidebarWidth="w-36"
         variant="light"
         contentClassName="p-3 text-xs space-y-3"
       >
-          {activeSection === 'save-load' && (
+          {activeSection === 'settings' && activeSettingsChild === 'save' && (
             <>
               <FormField label="Project name" size="sm">
                 <input
@@ -942,6 +995,25 @@ export function ProjectPanel() {
                   Save Current
                 </Button>
               </div>
+            </>
+          )}
+
+          {activeSection === 'settings' && activeSettingsChild === 'load' && (
+            <>
+              <FormField label="Select project" size="sm">
+                <select
+                  value={selectedProjectId ?? ''}
+                  onChange={(event) => handleProjectSelectValue(event.target.value)}
+                  className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 w-full"
+                >
+                  <option value="">Select a saved project...</option>
+                  {savedProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      #{project.id} {project.name}{project.id === currentProjectId ? ' (active)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
 
               <FormField label="World name override" size="sm" helpText="Used when loading a project">
                 <input
@@ -974,6 +1046,14 @@ export function ProjectPanel() {
                   Recover Draft
                 </Button>
               </div>
+
+              {selectedProject && (
+                <div className="text-neutral-600 dark:text-neutral-300 space-y-1">
+                  <div>Schema: {selectedProject.schema_version}</div>
+                  <div>Source world: {selectedProject.source_world_id ?? 'N/A'}</div>
+                  <div>Saved: {formatIsoTimestamp(selectedProject.updated_at)}</div>
+                </div>
+              )}
             </>
           )}
 
@@ -996,19 +1076,7 @@ export function ProjectPanel() {
               <FormField label="Select project" size="sm">
                 <select
                   value={selectedProjectId ?? ''}
-                  onChange={(event) => {
-                    const nextValue = Number(event.target.value);
-                    const nextId = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : null;
-                    selectSavedProject(nextId);
-                    const nextProject = savedProjects.find((entry) => entry.id === nextId);
-                    if (nextProject) {
-                      setProjectName(nextProject.name);
-                      const nextPreferences = readBananzaRuntimePreferences(nextProject);
-                      setBananzaSeederMode(nextPreferences.seederMode);
-                      setBananzaSyncMode(nextPreferences.syncMode);
-                      setBananzaWatchEnabled(nextPreferences.watchEnabled);
-                    }
-                  }}
+                  onChange={(event) => handleProjectSelectValue(event.target.value)}
                   className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 w-full"
                 >
                   <option value="">Select a saved project...</option>
