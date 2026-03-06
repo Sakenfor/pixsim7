@@ -304,9 +304,6 @@ export function ProjectPanel() {
   const selectSavedProject = useProjectIndexStore((state) => state.selectProject);
   const currentProjectId = useProjectSessionStore((state) => state.currentProjectId);
   const currentProjectName = useProjectSessionStore((state) => state.currentProjectName);
-  const currentProjectSourceWorldId = useProjectSessionStore(
-    (state) => state.currentProjectSourceWorldId,
-  );
   const currentProjectUpdatedAt = useProjectSessionStore((state) => state.currentProjectUpdatedAt);
   const sourceFileName = useProjectSessionStore((state) => state.sourceFileName);
   const schemaVersion = useProjectSessionStore((state) => state.schemaVersion);
@@ -1141,23 +1138,6 @@ export function ProjectPanel() {
                 </div>
               )}
 
-              {currentProjectId != null && (
-                <div className="text-neutral-600 dark:text-neutral-300 space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={`inline-block w-2 h-2 rounded-full ${dirty ? 'bg-amber-500' : 'bg-green-500'}`}
-                    />
-                    Current project: #{currentProjectId}
-                    {currentProjectName ? ` ${currentProjectName}` : ''}
-                    {dirty && <span className="text-amber-600 dark:text-amber-400">(unsaved changes)</span>}
-                  </div>
-                  <div>Current source world: {currentProjectSourceWorldId ?? 'N/A'}</div>
-                  <div>
-                    Current updated:{' '}
-                    {currentProjectUpdatedAt ? formatIsoTimestamp(currentProjectUpdatedAt) : 'Unknown'}
-                  </div>
-                </div>
-              )}
             </>
           )}
 
@@ -1206,10 +1186,6 @@ export function ProjectPanel() {
               <div>Last operation: {lastOperation ?? 'none'}</div>
               <div>Bundle schema: {schemaVersion ?? 'Unknown'}</div>
               <div>Source project: {sourceFileName || 'N/A'}</div>
-              <div>
-                Current project: {currentProjectId != null ? `#${currentProjectId}` : 'N/A'}
-                {currentProjectName ? ` (${currentProjectName})` : ''}
-              </div>
               <div>Last import: {formatTimestamp(lastImportedAt)}</div>
               <div>Last export: {formatTimestamp(lastExportedAt)}</div>
               <div>
