@@ -37,6 +37,7 @@ import { ActionSelectionDebugSection } from '@/components/game/ActionSelectionDe
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
 
 import { useProjectAvailability, type AvailabilityItem } from './useProjectAvailability';
+import { useProjectInventory } from './useProjectInventory';
 
 type LastProjectAction =
   | {
@@ -255,8 +256,19 @@ function formatAvailabilityValue(item: AvailabilityItem): string {
   return item.detail || 'OK';
 }
 
+function formatInventoryValue(item: { count: number; detail?: string }): string {
+  return item.detail ? `${item.count} | ${item.detail}` : String(item.count);
+}
+
 type SettingsChildId = 'save' | 'load';
-type SectionId = 'settings' | 'saved-projects' | 'availability' | 'session' | 'last-operation' | 'debug';
+type SectionId =
+  | 'settings'
+  | 'saved-projects'
+  | 'inventory'
+  | 'availability'
+  | 'session'
+  | 'last-operation'
+  | 'debug';
 
 const SECTION_NAV_ITEMS = [
   {
@@ -268,6 +280,7 @@ const SECTION_NAV_ITEMS = [
     ],
   },
   { id: 'saved-projects', label: 'Projects' },
+  { id: 'inventory', label: 'Inventory' },
   { id: 'availability', label: 'Availability' },
   { id: 'session', label: 'Session' },
   { id: 'last-operation', label: 'Last Operation' },
@@ -353,6 +366,20 @@ export function ProjectPanel() {
     const next = typeof value === 'number' ? value : Number(value ?? NaN);
     return Number.isFinite(next) ? next : null;
   }, [editorContext.runtime.sessionId]);
+  const {
+    source: inventorySource,
+    summary: inventorySummary,
+    status: inventoryStatus,
+    error: inventoryError,
+    isLoading: inventoryLoading,
+    lastRefreshedAtMs: inventoryLastRefreshedAtMs,
+    refresh: refreshInventory,
+  } = useProjectInventory({
+    worldId: worldId ?? null,
+    currentProjectId,
+    selectedProjectId,
+    selectedProjectName: selectedProject?.name ?? null,
+  });
   const {
     items: availabilityItems,
     isLoading: availabilityLoading,
@@ -1107,6 +1134,78 @@ export function ProjectPanel() {
                 </div>
               )}
 
+            </>
+          )}
+
+          {activeSection === 'inventory' && (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="font-semibold">Project Inventory</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    void refreshInventory();
+                  }}
+                  disabled={inventoryLoading}
+                >
+                  Refresh
+                </Button>
+              </div>
+              <div className="text-neutral-500 dark:text-neutral-400">
+                Source: {inventorySource.label}
+              </div>
+              <div className="text-neutral-500 dark:text-neutral-400">
+                {inventoryLastRefreshedAtMs
+                  ? `Updated ${formatTimestamp(inventoryLastRefreshedAtMs)}`
+                  : 'Not refreshed yet'}
+              </div>
+
+              {inventoryStatus === 'error' && (
+                <div className="text-red-600 dark:text-red-400">
+                  Failed to load project inventory: {inventoryError ?? 'Unknown error'}
+                </div>
+              )}
+
+              {inventoryStatus === 'ok' && !inventorySummary && (
+                <div className="text-neutral-500 dark:text-neutral-400">
+                  No active world or saved project is selected.
+                </div>
+              )}
+
+              {inventorySummary && (
+                <>
+                  <div className="space-y-1 pt-1">
+                    <div className="font-semibold">Core Bundle</div>
+                    {inventorySummary.core.map((item) => (
+                      <div key={item.key} className="flex items-start justify-between gap-3">
+                        <span className="text-neutral-600 dark:text-neutral-300">{item.label}</span>
+                        <span className="text-right text-neutral-700 dark:text-neutral-200">
+                          {formatInventoryValue(item)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-1 pt-2">
+                    <div className="font-semibold">
+                      Extensions ({inventorySummary.extensions.length})
+                    </div>
+                    {inventorySummary.extensions.length === 0 ? (
+                      <div className="text-neutral-500 dark:text-neutral-400">None</div>
+                    ) : (
+                      inventorySummary.extensions.map((item) => (
+                        <div key={item.key} className="flex items-start justify-between gap-3">
+                          <span className="text-neutral-600 dark:text-neutral-300">{item.label}</span>
+                          <span className="text-right text-neutral-700 dark:text-neutral-200">
+                            {formatInventoryValue(item)}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
             </>
           )}
 
