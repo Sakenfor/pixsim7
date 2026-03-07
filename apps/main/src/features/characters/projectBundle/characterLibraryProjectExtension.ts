@@ -9,7 +9,7 @@ import {
   type UpdateCharacterRequest,
   updateCharacter,
 } from '@lib/api/characters';
-import { BaseAuthoringProjectBundleContributor } from '@lib/game/projectBundle/contributorClass';
+import { createApiSnapshotAuthoringContributor } from '@lib/game/projectBundle/apiContributorFactory';
 
 const CHARACTER_LIBRARY_PROJECT_EXTENSION_KEY = 'authoring.characters';
 const CHARACTER_LIBRARY_PROJECT_EXTENSION_VERSION = 1;
@@ -265,10 +265,14 @@ function parseCharactersPayload(payload: unknown): AuthoringCharactersPayloadV1 
   };
 }
 
-class CharacterLibraryProjectBundleContributor extends BaseAuthoringProjectBundleContributor<AuthoringCharactersPayloadV1> {
-  key = CHARACTER_LIBRARY_PROJECT_EXTENSION_KEY;
-  version = CHARACTER_LIBRARY_PROJECT_EXTENSION_VERSION;
-  inventory = {
+export const authoringProjectBundleContributor = createApiSnapshotAuthoringContributor<
+  CharacterSummary,
+  AuthoringCharacterSnapshot,
+  AuthoringCharactersPayloadV1
+>({
+  key: CHARACTER_LIBRARY_PROJECT_EXTENSION_KEY,
+  version: CHARACTER_LIBRARY_PROJECT_EXTENSION_VERSION,
+  inventory: {
     categories: [
       {
         key: 'characters',
@@ -289,68 +293,52 @@ class CharacterLibraryProjectBundleContributor extends BaseAuthoringProjectBundl
         panelLabel: 'Character Creator',
       },
     ],
-  };
-
-  protected async onExport() {
-    const summaries = await listAllCharacterSummaries();
-    if (summaries.length === 0) {
-      return null;
-    }
-
-    const snapshots: AuthoringCharacterSnapshot[] = [];
-    for (const summary of summaries) {
-      const detail = await getCharacter(summary.character_id);
-      snapshots.push(toCharacterSnapshot(detail));
-    }
-
+  },
+  listExportSources: listAllCharacterSummaries,
+  sourceToSnapshot: async (summary) => {
+    const detail = await getCharacter(summary.character_id);
+    return toCharacterSnapshot(detail);
+  },
+  buildPayload: (snapshots, version) => {
     if (snapshots.length === 0) {
       return null;
     }
-
     return {
-      version: CHARACTER_LIBRARY_PROJECT_EXTENSION_VERSION,
+      version,
       items: snapshots,
       variant_families: toVariantFamilies(snapshots),
-    } satisfies AuthoringCharactersPayloadV1;
-  }
-
-  protected async onImport(payload: AuthoringCharactersPayloadV1) {
+    };
+  },
+  parsePayload: (payload, version) => {
     const parsed = parseCharactersPayload(payload);
     if (!parsed) {
-      return {
-        warnings: ['authoring.characters payload is invalid and was ignored'],
-      };
+      return null;
     }
-
-    if (parsed.version !== CHARACTER_LIBRARY_PROJECT_EXTENSION_VERSION) {
-      console.warn(
-        `[CharactersExtension] version mismatch: payload v${parsed.version}, expected v${CHARACTER_LIBRARY_PROJECT_EXTENSION_VERSION} - attempting best-effort import`,
-      );
-    }
-
-    const warnings: string[] = [];
-    const existingIds = new Set<string>(
-      (await listAllCharacterSummaries()).map((entry) => entry.character_id),
+    return {
+      version:
+        typeof parsed.version === 'number' && Number.isFinite(parsed.version)
+          ? Math.trunc(parsed.version)
+          : version,
+      items: parsed.items,
+    };
+  },
+  listExistingIds: async () =>
+    new Set((await listAllCharacterSummaries()).map((entry) => entry.character_id)),
+  getSnapshotId: (snapshot) => snapshot.character_id,
+  createFromSnapshot: async (snapshot) => {
+    await createCharacter(toCreateRequest(snapshot));
+  },
+  updateFromSnapshot: async (snapshot) => {
+    await updateCharacter(snapshot.character_id, toUpdateRequest(snapshot));
+  },
+  invalidPayloadWarning: 'authoring.characters payload is invalid and was ignored',
+  onVersionMismatch: (payloadVersion, version) => {
+    console.warn(
+      `[CharactersExtension] version mismatch: payload v${payloadVersion}, expected v${version} - attempting best-effort import`,
     );
-
-    for (const snapshot of parsed.items) {
-      try {
-        if (existingIds.has(snapshot.character_id)) {
-          await updateCharacter(snapshot.character_id, toUpdateRequest(snapshot));
-        } else {
-          await createCharacter(toCreateRequest(snapshot));
-          existingIds.add(snapshot.character_id);
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        warnings.push(`authoring.characters import ${snapshot.character_id}: ${message}`);
-      }
-    }
-
-    return warnings.length > 0 ? { warnings } : {};
-  }
-}
-
-const contributor = new CharacterLibraryProjectBundleContributor();
-
-export const authoringProjectBundleContributor = contributor.toContributor();
+  },
+  formatImportWarning: (snapshotId, error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    return `authoring.characters import ${snapshotId}: ${message}`;
+  },
+});
