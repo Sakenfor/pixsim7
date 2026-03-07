@@ -192,6 +192,9 @@ async def upload_asset_to_provider(
     ext = os.path.splitext(file.filename or "upload.bin")[1] or (
         ".mp4" if media_type == MediaType.VIDEO else ".jpg"
     )
+    user_prefs = user.preferences if isinstance(user.preferences, dict) else {}
+    skip_similar = bool(user_prefs.get("skipSimilarCheck"))
+
     prep = await prepare_upload(
         tmp_path=tmp_path,
         user_id=user.id,
@@ -199,6 +202,7 @@ async def upload_asset_to_provider(
         asset_service=asset_service,
         provider_id=provider_id,
         file_ext=ext,
+        skip_phash_dedup=skip_similar,
     )
 
     sha256 = prep.sha256
@@ -623,6 +627,10 @@ async def upload_asset_from_url(
         shutil.copy2(tmp_path, temp_local_path)
         file_size_bytes = os.path.getsize(temp_local_path)
 
+        # Combine per-request flag with user preference
+        user_prefs = user.preferences if isinstance(user.preferences, dict) else {}
+        skip_similar = request.skip_dedup or bool(user_prefs.get("skipSimilarCheck"))
+
         prep = await prepare_upload(
             tmp_path=temp_local_path,
             user_id=user.id,
@@ -630,7 +638,7 @@ async def upload_asset_from_url(
             asset_service=asset_service,
             provider_id=request.provider_id,
             file_ext=ext,
-            skip_phash_dedup=request.skip_dedup,
+            skip_phash_dedup=skip_similar,
         )
 
         sha256 = prep.sha256

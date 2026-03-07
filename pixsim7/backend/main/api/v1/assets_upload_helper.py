@@ -107,10 +107,18 @@ async def prepare_upload(
             )
 
     # 4. Check phash near-duplicate (if no sha256 match and not skipped)
+    if skip_phash_dedup and result.phash64 is not None:
+        logger.info("upload_phash_dedup_skipped", user_id=user_id)
     if result.phash64 is not None and not result.existing_asset and not skip_phash_dedup:
         try:
             similar = await asset_service.find_similar_asset_by_phash(result.phash64, user_id, max_distance=5)
             if similar:
+                logger.info(
+                    "upload_phash_dedup_match",
+                    user_id=user_id,
+                    existing_asset_id=similar.id,
+                    provider_id=provider_id,
+                )
                 already_on_provider = (
                     similar.provider_id == provider_id or
                     provider_id in (similar.provider_uploads or {})

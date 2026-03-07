@@ -127,6 +127,12 @@ class UserPreferences(BaseModel):
         description="Synced local folder metadata for recovery",
     )
 
+    # Upload preferences
+    skipSimilarCheck: bool | None = Field(
+        default=None,
+        description="Skip phash near-duplicate check on uploads (for small visual changes)",
+    )
+
     # Content preference keys used by generation/social-context logic
     maxContentRating: Literal["sfw", "romantic", "mature_implied", "restricted"] | None = None
     reduceRomanticIntensity: bool | None = None

@@ -111,6 +111,8 @@ export interface UserPreferences {
   auto_tags?: AutoTagsPreferences;
   /** Analyzer settings for prompt analysis */
   analyzer?: AnalyzerPreferences;
+  /** Skip phash near-duplicate check on uploads */
+  skipSimilarCheck?: boolean;
   [key: string]: unknown;
 }
 

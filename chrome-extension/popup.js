@@ -55,6 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Setup settings sub-tabs and debug listeners
   setupSettingsSubtabs();
   setupDebugSettingsListeners();
+  setupSkipSimilarCheckListener();
 
   // Restore filter state (sort, hide empty, etc.)
   await loadFilterState();

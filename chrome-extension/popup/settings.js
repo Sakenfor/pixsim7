@@ -20,11 +20,18 @@ async function loadSettings() {
     backendUrl: 'http://10.243.48.125:8001',
     autoImport: false,
     defaultUploadProvider: 'pixverse',
+    currentUser: null,
     ...DEBUG_SETTINGS_KEYS,
   });
 
   document.getElementById('backendUrl').value = result.backendUrl;
   document.getElementById('autoImport').checked = result.autoImport;
+  // Load skipSimilarCheck from cached user preferences (backend is source of truth)
+  const skipEl = document.getElementById('skipSimilarCheck');
+  if (skipEl) {
+    const userPrefs = result.currentUser?.preferences || {};
+    skipEl.checked = !!userPrefs.skipSimilarCheck;
+  }
   const dup = document.getElementById('defaultUploadProvider');
   if (dup) {
     await populateProvidersInSettings(result.defaultUploadProvider || 'pixverse');
@@ -34,6 +41,32 @@ async function loadSettings() {
   Object.keys(DEBUG_SETTINGS_KEYS).forEach(key => {
     const el = document.getElementById(key);
     if (el) el.checked = result[key] || false;
+  });
+}
+
+function setupSkipSimilarCheckListener() {
+  const el = document.getElementById('skipSimilarCheck');
+  if (!el) return;
+  el.addEventListener('change', async () => {
+    const checked = el.checked;
+    try {
+      await backendRequest('/api/v1/users/me/preferences', {
+        method: 'PATCH',
+        body: JSON.stringify({ preferences: { skipSimilarCheck: checked } }),
+      });
+      // Update cached user so reload reflects the change
+      const stored = await chrome.storage.local.get('currentUser');
+      if (stored.currentUser) {
+        stored.currentUser.preferences = stored.currentUser.preferences || {};
+        stored.currentUser.preferences.skipSimilarCheck = checked;
+        await chrome.storage.local.set({ currentUser: stored.currentUser });
+      }
+      showToast(checked ? 'Similar check disabled' : 'Similar check enabled', 'success');
+    } catch (e) {
+      console.warn('[Settings] Failed to save skipSimilarCheck:', e);
+      el.checked = !checked; // revert on failure
+      showToast('Failed to save setting', 'error');
+    }
   });
 }
 

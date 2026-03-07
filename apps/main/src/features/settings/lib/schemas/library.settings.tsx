@@ -10,7 +10,7 @@
  * Replaces the separate Assets, Media, and Gallery settings.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useMediaSettingsStore, type ServerMediaSettings } from '@features/assets';
 import { useAssetSettingsStore } from '@features/assets';
@@ -19,6 +19,7 @@ import { useLocalFolderSettingsStore } from '@features/assets';
 import { usePanelConfigStore, type GalleryPanelSettings, type GalleryGroupMultiLayout } from '@features/panels';
 
 import { pixsimClient } from '@/lib/api';
+import { getUserPreferences, updatePreferenceKey } from '@/lib/api/userPreferences';
 
 import { ContentPacksDashboard } from '../../components/shared/ContentPacksDashboard';
 import { LocalFoldersStatus } from '../../components/shared/LocalFoldersStatus';
@@ -143,6 +144,20 @@ const downloadsTab: SettingTab = {
   label: 'Downloads',
   icon: '📥',
   groups: [
+    {
+      id: 'upload-dedup',
+      title: 'Deduplication',
+      description: 'Control duplicate detection when uploading assets.',
+      fields: [
+        {
+          id: 'skipSimilarCheck',
+          type: 'toggle',
+          label: 'Skip Similar Image Check',
+          description: 'Disable phash near-duplicate detection on uploads. Useful when uploading images with small visual differences (e.g. minor edits).',
+          defaultValue: false,
+        },
+      ],
+    },
     {
       id: 'download-behavior',
       title: 'Download Behavior',
@@ -402,6 +417,18 @@ const maintenanceTab: SettingTab = {
 // Unified Store Adapter
 // =============================================================================
 function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
+  // User preferences (backend - skipSimilarCheck)
+  const [skipSimilarCheck, setSkipSimilarCheckLocal] = useState(false);
+  useEffect(() => {
+    getUserPreferences()
+      .then((prefs) => {
+        if (prefs.skipSimilarCheck != null) {
+          setSkipSimilarCheckLocal(!!prefs.skipSimilarCheck);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Asset settings (local)
   const downloadOnGenerate = useAssetSettingsStore((s) => s.downloadOnGenerate);
   const setDownloadOnGenerate = useAssetSettingsStore((s) => s.setDownloadOnGenerate);
@@ -457,6 +484,9 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
 
   return {
     get: (fieldId: string) => {
+      // User preferences (backend)
+      if (fieldId === 'skipSimilarCheck') return skipSimilarCheck;
+
       // Asset settings
       if (fieldId === 'downloadOnGenerate') return downloadOnGenerate;
       if (fieldId === 'deleteFromProvider') return deleteFromProvider;
@@ -486,6 +516,16 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
     },
 
     set: (fieldId: string, value: any) => {
+      // User preferences (backend)
+      if (fieldId === 'skipSimilarCheck') {
+        setSkipSimilarCheckLocal(Boolean(value));
+        updatePreferenceKey('skipSimilarCheck', Boolean(value)).catch((err) => {
+          console.error('Failed to save skipSimilarCheck:', err);
+          setSkipSimilarCheckLocal(!value); // revert
+        });
+        return;
+      }
+
       // Asset settings
       if (fieldId === 'downloadOnGenerate') {
         setDownloadOnGenerate(value);
@@ -557,6 +597,7 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
     },
 
     getAll: () => ({
+      skipSimilarCheck,
       downloadOnGenerate,
       deleteFromProvider,
       qualityMode,
