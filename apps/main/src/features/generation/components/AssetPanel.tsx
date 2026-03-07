@@ -7,14 +7,14 @@
  *   AssetPanelHeader.tsx    – header bar, floating panel toggles, settings popover
  *   AssetPanelGrid.tsx      – multi-asset strip/grid display
  */
-import { Icon } from '@lib/icons';
-
 import { getAssetDisplayUrls } from '@features/assets';
 import { CompactAssetCard } from '@features/assets/components/shared';
 import { needsUploadToProvider } from '@features/assets/lib/resolveUploadTarget';
 
 import { AssetPanelGrid } from './AssetPanelGrid';
 import { AssetPanelHeader } from './AssetPanelHeader';
+import { MaskPreviewOverlay } from './MaskPreviewOverlay';
+import { MiniGalleryPopover } from './MiniGalleryPopover';
 import type { QuickGenPanelProps } from './quickGenPanelTypes';
 import { SetSlotPopover } from './SetSlotPopover';
 import { useAssetPanelState } from './useAssetPanelState';
@@ -49,6 +49,19 @@ export function AssetPanel(props: QuickGenPanelProps) {
     ? (state.slotItems[state.activeSetPopover.slotIdx] ?? state.currentInput)
     : null;
 
+  const assetPickerPopover = state.pickerAnchorRect ? (
+    <MiniGalleryPopover
+      anchorRect={state.pickerAnchorRect}
+      title="Add Asset"
+      onClose={state.handleClosePickerPopover}
+      galleryProps={{
+        showSearch: true,
+        showMediaType: true,
+        showSort: true,
+      }}
+    />
+  ) : null;
+
   const setPopover = state.activeSetPopover && popoverInputItem ? (
     <SetSlotPopover
       anchorRect={state.activeSetPopover.anchorRect}
@@ -72,13 +85,14 @@ export function AssetPanel(props: QuickGenPanelProps) {
         {header}
         <div
           className="flex-1 flex items-center justify-center p-3 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors rounded-md"
-          onClick={state.handlePickAsset}
+          onClick={(e) => state.handlePickAsset(e)}
           role="button"
         >
           <div className="text-xs text-neutral-500 italic text-center">
             {emptyLabel}
           </div>
         </div>
+        {assetPickerPopover}
       </div>
     );
   }
@@ -125,6 +139,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
           </div>
         </div>
         {setPopover}
+        {assetPickerPopover}
       </>
     );
   }
@@ -187,7 +202,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
               // ── Virtual empty slot placeholder ──────────────────────
               <div
                 className="h-full border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-md flex flex-col items-center justify-center cursor-pointer hover:border-accent/50 hover:bg-accent/5 transition-colors"
-                onClick={state.handlePickAsset}
+                onClick={(e) => state.handlePickAsset(e)}
                 role="button"
               >
                 <div className="text-xs text-neutral-500 italic text-center">
@@ -253,17 +268,14 @@ export function AssetPanel(props: QuickGenPanelProps) {
                 enableHoverPreview={state.enableHoverPreview}
                 showPlayOverlay={state.showPlayOverlay}
                 clickToPlay={state.clickToPlay}
-                overlay={state.currentInput ? (
+                overlay={
                   <>
-                    {state.buildFusionRoleOverlay(state.currentInput, currentSlotIndex ?? 0)}
-                    {state.currentInput.maskUrl && (
-                      <div className="absolute top-1 right-1 pointer-events-none flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] font-medium">
-                        <Icon name="paintbrush" size={9} color="#fff" />
-                        Mask
-                      </div>
+                    {(state.currentInput?.maskLayers?.length || state.currentInput?.maskUrl) && (
+                      <MaskPreviewOverlay maskLayers={state.currentInput?.maskLayers} maskUrl={state.currentInput?.maskUrl} />
                     )}
+                    {state.currentInput && state.buildFusionRoleOverlay(state.currentInput, currentSlotIndex ?? 0)}
                   </>
-                ) : undefined}
+                }
                 className={isCurrentClamped ? '!border-amber-500/70' : ''}
                 extraWidgets={state.buildSlotExtraWidgets(state.currentInput ?? null, currentSlotIndex ?? 0)}
               />
@@ -272,6 +284,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
         </div>
       </div>
       {setPopover}
+      {assetPickerPopover}
     </>
   );
 }

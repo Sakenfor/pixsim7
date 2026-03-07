@@ -11,6 +11,9 @@ import type { InputItem } from '@features/generation';
 
 import type { OperationType } from '@/types/operations';
 
+import { MaskPreviewOverlay } from './MaskPreviewOverlay';
+
+
 export interface AssetPanelGridProps {
   slotItems: Array<InputItem | null>;
   currentInputId: string | undefined;
@@ -51,7 +54,7 @@ export interface AssetPanelGridProps {
   handleUploadToProvider: (assetId: number) => Promise<void>;
 
   // Asset picker
-  handlePickAsset?: () => void;
+  handlePickAsset?: (e: React.MouseEvent) => void;
 }
 
 export function AssetPanelGrid({
@@ -108,11 +111,11 @@ export function AssetPanelGrid({
                 isDragOver ? 'border-accent ring-2 ring-accent/60' :
                 isArmed ? 'border-accent ring-2 ring-accent/60' : 'border-neutral-300 dark:border-neutral-700'
               } rounded-md flex items-center justify-center ${!isClamped ? 'transition-shadow' : ''}`}
-              onClick={() => {
+              onClick={(e) => {
                 if (isClamped) return;
                 if (handlePickAsset) {
                   setArmedSlot(operationType, idx);
-                  handlePickAsset();
+                  handlePickAsset(e);
                 } else {
                   setArmedSlot(operationType, isArmed ? undefined : idx);
                 }
@@ -126,7 +129,7 @@ export function AssetPanelGrid({
                   if (isClamped) return;
                   if (handlePickAsset) {
                     setArmedSlot(operationType, idx);
-                    handlePickAsset();
+                    handlePickAsset(e as unknown as React.MouseEvent);
                   } else {
                     setArmedSlot(operationType, isArmed ? undefined : idx);
                   }
@@ -196,15 +199,14 @@ export function AssetPanelGrid({
               showPlayOverlay={showPlayOverlay}
               clickToPlay={clickToPlay}
               disableMotion={isSelected}
-              overlay={<>
-                {buildFusionRoleOverlay(inputItem, idx)}
-                {inputItem.maskUrl && (
-                  <div className="absolute top-1 right-1 pointer-events-none flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] font-medium">
-                    <Icon name="paintbrush" size={9} color="#fff" />
-                    Mask
-                  </div>
-                )}
-              </>}
+              overlay={
+                <>
+                  {(inputItem.maskLayers?.length || inputItem.maskUrl) && (
+                    <MaskPreviewOverlay maskLayers={inputItem.maskLayers} maskUrl={inputItem.maskUrl} />
+                  )}
+                  {buildFusionRoleOverlay(inputItem, idx)}
+                </>
+              }
               className={`${isSelected ? 'ring-2 ring-accent' : ''} ${isClamped ? '!border-amber-500/70' : ''}`}
               extraWidgets={buildSlotExtraWidgets(inputItem, idx)}
               {...(needsUploadToProvider(inputItem.asset, effectiveProviderId) && !uploadedAssetIds.has(inputItem.asset.id) ? {

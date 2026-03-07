@@ -5,6 +5,8 @@
  * and WebSocket-based generation status tracking.
  */
 
+import * as Generation from '@pixsim7/shared.generation.core';
+
 // Models - Internal camelCase types
 export type {
   OperationType,
@@ -66,7 +68,7 @@ export { usePersistedScopeState } from './hooks/usePersistedScopeState';
 
 // Stores
 export { useGenerationInputStore, getInputsForOperation } from './stores/generationInputStore';
-export type { GenerationInputsState, InputItem, AddInputOptions, OperationInputs, AssetSetSlotRef, PickStrategy } from './stores/generationInputStore';
+export type { GenerationInputsState, InputItem, InputMaskLayer, AddInputOptions, OperationInputs, AssetSetSlotRef, PickStrategy } from './stores/generationInputStore';
 export { useGenerationSettingsStore, createGenerationSettingsStore } from './stores/generationSettingsStore';
 export {
   createGenerationSessionStore,
@@ -206,4 +208,4 @@ export type {
 export { registerGenerationScopes } from './lib/registerGenerationScopes';
 
 // Namespace export for generation types
-export * as Generation from '@pixsim7/shared.generation.core';
+export { Generation };

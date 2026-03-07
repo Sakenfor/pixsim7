@@ -15,8 +15,7 @@ import { getArrayParamLimits, type ParamSpec } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 import { createBadgeWidget, BADGE_SLOT, BADGE_PRIORITY } from '@lib/ui/overlay';
 
-import { uploadAssetToProvider, fromAssetResponse, useGalleryAssetPicker, type AssetModel } from '@features/assets';
-import { getAsset } from '@features/assets';
+import { uploadAssetToProvider, type AssetModel } from '@features/assets';
 import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
 import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrateAssetModel';
 import { notifyGalleryOfUpdatedAsset } from '@features/assets/lib/uploadActions';
@@ -47,6 +46,61 @@ import { OPERATION_METADATA } from '@/types/operations';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 
 import { EMPTY_INPUTS, type QuickGenPanelProps } from './quickGenPanelTypes';
+
+// ── Slot Badge Definitions ─────────────────────────────────────────────
+// Badge widgets for asset input cards. Uses the overlay widget system so
+// badges auto-stack and never overlap.
+//
+// To add a new badge:
+//   1. Define a builder function here (module-level for static badges,
+//      useCallback inside the hook if it needs closures like popovers).
+//   2. Add the condition + call in buildSlotExtraWidgets (inside the hook).
+//
+// Badges use BADGE_SLOT for positioning and BADGE_PRIORITY for layering.
+// Badges sharing a stackGroup (e.g. 'badges-tr') auto-stack vertically.
+// ────────────────────────────────────────────────────────────────────────
+
+function slotIndexBadge(slotIdx: number) {
+  return createBadgeWidget({
+    id: 'slot-index',
+    ...BADGE_SLOT.topLeft,
+    variant: 'text',
+    labelBinding: { kind: 'fn', target: 'label', fn: () => String(slotIdx + 1) },
+    color: 'accent',
+    className: 'cq-badge !bg-accent !text-accent-text font-medium',
+    priority: BADGE_PRIORITY.slotIndex,
+  });
+}
+
+function warningBadge(tooltip: string) {
+  return createBadgeWidget({
+    id: 'card-warning',
+    ...BADGE_SLOT.topRight,
+    variant: 'icon',
+    icon: 'alertTriangle',
+    color: 'amber',
+    shape: 'circle',
+    tooltip,
+    priority: BADGE_PRIORITY.important,
+    className: '!bg-amber-500/90 !text-white',
+  });
+}
+
+function maskBadge(count: number) {
+  const label = count > 1 ? `${count} Masks` : 'Mask';
+  return createBadgeWidget({
+    id: 'mask-badge',
+    ...BADGE_SLOT.topRight,
+    variant: 'icon-text',
+    icon: 'paintbrush',
+    labelBinding: { kind: 'fn', target: 'label', fn: () => label },
+    color: 'gray',
+    shape: 'rounded',
+    tooltip: count > 1 ? `${count} inpaint masks attached` : 'Inpaint mask attached',
+    priority: BADGE_PRIORITY.status,
+    className: '!bg-black/60 !text-white',
+  });
+}
 
 export function useAssetPanelState(props: QuickGenPanelProps) {
   const ctx = props.context;
@@ -122,21 +176,16 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const setInputMode = useInputStore(s => s.setInputMode);
   const storeReorderInput = useInputStore(s => s.reorderInput);
   const reorderInput = ctx?.reorderInput ?? storeReorderInput;
-  const storeAddInput = useInputStore(s => s.addInput);
 
-  // Gallery asset picker for empty slot / add asset
-  const galleryPicker = useGalleryAssetPicker();
-  const handlePickAsset = useCallback(() => {
-    galleryPicker.pick(async (picked) => {
-      try {
-        const raw = await getAsset(picked.id);
-        const asset = fromAssetResponse(raw);
-        storeAddInput({ asset, operationType });
-      } catch {
-        // Silently fail — the gallery panel stays open for retry
-      }
-    });
-  }, [galleryPicker, storeAddInput, operationType]);
+  // Mini gallery popover for empty slot / add asset
+  const [pickerAnchorRect, setPickerAnchorRect] = useState<DOMRect | null>(null);
+  const handlePickAsset = useCallback((e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setPickerAnchorRect(rect);
+  }, []);
+  const handleClosePickerPopover = useCallback(() => {
+    setPickerAnchorRect(null);
+  }, []);
 
   // Drag-and-drop for slot reordering (shared hook)
   const { draggedIndex: draggedSlotIndex, dragOverIndex: dragOverSlotIndex, getDragItemProps, getDropTargetProps } =
@@ -532,43 +581,17 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     [isFusionOperation, storeUpdateRoleOverride, operationType],
   );
 
-  // Reusable warning badge widget for cards (over-limit, etc.)
-  const buildWarningWidget = useCallback(
-    (tooltip: string) => createBadgeWidget({
-      id: 'card-warning',
-      ...BADGE_SLOT.topRight,
-      variant: 'icon',
-      icon: 'alertTriangle',
-      color: 'amber',
-      shape: 'circle',
-      tooltip,
-      priority: BADGE_PRIORITY.important,
-      className: '!bg-amber-500/90 !text-white',
-    }),
-    [],
-  );
-
-  // Slot index badge widget for multi-asset cards
-  const buildSlotIndexWidget = useCallback(
-    (slotIdx: number) => createBadgeWidget({
-      id: 'slot-index',
-      ...BADGE_SLOT.topLeft,
-      variant: 'text',
-      labelBinding: { kind: 'fn', target: 'label', fn: () => String(slotIdx + 1) },
-      color: 'accent',
-      className: 'cq-badge !bg-accent !text-accent-text font-medium',
-      priority: BADGE_PRIORITY.slotIndex,
-    }),
-    [],
-  );
+  // (Static badge builders are module-level — see top of file)
 
   const hasAsset = displayAssets.length > 0;
   const isMultiAssetDisplay = displayAssets.length > 1;
 
   // ─── Virtual empty slot (carousel-only) ────────────────────────────
   // Always show add-slot so users can add assets to any operation type.
-  const hasRoomForMore = maxAssetItems === null || orderedInputs.length < maxAssetItems;
-  const showVirtualEmptySlot = resolvedDisplayMode === 'carousel' && hasRoomForMore && hasAsset;
+  // Don't gate on maxAssetItems — users can overfill the pool and use
+  // random/sequential picking to select from it.  The clamped warning
+  // badge already indicates when slots exceed the provider limit.
+  const showVirtualEmptySlot = resolvedDisplayMode === 'carousel' && hasAsset;
   const carouselTotalCount = orderedInputs.length + (showVirtualEmptySlot ? 1 : 0);
   const isOnVirtualSlot = showVirtualEmptySlot && operationInputIndex > orderedInputs.length;
 
@@ -784,27 +807,26 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     [handleSetPopoverOpen],
   );
 
-  // Unified widget assembly for any slot — replaces per-path duplication
+  // Unified widget assembly for any slot.
+  // Combines static badges (module-level) + interactive badges (callbacks above).
   const buildSlotExtraWidgets = useCallback(
     (item: InputItem | null, slotIdx: number, opts?: { includeSlotIndex?: boolean }) => {
       if (!item) return [];
       const isClamped = clampedSlotIndices.has(slotIdx);
       const widgets = [];
-      if (opts?.includeSlotIndex) {
-        widgets.push(buildSlotIndexWidget(slotIdx));
-      }
+      if (opts?.includeSlotIndex) widgets.push(slotIndexBadge(slotIdx));
       if (item.assetSetRef) {
         const badge = buildSetBadgeWidget(item, slotIdx);
         if (badge) widgets.push(badge);
       } else {
         widgets.push(buildSetLinkWidget(slotIdx));
       }
-      if (isClamped) {
-        widgets.push(buildWarningWidget(`Over limit — only the first ${maxAssetItems} assets will be used`));
-      }
+      const maskCount = item.maskLayers?.filter((l) => l.visible).length ?? (item.maskUrl ? 1 : 0);
+      if (maskCount > 0) widgets.push(maskBadge(maskCount));
+      if (isClamped) widgets.push(warningBadge(`Over limit — only the first ${maxAssetItems} assets will be used`));
       return widgets;
     },
-    [clampedSlotIndices, maxAssetItems, buildSlotIndexWidget, buildSetBadgeWidget, buildSetLinkWidget, buildWarningWidget],
+    [clampedSlotIndices, maxAssetItems, buildSetBadgeWidget, buildSetLinkWidget],
   );
 
   return {
@@ -876,10 +898,6 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
 
     // Widget builders
     buildFusionRoleOverlay,
-    buildWarningWidget,
-    buildSlotIndexWidget,
-    buildSetBadgeWidget,
-    buildSetLinkWidget,
     buildSlotExtraWidgets,
 
     // Asset set slot ref
@@ -891,8 +909,10 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     handleSetModeChange,
     handleSetReroll,
 
-    // Asset picker
+    // Asset picker popover
     handlePickAsset,
+    pickerAnchorRect,
+    handleClosePickerPopover,
 
     // Source label
     sourceLabel: ctx?.sourceLabel,

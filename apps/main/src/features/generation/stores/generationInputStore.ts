@@ -27,6 +27,14 @@ export interface AssetSetSlotRef {
   recentPicks?: number[];               // no_repeat history
 }
 
+export interface InputMaskLayer {
+  id: string;
+  assetUrl: string;     // 'asset:42' — references a saved mask asset
+  label?: string;       // user-facing name (e.g. 'bra', 'panty')
+  visible: boolean;     // toggle for composition
+  opacity?: number;     // per-layer opacity (0-1, defaults to 1)
+}
+
 export interface InputItem {
   id: string;
   asset: AssetModel;
@@ -35,7 +43,8 @@ export interface InputItem {
   lockedTimestamp?: number; // Locked frame timestamp in seconds (for video assets)
   roleOverride?: string; // e.g. 'environment' or 'main_character'
   assetSetRef?: AssetSetSlotRef; // optional set linkage for variety picks
-  maskUrl?: string; // Inpaint mask reference (e.g. 'asset:123')
+  maskUrl?: string; // DEPRECATED — kept for migration, prefer maskLayers
+  maskLayers?: InputMaskLayer[]; // List of mask layers to composite at generation time
 }
 
 export interface OperationInputs {
@@ -75,6 +84,10 @@ export interface GenerationInputsState {
   updatePickStrategy: (operationType: OperationType, inputId: string, strategy: PickStrategy) => void;
   updatePickState: (operationType: OperationType, inputId: string, patch: { pickIndex?: number; recentPicks?: number[] }) => void;
   setInputMask: (operationType: OperationType, inputId: string, maskUrl: string | undefined) => void;
+  addMaskLayer: (operationType: OperationType, inputId: string, layer: InputMaskLayer) => void;
+  removeMaskLayer: (operationType: OperationType, inputId: string, layerId: string) => void;
+  updateMaskLayer: (operationType: OperationType, inputId: string, layerId: string, patch: Partial<InputMaskLayer>) => void;
+  setMaskLayers: (operationType: OperationType, inputId: string, layers: InputMaskLayer[]) => void;
 
   getCurrentInput: (operationType: OperationType) => InputItem | null;
   getInputs: (operationType: OperationType) => InputItem[];
@@ -628,6 +641,85 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
                   ...existing,
                   items: existing.items.map((item) =>
                     item.id === inputId ? { ...item, maskUrl } : item
+                  ),
+                },
+              },
+            };
+          });
+        },
+
+        addMaskLayer: (operationType, inputId, layer) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) =>
+                    item.id === inputId
+                      ? { ...item, maskLayers: [...(item.maskLayers ?? []), layer] }
+                      : item
+                  ),
+                },
+              },
+            };
+          });
+        },
+
+        removeMaskLayer: (operationType, inputId, layerId) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) =>
+                    item.id === inputId
+                      ? { ...item, maskLayers: (item.maskLayers ?? []).filter((l) => l.id !== layerId) }
+                      : item
+                  ),
+                },
+              },
+            };
+          });
+        },
+
+        updateMaskLayer: (operationType, inputId, layerId, patch) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) =>
+                    item.id === inputId
+                      ? {
+                          ...item,
+                          maskLayers: (item.maskLayers ?? []).map((l) =>
+                            l.id === layerId ? { ...l, ...patch } : l
+                          ),
+                        }
+                      : item
+                  ),
+                },
+              },
+            };
+          });
+        },
+
+        setMaskLayers: (operationType, inputId, layers) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) =>
+                    item.id === inputId ? { ...item, maskLayers: layers } : item
                   ),
                 },
               },

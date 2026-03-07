@@ -515,8 +515,18 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
     prompt: clampedPrompt,
   };
 
-  // Per-asset mask: prefer maskUrl from the current input item
-  if (currentInput?.maskUrl) {
+  // Per-asset mask: prefer maskLayers, fall back to legacy maskUrl
+  if (currentInput?.maskLayers && currentInput.maskLayers.length > 0) {
+    const visibleLayers = currentInput.maskLayers.filter((l) => l.visible);
+    if (visibleLayers.length === 1) {
+      // Single visible layer — use its asset URL directly (no compositing needed)
+      params.mask_url = visibleLayers[0].assetUrl;
+    } else if (visibleLayers.length > 1) {
+      // Multiple visible layers — composite mask_url is set by the mask overlay on save.
+      // At this point the composite should already be stored as the first layer's savedAssetId
+      // or via the global mask_url param. Fall through to let dynamicParams.mask_url handle it.
+    }
+  } else if (currentInput?.maskUrl) {
     params.mask_url = currentInput.maskUrl;
   }
 

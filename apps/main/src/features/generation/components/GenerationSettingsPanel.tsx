@@ -194,10 +194,10 @@ export function GenerationSettingsPanel({
     [workbench.allParamSpecs],
   );
   // Read mask and asset ID from the current input item (per-asset masks)
-  const { currentInputId, currentInputAssetId, currentInputMaskUrl } = useInputStore(
+  const { currentInputId, currentInputAssetId, currentInputMaskUrl, currentInputMaskLayers } = useInputStore(
     useShallow((s) => {
       const inputs = s.inputsByOperation[operationType];
-      if (!inputs || inputs.items.length === 0) return { currentInputId: null, currentInputAssetId: null, currentInputMaskUrl: undefined };
+      if (!inputs || inputs.items.length === 0) return { currentInputId: null, currentInputAssetId: null, currentInputMaskUrl: undefined, currentInputMaskLayers: undefined };
       const idx = Math.max(0, Math.min(inputs.currentIndex - 1, inputs.items.length - 1));
       const item = inputs.items[idx];
       const id = item?.asset?.id;
@@ -205,10 +205,14 @@ export function GenerationSettingsPanel({
         currentInputId: item?.id ?? null,
         currentInputAssetId: typeof id === 'number' ? id : null,
         currentInputMaskUrl: item?.maskUrl,
+        currentInputMaskLayers: item?.maskLayers,
       };
     }),
   );
-  const setInputMask = useInputStore((s) => s.setInputMask);
+  const addMaskLayer = useInputStore((s) => s.addMaskLayer);
+  const removeMaskLayer = useInputStore((s) => s.removeMaskLayer);
+  const updateMaskLayer = useInputStore((s) => s.updateMaskLayer);
+  const setMaskLayers = useInputStore((s) => s.setMaskLayers);
 
   const showTargetButton = canTarget;
 
@@ -282,8 +286,23 @@ export function GenerationSettingsPanel({
         {/* Mask picker (shown when provider supports mask_url) */}
         {hasMaskParam && currentInputId && (
           <MaskPicker
+            maskLayers={currentInputMaskLayers}
             maskUrl={currentInputMaskUrl}
-            onMaskChange={(url) => setInputMask(operationType, currentInputId, url)}
+            onAddMaskLayer={(asset) => {
+              const layerId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+              addMaskLayer(operationType, currentInputId, {
+                id: layerId,
+                assetUrl: `asset:${asset.id}`,
+                label: asset.description || undefined,
+                visible: true,
+              });
+            }}
+            onRemoveMaskLayer={(layerId) => removeMaskLayer(operationType, currentInputId, layerId)}
+            onToggleMaskLayer={(layerId) => {
+              const layer = currentInputMaskLayers?.find((l) => l.id === layerId);
+              if (layer) updateMaskLayer(operationType, currentInputId, layerId, { visible: !layer.visible });
+            }}
+            onClearAllMasks={() => setMaskLayers(operationType, currentInputId, [])}
             hasMaskParam={hasMaskParam}
             sourceAssetId={currentInputAssetId}
             disabled={generating}

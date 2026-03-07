@@ -1,14 +1,20 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
-import { useAssets, type AssetModel } from '@features/assets';
+import type { AssetModel } from '@features/assets';
+import type { InputMaskLayer } from '@features/generation';
 
-import { DROPDOWN_MENU_CLS, DROPDOWN_ITEM_CLS, useClickOutside } from './constants';
+import { MiniGalleryPopover } from '../MiniGalleryPopover';
 
 interface MaskPickerProps {
+  maskLayers: InputMaskLayer[] | undefined;
+  /** Legacy single mask reference */
   maskUrl: string | undefined;
-  onMaskChange: (maskUrl: string | undefined) => void;
+  onAddMaskLayer: (asset: AssetModel) => void;
+  onRemoveMaskLayer: (layerId: string) => void;
+  onToggleMaskLayer: (layerId: string) => void;
+  onClearAllMasks: () => void;
   /** Whether mask_url param is in the provider's param specs */
   hasMaskParam: boolean;
   /** Current input asset ID (from input store) */
@@ -16,176 +22,161 @@ interface MaskPickerProps {
   disabled?: boolean;
 }
 
-function parseMaskAssetId(maskUrl: string | undefined): number | null {
-  if (!maskUrl) return null;
-  const match = maskUrl.match(/^asset:(\d+)$/);
-  return match ? Number(match[1]) : null;
-}
-
-function formatMaskLabel(mask: AssetModel): string {
-  const created = Number.isFinite(Date.parse(mask.createdAt))
-    ? new Date(mask.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-    : '';
-  return created ? `#${mask.id} \u2022 ${created}` : `#${mask.id}`;
-}
-
 export function MaskPicker({
+  maskLayers,
   maskUrl,
-  onMaskChange,
+  onAddMaskLayer,
+  onRemoveMaskLayer,
+  onToggleMaskLayer,
+  onClearAllMasks,
   hasMaskParam,
   sourceAssetId,
   disabled,
 }: MaskPickerProps) {
-  const [open, setOpen] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useClickOutside(ref, open, () => setOpen(false));
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const selectedMaskId = parseMaskAssetId(maskUrl);
+  const layers = maskLayers ?? [];
+  const visibleCount = layers.filter((l) => l.visible).length;
+  const hasLayers = layers.length > 0;
+  // Legacy: show if old maskUrl is set but no layers
+  const hasLegacyMask = !hasLayers && !!maskUrl;
+  const hasSelection = hasLayers || hasLegacyMask;
 
-  // Masks linked to the current source asset (uses -1 guard when no source)
-  const linkedQuery = useAssets({
-    limit: 50,
-    filters: {
-      source_asset_id: sourceAssetId ?? -1,
-      media_type: 'image',
-      upload_method: 'mask_draw',
-      sort: 'new',
-    },
-  });
+  const handleToggle = useCallback(() => {
+    if (anchorRect) {
+      setAnchorRect(null);
+    } else {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (rect) setAnchorRect(rect);
+    }
+  }, [anchorRect]);
 
-  // All recent masks
-  const allQuery = useAssets({
-    limit: 50,
-    filters: {
-      media_type: 'image',
-      upload_method: 'mask_draw',
-      sort: 'new',
-    },
-  });
-
-  const linkedMasks = useMemo(() => {
-    if (!sourceAssetId) return [];
-    return [...linkedQuery.items].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-  }, [sourceAssetId, linkedQuery.items]);
-
-  const allMasks = useMemo(() => {
-    return [...allQuery.items].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-  }, [allQuery.items]);
-
-  const displayMasks = showAll || !sourceAssetId ? allMasks : linkedMasks;
-  const loading = showAll || !sourceAssetId ? allQuery.loading : linkedQuery.loading;
+  const handleClose = useCallback(() => {
+    setAnchorRect(null);
+  }, []);
 
   const handleSelect = useCallback(
-    (mask: AssetModel) => {
-      onMaskChange(`asset:${mask.id}`);
-      setOpen(false);
+    (asset: AssetModel) => {
+      onAddMaskLayer(asset);
+      setAnchorRect(null);
     },
-    [onMaskChange],
+    [onAddMaskLayer],
   );
-
-  const handleClear = useCallback(() => {
-    onMaskChange(undefined);
-    setOpen(false);
-  }, [onMaskChange]);
 
   if (!hasMaskParam) return null;
 
-  const hasSelection = !!maskUrl;
+  const isOpen = anchorRect !== null;
+
+  const initialFilters = showAll || !sourceAssetId
+    ? { media_type: 'image' as const, upload_method: 'mask_draw' as const, sort: 'new' as const }
+    : { source_asset_id: sourceAssetId, media_type: 'image' as const, upload_method: 'mask_draw' as const, sort: 'new' as const };
 
   return (
-    <div ref={ref} className="relative flex items-center gap-1.5">
-      {/* Mask picker button */}
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        disabled={disabled}
-        className={
-          hasSelection
-            ? 'flex items-center gap-1.5 px-2 py-1 rounded-lg bg-accent/15 border border-accent/30 text-accent text-[11px] font-medium hover:bg-accent/25 transition-colors disabled:opacity-50'
-            : 'flex items-center gap-1.5 px-2 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 text-[11px] hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors disabled:opacity-50'
-        }
-        title={hasSelection ? `Mask: ${maskUrl}` : 'Select inpaint mask'}
-      >
-        <Icon name="paintbrush" size={11} />
-        <span>{hasSelection ? `Mask #${selectedMaskId ?? '?'}` : 'Mask'}</span>
-        <Icon name="chevronDown" size={9} className="ml-0.5 opacity-60" />
-      </button>
-
-      {/* Clear button when mask is attached */}
-      {hasSelection && (
+    <div className="flex flex-col gap-1">
+      {/* Header row: add button + clear all */}
+      <div className="flex items-center gap-1.5">
         <button
+          ref={buttonRef}
           type="button"
-          onClick={handleClear}
+          onClick={handleToggle}
           disabled={disabled}
-          className="p-0.5 rounded hover:bg-accent/30 text-accent hover:text-accent-hover transition-colors disabled:opacity-50"
-          title="Remove mask"
+          className={
+            hasSelection
+              ? 'flex items-center gap-1.5 px-2 py-1 rounded-lg bg-accent/15 border border-accent/30 text-accent text-[11px] font-medium hover:bg-accent/25 transition-colors disabled:opacity-50'
+              : 'flex items-center gap-1.5 px-2 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 text-[11px] hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors disabled:opacity-50'
+          }
+          title={hasSelection ? `${visibleCount} mask${visibleCount !== 1 ? 's' : ''} active` : 'Add inpaint mask'}
         >
-          <Icon name="x" size={10} />
+          <Icon name="paintbrush" size={11} />
+          <span>{hasSelection ? `${layers.length} Mask${layers.length !== 1 ? 's' : ''}` : 'Mask'}</span>
+          <Icon name="plus" size={9} className="ml-0.5 opacity-60" />
         </button>
+
+        {hasSelection && (
+          <button
+            type="button"
+            onClick={onClearAllMasks}
+            disabled={disabled}
+            className="p-0.5 rounded hover:bg-accent/30 text-accent hover:text-accent-hover transition-colors disabled:opacity-50"
+            title="Remove all masks"
+          >
+            <Icon name="x" size={10} />
+          </button>
+        )}
+      </div>
+
+      {/* Layer list */}
+      {hasLayers && (
+        <div className="flex flex-col gap-0.5 pl-1">
+          {layers.map((layer) => {
+            const assetId = layer.assetUrl.match(/^asset:(\d+)$/)?.[1] ?? '?';
+            return (
+              <div
+                key={layer.id}
+                className="flex items-center gap-1 text-[10px] group"
+              >
+                <button
+                  type="button"
+                  onClick={() => onToggleMaskLayer(layer.id)}
+                  disabled={disabled}
+                  className={`flex-shrink-0 ${layer.visible ? 'text-accent' : 'text-neutral-400 opacity-50'}`}
+                  title={layer.visible ? 'Hide' : 'Show'}
+                >
+                  <Icon name={layer.visible ? 'eye' : 'eyeOff'} size={10} />
+                </button>
+                <span className={`flex-1 truncate ${layer.visible ? 'text-neutral-600 dark:text-neutral-300' : 'text-neutral-400 line-through'}`}>
+                  {layer.label || `#${assetId}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onRemoveMaskLayer(layer.id)}
+                  disabled={disabled}
+                  className="flex-shrink-0 text-neutral-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Remove"
+                >
+                  <Icon name="x" size={9} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
       )}
 
-      {/* Dropdown */}
-      {open && (
-        <div className={DROPDOWN_MENU_CLS} style={{ minWidth: 200 }}>
-          {/* Header with toggle */}
-          {sourceAssetId && (
-            <div className="flex items-center justify-between px-3 py-1 border-b border-neutral-200 dark:border-neutral-700">
-              <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                {showAll ? 'All masks' : 'Asset masks'}
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowAll((v) => !v)}
-                className="text-[10px] text-accent hover:underline"
-              >
-                {showAll ? 'Show linked' : 'Show all'}
-              </button>
-            </div>
-          )}
-
-          {/* Clear option */}
-          {hasSelection && (
-            <button
-              type="button"
-              onClick={handleClear}
-              className={DROPDOWN_ITEM_CLS + ' text-red-500 dark:text-red-400'}
-            >
-              <Icon name="x" size={10} />
-              Remove mask
-            </button>
-          )}
-
-          {/* Loading state */}
-          {loading && (
-            <div className="px-3 py-2 text-[10px] text-neutral-400">Loading masks...</div>
-          )}
-
-          {/* Mask list */}
-          {!loading && displayMasks.length === 0 && (
-            <div className="px-3 py-2 text-[10px] text-neutral-400">
-              {sourceAssetId && !showAll ? 'No masks for this asset' : 'No saved masks'}
-            </div>
-          )}
-
-          {displayMasks.map((mask) => (
-            <button
-              key={mask.id}
-              type="button"
-              onClick={() => handleSelect(mask)}
-              className={
-                DROPDOWN_ITEM_CLS +
-                (selectedMaskId === mask.id ? ' font-semibold bg-accent/10' : '')
-              }
-            >
-              <Icon name="paintbrush" size={10} className="shrink-0 text-neutral-400" />
-              <span className="truncate">{formatMaskLabel(mask)}</span>
-              {selectedMaskId === mask.id && (
-                <Icon name="check" size={10} className="ml-auto text-accent shrink-0" />
-              )}
-            </button>
-          ))}
-        </div>
+      {/* Mini gallery popover */}
+      {isOpen && (
+        <MiniGalleryPopover
+          anchorRect={anchorRect}
+          title={showAll || !sourceAssetId ? 'All Masks' : 'Asset Masks'}
+          onClose={handleClose}
+          width={340}
+          height={380}
+          galleryProps={{
+            initialFilters,
+            syncInitialFilters: true,
+            showSearch: true,
+            showMediaType: false,
+            showSort: true,
+            suppressHoverActions: true,
+            onItemSelect: handleSelect,
+            emptyMessage: sourceAssetId && !showAll ? 'No masks for this asset.' : 'No saved masks.',
+            header: sourceAssetId ? (
+              <div className="flex items-center justify-between px-3 py-1 border-b border-neutral-200 dark:border-neutral-700">
+                <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                  {showAll ? 'Showing all masks' : 'Showing masks for this asset'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowAll((v) => !v)}
+                  className="text-[10px] text-accent hover:underline"
+                >
+                  {showAll ? 'Show linked' : 'Show all'}
+                </button>
+              </div>
+            ) : undefined,
+          }}
+        />
       )}
     </div>
   );
