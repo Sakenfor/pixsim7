@@ -26,11 +26,13 @@ async function loadSettings() {
 
   document.getElementById('backendUrl').value = result.backendUrl;
   document.getElementById('autoImport').checked = result.autoImport;
-  // Load skipSimilarCheck from cached user preferences (backend is source of truth)
+  // Load similarity check from cached user preferences (backend is source of truth)
   const skipEl = document.getElementById('skipSimilarCheck');
   if (skipEl) {
     const userPrefs = result.currentUser?.preferences || {};
-    skipEl.checked = !!userPrefs.skipSimilarCheck;
+    const sc = userPrefs.similarityChecks?.upload;
+    // New structure: !phash means skip. Legacy fallback: skipSimilarCheck
+    skipEl.checked = sc ? !sc.phash : !!userPrefs.skipSimilarCheck;
   }
   const dup = document.getElementById('defaultUploadProvider');
   if (dup) {
@@ -50,20 +52,27 @@ function setupSkipSimilarCheckListener() {
   el.addEventListener('change', async () => {
     const checked = el.checked;
     try {
+      // Extension toggle controls phash only (simple UI)
       await backendRequest('/api/v1/users/me/preferences', {
         method: 'PATCH',
-        body: JSON.stringify({ preferences: { skipSimilarCheck: checked } }),
+        body: JSON.stringify({
+          preferences: {
+            similarityChecks: { upload: { phash: !checked } },
+          },
+        }),
       });
-      // Update cached user so reload reflects the change
+      // Update cached user
       const stored = await chrome.storage.local.get('currentUser');
       if (stored.currentUser) {
-        stored.currentUser.preferences = stored.currentUser.preferences || {};
-        stored.currentUser.preferences.skipSimilarCheck = checked;
+        const prefs = stored.currentUser.preferences = stored.currentUser.preferences || {};
+        prefs.similarityChecks = prefs.similarityChecks || {};
+        prefs.similarityChecks.upload = prefs.similarityChecks.upload || {};
+        prefs.similarityChecks.upload.phash = !checked;
         await chrome.storage.local.set({ currentUser: stored.currentUser });
       }
       showToast(checked ? 'Similar check disabled' : 'Similar check enabled', 'success');
     } catch (e) {
-      console.warn('[Settings] Failed to save skipSimilarCheck:', e);
+      console.warn('[Settings] Failed to save similarityChecks:', e);
       el.checked = !checked; // revert on failure
       showToast('Failed to save setting', 'error');
     }

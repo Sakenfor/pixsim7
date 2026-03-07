@@ -103,6 +103,32 @@ class SyncedFolderMeta(BaseModel):
     )
 
 
+class UploadSimilarityChecks(BaseModel):
+    """Per-method toggles and thresholds for upload deduplication."""
+
+    model_config = ConfigDict(extra="allow")
+
+    sha256: bool = Field(default=True, description="Check exact byte-match (SHA-256)")
+    phash: bool = Field(default=True, description="Check perceptual hash similarity")
+    phashThreshold: int = Field(
+        default=5,
+        ge=0,
+        le=32,
+        description="Max Hamming distance for phash match (0 = exact, lower = stricter)",
+    )
+
+
+class SimilarityChecks(BaseModel):
+    """Configurable similarity/dedup checks per context."""
+
+    model_config = ConfigDict(extra="allow")
+
+    upload: UploadSimilarityChecks = Field(
+        default_factory=UploadSimilarityChecks,
+        description="Dedup checks when uploading assets",
+    )
+
+
 class UserPreferences(BaseModel):
     """Structured user preferences payload stored in users.preferences JSON."""
 
@@ -127,10 +153,16 @@ class UserPreferences(BaseModel):
         description="Synced local folder metadata for recovery",
     )
 
-    # Upload preferences
+    # Similarity / deduplication settings
+    similarityChecks: SimilarityChecks | None = Field(
+        default=None,
+        description="Per-context similarity check configuration",
+    )
+
+    # Legacy compat — mapped to similarityChecks.upload.phash internally
     skipSimilarCheck: bool | None = Field(
         default=None,
-        description="Skip phash near-duplicate check on uploads (for small visual changes)",
+        description="Deprecated: use similarityChecks.upload.phash instead",
     )
 
     # Content preference keys used by generation/social-context logic

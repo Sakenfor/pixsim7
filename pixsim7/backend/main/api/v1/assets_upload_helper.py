@@ -15,9 +15,30 @@ from dataclasses import dataclass
 
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 from pixsim7.backend.main.services.asset.asset_hasher import compute_image_phash
+from pixsim7.backend.main.shared.schemas.user_schemas import UploadSimilarityChecks
 from pixsim_logging import get_logger
 
 logger = get_logger()
+
+
+def resolve_upload_checks(user_preferences: dict | None) -> UploadSimilarityChecks:
+    """Resolve effective upload similarity checks from user preferences.
+
+    Handles both the new ``similarityChecks.upload`` structure and the legacy
+    ``skipSimilarCheck`` boolean.
+    """
+    prefs = user_preferences if isinstance(user_preferences, dict) else {}
+
+    # New structured config takes priority
+    sim = prefs.get("similarityChecks")
+    if isinstance(sim, dict) and "upload" in sim:
+        return UploadSimilarityChecks.model_validate(sim["upload"])
+
+    # Legacy compat: skipSimilarCheck disables phash
+    if prefs.get("skipSimilarCheck"):
+        return UploadSimilarityChecks(phash=False)
+
+    return UploadSimilarityChecks()
 
 
 @dataclass
@@ -41,6 +62,8 @@ async def prepare_upload(
     asset_service,
     provider_id: str,
     file_ext: str = ".bin",
+    checks: UploadSimilarityChecks | None = None,
+    # Legacy compat — prefer `checks`
     skip_phash_dedup: bool = False,
 ) -> UploadPrepResult:
     """
@@ -53,10 +76,18 @@ async def prepare_upload(
         asset_service: AssetService instance
         provider_id: Target provider ID
         file_ext: File extension
+        checks: Structured similarity check config (preferred)
+        skip_phash_dedup: Legacy boolean — ignored when ``checks`` is provided
 
     Returns:
         UploadPrepResult with computed values and any existing asset found
     """
+    # Resolve effective checks
+    if checks is None:
+        checks = UploadSimilarityChecks(
+            phash=not skip_phash_dedup,
+        )
+
     result = UploadPrepResult()
 
     # 1. Compute SHA256
@@ -84,7 +115,7 @@ async def prepare_upload(
             )
 
     # 3. Check SHA256 deduplication
-    if result.sha256:
+    if checks.sha256 and result.sha256:
         try:
             existing = await asset_service.find_asset_by_hash(result.sha256, user_id)
             if existing:
@@ -105,19 +136,22 @@ async def prepare_upload(
                 "upload_dedup_sha256_failed",
                 error=str(e),
             )
+    elif not checks.sha256 and result.sha256:
+        logger.info("upload_sha256_dedup_skipped", user_id=user_id)
 
-    # 4. Check phash near-duplicate (if no sha256 match and not skipped)
-    if skip_phash_dedup and result.phash64 is not None:
-        logger.info("upload_phash_dedup_skipped", user_id=user_id)
-    if result.phash64 is not None and not result.existing_asset and not skip_phash_dedup:
+    # 4. Check phash near-duplicate
+    if checks.phash and result.phash64 is not None and not result.existing_asset:
         try:
-            similar = await asset_service.find_similar_asset_by_phash(result.phash64, user_id, max_distance=5)
+            similar = await asset_service.find_similar_asset_by_phash(
+                result.phash64, user_id, max_distance=checks.phashThreshold,
+            )
             if similar:
                 logger.info(
                     "upload_phash_dedup_match",
                     user_id=user_id,
                     existing_asset_id=similar.id,
                     provider_id=provider_id,
+                    threshold=checks.phashThreshold,
                 )
                 already_on_provider = (
                     similar.provider_id == provider_id or

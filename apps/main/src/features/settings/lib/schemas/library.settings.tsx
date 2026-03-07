@@ -147,14 +147,32 @@ const downloadsTab: SettingTab = {
     {
       id: 'upload-dedup',
       title: 'Deduplication',
-      description: 'Control duplicate detection when uploading assets.',
+      description: 'Control which duplicate checks run when uploading assets.',
       fields: [
         {
-          id: 'skipSimilarCheck',
+          id: 'similarity.upload.sha256',
           type: 'toggle',
-          label: 'Skip Similar Image Check',
-          description: 'Disable phash near-duplicate detection on uploads. Useful when uploading images with small visual differences (e.g. minor edits).',
-          defaultValue: false,
+          label: 'Exact Match (SHA-256)',
+          description: 'Skip upload if an identical file (same bytes) already exists.',
+          defaultValue: true,
+        },
+        {
+          id: 'similarity.upload.phash',
+          type: 'toggle',
+          label: 'Similar Image (pHash)',
+          description: 'Skip upload if a visually similar image already exists. Disable for images with small edits.',
+          defaultValue: true,
+        },
+        {
+          id: 'similarity.upload.phashThreshold',
+          type: 'range',
+          label: 'Similarity Threshold',
+          description: 'Max perceptual difference allowed (0 = exact visual match, higher = more lenient).',
+          defaultValue: 5,
+          min: 0,
+          max: 16,
+          step: 1,
+          showWhen: (values: Record<string, any>) => !!values['similarity.upload.phash'],
         },
       ],
     },
@@ -417,13 +435,18 @@ const maintenanceTab: SettingTab = {
 // Unified Store Adapter
 // =============================================================================
 function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
-  // User preferences (backend - skipSimilarCheck)
-  const [skipSimilarCheck, setSkipSimilarCheckLocal] = useState(false);
+  // User preferences (backend - similarityChecks)
+  const DEFAULT_UPLOAD_CHECKS = { sha256: true, phash: true, phashThreshold: 5 };
+  const [uploadChecks, setUploadChecksLocal] = useState(DEFAULT_UPLOAD_CHECKS);
   useEffect(() => {
     getUserPreferences()
       .then((prefs) => {
-        if (prefs.skipSimilarCheck != null) {
-          setSkipSimilarCheckLocal(!!prefs.skipSimilarCheck);
+        const sc = prefs.similarityChecks as Record<string, any> | undefined;
+        if (sc?.upload) {
+          setUploadChecksLocal({ ...DEFAULT_UPLOAD_CHECKS, ...sc.upload });
+        } else if (prefs.skipSimilarCheck != null) {
+          // Legacy compat
+          setUploadChecksLocal({ ...DEFAULT_UPLOAD_CHECKS, phash: !prefs.skipSimilarCheck });
         }
       })
       .catch(() => {});
@@ -484,8 +507,10 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
 
   return {
     get: (fieldId: string) => {
-      // User preferences (backend)
-      if (fieldId === 'skipSimilarCheck') return skipSimilarCheck;
+      // Similarity checks (backend user preferences)
+      if (fieldId === 'similarity.upload.sha256') return uploadChecks.sha256;
+      if (fieldId === 'similarity.upload.phash') return uploadChecks.phash;
+      if (fieldId === 'similarity.upload.phashThreshold') return uploadChecks.phashThreshold;
 
       // Asset settings
       if (fieldId === 'downloadOnGenerate') return downloadOnGenerate;
@@ -516,12 +541,14 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
     },
 
     set: (fieldId: string, value: any) => {
-      // User preferences (backend)
-      if (fieldId === 'skipSimilarCheck') {
-        setSkipSimilarCheckLocal(Boolean(value));
-        updatePreferenceKey('skipSimilarCheck', Boolean(value)).catch((err) => {
-          console.error('Failed to save skipSimilarCheck:', err);
-          setSkipSimilarCheckLocal(!value); // revert
+      // Similarity checks (backend user preferences)
+      if (fieldId.startsWith('similarity.upload.')) {
+        const key = fieldId.split('.')[2] as keyof typeof uploadChecks;
+        const updated = { ...uploadChecks, [key]: value };
+        setUploadChecksLocal(updated);
+        updatePreferenceKey('similarityChecks', { upload: updated }).catch((err) => {
+          console.error('Failed to save similarityChecks:', err);
+          setUploadChecksLocal(uploadChecks); // revert
         });
         return;
       }
@@ -597,7 +624,9 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
     },
 
     getAll: () => ({
-      skipSimilarCheck,
+      'similarity.upload.sha256': uploadChecks.sha256,
+      'similarity.upload.phash': uploadChecks.phash,
+      'similarity.upload.phashThreshold': uploadChecks.phashThreshold,
       downloadOnGenerate,
       deleteFromProvider,
       qualityMode,

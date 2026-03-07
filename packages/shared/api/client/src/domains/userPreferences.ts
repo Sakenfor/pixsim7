@@ -111,7 +111,15 @@ export interface UserPreferences {
   auto_tags?: AutoTagsPreferences;
   /** Analyzer settings for prompt analysis */
   analyzer?: AnalyzerPreferences;
-  /** Skip phash near-duplicate check on uploads */
+  /** Per-context similarity/dedup check configuration */
+  similarityChecks?: {
+    upload?: {
+      sha256?: boolean;
+      phash?: boolean;
+      phashThreshold?: number;
+    };
+  };
+  /** @deprecated Use similarityChecks.upload.phash instead */
   skipSimilarCheck?: boolean;
   [key: string]: unknown;
 }
