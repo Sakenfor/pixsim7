@@ -179,6 +179,97 @@ async def test_api_upsert_project_snapshot_migrates_legacy_seed_rows(
 
 
 @pytest.mark.asyncio
+async def test_api_upsert_project_snapshot_prefers_non_legacy_even_when_legacy_is_newer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_body: Dict[str, Any] = {}
+
+    async def fake_get_json(client: Any, path: str, **kwargs: Any) -> Any:
+        if path.endswith("/project/export"):
+            return {"schema_version": 1, "core": {"world": {"name": "Bananza Boat", "meta": {}, "world_time": 0.0}}}
+        if path == "/api/v1/game/worlds/projects/snapshots":
+            return [
+                {
+                    "id": 40,
+                    "name": "Bananza Boat Seed Project",
+                    "updated_at": "2026-03-05T10:00:00+00:00",
+                    "provenance": {"kind": "seed", "source_key": BOOTSTRAP_PROFILE},
+                },
+                {
+                    "id": 31,
+                    "name": "Bananza Boat Seed Project",
+                    "updated_at": "2026-03-05T09:00:00+00:00",
+                    "provenance": {"kind": "import", "source_key": BOOTSTRAP_SOURCE_KEY},
+                },
+            ]
+        raise AssertionError(f"unexpected path: {path}")
+
+    async def fake_post_json(client: Any, path: str, *, body: Dict[str, Any] | None = None, **kwargs: Any) -> Any:
+        assert path == "/api/v1/game/worlds/projects/snapshots"
+        captured_body.update(body or {})
+        return {"id": 31, "name": "Bananza Boat Seed Project", "source_world_id": 55}
+
+    monkeypatch.setattr(api_flow, "_api_get_json", fake_get_json)
+    monkeypatch.setattr(api_flow, "_api_post_json", fake_post_json)
+
+    client = _FakeDeleteClient()
+    result = await api_flow._api_upsert_project_snapshot(
+        client,
+        world_id=55,
+        world_name="Bananza Boat",
+        project_name="Bananza Boat Seed Project",
+        project_id=None,
+        prune_duplicates=True,
+    )
+
+    assert captured_body.get("overwrite_project_id") == 31
+    assert "provenance" not in captured_body
+    assert result["migrated_from_legacy_seed"] is False
+    assert client.deleted_paths == ["/api/v1/game/worlds/projects/snapshots/40"]
+
+
+@pytest.mark.asyncio
+async def test_api_find_project_snapshot_detail_prefers_non_legacy_when_names_collide(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_project_id: Dict[str, int] = {}
+
+    async def fake_get_json(client: Any, path: str, **kwargs: Any) -> Any:
+        assert path == "/api/v1/game/worlds/projects/snapshots"
+        return [
+            {
+                "id": 200,
+                "name": "Bananza Boat Seed Project",
+                "updated_at": "2026-03-06T11:00:00+00:00",
+                "provenance": {"kind": "seed", "source_key": BOOTSTRAP_PROFILE},
+            },
+            {
+                "id": 150,
+                "name": "Bananza Boat Seed Project",
+                "updated_at": "2026-03-05T10:00:00+00:00",
+                "provenance": {"kind": "import", "source_key": BOOTSTRAP_SOURCE_KEY},
+            },
+        ]
+
+    async def fake_get_saved_project_detail(client: Any, *, project_id: int) -> Dict[str, Any]:
+        captured_project_id["value"] = project_id
+        return {"id": project_id, "name": "Bananza Boat Seed Project"}
+
+    monkeypatch.setattr(api_flow, "_api_get_json", fake_get_json)
+    monkeypatch.setattr(api_flow, "_api_get_saved_project_detail", fake_get_saved_project_detail)
+
+    result = await api_flow._api_find_project_snapshot_detail(
+        object(),
+        project_name="Bananza Boat Seed Project",
+        project_id=None,
+    )
+
+    assert captured_project_id["value"] == 150
+    assert isinstance(result, dict)
+    assert result["id"] == 150
+
+
+@pytest.mark.asyncio
 async def test_sync_two_way_pushes_file_when_file_mtime_is_newer(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

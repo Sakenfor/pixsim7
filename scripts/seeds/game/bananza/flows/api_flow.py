@@ -127,6 +127,32 @@ def _snapshot_sort_key(snapshot: Dict[str, Any]) -> tuple[datetime, int]:
     return updated_at, snapshot_id
 
 
+def _matching_project_snapshots_by_name(
+    snapshots: List[Dict[str, Any]],
+    *,
+    project_name: str,
+) -> List[Dict[str, Any]]:
+    matching: List[Dict[str, Any]] = []
+    for snapshot in snapshots:
+        if not isinstance(snapshot, dict):
+            continue
+        if str(snapshot.get("name") or "").strip() == project_name:
+            matching.append(snapshot)
+    matching.sort(key=_snapshot_sort_key, reverse=True)
+    return matching
+
+
+def _select_preferred_project_snapshot_from_matching(
+    snapshots: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    if not snapshots:
+        return None
+    non_legacy = [snapshot for snapshot in snapshots if not _is_legacy_seed_snapshot(snapshot)]
+    if non_legacy:
+        return non_legacy[0]
+    return snapshots[0]
+
+
 def _canonical_json(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
 
@@ -738,16 +764,16 @@ async def _api_upsert_project_snapshot(
             context="list_project_snapshots",
         )
         if isinstance(snapshots, list):
-            matching_name_snapshots: List[Dict[str, Any]] = []
-            for snapshot in snapshots:
-                if not isinstance(snapshot, dict):
-                    continue
-                if str(snapshot.get("name") or "").strip() == project_name:
-                    matching_name_snapshots.append(snapshot)
-
+            matching_name_snapshots = _matching_project_snapshots_by_name(
+                snapshots,
+                project_name=project_name,
+            )
             if matching_name_snapshots:
-                matching_name_snapshots.sort(key=_snapshot_sort_key, reverse=True)
-                non_legacy = [s for s in matching_name_snapshots if not _is_legacy_seed_snapshot(s)]
+                non_legacy = [
+                    snapshot
+                    for snapshot in matching_name_snapshots
+                    if not _is_legacy_seed_snapshot(snapshot)
+                ]
                 if non_legacy:
                     primary_id = _to_int(non_legacy[0].get("id"))
                     if primary_id is not None:
@@ -865,18 +891,13 @@ async def _api_find_project_snapshot_detail(
     if not isinstance(snapshots, list):
         raise RuntimeError("unexpected_project_snapshots_payload")
 
-    matching: List[Dict[str, Any]] = []
-    for snapshot in snapshots:
-        if not isinstance(snapshot, dict):
-            continue
-        if str(snapshot.get("name") or "").strip() == project_name:
-            matching.append(snapshot)
+    matching = _matching_project_snapshots_by_name(snapshots, project_name=project_name)
 
     if not matching:
         return None
 
-    matching.sort(key=_snapshot_sort_key, reverse=True)
-    resolved_id = _to_int(matching[0].get("id"))
+    preferred_snapshot = _select_preferred_project_snapshot_from_matching(matching)
+    resolved_id = _to_int(preferred_snapshot.get("id")) if isinstance(preferred_snapshot, dict) else None
     if resolved_id is None:
         return None
     return await _api_get_saved_project_detail(client, project_id=resolved_id)
