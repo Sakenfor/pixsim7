@@ -1,12 +1,17 @@
 import {
+  isAuthoringProjectBundleContributorLike,
+  normalizeAuthoringProjectBundleContributor,
+  type AuthoringProjectBundleContributorLike,
+} from './contributorClass';
+import {
   hasAuthoringProjectBundleContributor,
   registerAuthoringProjectBundleContributor,
 } from './contributors';
 import type { AuthoringProjectBundleContributor } from './types';
 
 interface ContributorModule {
-  authoringProjectBundleContributor?: AuthoringProjectBundleContributor<unknown>;
-  default?: AuthoringProjectBundleContributor<unknown>;
+  authoringProjectBundleContributor?: AuthoringProjectBundleContributorLike<unknown>;
+  default?: AuthoringProjectBundleContributorLike<unknown>;
   [key: string]: unknown;
 }
 
@@ -36,27 +41,33 @@ const contributorModules = import.meta.glob<ContributorModule>(
 function isValidContributor(
   candidate: unknown,
 ): candidate is AuthoringProjectBundleContributor<unknown> {
-  if (!candidate || typeof candidate !== 'object') {
+  if (!isAuthoringProjectBundleContributorLike(candidate)) {
     return false;
   }
-  const key = (candidate as { key?: unknown }).key;
-  return typeof key === 'string' && key.trim().length > 0;
+  try {
+    const normalized = normalizeAuthoringProjectBundleContributor(candidate);
+    return normalized.key.trim().length > 0;
+  } catch {
+    return false;
+  }
 }
 
 function pickContributor(moduleExports: ContributorModule):
   | AuthoringProjectBundleContributor<unknown>
   | null {
   if (isValidContributor(moduleExports.authoringProjectBundleContributor)) {
-    return moduleExports.authoringProjectBundleContributor;
+    return normalizeAuthoringProjectBundleContributor(
+      moduleExports.authoringProjectBundleContributor,
+    );
   }
 
   if (isValidContributor(moduleExports.default)) {
-    return moduleExports.default;
+    return normalizeAuthoringProjectBundleContributor(moduleExports.default);
   }
 
   for (const value of Object.values(moduleExports)) {
     if (isValidContributor(value)) {
-      return value;
+      return normalizeAuthoringProjectBundleContributor(value);
     }
   }
 

@@ -1,3 +1,7 @@
+import {
+  normalizeAuthoringProjectBundleContributor,
+  type AuthoringProjectBundleContributorLike,
+} from './contributorClass';
 import { registerProjectBundleExtension, unregisterProjectBundleExtension } from './registry';
 import type {
   AuthoringProjectBundleContributor,
@@ -82,15 +86,16 @@ export function listAuthoringProjectBundleContributors(): string[] {
 }
 
 export function registerAuthoringProjectBundleContributor(
-  contributor: AuthoringProjectBundleContributor<unknown>,
+  contributor: AuthoringProjectBundleContributorLike<unknown>,
 ): void {
-  const key = contributor.key?.trim();
+  const normalizedInput = normalizeAuthoringProjectBundleContributor(contributor);
+  const key = normalizedInput.key?.trim();
   if (!key) {
     throw new Error('authoring_project_bundle_contributor_key_required');
   }
 
   unregisterAuthoringProjectBundleContributor(key);
-  const normalizedContributor = { ...contributor, key };
+  const normalizedContributor = { ...normalizedInput, key };
 
   const entry: RegisteredAuthoringContributor = {
     contributor: normalizedContributor,

@@ -1,9 +1,11 @@
+import { BaseAuthoringProjectBundleContributor } from '@lib/game/projectBundle/contributorClass';
 import {
   hasAuthoringProjectBundleContributor,
   registerAuthoringProjectBundleContributor,
 } from '@lib/game/projectBundle/contributors';
 import type {
   AuthoringProjectBundleContributor,
+  ProjectBundleImportContext,
   ProjectBundleExtensionImportOutcome,
 } from '@lib/game/projectBundle/types';
 
@@ -134,10 +136,10 @@ function restoreSceneGraph(
   return {};
 }
 
-export const authoringProjectBundleContributor: AuthoringProjectBundleContributor<unknown> = {
-  key: SCENE_GRAPH_PROJECT_EXTENSION_KEY,
-  version: SCENE_GRAPH_PROJECT_EXTENSION_VERSION,
-  inventory: {
+class SceneGraphAuthoringProjectBundleContributor extends BaseAuthoringProjectBundleContributor<SceneGraphProjectExtensionPayloadV1> {
+  key = SCENE_GRAPH_PROJECT_EXTENSION_KEY;
+  version = SCENE_GRAPH_PROJECT_EXTENSION_VERSION;
+  inventory = {
     categories: [
       {
         key: 'scenes',
@@ -149,9 +151,9 @@ export const authoringProjectBundleContributor: AuthoringProjectBundleContributo
         panelLabel: 'Scene Management',
       },
     ],
-  },
+  };
 
-  export: () => {
+  protected onExport() {
     const graphState = useGraphStore.getState();
     if (!graphState.scenes || Object.keys(graphState.scenes).length === 0) {
       return null;
@@ -163,9 +165,12 @@ export const authoringProjectBundleContributor: AuthoringProjectBundleContributo
       sceneMetadata: cloneJson(graphState.sceneMetadata || {}),
       currentSceneId: graphState.currentSceneId ?? null,
     } satisfies SceneGraphProjectExtensionPayloadV1;
-  },
+  }
 
-  import: (payload, context) => {
+  protected onImport(
+    payload: SceneGraphProjectExtensionPayloadV1,
+    context: ProjectBundleImportContext,
+  ) {
     // context.response.id_maps is available for future ID remap hooks.
     void context.response.id_maps;
 
@@ -181,16 +186,25 @@ export const authoringProjectBundleContributor: AuthoringProjectBundleContributo
       markSceneGraphBaseline();
     }
     return outcome;
-  },
+  }
 
-  getDirtyState: () => isSceneGraphDirtyFromState(useGraphStore.getState()),
+  protected onGetDirtyState() {
+    return isSceneGraphDirtyFromState(useGraphStore.getState());
+  }
 
-  clearDirtyState: () => {
+  protected onClearDirtyState() {
     markSceneGraphBaseline();
-  },
+  }
 
-  subscribeDirtyState: (listener) => subscribeSceneGraphDirty(listener),
-};
+  protected onSubscribeDirtyState(listener: (dirty: boolean) => void) {
+    return subscribeSceneGraphDirty(listener);
+  }
+}
+
+const sceneGraphContributor = new SceneGraphAuthoringProjectBundleContributor();
+
+export const authoringProjectBundleContributor: AuthoringProjectBundleContributor<unknown> =
+  sceneGraphContributor.toContributor();
 
 // Backward-compatible explicit entrypoint used by older call sites.
 export function registerSceneGraphProjectBundleExtension(): void {
