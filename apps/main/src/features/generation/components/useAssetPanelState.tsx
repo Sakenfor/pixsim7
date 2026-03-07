@@ -566,9 +566,9 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const isMultiAssetDisplay = displayAssets.length > 1;
 
   // ─── Virtual empty slot (carousel-only) ────────────────────────────
-  const acceptsInput = (operationMeta?.acceptsInput?.length ?? 0) > 0;
+  // Always show add-slot so users can add assets to any operation type.
   const hasRoomForMore = maxAssetItems === null || orderedInputs.length < maxAssetItems;
-  const showVirtualEmptySlot = resolvedDisplayMode === 'carousel' && acceptsInput && hasRoomForMore && hasAsset;
+  const showVirtualEmptySlot = resolvedDisplayMode === 'carousel' && hasRoomForMore && hasAsset;
   const carouselTotalCount = orderedInputs.length + (showVirtualEmptySlot ? 1 : 0);
   const isOnVirtualSlot = showVirtualEmptySlot && operationInputIndex > orderedInputs.length;
 
@@ -893,7 +893,6 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
 
     // Asset picker
     handlePickAsset,
-    acceptsInput,
 
     // Source label
     sourceLabel: ctx?.sourceLabel,

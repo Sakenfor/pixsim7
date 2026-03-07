@@ -66,15 +66,14 @@ export function AssetPanel(props: QuickGenPanelProps) {
   // ── Empty state ────────────────────────────────────────────────────
   if (!state.hasAsset) {
     const emptyLabel = state.operationMeta?.inputMediaType === 'video' ? '+ Select video' :
-      state.operationMeta?.multiAssetMode === 'required' ? '+ Add images' :
-      state.acceptsInput ? '+ Add asset' : 'No input needed';
+      state.operationMeta?.multiAssetMode === 'required' ? '+ Add images' : '+ Add asset';
     return (
       <div className="h-full flex flex-col">
         {header}
         <div
           className="flex-1 flex items-center justify-center p-3 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors rounded-md"
-          onClick={state.acceptsInput ? state.handlePickAsset : undefined}
-          role={state.acceptsInput ? 'button' : undefined}
+          onClick={state.handlePickAsset}
+          role="button"
         >
           <div className="text-xs text-neutral-500 italic text-center">
             {emptyLabel}
