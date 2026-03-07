@@ -115,11 +115,12 @@ export function GenerationSettingsPanel({
   onGenerateCurrentOnly,
   sourceToggle,
 }: GenerationSettingsPanelProps) {
-  const { useSessionStore, useInputStore } = useGenerationScopeStores();
+  const { useSessionStore, useInputStore, useSettingsStore } = useGenerationScopeStores();
   const operationType = useSessionStore(s => s.operationType);
   const providerId = useSessionStore(s => s.providerId);
   const setProvider = useSessionStore(s => s.setProvider);
   const setOperationType = useSessionStore(s => s.setOperationType);
+  const onProviderChange = useSettingsStore(s => s.onProviderChange);
 
   // Burst mode - persisted in session store uiState
   const [burstCount, setBurstCount] = usePersistedScopeState('burstCount', 1);
@@ -223,12 +224,9 @@ export function GenerationSettingsPanel({
               providerId={providerId}
               providers={workbench.providers}
               onSelect={(id) => {
+                // Save current params under old provider key, load new provider's params
+                onProviderChange(providerId, id);
                 setProvider(id);
-                // Reset model so the new provider's default is applied
-                // (prevents stale model carryover when both providers list the same model)
-                if (id) {
-                  workbench.handleParamChange('model', undefined);
-                }
                 // Auto-switch operation if current one isn't supported by the new provider
                 if (id && !providerCapabilityRegistry.supportsOperation(id, operationType)) {
                   const fallback = OPERATION_TYPES.find(

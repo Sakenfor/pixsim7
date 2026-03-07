@@ -12,7 +12,7 @@ const PER_MODEL_PARAMS = new Set(['quality', 'resolution', 'output_resolution'])
 // Params that should behave like global UI preferences (not per-operation).
 // These are stored inside the same params object today, but should not be
 // accidentally dropped when switching operations or hydrating other operation scopes.
-const GLOBAL_UI_PARAMS = new Set([
+export const GLOBAL_UI_PARAMS = new Set([
   'autoSwitchOperationType',
   'autoRetryEnabled',
   'autoRetryMaxAttempts',
@@ -44,6 +44,14 @@ function mergeMissingGlobalUiParams(
   return changed ? next : base;
 }
 
+/**
+ * Composite key for provider+operation scoped params.
+ * Mirrors the promptMap pattern in generationSessionStore.
+ */
+function providerOpKey(providerId: string | undefined, operationType: OperationType): string {
+  return `${providerId ?? '_auto'}::${operationType}`;
+}
+
 export interface GenerationSettingsState {
   /**
    * Current dynamic generation parameters shared across UIs
@@ -57,6 +65,13 @@ export interface GenerationSettingsState {
    * Each operation type has its own params that persist independently.
    */
   paramsPerOperation: Partial<Record<OperationType, Record<string, any>>>;
+
+  /**
+   * Per-provider+operation parameter storage.
+   * Key is `${providerId}::${operationType}`, value is the params snapshot.
+   * Used to save/restore params when switching providers within the same operation.
+   */
+  paramsPerProviderOp: Record<string, Record<string, any>>;
 
   /**
    * Per-model parameter storage for quality/resolution settings.
@@ -84,6 +99,13 @@ export interface GenerationSettingsState {
    * Set the active operation type and switch to its params.
    */
   setActiveOperationType: (operationType: OperationType) => void;
+
+  /**
+   * Save current params under old provider key, load from new provider key.
+   * Call this when the user switches providers to prevent cross-provider
+   * param leakage (model, account, quality, etc.).
+   */
+  onProviderChange: (oldProviderId: string | undefined, newProviderId: string | undefined) => void;
 
   /**
    * React-style setter for params. Accepts either a new object or an updater
@@ -122,10 +144,41 @@ export function createGenerationSettingsStore(
       (set, get) => ({
         params: {},
         paramsPerOperation: {},
+        paramsPerProviderOp: {},
         paramsPerModel: {},
         activeOperationType: 'image_to_video' as OperationType,
         showSettings: true,
         _hasHydrated: false,
+
+        onProviderChange: (oldProviderId, newProviderId) => {
+          const state = get();
+          const globals = pickGlobalUiParams(state.params);
+          const op = state.activeOperationType;
+
+          // Save current params under old provider+operation key
+          const oldKey = providerOpKey(oldProviderId, op);
+          const updatedProviderOp = {
+            ...state.paramsPerProviderOp,
+            [oldKey]: state.params,
+          };
+
+          // Load params for new provider+operation (or empty → specs defaults will apply)
+          const newKey = providerOpKey(newProviderId, op);
+          const baseParams = updatedProviderOp[newKey] || {};
+          const newParams = mergeMissingGlobalUiParams(baseParams, globals);
+
+          set({
+            params: newParams,
+            paramsPerProviderOp: {
+              ...updatedProviderOp,
+              [newKey]: newParams,
+            },
+            paramsPerOperation: {
+              ...state.paramsPerOperation,
+              [op]: newParams,
+            },
+          });
+        },
 
         setActiveOperationType: (operationType) => {
           const state = get();
@@ -282,6 +335,7 @@ export function createGenerationSettingsStore(
         reset: () => set({
           params: {},
           paramsPerOperation: {},
+          paramsPerProviderOp: {},
           paramsPerModel: {},
           showSettings: true,
           _hasHydrated: true,
@@ -312,8 +366,21 @@ export function createGenerationSettingsStore(
             }
           }
 
+          // Apply same transient filtering to paramsPerProviderOp
+          const filteredParamsPerProviderOp: Record<string, Record<string, any>> = {};
+          for (const [key, params] of Object.entries(state.paramsPerProviderOp)) {
+            if (params) {
+              const filtered = { ...params };
+              for (const k of TRANSIENT_PARAMS) {
+                delete filtered[k];
+              }
+              filteredParamsPerProviderOp[key] = filtered;
+            }
+          }
+
           return {
             paramsPerOperation: filteredParamsPerOperation,
+            paramsPerProviderOp: filteredParamsPerProviderOp,
             paramsPerModel: state.paramsPerModel,
             activeOperationType: state.activeOperationType,
             showSettings: state.showSettings,

@@ -762,6 +762,9 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             # Pinned account guard: if user explicitly selected an account
             # and it couldn't be used, don't silently use a different account.
             # Cooldown → defer until it expires.  Permanent issue → fail.
+            # Skip this guard entirely if the preferred account is for a
+            # different provider — fall through to normal account selection.
+            _skip_pinned_guard = False
             if not account and getattr(generation, 'preferred_account_id', None):
                 pref_id = generation.preferred_account_id
                 try:
@@ -769,86 +772,100 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 except Exception:
                     _pref_acct = None
 
-                # Temporary cooldown — defer until it expires instead of failing
-                if (
-                    _pref_acct
-                    and _pref_acct.cooldown_until
-                    and _pref_acct.cooldown_until > datetime.now(timezone.utc)
-                ):
-                    remaining = (
-                        _pref_acct.cooldown_until - datetime.now(timezone.utc)
-                    ).total_seconds()
-                    defer_seconds = max(
-                        int(remaining) + _pinned_wait_padding_seconds(),
-                        _min_pinned_cooldown_defer_seconds(),
-                    )
-                    gen_logger.info(
-                        "preferred_account_cooldown_defer",
+                # Provider mismatch — preferred account belongs to a different
+                # provider than this generation targets.  Skip the entire
+                # pinned guard so we fall through to normal account selection
+                # instead of deferring forever on the wrong provider's capacity.
+                if _pref_acct and _pref_acct.provider_id != generation.provider_id:
+                    gen_logger.warning(
+                        "preferred_account_provider_mismatch_skip_pin",
                         account_id=pref_id,
-                        generation_id=generation_id,
-                        defer_seconds=defer_seconds,
+                        account_provider=_pref_acct.provider_id,
+                        generation_provider=generation.provider_id,
                     )
-                    defer_result = await _defer_pinned_generation(
-                        db=db,
-                        generation=generation,
-                        generation_id=generation_id,
-                        account_id=pref_id,
-                        defer_seconds=defer_seconds,
-                        reason="pinned_account_cooldown_wait",
-                        gen_logger=gen_logger,
-                        increment_retry=False,
-                    )
-                    if defer_result:
-                        return defer_result
-                    # Fall through to fail if defer itself fails
+                    _skip_pinned_guard = True
 
-                # Account is operationally OK — defer until a slot frees up.
-                # This covers both the explicit at-capacity case and the race
-                # condition where capacity freed between the reservation attempt
-                # and this check.
-                if _pref_acct and _pref_acct.get_operational_skip_reason() is None:
-                    base_cooldown = _get_concurrent_limit_cooldown_seconds(
-                        generation, _pref_acct
-                    )
-                    defer_seconds = base_cooldown + _pinned_wait_padding_seconds()
-                    gen_logger.info(
-                        "preferred_account_capacity_defer",
-                        account_id=pref_id,
-                        defer_seconds=defer_seconds,
-                        base_cooldown_seconds=base_cooldown,
-                        has_capacity=_pref_acct.has_capacity(),
-                    )
-                    defer_result = await _defer_pinned_generation(
-                        db=db,
-                        generation=generation,
-                        generation_id=generation_id,
-                        account_id=pref_id,
-                        defer_seconds=defer_seconds,
-                        reason="pinned_account_capacity_wait",
-                        gen_logger=gen_logger,
-                        increment_retry=False,
-                    )
-                    if defer_result:
-                        return defer_result
+                if not _skip_pinned_guard:
+                    # Temporary cooldown — defer until it expires instead of failing
+                    if (
+                        _pref_acct
+                        and _pref_acct.cooldown_until
+                        and _pref_acct.cooldown_until > datetime.now(timezone.utc)
+                    ):
+                        remaining = (
+                            _pref_acct.cooldown_until - datetime.now(timezone.utc)
+                        ).total_seconds()
+                        defer_seconds = max(
+                            int(remaining) + _pinned_wait_padding_seconds(),
+                            _min_pinned_cooldown_defer_seconds(),
+                        )
+                        gen_logger.info(
+                            "preferred_account_cooldown_defer",
+                            account_id=pref_id,
+                            generation_id=generation_id,
+                            defer_seconds=defer_seconds,
+                        )
+                        defer_result = await _defer_pinned_generation(
+                            db=db,
+                            generation=generation,
+                            generation_id=generation_id,
+                            account_id=pref_id,
+                            defer_seconds=defer_seconds,
+                            reason="pinned_account_cooldown_wait",
+                            gen_logger=gen_logger,
+                            increment_retry=False,
+                        )
+                        if defer_result:
+                            return defer_result
+                        # Fall through to fail if defer itself fails
 
-                # Permanent unavailability (disabled, daily limit, etc.)
-                gen_logger.warning(
-                    "preferred_account_pinned_unavailable",
-                    account_id=pref_id,
-                    generation_id=generation_id,
-                    skip_reason=_pref_acct.get_operational_skip_reason() if _pref_acct else "account_not_found",
-                )
-                debug.worker("preferred_account_pinned_unavailable", account_id=pref_id)
-                await generation_service.mark_failed(
-                    generation_id,
-                    f"Selected account #{pref_id} is not available (disabled or at daily limit)",
-                )
-                get_health_tracker().increment_failed()
-                return {
-                    "status": "failed",
-                    "reason": "preferred_account_unavailable",
-                    "generation_id": generation_id,
-                }
+                    # Account is operationally OK — defer until a slot frees up.
+                    # This covers both the explicit at-capacity case and the race
+                    # condition where capacity freed between the reservation attempt
+                    # and this check.
+                    if _pref_acct and _pref_acct.get_operational_skip_reason() is None:
+                        base_cooldown = _get_concurrent_limit_cooldown_seconds(
+                            generation, _pref_acct
+                        )
+                        defer_seconds = base_cooldown + _pinned_wait_padding_seconds()
+                        gen_logger.info(
+                            "preferred_account_capacity_defer",
+                            account_id=pref_id,
+                            defer_seconds=defer_seconds,
+                            base_cooldown_seconds=base_cooldown,
+                            has_capacity=_pref_acct.has_capacity(),
+                        )
+                        defer_result = await _defer_pinned_generation(
+                            db=db,
+                            generation=generation,
+                            generation_id=generation_id,
+                            account_id=pref_id,
+                            defer_seconds=defer_seconds,
+                            reason="pinned_account_capacity_wait",
+                            gen_logger=gen_logger,
+                            increment_retry=False,
+                        )
+                        if defer_result:
+                            return defer_result
+
+                    # Permanent unavailability (disabled, daily limit, etc.)
+                    gen_logger.warning(
+                        "preferred_account_pinned_unavailable",
+                        account_id=pref_id,
+                        generation_id=generation_id,
+                        skip_reason=_pref_acct.get_operational_skip_reason() if _pref_acct else "account_not_found",
+                    )
+                    debug.worker("preferred_account_pinned_unavailable", account_id=pref_id)
+                    await generation_service.mark_failed(
+                        generation_id,
+                        f"Selected account #{pref_id} is not available (disabled or at daily limit)",
+                    )
+                    get_health_tracker().increment_failed()
+                    return {
+                        "status": "failed",
+                        "reason": "preferred_account_unavailable",
+                        "generation_id": generation_id,
+                    }
 
             # If no account yet (first attempt or reuse failed), select a new one
             if not account:

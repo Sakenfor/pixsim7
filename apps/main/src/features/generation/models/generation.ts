@@ -57,6 +57,7 @@ export interface GenerationModel {
   retryCount: number;
   attemptCount: number | null;
   priority: number;
+  waitReason: string | null;
 
   // Generation metadata
   name: string | null;
@@ -204,6 +205,7 @@ export function fromGenerationResponse(response: GenerationResponse): Generation
     retryCount: response.retry_count,
     attemptCount,
     priority: response.priority,
+    waitReason: (response as { wait_reason?: string | null }).wait_reason ?? null,
 
     // Generation metadata
     name: response.name,
@@ -332,6 +334,7 @@ export function createPendingGeneration(options: CreatePendingGenerationOptions)
     retryCount: 0,
     attemptCount: null,
     priority: 5,
+    waitReason: null,
     name: null,
     description: null,
     operationType: options.operationType,

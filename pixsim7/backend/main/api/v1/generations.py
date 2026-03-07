@@ -45,6 +45,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _get_generation_wait_reasons(
+    generation_ids: List[int],
+) -> Dict[int, str]:
+    """Return wait_reason from Redis wait metadata for pending generations."""
+    if not generation_ids:
+        return {}
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+        from pixsim7.backend.main.infrastructure.queue import get_generation_wait_metadata
+
+        arq_pool = await get_arq_pool()
+        reasons: Dict[int, str] = {}
+        for gid in generation_ids:
+            meta = await get_generation_wait_metadata(arq_pool, gid)
+            if isinstance(meta, dict) and meta.get("reason"):
+                reasons[gid] = str(meta["reason"])
+        return reasons
+    except Exception:
+        return {}
+
+
 async def _get_latest_submission_payloads(
     db: DatabaseSession,
     generation_ids: List[int],
@@ -282,6 +303,21 @@ async def create_generation(
                 "autoSelectLatest": True,
             }
 
+        # Validate preferred_account_id belongs to the target provider
+        # (prevents cross-provider account bleed from stale frontend state)
+        validated_preferred_account_id = request.preferred_account_id
+        if validated_preferred_account_id is not None:
+            from pixsim7.backend.main.domain.providers import ProviderAccount
+            pref_acct = await generation_service.db.get(ProviderAccount, validated_preferred_account_id)
+            if pref_acct and pref_acct.provider_id != request.provider_id:
+                logger.warning(
+                    "preferred_account_provider_mismatch_cleared",
+                    preferred_account_id=validated_preferred_account_id,
+                    account_provider=pref_acct.provider_id,
+                    generation_provider=request.provider_id,
+                )
+                validated_preferred_account_id = None
+
         # Create generation via unified service
         generation = await generation_service.create_generation(
             user=user,
@@ -297,7 +333,7 @@ async def create_generation(
             prompt_version_id=request.prompt_version_id,
             force_new=request.force_new,
             analyzer_id=request.analyzer_id,
-            preferred_account_id=request.preferred_account_id,
+            preferred_account_id=validated_preferred_account_id,
         )
 
         # Update generation with prompt_config if we have one
@@ -573,6 +609,11 @@ async def get_generation(
         response.latest_submission_provider_job_id = latest_provider_job_ids.get(generation.id)
         response.attempt_count = attempt_counts.get(generation.id, 0)
 
+        # Populate wait_reason for pending generations
+        if generation.status == "pending":
+            wait_reasons = await _get_generation_wait_reasons([generation.id])
+            response.wait_reason = wait_reasons.get(generation.id)
+
         # Populate account_email for UI display (same as list endpoint)
         if generation.account_id:
             result = await db.execute(
@@ -680,6 +721,10 @@ async def list_generations(
             [g.id for g in generations],
         )
 
+        # Fetch wait reasons for pending generations
+        pending_ids = [g.id for g in generations if g.status == "pending"]
+        wait_reasons = await _get_generation_wait_reasons(pending_ids)
+
         # Convert to response with account_email populated
         responses = []
         for g in generations:
@@ -689,6 +734,7 @@ async def list_generations(
             resp.latest_submission_payload = latest_payloads.get(g.id)
             resp.latest_submission_provider_job_id = latest_provider_job_ids.get(g.id)
             resp.attempt_count = attempt_counts.get(g.id, 0)
+            resp.wait_reason = wait_reasons.get(g.id)
             responses.append(resp)
 
         return GenerationListResponse(
@@ -874,6 +920,8 @@ async def cancel_generation(
         return GenerationResponse.model_validate(generation)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to cancel generation {generation_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to cancel generation: {str(e)}")

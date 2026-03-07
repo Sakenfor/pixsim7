@@ -721,6 +721,22 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
       };
     }
     if (generation.status === 'pending' || generation.status === 'queued') {
+      if (generation.waitReason && /yield/i.test(generation.waitReason)) {
+        return {
+          label: 'YIELDING',
+          className:
+            'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+          title: 'Yielding to newer generations on the same account',
+        };
+      }
+      if (generation.waitReason && /concurrent|capacity|adaptive|cooldown/i.test(generation.waitReason)) {
+        return {
+          label: 'COOLDOWN',
+          className:
+            'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+          title: 'Waiting for provider concurrency slot',
+        };
+      }
       if (generation.retryCount > 0) {
         return {
           label: 'RETRYING',
@@ -759,6 +775,7 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
     generation.attemptCount,
     generation.latestSubmissionPayload,
     generation.latestSubmissionProviderJobId,
+    generation.waitReason,
   ]);
 
   // Manual refresh for debugging stuck generations
