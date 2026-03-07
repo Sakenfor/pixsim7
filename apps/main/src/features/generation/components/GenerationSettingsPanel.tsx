@@ -9,6 +9,7 @@
 
 import clsx from 'clsx';
 import { useMemo, type ReactNode } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 
 import { Icon } from '@lib/icons';
 
@@ -33,6 +34,7 @@ import {
   filterQuickGenStyleParamSpecs,
   getQuickGenStyleAdvancedParamSpecs,
 } from './generationSettingsPanel/generationParamFilters';
+import { MaskPicker } from './generationSettingsPanel/MaskPicker';
 import { OperationIconButton } from './generationSettingsPanel/OperationIconButton';
 import { ProviderIconButton } from './generationSettingsPanel/ProviderIconButton';
 import { PresetSelector } from './PresetSelector';
@@ -185,6 +187,28 @@ export function GenerationSettingsPanel({
     return getQuickGenStyleAdvancedParamSpecs(filteredParamSpecs);
   }, [filteredParamSpecs]);
 
+  // Mask picker: detect if provider exposes mask_url param
+  const hasMaskParam = useMemo(
+    () => workbench.allParamSpecs.some((p) => p.name === 'mask_url'),
+    [workbench.allParamSpecs],
+  );
+  // Read mask and asset ID from the current input item (per-asset masks)
+  const { currentInputId, currentInputAssetId, currentInputMaskUrl } = useInputStore(
+    useShallow((s) => {
+      const inputs = s.inputsByOperation[operationType];
+      if (!inputs || inputs.items.length === 0) return { currentInputId: null, currentInputAssetId: null, currentInputMaskUrl: undefined };
+      const idx = Math.max(0, Math.min(inputs.currentIndex - 1, inputs.items.length - 1));
+      const item = inputs.items[idx];
+      const id = item?.asset?.id;
+      return {
+        currentInputId: item?.id ?? null,
+        currentInputAssetId: typeof id === 'number' ? id : null,
+        currentInputMaskUrl: item?.maskUrl,
+      };
+    }),
+  );
+  const setInputMask = useInputStore((s) => s.setInputMask);
+
   const showTargetButton = canTarget;
 
   return (
@@ -252,20 +276,15 @@ export function GenerationSettingsPanel({
           </div>
         )}
 
-        {/* Mask attached indicator */}
-        {workbench.dynamicParams?.mask_url && (
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-accent/15 border border-accent/30">
-            <Icon name="paintbrush" size={11} className="text-accent" />
-            <span className="text-[11px] text-accent font-medium">Mask attached</span>
-            <button
-              type="button"
-              onClick={() => workbench.handleParamChange('mask_url', undefined)}
-              className="ml-auto p-0.5 rounded hover:bg-accent/30 text-accent hover:text-accent-hover transition-colors"
-              title="Remove mask"
-            >
-              <Icon name="x" size={10} />
-            </button>
-          </div>
+        {/* Mask picker (shown when provider supports mask_url) */}
+        {hasMaskParam && currentInputId && (
+          <MaskPicker
+            maskUrl={currentInputMaskUrl}
+            onMaskChange={(url) => setInputMask(operationType, currentInputId, url)}
+            hasMaskParam={hasMaskParam}
+            sourceAssetId={currentInputAssetId}
+            disabled={generating}
+          />
         )}
 
         {/* Dynamic params */}

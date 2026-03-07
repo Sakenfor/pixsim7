@@ -515,6 +515,11 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
     prompt: clampedPrompt,
   };
 
+  // Per-asset mask: prefer maskUrl from the current input item
+  if (currentInput?.maskUrl) {
+    params.mask_url = currentInput.maskUrl;
+  }
+
   if (inferredSourceAssetId) {
     params.source_asset_id = inferredSourceAssetId;
   }

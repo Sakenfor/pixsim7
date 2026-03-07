@@ -7,6 +7,8 @@
  *   AssetPanelHeader.tsx    – header bar, floating panel toggles, settings popover
  *   AssetPanelGrid.tsx      – multi-asset strip/grid display
  */
+import { Icon } from '@lib/icons';
+
 import { getAssetDisplayUrls } from '@features/assets';
 import { CompactAssetCard } from '@features/assets/components/shared';
 import { needsUploadToProvider } from '@features/assets/lib/resolveUploadTarget';
@@ -63,14 +65,19 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
   // ── Empty state ────────────────────────────────────────────────────
   if (!state.hasAsset) {
+    const emptyLabel = state.operationMeta?.inputMediaType === 'video' ? '+ Select video' :
+      state.operationMeta?.multiAssetMode === 'required' ? '+ Add images' :
+      state.acceptsInput ? '+ Add asset' : 'No input needed';
     return (
       <div className="h-full flex flex-col">
         {header}
-        <div className="flex-1 flex items-center justify-center p-3">
+        <div
+          className="flex-1 flex items-center justify-center p-3 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors rounded-md"
+          onClick={state.acceptsInput ? state.handlePickAsset : undefined}
+          role={state.acceptsInput ? 'button' : undefined}
+        >
           <div className="text-xs text-neutral-500 italic text-center">
-            {state.operationMeta?.inputMediaType === 'video' ? 'Select video' :
-             state.operationMeta?.multiAssetMode === 'required' ? '+ Add images' :
-             state.isFlexibleOperation ? '+ Image (optional)' : '+ Add image'}
+            {emptyLabel}
           </div>
         </div>
       </div>
@@ -114,6 +121,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
               uploadedAssetIds={state.uploadedAssetIds}
               uploadingAssetIds={state.uploadingAssetIds}
               handleUploadToProvider={state.handleUploadToProvider}
+              handlePickAsset={state.handlePickAsset}
             />
           </div>
         </div>
@@ -178,7 +186,11 @@ export function AssetPanel(props: QuickGenPanelProps) {
           <div className="relative h-full">
             {state.isOnVirtualSlot ? (
               // ── Virtual empty slot placeholder ──────────────────────
-              <div className="h-full border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-md flex flex-col items-center justify-center">
+              <div
+                className="h-full border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-md flex flex-col items-center justify-center cursor-pointer hover:border-accent/50 hover:bg-accent/5 transition-colors"
+                onClick={state.handlePickAsset}
+                role="button"
+              >
                 <div className="text-xs text-neutral-500 italic text-center">
                   + Add asset
                 </div>
@@ -242,7 +254,17 @@ export function AssetPanel(props: QuickGenPanelProps) {
                 enableHoverPreview={state.enableHoverPreview}
                 showPlayOverlay={state.showPlayOverlay}
                 clickToPlay={state.clickToPlay}
-                overlay={state.currentInput ? state.buildFusionRoleOverlay(state.currentInput, currentSlotIndex ?? 0) : undefined}
+                overlay={state.currentInput ? (
+                  <>
+                    {state.buildFusionRoleOverlay(state.currentInput, currentSlotIndex ?? 0)}
+                    {state.currentInput.maskUrl && (
+                      <div className="absolute top-1 right-1 pointer-events-none flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] font-medium">
+                        <Icon name="paintbrush" size={9} color="#fff" />
+                        Mask
+                      </div>
+                    )}
+                  </>
+                ) : undefined}
                 className={isCurrentClamped ? '!border-amber-500/70' : ''}
                 extraWidgets={state.buildSlotExtraWidgets(state.currentInput ?? null, currentSlotIndex ?? 0)}
               />

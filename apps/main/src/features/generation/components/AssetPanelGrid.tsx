@@ -49,6 +49,9 @@ export interface AssetPanelGridProps {
   uploadedAssetIds: Set<number>;
   uploadingAssetIds: Set<number>;
   handleUploadToProvider: (assetId: number) => Promise<void>;
+
+  // Asset picker
+  handlePickAsset?: () => void;
 }
 
 export function AssetPanelGrid({
@@ -78,6 +81,7 @@ export function AssetPanelGrid({
   uploadedAssetIds,
   uploadingAssetIds,
   handleUploadToProvider,
+  handlePickAsset,
 }: AssetPanelGridProps) {
   return (
     <div
@@ -106,7 +110,12 @@ export function AssetPanelGrid({
               } rounded-md flex items-center justify-center ${!isClamped ? 'transition-shadow' : ''}`}
               onClick={() => {
                 if (isClamped) return;
-                setArmedSlot(operationType, isArmed ? undefined : idx);
+                if (handlePickAsset) {
+                  setArmedSlot(operationType, idx);
+                  handlePickAsset();
+                } else {
+                  setArmedSlot(operationType, isArmed ? undefined : idx);
+                }
               }}
               {...getDropTargetProps(idx)}
               role="button"
@@ -115,13 +124,18 @@ export function AssetPanelGrid({
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   if (isClamped) return;
-                  setArmedSlot(operationType, isArmed ? undefined : idx);
+                  if (handlePickAsset) {
+                    setArmedSlot(operationType, idx);
+                    handlePickAsset();
+                  } else {
+                    setArmedSlot(operationType, isArmed ? undefined : idx);
+                  }
                 }
               }}
               aria-disabled={isClamped}
             >
-              <div className="text-[10px] text-neutral-400">
-                {isArmed ? 'Next input' : 'Empty slot'}
+              <div className="text-[10px] text-neutral-400 cursor-pointer">
+                {isArmed ? 'Next input' : '+ Add'}
               </div>
               <div className="cq-badge cq-inset-tl absolute bg-neutral-700 text-white font-medium rounded">
                 {idx + 1}
@@ -182,7 +196,15 @@ export function AssetPanelGrid({
               showPlayOverlay={showPlayOverlay}
               clickToPlay={clickToPlay}
               disableMotion={isSelected}
-              overlay={buildFusionRoleOverlay(inputItem, idx)}
+              overlay={<>
+                {buildFusionRoleOverlay(inputItem, idx)}
+                {inputItem.maskUrl && (
+                  <div className="absolute top-1 right-1 pointer-events-none flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] font-medium">
+                    <Icon name="paintbrush" size={9} color="#fff" />
+                    Mask
+                  </div>
+                )}
+              </>}
               className={`${isSelected ? 'ring-2 ring-accent' : ''} ${isClamped ? '!border-amber-500/70' : ''}`}
               extraWidgets={buildSlotExtraWidgets(inputItem, idx)}
               {...(needsUploadToProvider(inputItem.asset, effectiveProviderId) && !uploadedAssetIds.has(inputItem.asset.id) ? {

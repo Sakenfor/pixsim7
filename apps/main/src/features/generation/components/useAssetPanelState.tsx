@@ -15,7 +15,8 @@ import { getArrayParamLimits, type ParamSpec } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 import { createBadgeWidget, BADGE_SLOT, BADGE_PRIORITY } from '@lib/ui/overlay';
 
-import { uploadAssetToProvider, type AssetModel } from '@features/assets';
+import { uploadAssetToProvider, fromAssetResponse, useGalleryAssetPicker, type AssetModel } from '@features/assets';
+import { getAsset } from '@features/assets';
 import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
 import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrateAssetModel';
 import { notifyGalleryOfUpdatedAsset } from '@features/assets/lib/uploadActions';
@@ -121,6 +122,21 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const setInputMode = useInputStore(s => s.setInputMode);
   const storeReorderInput = useInputStore(s => s.reorderInput);
   const reorderInput = ctx?.reorderInput ?? storeReorderInput;
+  const storeAddInput = useInputStore(s => s.addInput);
+
+  // Gallery asset picker for empty slot / add asset
+  const galleryPicker = useGalleryAssetPicker();
+  const handlePickAsset = useCallback(() => {
+    galleryPicker.pick(async (picked) => {
+      try {
+        const raw = await getAsset(picked.id);
+        const asset = fromAssetResponse(raw);
+        storeAddInput({ asset, operationType });
+      } catch {
+        // Silently fail — the gallery panel stays open for retry
+      }
+    });
+  }, [galleryPicker, storeAddInput, operationType]);
 
   // Drag-and-drop for slot reordering (shared hook)
   const { draggedIndex: draggedSlotIndex, dragOverIndex: dragOverSlotIndex, getDragItemProps, getDropTargetProps } =
@@ -550,9 +566,9 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const isMultiAssetDisplay = displayAssets.length > 1;
 
   // ─── Virtual empty slot (carousel-only) ────────────────────────────
-  const supportsMultiAsset = isFlexibleOperation || operationMeta?.multiAssetMode === 'required';
+  const acceptsInput = (operationMeta?.acceptsInput?.length ?? 0) > 0;
   const hasRoomForMore = maxAssetItems === null || orderedInputs.length < maxAssetItems;
-  const showVirtualEmptySlot = resolvedDisplayMode === 'carousel' && supportsMultiAsset && hasRoomForMore && hasAsset;
+  const showVirtualEmptySlot = resolvedDisplayMode === 'carousel' && acceptsInput && hasRoomForMore && hasAsset;
   const carouselTotalCount = orderedInputs.length + (showVirtualEmptySlot ? 1 : 0);
   const isOnVirtualSlot = showVirtualEmptySlot && operationInputIndex > orderedInputs.length;
 
@@ -874,6 +890,10 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     handleSetUnlink,
     handleSetModeChange,
     handleSetReroll,
+
+    // Asset picker
+    handlePickAsset,
+    acceptsInput,
 
     // Source label
     sourceLabel: ctx?.sourceLabel,

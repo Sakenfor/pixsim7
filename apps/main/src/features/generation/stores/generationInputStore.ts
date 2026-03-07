@@ -35,6 +35,7 @@ export interface InputItem {
   lockedTimestamp?: number; // Locked frame timestamp in seconds (for video assets)
   roleOverride?: string; // e.g. 'environment' or 'main_character'
   assetSetRef?: AssetSetSlotRef; // optional set linkage for variety picks
+  maskUrl?: string; // Inpaint mask reference (e.g. 'asset:123')
 }
 
 export interface OperationInputs {
@@ -73,6 +74,7 @@ export interface GenerationInputsState {
   lockAssetSetPick: (operationType: OperationType, inputId: string, assetId: number) => void;
   updatePickStrategy: (operationType: OperationType, inputId: string, strategy: PickStrategy) => void;
   updatePickState: (operationType: OperationType, inputId: string, patch: { pickIndex?: number; recentPicks?: number[] }) => void;
+  setInputMask: (operationType: OperationType, inputId: string, maskUrl: string | undefined) => void;
 
   getCurrentInput: (operationType: OperationType) => InputItem | null;
   getInputs: (operationType: OperationType) => InputItem[];
@@ -610,6 +612,23 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
                       },
                     };
                   }),
+                },
+              },
+            };
+          });
+        },
+
+        setInputMask: (operationType, inputId, maskUrl) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) =>
+                    item.id === inputId ? { ...item, maskUrl } : item
+                  ),
                 },
               },
             };
