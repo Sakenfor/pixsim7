@@ -175,6 +175,29 @@ def configure_logging(service_name: str, *, json: bool | None = None) -> structl
     return logger
 
 
+_STDLIB_LOG_KWARGS = frozenset({"exc_info", "stack_info", "stacklevel", "extra"})
+_original_log = logging.Logger._log
+
+
+def _patched_log(self, level, msg, args, **kwargs):
+    """Accept structlog-style keyword arguments on stdlib loggers.
+
+    Captures unknown kwargs into ``extra`` so callers can write
+    ``logger.info("event", key=val)`` without crashing.
+    """
+    extra = kwargs.pop("extra", None) or {}
+    native = {}
+    for key in list(kwargs):
+        if key in _STDLIB_LOG_KWARGS:
+            native[key] = kwargs.pop(key)
+    extra.update(kwargs)
+    _original_log(self, level, msg, args, extra=extra, **native)
+
+
+# Patch immediately on import so ALL loggers (existing + future) accept kwargs
+logging.Logger._log = _patched_log
+
+
 def configure_stdlib_root_logger() -> None:
     """Configure the stdlib root logger so libraries using ``logging.getLogger()`` emit to stdout.
 

@@ -121,7 +121,7 @@ class SatelliteTableHandler:
 
     def _clean(self, row: dict) -> dict:
         """Keep only columns that belong to this table and set defaults."""
-        out: dict[str, Any] = {}
+        out: dict[str, Any] = {col: None for col in self._col_names}
         for k, v in row.items():
             if k in self._col_names:
                 out[k] = v
