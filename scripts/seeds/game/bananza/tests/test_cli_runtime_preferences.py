@@ -50,6 +50,31 @@ def test_read_runtime_preferences_supports_flat_meta_fallback() -> None:
     }
 
 
+def test_read_runtime_preferences_supports_project_runtime_keys() -> None:
+    snapshot = {
+        "provenance": {
+            "meta": {
+                "project_runtime": {
+                    "mode": "api",
+                    "sync_mode": "backend_to_file",
+                    "watch_enabled": False,
+                },
+                "project_runtime_mode": "direct",
+                "project_sync_mode": "none",
+                "project_watch_enabled": True,
+            }
+        }
+    }
+
+    preferences = cli._read_runtime_preferences_from_snapshot(snapshot)
+
+    assert preferences == {
+        "mode": "api",
+        "sync_mode": "backend_to_file",
+        "watch": False,
+    }
+
+
 def test_resolve_runtime_config_precedence() -> None:
     project_preferences = {
         "mode": "direct",

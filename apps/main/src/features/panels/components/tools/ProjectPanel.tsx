@@ -81,10 +81,16 @@ const DEFAULT_BANANZA_RUNTIME_PREFERENCES: BananzaRuntimePreferences = {
   watchEnabled: true,
 };
 
-const BANANZA_RUNTIME_META_KEY = 'bananza_runtime';
-const BANANZA_META_SEEDER_MODE = 'bananza_seeder_mode';
-const BANANZA_META_SYNC_MODE = 'bananza_sync_mode';
-const BANANZA_META_WATCH_ENABLED = 'bananza_watch_enabled';
+const PROJECT_RUNTIME_META_KEY = 'project_runtime';
+const PROJECT_META_RUNTIME_MODE = 'project_runtime_mode';
+const PROJECT_META_SYNC_MODE = 'project_sync_mode';
+const PROJECT_META_WATCH_ENABLED = 'project_watch_enabled';
+
+// Backward-compatibility for older Bananza-scoped metadata keys.
+const LEGACY_BANANZA_RUNTIME_META_KEY = 'bananza_runtime';
+const LEGACY_BANANZA_META_SEEDER_MODE = 'bananza_seeder_mode';
+const LEGACY_BANANZA_META_SYNC_MODE = 'bananza_sync_mode';
+const LEGACY_BANANZA_META_WATCH_ENABLED = 'bananza_watch_enabled';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -121,23 +127,29 @@ function readBananzaRuntimePreferences(
 ): BananzaRuntimePreferences {
   const provenance = project?.provenance;
   const meta = isRecord(provenance?.meta) ? provenance.meta : {};
-  const runtime: Record<string, unknown> = isRecord(meta[BANANZA_RUNTIME_META_KEY])
-    ? meta[BANANZA_RUNTIME_META_KEY]
-    : {};
+  const runtime: Record<string, unknown> = isRecord(meta[PROJECT_RUNTIME_META_KEY])
+    ? meta[PROJECT_RUNTIME_META_KEY]
+    : isRecord(meta[LEGACY_BANANZA_RUNTIME_META_KEY])
+      ? meta[LEGACY_BANANZA_RUNTIME_META_KEY]
+      : {};
 
   const seederMode =
+    normalizeBananzaSeederMode(runtime.mode) ??
     normalizeBananzaSeederMode(runtime.seeder_mode) ??
-    normalizeBananzaSeederMode(meta[BANANZA_META_SEEDER_MODE]) ??
+    normalizeBananzaSeederMode(meta[PROJECT_META_RUNTIME_MODE]) ??
+    normalizeBananzaSeederMode(meta[LEGACY_BANANZA_META_SEEDER_MODE]) ??
     DEFAULT_BANANZA_RUNTIME_PREFERENCES.seederMode;
 
   const syncMode =
     normalizeBananzaSyncMode(runtime.sync_mode) ??
-    normalizeBananzaSyncMode(meta[BANANZA_META_SYNC_MODE]) ??
+    normalizeBananzaSyncMode(meta[PROJECT_META_SYNC_MODE]) ??
+    normalizeBananzaSyncMode(meta[LEGACY_BANANZA_META_SYNC_MODE]) ??
     DEFAULT_BANANZA_RUNTIME_PREFERENCES.syncMode;
 
   const watchEnabled =
     normalizeBoolean(runtime.watch_enabled) ??
-    normalizeBoolean(meta[BANANZA_META_WATCH_ENABLED]) ??
+    normalizeBoolean(meta[PROJECT_META_WATCH_ENABLED]) ??
+    normalizeBoolean(meta[LEGACY_BANANZA_META_WATCH_ENABLED]) ??
     DEFAULT_BANANZA_RUNTIME_PREFERENCES.watchEnabled;
 
   return { seederMode, syncMode, watchEnabled };
@@ -148,16 +160,22 @@ function hasExplicitBananzaRuntimePreferences(
 ): boolean {
   const provenance = project?.provenance;
   const meta = isRecord(provenance?.meta) ? provenance.meta : {};
-  const runtime: Record<string, unknown> = isRecord(meta[BANANZA_RUNTIME_META_KEY])
-    ? meta[BANANZA_RUNTIME_META_KEY]
-    : {};
+  const runtime: Record<string, unknown> = isRecord(meta[PROJECT_RUNTIME_META_KEY])
+    ? meta[PROJECT_RUNTIME_META_KEY]
+    : isRecord(meta[LEGACY_BANANZA_RUNTIME_META_KEY])
+      ? meta[LEGACY_BANANZA_RUNTIME_META_KEY]
+      : {};
   return (
+    runtime.mode !== undefined ||
     runtime.seeder_mode !== undefined ||
     runtime.sync_mode !== undefined ||
     runtime.watch_enabled !== undefined ||
-    meta[BANANZA_META_SEEDER_MODE] !== undefined ||
-    meta[BANANZA_META_SYNC_MODE] !== undefined ||
-    meta[BANANZA_META_WATCH_ENABLED] !== undefined
+    meta[PROJECT_META_RUNTIME_MODE] !== undefined ||
+    meta[PROJECT_META_SYNC_MODE] !== undefined ||
+    meta[PROJECT_META_WATCH_ENABLED] !== undefined ||
+    meta[LEGACY_BANANZA_META_SEEDER_MODE] !== undefined ||
+    meta[LEGACY_BANANZA_META_SYNC_MODE] !== undefined ||
+    meta[LEGACY_BANANZA_META_WATCH_ENABLED] !== undefined
   );
 }
 
@@ -167,21 +185,24 @@ function buildProjectProvenanceRequest(
 ): SaveGameProjectRequest['provenance'] {
   const existingProvenance = existingProject?.provenance;
   const existingMeta = isRecord(existingProvenance?.meta) ? existingProvenance.meta : {};
-  const existingRuntime: Record<string, unknown> = isRecord(existingMeta[BANANZA_RUNTIME_META_KEY])
-    ? existingMeta[BANANZA_RUNTIME_META_KEY]
-    : {};
+  const existingRuntime: Record<string, unknown> = isRecord(existingMeta[PROJECT_RUNTIME_META_KEY])
+    ? existingMeta[PROJECT_RUNTIME_META_KEY]
+    : isRecord(existingMeta[LEGACY_BANANZA_RUNTIME_META_KEY])
+      ? existingMeta[LEGACY_BANANZA_RUNTIME_META_KEY]
+      : {};
 
   const mergedMeta: Record<string, unknown> = {
     ...existingMeta,
-    [BANANZA_RUNTIME_META_KEY]: {
+    [PROJECT_RUNTIME_META_KEY]: {
       ...existingRuntime,
+      mode: preferences.seederMode,
       seeder_mode: preferences.seederMode,
       sync_mode: preferences.syncMode,
       watch_enabled: preferences.watchEnabled,
     },
-    [BANANZA_META_SEEDER_MODE]: preferences.seederMode,
-    [BANANZA_META_SYNC_MODE]: preferences.syncMode,
-    [BANANZA_META_WATCH_ENABLED]: preferences.watchEnabled,
+    [PROJECT_META_RUNTIME_MODE]: preferences.seederMode,
+    [PROJECT_META_SYNC_MODE]: preferences.syncMode,
+    [PROJECT_META_WATCH_ENABLED]: preferences.watchEnabled,
   };
 
   return {
