@@ -47,6 +47,29 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
         super().__init__(db)
 
     # =========================================================================
+    # HEAD CHANGE HOOK — hide superseded versions from listings
+    # =========================================================================
+
+    async def on_head_changed(
+        self,
+        family: AssetVersionFamily,
+        old_head_id: Any,
+        new_head_id: Any,
+    ) -> None:
+        """When HEAD moves forward, hide old HEAD from gallery/search."""
+        if old_head_id and old_head_id != new_head_id:
+            old_head = await self.get_entity(old_head_id)
+            if old_head and getattr(old_head, "searchable", None) is not False:
+                old_head.searchable = False
+                await self.db.flush()
+
+        # Ensure new HEAD is visible
+        new_head = await self.get_entity(new_head_id)
+        if new_head and getattr(new_head, "searchable", None) is not True:
+            new_head.searchable = True
+            await self.db.flush()
+
+    # =========================================================================
     # ENTITY-SPECIFIC METADATA
     # =========================================================================
 
@@ -187,6 +210,49 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
         if not family_id_str:
             return None
         return await self.get_family(UUID(family_id_str))
+
+    # =========================================================================
+    # VERSION FOR UPLOADS (non-generation path, e.g. mask saves)
+    # =========================================================================
+
+    async def apply_version_for_upload(
+        self,
+        new_asset_id: int,
+        parent_asset_id: int,
+        version_message: Optional[str] = None,
+    ) -> None:
+        """
+        Chain a newly uploaded asset as a version of an existing asset.
+
+        Used for non-generation versioning (e.g. saving an edited mask).
+        Creates a family if the parent is standalone, continues the chain
+        if the parent is already versioned, then sets HEAD to the new asset.
+        """
+        parent = await self.get_entity(parent_asset_id)
+        if not parent:
+            raise ValueError(f"Parent asset {parent_asset_id} not found")
+        new_asset = await self.get_entity(new_asset_id)
+        if not new_asset:
+            raise ValueError(f"New asset {new_asset_id} not found")
+
+        # Resolve version context (same logic as generation path)
+        ctx = await self.resolve_version_intent(
+            input_assets=[parent],
+            version_intent="version",
+            version_message=version_message,
+            user_id=parent.user_id,
+        )
+
+        # Apply version metadata to the new asset
+        new_asset.version_family_id = ctx.family_id
+        new_asset.version_number = ctx.version_number
+        new_asset.parent_asset_id = ctx.parent_id
+        new_asset.version_message = ctx.version_message
+        await self.db.flush()
+
+        # Update HEAD → triggers on_head_changed (hides old HEAD)
+        if ctx.family_id:
+            await self.set_head(ctx.family_id, new_asset_id)
 
     # =========================================================================
     # FORK OPERATIONS (Asset-specific)

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -22,6 +22,12 @@ interface MaskPickerProps {
   disabled?: boolean;
 }
 
+/** Extract the numeric asset ID from an `asset:123` URL. */
+function parseAssetIdFromUrl(url: string): number | null {
+  const m = url.match(/^asset:(\d+)$/);
+  return m ? Number(m[1]) : null;
+}
+
 export function MaskPicker({
   maskLayers,
   maskUrl,
@@ -37,14 +43,23 @@ export function MaskPicker({
   const [showAll, setShowAll] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const layers = maskLayers ?? [];
+  const layers = useMemo(() => maskLayers ?? [], [maskLayers]);
   const visibleCount = layers.filter((l) => l.visible).length;
   const hasLayers = layers.length > 0;
-  // Legacy: show if old maskUrl is set but no layers
   const hasLegacyMask = !hasLayers && !!maskUrl;
   const hasSelection = hasLayers || hasLegacyMask;
 
-  const handleToggle = useCallback(() => {
+  // Build a set of asset IDs currently active in maskLayers (for toggle state).
+  const activeAssetIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const layer of layers) {
+      const id = parseAssetIdFromUrl(layer.assetUrl);
+      if (id !== null) ids.add(id);
+    }
+    return ids;
+  }, [layers]);
+
+  const handleTogglePopover = useCallback(() => {
     if (anchorRect) {
       setAnchorRect(null);
     } else {
@@ -57,12 +72,31 @@ export function MaskPicker({
     setAnchorRect(null);
   }, []);
 
-  const handleSelect = useCallback(
+  // Toggle: if this asset is already in maskLayers, remove it; otherwise add it.
+  const handleToggleAsset = useCallback(
     (asset: AssetModel) => {
-      onAddMaskLayer(asset);
-      setAnchorRect(null);
+      const existingLayer = layers.find((l) => parseAssetIdFromUrl(l.assetUrl) === asset.id);
+      if (existingLayer) {
+        onRemoveMaskLayer(existingLayer.id);
+      } else {
+        onAddMaskLayer(asset);
+      }
+      // Popover stays open — no setAnchorRect(null)
     },
-    [onAddMaskLayer],
+    [layers, onAddMaskLayer, onRemoveMaskLayer],
+  );
+
+  // Show a checkmark overlay on masks that are already toggled on.
+  const renderItemOverlay = useCallback(
+    (asset: AssetModel): ReactNode => {
+      if (!activeAssetIds.has(asset.id)) return null;
+      return (
+        <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-accent flex items-center justify-center shadow-sm z-10">
+          <Icon name="check" size={12} color="#fff" />
+        </div>
+      );
+    },
+    [activeAssetIds],
   );
 
   if (!hasMaskParam) return null;
@@ -75,23 +109,23 @@ export function MaskPicker({
 
   return (
     <div className="flex flex-col gap-1">
-      {/* Header row: add button + clear all */}
+      {/* Header row: toggle button + clear all */}
       <div className="flex items-center gap-1.5">
         <button
           ref={buttonRef}
           type="button"
-          onClick={handleToggle}
+          onClick={handleTogglePopover}
           disabled={disabled}
           className={
             hasSelection
               ? 'flex items-center gap-1.5 px-2 py-1 rounded-lg bg-accent/15 border border-accent/30 text-accent text-[11px] font-medium hover:bg-accent/25 transition-colors disabled:opacity-50'
               : 'flex items-center gap-1.5 px-2 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 text-[11px] hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors disabled:opacity-50'
           }
-          title={hasSelection ? `${visibleCount} mask${visibleCount !== 1 ? 's' : ''} active` : 'Add inpaint mask'}
+          title={hasSelection ? `${visibleCount} mask${visibleCount !== 1 ? 's' : ''} active` : 'Pick inpaint masks'}
         >
           <Icon name="paintbrush" size={11} />
-          <span>{hasSelection ? `${layers.length} Mask${layers.length !== 1 ? 's' : ''}` : 'Mask'}</span>
-          <Icon name="plus" size={9} className="ml-0.5 opacity-60" />
+          <span>{hasSelection ? `${visibleCount} Mask${visibleCount !== 1 ? 's' : ''}` : 'Masks'}</span>
+          <Icon name={isOpen ? 'chevronUp' : 'chevronDown'} size={9} className="ml-0.5 opacity-60" />
         </button>
 
         {hasSelection && (
@@ -107,11 +141,11 @@ export function MaskPicker({
         )}
       </div>
 
-      {/* Layer list */}
+      {/* Layer list (visibility toggles for already-added masks) */}
       {hasLayers && (
         <div className="flex flex-col gap-0.5 pl-1">
           {layers.map((layer) => {
-            const assetId = layer.assetUrl.match(/^asset:(\d+)$/)?.[1] ?? '?';
+            const assetId = parseAssetIdFromUrl(layer.assetUrl) ?? '?';
             return (
               <div
                 key={layer.id}
@@ -144,7 +178,7 @@ export function MaskPicker({
         </div>
       )}
 
-      {/* Mini gallery popover */}
+      {/* Toggle-mode gallery popover — stays open, click to toggle masks on/off */}
       {isOpen && (
         <MiniGalleryPopover
           anchorRect={anchorRect}
@@ -159,7 +193,8 @@ export function MaskPicker({
             showMediaType: false,
             showSort: true,
             suppressHoverActions: true,
-            onItemSelect: handleSelect,
+            onItemSelect: handleToggleAsset,
+            renderItemOverlay,
             emptyMessage: sourceAssetId && !showAll ? 'No masks for this asset.' : 'No saved masks.',
             header: sourceAssetId ? (
               <div className="flex items-center justify-between px-3 py-1 border-b border-neutral-200 dark:border-neutral-700">

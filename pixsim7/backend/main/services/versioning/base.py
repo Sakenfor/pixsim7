@@ -469,6 +469,15 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
     # HEAD MANAGEMENT — shared for entities with head_id_attr
     # =========================================================================
 
+    async def on_head_changed(
+        self,
+        family: TFamily,
+        old_head_id: Optional[Any],
+        new_head_id: Any,
+    ) -> None:
+        """Hook called when HEAD changes. Override for side effects
+        (e.g. hiding superseded versions from listings)."""
+
     async def set_head(self, family_id: UUID, entity_id: Any) -> TFamily:
         """
         Set which entity is the HEAD (current best) version.
@@ -506,10 +515,12 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
         if not family:
             raise ValueError(f"Family {family_id} not found")
 
+        old_head_id = self.get_head_id(family)
         setattr(family, self.head_id_attr, entity_id)
         family.updated_at = datetime.now(timezone.utc)
 
         await self.db.flush()
+        await self.on_head_changed(family, old_head_id, entity_id)
         return family
 
     async def elect_new_head(self, family_id: UUID) -> Optional[Any]:
@@ -540,9 +551,11 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
         if new_head_id:
             family = await self.get_family(family_id)
             if family:
+                old_head_id = self.get_head_id(family)
                 setattr(family, self.head_id_attr, new_head_id)
                 family.updated_at = datetime.now(timezone.utc)
                 await self.db.flush()
+                await self.on_head_changed(family, old_head_id, new_head_id)
 
         return new_head_id
 

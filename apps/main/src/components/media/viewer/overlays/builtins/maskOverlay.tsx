@@ -18,7 +18,6 @@ import { authService } from '@lib/auth';
 import { Icon } from '@lib/icons';
 
 import { useAssets, type AssetModel, type ViewerAsset } from '@features/assets';
-import { deleteAsset } from '@features/assets/lib/api';
 import { extractUploadError, notifyGalleryOfNewAsset } from '@features/assets/lib/uploadActions';
 import { getGenerationSettingsStore, useGenerationScopeStores, useGenerationSettingsStore } from '@features/generation';
 import {
@@ -379,14 +378,55 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     resetView,
   } = interaction;
 
-  // Create initial mask layer on mount
+  const draftStorageKey = useMemo(() => getMaskDraftStorageKey(asset), [asset]);
+  const sourceAssetId = useMemo(() => getViewerBackendAssetId(asset), [asset]);
+  const restoredDraftKeyRef = useRef<string | null>(null);
+  const persistDraftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isImportingSavedMask, setIsImportingSavedMask] = useState(false);
+
+  // Combined initialization: restore draft OR create default layer (once per asset).
+  // Uses ref guard to survive React StrictMode double-invoke.
   useEffect(() => {
-    if (state.layers.length === 0) {
+    if (restoredDraftKeyRef.current === draftStorageKey) return;
+    restoredDraftKeyRef.current = draftStorageKey;
+
+    const draft = readMaskDraft(asset);
+    if (draft && draft.layers.length > 0) {
+      // Remove any auto-created layers before restoring draft
+      for (const existing of state.layers) {
+        if (existing.type === 'mask') {
+          interactionRemoveLayer(existing.id);
+        }
+      }
+
+      // Restore layers from draft
+      for (const layerDraft of draft.layers) {
+        addLayer({
+          type: 'mask',
+          name: layerDraft.name,
+          id: layerDraft.id,
+          config: layerDraft.savedAssetId ? { savedAssetId: layerDraft.savedAssetId } : undefined,
+        });
+        if (layerDraft.elements.length > 0) {
+          updateLayer(layerDraft.id, {
+            elements: layerDraft.elements,
+            visible: layerDraft.visible,
+            opacity: layerDraft.opacity,
+          });
+        }
+      }
+      interactionSetActiveLayer(draft.activeLayerId);
+      setMode(draft.mode);
+      setBrushSize(draft.brushSize);
+      setBrushOpacity(draft.brushOpacity);
+    } else {
+      // No draft — create a single default layer
       const id = nextMaskLayerId();
       addLayer({ type: 'mask', name: 'Mask 1', id });
       interactionSetActiveLayer(id);
     }
-  }, [addLayer, interactionSetActiveLayer, state.layers.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftStorageKey]);
 
   const activeLayerId = state.activeLayerId;
 
@@ -409,12 +449,6 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     () => state.layers.some((l) => l.type === 'mask' && l.elements.length > 0),
     [state.layers],
   );
-
-  const draftStorageKey = useMemo(() => getMaskDraftStorageKey(asset), [asset]);
-  const sourceAssetId = useMemo(() => getViewerBackendAssetId(asset), [asset]);
-  const restoredDraftKeyRef = useRef<string | null>(null);
-  const persistDraftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [isImportingSavedMask, setIsImportingSavedMask] = useState(false);
 
   const maskAssetsQuery = useAssets({
     limit: 50,
@@ -523,43 +557,6 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
 
   // ── Draft persistence ──────────────────────────────────────────────
 
-  // Restore saved draft
-  useEffect(() => {
-    if (restoredDraftKeyRef.current === draftStorageKey) return;
-    restoredDraftKeyRef.current = draftStorageKey;
-
-    const draft = readMaskDraft(asset);
-    if (!draft || draft.layers.length === 0) return;
-
-    // Remove any auto-created layers before restoring draft
-    for (const existing of state.layers) {
-      if (existing.type === 'mask') {
-        interactionRemoveLayer(existing.id);
-      }
-    }
-
-    // Restore layers from draft
-    for (const layerDraft of draft.layers) {
-      addLayer({
-        type: 'mask',
-        name: layerDraft.name,
-        id: layerDraft.id,
-        config: layerDraft.savedAssetId ? { savedAssetId: layerDraft.savedAssetId } : undefined,
-      });
-      if (layerDraft.elements.length > 0) {
-        updateLayer(layerDraft.id, {
-          elements: layerDraft.elements,
-          visible: layerDraft.visible,
-          opacity: layerDraft.opacity,
-        });
-      }
-    }
-    interactionSetActiveLayer(draft.activeLayerId);
-    setMode(draft.mode);
-    setBrushSize(draft.brushSize);
-    setBrushOpacity(draft.brushOpacity);
-  }, [asset, draftStorageKey, addLayer, updateLayer, interactionRemoveLayer, interactionSetActiveLayer, setMode, setBrushSize, setBrushOpacity, state.layers]);
-
   // Persist draft (debounced)
   useEffect(() => {
     if (persistDraftTimerRef.current) {
@@ -654,6 +651,8 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
 
   // ── Composite export ───────────────────────────────────────────────
 
+  /** Tracks the last saved composite mask asset ID so subsequent saves overwrite it. */
+  const lastSavedCompositeIdRef = useRef<number | null>(null);
   const isSavingRef = useRef(false);
   const exportMask = useCallback(async () => {
     if (isSavingRef.current) return;
@@ -715,12 +714,20 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
 
       const sourceAssetIdForUpload = getViewerBackendAssetId(asset);
       const filename = buildMaskFilename(sourceAssetIdForUpload ?? asset.id);
-      const uploadContext = buildMaskUploadContext({
-        sourceAssetId: sourceAssetIdForUpload ?? undefined,
-        feature: 'mask_overlay',
-        source: 'asset_viewer',
-      });
-      uploadContext.save_target = saveTarget;
+      const uploadContext: Record<string, unknown> = {
+        ...buildMaskUploadContext({
+          sourceAssetId: sourceAssetIdForUpload ?? undefined,
+          feature: 'mask_overlay',
+          source: 'asset_viewer',
+        }),
+        save_target: saveTarget,
+      };
+
+      // If we have a previous save, chain as a version instead of creating orphan
+      if (lastSavedCompositeIdRef.current) {
+        uploadContext.version_parent_id = lastSavedCompositeIdRef.current;
+        uploadContext.version_message = 'Mask updated';
+      }
 
       const uploadResult = await uploadAsset({
         file: blob,
@@ -733,11 +740,6 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       const newAssetId = uploadResult.asset_id;
       let attachedToGeneration = false;
 
-      // Collect old saved asset IDs from layers to clean up
-      const oldSavedAssetIds = visibleLayers
-        .map((l) => l.config?.savedAssetId as number | undefined)
-        .filter((id): id is number => typeof id === 'number');
-
       if (newAssetId) {
         try {
           await notifyGalleryOfNewAsset(newAssetId);
@@ -748,22 +750,14 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         setMaskUrlInRelevantGenerationScopes(`asset:${newAssetId}`);
         attachedToGeneration = true;
 
-        // Clean up old mask assets that were overwritten
-        for (const oldId of oldSavedAssetIds) {
-          if (oldId !== newAssetId) {
-            try {
-              await deleteAsset(oldId, { delete_from_provider: false });
-            } catch {
-              // Non-critical
-            }
-          }
-        }
+        // Track so next save versions from this composite
+        lastSavedCompositeIdRef.current = newAssetId;
 
         maskAssetsQuery.reset();
         anyMaskAssetsQuery.reset();
       }
 
-      toast.success(attachedToGeneration ? 'Mask saved to library and set for generation.' : 'Mask saved to library.');
+      toast.success(attachedToGeneration ? 'Mask saved and set for generation.' : 'Mask saved to library.');
     } catch (err) {
       toast.error(extractUploadError(err, 'Failed to save mask.'));
     } finally {

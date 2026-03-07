@@ -23,7 +23,7 @@ from pixsim7.backend.main.domain.assets.upload_attribution import (
     infer_upload_method,
 )
 from pixsim7.backend.main.shared.upload_context_schema import normalize_upload_context
-from pixsim7.backend.main.api.v1.assets_upload_helper import prepare_upload
+from pixsim7.backend.main.api.v1.assets_upload_helper import prepare_upload, resolve_upload_checks
 from pixsim_logging import get_logger
 
 router = APIRouter(tags=["assets-upload"])
@@ -192,8 +192,7 @@ async def upload_asset_to_provider(
     ext = os.path.splitext(file.filename or "upload.bin")[1] or (
         ".mp4" if media_type == MediaType.VIDEO else ".jpg"
     )
-    user_prefs = user.preferences if isinstance(user.preferences, dict) else {}
-    skip_similar = bool(user_prefs.get("skipSimilarCheck"))
+    upload_checks = resolve_upload_checks(user.preferences)
 
     prep = await prepare_upload(
         tmp_path=tmp_path,
@@ -202,7 +201,7 @@ async def upload_asset_to_provider(
         asset_service=asset_service,
         provider_id=provider_id,
         file_ext=ext,
-        skip_phash_dedup=skip_similar,
+        checks=upload_checks,
     )
 
     sha256 = prep.sha256
@@ -464,6 +463,33 @@ async def upload_asset_to_provider(
                             parent_asset_id=source_asset_id,
                             error=str(e),
                         )
+
+                # Apply versioning if version_parent_id provided in upload context
+                version_parent_id = normalized_context.get('version_parent_id') if normalized_context else None
+                if version_parent_id and new_asset:
+                    try:
+                        version_parent_id = int(version_parent_id)
+                        version_message = (normalized_context or {}).get('version_message')
+                        from pixsim7.backend.main.services.asset.versioning import AssetVersioningService
+                        versioning = AssetVersioningService(db)
+                        await versioning.apply_version_for_upload(
+                            new_asset_id=new_asset.id,
+                            parent_asset_id=version_parent_id,
+                            version_message=version_message,
+                        )
+                        await db.commit()
+                        logger.info(
+                            "asset_version_applied",
+                            new_asset_id=new_asset.id,
+                            parent_asset_id=version_parent_id,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "asset_version_failed",
+                            new_asset_id=new_asset.id,
+                            parent_asset_id=version_parent_id,
+                            error=str(e),
+                        )
         except Exception as e:
             # Non-fatal if asset creation fails; log and return upload response anyway
             logger.error(
@@ -627,9 +653,10 @@ async def upload_asset_from_url(
         shutil.copy2(tmp_path, temp_local_path)
         file_size_bytes = os.path.getsize(temp_local_path)
 
-        # Combine per-request flag with user preference
-        user_prefs = user.preferences if isinstance(user.preferences, dict) else {}
-        skip_similar = request.skip_dedup or bool(user_prefs.get("skipSimilarCheck"))
+        # Resolve checks from user prefs; per-request skip_dedup overrides phash
+        upload_checks = resolve_upload_checks(user.preferences)
+        if request.skip_dedup:
+            upload_checks.phash = False
 
         prep = await prepare_upload(
             tmp_path=temp_local_path,
@@ -638,7 +665,7 @@ async def upload_asset_from_url(
             asset_service=asset_service,
             provider_id=request.provider_id,
             file_ext=ext,
-            skip_phash_dedup=skip_similar,
+            checks=upload_checks,
         )
 
         sha256 = prep.sha256
