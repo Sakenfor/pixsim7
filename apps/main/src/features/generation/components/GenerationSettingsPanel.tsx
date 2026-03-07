@@ -20,8 +20,9 @@ import {
 } from '@features/contextHub';
 import { useGenerationWorkbench, useGenerationScopeStores, usePersistedScopeState } from '@features/generation';
 import { useCostEstimate, useProviderIdForModel, useProviderAccounts, useUnlimitedModels } from '@features/providers';
+import { providerCapabilityRegistry } from '@features/providers';
 
-import { OPERATION_METADATA } from '@/types/operations';
+import { OPERATION_METADATA, OPERATION_TYPES, type OperationType } from '@/types/operations';
 
 import type { FanoutRunOptions } from '../lib/fanoutPresets';
 
@@ -197,15 +198,26 @@ export function GenerationSettingsPanel({
             <ProviderIconButton
               providerId={providerId}
               providers={workbench.providers}
-              onSelect={(id) => setProvider(id)}
+              onSelect={(id) => {
+                setProvider(id);
+                // Auto-switch operation if current one isn't supported by the new provider
+                if (id && !providerCapabilityRegistry.supportsOperation(id, operationType)) {
+                  const fallback = OPERATION_TYPES.find(
+                    (op) => OPERATION_METADATA[op].icon && OPERATION_METADATA[op].color
+                      && providerCapabilityRegistry.supportsOperation(id, op),
+                  );
+                  if (fallback) setOperationType(fallback);
+                }
+              }}
               disabled={generating}
             />
           )}
           {showOperationType && (
             <OperationIconButton
               operationType={operationType}
-              onSelect={(op) => setOperationType(op as any)}
+              onSelect={(op) => setOperationType(op as OperationType)}
               disabled={generating}
+              providerId={inferredProviderId}
             />
           )}
           {showTargetButton && (

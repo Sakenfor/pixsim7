@@ -4,17 +4,20 @@ import { useMemo, useState, useRef } from 'react';
 
 import { Icon, IconBadge, type IconName } from '@lib/icons';
 
+import { providerCapabilityRegistry } from '@features/providers';
+
 import { OPERATION_METADATA, OPERATION_TYPES, type OperationType } from '@/types/operations';
 
 import { DROPDOWN_MENU_CLS, DROPDOWN_ITEM_CLS, useClickOutside } from './constants';
 
-/** Operations shown in the icon button picker (only those with icon + color). */
-function usePickerOperations() {
+/** Operations shown in the icon button picker, filtered by provider when set. */
+function usePickerOperations(providerId?: string) {
   return useMemo(
     () => OPERATION_TYPES
       .filter((op) => OPERATION_METADATA[op].icon && OPERATION_METADATA[op].color)
+      .filter((op) => !providerId || providerCapabilityRegistry.supportsOperation(providerId, op))
       .map((op) => ({ op, ...OPERATION_METADATA[op] })),
-    [],
+    [providerId],
   );
 }
 
@@ -23,10 +26,12 @@ export function OperationIconButton({
   operationType,
   onSelect,
   disabled,
+  providerId,
 }: {
   operationType: string;
   onSelect: (op: string) => void;
   disabled?: boolean;
+  providerId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -37,7 +42,7 @@ export function OperationIconButton({
   const color = meta?.color ?? '#6B7280';
   const label = meta?.label ?? operationType;
 
-  const pickerOps = usePickerOperations();
+  const pickerOps = usePickerOperations(providerId);
 
   return (
     <div ref={ref} className="relative">

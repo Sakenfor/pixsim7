@@ -119,10 +119,21 @@ export function closeFloatingPanelWithReturnToOrigin(panelId: string): boolean {
     typeof origin?.sourceGroupId === "string" && origin.sourceGroupId.length > 0
       ? origin.sourceGroupId
       : undefined;
-  const targetInstanceId =
+  // sourceInstanceId is the scope-level ID (dockviewId:panelId). Extract the
+  // original dockview panel ID by stripping the dockview prefix so we don't
+  // create a double-prefixed instance when re-adding to the same dockview.
+  const rawSourceInstanceId =
     typeof origin?.sourceInstanceId === "string" && origin.sourceInstanceId.length > 0
       ? origin.sourceInstanceId
       : undefined;
+  const targetInstanceId = (() => {
+    if (!rawSourceInstanceId) return undefined;
+    const prefix = `${sourceDockviewId}:`;
+    if (rawSourceInstanceId.startsWith(prefix)) {
+      return rawSourceInstanceId.slice(prefix.length);
+    }
+    return rawSourceInstanceId;
+  })();
   const sourceGroup =
     sourceGroupId && typeof (host.api as any).getGroup === "function"
       ? (host.api as any).getGroup(sourceGroupId)
