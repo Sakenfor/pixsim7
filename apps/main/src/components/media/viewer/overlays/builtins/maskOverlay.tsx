@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE_URL } from '@lib/api';
 import { uploadAsset } from '@lib/api/upload';
 import { authService } from '@lib/auth';
-import { Icon } from '@lib/icons';
+import { VersionNavigator, useVersions } from '@lib/ui/versioning';
 
 import { useAssets, type AssetModel, type ViewerAsset } from '@features/assets';
 import { extractUploadError, notifyGalleryOfNewAsset } from '@features/assets/lib/uploadActions';
@@ -40,6 +40,9 @@ import {
 } from '@/components/interactive-surface';
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
+
+import { LayerPanel } from '../shared/LayerPanel';
+import { useOverlayLayerStore } from '../shared/overlayLayerStore';
 import {
   OverlaySidePanel,
   SideSection,
@@ -420,7 +423,12 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       setBrushSize(draft.brushSize);
       setBrushOpacity(draft.brushOpacity);
     } else {
-      // No draft — create a single default layer
+      // No draft — remove any stale layers from previous asset, then create default
+      for (const existing of state.layers) {
+        if (existing.type === 'mask') {
+          interactionRemoveLayer(existing.id);
+        }
+      }
       const id = nextMaskLayerId();
       addLayer({ type: 'mask', name: 'Mask 1', id });
       interactionSetActiveLayer(id);
@@ -615,6 +623,15 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     });
   }, [state.mode, state.tool.size, state.tool.opacity, canUndo, canRedo, hasContent, currentZoom, isZoomed, layerInfos, activeLayerId, store]);
 
+  // Sync layer state to shared overlay layer store (for default sidebar)
+  useEffect(() => {
+    useOverlayLayerStore.getState().syncLayers(layerInfos, activeLayerId, true);
+  }, [layerInfos, activeLayerId]);
+
+  useEffect(() => {
+    return () => useOverlayLayerStore.getState().clearLayers();
+  }, []);
+
   // ── Ref-based callback bridge ──────────────────────────────────────
 
   const callbacksRef = useRef({
@@ -787,6 +804,17 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       importSavedMask: (id) => callbacksRef.current.importSavedMask(id),
     });
   }, [store]);
+
+  // Register layer callbacks into shared overlay layer store
+  useEffect(() => {
+    useOverlayLayerStore.getState().registerLayerCallbacks({
+      addLayer: () => callbacksRef.current.addLayer(),
+      removeLayer: (id) => callbacksRef.current.removeLayer(id),
+      setActiveLayer: (id) => callbacksRef.current.setActiveLayer(id),
+      toggleLayerVisibility: (id) => callbacksRef.current.toggleLayerVisibility(id),
+      renameLayer: (id, name) => callbacksRef.current.renameLayer(id, name),
+    });
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1005,9 +1033,6 @@ function MaskLayersPanel({
 
   const activeLayer = layers.find((l) => l.id === activeLayerId) ?? null;
 
-  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-
   const sortedMasks = useMemo(
     () => [...masks].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
     [masks],
@@ -1024,106 +1049,29 @@ function MaskLayersPanel({
     return created ? `#${mask.id} • ${created}` : `#${mask.id}`;
   }, []);
 
-  const handleStartRename = useCallback((layer: MaskLayerInfo) => {
-    setEditingLayerId(layer.id);
-    setEditName(layer.name);
-  }, []);
-
-  const handleFinishRename = useCallback(() => {
-    if (editingLayerId && editName.trim()) {
-      renameLayer(editingLayerId, editName.trim());
-    }
-    setEditingLayerId(null);
-  }, [editingLayerId, editName, renameLayer]);
+  const renderLayerExtra = useCallback((layer: MaskLayerInfo) => {
+    if (!layer.savedAssetId) return null;
+    return (
+      <LayerVersionNavigator
+        assetId={layer.savedAssetId}
+        onVersionSelect={importSavedMask}
+      />
+    );
+  }, [importSavedMask]);
 
   return (
     <OverlaySidePanel className="w-40">
       <SideSection label="Layers">
-        <div className="flex flex-col gap-0.5">
-          {layers.map((layer) => {
-            const isActive = layer.id === activeLayerId;
-            const isEditing = editingLayerId === layer.id;
-
-            return (
-              <div
-                key={layer.id}
-                className={`flex items-center gap-1 px-1.5 py-1 rounded cursor-pointer transition-colors ${
-                  isActive
-                    ? 'bg-accent/20 border border-accent/40'
-                    : 'hover:bg-surface-elevated border border-transparent'
-                }`}
-                onClick={() => setActiveLayer(layer.id)}
-              >
-                {/* Visibility toggle */}
-                <button
-                  className={`flex-shrink-0 w-5 h-5 flex items-center justify-center rounded transition-colors ${
-                    layer.visible ? 'text-th-secondary' : 'text-th-muted opacity-40'
-                  }`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleLayerVisibility(layer.id);
-                  }}
-                  title={layer.visible ? 'Hide layer' : 'Show layer'}
-                >
-                  <Icon name={layer.visible ? 'eye' : 'eyeOff'} size={11} />
-                </button>
-
-                {/* Layer name */}
-                {isEditing ? (
-                  <input
-                    className="flex-1 min-w-0 bg-transparent border-b border-accent text-[11px] text-th-primary outline-none px-0.5"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    onBlur={handleFinishRename}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleFinishRename();
-                      if (e.key === 'Escape') setEditingLayerId(null);
-                    }}
-                    autoFocus
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  <span
-                    className={`flex-1 min-w-0 truncate text-[11px] ${
-                      layer.visible ? 'text-th-secondary' : 'text-th-muted line-through'
-                    }`}
-                    onDoubleClick={(e) => {
-                      e.stopPropagation();
-                      handleStartRename(layer);
-                    }}
-                    title={`${layer.name}${layer.hasContent ? '' : ' (empty)'}`}
-                  >
-                    {layer.name}
-                  </span>
-                )}
-
-                {/* Content indicator */}
-                {layer.hasContent && (
-                  <div className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-accent/60" title="Has content" />
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* + / - buttons */}
-        <div className="flex items-center gap-1 px-0.5">
-          <button
-            onClick={storeAddLayer}
-            className="flex items-center justify-center w-7 h-6 rounded bg-th/10 hover:bg-th/15 text-th-secondary transition-colors"
-            title="Add layer"
-          >
-            <Icon name="plus" size={12} />
-          </button>
-          <button
-            onClick={() => activeLayerId && storeRemoveLayer(activeLayerId)}
-            disabled={layers.length <= 1}
-            className="flex items-center justify-center w-7 h-6 rounded bg-th/10 hover:bg-th/15 text-th-secondary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Remove active layer"
-          >
-            <Icon name="minus" size={12} />
-          </button>
-        </div>
+        <LayerPanel
+          layers={layers}
+          activeLayerId={activeLayerId}
+          onSelectLayer={setActiveLayer}
+          onToggleVisibility={toggleLayerVisibility}
+          onRenameLayer={renameLayer}
+          onAddLayer={storeAddLayer}
+          onRemoveLayer={storeRemoveLayer}
+          renderLayerExtra={renderLayerExtra}
+        />
       </SideSection>
 
       <SideDivider />
@@ -1194,5 +1142,29 @@ function MaskLayersPanel({
         </select>
       </SideSection>
     </OverlaySidePanel>
+  );
+}
+
+// ── LayerVersionNavigator ─────────────────────────────────────────────
+
+interface LayerVersionNavigatorProps {
+  assetId: number;
+  onVersionSelect: (assetId: number) => void;
+}
+
+function LayerVersionNavigator({ assetId, onVersionSelect }: LayerVersionNavigatorProps) {
+  const { versions, loading } = useVersions('asset', assetId);
+
+  if (loading || versions.length <= 1) return null;
+
+  return (
+    <div className="pl-6" onClick={(e) => e.stopPropagation()}>
+      <VersionNavigator
+        versions={versions}
+        currentEntityId={assetId}
+        onSelect={(entry) => onVersionSelect(Number(entry.entityId))}
+        compact
+      />
+    </div>
   );
 }

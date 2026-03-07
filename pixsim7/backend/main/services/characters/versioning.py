@@ -214,9 +214,12 @@ class CharacterVersioningService(
         await self.db.flush()
 
         # Update family HEAD
+        old_head_id = family.head_character_id
         family.head_character_id = new_character.id
         family.updated_at = now
         await self.db.flush()
+
+        await self.on_head_changed(family, old_head_id, new_character.id)
 
         return new_character
 

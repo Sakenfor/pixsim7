@@ -15,7 +15,7 @@ import { useAssetRegionStore, useAssetViewerOverlayStore } from '@features/media
 
 import { useOverlayWidgetsForAsset } from '../../hooks/useOverlayWidgetsForAsset';
 import { useProvideRegionAnnotations } from '../capabilities';
-import { useMediaOverlayHost } from '../overlays';
+import { useMediaOverlayHost, DefaultLayerSidebar } from '../overlays';
 import type { ViewerPanelContext } from '../types';
 
 import { useFrameCapture, useOverlayShortcuts, useViewerContext } from './hooks';
@@ -268,14 +268,16 @@ export function MediaPanel({ context }: MediaPanelProps) {
           </div>
         )}
 
-        {ActiveSidebar && (
+        {ActiveSidebar ? (
           <ActiveSidebar
             asset={asset}
             settings={settings}
             onCaptureFrame={captureFrame}
             captureDisabled={isCapturing}
           />
-        )}
+        ) : activeOverlay ? (
+          <DefaultLayerSidebar />
+        ) : null}
       </div>
 
       <MediaControlBar

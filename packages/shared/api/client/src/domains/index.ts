@@ -30,6 +30,12 @@ export { createPromptsApi } from './prompts';
 export { createProvidersApi } from './providers';
 export { createTagsApi } from './tags';
 export { createUserPreferencesApi } from './userPreferences';
+export {
+  createAssetVersioningApi,
+  createCharacterVersioningApi,
+  createPromptVersioningApi,
+  createVersioningApis,
+} from './versioning';
 
 export type {
   AccountResponse,
@@ -329,9 +335,23 @@ export type {
   CodegenTasksResponse,
   CodegenRunRequest,
   CodegenRunResponse,
+  MigrationScope,
+  MigrationScopeDetail,
+  MigrationStatusResponse,
+  MigrationRunRequest,
+  MigrationRunResponse,
+  MigrationHeadResponse,
 } from './codegen';
 
 // ===== Providers Types =====
+// ===== Versioning Types =====
+export type {
+  VersionEntry,
+  VersionFamilyInfo,
+  VersioningAdapter,
+  VersioningApis,
+} from './versioning';
+
 export type {
   ProviderSpec,
   ProviderAccount,

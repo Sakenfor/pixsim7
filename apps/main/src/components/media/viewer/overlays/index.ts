@@ -26,3 +26,9 @@ export {
 } from './styles';
 export { findActiveRegion, getRegionPixelDimensions } from './utils';
 export { useRegionStoreSelectors, type RegionStoreSelectors } from './useRegionStore';
+
+// Shared layer system
+export { LayerPanel, type LayerInfo, type LayerPanelProps } from './shared/LayerPanel';
+export { DefaultLayerSidebar } from './shared/DefaultLayerSidebar';
+export { useOverlayLayerStore } from './shared/overlayLayerStore';
+export type { OverlayLayerCallbacks, OverlayLayerStoreState } from './shared/overlayLayerStore';
