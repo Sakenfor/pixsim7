@@ -35,8 +35,11 @@ class LogEntry(SQLModel, table=True):
     request_id: Optional[str] = Field(default=None, index=True, max_length=100, description="Request ID for API calls")
     job_id: Optional[int] = Field(default=None, index=True, description="Job ID for job processing")
     submission_id: Optional[int] = Field(default=None, index=True, description="Provider submission ID")
-    artifact_id: Optional[int] = Field(default=None, index=True, description="Generation artifact ID")
+    generation_id: Optional[int] = Field(default=None, index=True, description="Generation ID")
     provider_job_id: Optional[str] = Field(default=None, index=True, max_length=255, description="Provider's job ID")
+
+    # Domain (business domain for filtering)
+    domain: Optional[str] = Field(default=None, index=True, max_length=30, description="Business domain (generation, account, provider, cron, system)")
 
     # Context fields
     provider_id: Optional[str] = Field(default=None, index=True, max_length=50, description="Provider identifier")
@@ -70,6 +73,7 @@ class LogEntry(SQLModel, table=True):
         Index("idx_logs_provider_timestamp", "provider_id", "timestamp"),
         Index("idx_logs_stage_timestamp", "stage", "timestamp"),
         Index("idx_logs_channel_timestamp", "channel", "timestamp"),
+        Index("idx_logs_domain_timestamp", "domain", "timestamp"),
     )
 
     class Config:
@@ -84,7 +88,7 @@ class LogEntry(SQLModel, table=True):
                 "job_id": 123,
                 "operation_type": "text_to_video",
                 "provider_id": "pixverse",
-                "artifact_id": 789,
+                "generation_id": 789,
                 "submission_id": 321,
                 "stage": "provider:submit",
                 "provider_job_id": "pv_job_abc",

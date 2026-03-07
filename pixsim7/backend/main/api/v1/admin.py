@@ -907,3 +907,78 @@ async def update_llm_config(
         llm_cache_ttl=settings.llm_cache_ttl,
         llm_cache_freshness=settings.llm_cache_freshness,
     )
+
+
+# ===== LOGGING CONFIG (DOMAIN LEVEL OVERRIDES) =====
+
+_VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "OFF"}
+
+
+class LoggingConfigResponse(BaseModel):
+    """Current per-domain log level configuration."""
+    log_domain_levels: dict = Field(
+        default_factory=dict,
+        description="Per-domain log level overrides. Keys: generation, account, provider, cron, system. Values: DEBUG/INFO/WARNING/ERROR/OFF.",
+    )
+
+
+class LoggingConfigUpdate(BaseModel):
+    """Partial update for logging config."""
+    log_domain_levels: dict | None = Field(
+        None,
+        description="Per-domain log level overrides. Keys: generation, account, provider, cron, system. Values: DEBUG/INFO/WARNING/ERROR/OFF.",
+    )
+
+
+@router.get("/admin/logging/config", response_model=LoggingConfigResponse)
+async def get_logging_config(user: CurrentUser):
+    """Get current per-domain logging config (any authenticated user)."""
+    from pixsim_logging.domains import get_domain_config_display
+
+    return LoggingConfigResponse(log_domain_levels=get_domain_config_display())
+
+
+@router.patch("/admin/logging/config", response_model=LoggingConfigResponse)
+async def update_logging_config(
+    body: LoggingConfigUpdate,
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+):
+    """Update per-domain log level config (admin only, persisted).
+
+    Example body::
+
+        {"log_domain_levels": {"generation": "OFF", "account": "DEBUG"}}
+
+    Pass an empty dict to clear all overrides.
+    """
+    from pixsim7.backend.main.services.system_config import patch_config, apply_namespace
+    from pixsim_logging.domains import get_domain_config_display, KNOWN_DOMAINS
+
+    patch_data = body.model_dump(exclude_none=True)
+    if patch_data:
+        levels = patch_data.get("log_domain_levels", {})
+        # Validate keys and values
+        for domain, level in levels.items():
+            if domain not in KNOWN_DOMAINS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unknown domain '{domain}'. Valid: {sorted(KNOWN_DOMAINS)}",
+                )
+            if level.upper() not in _VALID_LOG_LEVELS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid level '{level}' for domain '{domain}'. Valid: {sorted(_VALID_LOG_LEVELS)}",
+                )
+
+        row = await patch_config(db, "logging", patch_data, admin.id)
+        apply_namespace("logging", row.data)
+
+    active = get_domain_config_display()
+    logger.info(
+        "Logging config updated by admin %s: domains=%s",
+        admin.username,
+        active,
+    )
+
+    return LoggingConfigResponse(log_domain_levels=active)

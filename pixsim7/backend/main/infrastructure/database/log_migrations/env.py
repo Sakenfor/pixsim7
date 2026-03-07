@@ -15,8 +15,9 @@ from alembic import context
 from sqlmodel import SQLModel
 from pixsim7.backend.main.shared.config import settings
 
-# Import LogEntry so its table is registered in SQLModel.metadata
+# Import log-related models so their tables are registered in SQLModel.metadata
 from pixsim7.backend.main.domain.log_entry import LogEntry  # noqa: F401
+from pixsim7.backend.main.domain.account_event import AccountEvent  # noqa: F401
 
 # Alembic Config object
 config = context.config
@@ -35,7 +36,7 @@ target_metadata = SQLModel.metadata
 VERSION_TABLE = "alembic_version_logs"
 
 # Only manage log-related tables
-LOG_TABLES = {"log_entries"}
+LOG_TABLES = {"log_entries", "account_events"}
 
 
 def include_object(obj, name, type_, reflected, compare_to):

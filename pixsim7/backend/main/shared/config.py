@@ -394,6 +394,15 @@ class Settings(BaseSettings):
         default="INFO",
         description="Logging level: DEBUG, INFO, WARNING, ERROR"
     )
+    log_domain_levels: dict = Field(
+        default_factory=dict,
+        description=(
+            "Per-domain log levels. Keys are domain names "
+            "(generation, account, provider, cron, system), "
+            "values are level strings (DEBUG, INFO, WARNING, ERROR, OFF). "
+            "Missing domains inherit log_level."
+        ),
+    )
 
     # ===== AUTOMATION / ANDROID =====
     adb_path: str = Field(

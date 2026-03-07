@@ -95,3 +95,20 @@ def _apply_llm_config(data: dict) -> None:
 
 
 register_applier("llm", _apply_llm_config)
+
+
+# ---------------------------------------------------------------------------
+# "logging" — per-domain log level overrides
+# ---------------------------------------------------------------------------
+
+def _apply_logging_config(data: dict) -> None:
+    from pixsim7.backend.main.shared.config import settings
+    from pixsim_logging.domains import update_domain_config
+
+    if "log_domain_levels" in data:
+        levels = data["log_domain_levels"]
+        settings.log_domain_levels = levels
+        update_domain_config(levels)
+
+
+register_applier("logging", _apply_logging_config)

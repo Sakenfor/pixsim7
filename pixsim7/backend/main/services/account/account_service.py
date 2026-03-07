@@ -7,8 +7,10 @@ from typing import Optional, Dict
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from pixsim_logging import get_logger
+from pixsim7.backend.main.services.account_event_service import AccountEventService
 
 from pixsim7.backend.main.domain import AccountStatus, Generation, GenerationStatus
 from pixsim7.backend.main.domain.providers import ProviderAccount, ProviderCredit
@@ -31,6 +33,7 @@ logger = get_logger()
 # was set by a concurrent-limit rejection and is stale once a slot frees.
 # Auth cooldowns (300 s) are well above this and preserved.
 _MAX_CONCURRENT_COOLDOWN_SECONDS = 30
+_ACCOUNTLESS_CREDIT_FLOOR = 1_000_000
 
 
 class AccountService:
@@ -57,6 +60,132 @@ class AccountService:
         if (provider_id or "").strip().lower() == "remaker":
             return 1
         return 2
+
+    @staticmethod
+    def _accountless_email(provider_id: str) -> str:
+        normalized = "".join(
+            ch if ch.isalnum() else "-"
+            for ch in (provider_id or "").strip().lower()
+        ).strip("-")
+        if not normalized:
+            normalized = "provider"
+        return f"accountless+{normalized}@pixsim.local"
+
+    @staticmethod
+    def _lookup_provider_manifest(provider_id: str) -> tuple[bool, list[str]]:
+        """
+        Return (requires_credentials, credit_types) from provider manifest.
+
+        Unknown providers default to requires_credentials=True so callers
+        keep existing behavior.
+        """
+        from pixsim7.backend.main.domain.providers.registry import registry
+
+        try:
+            provider = registry.get(provider_id)
+        except Exception:
+            return True, []
+
+        manifest = provider.get_manifest() if hasattr(provider, "get_manifest") else None
+        if manifest is None:
+            return True, []
+
+        requires_credentials = bool(getattr(manifest, "requires_credentials", True))
+        raw_credit_types = getattr(manifest, "credit_types", None) or []
+        credit_types = [item for item in raw_credit_types if isinstance(item, str) and item.strip()]
+        return requires_credentials, credit_types
+
+    async def _ensure_accountless_shared_account(
+        self,
+        provider_id: str,
+    ) -> ProviderAccount | None:
+        """
+        Ensure a shared system account exists for no-credentials providers.
+
+        This keeps existing worker/account flows intact while enabling local
+        providers to run without manual account setup.
+        """
+        requires_credentials, credit_types = self._lookup_provider_manifest(provider_id)
+        if requires_credentials:
+            return None
+
+        account_email = self._accountless_email(provider_id)
+
+        def _account_query():
+            return select(ProviderAccount).where(
+                ProviderAccount.provider_id == provider_id,
+                ProviderAccount.user_id.is_(None),
+                ProviderAccount.email == account_email,
+            )
+
+        result = await self.db.execute(_account_query())
+        account = result.scalar_one_or_none()
+
+        if not account:
+            account = ProviderAccount(
+                user_id=None,
+                email=account_email,
+                provider_id=provider_id,
+                is_private=False,
+                nickname="Accountless System Account",
+                status=AccountStatus.ACTIVE,
+                max_concurrent_jobs=self._default_max_concurrent_jobs(provider_id),
+                provider_metadata={
+                    "accountless": True,
+                    "managed_by": "system",
+                },
+                created_at=datetime.now(timezone.utc),
+            )
+            self.db.add(account)
+            try:
+                await self.db.flush()
+            except IntegrityError:
+                # Another worker created it concurrently.
+                await self.db.rollback()
+                result = await self.db.execute(_account_query())
+                account = result.scalar_one_or_none()
+                if not account:
+                    return None
+
+        # Normalize fields if a legacy/system row already exists.
+        account.is_private = False
+        if not account.max_concurrent_jobs or account.max_concurrent_jobs < 1:
+            account.max_concurrent_jobs = self._default_max_concurrent_jobs(provider_id)
+        if account.status not in (AccountStatus.ACTIVE, AccountStatus.EXHAUSTED):
+            account.status = AccountStatus.ACTIVE
+        account.cooldown_until = None
+
+        metadata = dict(account.provider_metadata or {})
+        metadata["accountless"] = True
+        metadata.setdefault("managed_by", "system")
+        account.provider_metadata = metadata
+
+        await self.db.flush()
+
+        credits = await self.get_credits(account.id)
+        has_positive_credits = any(int(amount or 0) > 0 for amount in credits.values())
+        if not has_positive_credits:
+            credit_type = credit_types[0] if credit_types else "web"
+            await self.set_credit(account.id, credit_type, _ACCOUNTLESS_CREDIT_FLOOR)
+
+        # Ensure account is runnable after credit seeding.
+        if account.status != AccountStatus.ACTIVE:
+            account.status = AccountStatus.ACTIVE
+            await self.db.flush()
+
+        return account
+
+    async def reserve_or_create_accountless_account(
+        self,
+        provider_id: str,
+    ) -> ProviderAccount | None:
+        """
+        Reserve a shared accountless account for providers that don't need creds.
+        """
+        account = await self._ensure_accountless_shared_account(provider_id)
+        if account is None:
+            return None
+        return await self.reserve_account_if_available(account.id)
 
     # ===== ACCOUNT SELECTION =====
 
@@ -139,6 +268,17 @@ class AccountService:
             available_accounts.append(account)
 
         if not available_accounts:
+            # No regular account available: for providers that explicitly do not
+            # require credentials, fall back to a managed shared system account.
+            accountless = await self._ensure_accountless_shared_account(provider_id)
+            if accountless and accountless.is_operationally_available():
+                if required_credits is None or accountless.has_sufficient_credits(required_credits):
+                    logger.info(
+                        "accountless_account_selected",
+                        provider_id=provider_id,
+                        account_id=accountless.id,
+                    )
+                    return accountless
             raise NoAccountAvailableError(provider_id)
 
         # Return first match (already sorted by priority, last_used)
@@ -280,6 +420,15 @@ class AccountService:
         account = result.scalar_one_or_none()
 
         if not account:
+            accountless_reserved = await self.reserve_or_create_accountless_account(provider_id)
+            if accountless_reserved is not None:
+                logger.info(
+                    "accountless_account_reserved",
+                    provider_id=provider_id,
+                    account_id=accountless_reserved.id,
+                )
+                return accountless_reserved
+
             # Log why we couldn't find an account for debugging
             all_accounts_query = select(ProviderAccount).where(
                 ProviderAccount.provider_id == provider_id,
@@ -401,10 +550,24 @@ class AccountService:
                 and int(account.current_processing_jobs or 0) < int(account.max_concurrent_jobs or 0)
                 and not cooldown_active
             ):
-                free_slots = max(
-                    0,
-                    int(account.max_concurrent_jobs or 0) - int(account.current_processing_jobs or 0),
-                )
+                current_jobs = int(account.current_processing_jobs or 0)
+                cap = int(account.max_concurrent_jobs or 0)
+
+                # Respect learned adaptive cap when it's lower than the
+                # configured DB cap.  This prevents waking more pinned
+                # generations than the provider can actually handle, which
+                # otherwise causes reserve→adaptive-defer→release cascades.
+                try:
+                    from pixsim7.backend.main.workers.worker_concurrency import (
+                        get_account_effective_cap_hint,
+                    )
+                    effective_hint = await get_account_effective_cap_hint(account.id)
+                    if effective_hint is not None and effective_hint < cap:
+                        cap = effective_hint
+                except Exception:
+                    pass  # fall back to configured cap
+
+                free_slots = max(0, cap - current_jobs)
                 if free_slots <= 0:
                     return account
                 result = await self.db.execute(
@@ -541,6 +704,12 @@ class AccountService:
             "account_marked_exhausted",
             account_id=account_id,
             email=account.email,
+            provider_id=account.provider_id,
+            previous_status=previous_status.value if previous_status else None,
+        )
+        AccountEventService.record(
+            "marked_exhausted",
+            account_id,
             provider_id=account.provider_id,
             previous_status=previous_status.value if previous_status else None,
         )
@@ -713,6 +882,11 @@ class AccountService:
                     "provider_id": account.provider_id
                 }
             )
+            AccountEventService.record(
+                "cooldown_expired",
+                account.id,
+                provider_id=account.provider_id,
+            )
 
         # Simple check: does account have ANY credits at all?
         has_any_credits = account.has_any_credits()
@@ -737,6 +911,12 @@ class AccountService:
                     "provider_id": account.provider_id,
                     "total_credits": account.get_total_credits()
                 }
+            )
+            AccountEventService.record(
+                "reactivated",
+                account.id,
+                provider_id=account.provider_id,
+                previous_status="exhausted",
             )
 
         await self.db.flush()
@@ -790,6 +970,7 @@ class AccountService:
                         "provider_id": account.provider_id
                     }
                 )
+                AccountEventService.record("cooldown_expired", account.id, provider_id=account.provider_id)
 
             # Check if status matches credit state
             has_credits = account.has_any_credits()
@@ -807,6 +988,7 @@ class AccountService:
                         "total_credits": account.get_total_credits()
                     }
                 )
+                AccountEventService.record("reactivated", account.id, provider_id=account.provider_id, previous_status="exhausted")
             elif not has_credits and account.status == AccountStatus.ACTIVE:
                 # No credits but marked active - mark exhausted
                 account.status = AccountStatus.EXHAUSTED

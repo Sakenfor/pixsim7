@@ -91,6 +91,7 @@ from .scene import Scene, SceneAsset, SceneConnection
 
 # Logging models (Phase 6)
 from .log_entry import LogEntry
+from .account_event import AccountEvent, AccountEventType
 
 # Prompt domain (Phase 7)
 from .prompt import (
@@ -150,6 +151,8 @@ __all__ = [
     "SceneConnection",
     # Logging models
     "LogEntry",
+    "AccountEvent",
+    "AccountEventType",
     # Prompt domain
     "PromptFamily",
     "PromptVersion",

@@ -74,6 +74,7 @@ def configure_logging(service_name: str, *, json: bool | None = None) -> structl
         structlog.contextvars.merge_contextvars,  # Merge context from contextvars (for request_id, etc.)
         structlog.processors.TimeStamper(fmt="iso", key="timestamp"),
         structlog.processors.add_log_level,
+        _domain_filter_processor,  # Per-domain log level filtering (PIXSIM_LOG_DOMAINS)
         _path_filter_processor,  # Filter noisy paths (health checks) BEFORE other processing
         _sampling_processor,
         _redaction_processor,
@@ -209,6 +210,10 @@ def get_logger() -> structlog.stdlib.BoundLogger:
 
 
 # ===== Processors =====
+
+# Import domain filter processor
+from .domains import _domain_filter_processor  # noqa: E402
+
 
 def _redaction_processor(logger, method_name: str, event_dict: dict[str, Any]):
     for key in list(event_dict.keys()):

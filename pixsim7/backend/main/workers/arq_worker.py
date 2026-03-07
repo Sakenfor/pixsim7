@@ -34,7 +34,8 @@ from pixsim7.backend.main.infrastructure.queue import (
     GENERATION_RETRY_QUEUE_NAME,
 )
 from pixsim7.backend.main.shared.debug import load_global_debug_from_env
-from pixsim_logging import configure_logging, configure_stdlib_root_logger
+from pixsim_logging import configure_logging, configure_stdlib_root_logger, bind_domain_context
+from pixsim7.backend.main.services.account_event_service import AccountEventService
 import logging as stdlib_logging
 from pixsim7.backend.main.infrastructure.events.redis_bridge import (
     start_event_bus_bridge,
@@ -42,7 +43,7 @@ from pixsim7.backend.main.infrastructure.events.redis_bridge import (
 )
 
 # Configure structured logging and optional ingestion via env
-logger = configure_logging("worker").bind(channel="system")
+logger = configure_logging("worker").bind(channel="system", domain="system")
 configure_stdlib_root_logger()
 
 
@@ -83,6 +84,9 @@ async def startup(ctx: dict) -> None:
     Called once when the worker starts.
     Initialize any shared resources here.
     """
+    # Initialize account event satellite handler
+    AccountEventService.initialize()
+
     # Initialize health tracker
     health = get_health_tracker()
 
@@ -161,6 +165,7 @@ async def shutdown(ctx: dict) -> None:
     """
     global _event_bridge
     logger.info("worker_shutdown", msg="PixSim7 ARQ Worker Shutting Down")
+    AccountEventService.shutdown()
     if _event_bridge:
         await stop_event_bus_bridge()
         _event_bridge = None
@@ -169,6 +174,7 @@ async def shutdown(ctx: dict) -> None:
 async def retry_startup(ctx: dict) -> None:
     """Startup for generation retry worker (no cron/bootstrap side effects)."""
     global _retry_event_bridge
+    AccountEventService.initialize()
     logger.info("worker_start", msg="PixSim7 Generation Retry Worker Starting")
 
     debug_flags = load_global_debug_from_env()
@@ -188,6 +194,7 @@ async def retry_shutdown(ctx: dict) -> None:
     """Shutdown for generation retry worker."""
     global _retry_event_bridge
     logger.info("worker_shutdown", msg="PixSim7 Generation Retry Worker Shutting Down")
+    AccountEventService.shutdown()
     if _retry_event_bridge:
         await stop_event_bus_bridge()
         _retry_event_bridge = None

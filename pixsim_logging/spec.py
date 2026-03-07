@@ -11,10 +11,11 @@ COMMON_FIELDS = [
     "msg",
     "service",
     "env",
+    "domain",
     "request_id",
     "job_id",
     "submission_id",
-    "artifact_id",
+    "generation_id",
     "provider_job_id",
     "provider_id",
     "operation_type",
@@ -27,6 +28,8 @@ COMMON_FIELDS = [
     "error_type",
     "created_at",
 ]
+
+DOMAINS = ["generation", "account", "provider", "cron", "system"]
 
 # Stage taxonomy (pipeline + provider lifecycle)
 STAGES = [
@@ -67,13 +70,18 @@ def bind_job_context(logger, job_id: int | None = None, operation_type: str | No
     return logger.bind(**ctx)
 
 
-def bind_artifact_context(logger, artifact_id: int | None = None, submission_id: int | None = None):
+def bind_generation_context(logger, generation_id: int | None = None, submission_id: int | None = None):
     ctx = {}
-    if artifact_id is not None:
-        ctx["artifact_id"] = artifact_id
+    if generation_id is not None:
+        ctx["generation_id"] = generation_id
     if submission_id is not None:
         ctx["submission_id"] = submission_id
     return logger.bind(**ctx)
+
+
+def bind_domain_context(logger, domain: str):
+    """Bind a business domain to the logger for domain-level filtering."""
+    return logger.bind(domain=domain)
 
 
 def ensure_valid_stage(stage: str) -> str:

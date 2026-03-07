@@ -292,7 +292,7 @@ class LogService:
         # Known columns from LogEntry model
         known_cols: Set[str] = {
             "id", "timestamp", "level", "service", "env", "msg", "request_id",
-            "job_id", "submission_id", "artifact_id", "provider_job_id",
+            "job_id", "submission_id", "generation_id", "provider_job_id",
             "provider_id", "operation_type", "stage", "channel", "user_id", "error",
             "error_type", "duration_ms", "attempt", "extra", "created_at"
         }
@@ -325,6 +325,57 @@ class LogService:
             "dynamic": sorted(list(dynamic_keys)),
             "count": len(rows)
         }
+
+    async def query_account_events(
+        self,
+        *,
+        account_id: Optional[int] = None,
+        event_type: Optional[str] = None,
+        provider_id: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[List[Dict[str, Any]], int]:
+        """Query the account_events satellite table.
+
+        Returns (rows, total_count).  Uses raw SQL since the table may not
+        be managed by the ORM session.
+        """
+        where_clauses: List[str] = []
+        params: Dict[str, Any] = {"limit": limit, "offset": offset}
+
+        if account_id is not None:
+            where_clauses.append("account_id = :account_id")
+            params["account_id"] = account_id
+        if event_type:
+            where_clauses.append("event_type = :event_type")
+            params["event_type"] = event_type
+        if provider_id:
+            where_clauses.append("provider_id = :provider_id")
+            params["provider_id"] = provider_id
+        if start_time:
+            where_clauses.append("timestamp >= :start_time")
+            params["start_time"] = start_time
+        if end_time:
+            where_clauses.append("timestamp <= :end_time")
+            params["end_time"] = end_time
+
+        where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+        count_sql = text(f"SELECT count(*) FROM account_events {where_sql}")
+        count_result = await self.db.execute(count_sql, params)
+        total = count_result.scalar_one()
+
+        data_sql = text(
+            f"SELECT * FROM account_events {where_sql} "
+            f"ORDER BY timestamp DESC LIMIT :limit OFFSET :offset"
+        )
+        rows_result = await self.db.execute(data_sql, params)
+        columns = list(rows_result.keys())
+        rows = [dict(zip(columns, row)) for row in rows_result.fetchall()]
+
+        return rows, total
 
     async def get_distinct(
         self,
@@ -365,7 +416,7 @@ class LogService:
         # Known base columns that can be queried directly
         base_cols = {
             "level", "service", "env", "msg", "request_id", "job_id",
-            "submission_id", "artifact_id", "provider_job_id", "provider_id",
+            "submission_id", "generation_id", "provider_job_id", "provider_id",
             "operation_type", "stage", "channel", "user_id", "error_type", "attempt",
             "duration_ms"
         }

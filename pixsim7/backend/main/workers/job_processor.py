@@ -208,6 +208,7 @@ from pixsim7.backend.main.infrastructure.events.redis_bridge import (
 )
 
 from pixsim_logging import configure_logging, bind_job_context
+from pixsim7.backend.main.services.account_event_service import AccountEventService
 
 _base_logger = None
 _worker_debug_initialized = False
@@ -217,7 +218,7 @@ def _get_worker_logger():
     """Get or initialize worker logger."""
     global _base_logger
     if _base_logger is None:
-        _base_logger = configure_logging("worker").bind(channel="pipeline")
+        _base_logger = configure_logging("worker").bind(channel="pipeline", domain="generation")
     return _base_logger
 
 
@@ -282,6 +283,12 @@ async def refresh_account_credits(
                         gen_logger.warning("credit_update_failed", credit_type=credit_type, error=str(e))
 
             gen_logger.info("credits_refreshed", account_id=account.id, credits=filtered_credits)
+            AccountEventService.record(
+                "credits_refreshed",
+                account.id,
+                provider_id=account.provider_id,
+                extra={"credits": filtered_credits},
+            )
 
         return filtered_credits
 
@@ -390,6 +397,13 @@ async def _apply_account_cooldown(
         if error_code:
             payload["error_code"] = error_code
         gen_logger.info(event_name, **payload)
+        AccountEventService.record(
+            "cooldown_applied",
+            account.id,
+            provider_id=account.provider_id,
+            cooldown_seconds=cooldown_seconds,
+            error_code=error_code,
+        )
     except Exception as cooldown_err:
         gen_logger.warning(
             "account_cooldown_failed",
@@ -737,6 +751,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                                 account = reserved
                                 gen_logger.info("account_reused", account_id=account.id, provider_id=generation.provider_id)
                                 debug.worker("account_reused", account_id=account.id, provider_id=generation.provider_id)
+                                AccountEventService.record("selected", account.id, provider_id=generation.provider_id, generation_id=generation_id, extra={"reason": "reused"})
                             else:
                                 gen_logger.info("account_reuse_at_capacity", account_id=prev_account.id)
                         else:
@@ -862,6 +877,9 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     """Check if account has sufficient credits (skip for unlimited models)."""
                     nonlocal _last_refreshed_credits
                     _last_refreshed_credits = {}
+                    provider_metadata = getattr(acct, "provider_metadata", None) or {}
+                    if isinstance(provider_metadata, dict) and provider_metadata.get("accountless"):
+                        return True
                     if is_unlimited_model(acct, gen_model):
                         return True
                     if required_credit_hint == 0:
@@ -899,6 +917,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         on_attempt=lambda n, a: (
                             gen_logger.info("account_selected", account_id=a.id, provider_id=generation.provider_id, attempt=n),
                             debug.worker("account_selected", account_id=a.id, provider_id=generation.provider_id, attempt=n),
+                            AccountEventService.record("selected", a.id, provider_id=generation.provider_id, generation_id=generation_id, attempt=n),
                         ),
                         max_attempts=MAX_ACCOUNT_RETRIES,
                     )
@@ -919,6 +938,13 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         "all_accounts_exhausted",
                         attempts=MAX_ACCOUNT_RETRIES,
                         last_account_id=last_account_id,
+                    )
+                    AccountEventService.record(
+                        "all_exhausted",
+                        fallback_account_id,
+                        provider_id=generation.provider_id,
+                        generation_id=generation_id,
+                        attempt=MAX_ACCOUNT_RETRIES,
                     )
                     raise AccountExhaustedError(fallback_account_id, generation.provider_id)
 
@@ -1317,6 +1343,14 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 # Session/auth failure on one account - cool it down and retry with another account.
                 elif _is_auth_rotation_error(e):
                     error_code = _extract_error_code(e)
+                    AccountEventService.record(
+                        "auth_failure",
+                        account.id,
+                        provider_id=account.provider_id,
+                        generation_id=generation_id,
+                        error_code=error_code,
+                        cooldown_seconds=AUTH_FAILURE_COOLDOWN_SECONDS,
+                    )
                     await _apply_account_cooldown(
                         db=db,
                         account=account,
@@ -1638,9 +1672,16 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
         except Exception as e:
             # Expected errors (content filtered, quota, etc) - warn without stack trace
-            # Unexpected errors - error with full stack trace for debugging
+            # ProviderErrors are already logged by the inner except ProviderError handler
+            # Truly unexpected errors get full stack trace for debugging
             if isinstance(e, EXPECTED_ERRORS):
                 gen_logger.warning(
+                    "generation_processing_failed",
+                    error=str(e),
+                    error_type=e.__class__.__name__,
+                )
+            elif isinstance(e, ProviderError):
+                gen_logger.error(
                     "generation_processing_failed",
                     error=str(e),
                     error_type=e.__class__.__name__,

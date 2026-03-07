@@ -121,8 +121,11 @@ class LogIngestRequest(BaseModel):
     request_id: Optional[str] = None
     job_id: Optional[int] = None
     submission_id: Optional[int] = None
-    artifact_id: Optional[int] = None
+    generation_id: Optional[int] = None
     provider_job_id: Optional[str] = None
+
+    # Domain
+    domain: Optional[str] = None
 
     # Context fields
     provider_id: Optional[str] = None
@@ -181,11 +184,14 @@ class LogEntryResponse(BaseModel):
     env: str
     msg: Optional[str]
 
+    # Domain
+    domain: Optional[str] = None
+
     # Correlation fields
     request_id: Optional[str]
     job_id: Optional[int]
     submission_id: Optional[int]
-    artifact_id: Optional[int]
+    generation_id: Optional[int]
     provider_job_id: Optional[str]
 
     # Context fields
@@ -213,6 +219,35 @@ class LogEntryResponse(BaseModel):
 class LogQueryResponse(BaseModel):
     """Response from log query."""
     logs: List[LogEntryResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class AccountEventResponse(BaseModel):
+    """Response model for account events."""
+    timestamp: datetime
+    event_type: str
+    account_id: int
+    provider_id: Optional[str] = None
+    generation_id: Optional[int] = None
+    job_id: Optional[int] = None
+    cooldown_seconds: Optional[int] = None
+    credit_type: Optional[str] = None
+    credit_amount: Optional[int] = None
+    previous_status: Optional[str] = None
+    error_code: Optional[str] = None
+    attempt: Optional[int] = None
+    extra: Optional[dict] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AccountEventQueryResponse(BaseModel):
+    """Response from account events query."""
+    events: List[AccountEventResponse]
     total: int
     limit: int
     offset: int
@@ -579,3 +614,37 @@ async def get_console_fields():
     except Exception as e:
         logger.error("console_fields_error", error=str(e), error_type=e.__class__.__name__, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get console fields: {str(e)}")
+
+
+@router.get("/account-events/query", response_model=AccountEventQueryResponse)
+async def query_account_events(
+    account_id: Optional[int] = Query(None, description="Filter by account ID"),
+    event_type: Optional[str] = Query(None, description="Filter by event type"),
+    provider_id: Optional[str] = Query(None, description="Filter by provider"),
+    start_time: Optional[datetime] = Query(None, description="Events after this time (ISO 8601)"),
+    end_time: Optional[datetime] = Query(None, description="Events before this time (ISO 8601)"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum results"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    db: AsyncSession = Depends(get_log_db),
+) -> AccountEventQueryResponse:
+    """Query structured account lifecycle events."""
+    try:
+        service = LogService(db)
+        events, total = await service.query_account_events(
+            account_id=account_id,
+            event_type=event_type,
+            provider_id=provider_id,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            offset=offset,
+        )
+        return AccountEventQueryResponse(
+            events=[AccountEventResponse(**ev) for ev in events],
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+    except Exception as e:
+        logger.error("account_events_query_error", error=str(e), error_type=e.__class__.__name__, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to query account events: {str(e)}")

@@ -91,11 +91,12 @@ class DBLogHandler:
             Column("request_id", String(100)),
             Column("job_id", Integer),
             Column("submission_id", Integer),
-            Column("artifact_id", Integer),
+            Column("generation_id", Integer),
             Column("provider_job_id", String(255)),
             Column("provider_id", String(50)),
             Column("operation_type", String(50)),
             Column("stage", String(50)),
+            Column("domain", String(30)),
             Column("channel", String(30)),
             Column("user_id", Integer),
             Column("error", Text),
@@ -137,6 +138,7 @@ class DBLogHandler:
             "provider_id": 50,
             "operation_type": 50,
             "stage": 50,
+            "domain": 30,
             "channel": 30,
             "error_type": 100,
         }
@@ -274,11 +276,12 @@ class DBLogHandler:
         row.setdefault("request_id", None)
         row.setdefault("job_id", None)
         row.setdefault("submission_id", None)
-        row.setdefault("artifact_id", None)
+        row.setdefault("generation_id", None)
         row.setdefault("provider_job_id", None)
         row.setdefault("provider_id", None)
         row.setdefault("operation_type", None)
         row.setdefault("stage", None)
+        row.setdefault("domain", None)
         row.setdefault("channel", None)
         row.setdefault("user_id", None)
         row.setdefault("error", None)

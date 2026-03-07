@@ -48,7 +48,7 @@ from pixsim7.backend.main.infrastructure.events.redis_bridge import (
     stop_event_bus_bridge,
 )
 
-logger = configure_logging("worker").bind(channel="pipeline")
+logger = configure_logging("worker").bind(channel="pipeline", domain="provider")
 _poller_debug_initialized = False
 
 
