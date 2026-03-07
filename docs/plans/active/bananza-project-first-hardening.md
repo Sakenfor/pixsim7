@@ -1,7 +1,7 @@
 # Bananza Project-First Hardening
 
 **Status:** In Progress (core hardening complete, rollout/ops cleanup ongoing)  
-**Dates:** 2026-03-05 to 2026-03-06  
+**Dates:** 2026-03-05 to 2026-03-07  
 **Scope:** Bananza seed/runtime hardening only (no analyzer or block-language work).
 
 ## Baseline Reviewed
@@ -23,6 +23,7 @@ The following seed-specific behaviors are still active at runtime by design:
 3. Seeder defaults still target demo naming (`Bananza Boat`, `Bananza Boat Seed Project`) unless project/user settings override them.
 4. Seeder watch loop remains a dev-authoring bootstrap tool and still reseeds on source changes.
 5. Direct mode remains available as a fallback bootstrap path, but is not the preferred project-sync runtime path.
+6. If all same-name snapshots are legacy seed/demo rows, upsert intentionally creates a fresh import-style project row instead of overwriting a legacy row.
 
 ## Runtime Audit: Seed-Era Behavior Removed
 
@@ -49,6 +50,32 @@ The following seed-specific behaviors are still active at runtime by design:
 5. Two-way pull now writes `<project-file>.bak` before replacing a changed local file.
 6. Added tests for CLI preference parsing, precedence resolution, duplicate legacy snapshot selection behavior, watch file diffing/filtering, pull-backup creation, and direct-mode schema drift handling.
 
+## Implementation Updates (2026-03-07)
+
+1. API snapshot lookup for sync now uses the same non-legacy preference rule as CLI runtime preference lookup:
+   - same-name non-legacy project rows are preferred over newer legacy seed/demo rows.
+2. API project upsert preserves legacy migration semantics:
+   - if only legacy rows exist, no legacy row is overwritten; a new import-style row is created and legacy duplicates are pruned.
+3. Project runtime preferences are now persisted under generic project keys:
+   - nested: `project_runtime`
+   - flat fallback: `project_runtime_mode`, `project_sync_mode`, `project_watch_enabled`
+4. Backward compatibility remains:
+   - read-path still accepts prior `bananza_runtime` and flat `bananza_*` keys.
+5. Added tests for:
+   - API non-legacy snapshot preference under same-name collisions.
+   - Upsert behavior when legacy and non-legacy same-name rows coexist.
+   - CLI parsing of generic `project_runtime` metadata keys.
+
+## Custom Block ID Injection Audit (2026-03-07)
+
+Finding:
+1. No implicit Bananza block/template injection path remains in runtime seed flows.
+
+Evidence:
+1. `api_flow` and `direct_flow` only verify presence of `REQUIRED_BLOCK_IDS` / `REQUIRED_TEMPLATE_SLUGS`; they do not author or auto-register primitives/templates.
+2. Required block/template entries are rejected unless their source/template packs are explicitly registered (`REGISTERED_SOURCE_PACKS`, `REGISTERED_TEMPLATE_PACKS`).
+3. Content definitions live in content packs (`bananza_boat_demo`, `core_scene_primitives`, `genre_tone_primitives`) and are consumed through normal loaders.
+
 ## Verification
 
 Executed:
@@ -63,6 +90,8 @@ Coverage now includes:
 3. Pack-registration rejection for required custom blocks/templates.
 4. Runtime preference parsing (`bananza_runtime` + flat key fallback) and precedence semantics.
 5. Duplicate project-name preference resolution that avoids legacy seed snapshots when non-legacy rows exist.
+6. API snapshot detail resolution that prefers non-legacy same-name rows for sync/read paths.
+7. Generic `project_runtime` metadata parsing with backward compatibility to Bananza legacy keys.
 
 ## Migration Steps
 
@@ -79,3 +108,4 @@ Checked local DB rows by querying `game_project_snapshots` for `%bananza%`: curr
 
 1. `two_way` sync is still timestamp/hash based and not a structural merge strategy.
 2. Watch loop is polling-based; long-running shared usage may need adaptive/backoff behavior.
+3. Runtime preference metadata currently writes only generic keys but still reads legacy Bananza keys; a future cleanup pass can remove legacy read fallback once old snapshots are migrated.
