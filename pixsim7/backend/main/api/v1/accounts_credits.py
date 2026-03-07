@@ -516,7 +516,7 @@ async def sync_account_credits(
 
         # Fallback: extract from account data
         if not credits_data:
-            raw_data = {'cookies': account.cookies or {}}
+            raw_data = {'cookies': account.cookies or {}, 'jwt_token': account.jwt_token}
             extracted = await provider.extract_account_data(raw_data, fallback_email=account.email)
             credits_data = extracted.get('credits')
 

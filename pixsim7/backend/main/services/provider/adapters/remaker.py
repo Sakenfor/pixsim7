@@ -569,6 +569,57 @@ class RemakerProvider(WebApiProvider):
         # Returning 0 causes billing to be skipped.
         return 0
 
+    async def get_credits(
+        self,
+        account: "ProviderAccount",
+        *,
+        retry_on_session_error: bool = False,
+        force_refresh: bool = False,
+    ) -> Dict[str, Any]:
+        """Fetch current credits from Remaker's userinfo endpoint."""
+        url = f"{self.API_BASE}/api/pai-login/v1/user/get-userinfo"
+        try:
+            import httpx
+
+            headers = self._build_headers(account)
+            # Remaker expects multipart/form-data with product_code +
+            # turnstile_token fields.
+            meta = account.provider_metadata or {}
+            product_code = meta.get("product_code") or meta.get("product-code") or ""
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                resp = await client.post(
+                    url,
+                    headers=headers,
+                    files={
+                        "product_code": (None, str(product_code)),
+                        "turnstile_token": (None, ""),
+                    },
+                )
+                if resp.status_code != 200:
+                    logger.warning(
+                        "remaker_get_credits_http_error",
+                        status=resp.status_code,
+                        body=resp.text[:500],
+                    )
+                resp.raise_for_status()
+                payload = resp.json()
+        except AuthenticationError:
+            raise
+        except Exception as e:
+            logger.warning("remaker_get_credits_failed", error=str(e))
+            return {}
+
+        code = payload.get("code")
+        if code != 100000:
+            logger.warning("remaker_get_credits_unexpected", code=code, payload=payload)
+            return {}
+
+        result = payload.get("result") or {}
+        credits = result.get("credits")
+        if credits is not None:
+            return {"web": int(credits)}
+        return {}
+
     async def extract_account_data(self, raw_data: dict, *, fallback_email: str = None) -> dict:
         """
         Extract Remaker account details from extension-captured data.

@@ -260,6 +260,11 @@ async def refresh_account_credits(
         if hasattr(provider, 'get_credits'):
             credits_data = await provider.get_credits(account, retry_on_session_error=False)
         else:
+            # Provider has no remote credit-fetch method (e.g. web-API-replay
+            # providers like Remaker).  Fall back to DB-stored credits so the
+            # account isn't incorrectly rejected/exhausted.
+            if account.credits:
+                return {c.credit_type: c.amount for c in account.credits}
             gen_logger.debug("provider_no_credits_method", provider_id=account.provider_id)
             return {}
 
