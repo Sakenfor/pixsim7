@@ -50,6 +50,17 @@ describe('buildProjectInventory', () => {
     expect(counts.nodes).toBe(2);
     expect(counts.edges).toBe(1);
     expect(counts.items).toBe(1);
+
+    const categoryCounts = toCountMap(summary.entityCategories);
+    expect(categoryCounts.characters).toBe(2);
+    expect(categoryCounts.locations).toBe(2);
+    expect(categoryCounts.scenes).toBe(1);
+    expect(categoryCounts.items).toBe(1);
+    expect(categoryCounts.hotspots).toBe(2);
+
+    const characterCategory = summary.entityCategories.find((row) => row.key === 'characters');
+    expect(characterCategory?.panelId).toBe('character-creator');
+    expect(characterCategory?.sample).toContain('Maya');
   });
 
   it('summarizes extension payloads with inferred counts', () => {
@@ -72,6 +83,10 @@ describe('buildProjectInventory', () => {
 
     const templateRow = summary.extensions.find((row) => row.key === 'inventory.templates');
     expect(templateRow?.detail).toContain('"templates"');
+
+    const extensionCategory = summary.entityCategories.find((row) => row.key === 'inventory.templates');
+    expect(extensionCategory?.count).toBe(2);
+    expect(extensionCategory?.panelId).toBe('prompt-library-inspector');
   });
 });
 

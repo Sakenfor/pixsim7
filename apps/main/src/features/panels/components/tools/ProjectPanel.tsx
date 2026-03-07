@@ -32,6 +32,7 @@ import {
 import { resolveSavedGameProjects } from '@lib/resolvers';
 
 import { useProjectIndexStore, useProjectSessionStore, useWorldContextStore } from '@features/scene';
+import { openWorkspacePanel } from '@features/workspace';
 
 import { ActionSelectionDebugSection } from '@/components/game/ActionSelectionDebugSection';
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
@@ -258,6 +259,13 @@ function formatAvailabilityValue(item: AvailabilityItem): string {
 
 function formatInventoryValue(item: { count: number; detail?: string }): string {
   return item.detail ? `${item.count} | ${item.detail}` : String(item.count);
+}
+
+function formatEntityCategoryValue(item: { count: number; sample: string[] }): string {
+  if (item.sample.length === 0) {
+    return String(item.count);
+  }
+  return `${item.count} | ${item.sample.join(', ')}`;
 }
 
 type SettingsChildId = 'save' | 'load';
@@ -1200,6 +1208,44 @@ export function ProjectPanel() {
                           <span className="text-right text-neutral-700 dark:text-neutral-200">
                             {formatInventoryValue(item)}
                           </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="space-y-1 pt-2">
+                    <div className="font-semibold">
+                      Entity Categories ({inventorySummary.entityCategories.length})
+                    </div>
+                    {inventorySummary.entityCategories.length === 0 ? (
+                      <div className="text-neutral-500 dark:text-neutral-400">None</div>
+                    ) : (
+                      inventorySummary.entityCategories.map((category) => (
+                        <div key={category.key} className="space-y-1 rounded border border-neutral-200 dark:border-neutral-800 p-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="text-neutral-600 dark:text-neutral-300">
+                              {category.label}
+                              <span className="ml-1 text-neutral-400 dark:text-neutral-500">
+                                ({category.source})
+                              </span>
+                            </span>
+                            <span className="text-right text-neutral-700 dark:text-neutral-200">
+                              {formatEntityCategoryValue(category)}
+                            </span>
+                          </div>
+                          {category.panelId && category.panelLabel && (
+                            <div className="flex justify-end">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  openWorkspacePanel(category.panelId);
+                                }}
+                              >
+                                Open {category.panelLabel}
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       ))
                     )}
