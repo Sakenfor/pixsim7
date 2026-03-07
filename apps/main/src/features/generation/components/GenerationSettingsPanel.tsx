@@ -224,6 +224,11 @@ export function GenerationSettingsPanel({
               providers={workbench.providers}
               onSelect={(id) => {
                 setProvider(id);
+                // Reset model so the new provider's default is applied
+                // (prevents stale model carryover when both providers list the same model)
+                if (id) {
+                  workbench.handleParamChange('model', undefined);
+                }
                 // Auto-switch operation if current one isn't supported by the new provider
                 if (id && !providerCapabilityRegistry.supportsOperation(id, operationType)) {
                   const fallback = OPERATION_TYPES.find(
