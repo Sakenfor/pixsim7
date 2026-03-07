@@ -20,6 +20,7 @@ function toExtensionHandler(
   return {
     key: contributor.key,
     version: contributor.version,
+    inventory: contributor.inventory,
     migrate: contributor.migrate,
     export: contributor.export,
     import: contributor.import,

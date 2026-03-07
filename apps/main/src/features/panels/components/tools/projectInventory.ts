@@ -1,4 +1,8 @@
 import type { GameProjectBundle } from '@lib/api';
+import type {
+  ProjectBundleInventoryCategorySchema,
+  ProjectBundleInventorySchema,
+} from '@lib/game/projectBundle/types';
 
 export interface ProjectInventoryRow {
   key: string;
@@ -23,6 +27,10 @@ export interface ProjectInventorySummary {
   entityCategories: ProjectInventoryEntityCategory[];
 }
 
+export interface BuildProjectInventoryOptions {
+  extensionSchemas?: Record<string, ProjectBundleInventorySchema | undefined>;
+}
+
 export type ProjectInventorySource =
   | { kind: 'active_world'; worldId: number }
   | { kind: 'saved_project'; projectId: number }
@@ -32,6 +40,17 @@ interface SelectProjectInventorySourceInput {
   worldId: number | null;
   currentProjectId: number | null;
   selectedProjectId: number | null;
+}
+
+interface ToEntriesFromRowsOptions {
+  idFields?: string[];
+  labelFields?: string[];
+}
+
+interface CategoryOptions {
+  label?: string;
+  panelId?: string;
+  panelLabel?: string;
 }
 
 const EXTENSION_LIST_KEYS = [
@@ -111,14 +130,40 @@ interface InventoryEntityEntry {
   label: string;
 }
 
-function toEntriesFromRows(rows: Record<string, unknown>[], prefix: string): InventoryEntityEntry[] {
+function mergeFieldKeys(primary: string[] | undefined, fallback: string[]): string[] {
+  const merged: string[] = [];
+  const add = (value: string) => {
+    const normalized = value.trim();
+    if (!normalized || merged.includes(normalized)) return;
+    merged.push(normalized);
+  };
+
+  for (const key of primary ?? []) add(key);
+  for (const key of fallback) add(key);
+  return merged;
+}
+
+function toEntriesFromRows(
+  rows: Record<string, unknown>[],
+  prefix: string,
+  options?: ToEntriesFromRowsOptions,
+): InventoryEntityEntry[] {
+  const idFields = mergeFieldKeys(options?.idFields, ['id', 'source_id', 'key', 'slug']);
+  const labelFields = mergeFieldKeys(options?.labelFields, [
+    'name',
+    'title',
+    'display_name',
+    'label',
+    'slug',
+    'id',
+    'source_id',
+  ]);
+
   const entries: InventoryEntityEntry[] = [];
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index] ?? {};
-    const id = getStringField(row, ['id', 'source_id', 'key', 'slug']) ?? `${prefix}-${index + 1}`;
-    const label =
-      getStringField(row, ['name', 'title', 'display_name', 'label', 'slug', 'id', 'source_id']) ??
-      `${titleCase(prefix)} ${index + 1}`;
+    const id = getStringField(row, idFields) ?? `${prefix}-${index + 1}`;
+    const label = getStringField(row, labelFields) ?? `${titleCase(prefix)} ${index + 1}`;
     entries.push({ id, label });
   }
   return entries;
@@ -128,16 +173,28 @@ function toCategory(
   key: string,
   source: 'core' | 'extension',
   entries: InventoryEntityEntry[],
+  options?: CategoryOptions,
 ): ProjectInventoryEntityCategory {
-  const link = PANEL_LINK_HINTS.find((candidate) => candidate.pattern.test(key));
+  const explicitPanelId = options?.panelId?.trim();
+  const explicitPanelLabel = options?.panelLabel?.trim();
+  const link = PANEL_LINK_HINTS.find((candidate) => {
+    if (candidate.pattern.test(key)) {
+      return true;
+    }
+    if (options?.label && candidate.pattern.test(options.label)) {
+      return true;
+    }
+    return false;
+  });
+
   return {
     key,
-    label: titleCase(key),
+    label: options?.label?.trim() || titleCase(key),
     source,
     count: entries.length,
     sample: entries.slice(0, 3).map((entry) => entry.label),
-    panelId: link?.panelId,
-    panelLabel: link?.panelLabel,
+    panelId: explicitPanelId || link?.panelId,
+    panelLabel: explicitPanelLabel || link?.panelLabel,
   };
 }
 
@@ -176,6 +233,129 @@ function extractExtensionEntries(payload: unknown, key: string): InventoryEntity
     id: objectKey,
     label: objectKey,
   }));
+}
+
+function resolvePath(value: unknown, path: string | undefined): unknown {
+  const normalizedPath = path?.trim();
+  if (!normalizedPath) {
+    return value;
+  }
+
+  const segments = normalizedPath.split('.').map((segment) => segment.trim()).filter(Boolean);
+  let current: unknown = value;
+  for (const segment of segments) {
+    if (Array.isArray(current)) {
+      const index = Number(segment);
+      if (!Number.isInteger(index) || index < 0 || index >= current.length) {
+        return undefined;
+      }
+      current = current[index];
+      continue;
+    }
+
+    if (!isRecord(current)) {
+      return undefined;
+    }
+    current = current[segment];
+  }
+  return current;
+}
+
+function toRowsFromRecordMap(value: Record<string, unknown>): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = [];
+  for (const [key, entry] of Object.entries(value)) {
+    if (isRecord(entry)) {
+      rows.push({
+        __inventory_key: key,
+        ...entry,
+      });
+    }
+  }
+  return rows;
+}
+
+function extractEntriesBySchema(
+  payload: unknown,
+  extensionKey: string,
+  categorySchema: ProjectBundleInventoryCategorySchema,
+): InventoryEntityEntry[] {
+  const source = resolvePath(payload, categorySchema.path);
+  const rowPrefix = `${extensionKey}-${categorySchema.key}`;
+
+  if (Array.isArray(source)) {
+    const rows = toRows(source);
+    if (rows.length > 0) {
+      return toEntriesFromRows(rows, rowPrefix, {
+        idFields: categorySchema.idFields,
+        labelFields: categorySchema.labelFields,
+      });
+    }
+    return source.map((entry, index) => ({
+      id: `${rowPrefix}-${index + 1}`,
+      label: String(entry),
+    }));
+  }
+
+  if (isRecord(source)) {
+    const objectRows = toRowsFromRecordMap(source);
+    if (objectRows.length > 0) {
+      return toEntriesFromRows(objectRows, rowPrefix, {
+        idFields: mergeFieldKeys(categorySchema.idFields, ['__inventory_key']),
+        labelFields: mergeFieldKeys(categorySchema.labelFields, ['__inventory_key']),
+      });
+    }
+
+    return Object.entries(source).map(([key, entry]) => ({
+      id: key,
+      label: isRecord(entry) ? key : String(entry),
+    }));
+  }
+
+  if (source == null) {
+    return [];
+  }
+
+  return [{ id: rowPrefix, label: String(source) }];
+}
+
+function normalizeSchemaCategories(
+  schema: ProjectBundleInventorySchema | undefined,
+): ProjectBundleInventoryCategorySchema[] {
+  if (!schema?.categories || !Array.isArray(schema.categories)) {
+    return [];
+  }
+  return schema.categories.filter((candidate) => {
+    if (!isRecord(candidate)) return false;
+    return typeof candidate.key === 'string' && candidate.key.trim().length > 0;
+  }) as ProjectBundleInventoryCategorySchema[];
+}
+
+function toCategoryKey(
+  extensionKey: string,
+  schemaKey: string,
+  seenCategoryKeys: Set<string>,
+): string {
+  const normalizedSchemaKey = schemaKey.trim();
+  const baseKey = normalizedSchemaKey || extensionKey;
+
+  if (!seenCategoryKeys.has(baseKey)) {
+    seenCategoryKeys.add(baseKey);
+    return baseKey;
+  }
+
+  const prefixedKey = `${extensionKey}.${baseKey}`;
+  if (!seenCategoryKeys.has(prefixedKey)) {
+    seenCategoryKeys.add(prefixedKey);
+    return prefixedKey;
+  }
+
+  let index = 2;
+  while (seenCategoryKeys.has(`${prefixedKey}.${index}`)) {
+    index += 1;
+  }
+  const indexedKey = `${prefixedKey}.${index}`;
+  seenCategoryKeys.add(indexedKey);
+  return indexedKey;
 }
 
 function inferExtensionSummary(payload: unknown): { count: number; detail?: string } {
@@ -233,7 +413,10 @@ export function selectProjectInventorySource(
   return { kind: 'none' };
 }
 
-export function buildProjectInventory(bundle: GameProjectBundle): ProjectInventorySummary {
+export function buildProjectInventory(
+  bundle: GameProjectBundle,
+  options?: BuildProjectInventoryOptions,
+): ProjectInventorySummary {
   const coreRecord = isRecord(bundle.core) ? bundle.core : {};
   const locations = toRows(coreRecord.locations);
   const npcs = toRows(coreRecord.npcs);
@@ -285,8 +468,49 @@ export function buildProjectInventory(bundle: GameProjectBundle): ProjectInvento
     toCategory('scenes', 'core', toEntriesFromRows(scenes, 'scene')),
     toCategory('items', 'core', toEntriesFromRows(items, 'item')),
     toCategory('hotspots', 'core', hotspots),
-    ...extensionKeys.map((key) => toCategory(key, 'extension', extractExtensionEntries(extensionsRecord[key], key))),
-  ].filter((category) => category.count > 0);
+  ];
+  const seenCategoryKeys = new Set(entityCategories.map((category) => category.key));
 
-  return { core, extensions, entityCategories };
+  for (const extensionKey of extensionKeys) {
+    const payload = extensionsRecord[extensionKey];
+    const schemaCategories = normalizeSchemaCategories(
+      options?.extensionSchemas?.[extensionKey],
+    );
+    if (schemaCategories.length === 0) {
+      entityCategories.push(
+        toCategory(
+          toCategoryKey(extensionKey, extensionKey, seenCategoryKeys),
+          'extension',
+          extractExtensionEntries(payload, extensionKey),
+        ),
+      );
+      continue;
+    }
+
+    for (const schemaCategory of schemaCategories) {
+      const categoryKey = toCategoryKey(
+        extensionKey,
+        schemaCategory.key,
+        seenCategoryKeys,
+      );
+      entityCategories.push(
+        toCategory(
+          categoryKey,
+          'extension',
+          extractEntriesBySchema(payload, extensionKey, schemaCategory),
+          {
+            label: schemaCategory.label,
+            panelId: schemaCategory.panelId,
+            panelLabel: schemaCategory.panelLabel,
+          },
+        ),
+      );
+    }
+  }
+
+  return {
+    core,
+    extensions,
+    entityCategories: entityCategories.filter((category) => category.count > 0),
+  };
 }

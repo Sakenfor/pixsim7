@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getSavedGameProject } from '@lib/api';
-import { exportWorldProjectWithExtensions } from '@lib/game';
+import { exportWorldProjectWithExtensions, projectBundleExtensionRegistry } from '@lib/game';
 
 import {
   buildProjectInventory,
@@ -97,7 +97,18 @@ export function useProjectInventory(input: UseProjectInventoryInput) {
           : (await exportWorldProjectWithExtensions(source.worldId)).bundle;
       if (seq !== requestSequence.current) return;
 
-      setSummary(buildProjectInventory(bundle));
+      const extensionSchemas = Object.fromEntries(
+        projectBundleExtensionRegistry
+          .list()
+          .filter((handler) => handler.inventory && handler.inventory.categories.length > 0)
+          .map((handler) => [handler.key, handler.inventory]),
+      );
+
+      setSummary(
+        buildProjectInventory(bundle, {
+          extensionSchemas,
+        }),
+      );
       setStatus('ok');
       setLastRefreshedAtMs(Date.now());
     } catch (loadError) {

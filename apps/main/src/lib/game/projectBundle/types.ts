@@ -14,9 +14,24 @@ export interface ProjectBundleExtensionImportOutcome {
   warnings?: string[];
 }
 
+export interface ProjectBundleInventoryCategorySchema {
+  key: string;
+  label?: string;
+  path?: string;
+  idFields?: string[];
+  labelFields?: string[];
+  panelId?: string;
+  panelLabel?: string;
+}
+
+export interface ProjectBundleInventorySchema {
+  categories: ProjectBundleInventoryCategorySchema[];
+}
+
 export interface ProjectBundleExtensionHandler<TPayload = unknown> {
   key: string;
   version?: number;
+  inventory?: ProjectBundleInventorySchema;
   migrate?: (payload: unknown, fromVersion: number, toVersion: number) => TPayload | null;
   export?: (
     context: ProjectBundleExportContext,
@@ -33,6 +48,7 @@ export interface ProjectBundleExtensionHandler<TPayload = unknown> {
 export interface AuthoringProjectBundleContributor<TPayload = unknown> {
   key: string;
   version?: number;
+  inventory?: ProjectBundleInventorySchema;
   migrate?: (payload: unknown, fromVersion: number, toVersion: number) => TPayload | null;
   export?: (
     context: ProjectBundleExportContext,

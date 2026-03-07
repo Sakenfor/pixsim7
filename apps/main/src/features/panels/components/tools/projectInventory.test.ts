@@ -88,6 +88,46 @@ describe('buildProjectInventory', () => {
     expect(extensionCategory?.count).toBe(2);
     expect(extensionCategory?.panelId).toBe('prompt-library-inspector');
   });
+
+  it('prefers extension-declared schema categories over heuristic inference', () => {
+    const summary = buildProjectInventory(
+      makeBundle({
+        'authoring.scene_graph': {
+          version: 1,
+          scenes: {
+            intro: { title: 'Intro Scene' },
+            forest: { name: 'Forest Loop' },
+          },
+        },
+      }),
+      {
+        extensionSchemas: {
+          'authoring.scene_graph': {
+            categories: [
+              {
+                key: 'scenes',
+                label: 'Scenes',
+                path: 'scenes',
+                idFields: ['scene_id'],
+                labelFields: ['title', 'name'],
+                panelId: 'scene-management',
+                panelLabel: 'Scene Management',
+              },
+            ],
+          },
+        },
+      },
+    );
+
+    const extensionCategory = summary.entityCategories.find(
+      (row) => row.key === 'authoring.scene_graph.scenes',
+    );
+    expect(extensionCategory?.label).toBe('Scenes');
+    expect(extensionCategory?.count).toBe(2);
+    expect(extensionCategory?.sample).toContain('Intro Scene');
+    expect(extensionCategory?.panelId).toBe('scene-management');
+    expect(extensionCategory?.panelLabel).toBe('Scene Management');
+  });
 });
 
 describe('selectProjectInventorySource', () => {

@@ -137,6 +137,19 @@ function restoreSceneGraph(
 export const authoringProjectBundleContributor: AuthoringProjectBundleContributor<unknown> = {
   key: SCENE_GRAPH_PROJECT_EXTENSION_KEY,
   version: SCENE_GRAPH_PROJECT_EXTENSION_VERSION,
+  inventory: {
+    categories: [
+      {
+        key: 'scenes',
+        label: 'Scenes',
+        path: 'scenes',
+        idFields: ['id', 'source_id', 'scene_id', 'slug'],
+        labelFields: ['title', 'name', 'label', 'slug', 'id', 'source_id'],
+        panelId: 'scene-management',
+        panelLabel: 'Scene Management',
+      },
+    ],
+  },
 
   export: () => {
     const graphState = useGraphStore.getState();
