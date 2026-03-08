@@ -1436,7 +1436,6 @@ export function ReferencePipelineTab({ character, onChange, section }: Reference
                     key={`scene-prep-embed:${characterId || 'draft'}`}
                     initialBasePrompt={suggestedScenePrompt}
                     hostPrefill={scenePrepPrefill}
-                    draftPersistenceKey={characterId ? `scene-prep:character:${characterId}` : null}
                   />
                 </div>
               </div>

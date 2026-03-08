@@ -12,8 +12,6 @@ import {
   resolveSavedGameProjects,
 } from '@lib/resolvers';
 
-import { useSceneArtifactStore } from '@/domain/sceneArtifact';
-
 type AvailabilityStatus = 'loading' | 'ok' | 'error';
 
 type RemoteAvailabilityKey =
@@ -26,8 +24,7 @@ type RemoteAvailabilityKey =
   | 'content_packs'
   | 'world_behavior'
   | 'world_scheduler';
-
-type AvailabilityKey = RemoteAvailabilityKey | 'scene_artifacts';
+type AvailabilityKey = RemoteAvailabilityKey;
 
 export interface AvailabilityItem {
   key: AvailabilityKey;
@@ -274,7 +271,6 @@ export function useProjectAvailability(selectedWorldId: number | null) {
     () => buildLoadingMap(selectedWorldId),
   );
   const requestSequence = useRef(0);
-  const sceneArtifactCount = useSceneArtifactStore((state) => Object.keys(state.artifacts).length);
 
   const refresh = useCallback(async () => {
     const seq = requestSequence.current + 1;
@@ -310,15 +306,8 @@ export function useProjectAvailability(selectedWorldId: number | null) {
   }, [refresh]);
 
   const items = useMemo<AvailabilityItem[]>(() => {
-    const rows = REMOTE_ORDER.map((key) => remoteByKey[key] ?? loadingEntry(key));
-    rows.push({
-      key: 'scene_artifacts',
-      label: 'Scene Artifacts (local)',
-      status: 'ok',
-      count: sceneArtifactCount,
-    });
-    return rows;
-  }, [remoteByKey, sceneArtifactCount]);
+    return REMOTE_ORDER.map((key) => remoteByKey[key] ?? loadingEntry(key));
+  }, [remoteByKey]);
 
   return {
     items,
