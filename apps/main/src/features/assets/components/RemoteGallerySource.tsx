@@ -468,7 +468,17 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     };
   }, [groupRequestKey]);
 
+  // Track programmatic updates to skip the sync effect for one cycle.
+  // Without this, setGroupByStack writes to BOTH the store and the URL,
+  // then the sync effect fires mid-settle, sees a transient mismatch,
+  // and calls updatePanelSettings again — causing extra renders and sluggish clearing.
+  const skipSyncRef = useRef(false);
+
   useEffect(() => {
+    if (skipSyncRef.current) {
+      skipSyncRef.current = false;
+      return;
+    }
     const storedGroupBy = normalizeGroupBySelection(
       (gallerySettings.groupBy ?? DEFAULT_GROUP_BY_STACK) as GalleryGroupBySelection,
     );
@@ -579,6 +589,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     (nextGroupBy: GalleryGroupBy[]) => {
       const nextGroupView = groupView ?? DEFAULT_GROUP_VIEW;
       const nextGroupScope = normalizeGroupScopeSelection(groupScope.length ? groupScope : DEFAULT_GROUP_SCOPE);
+      skipSyncRef.current = true;
       updatePanelSettings('gallery', {
         groupBy: nextGroupBy,
         groupView: nextGroupView,
@@ -601,6 +612,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   const handleGroupViewChange = useCallback(
     (nextGroupView: GalleryGroupView) => {
       const nextGroupScope = normalizeGroupScopeSelection(groupScope.length ? groupScope : DEFAULT_GROUP_SCOPE);
+      skipSyncRef.current = true;
       updatePanelSettings('gallery', {
         groupBy: groupByStack,
         groupView: nextGroupView,
@@ -626,6 +638,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       if (nextMode === 'single' && nextGroupBy.length > 1) {
         nextGroupBy = nextGroupBy.slice(0, 1);
       }
+      skipSyncRef.current = true;
       updatePanelSettings('gallery', {
         groupMode: nextMode,
         groupBy: nextGroupBy.length > 0 ? nextGroupBy : 'none',
