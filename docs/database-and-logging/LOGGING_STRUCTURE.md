@@ -174,8 +174,8 @@ grep "duration" <PIXSIM_HOME>/logs/backend.log | grep -E "[0-9]{3,}"
 **Phase 3: Pipeline Logging**
 - ✅ `pixsim7_backend/services/submission/pipeline.py`
   - Uses structured logging with proper stages: `pipeline:start`, `pipeline:artifact`, `provider:submit`, `provider:error`
-  - Uses `bind_job_context()` and `bind_artifact_context()` helpers
-  - All context (job_id, operation_type, provider_id, artifact_id, submission_id) flows through logs
+  - Uses `bind_job_context()` and `bind_generation_context()` helpers
+  - All context (job_id, operation_type, provider_id, generation_id, submission_id) flows through logs
 
 **Phase 4: Provider Adapter Logging**
 - ✅ `pixsim7_backend/services/provider/adapters/pixverse.py`

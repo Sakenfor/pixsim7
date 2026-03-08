@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QSplitter, QMessageBox, QDialog, QFormLayout, QLineEdit, QCheckBox, QDialogButtonBox,
     QScrollArea, QFrame, QGridLayout, QTabWidget, QMenu, QComboBox, QStackedWidget
 )
-from PySide6.QtCore import Qt, QProcess, QTimer, Signal, QSize, QThread, QUrl
+from PySide6.QtCore import Qt, QProcess, QProcessEnvironment, QTimer, Signal, QSize, QUrl
 from PySide6.QtGui import QColor, QTextCursor, QFont, QPalette, QShortcut, QKeySequence, QAction, QCursor
 
 # Load .env file into environment BEFORE initializing logger
@@ -297,6 +297,9 @@ class LauncherWindow(QWidget):
         self.cards: Dict[str, ServiceCard] = {}
         self.selected_service_key: Optional[str] = None
         self._account_live_feed_dialog = None
+        self._openapi_gen_process: Optional[QProcess] = None
+        self._openapi_gen_service_key: Optional[str] = None
+        self._openapi_gen_url: Optional[str] = None
 
         # Widget registry for clean reload
         self.widgets: Dict[str, QWidget] = {}
@@ -1081,51 +1084,99 @@ class LauncherWindow(QWidget):
         if not defn or not defn.openapi_url:
             return
 
-        # Run pnpm openapi:gen in background
-        import subprocess
         import sys
+
+        # Keep this operation single-flight to avoid thread/process lifecycle races.
+        if self._openapi_gen_process and self._openapi_gen_process.state() != QProcess.NotRunning:
+            if _launcher_logger:
+                _launcher_logger.warning(
+                    "openapi_generation_already_running",
+                    service_key=self._openapi_gen_service_key,
+                    url=self._openapi_gen_url,
+                )
+            return
 
         pnpm_cmd = "pnpm.cmd" if sys.platform == "win32" else "pnpm"
         env = service_env()
         env['OPENAPI_URL'] = defn.openapi_url
+        env['OPENAPI_TYPES_OUT'] = defn.openapi_types_path or "packages/shared/api/model/src/generated/openapi"
+        env['OPENAPI_ORVAL_OUT'] = defn.openapi_types_path or "packages/shared/api/model/src/generated/openapi"
 
         try:
-            # Show status in console
             if _launcher_logger:
                 _launcher_logger.info("openapi_generation_started", url=defn.openapi_url)
 
-            proc = subprocess.Popen(
-                [pnpm_cmd, "-s", "openapi:gen"],
-                cwd=ROOT,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                env=env
-            )
+            process = QProcess(self)
+            proc_env = QProcessEnvironment()
+            for env_key, env_value in env.items():
+                proc_env.insert(str(env_key), str(env_value))
+            process.setProcessEnvironment(proc_env)
+            process.setWorkingDirectory(str(ROOT))
+            process.setProgram(pnpm_cmd)
+            process.setArguments(["-s", "openapi:gen"])
 
-            # Run in thread to avoid blocking UI
-            def on_complete():
-                out, err = proc.communicate(timeout=120)
-                if proc.returncode == 0:
-                    if _launcher_logger:
-                        _launcher_logger.info("openapi_generation_success", url=defn.openapi_url)
-                    # Trigger refresh (freshness uses pnpm openapi:check)
-                    self._refresh_openapi_status(key)
-                else:
-                    if _launcher_logger:
-                        _launcher_logger.error("openapi_generation_failed", url=defn.openapi_url, error=err or out)
+            self._openapi_gen_process = process
+            self._openapi_gen_service_key = key
+            self._openapi_gen_url = defn.openapi_url
+            process.finished.connect(self._on_openapi_generation_finished)
+            process.start()
 
-            from PySide6.QtCore import QThread
-            class GenThread(QThread):
-                def run(self_thread):
-                    on_complete()
-
-            self._gen_thread = GenThread()
-            self._gen_thread.start()
+            if not process.waitForStarted(3000):
+                err = process.errorString() or "process failed to start"
+                if _launcher_logger:
+                    _launcher_logger.error("openapi_generation_error", url=defn.openapi_url, error=err)
+                self._cleanup_openapi_generation_process()
 
         except Exception as e:
             if _launcher_logger:
                 _launcher_logger.error("openapi_generation_error", url=defn.openapi_url, error=str(e))
+
+    def _cleanup_openapi_generation_process(self):
+        """Release active OpenAPI generation process references safely."""
+        process = self._openapi_gen_process
+        self._openapi_gen_process = None
+        self._openapi_gen_service_key = None
+        self._openapi_gen_url = None
+        if process:
+            try:
+                process.deleteLater()
+            except Exception:
+                pass
+
+    def _on_openapi_generation_finished(self, exit_code: int, exit_status):
+        """Handle completion of background OpenAPI generation."""
+        process = self._openapi_gen_process
+        service_key = self._openapi_gen_service_key
+        url = self._openapi_gen_url
+
+        stdout = ""
+        stderr = ""
+        if process:
+            try:
+                stdout = bytes(process.readAllStandardOutput()).decode("utf-8", errors="replace")
+            except Exception:
+                stdout = ""
+            try:
+                stderr = bytes(process.readAllStandardError()).decode("utf-8", errors="replace")
+            except Exception:
+                stderr = ""
+
+        if exit_status == QProcess.NormalExit and exit_code == 0:
+            if _launcher_logger:
+                _launcher_logger.info("openapi_generation_success", url=url)
+            if service_key:
+                self._refresh_openapi_status(service_key)
+        else:
+            if _launcher_logger:
+                _launcher_logger.error(
+                    "openapi_generation_failed",
+                    url=url,
+                    exit_code=exit_code,
+                    exit_status=int(exit_status),
+                    error=stderr or stdout or "unknown error",
+                )
+
+        self._cleanup_openapi_generation_process()
 
     def update_ports_label(self):
         p = read_env_ports()
@@ -1970,6 +2021,16 @@ class LauncherWindow(QWidget):
                 self.db_log_viewer.shutdown()
         except Exception:
             pass
+
+        # Stop any active OpenAPI generation process launched by the UI.
+        try:
+            if self._openapi_gen_process and self._openapi_gen_process.state() != QProcess.NotRunning:
+                self._openapi_gen_process.kill()
+                self._openapi_gen_process.waitForFinished(2000)
+        except Exception:
+            pass
+        finally:
+            self._cleanup_openapi_generation_process()
 
         # Stop health monitoring
         if hasattr(self, 'facade') and self.facade:

@@ -300,24 +300,24 @@ class ClickableFieldRegistry:
             ]
         ))
 
-        # Artifact ID
+        # Generation ID
         self.register(ClickableField(
-            field_name="artifact_id",
+            field_name="generation_id",
             color="#B39DDB",  # Light purple
-            short_prefix="artifact",
-            display_name="Artifact ID",
+            short_prefix="gen",
+            display_name="Generation ID",
             truncate_length=0,
             actions=[
                 FieldAction(
                     id="filter",
-                    label="Filter by artifact",
+                    label="Filter by generation",
                     action_type=ActionType.FILTER,
                     icon="🔍",
                     is_default=True,
                 ),
                 FieldAction(
                     id="trace",
-                    label="Show artifact lifecycle",
+                    label="Show generation lifecycle",
                     action_type=ActionType.TRACE,
                     icon="📊",
                     trace_config={
@@ -327,7 +327,7 @@ class ClickableFieldRegistry:
                 ),
                 FieldAction(
                     id="copy",
-                    label="Copy artifact ID",
+                    label="Copy generation ID",
                     action_type=ActionType.COPY,
                     icon="📋",
                 ),

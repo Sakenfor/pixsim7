@@ -297,7 +297,7 @@ def build_expandable_details(log, extra):
 
     # Group 1: IDs
     id_fields = []
-    for field in ['job_id', 'request_id', 'user_id', 'provider_id', 'asset_id', 'artifact_id']:
+    for field in ['job_id', 'request_id', 'user_id', 'provider_id', 'asset_id', 'generation_id']:
         if field in all_fields and all_fields[field]:
             id_fields.append(f'<span style="color: #888;">{field}:</span> <span style="color: #FFB74D;">{all_fields[field]}</span>')
     if id_fields:

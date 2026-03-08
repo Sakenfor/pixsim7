@@ -166,8 +166,7 @@ docker-compose -f docker-compose.db-only.yml logs -f postgres
 # Look for: "database system is ready to accept connections"
 
 # Run migrations
-cd pixsim7/backend/main
-PYTHONPATH=/g/code/pixsim7 alembic upgrade head
+python scripts/migrate_all.py
 
 # Verify database
 docker-compose -f docker-compose.db-only.yml exec postgres \
@@ -287,7 +286,12 @@ PYTHONPATH=/g/code/pixsim7 alembic revision --autogenerate -m "Add new field to 
 
 **Apply migrations:**
 ```bash
-PYTHONPATH=/g/code/pixsim7 alembic upgrade head
+python scripts/migrate_all.py
+```
+
+**Apply a single migration chain:**
+```bash
+python scripts/migrate_all.py --scope blocks
 ```
 
 **Rollback migration:**
@@ -733,11 +737,14 @@ docker-compose -f docker-compose.db-only.yml logs postgres
 
 ```bash
 # Check current version
-alembic current
+alembic -c alembic.ini current
+alembic -c alembic_game.ini current
+alembic -c alembic_blocks.ini current
+alembic -c alembic_logs.ini current
 
 # Rollback and retry
-alembic downgrade -1
-alembic upgrade head
+alembic -c alembic.ini downgrade -1
+python scripts/migrate_all.py
 
 # If stuck, check database
 psql -U pixsim pixsim7 -c "SELECT * FROM alembic_version;"

@@ -32,9 +32,23 @@ class GitWorker(QThread):
         super().__init__(parent)
         self.operation = operation
         self.conflict_strategy = conflict_strategy  # 'ours', 'theirs', or 'skip'
+        self._proc = None
+
+    def cancel(self):
+        """Request cancellation and stop any active subprocess."""
+        self.requestInterruption()
+        proc = self._proc
+        if proc and proc.poll() is None:
+            try:
+                proc.kill()
+            except Exception:
+                pass
 
     def run(self):
         try:
+            if self.isInterruptionRequested():
+                self.finished.emit(False, "Operation cancelled.")
+                return
             if self.operation == "status":
                 result = self._check_status()
             elif self.operation == "commit":
@@ -61,12 +75,15 @@ class GitWorker(QThread):
             stderr=subprocess.PIPE,
             text=True
         )
+        self._proc = proc
         try:
             out, err = proc.communicate(timeout=timeout)
             return proc.returncode, out, err
         except subprocess.TimeoutExpired:
             proc.kill()
             return -1, "", "Command timed out"
+        finally:
+            self._proc = None
 
     def _check_status(self):
         """Check current git status."""
@@ -398,19 +415,21 @@ class SimpleGitDialog(QDialog):
 
     def _operation_finished(self, success, message):
         """Handle operation completion."""
+        completed_operation = self.worker.operation if self.worker else None
         if success:
             self._log(f"✓ {message}")
             # Update status label for status checks
-            if self.worker and self.worker.operation == "status":
+            if completed_operation == "status":
                 self.status_label.setText(message)
         else:
             self._log(f"✗ {message}")
 
         # Re-enable buttons
         self._set_buttons_enabled(True)
+        self.worker = None
 
         # Only refresh status if it wasn't a status operation (prevent infinite loop)
-        if self.worker and self.worker.operation != "status":
+        if completed_operation and completed_operation != "status":
             self._refresh_status()
 
     def _set_buttons_enabled(self, enabled):
@@ -511,6 +530,22 @@ class SimpleGitDialog(QDialog):
         # TODO: Chain operations properly
         # For now, just run commit as first step
         self._run_operation("commit", "Step 1/4: Committing changes")
+
+    def shutdown(self):
+        """Stop any running worker before dialog destruction."""
+        worker = self.worker
+        if worker and worker.isRunning():
+            if hasattr(worker, "cancel"):
+                worker.cancel()
+            else:
+                worker.requestInterruption()
+            worker.wait(6000)
+        self.worker = None
+
+    def closeEvent(self, event):
+        """Ensure background worker is stopped before closing."""
+        self.shutdown()
+        super().closeEvent(event)
 
 
 def show_conflict_resolution_dialog(parent, branch_name, conflicted_files):

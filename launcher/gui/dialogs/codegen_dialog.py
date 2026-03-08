@@ -114,9 +114,23 @@ class CodegenWorker(QThread):
         self.check_mode = check_mode
         self.group = group
         self._run_all = False
+        self._proc = None
+
+    def cancel(self):
+        """Request cancellation and stop any active subprocess."""
+        self.requestInterruption()
+        proc = self._proc
+        if proc and proc.poll() is None:
+            try:
+                proc.kill()
+            except Exception:
+                pass
 
     def run(self):
         try:
+            if self.isInterruptionRequested():
+                self.finished.emit(self.task_id, False, "Operation cancelled.")
+                return
             if self._run_all:
                 result = self._run_pnpm_codegen()
             elif self.group:
@@ -146,6 +160,7 @@ class CodegenWorker(QThread):
             text=True,
             env=env
         )
+        self._proc = proc
 
         try:
             out, err = proc.communicate(timeout=120)
@@ -166,6 +181,8 @@ class CodegenWorker(QThread):
         except subprocess.TimeoutExpired:
             proc.kill()
             return (False, "Command timed out after 120 seconds")
+        finally:
+            self._proc = None
 
     def _run_group(self):
         """Run codegen for a group."""
@@ -184,6 +201,7 @@ class CodegenWorker(QThread):
             text=True,
             env=env
         )
+        self._proc = proc
 
         try:
             out, err = proc.communicate(timeout=180)
@@ -204,6 +222,8 @@ class CodegenWorker(QThread):
         except subprocess.TimeoutExpired:
             proc.kill()
             return (False, "Command timed out after 180 seconds")
+        finally:
+            self._proc = None
 
     def _run_pnpm_codegen(self):
         """Run pnpm codegen or codegen:check."""
@@ -219,6 +239,7 @@ class CodegenWorker(QThread):
             text=True,
             env=env
         )
+        self._proc = proc
 
         try:
             out, err = proc.communicate(timeout=180)
@@ -239,6 +260,8 @@ class CodegenWorker(QThread):
         except subprocess.TimeoutExpired:
             proc.kill()
             return (False, "Command timed out after 180 seconds")
+        finally:
+            self._proc = None
 
 
 class CodegenBatchWorker(QThread):
@@ -250,6 +273,17 @@ class CodegenBatchWorker(QThread):
         super().__init__(parent)
         self.tasks = tasks
         self.check_mode = check_mode
+        self._proc = None
+
+    def cancel(self):
+        """Request cancellation and stop any active subprocess."""
+        self.requestInterruption()
+        proc = self._proc
+        if proc and proc.poll() is None:
+            try:
+                proc.kill()
+            except Exception:
+                pass
 
     def run(self):
         env = service_env()
@@ -258,6 +292,10 @@ class CodegenBatchWorker(QThread):
         overall_success = True
 
         for task in self.tasks:
+            if self.isInterruptionRequested():
+                self.batch_finished.emit(False, "Operation cancelled.")
+                return
+
             task_id = task['id'] if isinstance(task, dict) else str(task)
             args = ["codegen", "--", "--only", task_id]
             if self.check_mode:
@@ -271,6 +309,7 @@ class CodegenBatchWorker(QThread):
                 text=True,
                 env=env
             )
+            self._proc = proc
 
             try:
                 out, err = proc.communicate(timeout=120)
@@ -292,6 +331,8 @@ class CodegenBatchWorker(QThread):
                 summary_lines.append(f"{task_id} [FAILED]")
                 overall_success = False
                 self.task_finished.emit(task_id, False, "Command timed out after 120 seconds")
+            finally:
+                self._proc = None
 
         summary = "\n".join(summary_lines)
         self.batch_finished.emit(overall_success, summary)
@@ -515,7 +556,7 @@ class CodegenToolsWidget(QWidget):
         self._output.setPlainText("Running all codegen tasks...")
         self._set_all_enabled(False)
 
-        self._worker = CodegenWorker("all", "", False, self)
+        self._worker = CodegenWorker("all", "", False, parent=self)
         self._worker._run_all = True
         self._worker.finished.connect(self._on_worker_finished)
         self._worker.start()
@@ -527,10 +568,21 @@ class CodegenToolsWidget(QWidget):
         self._output.setPlainText("Checking all codegen tasks...")
         self._set_all_enabled(False)
 
-        self._worker = CodegenWorker("all", "", True, self)
+        self._worker = CodegenWorker("all", "", True, parent=self)
         self._worker._run_all = True
         self._worker.finished.connect(self._on_worker_finished)
         self._worker.start()
+
+    def shutdown(self):
+        """Stop any running worker before widget/dialog destruction."""
+        worker = self._worker
+        if worker and worker.isRunning():
+            if hasattr(worker, "cancel"):
+                worker.cancel()
+            else:
+                worker.requestInterruption()
+            worker.wait(6000)
+        self._worker = None
 
 
 def show_codegen_dialog(parent):
@@ -546,6 +598,7 @@ def show_codegen_dialog(parent):
 
     widget = CodegenToolsWidget(dlg)
     layout.addWidget(widget)
+    dlg.finished.connect(lambda _result: widget.shutdown())
 
     btn_close = QPushButton("Close")
     btn_close.setStyleSheet(f"background-color: {theme.BG_TERTIARY}; margin: 12px;")

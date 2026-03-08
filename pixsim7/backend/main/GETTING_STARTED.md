@@ -56,15 +56,12 @@ GRANT ALL PRIVILEGES ON DATABASE pixsim7 TO pixsim;
 ### 4. Run Migrations
 
 ```bash
-# Initialize Alembic (first time only)
-cd infrastructure/database
-alembic init migrations  # Already done for you
+# Run all migration chains from repository root
+cd ../../..
+python scripts/migrate_all.py
 
-# Create initial migration
-alembic revision --autogenerate -m "Initial schema"
-
-# Apply migrations
-alembic upgrade head
+# Optional: run one chain only
+python scripts/migrate_all.py --scope blocks
 ```
 
 ### 5. Start Server
@@ -112,16 +109,16 @@ Response:
 
 ```bash
 # Create new migration after model changes
-cd infrastructure/database
-alembic revision --autogenerate -m "Add new field"
+alembic -c ../../../alembic.ini revision --autogenerate -m "Add new field"
 
 # Review the generated migration file in migrations/versions/
 
 # Apply migration
-alembic upgrade head
+cd ../../..
+python scripts/migrate_all.py
 
 # Rollback migration
-alembic downgrade -1
+alembic -c alembic.ini downgrade -1
 ```
 
 ### Running Tests
@@ -182,8 +179,8 @@ pixsim7/backend/main/
 1. Create model in `domain/` directory
 2. Import model in `domain/__init__.py`
 3. Import model in `main.py` lifespan (for SQLModel registration)
-4. Create migration: `alembic revision --autogenerate -m "Add ModelName"`
-5. Apply migration: `alembic upgrade head`
+4. Create migration: `alembic -c ../../../alembic.ini revision --autogenerate -m "Add ModelName"`
+5. Apply migration: `python scripts/migrate_all.py` (run from repo root)
 
 ### Add a New API Endpoint
 
@@ -254,7 +251,7 @@ alembic.util.exc.CommandError: Multiple heads detected
 **Solution:**
 1. Check current heads: `alembic heads`
 2. Merge heads: `alembic merge -m "merge heads" head1 head2`
-3. Apply: `alembic upgrade head`
+3. Apply: `python scripts/migrate_all.py` (run from repo root)
 
 ---
 

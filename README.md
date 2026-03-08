@@ -289,11 +289,11 @@ mypy pixsim7/
 
 ### Database Migrations
 ```bash
-# Create migration
-alembic revision --autogenerate -m "description"
+# Apply all migration chains (main + game + blocks + logs)
+python scripts/migrate_all.py
 
-# Apply migrations
-alembic upgrade head
+# Apply one chain only (example)
+python scripts/migrate_all.py --scope blocks
 ```
 
 See [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md) for detailed workflows.

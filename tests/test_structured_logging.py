@@ -18,7 +18,7 @@ import sys
 # Add repo root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from pixsim_logging import configure_logging, bind_job_context, bind_artifact_context
+from pixsim_logging import configure_logging, bind_job_context, bind_generation_context
 
 
 def test_basic_logging():
@@ -54,12 +54,12 @@ def test_job_context():
     job_logger.info("account_selected", account_id=456)
     job_logger.info("pipeline:artifact", msg="artifact_created", artifact_id=789)
 
-    # Bind artifact context
-    artifact_logger = bind_artifact_context(job_logger, artifact_id=789, submission_id=321)
+    # Bind generation context
+    gen_logger = bind_generation_context(job_logger, generation_id=789, submission_id=321)
 
-    artifact_logger.info("provider:submit", msg="job_submitted_to_provider", provider_job_id="pv_job_abc")
-    artifact_logger.info("provider:status", msg="status_polled", status="processing", progress=0.5)
-    artifact_logger.info("provider:complete", msg="generation_completed", video_url="https://example.com/video.mp4")
+    gen_logger.info("provider:submit", msg="job_submitted_to_provider", provider_job_id="pv_job_abc")
+    gen_logger.info("provider:status", msg="status_polled", status="processing", progress=0.5)
+    gen_logger.info("provider:complete", msg="generation_completed", video_url="https://example.com/video.mp4")
 
     print()
 

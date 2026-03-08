@@ -43,9 +43,17 @@ class LogFetchWorker(QThread):
         super().__init__()
         self.api_url = api_url
         self.params = params
+        self._cancelled = False
+
+    def cancel(self):
+        """Request cooperative cancellation."""
+        self._cancelled = True
+        self.requestInterruption()
 
     def run(self):
         """Fetch logs in background thread."""
+        if self.isInterruptionRequested() or self._cancelled:
+            return
         try:
             response = requests.get(
                 f"{self.api_url}/api/v1/logs/query",
@@ -53,13 +61,18 @@ class LogFetchWorker(QThread):
                 timeout=5
             )
             response.raise_for_status()
+            if self.isInterruptionRequested() or self._cancelled:
+                return
             self.logs_fetched.emit(response.json())
         except requests.exceptions.ConnectionError:
-            self.error_occurred.emit('Cannot connect to API (is it running?)')
+            if not (self.isInterruptionRequested() or self._cancelled):
+                self.error_occurred.emit('Cannot connect to API (is it running?)')
         except requests.exceptions.Timeout:
-            self.error_occurred.emit('API request timed out')
+            if not (self.isInterruptionRequested() or self._cancelled):
+                self.error_occurred.emit('API request timed out')
         except Exception as e:
-            self.error_occurred.emit(f'{type(e).__name__}: {str(e)}')
+            if not (self.isInterruptionRequested() or self._cancelled):
+                self.error_occurred.emit(f'{type(e).__name__}: {str(e)}')
 
 
 class FieldDiscoveryWorker(QThread):
@@ -74,10 +87,20 @@ class FieldDiscoveryWorker(QThread):
         self.api_url = api_url
         self.service_name = service_name
         self.cache = cache
+        self._cancelled = False
+
+    def cancel(self):
+        """Request cooperative cancellation."""
+        self._cancelled = True
+        self.requestInterruption()
 
     def run(self):
         """Discover fields in background thread."""
+        if self.isInterruptionRequested() or self._cancelled:
+            return
         fields = discover_fields(self.service_name, self.api_url, self.cache, timeout=1)
+        if self.isInterruptionRequested() or self._cancelled:
+            return
         if fields:
             self.fields_discovered.emit(self.service_name, fields)
         else:
@@ -93,20 +116,33 @@ class RequestTraceFetchWorker(QThread):
     def __init__(self, trace_url: str):
         super().__init__()
         self.trace_url = trace_url
+        self._cancelled = False
+
+    def cancel(self):
+        """Request cooperative cancellation."""
+        self._cancelled = True
+        self.requestInterruption()
 
     def run(self):
+        if self.isInterruptionRequested() or self._cancelled:
+            return
         try:
             response = requests.get(self.trace_url, timeout=5)
             response.raise_for_status()
+            if self.isInterruptionRequested() or self._cancelled:
+                return
             payload = response.json()
             import json
             self.trace_fetched.emit(json.dumps(payload, indent=2, ensure_ascii=False))
         except requests.exceptions.ConnectionError:
-            self.error_occurred.emit('Cannot connect to API (is it running?)')
+            if not (self.isInterruptionRequested() or self._cancelled):
+                self.error_occurred.emit('Cannot connect to API (is it running?)')
         except requests.exceptions.Timeout:
-            self.error_occurred.emit('API request timed out')
+            if not (self.isInterruptionRequested() or self._cancelled):
+                self.error_occurred.emit('API request timed out')
         except Exception as e:
-            self.error_occurred.emit(f'{type(e).__name__}: {str(e)}')
+            if not (self.isInterruptionRequested() or self._cancelled):
+                self.error_occurred.emit(f'{type(e).__name__}: {str(e)}')
 
 
 class DatabaseLogViewer(QWidget):
@@ -118,14 +154,41 @@ class DatabaseLogViewer(QWidget):
         self.auto_refresh_enabled = False  # Disabled by default to avoid lag
         self.worker = None  # Current worker thread
         self.field_worker = None  # Field discovery worker thread
+        self._background_workers = set()  # Keep live refs to running QThreads
         self._fields_cache = {}  # Cache field discovery results
         self._metadata_cache = {}  # Cache field metadata to avoid redundant API calls
         self._field_relationships = {}  # Cache field relationships for contextual display
         self._initial_load_done = False  # Track if we've loaded logs once
         self._worker_generation = 0  # Track worker generation to ignore stale results
+        self._field_worker_generation = 0  # Track field worker generation to ignore stale results
         self._pending_service_change = None  # Track pending service change
         self._request_trace_dialogs = {}  # request_id -> dialog
         self.init_ui()
+
+    def _track_worker(self, worker: QThread):
+        """Track worker lifetime to avoid QThread destruction while running."""
+        self._background_workers.add(worker)
+
+        def _cleanup():
+            self._background_workers.discard(worker)
+            try:
+                worker.deleteLater()
+            except Exception:
+                pass
+
+        worker.finished.connect(_cleanup)
+
+    def _cancel_worker(self, worker: QThread):
+        """Request cooperative cancellation if supported."""
+        if not worker:
+            return
+        try:
+            if hasattr(worker, "cancel"):
+                worker.cancel()
+            else:
+                worker.requestInterruption()
+        except Exception:
+            pass
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -614,7 +677,7 @@ class DatabaseLogViewer(QWidget):
                 value = widget.text().strip()
                 if value:
                     # Handle numeric fields (try to convert, fallback to string)
-                    if field_name in ['job_id', 'user_id', 'asset_id', 'artifact_id', 'attempt']:
+                    if field_name in ['job_id', 'user_id', 'asset_id', 'generation_id', 'attempt']:
                         try:
                             params[field_name] = int(value)
                         except ValueError:
@@ -659,12 +722,16 @@ class DatabaseLogViewer(QWidget):
             self.status_label.setText(f'Loading logs ({filter_str})...')
             self.refresh_btn.setEnabled(False)
 
-            # Create and start worker thread
+            # Cancel previous fetch request (if still running) and start a new one.
+            if self.worker and self.worker.isRunning():
+                self._cancel_worker(self.worker)
+
             self.worker = LogFetchWorker(self.api_url, params)
             # Store generation in worker so callbacks can check if stale
             self.worker.generation = current_generation
             self.worker.logs_fetched.connect(lambda data, gen=current_generation: self._on_logs_received(data, gen))
             self.worker.error_occurred.connect(lambda err, gen=current_generation: self._on_error(err, gen))
+            self._track_worker(self.worker)
             self.worker.start()
 
         except Exception as e:
@@ -695,15 +762,21 @@ class DatabaseLogViewer(QWidget):
         self.status_label.setText(f'Service changed to {service} - Loading filters...')
         self._pending_service_change = service
 
-        # Cancel existing field worker if still running
+        # Cancel existing field worker if still running.
         if self.field_worker and self.field_worker.isRunning():
-            self.field_worker.terminate()
-            self.field_worker.wait(100)
+            self._cancel_worker(self.field_worker)
 
         # Start new field discovery worker
+        self._field_worker_generation += 1
+        current_field_generation = self._field_worker_generation
         self.field_worker = FieldDiscoveryWorker(self.api_url, service, self._fields_cache)
-        self.field_worker.fields_discovered.connect(self._on_fields_discovered)
-        self.field_worker.discovery_failed.connect(self._on_field_discovery_failed)
+        self.field_worker.fields_discovered.connect(
+            lambda service_name, fields, gen=current_field_generation: self._on_fields_discovered(service_name, fields, gen)
+        )
+        self.field_worker.discovery_failed.connect(
+            lambda service_name, gen=current_field_generation: self._on_field_discovery_failed(service_name, gen)
+        )
+        self._track_worker(self.field_worker)
         self.field_worker.start()
 
     def _clear_dynamic_filters(self):
@@ -828,7 +901,7 @@ class DatabaseLogViewer(QWidget):
         ]
         extra = log.get('extra')
         if isinstance(extra, dict):
-            parts.append(str(extra.get('provider_job_id') or extra.get('artifact_id') or ''))
+            parts.append(str(extra.get('provider_job_id') or extra.get('generation_id') or ''))
 
         digest = hashlib.sha1("|".join(parts).encode('utf-8', 'ignore')).hexdigest()
         return f"hash-{digest}"
@@ -1069,7 +1142,8 @@ class DatabaseLogViewer(QWidget):
         worker.trace_fetched.connect(on_fetched)
         worker.error_occurred.connect(on_error)
         btn_refresh.clicked.connect(start_fetch)
-        dialog.destroyed.connect(lambda _: worker.quit())
+        dialog.destroyed.connect(lambda _: self._cancel_worker(worker))
+        self._track_worker(worker)
 
         self._request_trace_dialogs[request_id] = dialog
         dialog.show()
@@ -1178,7 +1252,7 @@ class DatabaseLogViewer(QWidget):
             (r'job:(\d+)', 'job_id', 'Job ID'),
             (r'user:(\d+)', 'user_id', 'User ID'),
             (r'asset:(\d+)', 'asset_id', 'Asset ID'),
-            (r'artifact:(\d+)', 'artifact_id', 'Artifact ID'),
+            (r'generation:(\d+)', 'generation_id', 'Generation ID'),
             (r'provider:(\d+)', 'provider_id', 'Provider ID'),
             (r'provider_job:([a-zA-Z0-9_-]+)', 'provider_job_id', 'Provider Job ID'),
             (r'req:([a-f0-9-]{8,})', 'request_id', 'Request ID'),
@@ -1335,8 +1409,11 @@ class DatabaseLogViewer(QWidget):
         """Discover fields for a service (wrapper for module function)."""
         return discover_fields(service_name, self.api_url, self._fields_cache)
 
-    def _on_fields_discovered(self, service_name: str, fields: list):
+    def _on_fields_discovered(self, service_name: str, fields: list, generation: int):
         """Handle fields discovered from worker thread."""
+        if generation != self._field_worker_generation:
+            return
+
         # Only apply if this is still the current service selection
         if self.service_combo.currentText() != service_name:
             return
@@ -1349,8 +1426,11 @@ class DatabaseLogViewer(QWidget):
 
         self.status_label.setText(f'Service changed to {service_name} - Click Refresh to load logs')
 
-    def _on_field_discovery_failed(self, service_name: str):
+    def _on_field_discovery_failed(self, service_name: str, generation: int):
         """Handle field discovery failure."""
+        if generation != self._field_worker_generation:
+            return
+
         # Only apply if this is still the current service selection
         if self.service_combo.currentText() != service_name:
             return
@@ -1408,21 +1488,23 @@ class DatabaseLogViewer(QWidget):
 
     def shutdown(self):
         """Cleanly stop any running worker threads before closing app."""
-        if self.worker:
-            try:
-                if self.worker.isRunning():
-                    self.worker.terminate()
-                # Always wait to ensure thread is fully stopped
-                self.worker.wait(2000)  # Wait up to 2 seconds
-            except Exception:
-                pass
-            self.worker = None
+        workers = list(self._background_workers)
+        if self.worker and self.worker not in workers:
+            workers.append(self.worker)
+        if self.field_worker and self.field_worker not in workers:
+            workers.append(self.field_worker)
 
-        if self.field_worker:
+        for worker in workers:
+            self._cancel_worker(worker)
+
+        # Worker network calls are bounded by short request timeouts; wait cooperatively.
+        for worker in workers:
             try:
-                if self.field_worker.isRunning():
-                    self.field_worker.terminate()
-                self.field_worker.wait(1000)
+                if worker.isRunning():
+                    worker.wait(6000)
             except Exception:
                 pass
-            self.field_worker = None
+
+        self._background_workers.clear()
+        self.worker = None
+        self.field_worker = None

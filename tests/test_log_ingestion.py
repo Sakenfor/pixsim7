@@ -101,7 +101,7 @@ def test_batch_log_ingestion():
             "job_id": job_id,
             "operation_type": "image_to_video",
             "provider_id": "pixverse",
-            "artifact_id": 999,
+            "generation_id": 999,
             "stage": "pipeline:artifact"
         },
         {
@@ -113,7 +113,7 @@ def test_batch_log_ingestion():
             "job_id": job_id,
             "operation_type": "image_to_video",
             "provider_id": "pixverse",
-            "artifact_id": 999,
+            "generation_id": 999,
             "submission_id": 888,
             "provider_job_id": "pv_test_123",
             "stage": "provider:submit"

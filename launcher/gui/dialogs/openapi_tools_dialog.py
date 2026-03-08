@@ -36,9 +36,14 @@ class OpenApiWorker(QThread):
         self.operation = operation
         self.openapi_url = openapi_url
         self.types_path = types_path or "packages/shared/api/model/src/generated/openapi"
+        self._proc = None
 
     def run(self):
         try:
+            if self.isInterruptionRequested():
+                self.finished.emit(False, "Operation cancelled.")
+                return
+
             if self.operation == "check":
                 result = self._check_backend()
             elif self.operation == "generate":
@@ -56,6 +61,8 @@ class OpenApiWorker(QThread):
 
     def _check_backend(self):
         """Check if backend is reachable."""
+        if self.isInterruptionRequested():
+            return (False, "Operation cancelled.")
         try:
             req = urllib.request.Request(self.openapi_url, method='GET')
             with urllib.request.urlopen(req, timeout=5) as response:
@@ -86,12 +93,15 @@ class OpenApiWorker(QThread):
             text=True,
             env=env
         )
+        self._proc = proc
         try:
             out, err = proc.communicate(timeout=timeout)
             return proc.returncode, out, err
         except subprocess.TimeoutExpired:
             proc.kill()
             return -1, "", "Command timed out"
+        finally:
+            self._proc = None
 
     def _run_python(self, args, timeout=60):
         """Run a Python command and return (returncode, stdout, stderr)."""
@@ -104,12 +114,25 @@ class OpenApiWorker(QThread):
             text=True,
             env=env
         )
+        self._proc = proc
         try:
             out, err = proc.communicate(timeout=timeout)
             return proc.returncode, out, err
         except subprocess.TimeoutExpired:
             proc.kill()
             return -1, "", "Command timed out"
+        finally:
+            self._proc = None
+
+    def cancel(self):
+        """Request cancellation and stop a running subprocess if present."""
+        self.requestInterruption()
+        proc = self._proc
+        if proc and proc.poll() is None:
+            try:
+                proc.kill()
+            except Exception:
+                pass
 
     def _generate_types(self):
         """Generate TypeScript types from OpenAPI spec."""
@@ -365,6 +388,14 @@ class OpenApiToolsWidget(QWidget):
         self._worker.finished.connect(self._on_worker_finished)
         self._worker.start()
 
+    def shutdown(self):
+        """Stop any running worker before the widget/dialog is destroyed."""
+        worker = self._worker
+        if worker and worker.isRunning():
+            worker.cancel()
+            worker.wait(6000)
+        self._worker = None
+
     def _open_url(self, url):
         if not QDesktopServices.openUrl(QUrl(url)):
             QMessageBox.warning(self, "Error", f"Failed to open URL: {url}")
@@ -396,6 +427,7 @@ def show_openapi_tools_dialog(parent, openapi_url: str = None, types_path: str =
 
     widget = OpenApiToolsWidget(dlg, openapi_url, types_path, service_name)
     layout.addWidget(widget)
+    dlg.finished.connect(lambda _result: widget.shutdown())
 
     btn_close = QPushButton('Close')
     btn_close.setStyleSheet(f"background-color: {theme.BG_TERTIARY}; margin: 12px;")
@@ -403,4 +435,3 @@ def show_openapi_tools_dialog(parent, openapi_url: str = None, types_path: str =
     layout.addWidget(btn_close)
 
     dlg.exec()
-

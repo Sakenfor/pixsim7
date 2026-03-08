@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 import time
 
-from . import configure_logging, bind_job_context, bind_artifact_context
+from . import configure_logging, bind_job_context, bind_generation_context
 
 
 def main() -> None:
@@ -25,10 +25,10 @@ def main() -> None:
 
     # Bind some common context helpers
     job_logger = bind_job_context(logger, job_id=123, operation_type="render", provider_id="demo_provider")
-    art_logger = bind_artifact_context(job_logger, artifact_id=456, submission_id=789)
+    gen_logger = bind_generation_context(job_logger, generation_id=456, submission_id=789)
 
-    art_logger.info("pipeline:start", stage="pipeline:start")
-    art_logger.info("provider:status", stage="provider:status", attempt=1, duration_ms=42)
+    gen_logger.info("pipeline:start", stage="pipeline:start")
+    gen_logger.info("provider:status", stage="provider:status", attempt=1, duration_ms=42)
 
     # Emit a faux HTTP request event so path filtering/sampling can be verified
     logger.info("http_request", event="http_request", path="/health", method="GET", status_code=200)
