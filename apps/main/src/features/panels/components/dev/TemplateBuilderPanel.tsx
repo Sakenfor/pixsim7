@@ -12,7 +12,7 @@
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { BlockTemplateSummary, CharacterBindings } from '@lib/api/blockTemplates';
+import type { BlockTemplateSummary, CharacterBindings, ListTemplatesQuery } from '@lib/api/blockTemplates';
 import { getTemplate, reloadContentPacks } from '@lib/api/blockTemplates';
 import { isAdminUser } from '@lib/auth/userRoles';
 import { Icon } from '@lib/icons';
@@ -34,12 +34,14 @@ import {
 import { useAuthStore } from '@/stores/authStore';
 
 type PanelView = 'list' | 'edit' | 'roll' | 'cast';
+type TemplateListScope = 'public' | 'mine_plus_public' | 'mine';
 
 export function TemplateBuilderPanel() {
   const currentUser = useAuthStore((s) => s.user);
   const canReloadContentPacks = isAdminUser(currentUser);
   const templates = useBlockTemplateStore((s) => s.templates);
   const templatesLoading = useBlockTemplateStore((s) => s.templatesLoading);
+  const templatesQuery = useBlockTemplateStore((s) => s.templatesQuery);
   const fetchTemplates = useBlockTemplateStore((s) => s.fetchTemplates);
   const fetchTemplate = useBlockTemplateStore((s) => s.fetchTemplate);
   const activeTemplate = useBlockTemplateStore((s) => s.activeTemplate);
@@ -77,6 +79,12 @@ export function TemplateBuilderPanel() {
 
   const [view, setView] = useState<PanelView>('list');
   const [search, setSearch] = useState('');
+  const [templateListScope, setTemplateListScope] = useState<TemplateListScope>(() => {
+    if (templatesQuery?.mine) {
+      return templatesQuery.include_public === false ? 'mine' : 'mine_plus_public';
+    }
+    return currentUser?.id ? 'mine_plus_public' : 'public';
+  });
 
   // Cast state
   const [castTemplateId, setCastTemplateId] = useState<string | null>(null);
@@ -88,9 +96,42 @@ export function TemplateBuilderPanel() {
   const [reloadingPinnedPack, setReloadingPinnedPack] = useState(false);
   const [reloadPinnedPackMessage, setReloadPinnedPackMessage] = useState<string | null>(null);
 
+  const buildTemplateListQuery = useCallback(
+    (scope: TemplateListScope): ListTemplatesQuery => {
+      if (!currentUser?.id) {
+        return { limit: 200, is_public: true };
+      }
+      if (scope === 'mine') {
+        return { limit: 200, mine: true, include_public: false };
+      }
+      if (scope === 'mine_plus_public') {
+        return { limit: 200, mine: true, include_public: true };
+      }
+      return { limit: 200, is_public: true };
+    },
+    [currentUser?.id],
+  );
+
+  const templateListQuery = useMemo(
+    () => buildTemplateListQuery(templateListScope),
+    [buildTemplateListQuery, templateListScope],
+  );
+
   useEffect(() => {
-    void fetchTemplates();
-  }, [fetchTemplates]);
+    if (currentUser?.id && templatesQuery == null && templateListScope === 'public') {
+      setTemplateListScope('mine_plus_public');
+    }
+  }, [currentUser?.id, templatesQuery, templateListScope]);
+
+  useEffect(() => {
+    if (!currentUser?.id && templateListScope !== 'public') {
+      setTemplateListScope('public');
+    }
+  }, [currentUser?.id, templateListScope]);
+
+  useEffect(() => {
+    void fetchTemplates(templateListQuery);
+  }, [fetchTemplates, templateListQuery]);
 
   useEffect(() => {
     const previous = templateUpdatedAtByIdRef.current;
@@ -195,7 +236,7 @@ export function TemplateBuilderPanel() {
         setReloadPinnedPackMessage(
           `Reloaded ${pinnedTemplatePack}${updatedCount ? ` (${updatedCount} rows touched)` : ''}`,
         );
-        await fetchTemplates();
+        await fetchTemplates(templateListQuery);
         if (pinnedTemplateId) {
           await fetchTemplate(pinnedTemplateId);
         }
@@ -205,7 +246,7 @@ export function TemplateBuilderPanel() {
     } finally {
       setReloadingPinnedPack(false);
     }
-  }, [canReloadContentPacks, fetchTemplate, fetchTemplates, pinnedTemplateId, pinnedTemplatePack, reloadingPinnedPack]);
+  }, [canReloadContentPacks, fetchTemplate, fetchTemplates, pinnedTemplateId, pinnedTemplatePack, reloadingPinnedPack, templateListQuery]);
 
   const handleNew = useCallback(() => {
     setActiveTemplate(null);
@@ -523,8 +564,58 @@ export function TemplateBuilderPanel() {
               </div>
             )}
 
-            {/* Search input */}
-            <div className="px-3 py-1.5 shrink-0">
+            {/* List scope + search */}
+            <div className="px-3 pt-1.5 pb-1 shrink-0 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+                  Scope
+                </span>
+                <div className="inline-flex rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setTemplateListScope('public')}
+                    className={clsx(
+                      'px-2 py-0.5 text-[10px] transition-colors',
+                      templateListScope === 'public'
+                        ? 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                        : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                    )}
+                  >
+                    Public
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTemplateListScope('mine_plus_public')}
+                    disabled={!currentUser}
+                    title={currentUser ? 'Your templates plus public templates' : 'Sign in to use owner-scoped views'}
+                    className={clsx(
+                      'px-2 py-0.5 text-[10px] border-l border-neutral-200 dark:border-neutral-700 transition-colors',
+                      templateListScope === 'mine_plus_public'
+                        ? 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                        : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                      !currentUser && 'opacity-50 cursor-not-allowed',
+                    )}
+                  >
+                    Mine + Public
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTemplateListScope('mine')}
+                    disabled={!currentUser}
+                    title={currentUser ? 'Only your templates' : 'Sign in to use owner-scoped views'}
+                    className={clsx(
+                      'px-2 py-0.5 text-[10px] border-l border-neutral-200 dark:border-neutral-700 transition-colors',
+                      templateListScope === 'mine'
+                        ? 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                        : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                      !currentUser && 'opacity-50 cursor-not-allowed',
+                    )}
+                  >
+                    Mine
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
                 <Icon name="search" size={12} className="text-neutral-400 shrink-0" />
                 <input

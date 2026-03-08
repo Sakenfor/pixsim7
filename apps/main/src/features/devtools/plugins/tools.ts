@@ -8,20 +8,19 @@
  */
 
 import type { DevToolDefinition } from '@pixsim7/shared.devtools.core';
+import { lazy } from 'react';
 
-import { buildDevtoolsUrl } from '@lib/dev/devtools/devtoolsUrl';
-
-// Import dev tool components
-import { AppMapPanel } from '@features/panels/components/dev/AppMapPanel';
-import { BackendArchitecturePanel } from '@features/panels/components/dev/BackendArchitecturePanel';
-import { CapabilityTestingPanel } from '@features/panels/components/dev/CapabilityTestingPanel';
-import { DependencyGraphPanel } from '@features/panels/components/dev/DependencyGraphPanel';
-import { GenerationHealthView } from '@features/panels/components/dev/GenerationHealthView';
-import { GizmoSurfacesPanel } from '@features/panels/components/dev/GizmoSurfacesPanel';
-import { LogViewerPanel } from '@features/panels/components/dev/LogViewerPanel';
-import { SessionStateViewer } from '@features/panels/components/dev/SessionStateViewer';
-import { SqlQueryExplorerPanel } from '@features/panels/components/dev/SqlQueryExplorerPanel';
-import { TypesExplorerPanel } from '@features/panels/components/dev/TypesExplorerPanel';
+// Lazy-loaded dev tool components — only fetched when a dev tool is actually opened
+const SessionStateViewer = lazy(() => import('@features/panels/components/dev/SessionStateViewer').then(m => ({ default: m.SessionStateViewer })));
+const GenerationHealthView = lazy(() => import('@features/panels/components/dev/GenerationHealthView').then(m => ({ default: m.GenerationHealthView })));
+const CapabilityTestingPanel = lazy(() => import('@features/panels/components/dev/CapabilityTestingPanel').then(m => ({ default: m.CapabilityTestingPanel })));
+const AppMapPanel = lazy(() => import('@features/panels/components/dev/AppMapPanel').then(m => ({ default: m.AppMapPanel })));
+const DependencyGraphPanel = lazy(() => import('@features/panels/components/dev/DependencyGraphPanel').then(m => ({ default: m.DependencyGraphPanel })));
+const BackendArchitecturePanel = lazy(() => import('@features/panels/components/dev/BackendArchitecturePanel').then(m => ({ default: m.BackendArchitecturePanel })));
+const GizmoSurfacesPanel = lazy(() => import('@features/panels/components/dev/GizmoSurfacesPanel').then(m => ({ default: m.GizmoSurfacesPanel })));
+const TypesExplorerPanel = lazy(() => import('@features/panels/components/dev/TypesExplorerPanel').then(m => ({ default: m.TypesExplorerPanel })));
+const SqlQueryExplorerPanel = lazy(() => import('@features/panels/components/dev/SqlQueryExplorerPanel').then(m => ({ default: m.SqlQueryExplorerPanel })));
+const LogViewerPanel = lazy(() => import('@features/panels/components/dev/LogViewerPanel').then(m => ({ default: m.LogViewerPanel })));
 
 // ============================================================================
 // Session & World State Tools
@@ -119,7 +118,7 @@ export const promptImporterTool: DevToolDefinition = {
   description: 'Import prompts from external sources',
   icon: 'fileText',
   category: 'prompts',
-  routePath: buildDevtoolsUrl('/dev/prompt-importer'),
+  routePath: '/dev/prompt-importer',
   tags: ['prompts', 'import', 'library'],
 };
 
@@ -129,7 +128,7 @@ export const blockFitTool: DevToolDefinition = {
   description: 'Inspect and rate how well ActionBlocks fit specific assets',
   icon: 'target',
   category: 'prompts',
-  routePath: buildDevtoolsUrl('/dev/block-fit'),
+  routePath: '/dev/block-fit',
   tags: ['action-blocks', 'assets', 'fit', 'feedback'],
 };
 
@@ -184,12 +183,12 @@ export const logViewerTool: DevToolDefinition = {
 
 export const codegenTool: DevToolDefinition = {
   id: 'codegen',
-  label: 'Code Generation',
-  description: 'Run and verify workspace code generation tasks',
+  label: 'Developer Tasks',
+  description: 'Code generation, database migrations, and other developer tasks',
   icon: 'code',
   category: 'debug',
-  routePath: buildDevtoolsUrl('/dev/codegen'),
-  tags: ['codegen', 'types', 'schema', 'generation', 'typescript'],
+  routePath: '/dev/developer-tasks',
+  tags: ['codegen', 'types', 'schema', 'generation', 'typescript', 'migrations', 'database'],
   safeForNonDev: false,
   settings: [
     {

@@ -6,7 +6,7 @@
  */
 
 import type { DevToolId } from '@pixsim7/shared.devtools.core';
-import { useMemo } from 'react';
+import { Suspense, useMemo } from 'react';
 
 import { Icon } from '@lib/icons';
 import { devToolSelectors } from '@lib/plugins/catalogSelectors';
@@ -64,12 +64,14 @@ export function DevToolHost({ toolId, context, className }: DevToolHostProps) {
     );
   }
 
-  // Render the dev tool component
+  // Render the dev tool component (may be lazy-loaded)
   const ToolComponent = tool.panelComponent;
 
   return (
     <div className={`h-full ${className || ''}`}>
-      <ToolComponent context={context} />
+      <Suspense fallback={<div className="flex items-center justify-center h-full text-neutral-500 text-sm">Loading...</div>}>
+        <ToolComponent context={context} />
+      </Suspense>
     </div>
   );
 }

@@ -24,7 +24,7 @@ Scope: Current active APIs under `/api/v1/block-templates` and generation integr
 ### Templates
 
 - `POST /api/v1/block-templates` create template
-- `GET /api/v1/block-templates` list templates
+- `GET /api/v1/block-templates` list templates (`mine` + `include_public` supported for owner-scoped views)
 - `GET /api/v1/block-templates/{template_id}` get template
 - `GET /api/v1/block-templates/by-slug/{slug}` get template by slug
 - `PATCH /api/v1/block-templates/{template_id}` update template
@@ -32,6 +32,10 @@ Scope: Current active APIs under `/api/v1/block-templates` and generation integr
 - `POST /api/v1/block-templates/{template_id}/roll` compile + resolve + assemble prompt
 - `GET /api/v1/block-templates/{template_id}/diagnostics` slot/package diagnostics
 - `POST /api/v1/block-templates/preview-slot` candidate preview
+- Template response payloads expose canonical ownership fields: `owner_user_id`, `owner_ref`, `owner_username`.
+- Analyzer preset responses (`/api/v1/analyzer-presets`) expose the same canonical owner fields.
+- Both endpoints support `mine`, `include_public`, `owner_user_id` query params via `resolve_user_owned_list_scope`.
+- Frontend hook: `useResourceOwnership(ownerUserId)` from `@lib/auth` returns `{ isMine, canEdit, ownerRef }`.
 
 ### Primitives and Catalog
 

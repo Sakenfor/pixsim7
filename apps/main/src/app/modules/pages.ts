@@ -11,7 +11,9 @@ export { gizmoLabModule } from '@features/gizmos/routes';
 export { interactionStudioModule, interactionDemoModule } from '@features/interactions/routes';
 export {
   healthModule,
-  devtoolsGatewayModule,
+  codegenPageModule,
+  promptImporterPageModule,
+  blockFitPageModule,
 } from '@features/devtools/routes';
 export { npcBrainLabModule } from '@features/brainTools/routes';
 export { pluginManagerModule } from '@features/plugins/routes';

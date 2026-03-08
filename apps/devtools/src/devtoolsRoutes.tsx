@@ -1,5 +1,6 @@
 import { lazy } from 'react';
 import type { ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
 
 export interface DevtoolsRoute {
   path: string;
@@ -15,10 +16,16 @@ const BlockFitDev = lazy(() => import('@devtools/mainApp/routes/BlockFitDev').th
 
 export const devtoolsRoutes: DevtoolsRoute[] = [
   {
-    path: '/dev/codegen',
-    label: 'Codegen',
-    description: 'Run and verify workspace code generation tasks.',
+    path: '/dev/developer-tasks',
+    label: 'Developer Tasks',
+    description: 'Code generation, database migrations, and other developer tasks.',
     element: <CodegenDev />,
+  },
+  {
+    path: '/dev/codegen',
+    label: 'Codegen (redirect)',
+    element: <Navigate to="/dev/developer-tasks" replace />,
+    hideFromHome: true,
   },
   {
     path: '/dev/prompt-importer',

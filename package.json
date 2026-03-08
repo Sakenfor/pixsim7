@@ -42,7 +42,12 @@
     "docs:check": "python scripts/docs_check.py",
     "docs:app-map": "tsx packages/shared/app-map/src/cli.ts",
     "docs:app-map:check": "tsx packages/shared/app-map/src/cli.ts --check",
-    "docs:openapi": "python scripts/gen_openapi_docs.py"
+    "docs:openapi": "python scripts/gen_openapi_docs.py",
+    "db:migrate": "python scripts/migrate_all.py",
+    "db:migrate:main": "python scripts/migrate_all.py --scope main",
+    "db:migrate:game": "python scripts/migrate_all.py --scope game",
+    "db:migrate:blocks": "python scripts/migrate_all.py --scope blocks",
+    "db:migrate:logs": "python scripts/migrate_all.py --scope logs"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",

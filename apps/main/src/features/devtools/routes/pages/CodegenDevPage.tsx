@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { Icon } from '@lib/icons';
+import { canRunCodegen } from '@lib/auth';
+
+import { useAuthStore } from '@/stores/authStore';
+
 import {
   extractErrorMessage,
   listCodegenTasks,
@@ -14,10 +19,7 @@ import {
   type MigrationScopeDetail,
   type MigrationStatusResponse,
   type MigrationHeadResponse,
-} from '@devtools/mainApp/codegenApi';
-import { Icon } from '@devtools/mainApp/lib/icons';
-import { canRunCodegen } from '@devtools/mainApp/userRoles';
-import { useAuthStore } from '@devtools/mainApp/authStore';
+} from './codegenApi';
 
 type Tab = 'codegen' | 'migrations';
 type RunState = 'idle' | 'loading' | 'error';
@@ -579,7 +581,7 @@ function MigrationsSection() {
 // Main Page
 // ---------------------------------------------------------------------------
 
-export function CodegenDev() {
+export function CodegenDevPage() {
   const user = useAuthStore((s) => s.user);
   const canAccessCodegen = canRunCodegen(user);
   const [activeTab, setActiveTab] = useState<Tab>('codegen');
@@ -627,5 +629,3 @@ export function CodegenDev() {
     </div>
   );
 }
-
-export default CodegenDev;

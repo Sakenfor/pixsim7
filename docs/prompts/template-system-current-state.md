@@ -227,7 +227,7 @@ File: `api/v1/block_templates.py` (~530 lines)
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/block-templates` | POST | Create template |
-| `/block-templates` | GET | List/search templates (package, tag, is_public filters) |
+| `/block-templates` | GET | List/search templates (package, tag, is_public, owner_user_id, mine, include_public filters) |
 | `/block-templates/{id}` | GET | Get by UUID |
 | `/block-templates/by-slug/{slug}` | GET | Get by slug |
 | `/block-templates/{id}` | PATCH | Update |
@@ -435,6 +435,7 @@ Zustand store with:
 | Prompt versioning (family/version) | **Implemented** | `domain/prompt/models.py`, `services/prompt/family.py` | Git-like: version_number, parent_id, branch_name, diff |
 | Asset versioning | **Implemented** | `domain/assets/versioning.py`, `services/versioning/base.py` | HEAD pointer, timeline, ancestry chain |
 | Generic ownership policies | **Implemented** | `services/ownership/policies.py` | GLOBAL, USER, WORLD, SESSION scopes |
+| User-owned resource helpers | **Implemented** | `services/ownership/user_owned.py` | `resolve_user_owned_list_scope`, `resolve_user_owner`, `assert_can_write_user_owned` — canonical helpers for list scoping, owner field extraction, and write access checks. Used by block template and analyzer preset routes. |
 | Generic CRUD service | **Implemented** | `services/entity_crud/crud_service.py` | Owner-scoped filters, advanced operators |
 | Semantic Packs | **Partial** | `domain/semantic_pack.py` | Model exists; references blocks/families but not templates; no service/API layer found |
 | Plugin catalog | **Implemented** | `domain/plugin_catalog.py` | Catalog + UserPluginState; per-user enable/settings |
@@ -467,7 +468,7 @@ Zustand store with:
 
 ### 7.3 Template → VersioningServiceBase
 
-**Current seam**: `VersioningServiceBase` is fully implemented with timeline, ancestry, HEAD management. `BlockTemplate` already has `created_by`, `template_metadata` (could store `version_family_id`).
+**Current seam**: `VersioningServiceBase` is fully implemented with timeline, ancestry, HEAD management. `BlockTemplate` already has `owner_user_id`, `created_by`, and `template_metadata` (could store `version_family_id`).
 
 **Extension point**: Add `version_family_id`, `version_number`, `parent_template_id` columns to `block_templates`. Implement `BlockTemplateVersioningService(VersioningServiceBase)`.
 

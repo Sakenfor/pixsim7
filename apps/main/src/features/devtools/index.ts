@@ -16,4 +16,19 @@
  */
 
 // Export all plugin definitions
-export * from './plugins';
+export {
+  sessionStateViewerTool,
+  generationHealthTool,
+  capabilityTestingTool,
+  appMapTool,
+  dependencyGraphTool,
+  backendArchitectureTool,
+  gizmoSurfacesTool,
+  promptImporterTool,
+  blockFitTool,
+  typesExplorerTool,
+  sqlQueryExplorerTool,
+  logViewerTool,
+  codegenTool,
+  builtInDevTools,
+} from './plugins';

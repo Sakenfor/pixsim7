@@ -181,7 +181,7 @@ function formatLogAsPlainText(log: LogEntryResponse): string {
   if (log.provider_job_id) meta.push(`pjob=${log.provider_job_id}`);
   if (log.operation_type) meta.push(`op=${log.operation_type}`);
   if (log.submission_id != null) meta.push(`sub=${log.submission_id}`);
-  if (log.artifact_id != null) meta.push(`art=${log.artifact_id}`);
+  if (log.generation_id != null) meta.push(`gen=${log.generation_id}`);
   if (log.duration_ms != null) meta.push(`${log.duration_ms}ms`);
   if (log.attempt != null) meta.push(`attempt=${log.attempt}`);
   const metaStr = meta.length > 0 ? `  (${meta.join(', ')})` : '';
@@ -709,7 +709,7 @@ function LogRowDetail({ log }: { log: LogEntryResponse }) {
         <MetaField label="Job ID" value={log.job_id != null ? String(log.job_id) : null} />
         <MetaField label="Request ID" value={log.request_id} mono />
         <MetaField label="Submission ID" value={log.submission_id != null ? String(log.submission_id) : null} />
-        <MetaField label="Artifact ID" value={log.artifact_id != null ? String(log.artifact_id) : null} />
+        <MetaField label="Generation ID" value={log.generation_id != null ? String(log.generation_id) : null} />
         <MetaField label="Provider" value={log.provider_id} />
         <MetaField label="Provider Job" value={log.provider_job_id} mono />
         <MetaField label="Operation" value={log.operation_type} />

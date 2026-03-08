@@ -453,7 +453,7 @@ Prefer metadata JSON first before adding columns.
 ## DB/schema additions (high-value)
 
 - template revision family/revision tables (or generic reuse with adapter)
-- optional `owner_user_id` on `BlockTemplate` (strong ownership semantics)
+- `owner_user_id` on `BlockTemplate` is now the canonical ownership field; keep `template_metadata.owner` as a mirrored compatibility payload for API clients
 - optional character reference set tables (later)
 
 ---
@@ -492,4 +492,3 @@ Prefer metadata JSON first before adding columns.
 4. Tag new metro/character blocks as reference-safe vs identity-descriptive from the start.
 
 These steps connect the current pieces without blocking on a large redesign.
-

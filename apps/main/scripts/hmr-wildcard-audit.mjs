@@ -16,6 +16,7 @@ const baselinePath = path.join(repoRoot, 'docs', 'architecture', 'hmr-wildcard-b
 
 const shouldPrintAll = process.argv.includes('--all');
 const shouldWriteBaseline = process.argv.includes('--write-baseline');
+const shouldCheckBaseline = process.argv.includes('--check-baseline');
 
 const exportStarPattern =
   /^\s*export\s+\*\s*(?:as\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*)?from\s+['"]([^'"]+)['"]\s*;?\s*$/;
@@ -32,6 +33,10 @@ function classifyArea(file) {
 
 function entryKey(file, source) {
   return `${file}|${source}`;
+}
+
+function entryFingerprint(item) {
+  return `${item.file}|${item.source}|${item.namespace ?? ''}`;
 }
 
 async function walk(dir) {
@@ -171,6 +176,42 @@ async function writeBaseline(matches, allowlisted, remaining) {
   console.log(`\n[hmr-wildcards] Baseline written: ${path.relative(repoRoot, baselinePath)}`);
 }
 
+async function checkAgainstBaseline(allowlistSet, remaining) {
+  let baseline;
+  try {
+    const raw = await fs.readFile(baselinePath, 'utf8');
+    baseline = JSON.parse(raw);
+  } catch (error) {
+    console.error('[hmr-wildcards] Baseline check failed: could not read baseline file.');
+    console.error(`[hmr-wildcards] Expected: ${path.relative(repoRoot, baselinePath)}`);
+    throw error;
+  }
+
+  const baselineEntries = Array.isArray(baseline.entries) ? baseline.entries : [];
+  const baselineRemaining = baselineEntries.filter(
+    (item) => !allowlistSet.has(entryKey(item.file, item.source))
+  );
+
+  const baselineSet = new Set(baselineRemaining.map(entryFingerprint));
+  const currentSet = new Set(remaining.map(entryFingerprint));
+  const newlyIntroduced = remaining.filter((item) => !baselineSet.has(entryFingerprint(item)));
+
+  if (newlyIntroduced.length === 0) {
+    console.log('\n[hmr-wildcards] Baseline check passed (no new wildcard exports).');
+    return;
+  }
+
+  console.error('\n[hmr-wildcards] Baseline check failed: new wildcard exports detected.');
+  for (const item of newlyIntroduced) {
+    const ns = item.namespace ? ` as ${item.namespace}` : '';
+    console.error(`- ${item.file}:${item.line} -> export *${ns} from '${item.source}'`);
+  }
+  console.error(
+    `[hmr-wildcards] New entries: ${newlyIntroduced.length} (baseline remaining: ${baselineSet.size}, current remaining: ${currentSet.size})`
+  );
+  process.exit(1);
+}
+
 async function main() {
   const { allowed } = await readAllowlist();
   const matches = await collectWildcardExports();
@@ -182,6 +223,10 @@ async function main() {
 
   if (shouldWriteBaseline) {
     await writeBaseline(matches, allowlisted, remaining);
+  }
+
+  if (shouldCheckBaseline) {
+    await checkAgainstBaseline(allowed, remaining);
   }
 }
 

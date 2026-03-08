@@ -1,51 +1,23 @@
+import { lazy } from 'react';
+
 import type { ActionDefinition } from '@pixsim7/shared.types';
-import { createElement } from 'react';
-
-import { navigateTo } from '@lib/capabilities/routeConstants';
-import { buildDevtoolsUrl } from '@lib/dev/devtools/devtoolsUrl';
-
-import { DevtoolsRedirect } from '@/components/dev/DevtoolsRedirect';
 
 import type { Module } from '@app/modules/types';
 
-function openDevtools(path: string) {
-  if (typeof window !== 'undefined') {
-    window.location.assign(buildDevtoolsUrl(path));
-    return;
-  }
-  navigateTo('/devtools');
-}
-
-const openDevtoolsAction: ActionDefinition = {
-  id: 'devtools.open',
-  featureId: 'devtools',
-  title: 'Open DevTools',
-  description: 'Open the dedicated developer tools workspace',
-  icon: 'code',
-  shortcut: 'Ctrl+Shift+M',
-  route: '/devtools',
-  contexts: ['background'],
-  category: 'quick-add',
-  execute: () => {
-    openDevtools('/');
-  },
-};
+const CodegenDevPage = lazy(() => import('./pages/CodegenDevPage').then(m => ({ default: m.CodegenDevPage })));
+const DevPromptImporterPage = lazy(() => import('./pages/DevPromptImporterPage').then(m => ({ default: m.DevPromptImporterPage })));
+const BlockFitDevPage = lazy(() => import('./pages/BlockFitDevPage').then(m => ({ default: m.BlockFitDevPage })));
 
 const openCodegenAction: ActionDefinition = {
   id: 'codegen.open',
   featureId: 'codegen',
-  title: 'Open Codegen',
-  description: 'Run and verify workspace code generation tasks',
+  title: 'Open Developer Tasks',
+  description: 'Code generation, database migrations, and other developer tasks',
   icon: 'code',
-  route: '/devtools',
+  route: '/dev/developer-tasks',
   contexts: ['background'],
   category: 'quick-add',
-  execute: () => {
-    openDevtools('/dev/codegen');
-  },
 };
-
-const DevtoolsGatewayRedirect = () => createElement(DevtoolsRedirect, { preservePath: false });
 
 export const healthModule: Module = {
   id: 'health',
@@ -61,18 +33,46 @@ export const healthModule: Module = {
   },
 };
 
-export const devtoolsGatewayModule: Module = {
-  id: 'devtools-gateway',
-  name: 'Developer Tools',
+export const codegenPageModule: Module = {
+  id: 'codegen-page',
+  name: 'Developer Tasks',
   page: {
-    route: '/devtools',
+    route: '/dev/developer-tasks',
     icon: 'code',
-    iconColor: 'text-cyan-500',
-    description: 'Open the dedicated Developer Tools workspace',
+    iconColor: 'text-amber-500',
+    description: 'Code generation, database migrations, and other developer tasks',
     category: 'development',
-    featureId: 'devtools',
+    featureId: 'codegen',
     hidden: true,
-    component: DevtoolsGatewayRedirect,
-    actions: [openDevtoolsAction, openCodegenAction],
+    component: CodegenDevPage,
+    actions: [openCodegenAction],
+  },
+};
+
+export const promptImporterPageModule: Module = {
+  id: 'prompt-importer-page',
+  name: 'Prompt Importer',
+  page: {
+    route: '/dev/prompt-importer',
+    icon: 'upload',
+    description: 'Import prompts from external sources',
+    category: 'development',
+    featureId: 'prompt-importer',
+    hidden: true,
+    component: DevPromptImporterPage,
+  },
+};
+
+export const blockFitPageModule: Module = {
+  id: 'block-fit-page',
+  name: 'Block Fit Inspector',
+  page: {
+    route: '/dev/block-fit',
+    icon: 'target',
+    description: 'Inspect and rate how well ActionBlocks fit specific assets',
+    category: 'development',
+    featureId: 'block-fit',
+    hidden: true,
+    component: BlockFitDevPage,
   },
 };
