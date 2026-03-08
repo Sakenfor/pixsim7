@@ -131,6 +131,21 @@ def _set_behavior_config(world, behavior_config: Dict[str, Any]):
     world.meta["behavior"] = behavior_config
 
 
+def _validation_error_details(error: ValidationError) -> List[Dict[str, Any]]:
+    """Return JSON-safe ValidationError details for API responses."""
+    details: List[Dict[str, Any]] = []
+    for item in error.errors():
+        normalized = dict(item)
+        ctx = normalized.get("ctx")
+        if isinstance(ctx, dict):
+            normalized["ctx"] = {
+                key: (str(value) if isinstance(value, BaseException) else value)
+                for key, value in ctx.items()
+            }
+        details.append(normalized)
+    return details
+
+
 # ==================
 # Endpoints
 # ==================
@@ -171,13 +186,13 @@ async def update_behavior_config(
 
     # Validate behavior config
     try:
-        BehaviorConfigSchema.parse_obj(req.config)
+        BehaviorConfigSchema.model_validate(req.config)
     except ValidationError as e:
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "invalid_behavior_config",
-                "details": e.errors(),
+                "details": _validation_error_details(e),
             },
         )
 
@@ -209,7 +224,7 @@ async def validate_behavior_config(
     warnings = []
 
     try:
-        BehaviorConfigSchema.parse_obj(req.config)
+        BehaviorConfigSchema.model_validate(req.config)
     except ValidationError as e:
         for error in e.errors():
             loc = " -> ".join(str(x) for x in error["loc"])
@@ -250,13 +265,13 @@ async def create_activity(
 
     # Validate activity
     try:
-        ActivitySchema.parse_obj(req.activity)
+        ActivitySchema.model_validate(req.activity)
     except ValidationError as e:
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "invalid_activity",
-                "details": e.errors(),
+                "details": _validation_error_details(e),
             },
         )
 
@@ -300,13 +315,13 @@ async def update_activity(
 
     # Validate activity
     try:
-        ActivitySchema.parse_obj(req.activity)
+        ActivitySchema.model_validate(req.activity)
     except ValidationError as e:
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "invalid_activity",
-                "details": e.errors(),
+                "details": _validation_error_details(e),
             },
         )
 
@@ -375,13 +390,13 @@ async def create_routine(
 
     # Validate routine
     try:
-        RoutineGraphSchema.parse_obj(req.routine)
+        RoutineGraphSchema.model_validate(req.routine)
     except ValidationError as e:
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "invalid_routine",
-                "details": e.errors(),
+                "details": _validation_error_details(e),
             },
         )
 
@@ -424,13 +439,13 @@ async def update_routine(
 
     # Validate routine
     try:
-        RoutineGraphSchema.parse_obj(req.routine)
+        RoutineGraphSchema.model_validate(req.routine)
     except ValidationError as e:
         raise HTTPException(
             status_code=400,
             detail={
                 "error": "invalid_routine",
-                "details": e.errors(),
+                "details": _validation_error_details(e),
             },
         )
 
@@ -514,4 +529,3 @@ async def preview_activity_selection(
             "moodState": {"valence": 0, "arousal": 0, "tags": ["neutral"]},
         },
     )
-

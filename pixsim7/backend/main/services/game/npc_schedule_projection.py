@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+import math
 import re
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -72,6 +73,28 @@ def _preferred_activities_for_schedule_slot(
     return preferred
 
 
+def _normalize_day_of_week(value: Any) -> Optional[int]:
+    try:
+        return int(value) % 7
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_time_bounds(start_raw: Any, end_raw: Any) -> Optional[tuple[float, float]]:
+    try:
+        start = float(start_raw)
+        end = float(end_raw)
+    except (TypeError, ValueError):
+        return None
+
+    if not math.isfinite(start) or not math.isfinite(end):
+        return None
+
+    start = min(max(start, 0.0), float(SECONDS_PER_DAY))
+    end = min(max(end, 0.0), float(SECONDS_PER_DAY))
+    return (start, end)
+
+
 def compile_routines_from_schedule_projections(
     behavior_template: Dict[str, Any],
     projections: Sequence[NPCScheduleProjection],
@@ -112,11 +135,16 @@ def compile_routines_from_schedule_projections(
             if not preferred:
                 continue
 
-            start = float(schedule.start_time)
-            end = float(schedule.end_time)
-            day_of_week = int(schedule.day_of_week)
+            day_of_week = _normalize_day_of_week(schedule.day_of_week)
+            normalized_bounds = _normalize_time_bounds(schedule.start_time, schedule.end_time)
+            if day_of_week is None or normalized_bounds is None:
+                continue
 
-            if end <= start:
+            start, end = normalized_bounds
+            if start == end:
+                continue
+
+            if end < start:
                 # Routine schema requires start < end. Split overnight slots into two nodes.
                 wrap_nodes = [
                     (start, float(SECONDS_PER_DAY), "part_a"),
