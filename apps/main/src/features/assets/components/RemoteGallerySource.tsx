@@ -521,7 +521,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       if (
         next.groupView === null ||
         next.groupView === undefined ||
-        nextGroupByStack.length === 0
+        (nextGroupByStack.length === 0 && next.groupView !== 'cluster')
       ) {
         params.delete('group_view');
       } else {
