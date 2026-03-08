@@ -83,7 +83,7 @@ export function buildCompactAssetCardLocalWidgets({
       render: () => (
         <button
           onClick={(e) => { e.stopPropagation(); onGenerate(); }}
-          className="cq-btn-sm rounded-full bg-accent hover:bg-accent/80 flex items-center justify-center transition-all disabled:opacity-30"
+          className="cq-btn-sm rounded-full bg-accent hover:bg-accent/80 flex items-center justify-center transition-all disabled:opacity-30 hover:animate-hover-pop"
           title="Generate"
           disabled={generating}
         >

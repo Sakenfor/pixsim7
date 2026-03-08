@@ -33,7 +33,7 @@ function mergeLinkedWithLocal(
 
   // Local upload metadata can be fresher than the library asset fetch result.
   // Mirror successful provider upload into canonical fields so generation
-  // widgets (quick-gen visibility) behave consistently.
+  // widgets (quick-gen visibility) and status badges behave consistently.
   if (localAsset.last_upload_status === 'success' && localAsset.last_upload_provider_id) {
     const providerId = localAsset.last_upload_provider_id;
     if (providerId !== 'library') {
@@ -48,6 +48,11 @@ function mergeLinkedWithLocal(
         ...(linkedAsset.lastUploadStatusByProvider ?? {}),
         [providerId]: 'success',
       };
+      // Backend asset may still say local_only if it was uploaded to library
+      // first — override with the fresher local upload status.
+      if (merged.providerStatus === 'local_only' || merged.providerStatus === 'unknown') {
+        merged.providerStatus = 'ok';
+      }
     }
   }
 

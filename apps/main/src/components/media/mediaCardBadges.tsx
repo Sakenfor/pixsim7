@@ -89,7 +89,7 @@ export function QueueStatusBadge({ assetId }: { assetId: number }) {
 
   return (
     <div
-      className="inline-flex items-center justify-center cq-btn-md bg-accent text-accent-text rounded-full shadow-md"
+      className="inline-flex items-center justify-center cq-btn-md bg-accent text-accent-text rounded-full shadow-md hover:animate-hover-pop cursor-pointer"
       title={`In inputs: ${labels.join(', ')}`}
     >
       <Icon name="layers" />

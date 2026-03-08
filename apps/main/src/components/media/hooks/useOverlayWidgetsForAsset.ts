@@ -27,6 +27,7 @@ import {
   createQuickTagWidget,
   createInfoPopover,
   createGenerationButtonGroup,
+  createVersionBadge,
 } from '../mediaCardWidgets';
 import { applyMediaOverlayPolicyChain } from '../overlayWidgetPolicy';
 
@@ -109,7 +110,6 @@ export function useOverlayWidgetsForAsset({
       badgeConfig: {
         showTagsInOverlay: true,
         showGenerationBadge: true,
-        showGenerationInMenu: true,
         ...rtBadgeConfig,
       },
       presetCapabilities: {
@@ -125,6 +125,7 @@ export function useOverlayWidgetsForAsset({
       createQuickTagWidget(),
       createGenerationButtonGroup(resolvedProps),
       createInfoPopover(resolvedProps),
+      asset.versionNumber ? createVersionBadge() : null,
     ].filter((widget): widget is OverlayWidget<MediaCardOverlayData> => widget !== null);
 
     const widgets = applyMediaOverlayPolicyChain(candidates, {
@@ -167,6 +168,9 @@ export function useOverlayWidgetsForAsset({
       model: asset.model ?? undefined,
       width: asset.width ?? undefined,
       height: asset.height ?? undefined,
+      providerUploads: asset.providerUploads,
+      lastUploadStatusByProvider: asset.lastUploadStatusByProvider,
+      versionNumber: asset.versionNumber,
     };
 
     return { overlayConfig, overlayData };

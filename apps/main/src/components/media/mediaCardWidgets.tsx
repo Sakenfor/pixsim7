@@ -6,8 +6,8 @@
  * These can be used directly, extended, or completely replaced via overlay config.
  */
 
-import { Button, useHoverExpand, PortalFloat } from '@pixsim7/shared.ui';
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Badge, Button, useHoverExpand, PortalFloat } from '@pixsim7/shared.ui';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 
 import { createBindingFromValue } from '@lib/editing-core';
@@ -18,10 +18,8 @@ import {
   createBadgeWidget,
   BADGE_SLOT,
   BADGE_PRIORITY,
-  createMenuWidget,
   createVideoScrubWidget,
   createTooltipWidget,
-  type MenuItem,
 } from '@lib/ui/overlay';
 import {
   getOverlayWidgetSettings,
@@ -34,6 +32,7 @@ import {
 import { applyQuickTag, normalizeTagInput } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
 import { useTagAutocomplete, TAG_NAMESPACES } from '@features/assets/lib/useTagAutocomplete';
+import { PROVIDER_BRANDS } from '@features/generation/components/generationSettingsPanel/constants';
 import { useProviders, providerCapabilityRegistry, useModelBadgeStore } from '@features/providers';
 
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
@@ -95,6 +94,13 @@ export interface MediaCardOverlayData {
   height?: number;
   // Upload to specific provider (right-click menu)
   onUploadToProvider?: (providerId: string) => void | Promise<void>;
+  /** Map of provider_id -> uploaded asset ID for cross-provider presence badges */
+  providerUploads?: Record<string, string> | null;
+  /** Per-provider upload status for error indicators */
+  lastUploadStatusByProvider?: Record<string, 'success' | 'error'> | null;
+  // Versioning
+  /** Version number within a version family (null = standalone) */
+  versionNumber?: number | null;
 }
 
 /**
@@ -141,141 +147,315 @@ export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayW
   });
 }
 
+/** Abbreviate a provider ID to 2 chars for badge display */
+function abbreviateProvider(id: string): string {
+  const clean = id.replace(/[^a-zA-Z]/g, '');
+  if (clean.length === 0) return '??';
+  return clean.charAt(0).toUpperCase() + (clean.charAt(1) || '').toLowerCase();
+}
+
+/** Resolve provider brand with fallback */
+function getProviderBrand(providerId: string): { color: string; short: string } {
+  return PROVIDER_BRANDS[providerId] ?? { color: '#6B7280', short: abbreviateProvider(providerId) };
+}
+
+/** Compact operation abbreviation for badge display */
+const OPERATION_SHORT: Record<string, string> = {
+  text_to_image: 't2i',
+  text_to_video: 't2v',
+  image_to_video: 'i2v',
+  image_to_image: 'i2i',
+  video_extend: 'ext',
+  video_transition: 'trn',
+  video_modify: 'mod',
+  fusion: 'fus',
+};
+
+interface ProviderStatusWidgetProps {
+  id: number;
+  providerId: string;
+  mediaType: MediaCardResolvedProps['mediaType'];
+  actions?: MediaCardResolvedProps['actions'];
+}
+
+/** Simple menu item button for the status dropdown */
+function StatusMenuItem({ icon, label, onClick, variant }: {
+  icon: string; label: string; onClick: () => void; variant?: 'danger';
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full px-3 py-2 flex items-center gap-2 text-sm text-left cursor-pointer transition-colors ${
+        variant === 'danger'
+          ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+          : 'hover:bg-neutral-100 dark:hover:bg-neutral-700'
+      }`}
+    >
+      <Icon name={icon} size={14} className={variant === 'danger' ? '' : 'text-neutral-500 dark:text-neutral-400'} />
+      <span className="flex-1">{label}</span>
+    </button>
+  );
+}
+
+/** Lighten a hex color by mixing toward white */
+function lightenHex(hex: string, amount: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return '#' + [r, g, b]
+    .map(c => Math.min(255, Math.round(c + (255 - c) * amount)).toString(16).padStart(2, '0'))
+    .join('');
+}
+
 /**
- * Create status badge/menu widget (top-right)
- * Uses MenuWidget for expandable actions when actions are available
+ * Provider badge wrapper — always shows a two-tone ring (provider border
+ * + inner fill) plus upload error pip.
+ *
+ * @param providerColor  Outer ring / border color (provider brand)
+ * @param innerColor     Optional inner fill color (model family). When omitted
+ *                       or same as providerColor, a lightened variant is derived
+ *                       so the ring stays visible.
+ */
+function ProviderBadge({ providerId, providerColor, innerColor, uploadStatus, children }: {
+  providerId: string;
+  providerColor: string;
+  innerColor?: string;
+  uploadStatus?: Record<string, 'success' | 'error'> | null;
+  children: (style: React.CSSProperties) => React.ReactNode;
+}) {
+  const failed = uploadStatus?.[providerId] === 'error';
+
+  // When inner matches outer (or absent), lighten the fill so the ring is always visible
+  const effectiveInner = (innerColor && innerColor !== providerColor)
+    ? innerColor
+    : lightenHex(providerColor, 0.3);
+
+  const style: React.CSSProperties = {
+    backgroundColor: effectiveInner,
+    borderColor: providerColor,
+    borderWidth: '3px',
+    borderStyle: 'solid',
+  };
+
+  return (
+    <div className="relative cursor-pointer hover:animate-hover-pop">
+      {children(style)}
+      {failed && (
+        <span
+          className="absolute -bottom-0.5 -right-0.5 w-[10px] h-[10px] rounded-full bg-red-500 border border-white dark:border-neutral-900 flex items-center justify-center pointer-events-none"
+          title="Upload failed"
+        >
+          <span className="text-[6px] font-bold text-white leading-none">!</span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Self-contained provider status badge component.
+ * Shows origin provider color + model abbreviation, with additional
+ * provider presence dots stacked to the left. Click opens info/action menu.
+ */
+function ProviderStatusContent({ data, widgetProps }: {
+  data: MediaCardOverlayData;
+  widgetProps: ProviderStatusWidgetProps;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const showModelOnBadge = useModelBadgeStore((s) => s.showOnMediaCards);
+  const colorOverrides = useModelBadgeStore((s) => s.colors);
+
+  // Provider brand
+  const brand = getProviderBrand(data.providerId);
+
+  // Model family abbreviation
+  const modelFamily = data.model && data.providerId
+    ? resolveModelFamily(data.model, data.providerId)
+    : null;
+
+  const displayText = (showModelOnBadge && modelFamily?.short) || brand.short;
+  const providerColor = brand.color;
+  // Inner fill: model color when available, else falls back to provider color
+  const modelColor = (showModelOnBadge && data.model && modelFamily)
+    ? (colorOverrides[data.model] ?? modelFamily.color)
+    : undefined;
+  const textColor = (showModelOnBadge && modelFamily?.textColor) || '#fff';
+
+  // Status ring overlay
+  const effectiveStatus = data.status || 'unknown';
+  const statusRing = effectiveStatus === 'local_only'
+    ? 'ring-2 ring-amber-400 ring-offset-1'
+    : effectiveStatus === 'flagged'
+      ? 'ring-2 ring-red-500 ring-offset-1'
+      : '';
+
+  // Additional providers from cross-provider uploads
+  const additionalProviders = useMemo(() => {
+    if (!data.providerUploads) return [];
+    return Object.keys(data.providerUploads).filter(p => p !== data.providerId && !p.includes('_'));
+  }, [data.providerUploads, data.providerId]);
+
+  const { actions, id: assetId, providerId, mediaType } = widgetProps;
+  const hasActions = !!(actions && (
+    actions.onOpenDetails || actions.onDelete || actions.onArchive ||
+    actions.onReupload || actions.onExtractLastFrameAndUpload || actions.onEnrichMetadata
+  ));
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (hasActions) setIsOpen(v => !v);
+  };
+
+  // Close on outside click
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        triggerRef.current && !triggerRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isOpen]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsOpen(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isOpen]);
+
+  const closeMenu = () => setIsOpen(false);
+
+  const titleParts = [data.providerId];
+  if (data.model) titleParts.push(data.model);
+  if (effectiveStatus === 'local_only') titleParts.push('local only');
+  else if (effectiveStatus === 'flagged') titleParts.push('flagged');
+
+  const opShort = data.operationType ? OPERATION_SHORT[data.operationType] ?? data.operationType : null;
+
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      <div className="flex items-center gap-1">
+        {/* Additional provider presence dots (stack to the left) */}
+        {additionalProviders.map(p => {
+          const pBrand = getProviderBrand(p);
+          return (
+            <ProviderBadge key={p} providerId={p} providerColor={pBrand.color} uploadStatus={data.lastUploadStatusByProvider}>
+              {(badgeStyle) => (
+                <div
+                  className="w-[18px] h-[18px] rounded-full shadow-sm flex items-center justify-center"
+                  style={{ ...badgeStyle, color: '#fff' }}
+                  title={p}
+                >
+                  <span className="text-[7px] font-bold leading-none">{pBrand.short}</span>
+                </div>
+              )}
+            </ProviderBadge>
+          );
+        })}
+
+        {/* Main origin provider badge with model abbreviation */}
+        <ProviderBadge providerId={data.providerId} providerColor={providerColor} innerColor={modelColor} uploadStatus={data.lastUploadStatusByProvider}>
+          {(badgeStyle) => (
+            <button
+              ref={triggerRef}
+              onClick={handleClick}
+              className={`inline-flex items-center justify-center cq-btn-md rounded-full shadow-md font-bold ${hasActions ? 'cursor-pointer' : 'cursor-default'} ${statusRing}`}
+              style={{ ...badgeStyle, color: textColor }}
+              title={titleParts.join(' · ')}
+            >
+              <span className="text-[0.55em] leading-none">{displayText}</span>
+            </button>
+          )}
+        </ProviderBadge>
+      </div>
+
+      {/* Operation type label */}
+      {opShort && (
+        <span className="text-[8px] font-semibold leading-none px-1.5 py-0.5 rounded bg-black/40 text-white backdrop-blur-sm">
+          {opShort}
+        </span>
+      )}
+
+      {/* Menu dropdown */}
+      {isOpen && hasActions && (
+        <PortalFloat
+          anchor={triggerRef.current}
+          placement="bottom"
+          align="end"
+          offset={4}
+          className="z-popover"
+        >
+          <div
+            ref={menuRef}
+            className="min-w-[220px] max-w-[300px] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Info section */}
+            <div className="px-3 py-2">
+              <InfoPopoverContent data={data} />
+            </div>
+            <div className="my-1 h-px bg-neutral-200 dark:bg-neutral-700" />
+
+            {actions!.onOpenDetails && (
+              <StatusMenuItem icon="eye" label="View Details" onClick={() => { actions!.onOpenDetails!(assetId); closeMenu(); }} />
+            )}
+            {actions!.onReupload && (
+              <StatusMenuItem icon="upload" label="Upload to provider…" onClick={() => { actions!.onReupload!(providerId); closeMenu(); }} />
+            )}
+            {actions!.onExtractLastFrameAndUpload && mediaType === 'video' && providerId?.startsWith('pixverse') && (
+              <StatusMenuItem icon="image" label="Upload last frame to Pixverse" onClick={() => { actions!.onExtractLastFrameAndUpload!(assetId); closeMenu(); }} />
+            )}
+            {actions!.onEnrichMetadata && (
+              <StatusMenuItem icon="refresh" label="Refresh metadata" onClick={() => { actions!.onEnrichMetadata!(assetId); closeMenu(); }} />
+            )}
+            {actions!.onArchive && (
+              <StatusMenuItem icon="archive" label="Archive" onClick={() => { actions!.onArchive!(assetId); closeMenu(); }} />
+            )}
+            {actions!.onDelete && (
+              <StatusMenuItem icon="trash" label="Delete" variant="danger" onClick={() => { actions!.onDelete!(assetId); closeMenu(); }} />
+            )}
+          </div>
+        </PortalFloat>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Create provider status badge widget (top-right)
+ * Shows origin provider color + model abbreviation, with additional
+ * provider presence dots. Click opens info/action menu.
  */
 export function createStatusWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { id, providerId, providerStatus, actions, presetCapabilities, mediaType } = props;
+  const { id, providerId, actions, presetCapabilities, mediaType } = props;
 
   // If preset provides its own status widget, skip the runtime one
   if (presetCapabilities?.providesStatusWidget) {
     return null;
   }
 
-  // Default to 'unknown' status if not provided (for broken/missing assets)
-  const effectiveStatus = providerStatus || 'unknown';
+  const widgetProps: ProviderStatusWidgetProps = { id, providerId, mediaType, actions };
 
-  // Map external providerStatus ("ok", "local_only", etc.) to internal keys
-  const statusKey = effectiveStatus === 'ok' ? 'provider_ok' : effectiveStatus;
-  const statusMeta = MEDIA_STATUS_ICON[statusKey as keyof typeof MEDIA_STATUS_ICON];
-  if (!statusMeta) {
-    return null;
-  }
-
-  const statusColor = statusMeta.color === 'green' ? 'green' :
-                     statusMeta.color === 'yellow' ? 'yellow' :
-                     statusMeta.color === 'red' ? 'red' : 'gray';
-
-  const statusBgClass =
-    statusColor === 'green'
-      ? '!bg-accent text-accent-text'
-      : statusColor === 'yellow'
-      ? '!bg-amber-400 text-white'
-      : statusColor === 'red'
-      ? '!bg-red-500 text-white'
-      : '!bg-white/80 dark:!bg-white/30';
-
-  // If we have actions, create a menu widget
-  if (actions && (actions.onOpenDetails || actions.onDelete || actions.onArchive || actions.onReupload || actions.onExtractLastFrameAndUpload || actions.onEnrichMetadata)) {
-    return createMenuWidget({
-      id: 'status-menu',
-      position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
-      stackGroup: 'badges-tr',
-      visibility: { trigger: 'always' },
-      items: (data: MediaCardOverlayData) => {
-        const menuItems: MenuItem[] = [];
-
-        // Info section at top (replaces "View Details")
-        menuItems.push({
-          id: 'info',
-          label: 'Info',
-          content: <InfoPopoverContent data={data} />,
-          divider: true,
-        });
-
-        if (actions.onOpenDetails) {
-          menuItems.push({
-            id: 'details',
-            label: 'View Details',
-            icon: 'eye',
-            onClick: () => actions.onOpenDetails?.(id),
-          });
-        }
-
-        if (actions.onReupload) {
-          menuItems.push({
-            id: 'reupload',
-            label: 'Upload to provider…',
-            icon: 'upload',
-            onClick: () => actions.onReupload?.(providerId),
-          });
-        }
-
-        if (actions.onExtractLastFrameAndUpload && mediaType === 'video' && providerId?.startsWith('pixverse')) {
-          menuItems.push({
-            id: 'extract-last-frame',
-            label: 'Upload last frame to Pixverse',
-            icon: 'image',
-            onClick: () => actions.onExtractLastFrameAndUpload?.(id),
-          });
-        }
-
-        if (actions.onEnrichMetadata) {
-          menuItems.push({
-            id: 'enrich',
-            label: 'Refresh metadata',
-            icon: 'refresh',
-            onClick: () => actions.onEnrichMetadata?.(id),
-          });
-        }
-
-        if (actions.onArchive) {
-          menuItems.push({
-            id: 'archive',
-            label: 'Archive',
-            icon: 'archive',
-            onClick: () => actions.onArchive?.(id),
-          });
-        }
-
-        if (actions.onDelete) {
-          menuItems.push({
-            id: 'delete',
-            label: 'Delete',
-            icon: 'trash',
-            variant: 'danger',
-            onClick: () => actions.onDelete?.(id),
-          });
-        }
-
-        return menuItems;
-      },
-      trigger: {
-        icon: statusMeta.icon,
-        variant: 'icon',
-        className: `${statusBgClass} backdrop-blur-md`,
-      },
-      triggerType: 'click',
-      placement: 'bottom-right',
-      priority: BADGE_PRIORITY.interactive,
-    });
-  }
-
-  // Otherwise, simple clickable badge
-  return createBadgeWidget({
-    id: 'status-badge',
+  return {
+    id: 'status-menu',
+    type: 'custom' as const,
     position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
     stackGroup: 'badges-tr',
-    variant: 'icon',
-    icon: statusMeta.icon,
-    color: statusColor,
-    shape: 'circle',
-    tooltip: statusMeta.label,
-    onClick: actions?.onOpenDetails ? () => actions.onOpenDetails!(id) : undefined,
-    className: `${statusBgClass} backdrop-blur-md`,
+    visibility: { trigger: 'always' },
     priority: BADGE_PRIORITY.interactive,
-  });
+    interactive: true,
+    handlesOwnInteraction: true,
+    render: (data: MediaCardOverlayData) => <ProviderStatusContent data={data} widgetProps={widgetProps} />,
+  };
 }
 
 /**
@@ -304,27 +484,37 @@ export function createDurationWidget(props: MediaCardResolvedProps): OverlayWidg
 }
 
 /**
- * Create provider badge widget (top-right, shows on hover)
+ * Create version badge (bottom-left) — shows "v3" when asset is part of a version family.
+ * Returns null at render time for non-versioned assets.
  */
-export function createProviderWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { providerId, badgeConfig } = props;
+export function createVersionBadge(): OverlayWidget<MediaCardOverlayData> {
+  return {
+    id: 'version',
+    type: 'badge',
+    ...BADGE_SLOT.bottomLeft,
+    visibility: { trigger: 'always', transition: 'none' },
+    priority: BADGE_PRIORITY.background,
+    interactive: false,
+    render: (data: MediaCardOverlayData) => {
+      if (!data.versionNumber) return null;
+      return (
+        <Badge
+          color="blue"
+          className="cq-badge inline-flex items-center gap-1 !bg-blue-900/70 !text-blue-200 text-[10px] font-medium backdrop-blur-sm shadow-sm"
+        >
+          <span className="whitespace-nowrap">v{data.versionNumber}</span>
+        </Badge>
+      );
+    },
+  };
+}
 
-  if (!badgeConfig?.showFooterProvider || !providerId || providerId.includes('_')) {
-    return null;
-  }
-
-  return createBadgeWidget({
-    id: 'provider',
-    position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
-    stackGroup: 'badges-tr',
-    visibility: { trigger: 'hover-container' },
-    variant: 'text',
-    labelBinding: createBindingFromValue('label', () => providerId),
-    color: 'gray',
-    className: '!bg-white/90 dark:!bg-neutral-800/90 backdrop-blur-sm text-[10px]',
-    tooltip: `Provider: ${providerId}`,
-    priority: 14,
-  });
+/**
+ * Create provider badge widget — now integrated into the status badge.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function createProviderWidget(_props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
+  return null;
 }
 
 /**
@@ -845,7 +1035,7 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
         onClick={handleClick}
         disabled={applying}
         className={`
-          cq-btn-md inline-flex items-center justify-center rounded-full shadow-md transition-colors
+          cq-btn-md inline-flex items-center justify-center rounded-full shadow-md transition-colors hover:animate-hover-pop
           ${flash === 'success'
             ? '!bg-green-500/90 !text-white backdrop-blur-sm'
             : flash === 'error'
@@ -1090,46 +1280,13 @@ function resolveModelFamily(modelId: string, providerId: string): ModelFamilyInf
 }
 
 /**
- * Inner component for model family badge — uses hooks for store access.
- */
-function ModelFamilyBadgeContent({ data }: { data: MediaCardOverlayData }) {
-  const showOnMediaCards = useModelBadgeStore((s) => s.showOnMediaCards);
-  const colorOverrides = useModelBadgeStore((s) => s.colors);
-
-  if (!showOnMediaCards || !data.model || !data.providerId) return null;
-
-  const family = resolveModelFamily(data.model, data.providerId);
-  if (!family) return null;
-
-  const bgColor = colorOverrides[data.model] ?? family.color;
-  return (
-    <div
-      className="inline-flex items-center justify-center cq-btn-md rounded-full shadow-md font-bold"
-      style={{ backgroundColor: bgColor, color: family.textColor ?? '#fff' }}
-      title={family.label}
-    >
-      <span className="text-[0.55em] leading-none">{family.short}</span>
-    </div>
-  );
-}
-
-/**
- * Create model family badge widget (top-left, stacked below primary icon)
- * Shows a colored initials circle (e.g. "Qw", "Gm") when the asset's
- * model belongs to a known family.
+ * Model family badge — now integrated into the provider status badge (top-right).
  */
 export function createModelFamilyWidget(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _props: MediaCardResolvedProps,
 ): OverlayWidget<MediaCardOverlayData> | null {
-  return {
-    id: 'model-family',
-    type: 'custom' as const,
-    ...BADGE_SLOT.topLeft,
-    visibility: { trigger: 'always' },
-    priority: BADGE_PRIORITY.background,
-    render: (data: MediaCardOverlayData) => <ModelFamilyBadgeContent data={data} />,
-  };
+  return null;
 }
 
 /**
@@ -1152,5 +1309,6 @@ export function createDefaultMediaCardWidgets(props: MediaCardResolvedProps): Ov
     createModelFamilyWidget,
     createQuickTagWidget,
     createQuickAddButton,
+    createVersionBadge,
   });
 }

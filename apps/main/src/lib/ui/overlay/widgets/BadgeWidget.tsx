@@ -114,6 +114,9 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     stackGroup,
   } = config;
 
+  const isInteractive = Boolean(onClick);
+  const hoverPop = isInteractive ? 'hover:animate-hover-pop cursor-pointer' : '';
+
   return {
     id,
     type: 'badge',
@@ -121,7 +124,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     visibility,
     priority,
     stackGroup,
-    interactive: Boolean(onClick),
+    interactive: isInteractive,
     ariaLabel: tooltip,
     onClick,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -157,6 +160,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
               ${iconColorClasses[color]}
               ${shapeClasses[shape]}
               ${pulse ? 'animate-pulse-badge' : ''}
+              ${hoverPop}
               shadow-md
               ${className}
             `.trim()}
@@ -174,6 +178,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
           className={`
             cq-badge inline-flex items-center gap-1
             ${pulse ? 'animate-pulse-badge' : ''}
+            ${hoverPop}
             shadow-sm
             ${className}
           `.trim()}

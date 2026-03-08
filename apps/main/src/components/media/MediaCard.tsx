@@ -89,19 +89,10 @@ export interface MediaCardActions {
 }
 
 export interface MediaCardBadgeConfig {
-  showPrimaryIcon?: boolean;
   showStatusIcon?: boolean;
-  showStatusTextOnHover?: boolean;
   showTagsInOverlay?: boolean;
   showFooterProvider?: boolean;
-  showFooterDate?: boolean;
-  // Generation actions
   showGenerationBadge?: boolean;
-  showGenerationInMenu?: boolean;
-  showGenerationOnHoverOnly?: boolean;
-  generationQuickAction?: 'auto' | 'image_to_video' | 'video_extend' | 'add_to_transition' | 'none';
-  // Animation control
-  enableBadgePulse?: boolean;
 }
 
 // ─── Shared runtime props (callbacks, overlay config, generation state) ─────
@@ -393,6 +384,29 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   // Extract tag slugs for overlay data (quick tag matching, technical tag filtering)
   const tagSlugs = useMemo(() => tags?.map(t => t.slug) || [], [tags]);
 
+  const effectivePresetId =
+    overlayPresetId ||
+    customOverlayConfig?.id ||
+    'media-card-default';
+  const selectedPreset = useMemo(
+    () => getMediaCardPreset(effectivePresetId),
+    [effectivePresetId],
+  );
+  const presetCapabilities = useMemo(() => {
+    const presetCaps = selectedPreset?.capabilities ?? {};
+    const runtimeCaps = resolved.presetCapabilities ?? {};
+    const mergedGestureOverrides = {
+      ...(presetCaps.gestureOverrides ?? {}),
+      ...(runtimeCaps.gestureOverrides ?? {}),
+    };
+    return {
+      ...presetCaps,
+      ...runtimeCaps,
+      gestureOverrides:
+        Object.keys(mergedGestureOverrides).length > 0 ? mergedGestureOverrides : undefined,
+    };
+  }, [selectedPreset, resolved.presetCapabilities]);
+
   // ── Gesture support ────────────────────────────────────────────────────
   const gesture = useCardGestures({
     id,
@@ -400,6 +414,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     onToggleFavorite: resolved.onToggleFavorite,
     onUploadClick: resolved.onUploadClick,
     onUploadToProvider: resolved.onUploadToProvider,
+    presetGestureOverrides: presetCapabilities.gestureOverrides,
   });
 
   const handleOpen = () => {
@@ -433,21 +448,12 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
 
   // Build overlay configuration dynamically
   const overlayConfig: OverlayConfiguration = useMemo(() => {
-    const effectivePresetId =
-      overlayPresetId ||
-      customOverlayConfig?.id ||
-      'media-card-default';
-
-    // Get preset to access capabilities
-    const preset = getMediaCardPreset(effectivePresetId);
-    const capabilities = preset?.capabilities ?? {};
-
     // Get default widgets from factory
     // Pass capabilities so runtime widgets can adapt without hardcoded ID checks
     const defaultWidgets = createDefaultMediaCardWidgets({
       ...resolved,
       overlayPresetId: effectivePresetId,
-      presetCapabilities: capabilities,
+      presetCapabilities,
     });
 
     // Merge with custom widgets (custom widgets replace default by id)
@@ -470,7 +476,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     };
 
     // Merge preset configuration with runtime widgets
-    const presetConfig = preset?.configuration ?? getDefaultMediaCardConfig();
+    const presetConfig = selectedPreset?.configuration ?? getDefaultMediaCardConfig();
     const merged = mergeConfigurations(presetConfig, baseConfig);
 
     // Apply custom overlay config overrides and ensure sensible defaults
@@ -486,19 +492,19 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
 
     // Safety net: ensure preset-specific widgets are filtered based on capabilities.
     // This catches edge cases where widgets might slip through despite capability checks.
-    if (!capabilities.showsGenerationMenu) {
+    if (!presetCapabilities.showsGenerationMenu) {
       result = {
         ...result,
         widgets: result.widgets.filter((w) => w.id !== 'generation-menu'),
       };
     }
 
-    if (capabilities.skipUploadButton || capabilities.skipTagsTooltip) {
+    if (presetCapabilities.skipUploadButton || presetCapabilities.skipTagsTooltip) {
       result = {
         ...result,
         widgets: result.widgets.filter((w) => {
-          if (capabilities.skipUploadButton && w.id === 'upload-button') return false;
-          if (capabilities.skipTagsTooltip && w.id === 'info-popover') return false;
+          if (presetCapabilities.skipUploadButton && w.id === 'upload-button') return false;
+          if (presetCapabilities.skipTagsTooltip && w.id === 'info-popover') return false;
           return true;
         }),
       };
@@ -509,12 +515,20 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       widgets: applyMediaOverlayPolicyChain(result.widgets, {
         context: 'gallery',
         getVisibility,
-        chain: resolved.overlayPolicyChain ?? preset?.policyChain,
+        chain: resolved.overlayPolicyChain ?? selectedPreset?.policyChain,
       }),
     };
 
     return result;
-  }, [resolved, customWidgets, customOverlayConfig, overlayPresetId, getVisibility]);
+  }, [
+    resolved,
+    customWidgets,
+    customOverlayConfig,
+    effectivePresetId,
+    getVisibility,
+    presetCapabilities,
+    selectedPreset,
+  ]);
 
   // Video source for overlay widgets (scrubbing, etc.)
   const overlayVideoSrc =
@@ -558,6 +572,11 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     onUploadToProvider: resolved.onUploadToProvider
       ? (pid: string) => resolved.onUploadToProvider!(id, pid)
       : undefined,
+    // Cross-provider presence
+    providerUploads: resolved.contextMenuAsset?.providerUploads,
+    lastUploadStatusByProvider: resolved.contextMenuAsset?.lastUploadStatusByProvider,
+    // Versioning
+    versionNumber: resolved.contextMenuAsset?.versionNumber,
   };
 
   return (

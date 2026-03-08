@@ -20,6 +20,7 @@ export default {
         'scale-in': 'scale-in 0.2s ease-out',
         'slide-in': 'slide-in 0.3s ease-out',
         'bounce-once': 'bounce-once 0.5s ease-out',
+        'hover-pop': 'hover-pop 0.3s ease-out',
         'shake': 'shake 0.4s ease-in-out',
       },
       keyframes: {
@@ -56,6 +57,12 @@ export default {
           '25%': { transform: 'translateY(-10px)' },
           '50%': { transform: 'translateY(0)' },
           '75%': { transform: 'translateY(-5px)' },
+        },
+        'hover-pop': {
+          '0%': { transform: 'scale(1)' },
+          '40%': { transform: 'scale(1.18) translateY(-1px)' },
+          '70%': { transform: 'scale(0.97)' },
+          '100%': { transform: 'scale(1.08)' },
         },
         'shake': {
           '0%, 100%': { transform: 'translateX(0)' },
