@@ -4,7 +4,12 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from pixsim7.backend.main.shared.extension_contract import (
+    build_extension_identity,
+    parse_extension_identity,
+)
 
 
 PROJECT_BUNDLE_SCHEMA_VERSION = 1
@@ -127,6 +132,35 @@ class BundleItemData(BaseModel):
     stats_metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class BundleModuleRef(BaseModel):
+    """
+    Typed project module reference.
+
+    This is additive to the existing unstructured `extensions` map and provides
+    a canonical path for project-scoped capability wiring.
+    """
+
+    id: str = Field(
+        min_length=1,
+        max_length=255,
+        description="Extension/module identity (canonical preferred).",
+    )
+    enabled: bool = True
+    version: Optional[str] = Field(default=None, max_length=64)
+    capabilities: List[str] = Field(default_factory=list)
+    config: Dict[str, Any] = Field(default_factory=dict)
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _normalize_id(cls, value: Any) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            raise ValueError("module_id_required")
+        identity = parse_extension_identity(raw, allow_legacy=True)
+        return build_extension_identity(identity)
+
+
 class GameProjectCoreBundle(BaseModel):
     world: BundleWorldData
     locations: List[BundleLocationData] = Field(default_factory=list)
@@ -141,7 +175,25 @@ class GameProjectBundle(BaseModel):
     schema_version: int = Field(default=PROJECT_BUNDLE_SCHEMA_VERSION, ge=1)
     exported_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     core: GameProjectCoreBundle
+    modules: List[BundleModuleRef] = Field(default_factory=list)
     extensions: Dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_modules_from_extensions(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        if data.get("modules") is not None:
+            return data
+        extensions = data.get("extensions")
+        if not isinstance(extensions, dict):
+            return data
+        legacy_modules = extensions.get("modules")
+        if not isinstance(legacy_modules, list):
+            return data
+        migrated = dict(data)
+        migrated["modules"] = legacy_modules
+        return migrated
 
 
 class GameProjectImportRequest(BaseModel):

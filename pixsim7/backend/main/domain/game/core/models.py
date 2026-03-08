@@ -239,7 +239,7 @@ class GameProjectSnapshot(SQLModel, table=True):
     """
     Persisted authored project bundle.
 
-    Stores the canonical bundle payload (core + extensions) so projects can be
+    Stores the canonical bundle payload (core + modules + extensions) so projects can be
     saved/loaded from the backend without file export/import.
     """
     __tablename__ = "game_project_snapshots"

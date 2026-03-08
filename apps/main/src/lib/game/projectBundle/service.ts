@@ -4,7 +4,10 @@ import {
   type GameProjectBundle,
 } from '@lib/api';
 
-import { projectBundleExtensionRegistry } from './registry';
+import {
+  PROJECT_BUNDLE_EXTENSION_KEY_PATTERN,
+  projectBundleExtensionRegistry,
+} from './registry';
 import type {
   ExportWorldProjectWithExtensionsResult,
   ImportWorldProjectWithExtensionsResult,
@@ -20,6 +23,82 @@ function toWarnings(outcome: unknown): string[] {
     return [];
   }
   return warnings.filter((entry): entry is string => typeof entry === 'string');
+}
+
+function readModuleExtensionKey(moduleRef: unknown): string | null {
+  if (!moduleRef || typeof moduleRef !== 'object') {
+    return null;
+  }
+
+  const moduleRecord = moduleRef as { id?: unknown; meta?: unknown };
+  const id = typeof moduleRecord.id === 'string' ? moduleRecord.id.trim() : '';
+  if (id && PROJECT_BUNDLE_EXTENSION_KEY_PATTERN.test(id)) {
+    return id;
+  }
+
+  const meta = moduleRecord.meta;
+  if (!meta || typeof meta !== 'object') {
+    return null;
+  }
+
+  const extensionKey = typeof (meta as { extension_key?: unknown }).extension_key === 'string'
+    ? (meta as { extension_key?: string }).extension_key?.trim()
+    : '';
+  if (extensionKey && PROJECT_BUNDLE_EXTENSION_KEY_PATTERN.test(extensionKey)) {
+    return extensionKey;
+  }
+
+  return null;
+}
+
+function buildModuleEnabledMap(bundle: GameProjectBundle): Map<string, boolean> {
+  const map = new Map<string, boolean>();
+  const modules = Array.isArray(bundle.modules) ? bundle.modules : [];
+
+  for (const moduleRef of modules) {
+    const extensionKey = readModuleExtensionKey(moduleRef);
+    if (!extensionKey) {
+      continue;
+    }
+
+    const enabled = (moduleRef as { enabled?: unknown }).enabled;
+    map.set(extensionKey, enabled !== false);
+  }
+
+  return map;
+}
+
+function buildModuleEntriesForIncludedExtensions(
+  baseBundle: GameProjectBundle,
+  includedExtensionKeys: string[],
+): GameProjectBundle['modules'] {
+  const modules = Array.isArray(baseBundle.modules) ? [...baseBundle.modules] : [];
+  const existingIds = new Set(
+    modules
+      .map((entry) => (typeof entry?.id === 'string' ? entry.id.trim() : ''))
+      .filter((entry) => entry.length > 0),
+  );
+
+  for (const key of includedExtensionKeys) {
+    if (existingIds.has(key)) {
+      continue;
+    }
+
+    const handler = projectBundleExtensionRegistry.get(key);
+    modules.push({
+      id: key,
+      enabled: true,
+      version: handler?.version != null ? String(handler.version) : undefined,
+      capabilities: ['project_bundle.extension'],
+      meta: {
+        extension_key: key,
+        source: 'project_bundle_extension_registry',
+      },
+    });
+    existingIds.add(key);
+  }
+
+  return modules;
 }
 
 export async function exportWorldProjectWithExtensions(
@@ -58,6 +137,7 @@ export async function exportWorldProjectWithExtensions(
   return {
     bundle: {
       ...baseBundle,
+      modules: buildModuleEntriesForIncludedExtensions(baseBundle, extensionReport.included),
       extensions,
     },
     extensionReport,
@@ -77,12 +157,19 @@ export async function importWorldProjectWithExtensions(
     migrated: [],
     failed: [],
   };
+  const moduleEnabledMap = buildModuleEnabledMap(bundle);
 
   const extensionEntries = Object.entries(bundle.extensions || {});
   for (const [key, rawPayload] of extensionEntries) {
     const handler = projectBundleExtensionRegistry.get(key);
     if (!handler) {
       extensionReport.unknown.push(key);
+      continue;
+    }
+
+    if (moduleEnabledMap.get(key) === false) {
+      extensionReport.skipped.push(key);
+      extensionReport.warnings.push(`${key}: skipped because module is disabled`);
       continue;
     }
 
@@ -144,4 +231,3 @@ export async function importWorldProjectWithExtensions(
 
   return { response, extensionReport };
 }
-

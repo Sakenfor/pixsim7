@@ -113,6 +113,7 @@ from .project_bundle import (
     BundleSceneEdgeData,
     BundleSceneData,
     BundleItemData,
+    BundleModuleRef,
     GameProjectCoreBundle,
     GameProjectBundle,
     GameProjectImportRequest,
@@ -218,6 +219,7 @@ __all__ = [
     "BundleSceneEdgeData",
     "BundleSceneData",
     "BundleItemData",
+    "BundleModuleRef",
     "GameProjectCoreBundle",
     "GameProjectBundle",
     "GameProjectImportRequest",
@@ -230,4 +232,3 @@ __all__ = [
     "SavedGameProjectSummary",
     "SavedGameProjectDetail",
 ]
-
