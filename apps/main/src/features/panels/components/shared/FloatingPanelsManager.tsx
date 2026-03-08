@@ -34,6 +34,15 @@ const _floatingProxyCache = hmrSingleton(
   'floatingPanel:proxyCache',
   () => ({} as Record<string, React.ComponentType<any>>),
 );
+const _missingPanelRecoveryState = hmrSingleton(
+  'floatingPanel:missingPanelRecovery',
+  () => ({
+    inFlight: new Set<string>(),
+    lastAttemptAt: new Map<string, number>(),
+  }),
+);
+
+const MISSING_PANEL_RECOVERY_COOLDOWN_MS = 1200;
 
 function getStableComponent(
   definitionId: string,
@@ -54,6 +63,69 @@ function getStableComponent(
     _floatingImplRefs[definitionId].current = component;
   }
   return _floatingProxyCache[definitionId];
+}
+
+async function attemptMissingPanelRecovery(definitionId: string): Promise<void> {
+  if (_missingPanelRecoveryState.inFlight.has(definitionId)) {
+    return;
+  }
+
+  const now = Date.now();
+  const lastAttempt = _missingPanelRecoveryState.lastAttemptAt.get(definitionId) ?? 0;
+  if (now - lastAttempt < MISSING_PANEL_RECOVERY_COOLDOWN_MS) {
+    return;
+  }
+  _missingPanelRecoveryState.lastAttemptAt.set(definitionId, now);
+  _missingPanelRecoveryState.inFlight.add(definitionId);
+
+  try {
+    const [{ autoRegisterPanels }, { panelSelectors: refreshedSelectors }] = await Promise.all([
+      import("@features/panels/lib/autoDiscovery"),
+      import("@lib/plugins/catalogSelectors"),
+    ]);
+    await autoRegisterPanels();
+
+    if (!refreshedSelectors.has(definitionId)) {
+      console.warn(
+        `[FloatingPanelsManager] Unable to recover missing panel definition "${definitionId}"`,
+      );
+    }
+  } catch (error) {
+    console.warn(
+      `[FloatingPanelsManager] Failed to recover missing panel definition "${definitionId}"`,
+      error,
+    );
+  } finally {
+    _missingPanelRecoveryState.inFlight.delete(definitionId);
+  }
+}
+
+function MissingPanelContent({ panelId }: { panelId?: string }) {
+  return (
+    <div className="h-full w-full flex items-center justify-center bg-neutral-50 dark:bg-neutral-900 p-6">
+      <div className="max-w-sm w-full text-center space-y-3">
+        <div className="text-xl">Recovering panel</div>
+        <p className="text-xs text-neutral-600 dark:text-neutral-400">
+          Panel definition for{' '}
+          <span className="font-mono bg-neutral-200 dark:bg-neutral-700 px-1.5 py-0.5 rounded">
+            {panelId ?? 'unknown'}
+          </span>{' '}
+          was not found. Retrying registration.
+        </p>
+        {panelId && (
+          <button
+            type="button"
+            onClick={() => {
+              void attemptMissingPanelRecovery(panelId);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+          >
+            Retry now
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function formatDockviewOriginLabel(dockviewId: string | null | undefined): string | null {
@@ -207,24 +279,35 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
   } else {
     // Regular panel from catalog — look up by definition ID
     const panelDef = panelSelectors.get(definitionId);
-    if (!panelDef) return null;
+    if (!panelDef) {
+      void attemptMissingPanelRecovery(definitionId);
+      Component = getStableComponent(
+        `missing-panel:${definitionId}`,
+        MissingPanelContent,
+      );
+      title = definitionId;
+      panelCategoryBadge = "RECOVERING";
+      panelContextSummary = "Panel definition missing; trying HMR re-registration";
+      panelContext = { ...panelContext, panelId: definitionId };
+    } else {
+      Component = getStableComponent(definitionId, panelDef.component);
+      title = panelDef.title;
+      panelCategoryBadge =
+        typeof panelDef.category === "string" && panelDef.category.length > 0
+          ? panelDef.category.toUpperCase()
+          : null;
 
-    Component = getStableComponent(definitionId, panelDef.component);
-    title = panelDef.title;
-    panelCategoryBadge =
-      typeof panelDef.category === "string" && panelDef.category.length > 0
-        ? panelDef.category.toUpperCase()
-        : null;
-
-    if (definitionId === "project") {
-      if (typeof activeProjectName === "string" && activeProjectName.trim().length > 0) {
-        panelContextSummary = `Active project: ${activeProjectName}`;
-      } else if (typeof activeProjectId === "number") {
-        panelContextSummary = `Active project: #${activeProjectId}`;
-      } else {
-        panelContextSummary = "Active project: none";
+      if (definitionId === "project") {
+        if (typeof activeProjectName === "string" && activeProjectName.trim().length > 0) {
+          panelContextSummary = `Active project: ${activeProjectName}`;
+        } else if (typeof activeProjectId === "number") {
+          panelContextSummary = `Active project: #${activeProjectId}`;
+        } else {
+          panelContextSummary = "Active project: none";
+        }
       }
     }
+
   }
 
   const originLabel = floatingOriginMeta?.sourceDefinitionId

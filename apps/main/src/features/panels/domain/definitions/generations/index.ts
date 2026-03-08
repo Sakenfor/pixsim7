@@ -1,5 +1,6 @@
+import { GenerationsPanel } from '@features/generation/components/GenerationsPanel';
+
 import { definePanel } from '../../../lib/definePanel';
-import { GenerationsPanel } from '@features/generation';
 
 export default definePanel({
   id: 'generations',

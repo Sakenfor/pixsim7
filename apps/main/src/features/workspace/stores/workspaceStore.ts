@@ -4,6 +4,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import { addDockviewPanel, focusPanel, getDockviewApi, getDockviewGroups } from "@lib/dockview";
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
+import { hmrSingleton } from "@lib/utils/hmrSafe";
 
 import { createBackendStorage } from "../../../lib/backendStorage";
 import { pluginCatalog } from "../../../lib/plugins/pluginSystem";
@@ -173,7 +174,7 @@ function pruneNewEmptyGroups(api: DockviewApi, baselineGroupIds: Set<string>): v
   }
 }
 
-export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
+const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
   persist(
     (set, get) => ({
       closedPanels: [],
@@ -197,6 +198,12 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       restorePanel: (panelId) => {
         const pluginMeta = pluginCatalog.get(panelId);
         if (pluginMeta && pluginMeta.activationState === "inactive") {
+          if (import.meta.env.DEV) {
+            console.warn("[workspaceStore] restorePanel blocked by inactive plugin", {
+              panelId,
+              activationState: pluginMeta.activationState,
+            });
+          }
           return;
         }
 
@@ -334,11 +341,22 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       openFloatingPanel: (panelId, options = {}) => {
         const pluginMeta = pluginCatalog.get(panelId);
         if (pluginMeta && pluginMeta.activationState === "inactive") {
+          if (import.meta.env.DEV) {
+            console.warn("[workspaceStore] openFloatingPanel blocked by inactive plugin", {
+              panelId,
+              activationState: pluginMeta.activationState,
+            });
+          }
           return;
         }
 
         const { x, y, width, height, context } = options;
         const panelDef = panelSelectors.get(panelId);
+        if (import.meta.env.DEV && !panelDef && !panelId.startsWith("dev-tool:")) {
+          console.warn("[workspaceStore] opening floating panel without registered definition", {
+            panelId,
+          });
+        }
         const isMultiInstance = panelDef?.supportsMultipleInstances === true;
 
         if (isMultiInstance) {
@@ -620,3 +638,5 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
     },
   ),
 );
+
+export const useWorkspaceStore = hmrSingleton("workspaceStore", createWorkspaceStore);

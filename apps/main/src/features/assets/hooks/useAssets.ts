@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { listAssets } from '@lib/api/assets';
 import type { AssetListResponse, AssetResponse, AssetSearchRequest } from '@lib/api/assets';
+import { hmrSingleton } from '@lib/utils/hmrSafe';
 
 import { assetEvents } from '../lib/assetEvents';
 import { buildAssetSearchRequest, extractExtraRegistryFilters } from '../lib/searchParams';
@@ -66,6 +67,34 @@ export type AssetFilters = {
   sort_dir?: 'asc' | 'desc';
 } & Record<string, string | boolean | number | string[] | boolean[] | number[] | undefined>;
 
+interface UseAssetsHmrSnapshot {
+  items: AssetModel[];
+  cursor: string | null;
+  hasMore: boolean;
+  currentPage: number;
+  totalPages: number;
+}
+
+const USE_ASSETS_HMR_CACHE_LIMIT = 24;
+const useAssetsHmrCache = hmrSingleton(
+  'useAssets:querySnapshots',
+  () => new Map<string, UseAssetsHmrSnapshot>(),
+);
+
+function stableSerialize(value: unknown): string {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableSerialize(entry)).join(',')}]`;
+  }
+  if (typeof value === 'object') {
+    const objectValue = value as Record<string, unknown>;
+    const keys = Object.keys(objectValue).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableSerialize(objectValue[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
 export function useAssets(options?: {
   limit?: number;
   filters?: AssetFilters;
@@ -81,23 +110,38 @@ export function useAssets(options?: {
   const requestOverrides = options?.requestOverrides;
   // paginationMode reserved for future use
 
-  const [items, setItems] = useState<AssetModel[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
+  const queryCacheKey = useMemo(
+    () =>
+      stableSerialize({
+        limit,
+        initialPage,
+        preservePageOnFilterChange,
+        filters,
+        requestOverrides: requestOverrides ?? null,
+      }),
+    [limit, initialPage, preservePageOnFilterChange, filters, requestOverrides],
+  );
+
+  const cachedSnapshot = useAssetsHmrCache.get(queryCacheKey);
+
+  const [items, setItems] = useState<AssetModel[]>(() => cachedSnapshot?.items ?? []);
+  const [cursor, setCursor] = useState<string | null>(() => cachedSnapshot?.cursor ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(cachedSnapshot?.hasMore ?? true);
 
   // Page-based pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [currentPage, setCurrentPage] = useState(cachedSnapshot?.currentPage ?? initialPage);
+  const [totalPages, setTotalPages] = useState(cachedSnapshot?.totalPages ?? 1);
   const currentPageRef = useRef(currentPage);
   currentPageRef.current = currentPage;
   const totalPagesRef = useRef(totalPages);
   totalPagesRef.current = totalPages;
 
   // Guard to avoid duplicate initial loads in React StrictMode
-  const initialLoadRequestedRef = useRef(false);
-  const initialPageRef = useRef(initialPage);
+  const initialLoadRequestedRef = useRef((cachedSnapshot?.items.length ?? 0) > 0);
+  const initialPageRef = useRef(cachedSnapshot?.currentPage ?? initialPage);
+  const hasMountedRef = useRef(false);
   // Request ID to ignore stale responses after filter changes
   const requestIdRef = useRef(0);
 
@@ -458,6 +502,10 @@ export function useAssets(options?: {
 
   // Reset when filters change
   useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
     reset(preservePageOnFilterChange ? currentPageRef.current : 1);
   }, [
     filterParams.q, filterParams.tag, filterParams.provider_id,
@@ -473,6 +521,24 @@ export function useAssets(options?: {
     requestOverridesKey,
     limit, preservePageOnFilterChange, reset,
   ]);
+
+  // Persist current query snapshot so HMR remounts can reuse it without flashing empty state.
+  useEffect(() => {
+    useAssetsHmrCache.set(queryCacheKey, {
+      items,
+      cursor,
+      hasMore,
+      currentPage,
+      totalPages,
+    });
+
+    if (useAssetsHmrCache.size > USE_ASSETS_HMR_CACHE_LIMIT) {
+      const oldestKey = useAssetsHmrCache.keys().next().value as string | undefined;
+      if (oldestKey) {
+        useAssetsHmrCache.delete(oldestKey);
+      }
+    }
+  }, [queryCacheKey, items, cursor, hasMore, currentPage, totalPages]);
 
   // Load first page on mount and after resets (cursor becomes null and items empty)
   useEffect(() => {
