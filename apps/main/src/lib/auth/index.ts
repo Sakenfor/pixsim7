@@ -5,7 +5,8 @@
  */
 
 // Export the configured auth service
-export * from './authService';
+export { authService, setAuthStorageProvider, getAuthStorageProvider } from './authService';
+export type { AuthStorageProvider } from './authService';
 
 // Re-export auth types from shared package
 export type {
@@ -16,7 +17,11 @@ export type {
 } from '@pixsim7/shared.auth.core';
 
 // Google auth (app-specific)
-export * from './googleAuth';
+export { getGoogleIdTokenViaGIS } from './googleAuth';
 
 // Role helpers
-export * from './userRoles';
+export { CODEGEN_PERMISSION, isAdminUser, hasPermission, canRunCodegen } from './userRoles';
+
+// Ownership helpers
+export { useResourceOwnership } from './useResourceOwnership';
+export type { ResourceOwnership } from './useResourceOwnership';

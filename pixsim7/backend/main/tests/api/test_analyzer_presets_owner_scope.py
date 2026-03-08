@@ -7,7 +7,10 @@ import pytest
 from fastapi import HTTPException
 
 import pixsim7.backend.main.api.v1.analyzers as analyzers_module
-from pixsim7.backend.main.api.v1.analyzers import list_analyzer_presets
+from pixsim7.backend.main.api.v1.analyzers import (
+    list_analyzer_presets,
+    _build_preset_response,
+)
 from pixsim7.backend.main.services.ownership.user_owned import (
     resolve_user_owned_list_scope,
 )
@@ -345,3 +348,42 @@ async def test_list_presets_include_public_without_mine(monkeypatch: pytest.Monk
 
     assert capture.calls[0]["owner_user_id"] == 7
     assert capture.calls[0]["include_public"] is True
+
+
+# -- _build_preset_response canonical owner fields --
+
+
+def _preset_stub(*, owner_user_id: int, status: str = "draft") -> SimpleNamespace:
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    return SimpleNamespace(
+        id=1,
+        analyzer_id="prompt:test",
+        preset_id="my-preset",
+        name="Test Preset",
+        description=None,
+        config={"key": "val"},
+        status=SimpleNamespace(value=status),
+        owner_user_id=owner_user_id,
+        approved_by_user_id=None,
+        approved_at=None,
+        rejected_at=None,
+        rejection_reason=None,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def test_build_preset_response_includes_owner_ref():
+    preset = _preset_stub(owner_user_id=7)
+    resp = _build_preset_response(preset)
+    assert resp.owner_user_id == 7
+    assert resp.owner_ref == "user:7"
+
+
+def test_build_preset_response_owner_username_none_without_metadata():
+    """owner_username is None when no metadata/created_by is available."""
+    preset = _preset_stub(owner_user_id=7)
+    resp = _build_preset_response(preset)
+    assert resp.owner_username is None

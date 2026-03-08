@@ -41,6 +41,7 @@ from pixsim7.backend.main.services.analysis.analyzer_preset_service import (
 from pixsim7.backend.main.domain.enums import ReviewStatus
 from pixsim7.backend.main.services.ownership.user_owned import (
     resolve_user_owned_list_scope,
+    resolve_user_owner,
 )
 
 router = APIRouter()
@@ -293,6 +294,8 @@ class AnalyzerPresetResponse(BaseModel):
     config: dict
     status: str
     owner_user_id: int
+    owner_ref: Optional[str] = None
+    owner_username: Optional[str] = None
     approved_by_user_id: Optional[int]
     approved_at: Optional[str]
     rejected_at: Optional[str]
@@ -1698,6 +1701,7 @@ def _build_analyzer_response(analyzer) -> AnalyzerResponse:
 
 
 def _build_preset_response(preset) -> AnalyzerPresetResponse:
+    owner = resolve_user_owner(model_owner_user_id=preset.owner_user_id)
     return AnalyzerPresetResponse(
         id=preset.id,
         analyzer_id=preset.analyzer_id,
@@ -1707,6 +1711,8 @@ def _build_preset_response(preset) -> AnalyzerPresetResponse:
         config=preset.config or {},
         status=preset.status.value if hasattr(preset.status, "value") else str(preset.status),
         owner_user_id=preset.owner_user_id,
+        owner_ref=owner["owner_ref"],
+        owner_username=owner["owner_username"],
         approved_by_user_id=preset.approved_by_user_id,
         approved_at=preset.approved_at.isoformat() if preset.approved_at else None,
         rejected_at=preset.rejected_at.isoformat() if preset.rejected_at else None,
