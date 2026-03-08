@@ -19,6 +19,7 @@ import { Icon } from '@lib/icons';
 import { VersionNavigator, useVersions } from '@lib/ui/versioning';
 
 import { useAssets, type AssetModel, type ViewerAsset } from '@features/assets';
+import { assetEvents } from '@features/assets/lib/assetEvents';
 import { extractUploadError, notifyGalleryOfNewAsset } from '@features/assets/lib/uploadActions';
 import { getGenerationSettingsStore, useGenerationScopeStores, useGenerationSettingsStore } from '@features/generation';
 import {
@@ -836,9 +837,16 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       const newAssetId = uploadResult.asset_id;
       let attachedToGeneration = false;
 
+      const versionWasApplied = uploadResult.version_applied === true;
+
       if (newAssetId) {
         try {
+          // Add new asset to gallery first, then remove old parent if versioned.
+          // Order matters: add before remove so gallery is never empty.
           await notifyGalleryOfNewAsset(newAssetId);
+          if (versionWasApplied && uploadContext.version_parent_id) {
+            assetEvents.emitAssetDeleted(uploadContext.version_parent_id as number);
+          }
         } catch {
           // Non-critical
         }
@@ -859,11 +867,10 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         anyMaskAssetsQuery.reset();
       }
 
-      const versionedFrom = !forceNew && uploadContext.version_parent_id;
       const idLabel = newAssetId ? ` #${newAssetId}` : '';
       if (forceNew) {
         toast.success(`Mask${idLabel} saved as new asset.`);
-      } else if (versionedFrom) {
+      } else if (versionWasApplied) {
         toast.success(`Mask${idLabel} updated (version of #${uploadContext.version_parent_id}).`);
       } else if (attachedToGeneration) {
         toast.success(`Mask${idLabel} saved and set for generation.`);

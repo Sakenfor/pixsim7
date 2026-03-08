@@ -604,3 +604,105 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
         setattr(entity, self.parent_id_attr, None)
         setattr(entity, self.version_message_attr, message)
         await self.db.flush()
+
+    # =========================================================================
+    # SHARED FAMILY + VERSION CHAINING
+    # =========================================================================
+
+    def _derive_family_name(self, entity: TEntity) -> str:
+        """Derive a family name from an entity. Override for entity-specific naming."""
+        return (
+            getattr(entity, "name", None)
+            or getattr(entity, "description", None)
+            or str(self.get_entity_id(entity))
+        )
+
+    def _build_family_kwargs(self, entity: TEntity) -> Dict[str, Any]:
+        """
+        Build extra kwargs for family model construction.
+
+        Override to supply entity-specific fields (e.g. user_id).
+        """
+        return {}
+
+    async def create_family_for_entity(
+        self,
+        entity: TEntity,
+        name: Optional[str] = None,
+    ) -> TFamily:
+        """
+        Create a version family and upgrade the entity to v1.
+
+        If the entity already belongs to a family, returns that family.
+
+        Args:
+            entity: The entity to become v1 of the new family.
+            name: Optional family name (defaults to _derive_family_name).
+
+        Returns:
+            The family (newly created or existing).
+        """
+        # Already in a family?
+        existing_family_id = getattr(entity, self.family_id_attr, None)
+        if existing_family_id:
+            family = await self.get_family(self._coerce_uuid(existing_family_id))
+            if family:
+                return family
+
+        family_name = name or self._derive_family_name(entity)
+        FamilyModel = self.get_family_model()
+
+        init_kwargs: Dict[str, Any] = {
+            "name": family_name,
+            **self._build_family_kwargs(entity),
+        }
+        if self.head_id_attr:
+            init_kwargs[self.head_id_attr] = self.get_entity_id(entity)
+
+        family = FamilyModel(**init_kwargs)
+        self.db.add(family)
+        await self.db.flush()
+
+        await self.upgrade_entity_to_v1(family, entity)
+        return family
+
+    async def chain_entity_as_version(
+        self,
+        new_entity: TEntity,
+        parent_entity: TEntity,
+        message: Optional[str] = None,
+    ) -> VersionContext:
+        """
+        Chain an existing entity as the next version after a parent.
+
+        Creates a family if the parent is standalone. Assigns version metadata
+        to new_entity and updates HEAD.
+
+        Args:
+            new_entity: The newly created entity to become next version.
+            parent_entity: The entity to version from.
+            message: Version message describing what changed.
+
+        Returns:
+            VersionContext with the resolved family/version info.
+        """
+        family = await self.create_family_for_entity(parent_entity)
+        next_version = await self.get_next_version_number(family.id, lock=True)
+
+        # Apply version metadata
+        setattr(new_entity, self.family_id_attr, family.id)
+        setattr(new_entity, self.version_number_attr, next_version)
+        setattr(new_entity, self.parent_id_attr, self.get_entity_id(parent_entity))
+        setattr(new_entity, self.version_message_attr, message)
+        await self.db.flush()
+
+        # Update HEAD
+        if self.head_id_attr:
+            await self.set_head(family.id, self.get_entity_id(new_entity))
+
+        return VersionContext(
+            family_id=family.id,
+            version_number=next_version,
+            parent_id=self.get_entity_id(parent_entity),
+            version_message=message,
+        )

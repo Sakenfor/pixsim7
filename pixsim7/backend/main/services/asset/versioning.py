@@ -13,7 +13,6 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.assets.models import Asset
@@ -70,7 +69,7 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
             await self.db.flush()
 
     # =========================================================================
-    # ENTITY-SPECIFIC METADATA
+    # ENTITY-SPECIFIC HOOKS
     # =========================================================================
 
     def get_timeline_metadata(self, entity: Asset) -> Dict[str, Any]:
@@ -80,6 +79,12 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
             "thumbnail_url": getattr(entity, 'thumbnail_url', None),
             "media_type": entity.media_type.value if entity.media_type else None,
         }
+
+    def _derive_family_name(self, entity: Asset) -> str:
+        return entity.description or f"Asset {entity.id}"
+
+    def _build_family_kwargs(self, entity: Asset) -> Dict[str, Any]:
+        return {"user_id": entity.user_id}
 
     # =========================================================================
     # VERSION RESOLUTION (called at generation time)
@@ -134,66 +139,17 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
             )
 
         # version_intent == "version" with single input
-        if input_asset.version_family_id:
-            # Input is already versioned - continue the chain
-            return await self._continue_version_chain(
-                input_asset, version_message
-            )
-        else:
-            # Input is standalone - upgrade it to v1 and create family
-            family = await self._create_family_and_upgrade_source(
-                input_asset, user_id
-            )
-            return VersionContext(
-                family_id=family.id,
-                version_number=2,  # New asset will be v2
-                parent_id=input_asset.id,
-                version_message=version_message
-            )
-
-    async def _continue_version_chain(
-        self,
-        input_asset: Asset,
-        version_message: Optional[str],
-    ) -> VersionContext:
-        """
-        Continue an existing version chain.
-
-        Uses SELECT FOR UPDATE on family to prevent concurrent version assignment.
-        """
-        family_id = input_asset.version_family_id
-        next_version = await self.get_next_version_number(family_id, lock=True)
+        # create_family_for_entity handles both standalone → new family
+        # and already-versioned → return existing family
+        family = await self.create_family_for_entity(input_asset)
+        next_version = await self.get_next_version_number(family.id, lock=True)
 
         return VersionContext(
-            family_id=family_id,
+            family_id=family.id,
             version_number=next_version,
             parent_id=input_asset.id,
             version_message=version_message
         )
-
-    async def _create_family_and_upgrade_source(
-        self,
-        source_asset: Asset,
-        user_id: int,
-    ) -> AssetVersionFamily:
-        """
-        Create a new version family and upgrade the source asset to v1.
-
-        CRITICAL: Must update source_asset to be part of the family,
-        otherwise we'd have a family with v2 but no v1.
-        """
-        # Create family
-        family = AssetVersionFamily(
-            name=source_asset.description or f"Asset {source_asset.id}",
-            user_id=user_id,
-            head_asset_id=source_asset.id,  # Source is initially HEAD
-        )
-        self.db.add(family)
-        await self.db.flush()  # Get family.id
-
-        # UPGRADE source asset to v1 of this family
-        await self.upgrade_entity_to_v1(family, source_asset)
-        return family
 
     # =========================================================================
     # CONVENIENCE METHODS
@@ -219,8 +175,7 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
         Chain a newly uploaded asset as a version of an existing asset.
 
         Used for non-generation versioning (e.g. saving an edited mask).
-        Creates a family if the parent is standalone, continues the chain
-        if the parent is already versioned, then sets HEAD to the new asset.
+        Delegates to base chain_entity_as_version.
         """
         parent = await self.get_entity(parent_asset_id)
         if not parent:
@@ -229,24 +184,14 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
         if not new_asset:
             raise ValueError(f"New asset {new_asset_id} not found")
 
-        # Resolve version context (same logic as generation path)
-        ctx = await self.resolve_version_intent(
-            input_assets=[parent],
-            version_intent="version",
-            version_message=version_message,
-            user_id=parent.user_id,
-        )
+        # Owner validation: prevent cross-user version chains
+        if parent.user_id != new_asset.user_id:
+            raise ValueError(
+                f"Cannot version across users: parent owner={parent.user_id}, "
+                f"new asset owner={new_asset.user_id}"
+            )
 
-        # Apply version metadata to the new asset
-        new_asset.version_family_id = ctx.family_id
-        new_asset.version_number = ctx.version_number
-        new_asset.parent_asset_id = ctx.parent_id
-        new_asset.version_message = ctx.version_message
-        await self.db.flush()
-
-        # Update HEAD → triggers on_head_changed (hides old HEAD)
-        if ctx.family_id:
-            await self.set_head(ctx.family_id, new_asset_id)
+        await self.chain_entity_as_version(new_asset, parent, version_message)
 
     # =========================================================================
     # FORK OPERATIONS (Asset-specific)

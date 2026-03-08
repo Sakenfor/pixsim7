@@ -49,6 +49,7 @@ class UploadAssetResponse(BaseModel):
     provider_asset_id: str | None = None
     asset_id: int | None = None
     note: str | None = None
+    version_applied: bool | None = None
 
 
 class UploadFromUrlRequest(BaseModel):
@@ -346,6 +347,7 @@ async def upload_asset_to_provider(
             media_metadata["upload_attribution"] = upload_attribution
 
         created_asset_id = None
+        version_applied: bool | None = None
         try:
             # Check if we're updating an existing asset (cross-provider upload)
             if provider_id != "local" and existing and not (existing.provider_id == provider_id or provider_id in (existing.provider_uploads or {})):
@@ -377,6 +379,44 @@ async def upload_asset_to_provider(
                     note=f"Reused existing asset (deduplicated by sha256, uploaded to {provider_id})",
                 )
             else:
+                # Pre-validate version parent before creating asset
+                version_parent_id = normalized_context.get('version_parent_id') if normalized_context else None
+                validated_version_parent: int | None = None
+                if version_parent_id:
+                    try:
+                        validated_version_parent = int(version_parent_id)
+                        from sqlalchemy import select as sa_select
+                        from pixsim7.backend.main.domain.assets.models import Asset as AssetModel
+                        parent_result = await db.execute(
+                            sa_select(AssetModel.id, AssetModel.user_id).where(
+                                AssetModel.id == validated_version_parent
+                            )
+                        )
+                        parent_row = parent_result.one_or_none()
+                        if not parent_row:
+                            logger.warning(
+                                "version_parent_not_found",
+                                version_parent_id=validated_version_parent,
+                            )
+                            validated_version_parent = None
+                        elif parent_row.user_id != user.id:
+                            logger.warning(
+                                "version_parent_wrong_owner",
+                                version_parent_id=validated_version_parent,
+                                parent_user_id=parent_row.user_id,
+                                request_user_id=user.id,
+                            )
+                            validated_version_parent = None
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            "version_parent_id_invalid",
+                            raw_value=version_parent_id,
+                        )
+                        validated_version_parent = None
+
+                # Defer commit when versioning so asset+versioning are atomic
+                defer_commit = validated_version_parent is not None
+
                 # Create new asset with CAS storage
                 new_asset = await add_asset(
                     db,
@@ -399,6 +439,7 @@ async def upload_asset_to_provider(
                     media_metadata=media_metadata or None,
                     upload_method=upload_method,
                     upload_context=normalized_context or None,
+                    commit=not defer_commit,
                 )
 
                 if new_asset:
@@ -464,32 +505,37 @@ async def upload_asset_to_provider(
                             error=str(e),
                         )
 
-                # Apply versioning if version_parent_id provided in upload context
-                version_parent_id = normalized_context.get('version_parent_id') if normalized_context else None
-                if version_parent_id and new_asset:
+                # Apply versioning if pre-validated parent exists
+                if validated_version_parent and new_asset:
                     try:
-                        version_parent_id = int(version_parent_id)
                         version_message = (normalized_context or {}).get('version_message')
                         from pixsim7.backend.main.services.asset.versioning import AssetVersioningService
                         versioning = AssetVersioningService(db)
                         await versioning.apply_version_for_upload(
                             new_asset_id=new_asset.id,
-                            parent_asset_id=version_parent_id,
+                            parent_asset_id=validated_version_parent,
                             version_message=version_message,
                         )
                         await db.commit()
+                        version_applied = True
                         logger.info(
                             "asset_version_applied",
                             new_asset_id=new_asset.id,
-                            parent_asset_id=version_parent_id,
+                            parent_asset_id=validated_version_parent,
                         )
                     except Exception as e:
+                        # Versioning failed — still commit the asset so user data isn't lost
+                        await db.commit()
+                        version_applied = False
                         logger.warning(
                             "asset_version_failed",
                             new_asset_id=new_asset.id,
-                            parent_asset_id=version_parent_id,
+                            parent_asset_id=validated_version_parent,
                             error=str(e),
                         )
+                elif defer_commit:
+                    # Shouldn't happen, but ensure commit if deferred
+                    await db.commit()
         except Exception as e:
             # Non-fatal if asset creation fails; log and return upload response anyway
             logger.error(
@@ -507,6 +553,7 @@ async def upload_asset_to_provider(
             provider_asset_id=result.provider_asset_id,
             asset_id=created_asset_id,
             note=result.note,
+            version_applied=version_applied,
         )
     except InvalidOperationError as e:
         raise HTTPException(status_code=400, detail=str(e))

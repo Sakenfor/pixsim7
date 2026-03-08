@@ -49,7 +49,7 @@ class CharacterVersioningService(
         super().__init__(db)
 
     # =========================================================================
-    # ENTITY-SPECIFIC METADATA
+    # ENTITY-SPECIFIC HOOKS
     # =========================================================================
 
     def get_timeline_metadata(self, entity: Character) -> Dict[str, Any]:
@@ -60,32 +60,8 @@ class CharacterVersioningService(
             "category": entity.category,
         }
 
-    # =========================================================================
-    # FAMILY MANAGEMENT
-    # =========================================================================
-
-    async def create_family(
-        self, character: Character
-    ) -> CharacterVersionFamily:
-        """
-        Create a version family and upgrade the character to v1.
-
-        Args:
-            character: The character to become v1 of the new family.
-
-        Returns:
-            The newly created family.
-        """
-        family = CharacterVersionFamily(
-            name=character.display_name or character.name or character.character_id,
-            head_character_id=character.id,
-        )
-        self.db.add(family)
-        await self.db.flush()
-
-        # Upgrade character to v1
-        await self.upgrade_entity_to_v1(family, character)
-        return family
+    def _derive_family_name(self, entity: Character) -> str:
+        return entity.display_name or entity.name or entity.character_id
 
     # =========================================================================
     # EVOLVE — create a new version of a character
@@ -111,21 +87,6 @@ class CharacterVersioningService(
         Returns:
             The newly created character version (now HEAD).
         """
-        # Ensure character is in a family
-        if not character.version_family_id:
-            family = await self.create_family(character)
-        else:
-            family = await self.get_family(character.version_family_id)
-            if not family:
-                raise ValueError(
-                    f"Version family {character.version_family_id} not found"
-                )
-
-        # Get next version number with lock
-        next_version = await self.get_next_version_number(
-            family.id, lock=True
-        )
-
         # Build new character from old + updates
         now = datetime.now(timezone.utc)
         new_character = Character(
@@ -201,11 +162,6 @@ class CharacterVersioningService(
                 else {},
             ),
             created_by=character.created_by,
-            # Versioning fields
-            version_family_id=family.id,
-            version_number=next_version,
-            parent_character_id=character.id,
-            version_message=message,
             created_at=now,
             updated_at=now,
         )
@@ -213,13 +169,8 @@ class CharacterVersioningService(
         self.db.add(new_character)
         await self.db.flush()
 
-        # Update family HEAD
-        old_head_id = family.head_character_id
-        family.head_character_id = new_character.id
-        family.updated_at = now
-        await self.db.flush()
-
-        await self.on_head_changed(family, old_head_id, new_character.id)
+        # Delegate versioning to base: family creation, version numbering, HEAD update
+        await self.chain_entity_as_version(new_character, character, message)
 
         return new_character
 

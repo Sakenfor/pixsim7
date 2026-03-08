@@ -116,6 +116,7 @@ async def add_asset(
     prompt_version_id = None,  # Optional[UUID]
     upload_method: Optional[str] = None,
     upload_context: Optional[Dict[str, Any]] = None,
+    commit: bool = True,
 ) -> Asset:
     """
     Create or upsert an Asset record with sensible deduplication.
@@ -355,7 +356,10 @@ async def add_asset(
         created_at=datetime.now(timezone.utc),
     )
     db.add(asset)
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()  # Get ID without committing (caller will commit)
     await db.refresh(asset)
 
     # Emit asset:created event
