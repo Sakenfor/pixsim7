@@ -64,7 +64,7 @@ Deliberately simple:
 - Block matrix panel supports viewing both sources
 - Primitives support `frame` field for spatial wrapping (e.g., `"{text} from the left side"`)
 - ScenePrep currently launches template fanout generation and records `scene_prep_*` provenance; it does not directly invoke `/api/v1/game/dialogue/actions/select`.
-- `SceneArtifact` persists prep-side state only; `ActionSelectionContext` is runtime resolver input in backend game dialogue flow.
+- Scene Prep panel state is authoring/runtime input only; `ActionSelectionContext` is runtime resolver input in backend game dialogue flow.
 - Dev/category apply + content pack block import now write `BlockPrimitive` rows.
 - Semantic pack export and dev ontology scan now read primitives for block catalog data.
 - Timeline/debug aggregation derives block usage from `Generation + BlockImageFit` and resolves primitive IDs from blocks DB.

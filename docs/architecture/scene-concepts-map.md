@@ -7,7 +7,7 @@ This document maps them so we do not accidentally merge unrelated domains when b
 ## Quick Summary
 
 - `Scene Prep` is a **pre-generation composition/planning workspace**.
-- `SceneArtifact` is a **non-game persisted scene artifact** for prep/runtime-adjacent iteration.
+- Scene Prep state is currently **panel-local working state** (no standalone persisted artifact model).
 - `GameScene` / scene graph is an **interactive runtime/authored scene system**.
 - `Scene View` plugins are **renderers/presenters** for scene content.
 - Legacy `Scene`/`SceneAsset`/`SceneConnection` is an **older asset-graph concept**.
@@ -34,21 +34,19 @@ Notes:
 - Not a runtime scene graph
 - Uses generation pipeline contracts + `run_context` metadata
 
-### 1b. SceneArtifact (new non-game persisted scene layer)
+### 1b. Scene Prep Working State (current)
 
 Purpose:
-- Persist scene prep state as reusable artifacts without coupling to `GameScene`
-- Track prep-stage lifecycle (`draft/explored/composed/refined/published`)
-- Hold candidate refs, variant plan, launch history, and handoff context
+- Hold prep-stage state (`explore/compose/refine/custom`) while composing a launch
+- Keep candidate refs, variant plan, launch history, and handoff context local to panel runtime
+- Avoid coupling prep-only state into `GameScene`
 
 Primary files:
-- `apps/main/src/domain/sceneArtifact/types.ts`
-- `apps/main/src/domain/sceneArtifact/stores/sceneArtifactStore.ts`
-- `apps/main/src/features/scenePrep/components/ScenePrepPanel.tsx` (save/load integration)
+- `apps/main/src/features/scenePrep/components/ScenePrepPanel.tsx`
 
 Notes:
-- This is not `GameScene`; it is the persistent prep-side scene object
-- Future direct connection can be modeled via optional `gameSceneId` reference on artifact
+- This is not `GameScene`; it is prep-only runtime composition state
+- Long-term persistence should be project-extension based, not a separate local store
 
 ### 2. Game Scenes (active scene graph/runtime system)
 
@@ -140,11 +138,11 @@ Primary file:
 Notes:
 - This is context metadata only, not a persisted scene model
 
-## SceneArtifact vs ActionSelectionContext (Current Snapshot: March 2026)
+## Scene Prep State vs ActionSelectionContext (Current Snapshot: March 2026)
 
 These two types are adjacent but not the same layer:
 
-- `SceneArtifact` is frontend prep persistence (saved Scene Prep draft state).
+- Scene Prep state is frontend authoring/runtime input state in `ScenePrepPanel`.
 - `ActionSelectionContext` is backend runtime selection input for primitives resolution.
 
 Current behavior in code:
@@ -156,12 +154,12 @@ Current behavior in code:
 
 Practical interpretation:
 
-- `SceneArtifact` answers "what did the user prep and launch?"
+- Scene Prep state answers "what did the user prep and launch?"
 - `ActionSelectionContext` answers "what runtime constraints should select primitives now?"
 
 Bridge status:
 
-- No canonical direct mapper exists yet from `SceneArtifact.prep` to `ActionSelectionContext`.
+- No canonical direct mapper exists yet from Scene Prep panel state to `ActionSelectionContext`.
 - Recommended bridge is a single deterministic mapper (not adapters everywhere) that projects:
   - scene/cast/guidance choices -> runtime context fields
   - stage/notes/candidates -> required or preferred tags
@@ -173,7 +171,6 @@ Bridge status:
 Scene Prep / Authoring Path (current)
 ------------------------------------
 User -> ScenePrepPanel
-     -> Save/Load SceneArtifact (frontend store)
      -> Launch Scene Prep Batch
      -> compileTemplateFanoutRequest
      -> executeTrackedTemplateFanoutRequest
@@ -194,7 +191,7 @@ Game/Narrative Runtime or API caller
 
 Bridge Status
 -------------
-SceneArtifact.prep
+ScenePrepPanel state
      - - - no canonical mapper yet - - ->
 ActionSelectionContext
 ```
@@ -209,10 +206,10 @@ Recommended positioning:
 - Separate from GameScene authoring/runtime
 
 This means:
-- Keep `scene_prep_*` names in `run_context` / local draft schema
-- Treat `SceneArtifact` as the canonical persisted prep-side record (non-game)
+- Keep `scene_prep_*` names in `run_context`
 - Do not overload `GameScene` or `DraftScene` with prep-only state
 - Add explicit bridges instead of implicit coupling
+- Add project-extension persistence when prep state needs durable save/load
 
 ## Safe Reuse Opportunities (Now)
 
