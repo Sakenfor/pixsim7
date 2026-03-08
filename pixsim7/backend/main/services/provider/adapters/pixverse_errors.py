@@ -257,8 +257,37 @@ def handle_pixverse_error(
                 )
         raise JobNotFoundError("pixverse", job_id)
 
+    # Transient network errors (DNS failure, connection refused, etc.)
+    # These are expected when e.g. laptop sleeps or network drops briefly.
+    if _is_transient_network_error(error_msg):
+        short_reason = raw_error.split(":")[-1].strip() if ":" in raw_error else raw_error
+        raise ProviderError(
+            f"Network unavailable ({short_reason})",
+            error_code="network_transient",
+            retryable=True,
+        )
+
     # Generic provider error
     raise ProviderError(f"Pixverse API error: {raw_error}")
+
+
+# Patterns that indicate transient network issues (not bugs, not provider errors).
+_TRANSIENT_NETWORK_PATTERNS = (
+    "getaddrinfo failed",
+    "connecterror",
+    "connection refused",
+    "network is unreachable",
+    "name resolution",
+    "no address associated",
+    "temporaryfailure",
+    "timed out",
+    "connect timeout",
+)
+
+
+def _is_transient_network_error(error_msg_lower: str) -> bool:
+    """Check if the lowered error message indicates a transient network issue."""
+    return any(p in error_msg_lower for p in _TRANSIENT_NETWORK_PATTERNS)
 
 
 # Error codes that represent expected operational conditions (quota, content
@@ -291,6 +320,10 @@ def is_expected_pixverse_error(error: Exception) -> bool:
     if PixverseContentModerationError and isinstance(error, PixverseContentModerationError):
         return True
 
-    # Fallback: check common string patterns for quota/content errors
+    # Fallback: check common string patterns for quota/content/network errors
     msg = str(error).lower()
-    return any(kw in msg for kw in ("credits", "quota", "insufficient", "filtered", "policy"))
+    if any(kw in msg for kw in ("credits", "quota", "insufficient", "filtered", "policy")):
+        return True
+    if _is_transient_network_error(msg):
+        return True
+    return False

@@ -10,7 +10,6 @@ Provides unified resolution of template↔runtime entity links using:
 This is the main entry point for generic link-based entity resolution.
 """
 from typing import Any, Dict, Optional
-from uuid import UUID
 from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,17 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.services.links.entity_loaders import get_entity_loader_registry
 from pixsim7.backend.main.services.links.mapping_registry import get_mapping_registry
 from pixsim7.backend.main.services.links.link_service import LinkService
-from pixsim7.backend.main.domain.links import ObjectLink
 from pixsim7.backend.main.services.prompt.context.mapping import (
-    get_nested_value,
     set_nested_value,
 )
 from pixsim7.backend.main.domain.game.stats import StatEngine, create_stat_engine
 
 
 @dataclass
-class EntityRef:
-    """Reference to a resolved entity"""
+class ResolvedEntity:
+    """Resolved runtime entity wrapper returned by ObjectLinkResolver."""
     kind: str
     entity_id: Any
     entity: Any  # The loaded entity object
@@ -75,7 +72,7 @@ class ObjectLinkResolver:
         template_kind: str,
         template_id: str,
         context: Optional[Dict] = None
-    ) -> Optional[EntityRef]:
+    ) -> Optional[ResolvedEntity]:
         """Resolve a template entity to its linked runtime entity
 
         Delegates to LinkService.get_active_link_for_template() for canonical
@@ -87,7 +84,7 @@ class ObjectLinkResolver:
             context: Optional context for activation conditions
 
         Returns:
-            EntityRef with runtime entity, or None if no link
+            ResolvedEntity with runtime entity, or None if no link
         """
         # Delegate to LinkService for canonical filtering logic
         link = await self.link_service.get_active_link_for_template(
@@ -102,7 +99,7 @@ class ObjectLinkResolver:
         # Load the runtime entity
         runtime_entity = await self.load_entity(link.runtime_kind, link.runtime_id)
 
-        return EntityRef(
+        return ResolvedEntity(
             kind=link.runtime_kind,
             entity_id=link.runtime_id,
             entity=runtime_entity
@@ -192,7 +189,7 @@ class ObjectLinkResolver:
                 path = mapping.source_paths.get(primary_source)
 
             if path:
-                value = get_nested_value(source_entities[primary_source], path)
+                value = self._get_path_value(source_entities[primary_source], path)
                 if value is not None:
                     return value
 
@@ -204,6 +201,22 @@ class ObjectLinkResolver:
                     path = mapping.source_paths.get(mapping.fallback)
 
                 if path:
-                    return get_nested_value(source_entities[mapping.fallback], path)
+                    return self._get_path_value(source_entities[mapping.fallback], path)
 
         return None
+
+    @staticmethod
+    def _get_path_value(source: Any, path: str) -> Any:
+        """Resolve dotted paths on dict-like or object-like sources."""
+        if source is None or not path:
+            return None
+
+        current = source
+        for segment in path.split("."):
+            if isinstance(current, dict):
+                current = current.get(segment)
+            else:
+                current = getattr(current, segment, None)
+            if current is None:
+                return None
+        return current

@@ -151,18 +151,14 @@ class SyntheticGenerationService:
         asset.prompt_version_id = gen_data.get("prompt_version_id")
 
         # Stamp generation_context onto media_metadata
-        from .context import build_generation_context
+        from .context import build_generation_context, extract_source_asset_ids
         gen_ctx = build_generation_context(
             operation_type=gen_data["operation_type"].value,
             provider_id=asset.provider_id,
             prompt=gen_data["final_prompt"],
             params={k: v for k, v in gen_data["canonical_params"].items()
                     if k not in ("operation_type", "_provider_asset_id")},
-            source_asset_ids=[
-                int(inp["asset"].split(":")[1])
-                for inp in gen_data["inputs"]
-                if isinstance(inp.get("asset"), str) and inp["asset"].startswith("asset:")
-            ],
+            source_asset_ids=extract_source_asset_ids(gen_data["inputs"]),
             prompt_version_id=str(gen_data["prompt_version_id"]) if gen_data["prompt_version_id"] else None,
             reproducible_hash=gen_data["reproducible_hash"],
         )
@@ -225,18 +221,14 @@ class SyntheticGenerationService:
         asset.prompt_version_id = gen_data.get("prompt_version_id")
 
         # Re-stamp generation_context onto asset media_metadata
-        from .context import build_generation_context
+        from .context import build_generation_context, extract_source_asset_ids
         gen_ctx = build_generation_context(
             operation_type=gen_data["operation_type"].value,
             provider_id=asset.provider_id,
             prompt=gen_data["final_prompt"],
             params={k: v for k, v in gen_data["canonical_params"].items()
                     if k not in ("operation_type", "_provider_asset_id")},
-            source_asset_ids=[
-                int(inp["asset"].split(":")[1])
-                for inp in gen_data["inputs"]
-                if isinstance(inp.get("asset"), str) and inp["asset"].startswith("asset:")
-            ],
+            source_asset_ids=extract_source_asset_ids(gen_data["inputs"]),
             prompt_version_id=str(gen_data["prompt_version_id"]) if gen_data["prompt_version_id"] else None,
             reproducible_hash=gen_data["reproducible_hash"],
         )

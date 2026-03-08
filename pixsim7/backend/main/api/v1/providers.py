@@ -47,6 +47,47 @@ def _method_overridden(provider: Provider, method_name: str) -> bool:
     return provider_impl is not base_impl
 
 
+def _provider_manifest_snapshot(provider: Provider) -> dict:
+    """Extract manifest context relevant for capability/accountless diagnostics."""
+    manifest = None
+    try:
+        if hasattr(provider, "get_manifest"):
+            manifest = provider.get_manifest()
+    except Exception:
+        manifest = None
+
+    requires_credentials = True
+    kind = None
+    credit_types: list[str] = []
+
+    if manifest is not None:
+        requires_credentials = bool(getattr(manifest, "requires_credentials", True))
+        raw_kind = getattr(manifest, "kind", None)
+        if raw_kind is not None:
+            kind = getattr(raw_kind, "value", str(raw_kind))
+        raw_credit_types = getattr(manifest, "credit_types", None) or []
+        for item in raw_credit_types:
+            value = str(item).strip()
+            if value:
+                credit_types.append(value)
+
+    return {
+        "kind": kind,
+        "requires_credentials": requires_credentials,
+        "supports_accountless": not requires_credentials,
+        "credit_types": credit_types,
+    }
+
+
+def _analysis_support_snapshot(provider: Provider) -> dict[str, bool]:
+    """Capture provider analysis execution/status hook coverage."""
+    return {
+        "has_analyze": callable(getattr(provider, "analyze", None)),
+        "has_check_analysis_status": callable(getattr(provider, "check_analysis_status", None)),
+        "has_check_status": callable(getattr(provider, "check_status", None)),
+    }
+
+
 class ProviderDetectionRequest(BaseModel):
     """Request to detect provider from URL"""
     url: str
@@ -59,6 +100,21 @@ class ProviderInfo(BaseModel):
     domains: list[str]
     supported_operations: list[str]
     capabilities: dict | None = None  # Extended capability metadata
+
+
+class ProviderAnalysisReadiness(BaseModel):
+    """Admin/debug view of provider readiness for analysis execution."""
+    provider_id: str
+    name: str
+    kind: Optional[str] = None
+    requires_credentials: bool
+    supports_accountless: bool
+    credit_types: list[str] = Field(default_factory=list)
+    supported_operations: list[str] = Field(default_factory=list)
+    analysis_support: dict[str, bool]
+    analysis_pipeline_ready: bool
+    pending_reason: Optional[str] = None
+    missing_hooks: list[str] = Field(default_factory=list)
 
 
 class ProviderDetectionResponse(BaseModel):
@@ -287,6 +343,68 @@ async def list_providers(user: CurrentUser):
     return providers_info
 
 
+@router.get("/providers/debug/analysis-readiness", response_model=list[ProviderAnalysisReadiness])
+async def list_provider_analysis_readiness(user: CurrentUser):
+    """
+    Admin/debug endpoint for analysis implementation readiness by provider.
+
+    Reports accountless eligibility (from manifest), analysis hook coverage,
+    and explicit pending reasons for providers missing execution hooks.
+    """
+    if not user.is_admin():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+
+    results: list[ProviderAnalysisReadiness] = []
+
+    for provider_id in sorted(registry.list_provider_ids()):
+        try:
+            provider = registry.get(provider_id)
+            manifest_info = _provider_manifest_snapshot(provider)
+            analysis_support = _analysis_support_snapshot(provider)
+            status_hook_ready = bool(
+                analysis_support["has_check_analysis_status"] or analysis_support["has_check_status"]
+            )
+            analysis_pipeline_ready = bool(analysis_support["has_analyze"] and status_hook_ready)
+
+            missing_hooks: list[str] = []
+            if not analysis_support["has_analyze"]:
+                missing_hooks.append("has_analyze")
+            if not status_hook_ready:
+                missing_hooks.append("has_check_analysis_status_or_has_check_status")
+
+            pending_reason = None
+            if missing_hooks:
+                if missing_hooks == ["has_analyze"]:
+                    pending_reason = "provider_missing_analyze_hook"
+                elif missing_hooks == ["has_check_analysis_status_or_has_check_status"]:
+                    pending_reason = "provider_missing_analysis_status_hook"
+                else:
+                    pending_reason = "provider_missing_analysis_hooks"
+
+            results.append(
+                ProviderAnalysisReadiness(
+                    provider_id=provider.provider_id,
+                    name=provider.get_display_name() if hasattr(provider, "get_display_name") else provider_id,
+                    kind=manifest_info["kind"],
+                    requires_credentials=manifest_info["requires_credentials"],
+                    supports_accountless=manifest_info["supports_accountless"],
+                    credit_types=manifest_info["credit_types"],
+                    supported_operations=[op.value for op in provider.supported_operations],
+                    analysis_support=analysis_support,
+                    analysis_pipeline_ready=analysis_pipeline_ready,
+                    pending_reason=pending_reason,
+                    missing_hooks=missing_hooks,
+                )
+            )
+        except Exception:
+            continue
+
+    return results
+
+
 # ===== CAPABILITIES EXTRACTION =====
 
 def extract_provider_capabilities(provider) -> dict:
@@ -319,6 +437,11 @@ def extract_provider_capabilities(provider) -> dict:
         pass
 
     # Build base capabilities
+    manifest_info = _provider_manifest_snapshot(provider)
+    analysis_support = _analysis_support_snapshot(provider)
+    status_hook_ready = bool(
+        analysis_support["has_check_analysis_status"] or analysis_support["has_check_status"]
+    )
     base = {
         "provider_id": getattr(provider, 'provider_id', 'unknown'),
         "operations": ops,
@@ -326,6 +449,12 @@ def extract_provider_capabilities(provider) -> dict:
             "embedded_assets": _method_overridden(provider, 'extract_embedded_assets'),
             "asset_upload": _method_overridden(provider, 'upload_asset'),
             "file_preparation": provider.requires_file_preparation() if hasattr(provider, 'requires_file_preparation') else False,
+            "analysis_execute": analysis_support["has_analyze"],
+            "analysis_status_custom": analysis_support["has_check_analysis_status"],
+            "analysis_status_generic": analysis_support["has_check_status"],
+            "analysis_pipeline_ready": bool(analysis_support["has_analyze"] and status_hook_ready),
+            "requires_credentials": manifest_info["requires_credentials"],
+            "supports_accountless": manifest_info["supports_accountless"],
         },
         "operation_specs": operation_specs,
     }

@@ -49,6 +49,47 @@ def _extract_provider_error_code(error: ProviderError) -> str | None:
     return None
 
 
+def _analysis_support_snapshot(provider: Any) -> Dict[str, bool]:
+    """Capture whether a provider exposes analysis execution/status hooks."""
+    return {
+        "has_analyze": callable(getattr(provider, "analyze", None)),
+        "has_check_analysis_status": callable(getattr(provider, "check_analysis_status", None)),
+        "has_check_status": callable(getattr(provider, "check_status", None)),
+    }
+
+
+def _analysis_manifest_snapshot(provider: Any) -> Dict[str, Any]:
+    """Capture manifest context relevant for analysis/accountless diagnostics."""
+    manifest = None
+    try:
+        if hasattr(provider, "get_manifest"):
+            manifest = provider.get_manifest()
+    except Exception:
+        manifest = None
+
+    requires_credentials = True
+    kind = None
+    credit_types: list[str] = []
+
+    if manifest is not None:
+        requires_credentials = bool(getattr(manifest, "requires_credentials", True))
+        raw_kind = getattr(manifest, "kind", None)
+        if raw_kind is not None:
+            kind = getattr(raw_kind, "value", str(raw_kind))
+        raw_credit_types = getattr(manifest, "credit_types", None) or []
+        for item in raw_credit_types:
+            value = str(item).strip()
+            if value:
+                credit_types.append(value)
+
+    return {
+        "requires_credentials": requires_credentials,
+        "supports_accountless": not requires_credentials,
+        "kind": kind,
+        "credit_types": credit_types,
+    }
+
+
 def _generation_attempt_started_marker(generation: Generation) -> str | None:
     """Serialize current generation attempt start timestamp for submission ownership."""
     started_at = getattr(generation, "started_at", None)
@@ -393,7 +434,14 @@ class ProviderService:
 
         except ProviderError as e:
             error_code = _extract_provider_error_code(e)
-            logger.error(
+            # Expected operational errors → WARNING; unexpected → ERROR
+            from pixsim7.backend.main.shared.errors import (
+                ProviderQuotaExceededError as _Quota,
+                ProviderContentFilteredError as _Filtered,
+                ProviderConcurrentLimitError as _Concurrent,
+            )
+            _log = logger.warning if isinstance(e, (_Quota, _Filtered, _Concurrent)) else logger.error
+            _log(
                 "provider_execute_failed",
                 generation_id=generation.id,
                 provider_id=generation.provider_id,
@@ -655,7 +703,7 @@ class ProviderService:
             # Execute analysis via provider
             # For now, we use a generic analyze method if available,
             # or fall back to execute with a special operation type
-            if hasattr(provider, 'analyze'):
+            if callable(getattr(provider, "analyze", None)):
                 result = await provider.analyze(
                     account=account,
                     asset_url=analysis_params.get("asset_url"),
@@ -665,6 +713,39 @@ class ProviderService:
                     params=analysis.params or {},
                 )
             else:
+                support = _analysis_support_snapshot(provider)
+                manifest_support = _analysis_manifest_snapshot(provider)
+                status_hook_available = bool(
+                    support.get("has_check_analysis_status")
+                    or support.get("has_check_status")
+                )
+                pending_metadata = {
+                    "pending_implementation": True,
+                    "reason": "provider_missing_analyze_hook",
+                    "provider_id": analysis.provider_id,
+                    "analyzer_id": analysis.analyzer_id,
+                    "model_id": analysis.model_id,
+                    "analysis_support": support,
+                    "provider_manifest": manifest_support,
+                    "analysis_pipeline_ready": bool(
+                        support.get("has_analyze") and status_hook_available
+                    ),
+                    "status_hook_available": status_hook_available,
+                    "missing_hooks": [
+                        key for key, present in support.items()
+                        if key == "has_analyze" and not present
+                    ],
+                    "suggested_next_step": (
+                        "Implement provider.analyze() and optionally "
+                        "provider.check_analysis_status() for async analysis providers."
+                    ),
+                }
+                logger.warning(
+                    "analysis_provider_pending_implementation provider_id=%s analyzer_id=%s support=%s",
+                    analysis.provider_id,
+                    analysis.analyzer_id,
+                    support,
+                )
                 # Generic fallback - many vision APIs can be called directly
                 result = GenerationResult(
                     provider_job_id=f"analysis-{analysis.id}",
@@ -672,7 +753,7 @@ class ProviderService:
                     status=ProviderStatus.COMPLETED,
                     video_url=None,
                     thumbnail_url=None,
-                    metadata={"pending_implementation": True},
+                    metadata=pending_metadata,
                 )
 
             # Update submission with response
@@ -731,6 +812,17 @@ class ProviderService:
         """
         # Get provider from registry
         provider = registry.get(submission.provider_id)
+
+        # Local pending-implementation shortcut: avoid calling provider status
+        # APIs when execution was intentionally marked as placeholder.
+        response_payload = submission.response if isinstance(submission.response, dict) else {}
+        pending_result = response_payload.get("result", {})
+        if isinstance(pending_result, dict) and pending_result.get("pending_implementation"):
+            return ProviderStatusResult(
+                status=ProviderStatus.COMPLETED,
+                progress=1.0,
+                metadata=pending_result,
+            )
 
         # Check status via provider
         if hasattr(provider, 'check_analysis_status'):

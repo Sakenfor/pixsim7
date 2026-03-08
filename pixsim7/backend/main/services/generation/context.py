@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from pixsim7.backend.main.shared.asset_refs import extract_asset_id
+
 
 def extract_flat_provider_params(canonical_params: dict) -> dict:
     """
@@ -96,12 +98,11 @@ def extract_source_asset_ids(inputs: list) -> List[int]:
     """
     ids: List[int] = []
     for inp in inputs or []:
-        asset_ref = inp.get("asset", "") if isinstance(inp, dict) else ""
-        if isinstance(asset_ref, str) and asset_ref.startswith("asset:"):
-            try:
-                ids.append(int(asset_ref.split(":")[1]))
-            except (ValueError, IndexError):
-                pass
+        if not isinstance(inp, dict):
+            continue
+        asset_id = extract_asset_id(inp.get("asset"))
+        if asset_id is not None:
+            ids.append(asset_id)
     return ids
 
 

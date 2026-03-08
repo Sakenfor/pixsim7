@@ -406,19 +406,11 @@ def extract_asset_from_scene(scene: Any) -> Optional[str]:
     # Try various asset field names
     for field in ["asset_id", "asset", "image_asset_id", "video_asset_id", "assetId"]:
         value = scene.get(field)
-        if value:
-            if isinstance(value, int):
-                return f"asset:{value}"
-            elif isinstance(value, str):
-                if value.startswith("asset:"):
-                    return value
-                try:
-                    asset_id = int(value)
-                    return f"asset:{asset_id}"
-                except ValueError:
-                    pass
-            elif isinstance(value, dict) and value.get("type") == "asset":
-                return f"asset:{value['id']}"
+        if not value:
+            continue
+        normalized = extract_asset_ref(value, allow_url_asset_id=True)
+        if isinstance(normalized, str) and normalized.startswith("asset:"):
+            return normalized
 
     return None
 

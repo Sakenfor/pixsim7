@@ -1,9 +1,14 @@
 /**
- * Codegen API Domain Client
+ * Codegen & Developer Tasks API Domain Client
  *
- * Shared client for devtools codegen task listing and execution.
+ * Shared client for devtools codegen task listing/execution
+ * and database migration management.
  */
 import type { PixSimApiClient } from '../client';
+
+// ---------------------------------------------------------------------------
+// Codegen Types
+// ---------------------------------------------------------------------------
 
 export interface CodegenTask {
   id: string;
@@ -32,6 +37,51 @@ export interface CodegenRunResponse {
   stderr: string;
 }
 
+// ---------------------------------------------------------------------------
+// Migration Types
+// ---------------------------------------------------------------------------
+
+export type MigrationScope = 'all' | 'main' | 'game' | 'blocks' | 'logs';
+
+export interface MigrationScopeDetail {
+  scope: string;
+  config_file: string;
+  script_location: string;
+  database_url: string;
+  version_table: string;
+  migration_count: number;
+}
+
+export interface MigrationStatusResponse {
+  available: boolean;
+  scopes: string[];
+  scope_details: MigrationScopeDetail[];
+}
+
+export interface MigrationRunRequest {
+  scope: MigrationScope;
+}
+
+export interface MigrationRunResponse {
+  ok: boolean;
+  scope: string;
+  exit_code: number | null;
+  duration_ms: number;
+  stdout: string;
+  stderr: string;
+}
+
+export interface MigrationHeadResponse {
+  scope: string;
+  current_head: string | null;
+  is_head: boolean;
+  error: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Client Factory
+// ---------------------------------------------------------------------------
+
 export function createCodegenApi(client: PixSimApiClient) {
   return {
     async listTasks(): Promise<CodegenTasksResponse> {
@@ -40,6 +90,18 @@ export function createCodegenApi(client: PixSimApiClient) {
 
     async runTask(request: CodegenRunRequest): Promise<CodegenRunResponse> {
       return client.post<CodegenRunResponse>('/devtools/codegen/run', request);
+    },
+
+    async getMigrationStatus(): Promise<MigrationStatusResponse> {
+      return client.get<MigrationStatusResponse>('/devtools/codegen/migrations/status');
+    },
+
+    async getMigrationHead(scope: string): Promise<MigrationHeadResponse> {
+      return client.get<MigrationHeadResponse>(`/devtools/codegen/migrations/${scope}/head`);
+    },
+
+    async runMigration(request: MigrationRunRequest): Promise<MigrationRunResponse> {
+      return client.post<MigrationRunResponse>('/devtools/codegen/migrations/run', request);
     },
   };
 }

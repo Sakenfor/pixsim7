@@ -109,6 +109,10 @@ class EntityLoaderRegistry:
             return True
         return False
 
+    def clear(self) -> None:
+        """Remove all registered loaders."""
+        self._loaders.clear()
+
     def list_loaders(self) -> list[str]:
         """List all registered entity kinds
 

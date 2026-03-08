@@ -89,6 +89,7 @@ def canonicalize_params(
                 if field in provider_style:
                     canonical[field] = provider_style[field]
 
+
     # Extract prompt from generation_config or params root
     prompt = gen_config.get("prompt") or params.get("prompt")
     if prompt:

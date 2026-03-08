@@ -416,16 +416,15 @@ class RemakerProvider(WebApiProvider):
         if provider_job_id.startswith("pe:"):
             real_job_id = provider_job_id[3:]
             url = f"{self.API_BASE}/api/pai/v4/prompt-editor/get-job/{real_job_id}"
-            processing_code = 300013
         else:
             real_job_id = provider_job_id
             url = f"{self.API_BASE}/api/pai/v4/ai-photo-editor/get-job/{real_job_id}"
-            processing_code = 300006
 
         payload = await self._fetch_json(account, url)
 
         code = payload.get("code")
-        if code == processing_code:
+        # Both 300006 (photo-editor) and 300013 (prompt-editor) indicate processing
+        if code in (300006, 300013):
             return ProviderStatusResult(
                 status=ProviderStatus.PROCESSING,
                 metadata={"provider_status": code},
@@ -503,6 +502,7 @@ class RemakerProvider(WebApiProvider):
                         "required": True,
                         "default": None,
                         "enum": None,
+                        "max": 5000,
                         "description": "Edit instruction or inpainting prompt",
                         "group": "core",
                     },
