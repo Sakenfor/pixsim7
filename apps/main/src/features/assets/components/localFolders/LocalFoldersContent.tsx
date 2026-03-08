@@ -17,10 +17,12 @@ import type { MediaCardActions } from '@/components/media/MediaCard';
 import type { LocalFoldersController } from '@/types/localSources';
 
 
+import { useViewerScopeSync } from '../../hooks/useAssetViewer';
 import { useLocalAssetPreview } from '../../hooks/useLocalAssetPreview';
 import { buildFavoriteGroupKey, extractGroupKey, groupLocalAssets, type LocalGroupBy } from '../../lib/localGroupEngine';
 import { getUploadCapableProviders } from '../../lib/resolveUploadTarget';
 import type { AssetModel } from '../../models/asset';
+import type { ViewerAsset } from '../../stores/assetViewerStore';
 import { useLocalFolderSettingsStore } from '../../stores/localFolderSettingsStore';
 import type { LocalAsset } from '../../stores/localFoldersStore';
 import { GroupFolderTile, GroupListRow } from '../GroupCards';
@@ -62,6 +64,9 @@ export interface LocalFoldersContentProps {
   // Grouping helpers
   getSubfolderValue: (asset: LocalAsset) => string;
   getSubfolderLabelForAsset: (asset: LocalAsset) => string;
+  // Viewer scope sync
+  localAssetToViewer: (asset: LocalAsset, previewUrl?: string) => ViewerAsset;
+  isViewerOpen: boolean;
 }
 
 export function LocalFoldersContent({
@@ -88,6 +93,8 @@ export function LocalFoldersContent({
   toGenerationInputAsset,
   getSubfolderValue,
   getSubfolderLabelForAsset,
+  localAssetToViewer,
+  isViewerOpen,
 }: LocalFoldersContentProps) {
   // --- Filter persistence ---
   const filterOptions = useClientFilterPersistence(FILTER_STATE_KEY);
@@ -180,6 +187,17 @@ export function LocalFoldersContent({
 
   const showGroupOverview = hasActiveGrouping && drilledGroupKey === null;
   const showDrilledView = hasActiveGrouping && drilledGroupKey !== null;
+
+  // --- Viewer scope sync: use drilled items when inside a group ---
+  const viewerScopeItems = showDrilledView ? drilledItems : filteredItems;
+  const viewerScopeAssets = useMemo<ViewerAsset[]>(
+    () => viewerScopeItems.map((a) => localAssetToViewer(a, controller.previews?.[a.key])),
+    [viewerScopeItems, controller.previews, localAssetToViewer],
+  );
+  const scopeLabel = showDrilledView
+    ? `Local: ${drilledGroupKey} (${viewerScopeItems.length})`
+    : `Local (${viewerScopeItems.length})`;
+  useViewerScopeSync('local', scopeLabel, viewerScopeAssets, isViewerOpen);
 
   // Safety valve: if the active drill-down key no longer exists after a fast scope/filter
   // transition, return to the group overview instead of staying on a stale group.
@@ -571,18 +589,9 @@ export function LocalFoldersContent({
       );
     }
 
-    // --- Drilled-in view ---
+    // --- Drilled-in view (breadcrumb rendered separately as sticky) ---
     if (showDrilledView) {
-      return (
-        <>
-          <LocalGroupBreadcrumb
-            groupPath={[{ groupBy: localGroupBy as LocalGroupBy, groupKey: drilledGroupKey! }]}
-            itemCount={drilledItems.length}
-            onBack={handleGroupBack}
-          />
-          {drilledItems.length === 0 ? filteredEmptyState : renderAssetGallery(pageItems)}
-        </>
-      );
+      return drilledItems.length === 0 ? filteredEmptyState : renderAssetGallery(pageItems);
     }
 
     // --- Flat view (no grouping active) ---
@@ -687,6 +696,16 @@ export function LocalFoldersContent({
                 currentPage={groupPage}
                 totalPages={groupTotalPages}
                 onPageChange={setGroupPage}
+              />
+            </div>
+          )}
+          {/* Group breadcrumb — inside sticky bar so it stays visible on scroll */}
+          {showDrilledView && (
+            <div className="mt-2">
+              <LocalGroupBreadcrumb
+                groupPath={[{ groupBy: localGroupBy as LocalGroupBy, groupKey: drilledGroupKey! }]}
+                itemCount={drilledItems.length}
+                onBack={handleGroupBack}
               />
             </div>
           )}

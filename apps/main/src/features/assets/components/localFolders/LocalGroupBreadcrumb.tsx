@@ -17,7 +17,7 @@ export function LocalGroupBreadcrumb({
   onBack,
 }: LocalGroupBreadcrumbProps) {
   return (
-    <div className="mb-4 flex items-center justify-between bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded px-3 py-2">
+    <div className="flex items-center justify-between border border-neutral-200 dark:border-neutral-700 rounded px-3 py-2">
       <nav className="flex items-center gap-1 text-sm min-w-0 overflow-hidden">
         <button
           type="button"

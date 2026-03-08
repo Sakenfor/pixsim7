@@ -81,7 +81,6 @@ export function MediaControlBar({
 }: MediaControlBarProps) {
   const [scopeDropdownOpen, setScopeDropdownOpen] = useState(false);
   const scopeTriggerRef = useRef<HTMLButtonElement>(null);
-  const hasMultipleScopes = scopes && scopes.length > 1;
 
   return (
     <div className="flex-shrink-0 border-t border-neutral-200 dark:border-neutral-700">
@@ -108,21 +107,21 @@ export function MediaControlBar({
             <Icon name="chevronRight" size={16} />
           </button>
 
-          {/* Scope switcher */}
+          {/* Scope switcher — always a dropdown for discoverability */}
           {scopeLabel && (
             <>
               <div className="h-3.5 w-px bg-neutral-200 dark:bg-neutral-700 mx-0.5" />
-              {hasMultipleScopes ? (
-                <div className="relative">
-                  <button
-                    ref={scopeTriggerRef}
-                    onClick={() => setScopeDropdownOpen((prev) => !prev)}
-                    className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400 transition-colors"
-                    title="Switch navigation scope"
-                  >
-                    <span className="truncate max-w-[140px]">{scopeLabel}</span>
-                    <Icon name="chevronDown" size={10} />
-                  </button>
+              <div className="relative">
+                <button
+                  ref={scopeTriggerRef}
+                  onClick={() => setScopeDropdownOpen((prev) => !prev)}
+                  className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400 transition-colors"
+                  title="Navigation scope"
+                >
+                  <span className="truncate max-w-[140px]">{scopeLabel}</span>
+                  <Icon name="chevronDown" size={10} />
+                </button>
+                {scopes && scopes.length > 0 && (
                   <Dropdown
                     isOpen={scopeDropdownOpen}
                     onClose={() => setScopeDropdownOpen(false)}
@@ -130,7 +129,7 @@ export function MediaControlBar({
                     minWidth="160px"
                     triggerRef={scopeTriggerRef}
                   >
-                    {scopes!.map((scope) => (
+                    {scopes.map((scope) => (
                       <DropdownItem
                         key={scope.id}
                         onClick={() => {
@@ -143,12 +142,8 @@ export function MediaControlBar({
                       </DropdownItem>
                     ))}
                   </Dropdown>
-                </div>
-              ) : (
-                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate max-w-[140px]">
-                  {scopeLabel}
-                </span>
-              )}
+                )}
+              </div>
             </>
           )}
         </div>

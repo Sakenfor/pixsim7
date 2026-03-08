@@ -8,8 +8,8 @@ import type { ClientFilterState } from '@features/gallery/lib/useClientFilters';
 
 import type { LocalFoldersController } from '@/types/localSources';
 
-import { useAssetViewer, useViewerScopeSync } from '../hooks/useAssetViewer';
-import { useAssetViewerStore, selectIsViewerOpen, type ViewerAsset } from '../stores/assetViewerStore';
+import { useAssetViewer } from '../hooks/useAssetViewer';
+import { useAssetViewerStore, selectIsViewerOpen } from '../stores/assetViewerStore';
 import { useLocalFolderSettingsStore } from '../stores/localFolderSettingsStore';
 import type { LocalAsset } from '../stores/localFoldersStore';
 
@@ -133,11 +133,7 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
   });
   const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
 
-  const localViewerAssets = useMemo<ViewerAsset[]>(
-    () => controller.assets.map((a) => localAssetToViewer(a, controller.previews?.[a.key])),
-    [controller.assets, controller.previews, localAssetToViewer],
-  );
-  useViewerScopeSync('local', `Local (${controller.assets.length})`, localViewerAssets, isViewerOpen);
+  // Scope sync is handled inside LocalFoldersContent to respect drill-down state
 
   const contentScrollScope = ALL_ASSETS_SCROLL_SCOPE;
 
@@ -540,6 +536,8 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
           toGenerationInputAsset={callbacks.toGenerationInputAsset}
           getSubfolderValue={getSubfolderValue}
           getSubfolderLabelForAsset={getSubfolderLabelForAsset}
+          localAssetToViewer={localAssetToViewer}
+          isViewerOpen={isViewerOpen}
         />
       </div>
     </div>

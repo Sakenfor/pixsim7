@@ -349,9 +349,11 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       f.upload_method
     );
   }, [controller.filters]);
-  const scopeLabel = hasActiveFilters
-    ? `Gallery: filtered (${controller.assets.length})`
-    : `Gallery (${controller.assets.length})`;
+  const scopeLabel = isLeafGroup
+    ? `Gallery: ${groupPath[groupPath.length - 1]?.groupKey ?? 'group'} (${controller.assets.length})`
+    : hasActiveFilters
+      ? `Gallery: filtered (${controller.assets.length})`
+      : `Gallery (${controller.assets.length})`;
 
   useViewerScopeSync('gallery', scopeLabel, viewerAssets, isViewerOpen);
 

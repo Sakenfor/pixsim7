@@ -177,6 +177,7 @@ export function useMediaThumbnailFull(
 
   useEffect(() => {
     let cancelled = false;
+    const abortController = new AbortController();
     retryCountRef.current = 0;
     setLoading(true);
     setFailed(false);
@@ -216,7 +217,7 @@ export function useMediaThumbnailFull(
         // Fetch and convert to blob URL to prevent Chrome disk cache
         const fetchWithRetry = async () => {
           try {
-            const res = await fetch(fullUrl, { mode: 'cors' });
+            const res = await fetch(fullUrl, { mode: 'cors', signal: abortController.signal });
             if (!res.ok) {
               // Retry on 404 (CDN propagation delay)
               if (res.status === 404 && retryCountRef.current < MAX_RETRIES) {
@@ -243,7 +244,8 @@ export function useMediaThumbnailFull(
               setThumbSrc(objectUrl);
               setLoading(false);
             }
-          } catch {
+          } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError') return;
             // CORS or network error
             if (!cancelled) {
               console.warn(`[useMediaThumbnail] Network error for ${fullUrl}`);
@@ -278,6 +280,7 @@ export function useMediaThumbnailFull(
       try {
         const res = await fetch(fullUrl, {
           headers: { Authorization: `Bearer ${token}` },
+          signal: abortController.signal,
         });
 
         // Handle 202 Accepted (thumbnail regeneration in progress)
@@ -335,7 +338,8 @@ export function useMediaThumbnailFull(
           setThumbSrc(objectUrl);
           setLoading(false);
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
         if (!cancelled) {
           // Fall back to remote URL on error
           setThumbSrc(remoteUrl || fullUrl);
@@ -347,6 +351,7 @@ export function useMediaThumbnailFull(
 
     return () => {
       cancelled = true;
+      abortController.abort();
       // Blob URLs are NOT revoked here — the module-level LRU cache
       // keeps them alive so remounted cards render instantly.
     };
