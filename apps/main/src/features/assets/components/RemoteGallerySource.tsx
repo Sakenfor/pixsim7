@@ -15,6 +15,7 @@ import type { GalleryToolContext, GalleryAsset } from '@features/gallery/lib/cor
 import { galleryToolSelectors } from '@features/gallery/lib/registry';
 import {
   usePanelConfigStore,
+  type GalleryClusterBy,
   type GalleryGroupBy,
   type GalleryGroupMode,
   type GalleryGroupMultiLayout,
@@ -34,6 +35,7 @@ import { useAssetsController } from '../hooks/useAssetsController';
 import { useAssetViewer, useViewerScopeSync } from '../hooks/useAssetViewer';
 import { assetEvents } from '../lib/assetEvents';
 import { buildRemoteAssetActions } from '../lib/buildRemoteAssetActions';
+import { clusterAssets, isCluster } from '../lib/clusterHelpers';
 import { toggleFavoriteTag } from '../lib/favoriteTag';
 import { GROUP_BY_LABELS, normalizeGroupBySelection } from '../lib/groupBy';
 import { normalizeGroupScopeSelection } from '../lib/groupScope';
@@ -43,6 +45,7 @@ import { useAssetSetStore, type ManualAssetSet } from '../stores/assetSetStore';
 import { useAssetViewerStore, selectIsViewerOpen } from '../stores/assetViewerStore';
 import { useGalleryApplyTargetStore } from '../stores/galleryApplyTargetStore';
 
+import { ClusterCard } from './ClusterCard';
 import { CuratorSurfaceContent } from './CuratorGallerySurface';
 import { DebugSurfaceContent } from './DebugGallerySurface';
 import { DynamicFilters, ChipContextMenu } from './DynamicFilters';
@@ -227,6 +230,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   );
   const groupMode = (gallerySettings.groupMode ?? 'single') as GalleryGroupMode;
   const groupMultiLayout = (gallerySettings.groupMultiLayout ?? 'stack') as GalleryGroupMultiLayout;
+  const clusterBy = (gallerySettings.clusterBy ?? 'prompt') as GalleryClusterBy;
   const defaultGroupScope = normalizeGroupScopeSelection(
     (gallerySettings.groupScope ?? DEFAULT_GROUP_SCOPE) as GalleryGroupScope,
   );
@@ -694,14 +698,19 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     if (!groupData) return false;
     return groupData.offset + groupData.groups.length < groupData.total;
   }, [groupData]);
+  const isClusterView = groupView === 'cluster';
   const isParallelMode = groupMode === 'multi' && groupMultiLayout === 'parallel' && groupByStack.length > 1;
-  const showParallelGroups = hasGrouping && isParallelMode && groupPath.length === 0;
-  const showGroupOverview = hasGrouping && !showParallelGroups && groupPath.length < groupByStack.length;
+  const showParallelGroups = hasGrouping && isParallelMode && groupPath.length === 0 && !isClusterView;
+  const showGroupOverview = hasGrouping && !showParallelGroups && groupPath.length < groupByStack.length && !isClusterView;
   const showGroupFolders = showGroupOverview && groupView === 'folders';
   const visibleAssets = useMemo(() => {
     if (showGroupOverview) return [];
     return controller.assets;
   }, [controller.assets, showGroupOverview]);
+  const clusteredItems = useMemo(() => {
+    if (!isClusterView) return null;
+    return clusterAssets(controller.assets, clusterBy);
+  }, [isClusterView, controller.assets, clusterBy]);
   // ---------------------------------------------------------------------------
   // Parallel mode state & data fetching
   // ---------------------------------------------------------------------------
@@ -1084,6 +1093,88 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     );
   });
 
+  // Build a lookup for rendering individual cards inside expanded clusters
+  const assetById = useMemo(() => {
+    const map = new Map<number, AssetModel>();
+    for (const a of controller.assets) map.set(a.id, a);
+    return map;
+  }, [controller.assets]);
+
+  const renderSingleCard = useCallback(
+    (assetId: number) => {
+      const a = assetById.get(assetId);
+      if (!a) return null;
+      const isSelected = controller.selectedAssetIds.has(String(a.id));
+      const isInActiveManualSet = activeManualSetAssetIds.has(a.id);
+      return (
+        <div
+          key={a.id}
+          className={`relative cursor-pointer group rounded-md ${
+            isSelected ? 'ring-4 ring-purple-500' : ''
+          }`}
+          onClick={(e) => {
+            if (e.ctrlKey || e.metaKey || e.shiftKey) {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleAssetSelection(a);
+            }
+          }}
+        >
+          <MediaCard
+            asset={a}
+            onOpen={() => openGalleryAsset(a, controller.assets)}
+            onToggleFavorite={() => toggleFavoriteTag(a)}
+            actions={buildRemoteAssetActions(a, {
+              baseActions: {
+                ...controller.getAssetActions(a),
+                onAddToActiveSet: activeManualSet ? addAssetToActiveManualSet : undefined,
+              },
+              providers,
+              filterProviderId,
+              reuploadAsset: controller.reuploadAsset,
+              refresh: resetAssets,
+            })}
+            contextMenuSelection={selectedAssets}
+            customWidgets={(() => {
+              const widgets = [];
+              if (isInActiveManualSet) {
+                widgets.push(buildSetIndicatorWidget({
+                  tooltip: `In active set: ${activeManualSet?.name ?? 'Active Set'}`,
+                }));
+              } else if (activeManualSet) {
+                widgets.push(buildAddToSetWidget(
+                  () => addAssetToActiveManualSet(a.id),
+                  { tooltip: `Add to active set: ${activeManualSet.name}` },
+                ));
+              }
+              return widgets.length > 0 ? widgets : undefined;
+            })()}
+            overlayConfig={overlayConfig}
+            overlayPresetId={overlayPresetId}
+          />
+        </div>
+      );
+    },
+    [
+      assetById,
+      controller.selectedAssetIds,
+      controller.getAssetActions,
+      controller.assets,
+      controller.reuploadAsset,
+      activeManualSetAssetIds,
+      activeManualSet,
+      addAssetToActiveManualSet,
+      openGalleryAsset,
+      toggleAssetSelection,
+      selectedAssets,
+      providers,
+      filterProviderId,
+      resetAssets,
+      overlayConfig,
+      overlayPresetId,
+    ],
+  );
+
   // ---------------------------------------------------------------------------
   // Surface routing: non-default surfaces replace the entire content area
   // ---------------------------------------------------------------------------
@@ -1141,11 +1232,13 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
               groupMultiLayout={groupMultiLayout}
               groupView={groupView}
               groupSort={groupSort}
+              clusterBy={clusterBy}
               toggleGroupBy={toggleGroupBy}
               handleGroupModeChange={handleGroupModeChange}
               handleGroupViewChange={handleGroupViewChange}
               setGroupSort={setGroupSort}
               onMultiLayoutChange={(layout) => updatePanelSettings('gallery', { groupMultiLayout: layout })}
+              onClusterByChange={(dim) => updatePanelSettings('gallery', { clusterBy: dim })}
             />
 
             {/* Divider */}
@@ -1285,6 +1378,28 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
               No groups available for this mode.
             </div>
           )
+        ) : isClusterView && clusteredItems ? (
+          <div
+            className="grid"
+            style={{
+              gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
+              rowGap: `${layoutSettings.rowGap}px`,
+              columnGap: `${layoutSettings.columnGap}px`,
+            }}
+          >
+            {clusteredItems.map((item) =>
+              isCluster(item) ? (
+                <ClusterCard
+                  key={`cluster-${item.key}`}
+                  cluster={item}
+                  cardSize={cardSize}
+                  renderAssetCard={renderSingleCard}
+                />
+              ) : (
+                renderSingleCard(item.id)
+              ),
+            )}
+          </div>
         ) : layout === 'masonry' ? (
           <MasonryGrid
             items={cardItems}

@@ -100,11 +100,13 @@ export interface PanelConfigActions {
 
 // Gallery panel badge configuration
 export type GalleryGroupBy = "none" | "source" | "generation" | "prompt" | "sibling";
-export type GalleryGroupView = "folders" | "inline" | "panel";
+export type GalleryGroupView = "folders" | "inline" | "panel" | "cluster";
 export type GalleryGroupScope = string[];
 export type GalleryGroupMode = "single" | "multi";
 export type GalleryGroupBySelection = GalleryGroupBy | GalleryGroupBy[];
 export type GalleryGroupMultiLayout = "stack" | "parallel";
+
+export type GalleryClusterBy = "prompt" | "generation" | "sibling";
 
 export interface GalleryPanelSettings {
   overlayPresetId?: string; // e.g. 'media-card-default', 'media-card-minimal', etc.
@@ -114,16 +116,16 @@ export interface GalleryPanelSettings {
   groupScope?: GalleryGroupScope;
   groupMode?: GalleryGroupMode;
   groupMultiLayout?: GalleryGroupMultiLayout;
+  /** Dimension used for cluster view (default: 'prompt') */
+  clusterBy?: GalleryClusterBy;
   [key: string]: unknown;
 }
 
 const defaultGalleryBadgeConfig: Partial<MediaCardBadgeConfig> = {
-  showPrimaryIcon: true,
   showStatusIcon: true,
-  showStatusTextOnHover: true,
   showTagsInOverlay: false,
   showFooterProvider: false,
-  showFooterDate: true,
+  showGenerationBadge: true,
 };
 
 // Default panel configurations

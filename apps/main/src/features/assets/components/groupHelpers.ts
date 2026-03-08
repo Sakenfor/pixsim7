@@ -44,7 +44,7 @@ export const GROUP_SORT_OPTIONS: { value: GroupSortKey; label: string }[] = [
 export const DEFAULT_GROUP_BY_STACK: GalleryGroupBy[] = [];
 export const DEFAULT_GROUP_VIEW: GalleryGroupView = 'inline';
 export const DEFAULT_GROUP_SCOPE: GalleryGroupScope = [];
-export const GROUP_VIEW_VALUES: GalleryGroupView[] = ['inline', 'folders', 'panel'];
+export const GROUP_VIEW_VALUES: GalleryGroupView[] = ['inline', 'folders', 'panel', 'cluster'];
 export const GROUP_PREVIEW_LIMIT = 4;
 export const GROUP_PAGE_SIZE = 50;
 

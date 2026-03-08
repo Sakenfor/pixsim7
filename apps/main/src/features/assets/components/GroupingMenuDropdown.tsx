@@ -4,12 +4,14 @@ import type { RefObject } from 'react';
 import { Icon } from '@lib/icons';
 
 import type {
+  GalleryClusterBy,
   GalleryGroupBy,
   GalleryGroupMode,
   GalleryGroupMultiLayout,
   GalleryGroupView,
 } from '@features/panels';
 
+import { CLUSTER_BY_OPTIONS, type ClusterByDimension } from '../lib/clusterHelpers';
 import { GROUP_BY_LABELS, GROUP_BY_UI_VALUES } from '../lib/groupBy';
 
 import { GROUP_SORT_OPTIONS, type GroupSortKey } from './groupHelpers';
@@ -28,11 +30,13 @@ export interface GroupingMenuDropdownProps {
   groupMultiLayout: GalleryGroupMultiLayout;
   groupView: GalleryGroupView;
   groupSort: GroupSortKey;
+  clusterBy: GalleryClusterBy;
   toggleGroupBy: (value: GalleryGroupBy | 'none') => void;
   handleGroupModeChange: (mode: GalleryGroupMode) => void;
   handleGroupViewChange: (view: GalleryGroupView) => void;
   setGroupSort: (sort: GroupSortKey) => void;
   onMultiLayoutChange: (layout: GalleryGroupMultiLayout) => void;
+  onClusterByChange: (dimension: GalleryClusterBy) => void;
 }
 
 export function GroupingMenuDropdown({
@@ -44,24 +48,30 @@ export function GroupingMenuDropdown({
   groupMultiLayout,
   groupView,
   groupSort,
+  clusterBy,
   toggleGroupBy,
   handleGroupModeChange,
   handleGroupViewChange,
   setGroupSort,
   onMultiLayoutChange,
+  onClusterByChange,
 }: GroupingMenuDropdownProps) {
   const hasGrouping = groupByStack.length > 0;
-  const groupSummary = hasGrouping
-    ? `Grouping: ${groupByStack.map((v) => GROUP_BY_LABELS[v]).join(' > ')}`
-    : 'Grouping: None';
+  const isClusterActive = groupView === 'cluster';
+  const isActive = hasGrouping || isClusterActive;
+  const groupSummary = isClusterActive
+    ? `Cluster by ${clusterBy}`
+    : hasGrouping
+      ? `Grouping: ${groupByStack.map((v) => GROUP_BY_LABELS[v]).join(' > ')}`
+      : 'Grouping: None';
 
   return (
     <div className="flex items-center gap-2">
       <GroupMenuTrigger
         ref={groupMenuAnchorRef}
-        icon={<Icon name="layers" size={14} className={hasGrouping ? 'text-accent' : ''} />}
-        active={hasGrouping}
-        count={groupByStack.length}
+        icon={<Icon name="layers" size={14} className={isActive ? 'text-accent' : ''} />}
+        active={isActive}
+        count={isClusterActive ? 0 : groupByStack.length}
         onClick={() => setGroupMenuOpen(!groupMenuOpen)}
         title={groupSummary}
       />
@@ -120,18 +130,27 @@ export function GroupingMenuDropdown({
               label="View"
               value={groupView}
               onChange={handleGroupViewChange}
-              disabled={!hasGrouping}
+              disabled={!hasGrouping && groupView !== 'cluster'}
               options={[
                 { value: 'inline', label: 'List' },
                 { value: 'folders', label: 'Folders' },
+                { value: 'cluster', label: 'Cluster' },
                 { value: 'panel', label: 'Panel (soon)', disabled: true },
               ]}
             />
+            {groupView === 'cluster' && (
+              <ToolbarSelect<ClusterByDimension>
+                label="Cluster by"
+                value={clusterBy}
+                onChange={(v) => onClusterByChange(v as GalleryClusterBy)}
+                options={CLUSTER_BY_OPTIONS}
+              />
+            )}
             <ToolbarSelect<GroupSortKey>
               label="Sort"
               value={groupSort}
               onChange={setGroupSort}
-              disabled={!hasGrouping}
+              disabled={!hasGrouping && groupView !== 'cluster'}
               options={GROUP_SORT_OPTIONS}
             />
           </div>

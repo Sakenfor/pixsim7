@@ -155,6 +155,7 @@ export {
   type PanelInstance,
   type PanelConfigState,
   type PanelConfigActions,
+  type GalleryClusterBy,
   type GalleryGroupBy,
   type GalleryGroupBySelection,
   type GalleryGroupMode,
