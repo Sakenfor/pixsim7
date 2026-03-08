@@ -12,7 +12,7 @@ from uuid import UUID
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 
 from pixsim7.backend.main.domain.prompt import BlockTemplate
 from pixsim7.backend.main.domain.blocks import BlockPrimitive
@@ -41,8 +41,15 @@ from pixsim7.backend.main.services.prompt.block.template_slots import (
 from pixsim7.backend.main.services.prompt.block.composition_role_inference import (
     infer_composition_role,
 )
+from pixsim7.backend.main.services.prompt.block.ref_binding_adapter import (
+    LinkBackedRefBinder,
+)
 from pixsim7.backend.main.services.prompt.block.resolution_core import (
     build_default_resolver_registry,
+)
+from pixsim7.backend.main.shared.entity_refs import (
+    entity_ref_to_string,
+    extract_entity_id,
 )
 from pixsim7.backend.main.services.prompt.block.resolution_core.types import (
     CandidateBlock as ResolverCandidateBlock,
@@ -76,22 +83,128 @@ class BlockTemplateService:
         except (TypeError, ValueError):
             return None
 
+    @staticmethod
+    def _coerce_owner_user_id(
+        *,
+        metadata: Dict[str, Any],
+        owner_user_id: Optional[int] = None,
+    ) -> Optional[int]:
+        """Resolve canonical owner user id from explicit input or metadata."""
+        if owner_user_id is not None:
+            try:
+                return int(owner_user_id)
+            except (TypeError, ValueError):
+                return None
+
+        owner = metadata.get("owner") if isinstance(metadata.get("owner"), dict) else {}
+        if not isinstance(owner, dict):
+            owner = {}
+
+        from_ref = extract_entity_id(
+            owner.get("entity_ref") or owner.get("ref"),
+            entity_type="user",
+        )
+        if from_ref is not None:
+            return from_ref
+
+        from_user_id = extract_entity_id(
+            owner.get("user_id"),
+            entity_type="user",
+            default_type="user",
+        )
+        if from_user_id is not None:
+            return from_user_id
+
+        from_legacy = extract_entity_id(
+            metadata.get("owner_user_id"),
+            entity_type="user",
+            default_type="user",
+        )
+        if from_legacy is not None:
+            return from_legacy
+
+        return None
+
+    @staticmethod
+    def _normalize_owner_metadata(
+        metadata: Dict[str, Any],
+        *,
+        owner_user_id: Optional[int] = None,
+        owner_username: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Normalize template owner data into canonical metadata.owner fields."""
+        normalized = dict(metadata or {})
+        owner_raw = normalized.get("owner")
+        owner = dict(owner_raw) if isinstance(owner_raw, dict) else {}
+
+        canonical_owner_id = BlockTemplateService._coerce_owner_user_id(
+            metadata=normalized,
+            owner_user_id=owner_user_id,
+        )
+
+        canonical_owner_ref = entity_ref_to_string(
+            owner.get("entity_ref") or owner.get("ref"),
+            default_type="user",
+        )
+        if canonical_owner_ref is None and canonical_owner_id is not None:
+            canonical_owner_ref = f"user:{canonical_owner_id}"
+
+        owner_name = owner.get("username")
+        if not isinstance(owner_name, str) or not owner_name.strip():
+            owner_name = owner.get("name")
+        if (not isinstance(owner_name, str) or not owner_name.strip()) and isinstance(owner_username, str):
+            owner_name = owner_username
+        owner_name = owner_name.strip() if isinstance(owner_name, str) and owner_name.strip() else None
+
+        canonical_owner: Dict[str, Any] = {}
+        if canonical_owner_id is not None:
+            canonical_owner["user_id"] = canonical_owner_id
+        if canonical_owner_ref:
+            canonical_owner["entity_ref"] = canonical_owner_ref
+        if owner_name:
+            canonical_owner["username"] = owner_name
+
+        normalized.pop("owner_user_id", None)
+        if canonical_owner:
+            normalized["owner"] = canonical_owner
+        else:
+            normalized.pop("owner", None)
+
+        return normalized
+
     # -- CRUD -----------------------------------------------------------------
 
     async def create_template(
         self,
         data: Dict[str, Any],
         created_by: Optional[str] = None,
+        owner_user_id: Optional[int] = None,
     ) -> BlockTemplate:
         if "slots" in data:
             data["slots"] = normalize_template_slots(data.get("slots"))
         metadata = data.get("template_metadata")
         if not isinstance(metadata, dict):
             metadata = {}
+        canonical_owner_id = self._coerce_owner_user_id(
+            metadata=metadata,
+            owner_user_id=owner_user_id,
+        )
         metadata["slot_schema_version"] = TEMPLATE_SLOT_SCHEMA_VERSION
+        metadata = self._normalize_owner_metadata(
+            metadata,
+            owner_user_id=canonical_owner_id,
+            owner_username=created_by,
+        )
         data["template_metadata"] = metadata
+        data["owner_user_id"] = canonical_owner_id
         now = datetime.now(timezone.utc)
-        data["created_by"] = created_by
+        owner_username = None
+        owner_data = metadata.get("owner")
+        if isinstance(owner_data, dict):
+            raw_username = owner_data.get("username")
+            if isinstance(raw_username, str) and raw_username.strip():
+                owner_username = raw_username.strip()
+        data["created_by"] = created_by or owner_username
         data["created_at"] = now
         data["updated_at"] = now
         template = BlockTemplate(**data)
@@ -117,18 +230,44 @@ class BlockTemplateService:
         template_id: UUID,
         updates: Dict[str, Any],
     ) -> Optional[BlockTemplate]:
+        updates = dict(updates or {})
+        updates.pop("owner_user_id", None)
         template = await self.get_template(template_id)
         if not template:
             return None
 
+        metadata = dict(template.template_metadata or {})
+        incoming_metadata = updates.get("template_metadata")
+        if isinstance(incoming_metadata, dict):
+            merged_metadata = dict(metadata)
+            incoming_owner = incoming_metadata.get("owner")
+            existing_owner = merged_metadata.get("owner")
+            merged_metadata.update(incoming_metadata)
+            if isinstance(existing_owner, dict) and isinstance(incoming_owner, dict):
+                merged_owner = dict(existing_owner)
+                merged_owner.update(incoming_owner)
+                merged_metadata["owner"] = merged_owner
+            metadata = merged_metadata
+
         if "slots" in updates:
             updates["slots"] = normalize_template_slots(updates.get("slots"))
-            metadata = dict(template.template_metadata or {})
-            incoming_metadata = updates.get("template_metadata")
-            if isinstance(incoming_metadata, dict):
-                metadata.update(incoming_metadata)
             metadata["slot_schema_version"] = TEMPLATE_SLOT_SCHEMA_VERSION
-            updates["template_metadata"] = metadata
+
+        canonical_owner_id = template.owner_user_id
+        if canonical_owner_id is None:
+            canonical_owner_id = self._coerce_owner_user_id(metadata=metadata)
+
+        if "template_metadata" in updates or "slots" in updates or "created_by" in updates:
+            owner_username_override = None
+            raw_created_by = updates.get("created_by")
+            if isinstance(raw_created_by, str) and raw_created_by.strip():
+                owner_username_override = raw_created_by.strip()
+            updates["template_metadata"] = self._normalize_owner_metadata(
+                metadata,
+                owner_user_id=canonical_owner_id,
+                owner_username=owner_username_override or template.created_by,
+            )
+            updates["owner_user_id"] = canonical_owner_id
 
         for key, value in updates.items():
             if hasattr(template, key):
@@ -152,6 +291,8 @@ class BlockTemplateService:
         *,
         package_name: Optional[str] = None,
         is_public: Optional[bool] = None,
+        owner_user_id: Optional[int] = None,
+        include_public_for_owner: bool = False,
         tag: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
@@ -160,6 +301,16 @@ class BlockTemplateService:
 
         if package_name is not None:
             query = query.where(BlockTemplate.package_name == package_name)
+        if owner_user_id is not None:
+            if include_public_for_owner:
+                query = query.where(
+                    or_(
+                        BlockTemplate.owner_user_id == owner_user_id,
+                        BlockTemplate.is_public.is_(True),
+                    )
+                )
+            else:
+                query = query.where(BlockTemplate.owner_user_id == owner_user_id)
         if is_public is not None:
             query = query.where(BlockTemplate.is_public == is_public)
         if tag is not None:
@@ -859,6 +1010,11 @@ class BlockTemplateService:
                     tags=tags_value if isinstance(tags_value, dict) else None,
                 )
                 role_value = inferred.role_id
+            if not role_value:
+                if isinstance(category_value, str) and category_value.strip():
+                    role_value = category_value.strip()
+                else:
+                    role_value = "other"
             sample_rows.append(
                 {
                     "id": str(block.id),
@@ -1168,6 +1324,17 @@ class BlockTemplateService:
             metadata = {**metadata, "controls": resolved_controls}
         slots = self._apply_control_effects(slots, metadata, control_values)
 
+        # Merge roll-time overrides onto template defaults so partial overrides do
+        # not accidentally drop required placeholders like {{subject}}.
+        template_bindings = template.character_bindings or {}
+        if character_bindings is not None:
+            if character_bindings == {}:
+                effective_bindings = {}
+            else:
+                effective_bindings = {**template_bindings, **character_bindings}
+        else:
+            effective_bindings = template_bindings
+
         compiler = _compiler_registry.get(_ROLL_COMPILER_ID)
         try:
             compiled_request: ResolverResolutionRequest = await compiler.compile(
@@ -1184,6 +1351,31 @@ class BlockTemplateService:
         compiled_request.seed = seed
         if not compiled_request.resolver_id:
             compiled_request.resolver_id = _ROLL_RESOLVER_ID
+
+        ref_binding_context: Dict[str, Any] = {"character_bindings": effective_bindings}
+        available_refs = metadata.get("available_refs")
+        if isinstance(available_refs, dict):
+            ref_binding_context["available_refs"] = available_refs
+        link_context = metadata.get("link_context")
+        if isinstance(link_context, dict):
+            ref_binding_context["link_context"] = link_context
+        ref_binding_mode = metadata.get("ref_binding_mode")
+
+        try:
+            binder = LinkBackedRefBinder(self.db)
+            await binder.bind_request(
+                compiled_request,
+                context=ref_binding_context,
+                mode=str(ref_binding_mode or "required"),
+            )
+        except Exception as exc:  # pragma: no cover - defensive path
+            context_payload = dict(compiled_request.context or {})
+            context_payload["ref_binding"] = {
+                "mode": str(ref_binding_mode or "required"),
+                "error": str(exc),
+            }
+            compiled_request.context = context_payload
+
         self._inject_diversity_pairwise_bonuses(request=compiled_request, slots=slots)
 
         try:
@@ -1262,6 +1454,7 @@ class BlockTemplateService:
             chosen_avg_rating: Optional[float] = None
             chosen_package_name: Optional[str] = None
             chosen_role: Optional[str] = None
+            chosen_op: Optional[Dict[str, Any]] = None
 
             if chosen is not None:
                 chosen_text = chosen.text or chosen_text
@@ -1270,8 +1463,12 @@ class BlockTemplateService:
                 chosen_avg_rating = chosen.avg_rating
                 chosen_package_name = chosen.package_name
                 chosen_role = self._resolver_candidate_role(chosen)
-                if isinstance(chosen.metadata, dict) and chosen.metadata.get("db_id") is not None:
-                    chosen_db_id = str(chosen.metadata.get("db_id"))
+                if isinstance(chosen.metadata, dict):
+                    if chosen.metadata.get("db_id") is not None:
+                        chosen_db_id = str(chosen.metadata.get("db_id"))
+                    op_payload = chosen.metadata.get("op")
+                    if isinstance(op_payload, dict):
+                        chosen_op = dict(op_payload)
             else:
                 warnings.append(
                     f"Target '{target_key}' selected '{selected.block_id}' missing in compiled candidate set"
@@ -1300,6 +1497,7 @@ class BlockTemplateService:
                 "block_metadata": {
                     "role": chosen_role,
                     "category": chosen_category,
+                    **({"op": chosen_op} if chosen_op else {}),
                 },
                 "kind": "single_state",
             }
@@ -1362,17 +1560,6 @@ class BlockTemplateService:
         assembled_prompt = ""
         derived_analysis = None
 
-        # Merge roll-time overrides onto template defaults so partial overrides do not
-        # accidentally drop required placeholders like {{subject}}. Preserve explicit
-        # empty dict as a way to disable template defaults entirely.
-        template_bindings = template.character_bindings or {}
-        if character_bindings is not None:
-            if character_bindings == {}:
-                effective_bindings = {}
-            else:
-                effective_bindings = {**template_bindings, **character_bindings}
-        else:
-            effective_bindings = template_bindings
         characters_resolved: Dict[str, str] = {}
 
         # Prepare expander once (caches character lookups across calls).
@@ -1475,6 +1662,11 @@ class BlockTemplateService:
                 "seed": seed,
                 "roll_count": template.roll_count,
                 "resolver_id": resolver_result.resolver_id,
+                "ref_binding": (
+                    dict(compiled_request.context.get("ref_binding") or {})
+                    if isinstance(compiled_request.context, dict)
+                    else None
+                ),
                 # Tracking/provenance: stable IDs for downstream manifest & UI debugging.
                 "selected_block_ids": selected_block_ids,
                 "selected_block_string_ids": selected_block_string_ids,

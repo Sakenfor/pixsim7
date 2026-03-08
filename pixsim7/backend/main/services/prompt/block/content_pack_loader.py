@@ -7,6 +7,8 @@ Layout:
         content_packs/prompt/<pack_name>/schema.yaml
         content_packs/prompt/<pack_name>/blocks.schema.yaml
         content_packs/prompt/<pack_name>/blocks/**/*.schema.yaml
+        where schema entries use `blocks[].block_schema` (top-level `block_schema`
+        is no longer supported)
 
     Single-file:
         content_packs/prompt/<pack_name>/templates.yaml
@@ -376,8 +378,94 @@ def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
             raw_blocks = []
         if not isinstance(raw_blocks, list):
             raise ContentPackValidationError(f"{src}: blocks must be a list")
-        raw_blocks = list(raw_blocks)
-        raw_blocks.extend(_compile_schema_blocks(block_schema=data.get("block_schema"), src=src))
+        if data.get("block_schema") is not None:
+            raise ContentPackValidationError(
+                f"{src}: top-level block_schema is no longer supported; use blocks[].block_schema"
+            )
+
+        expanded_blocks: List[Dict[str, Any]] = []
+        for block_index, raw_block in enumerate(raw_blocks):
+            if not isinstance(raw_block, dict):
+                raise ContentPackValidationError(
+                    f"{src}: blocks[{block_index}] must be an object"
+                )
+
+            if "block_schema" not in raw_block:
+                expanded_blocks.append(dict(raw_block))
+                continue
+
+            schema_id = raw_block.get("id")
+            if schema_id is not None and (not isinstance(schema_id, str) or not schema_id.strip()):
+                raise ContentPackValidationError(
+                    f"{src}: blocks[{block_index}].id must be a non-empty string"
+                )
+            schema_id_text = schema_id.strip() if isinstance(schema_id, str) else None
+
+            schema_group = raw_block.get("group")
+            if schema_group is not None and (not isinstance(schema_group, str) or not schema_group.strip()):
+                raise ContentPackValidationError(
+                    f"{src}: blocks[{block_index}].group must be a non-empty string"
+                )
+            schema_group_text = schema_group.strip() if isinstance(schema_group, str) else None
+
+            schema_defaults = raw_block.get("defaults", {})
+            if schema_defaults is None:
+                schema_defaults = {}
+            if not isinstance(schema_defaults, dict):
+                raise ContentPackValidationError(
+                    f"{src}: blocks[{block_index}].defaults must be an object"
+                )
+
+            schema_block = raw_block.get("block_schema")
+            if not isinstance(schema_block, dict):
+                raise ContentPackValidationError(
+                    f"{src}: blocks[{block_index}].block_schema must be an object"
+                )
+
+            reserved_keys = {"id", "group", "defaults", "block_schema"}
+            entry_overrides = {
+                key: value
+                for key, value in raw_block.items()
+                if key not in reserved_keys
+            }
+            compiled_blocks = _compile_schema_blocks(block_schema=schema_block, src=src)
+
+            for compiled in compiled_blocks:
+                expanded = {**schema_defaults, **entry_overrides, **compiled}
+
+                if schema_id_text is not None or schema_group_text is not None:
+                    tags = expanded.get("tags")
+                    if tags is None:
+                        expanded_tags: Dict[str, Any] = {}
+                    elif not isinstance(tags, dict):
+                        raise ContentPackValidationError(
+                            f"{src}: blocks[{block_index}].block_schema produces non-object tags"
+                        )
+                    else:
+                        expanded_tags = dict(tags)
+
+                    metadata = expanded.get("block_metadata")
+                    if metadata is None:
+                        expanded_metadata: Dict[str, Any] = {}
+                    elif not isinstance(metadata, dict):
+                        raise ContentPackValidationError(
+                            f"{src}: blocks[{block_index}].block_schema produces non-object block_metadata"
+                        )
+                    else:
+                        expanded_metadata = dict(metadata)
+
+                    if schema_id_text is not None:
+                        expanded_metadata.setdefault("schema_block_id", schema_id_text)
+                    if schema_group_text is not None:
+                        expanded_tags.setdefault("schema_group", schema_group_text)
+                        expanded_metadata.setdefault("schema_group", schema_group_text)
+
+                    expanded["tags"] = expanded_tags
+                    expanded["block_metadata"] = expanded_metadata
+
+                expanded_blocks.append(expanded)
+
+        raw_blocks = expanded_blocks
 
         effective_defaults = {**pack_defaults, **defaults}
 

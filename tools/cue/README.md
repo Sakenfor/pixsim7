@@ -1,7 +1,7 @@
 # CUE Prompt Pack Sources
 
-CUE is the **canonical authoring source** for `core_*` prompt block packs.
-Runtime still consumes the generated `schema.yaml` files — never edit those by hand.
+CUE is the canonical authoring source for `core_*` prompt block packs.
+Runtime consumes generated `schema.yaml` and `manifest.yaml` files. Do not edit generated YAML by hand.
 
 ## Setup
 
@@ -21,29 +21,37 @@ Override with `CUE_BIN` env var to use a different binary.
 ## Commands
 
 ```bash
-# Generate all schema.yaml from CUE sources
+# Generate all schema.yaml + manifest.yaml from CUE sources (runs contract lint first)
 pnpm prompt-packs:gen
 
-# Check that generated YAML matches CUE sources (CI uses this)
+# Check contract lint + YAML drift (CI uses this)
 pnpm prompt-packs:check
 ```
 
 ## How it works
 
 1. The generator auto-discovers every `*.cue` file in `tools/cue/prompt_packs/` (excluding `schema_v1.cue`).
-2. Each file is exported with `cue export ... -e pack --out yaml`.
+2. Each file is exported with `cue export ... -e pack --out yaml` and `cue export ... -e manifest --out yaml`.
 3. Output subdir defaults to `pack.package_name`; override with `meta.output_subdir` in the CUE file.
-4. YAML is written to `pixsim7/backend/main/content_packs/prompt/<subdir>/schema.yaml`.
+4. YAML is written to:
+   - `pixsim7/backend/main/content_packs/prompt/<subdir>/schema.yaml`
+   - `pixsim7/backend/main/content_packs/prompt/<subdir>/manifest.yaml`
 
 ## Adding a new pack
 
 1. Create `tools/cue/prompt_packs/<pack_name>.cue` using `schema_v1.cue` types.
-2. Run `pnpm prompt-packs:gen` to generate the YAML.
-3. Verify with `pnpm prompt-packs:check`.
-4. Commit both the `.cue` source and the generated `schema.yaml`.
+2. Define both top-level objects: `pack` and `manifest`.
+3. In `pack`, define one or more `blocks[]` entries, each containing:
+   - `id`
+   - `block_schema`
+4. Run `pnpm prompt-packs:gen` to generate YAML.
+5. Verify with `pnpm prompt-packs:check`.
+6. Commit the `.cue` source and generated YAML files.
 
 ## Rules
 
-- **Do not hand-edit** generated `schema.yaml` files — changes will be overwritten.
+- Do not hand-edit generated `schema.yaml` / `manifest.yaml` files. Changes will be overwritten.
 - Edit the `.cue` source, then regenerate.
 - CI enforces drift via `prompt-packs:check`; stale YAML fails the build.
+- Top-level `block_schema` in generated YAML is no longer supported. Use `blocks[].block_schema`.
+- Generator lint enforces cross-field invariants (e.g. duplicate resolved block IDs, unknown op arg keys, invalid ref bindings).

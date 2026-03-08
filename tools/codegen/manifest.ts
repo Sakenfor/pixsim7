@@ -45,7 +45,8 @@ export const CODEGEN_TASKS: CodegenTask[] = [
   },
   {
     id: 'prompt-pack-schemas',
-    description: 'Generate prompt block-pack schema.yaml files from CUE sources',
+    description:
+      'Generate + lint prompt block-pack schema.yaml/manifest.yaml from CUE sources',
     script: 'tools/codegen/generate-prompt-pack-schemas.ts',
     supportsCheck: true,
     groups: ['prompt'],

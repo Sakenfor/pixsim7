@@ -1,0 +1,16 @@
+id: core-light
+title: Core Light
+description: Lighting state primitives for mood and readability.
+matrix_presets:
+  - label: Light Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_light
+      include_empty: true
+  - label: Light Temperature by Intensity
+    query:
+      row_key: tag:light_temperature
+      col_key: tag:light_intensity
+      package_name: core_light
+      include_empty: true

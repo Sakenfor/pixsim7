@@ -1,0 +1,16 @@
+id: core-hands
+title: Core Hands
+description: Hand visibility and gesture primitives.
+matrix_presets:
+  - label: Hands Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_hands
+      include_empty: true
+  - label: Gesture by Visibility
+    query:
+      row_key: tag:hands_gesture
+      col_key: tag:hands_visibility
+      package_name: core_hands
+      include_empty: true

@@ -1,0 +1,16 @@
+id: core-pov
+title: Core POV
+description: Point-of-view primitives for perspective and camera height.
+matrix_presets:
+  - label: POV Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_pov
+      include_empty: true
+  - label: Perspective by Height
+    query:
+      row_key: tag:pov_perspective
+      col_key: tag:pov_height
+      package_name: core_pov
+      include_empty: true

@@ -1,0 +1,16 @@
+id: core-angle
+title: Core Angle
+description: Vertical camera angle and roll primitives.
+matrix_presets:
+  - label: Angle Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_angle
+      include_empty: true
+  - label: Vertical Angle by Roll
+    query:
+      row_key: tag:vertical_angle
+      col_key: tag:camera_roll
+      package_name: core_angle
+      include_empty: true

@@ -1,0 +1,16 @@
+id: core-subject-pose
+title: Core Subject Pose
+description: Subject pose and posture primitives.
+matrix_presets:
+  - label: Pose Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_subject_pose
+      include_empty: true
+  - label: Pose by Hands
+    query:
+      row_key: tag:pose
+      col_key: tag:hands
+      package_name: core_subject_pose
+      include_empty: true

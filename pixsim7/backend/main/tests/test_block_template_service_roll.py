@@ -113,6 +113,27 @@ class _PreviewInMemoryTemplateService(BlockTemplateService):
         return matches
 
 
+class _CrudDb:
+    def __init__(self):
+        self.items: List[Any] = []
+        self.commit = AsyncMock()
+        self.refresh = AsyncMock()
+
+    def add(self, item: Any) -> None:
+        self.items.append(item)
+
+
+class _UpdateTemplateService(BlockTemplateService):
+    def __init__(self, db: Any, template: BlockTemplate):
+        super().__init__(db)
+        self._template = template
+
+    async def get_template(self, template_id):
+        if template_id == self._template.id:
+            return self._template
+        return None
+
+
 def _block(*, block_id: str, text: str, role: str, tags: Dict[str, Any]) -> PromptBlock:
     return PromptBlock(
         block_id=block_id,
@@ -428,6 +449,71 @@ async def test_roll_template_diverse_penalizes_repeated_values_across_slots(
 
 
 @pytest.mark.asyncio
+async def test_roll_template_propagates_bound_op_refs_into_selected_block_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: Dict[str, Any] = {}
+
+    def _capture_analysis(blocks: List[Any], _assembled_prompt: str) -> Dict[str, Any]:
+        captured["blocks"] = blocks
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.prompt.block.template_service.derive_analysis_from_blocks",
+        _capture_analysis,
+    )
+
+    template = BlockTemplate(
+        name="Ref binding propagation",
+        slug="ref-binding-propagation",
+        composition_strategy="sequential",
+        slots=[
+            {
+                "label": "Camera",
+                "role": "camera",
+                "category": "angle",
+            }
+        ],
+        template_metadata={
+            "slot_schema_version": 2,
+            "available_refs": {"camera_target": ["asset:42"]},
+            "ref_binding_mode": "required",
+        },
+    )
+    block = PromptBlock(
+        block_id="cam_pan",
+        text="Camera pan",
+        role="camera",
+        category="angle",
+        kind="single_state",
+        package_name="shared",
+        tags={"camera_angle": "pan"},
+        is_public=True,
+        avg_rating=4.0,
+        block_metadata={
+            "op": {
+                "op_id": "camera.motion.pan",
+                "refs": [
+                    {"key": "target", "capability": "camera_target", "required": True},
+                ],
+            }
+        },
+    )
+    service = _InMemoryBlockTemplateService(template, [block])
+
+    result = await service.roll_template(template.id, seed=13)
+
+    assert result["success"] is True
+    assert result["metadata"]["ref_binding"]["mode"] == "required"
+    assert result["metadata"]["ref_binding"]["resolved_ref_count"] >= 1
+
+    analysis_blocks = captured["blocks"]
+    op_meta = analysis_blocks[0]["block_metadata"]["op"]
+    assert op_meta["op_id"] == "camera.motion.pan"
+    assert op_meta["resolved_refs"]["target"]["value"] == "asset:42"
+
+
+@pytest.mark.asyncio
 async def test_preview_slot_matches_handles_primitives_without_role_attribute() -> None:
     primitive = SimpleNamespace(
         id="prim-1",
@@ -526,3 +612,62 @@ async def test_count_candidates_by_package_routes_primitives_to_blocks_db(monkey
     compiled = fake_db.query.compile()
     assert "jsonb_extract_path_text" in str(fake_db.query)
     assert "source_pack" in {str(v) for v in compiled.params.values()}
+
+
+@pytest.mark.asyncio
+async def test_create_template_stamps_canonical_owner_metadata() -> None:
+    db = _CrudDb()
+    service = BlockTemplateService(db)
+
+    template = await service.create_template(
+        data={
+            "name": "Owner Canonical Template",
+            "slug": "owner-canonical-template",
+            "slots": [],
+            "template_metadata": {},
+        },
+        created_by="alice",
+        owner_user_id=42,
+    )
+
+    owner = template.template_metadata.get("owner") if isinstance(template.template_metadata, dict) else {}
+    assert owner == {
+        "user_id": 42,
+        "entity_ref": "user:42",
+        "username": "alice",
+    }
+    assert template.owner_user_id == 42
+    assert template.created_by == "alice"
+
+
+@pytest.mark.asyncio
+async def test_update_template_normalizes_legacy_owner_keys() -> None:
+    template = BlockTemplate(
+        name="Legacy Owner Template",
+        slug="legacy-owner-template",
+        slots=[],
+        template_metadata={
+            "slot_schema_version": 2,
+            "owner": {"ref": "user:9", "name": "legacy-name"},
+        },
+    )
+    db = _CrudDb()
+    service = _UpdateTemplateService(db, template)
+
+    updated = await service.update_template(
+        template.id,
+        {
+            "template_metadata": {
+                "owner_user_id": 77,
+                "owner": {"entity_ref": "user:11"},
+            }
+        },
+    )
+
+    assert updated is not None
+    owner = updated.template_metadata.get("owner")
+    assert owner["user_id"] == 11
+    assert owner["entity_ref"] == "user:11"
+    assert owner["username"] == "legacy-name"
+    assert updated.owner_user_id == 11
+    assert "owner_user_id" not in updated.template_metadata

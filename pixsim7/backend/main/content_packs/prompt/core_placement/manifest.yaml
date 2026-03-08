@@ -1,0 +1,16 @@
+id: core-placement
+title: Core Placement
+description: Anchor and relative placement primitives for scene layout.
+matrix_presets:
+  - label: Placement Relations
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_placement
+      include_empty: true
+  - label: Placement by Relation
+    query:
+      row_key: tag:placement_relation
+      col_key: tag:placement_distance
+      package_name: core_placement
+      include_empty: true

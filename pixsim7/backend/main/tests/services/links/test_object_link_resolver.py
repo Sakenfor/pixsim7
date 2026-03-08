@@ -1,8 +1,9 @@
 """Tests for ObjectLinkResolver"""
 import pytest
+import pytest_asyncio
 from uuid import uuid4
 from pixsim7.backend.main.services.links.link_types import link_type_id
-from pixsim7.backend.main.services.links.object_link_resolver import ObjectLinkResolver, EntityRef
+from pixsim7.backend.main.services.links.object_link_resolver import ObjectLinkResolver, ResolvedEntity
 
 
 class TestObjectLinkResolver:
@@ -73,7 +74,7 @@ class TestObjectLinkResolver:
         )
 
         assert runtime_ref is not None
-        assert isinstance(runtime_ref, EntityRef)
+        assert isinstance(runtime_ref, ResolvedEntity)
         assert runtime_ref.kind == sample_object_link.runtime_kind
         assert runtime_ref.entity_id == sample_object_link.runtime_id
         assert runtime_ref.entity is not None
@@ -95,17 +96,24 @@ class TestObjectLinkResolver:
         assert runtime_ref is None
 
     @pytest.mark.asyncio
-    async def test_resolve_prompt_context_no_mapping(self, db_session, sample_character_instance):
+    async def test_resolve_prompt_context_no_mapping(
+        self,
+        db_session,
+        sample_character_instance,
+        sample_npc,
+    ):
         """Test resolving prompt context with no mapping raises error"""
         resolver = ObjectLinkResolver(db_session)
 
-        # Use an unmapped template kind
+        # Remove default mapping to exercise missing-mapping path.
+        resolver.mapping_registry.unregister(link_type_id('characterInstance', 'npc'))
+
         with pytest.raises(ValueError, match="No mapping registered"):
             await resolver.resolve_prompt_context(
-                'unmapped_kind',
+                'characterInstance',
                 str(sample_character_instance.id),
                 runtime_kind='npc',
-                runtime_id=123
+                runtime_id=sample_npc.id
             )
 
     @pytest.mark.asyncio
@@ -150,17 +158,34 @@ class TestObjectLinkResolver:
 
 
 # Fixtures for testing
-@pytest.fixture
-def sample_character_instance(db_session):
+@pytest_asyncio.fixture
+async def sample_character(db_session):
+    """Create a sample character for CharacterInstance FK."""
+    from pixsim7.backend.main.domain.game.entities.character import Character
+
+    character = Character(
+        character_id=f"test-character-{uuid4().hex}",
+        name="Test Character",
+        category="human",
+    )
+
+    db_session.add(character)
+    await db_session.commit()
+    await db_session.refresh(character)
+
+    return character
+
+
+@pytest_asyncio.fixture
+async def sample_character_instance(db_session, sample_character):
     """Create a sample character instance for testing"""
     from pixsim7.backend.main.domain.game.entities.character_integrations import CharacterInstance
-    from uuid import uuid4
 
     instance = CharacterInstance(
         id=uuid4(),
-        character_id=uuid4(),
-        world_id=1,
-        name="Test Character",
+        character_id=sample_character.id,
+        world_id=None,
+        instance_name="Test Character Instance",
         visual_overrides={},
         personality_overrides={},
         behavioral_overrides={},
@@ -168,35 +193,34 @@ def sample_character_instance(db_session):
     )
 
     db_session.add(instance)
-    db_session.commit()
-    db_session.refresh(instance)
+    await db_session.commit()
+    await db_session.refresh(instance)
 
     return instance
 
 
-@pytest.fixture
-def sample_npc(db_session):
+@pytest_asyncio.fixture
+async def sample_npc(db_session):
     """Create a sample NPC for testing"""
     from pixsim7.backend.main.domain.game.core.models import GameNPC
 
     npc = GameNPC(
         name="Test NPC",
         personality={},
-        home_location_id=1
+        home_location_id=None
     )
 
     db_session.add(npc)
-    db_session.commit()
-    db_session.refresh(npc)
+    await db_session.commit()
+    await db_session.refresh(npc)
 
     return npc
 
 
-@pytest.fixture
-def sample_object_link(db_session, sample_character_instance, sample_npc):
+@pytest_asyncio.fixture
+async def sample_object_link(db_session, sample_character_instance, sample_npc):
     """Create a sample ObjectLink for testing"""
     from pixsim7.backend.main.domain.links import ObjectLink
-    from uuid import uuid4
 
     link = ObjectLink(
         link_id=uuid4(),
@@ -211,17 +235,16 @@ def sample_object_link(db_session, sample_character_instance, sample_npc):
     )
 
     db_session.add(link)
-    db_session.commit()
-    db_session.refresh(link)
+    await db_session.commit()
+    await db_session.refresh(link)
 
     return link
 
 
-@pytest.fixture
-def sample_object_link_disabled(db_session, sample_character_instance, sample_npc):
+@pytest_asyncio.fixture
+async def sample_object_link_disabled(db_session, sample_character_instance, sample_npc):
     """Create a disabled ObjectLink for testing"""
     from pixsim7.backend.main.domain.links import ObjectLink
-    from uuid import uuid4
 
     link = ObjectLink(
         link_id=uuid4(),
@@ -236,7 +259,7 @@ def sample_object_link_disabled(db_session, sample_character_instance, sample_np
     )
 
     db_session.add(link)
-    db_session.commit()
-    db_session.refresh(link)
+    await db_session.commit()
+    await db_session.refresh(link)
 
     return link

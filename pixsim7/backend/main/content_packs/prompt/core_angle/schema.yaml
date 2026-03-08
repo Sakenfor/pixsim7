@@ -1,0 +1,102 @@
+version: 1.0.0
+package_name: core_angle
+defaults:
+  is_public: true
+  source: system
+blocks:
+  - id: angle
+    block_schema:
+      id_prefix: core.camera.angle
+      category: camera
+      capabilities:
+        - camera.angle
+      text_template: 'Angle token: {variant}.'
+      tags:
+        modifier_family: angle
+        modality_support: both
+        temporal: neutral
+      op:
+        op_id: camera.angle.set
+        modalities:
+          - both
+        refs:
+          - key: subject
+            capability: subject
+            required: false
+          - key: target
+            capability: target
+            required: false
+        params:
+          - key: vertical_angle
+            type: enum
+            enum:
+              - high
+              - eye
+              - low
+              - bird
+              - worm
+            default: eye
+          - key: roll
+            type: enum
+            enum:
+              - level
+              - dutch_left
+              - dutch_right
+            default: level
+          - key: target_ref
+            required: false
+            type: ref
+            ref_capability: target
+        default_args:
+          vertical_angle: eye
+          roll: level
+      variants:
+        - key: eye_level
+          tags:
+            vertical_angle: eye
+            camera_roll: level
+          op_args:
+            vertical_angle: eye
+            roll: level
+        - key: high_angle
+          tags:
+            vertical_angle: high
+            camera_roll: level
+          op_args:
+            vertical_angle: high
+            roll: level
+        - key: low_angle
+          tags:
+            vertical_angle: low
+            camera_roll: level
+          op_args:
+            vertical_angle: low
+            roll: level
+        - key: bird_eye
+          tags:
+            vertical_angle: bird
+            camera_roll: level
+          op_args:
+            vertical_angle: bird
+            roll: level
+        - key: worm_eye
+          tags:
+            vertical_angle: worm
+            camera_roll: level
+          op_args:
+            vertical_angle: worm
+            roll: level
+        - key: dutch_left
+          tags:
+            vertical_angle: eye
+            camera_roll: dutch_left
+          op_args:
+            vertical_angle: eye
+            roll: dutch_left
+        - key: dutch_right
+          tags:
+            vertical_angle: eye
+            camera_roll: dutch_right
+          op_args:
+            vertical_angle: eye
+            roll: dutch_right

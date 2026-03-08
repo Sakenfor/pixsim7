@@ -123,21 +123,23 @@ version: "1.0.0"
 package_name: schema_pkg
 defaults:
   is_public: true
-block_schema:
-  id_prefix: core.direction
-  category: direction
-  capabilities: [direction.axis]
-  text_template: "Direction token: {variant}."
-  tags:
-    modifier_family: direction
-    temporal: neutral
-  variants:
-    - key: in
+blocks:
+  - id: direction_axis
+    block_schema:
+      id_prefix: core.direction
+      category: direction
+      capabilities: [direction.axis]
+      text_template: "Direction token: {variant}."
       tags:
-        direction: in
-    - key: out
-      tags:
-        direction: out
+        modifier_family: direction
+        temporal: neutral
+      variants:
+        - key: in
+          tags:
+            direction: in
+        - key: out
+          tags:
+            direction: out
 """,
         )
 
@@ -159,37 +161,39 @@ def test_parse_blocks_supports_op_schema_with_refs() -> None:
             """
 version: "1.0.0"
 package_name: op_pkg
-block_schema:
-  id_prefix: core.camera.motion
-  category: camera
-  capabilities: [camera.motion]
-  op:
-    op_id_template: "camera.motion.{variant}"
-    modalities: [video]
-    refs:
-      - key: target
-        capability: camera_target
-        required: false
-    params:
-      - key: speed
-        type: enum
-        enum: [slow, normal, fast]
-        default: normal
-    default_args:
-      speed: normal
-  text_template: "Camera motion token: {variant}."
-  variants:
-    - key: zoom
-      op_modalities: [both]
-      op_args:
-        speed: fast
-      tags:
-        camera_motion: zoom
-    - key: pan
-      op_args:
-        speed: slow
-      tags:
-        camera_motion: pan
+blocks:
+  - id: camera_motion
+    block_schema:
+      id_prefix: core.camera.motion
+      category: camera
+      capabilities: [camera.motion]
+      op:
+        op_id_template: "camera.motion.{variant}"
+        modalities: [video]
+        refs:
+          - key: target
+            capability: camera_target
+            required: false
+        params:
+          - key: speed
+            type: enum
+            enum: [slow, normal, fast]
+            default: normal
+        default_args:
+          speed: normal
+      text_template: "Camera motion token: {variant}."
+      variants:
+        - key: zoom
+          op_modalities: [both]
+          op_args:
+            speed: fast
+          tags:
+            camera_motion: zoom
+        - key: pan
+          op_args:
+            speed: slow
+          tags:
+            camera_motion: pan
 """,
         )
 
@@ -222,16 +226,42 @@ def test_parse_blocks_rejects_schema_op_missing_id_source() -> None:
             pack_dir / "schema.yaml",
             """
 version: "1.0.0"
+blocks:
+  - id: direction_axis
+    block_schema:
+      id_prefix: core.direction
+      op: {}
+      variants:
+        - key: in
+          text: "Direction token: in."
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="requires exactly one of op_id or op_id_template"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_top_level_block_schema() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
 block_schema:
   id_prefix: core.direction
-  op: {}
   variants:
     - key: in
       text: "Direction token: in."
 """,
         )
 
-        with pytest.raises(loader.ContentPackValidationError, match="requires exactly one of op_id or op_id_template"):
+        with pytest.raises(
+            loader.ContentPackValidationError,
+            match="top-level block_schema is no longer supported",
+        ):
             loader.parse_blocks(pack_dir)
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -244,14 +274,16 @@ def test_parse_blocks_rejects_invalid_op_modalities_value() -> None:
             pack_dir / "schema.yaml",
             """
 version: "1.0.0"
-block_schema:
-  id_prefix: core.direction
-  op:
-    op_id_template: "direction.axis.{variant}"
-  variants:
-    - key: in
-      op_modalities: [audio]
-      text: "Direction token: in."
+blocks:
+  - id: direction_axis
+    block_schema:
+      id_prefix: core.direction
+      op:
+        op_id_template: "direction.axis.{variant}"
+      variants:
+        - key: in
+          op_modalities: [audio]
+          text: "Direction token: in."
 """,
         )
 
@@ -568,12 +600,14 @@ def test_discover_content_packs_detects_schema_sources(monkeypatch: pytest.Monke
             pack_dir / "schema.yaml",
             """
 version: "1.0.0"
-block_schema:
-  id_prefix: core.camera.motion
-  category: camera
-  variants:
-    - key: zoom
-      text: Camera motion token: zoom.
+blocks:
+  - id: camera_motion
+    block_schema:
+      id_prefix: core.camera.motion
+      category: camera
+      variants:
+        - key: zoom
+          text: Camera motion token: zoom.
 """,
         )
         assert loader.discover_content_packs() == ["demo_pack"]

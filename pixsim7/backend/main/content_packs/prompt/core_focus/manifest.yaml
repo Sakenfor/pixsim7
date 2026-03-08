@@ -1,0 +1,16 @@
+id: core-focus
+title: Core Focus
+description: Focus target, depth-of-field, and rack-focus primitives.
+matrix_presets:
+  - label: Focus Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_focus
+      include_empty: true
+  - label: Focus Target by DoF
+    query:
+      row_key: tag:focus_target
+      col_key: tag:depth_of_field
+      package_name: core_focus
+      include_empty: true

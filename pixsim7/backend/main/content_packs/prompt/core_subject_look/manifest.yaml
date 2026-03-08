@@ -1,0 +1,16 @@
+id: core-subject-look
+title: Core Subject Look
+description: Subject gaze target primitives.
+matrix_presets:
+  - label: Subject Look Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_subject_look
+      include_empty: true
+  - label: Look Focus by Intensity
+    query:
+      row_key: tag:look_focus
+      col_key: tag:look_intensity
+      package_name: core_subject_look
+      include_empty: true

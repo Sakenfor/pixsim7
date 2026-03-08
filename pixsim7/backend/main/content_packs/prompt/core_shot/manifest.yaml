@@ -1,0 +1,16 @@
+id: core-shot
+title: Core Shot
+description: Shot size and subject count primitives.
+matrix_presets:
+  - label: Shot Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_shot
+      include_empty: true
+  - label: Shot Size by Subject Count
+    query:
+      row_key: tag:shot_size
+      col_key: tag:subject_count
+      package_name: core_shot
+      include_empty: true

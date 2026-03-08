@@ -7,129 +7,160 @@ pack: #PromptBlockPackV1 & {
 		is_public: true
 		source:    "system"
 	}
-	block_schema: {
-		id_prefix:    "core.subject.pose"
-		category:     "character_pose"
-		capabilities: ["subject.pose"]
-		text_template: "Pose token: {variant}."
-		tags: {
-			modifier_family:  "subject_pose"
-			modality_support: "both"
-			temporal:         "neutral"
-		}
-		op: {
-			op_id: "subject.pose.set"
-			modalities: ["both"]
-			refs: [
-				{
-					key:        "subject"
-					capability: "subject"
-					required:   false
-				},
-				{
-					key:        "target"
-					capability: "target"
-					required:   false
-				},
-			]
-			params: [
-				{
-					key:     "pose"
-					type:    "enum"
-					default: "standing"
-					enum: ["standing", "seated", "kneeling", "leaning", "crouching", "lying"]
-				},
-				{
-					key:     "hands"
-					type:    "enum"
-					default: "neutral"
-					enum: ["neutral", "at_sides", "behind_back", "on_hips", "in_pockets", "holding_object"]
-				},
-				{
-					key:     "gaze"
-					type:    "enum"
-					default: "forward"
-					enum: ["forward", "down", "up", "left", "right", "at_target", "away"]
-				},
-				{
-					key:            "target_ref"
-					type:           "ref"
-					required:       false
-					ref_capability: "target"
-				},
-			]
-			default_args: {
-				pose:  "standing"
-				hands: "neutral"
-				gaze:  "forward"
+	blocks: [
+		{
+			id: "pose"
+			block_schema: {
+				id_prefix: "core.subject.pose"
+				category:  "character_pose"
+				capabilities: ["subject.pose"]
+				text_template: "Pose token: {variant}."
+				tags: {
+					modifier_family:  "subject_pose"
+					modality_support: "both"
+					temporal:         "neutral"
+				}
+				op: {
+					op_id: "subject.pose.set"
+					modalities: ["both"]
+					refs: [
+						{
+							key:        "subject"
+							capability: "subject"
+							required:   false
+						},
+						{
+							key:        "target"
+							capability: "target"
+							required:   false
+						},
+					]
+					params: [
+						{
+							key:     "pose"
+							type:    "enum"
+							default: "standing"
+							enum:    #PoseValues
+						},
+						{
+							key:     "hands"
+							type:    "enum"
+							default: "neutral"
+							enum:    #PoseHandsValues
+						},
+						{
+							key:     "gaze"
+							type:    "enum"
+							default: "forward"
+							enum:    #GazeValues
+						},
+						{
+							key:            "target_ref"
+							type:           "ref"
+							required:       false
+							ref_capability: "target"
+						},
+					]
+					default_args: {
+						pose:  "standing"
+						hands: "neutral"
+						gaze:  "forward"
+					}
+				}
+				variants: [
+					{
+						key: "standing_neutral"
+						tags: {
+							pose:  "standing"
+							hands: "at_sides"
+							gaze:  "forward"
+						}
+						op_args: {
+							pose:  "standing"
+							hands: "at_sides"
+							gaze:  "forward"
+						}
+					},
+					{
+						key: "seated_relaxed"
+						tags: {
+							pose:  "seated"
+							hands: "neutral"
+							gaze:  "down"
+						}
+						op_args: {
+							pose:  "seated"
+							hands: "neutral"
+							gaze:  "down"
+						}
+					},
+					{
+						key: "leaning_forward"
+						tags: {
+							pose:  "leaning"
+							hands: "on_hips"
+							gaze:  "at_target"
+						}
+						op_args: {
+							pose:  "leaning"
+							hands: "on_hips"
+							gaze:  "at_target"
+						}
+					},
+					{
+						key: "crouched_ready"
+						tags: {
+							pose:  "crouching"
+							hands: "neutral"
+							gaze:  "forward"
+						}
+						op_args: {
+							pose:  "crouching"
+							hands: "neutral"
+							gaze:  "forward"
+						}
+					},
+					{
+						key: "kneeling_reach"
+						tags: {
+							pose:  "kneeling"
+							hands: "holding_object"
+							gaze:  "at_target"
+						}
+						op_args: {
+							pose:  "kneeling"
+							hands: "holding_object"
+							gaze:  "at_target"
+						}
+					},
+				]
 			}
-		}
-		variants: [
-			{
-				key: "standing_neutral"
-				tags: {
-					pose:  "standing"
-					hands: "at_sides"
-					gaze:  "forward"
-				}
-				op_args: {
-					pose:  "standing"
-					hands: "at_sides"
-					gaze:  "forward"
-				}
-			},
-			{
-				key: "seated_relaxed"
-				tags: {
-					pose:  "seated"
-					hands: "neutral"
-					gaze:  "down"
-				}
-				op_args: {
-					pose:  "seated"
-					hands: "neutral"
-					gaze:  "down"
-				}
-			},
-			{
-				key: "leaning_forward"
-				tags: {
-					pose:  "leaning"
-					hands: "on_hips"
-					gaze:  "at_target"
-				}
-				op_args: {
-					pose:  "leaning"
-					hands: "on_hips"
-					gaze:  "at_target"
-				}
-			},
-			{
-				key: "crouched_ready"
-				tags: {
-					pose:  "crouching"
-					hands: "neutral"
-					gaze:  "forward"
-				}
-				op_args: {
-					pose:  "crouching"
-					hands: "neutral"
-					gaze:  "forward"
-				}
-			},
-			{
-				key: "kneeling_reach"
-				tags: {
-					pose:  "kneeling"
-					hands: "holding_object"
-					gaze:  "at_target"
-				}
-				op_args: {
-					pose:  "kneeling"
-					hands: "holding_object"
-					gaze:  "at_target"
-				}
-			},
-		]
-	}
+		},
+	]
+}
+
+manifest: #PromptPackManifestV1 & {
+	id:          "core-subject-pose"
+	title:       "Core Subject Pose"
+	description: "Subject pose and posture primitives."
+	matrix_presets: [
+		{
+			label: "Pose Variants"
+			query: {
+				row_key:       "tag:modifier_family"
+				col_key:       "tag:variant"
+				package_name:  "core_subject_pose"
+				include_empty: true
+			}
+		},
+		{
+			label: "Pose by Hands"
+			query: {
+				row_key:       "tag:pose"
+				col_key:       "tag:hands"
+				package_name:  "core_subject_pose"
+				include_empty: true
+			}
+		},
+	]
 }

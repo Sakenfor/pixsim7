@@ -1,18 +1,16 @@
 id: core-direction
 title: Core Direction
 description: Direction primitives intended to be shared by movement-capable domains.
-
 matrix_presets:
   - label: Direction Variants
     query:
-      row_key: "tag:modifier_family"
-      col_key: "tag:variant"
-      package_name: "core_direction"
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_direction
       include_empty: true
-
   - label: Direction Tokens (All)
     query:
-      row_key: "category"
-      col_key: "composition_role"
-      package_name: "core_direction"
+      row_key: category
+      col_key: composition_role
+      package_name: core_direction
       include_empty: true

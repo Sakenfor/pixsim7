@@ -1,0 +1,16 @@
+id: core-subject-motion
+title: Core Subject Motion
+description: Subject movement and gaze-target primitives.
+matrix_presets:
+  - label: Subject Motion Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_subject_motion
+      include_empty: true
+  - label: Motion by Speed
+    query:
+      row_key: tag:motion_direction
+      col_key: tag:motion_speed
+      package_name: core_subject_motion
+      include_empty: true

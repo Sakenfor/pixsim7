@@ -3,7 +3,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from pixsim7.backend.main.services.generation.context import extract_flat_provider_params
-from pixsim7.backend.main.services.generation.context import build_generation_context_from_generation
+from pixsim7.backend.main.services.generation.context import (
+    build_generation_context_from_generation,
+    extract_source_asset_ids,
+)
 
 
 def test_extract_flat_provider_params_keeps_aspect_ratio_from_provider_style() -> None:
@@ -95,3 +98,18 @@ def test_build_generation_context_from_generation_includes_preferred_account_id(
     ctx = build_generation_context_from_generation(generation)
 
     assert ctx["params"]["preferred_account_id"] == 123
+
+
+def test_extract_source_asset_ids_handles_flexible_ref_shapes() -> None:
+    inputs = [
+        {"asset": "asset:10"},
+        {"asset": {"type": "asset", "id": 11}},
+        {"asset": "12"},
+        {"asset": "https://example.com/assets/99"},
+        {"asset": {"type": "scene", "id": 5}},
+        {"asset": None},
+        {"foo": "bar"},
+        "skip",
+    ]
+
+    assert extract_source_asset_ids(inputs) == [10, 11, 12]
