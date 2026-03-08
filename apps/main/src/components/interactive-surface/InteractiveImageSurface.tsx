@@ -29,7 +29,7 @@ import {
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { useCoordinateTransform } from './useCoordinateTransform';
+
 import type {
   InteractiveImageSurfaceProps,
   SurfacePointerEvent,
@@ -43,6 +43,7 @@ import type {
   RegionElement,
   PolygonElement,
 } from './types';
+import { useCoordinateTransform } from './useCoordinateTransform';
 
 // ============================================================================
 // Default State
@@ -417,29 +418,53 @@ export const InteractiveImageSurface = forwardRef<
           const poly = element as PolygonElement;
           if (poly.points.length < 2) break;
 
-          ctx.beginPath();
-          if (!tracePolygonPath(poly)) break;
+          const hasVariableWidth = !poly.closed && poly.pointWidths && poly.pointWidths.length === poly.points.length;
 
-          if (poly.style?.fillColor) {
-            ctx.fillStyle = poly.style.fillColor;
-            ctx.fill();
+          if (hasVariableWidth) {
+            // Variable-width stroke: draw segment-by-segment
+            ctx.strokeStyle = poly.style?.strokeColor ?? '#0000ff';
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            for (let i = 0; i < poly.points.length - 1; i++) {
+              const w0 = poly.pointWidths![i];
+              const w1 = poly.pointWidths![i + 1];
+              ctx.lineWidth = ((w0 + w1) / 2) * viewState.zoom;
+              ctx.beginPath();
+              ctx.moveTo(toScreenX(poly.points[i].x), toScreenY(poly.points[i].y));
+              ctx.lineTo(toScreenX(poly.points[i + 1].x), toScreenY(poly.points[i + 1].y));
+              ctx.stroke();
+            }
+          } else {
+            ctx.beginPath();
+            if (!tracePolygonPath(poly)) break;
+
+            if (poly.style?.fillColor) {
+              ctx.fillStyle = poly.style.fillColor;
+              ctx.fill();
+            }
+
+            ctx.strokeStyle = poly.style?.strokeColor ?? '#0000ff';
+            ctx.lineWidth = (poly.style?.strokeWidth ?? 2) * viewState.zoom;
+            ctx.stroke();
           }
 
-          ctx.strokeStyle = poly.style?.strokeColor ?? '#0000ff';
-          ctx.lineWidth = (poly.style?.strokeWidth ?? 2) * viewState.zoom;
-          ctx.stroke();
-
-          // Show editable vertex handles for open polygons (e.g. mask curve tool)
+          // Show editable vertex handles for open polygons
           if (!poly.closed) {
-            const handleRadius = Math.max(3, 5 * Math.min(2, viewState.zoom));
             for (let i = 0; i < poly.points.length; i++) {
               const p = poly.points[i];
               const x = toScreenX(p.x);
               const y = toScreenY(p.y);
+              // Size handle proportional to point width if available
+              const pw = poly.pointWidths?.[i];
+              const handleRadius = pw != null
+                ? Math.max(3, (pw / 2) * viewState.zoom)
+                : Math.max(3, 5 * Math.min(2, viewState.zoom));
               ctx.beginPath();
               ctx.arc(x, y, handleRadius, 0, Math.PI * 2);
               ctx.fillStyle = i === 0 ? '#f59e0b' : '#ffffff';
+              ctx.globalAlpha = pw != null ? 0.35 : 1;
               ctx.fill();
+              ctx.globalAlpha = 1;
               ctx.strokeStyle = '#111827';
               ctx.lineWidth = 1;
               ctx.stroke();

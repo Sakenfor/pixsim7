@@ -203,6 +203,8 @@ export interface PolygonElement extends SurfaceElement {
   points: NormalizedPoint[];
   /** Whether polygon is closed */
   closed: boolean;
+  /** Per-point stroke widths (normalized, same length as points) */
+  pointWidths?: number[];
   style?: {
     strokeColor?: string;
     fillColor?: string;

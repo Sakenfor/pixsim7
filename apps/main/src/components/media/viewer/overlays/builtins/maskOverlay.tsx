@@ -323,15 +323,30 @@ function renderLayerToContext(
         ctx.closePath();
         ctx.fill();
       } else {
-        // Open curve — stroke with width
+        // Open curve — stroke with width (variable or uniform)
         if (poly.points.length < 2) continue;
-        ctx.lineWidth = (poly.style?.strokeWidth ?? 2) * (width / 500);
-        ctx.beginPath();
-        ctx.moveTo(poly.points[0].x * width, poly.points[0].y * height);
-        for (let i = 1; i < poly.points.length; i++) {
-          ctx.lineTo(poly.points[i].x * width, poly.points[i].y * height);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        if (poly.pointWidths && poly.pointWidths.length === poly.points.length) {
+          // Variable-width: draw segment-by-segment
+          for (let i = 0; i < poly.points.length - 1; i++) {
+            const w0 = poly.pointWidths[i];
+            const w1 = poly.pointWidths[i + 1];
+            ctx.lineWidth = ((w0 + w1) / 2) * (width / 500);
+            ctx.beginPath();
+            ctx.moveTo(poly.points[i].x * width, poly.points[i].y * height);
+            ctx.lineTo(poly.points[i + 1].x * width, poly.points[i + 1].y * height);
+            ctx.stroke();
+          }
+        } else {
+          ctx.lineWidth = (poly.style?.strokeWidth ?? 2) * (width / 500);
+          ctx.beginPath();
+          ctx.moveTo(poly.points[0].x * width, poly.points[0].y * height);
+          for (let i = 1; i < poly.points.length; i++) {
+            ctx.lineTo(poly.points[i].x * width, poly.points[i].y * height);
+          }
+          ctx.stroke();
         }
-        ctx.stroke();
       }
     } else if (element.type === 'region') {
       const region = element as { bounds: { x: number; y: number; width: number; height: number } };

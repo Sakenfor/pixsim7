@@ -513,6 +513,9 @@ export function useInteractionLayer(
   const polygonCloseRef = useRef(polygonCloseOnFinalize);
   polygonCloseRef.current = polygonCloseOnFinalize;
 
+  /** Last known normalized cursor position (for vertex hit-testing on wheel) */
+  const lastPointerRef = useRef<NormalizedPoint | null>(null);
+
   const handlePointerDown = useCallback(
     (event: SurfacePointerEvent) => {
       const native = event.nativeEvent;
@@ -573,6 +576,7 @@ export function useInteractionLayer(
             visible: true,
             closed: false,
             points: [event.normalized],
+            pointWidths: willClose ? undefined : [tool.size * 500],
             style: {
               strokeColor: tool.color,
               fillColor: willClose ? 'rgba(255,255,255,0.18)' : undefined,
@@ -609,7 +613,13 @@ export function useInteractionLayer(
                 elements: l.elements.map((e) => {
                   if (e.id !== elementId || e.type !== 'polygon') return e;
                   const poly = e as PolygonElement;
-                  return { ...poly, points: [...poly.points, event.normalized] };
+                  return {
+                    ...poly,
+                    points: [...poly.points, event.normalized],
+                    pointWidths: poly.pointWidths
+                      ? [...poly.pointWidths, tool.size * 500]
+                      : undefined,
+                  };
                 }),
               };
             })
@@ -629,6 +639,8 @@ export function useInteractionLayer(
 
   const handlePointerMove = useCallback(
     (event: SurfacePointerEvent) => {
+      lastPointerRef.current = event.normalized;
+
       // Pan handling
       if (isPanningRef.current) {
         const native = event.nativeEvent;
@@ -786,6 +798,42 @@ export function useInteractionLayer(
     (event: SurfaceWheelEvent) => {
       if (!event.withinBounds) return;
 
+      // Per-point width adjustment: scroll on a vertex of an open polygon
+      if (modeRef.current === 'polygon' && currentPolygonRef.current && !polygonCloseRef.current) {
+        const { layerId, elementId } = currentPolygonRef.current;
+        const cursor = lastPointerRef.current ?? event.normalized;
+        const layer = layers.find((l) => l.id === layerId);
+        const poly = layer?.elements.find(
+          (e) => e.id === elementId && e.type === 'polygon',
+        ) as PolygonElement | undefined;
+
+        if (poly?.pointWidths && poly.points.length > 0) {
+          const threshold = Math.max(
+            0.02,
+            calculatePolygonVertexThreshold(poly.points, 0.08),
+          );
+          const hit = findNearestPolygonVertex(cursor, poly.points, threshold);
+          if (hit.index >= 0) {
+            const delta = event.deltaY < 0 ? 1.5 : -1.5;
+            const newWidths = [...poly.pointWidths];
+            newWidths[hit.index] = Math.max(1, newWidths[hit.index] + delta);
+            setLayers((prev) =>
+              prev.map((l) => {
+                if (l.id !== layerId) return l;
+                return {
+                  ...l,
+                  elements: l.elements.map((e) => {
+                    if (e.id !== elementId || e.type !== 'polygon') return e;
+                    return { ...e, pointWidths: newWidths };
+                  }),
+                };
+              }),
+            );
+            return; // consumed — don't zoom
+          }
+        }
+      }
+
       const { zoom: currentZoom, pan } = viewRef.current;
       const { imageRect, normalized } = event;
 
@@ -806,7 +854,7 @@ export function useInteractionLayer(
 
       setView({ zoom: newZoom, pan: newPan });
     },
-    [setView],
+    [setView, layers],
   );
 
   // ============================================================================
