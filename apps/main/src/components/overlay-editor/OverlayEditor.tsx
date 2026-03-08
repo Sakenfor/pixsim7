@@ -36,6 +36,8 @@ export interface OverlayEditorProps {
     id: string;
     name: string;
     icon?: string;
+    description?: string;
+    metadata?: string[];
     configuration: OverlayConfiguration;
   }>;
 

@@ -216,6 +216,16 @@ export const reviewPreset: OverlayPreset = {
     skipUploadButton: true,
     skipTagsTooltip: true,
     touchFriendlyButtons: true,
+    gestureOverrides: {
+      gestureLeft: ['reject'],
+      gestureRight: ['approve'],
+      gestureUp: ['openDetails'],
+      gestureDown: ['none'],
+      chainUp: 'none',
+      chainDown: 'none',
+      chainLeft: 'none',
+      chainRight: 'none',
+    },
   },
   configuration: {
     id: 'media-card-review',
@@ -290,6 +300,9 @@ export const focusPreset: OverlayPreset = {
     forceHoverOnly: true,
     skipUploadButton: true,
     skipTagsTooltip: true,
+    gestureOverrides: {
+      enabled: false,
+    },
   },
   configuration: {
     id: 'media-card-focus',

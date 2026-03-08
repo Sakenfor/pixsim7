@@ -38,42 +38,6 @@ export function MediaPanel({ context }: MediaPanelProps) {
   const [zoom, setZoom] = useState(100);
   const [mediaDimensions, setMediaDimensions] = useState<{ width: number; height: number } | undefined>();
 
-  // Track video dimensions when video metadata loads
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const updateDimensions = () => {
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
-        setMediaDimensions({ width: video.videoWidth, height: video.videoHeight });
-      }
-    };
-
-    video.addEventListener('loadedmetadata', updateDimensions);
-    // Also check if already loaded
-    updateDimensions();
-
-    return () => video.removeEventListener('loadedmetadata', updateDimensions);
-  }, []);
-
-  // Track image dimensions when image loads
-  useEffect(() => {
-    const image = imageRef.current;
-    if (!image) return;
-
-    const updateDimensions = () => {
-      if (image.naturalWidth > 0 && image.naturalHeight > 0) {
-        setMediaDimensions({ width: image.naturalWidth, height: image.naturalHeight });
-      }
-    };
-
-    image.addEventListener('load', updateDimensions);
-    // Also check if already loaded
-    updateDimensions();
-
-    return () => image.removeEventListener('load', updateDimensions);
-  }, []);
-
   // Resolve viewer context (from prop or fallback selection)
   const { resolvedContext } = useViewerContext({ context });
 
@@ -100,6 +64,41 @@ export function MediaPanel({ context }: MediaPanelProps) {
     navigatePrev,
     navigateNext,
   } = resolvedContext;
+
+  // Track media dimensions — re-runs when asset changes so refs point to correct elements
+  const assetId = asset?.id;
+  const assetType = asset?.type;
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const updateDimensions = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        setMediaDimensions({ width: video.videoWidth, height: video.videoHeight });
+      }
+    };
+
+    video.addEventListener('loadedmetadata', updateDimensions);
+    updateDimensions();
+
+    return () => video.removeEventListener('loadedmetadata', updateDimensions);
+  }, [assetId, assetType]);
+
+  useEffect(() => {
+    const image = imageRef.current;
+    if (!image) return;
+
+    const updateDimensions = () => {
+      if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+        setMediaDimensions({ width: image.naturalWidth, height: image.naturalHeight });
+      }
+    };
+
+    image.addEventListener('load', updateDimensions);
+    updateDimensions();
+
+    return () => image.removeEventListener('load', updateDimensions);
+  }, [assetId, assetType]);
 
   // Shared overlay widgets for the viewer (favorite, generation bar, etc.)
   const assetModel = asset?._assetModel ?? null;
@@ -178,12 +177,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
     }
   }, [overlayMode, toggleOverlay, selectRegion]);
 
-  const handleExitOverlay = useCallback(() => {
-    setOverlayMode('none');
-    selectRegion(null);
-  }, [setOverlayMode, selectRegion]);
-
-  // Move mode: set the active overlay's internal mode to select/view
+  // Move/select mode: set the active overlay's internal mode to select/view
   const annotationDrawingMode = useAssetRegionStore((s) => s.drawingMode);
   const captureDrawingMode = useCaptureRegionStore((s) => s.drawingMode);
   const maskMode = useMaskOverlayStore((s) => s.mode);
@@ -245,7 +239,6 @@ export function MediaPanel({ context }: MediaPanelProps) {
           overlayTools={availableOverlays}
           overlayMode={effectiveOverlayMode}
           onToggleOverlay={handleToggleOverlay}
-          onExitOverlay={handleExitOverlay}
           onMoveMode={handleMoveMode}
           isMoveActive={isMoveActive}
         />

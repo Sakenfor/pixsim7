@@ -8,13 +8,13 @@
 
 import {
   smoothPoints as smoothPathPoints,
-  findNearestVertex as findNearestPolygonVertex,
-  calculateVertexThreshold as calculatePolygonVertexThreshold,
   moveVertex as movePolygonVertex,
 } from '@pixsim7/graphics.geometry';
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 
 import { generateUUID } from '@lib/utils/uuid';
+
+import { findNearVertex, adjustVertexWidth } from './curveEditUtils';
 
 import type {
   SurfaceState,
@@ -594,11 +594,7 @@ export function useInteractionLayer(
           const polygonElement = polygonLayer?.elements.find((e) => e.id === elementId && e.type === 'polygon') as PolygonElement | undefined;
 
           if (polygonElement && polygonElement.points.length > 0) {
-            const threshold = Math.max(
-              0.015,
-              calculatePolygonVertexThreshold(polygonElement.points, 0.08),
-            );
-            const hit = findNearestPolygonVertex(event.normalized, polygonElement.points, threshold);
+            const hit = findNearVertex(event.normalized, polygonElement.points);
             if (hit.index >= 0) {
               activePolygonVertexDragRef.current = { layerId, elementId, vertexIndex: hit.index };
               return;
@@ -808,27 +804,24 @@ export function useInteractionLayer(
         ) as PolygonElement | undefined;
 
         if (poly?.pointWidths && poly.points.length > 0) {
-          const threshold = Math.max(
-            0.02,
-            calculatePolygonVertexThreshold(poly.points, 0.08),
-          );
-          const hit = findNearestPolygonVertex(cursor, poly.points, threshold);
+          const hit = findNearVertex(cursor, poly.points);
           if (hit.index >= 0) {
             const delta = event.deltaY < 0 ? 1.5 : -1.5;
-            const newWidths = [...poly.pointWidths];
-            newWidths[hit.index] = Math.max(1, newWidths[hit.index] + delta);
-            setLayers((prev) =>
-              prev.map((l) => {
-                if (l.id !== layerId) return l;
-                return {
-                  ...l,
-                  elements: l.elements.map((e) => {
-                    if (e.id !== elementId || e.type !== 'polygon') return e;
-                    return { ...e, pointWidths: newWidths };
-                  }),
-                };
-              }),
-            );
+            const newWidths = adjustVertexWidth(poly.pointWidths, hit.index, delta);
+            if (newWidths) {
+              setLayers((prev) =>
+                prev.map((l) => {
+                  if (l.id !== layerId) return l;
+                  return {
+                    ...l,
+                    elements: l.elements.map((e) => {
+                      if (e.id !== elementId || e.type !== 'polygon') return e;
+                      return { ...e, pointWidths: newWidths };
+                    }),
+                  };
+                }),
+              );
+            }
             return; // consumed — don't zoom
           }
         }

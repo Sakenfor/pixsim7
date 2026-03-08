@@ -89,6 +89,12 @@ export interface MiniGalleryProps {
    *  when overlay widgets or generation button groups handle interactions. */
   suppressHoverActions?: boolean;
 
+  // --- Custom selection ---
+  /** When provided, both card clicks and zap buttons call this callback
+   *  instead of the default addInput / openViewer behavior.
+   *  Useful for picker-style usage (e.g. mask selection). */
+  onItemSelect?: (asset: AssetModel) => void;
+
   // --- Asset resolution ---
   /** Called before addInput / openViewer when asset data may be incomplete
    *  (e.g. history entries that only carry a thumbnail). Return the full
@@ -280,6 +286,7 @@ function MiniGalleryContent({
   renderItemOverlay,
   renderItemActions,
   renderItemWidgets,
+  onItemSelect,
   suppressHoverActions,
   paginationMode = 'infinite',
   pageSize = 20,
@@ -476,13 +483,18 @@ function MiniGalleryContent({
       const resolved = await resolve(asset);
       if (!resolved) return;
 
+      if (onItemSelect) {
+        onItemSelect(resolved);
+        return;
+      }
+
       if (canAcceptAssets && acceptsInput.includes(resolved.mediaType)) {
         addInput({ asset: resolved, operationType });
       } else {
         openAssetInViewer(resolved);
       }
     },
-    [resolve, resolvingIds, addInput, operationType, canAcceptAssets, acceptsInput, openAssetInViewer],
+    [resolve, resolvingIds, onItemSelect, addInput, operationType, canAcceptAssets, acceptsInput, openAssetInViewer],
   );
 
   const handleOpenViewer = useCallback(
@@ -490,9 +502,15 @@ function MiniGalleryContent({
       if (resolvingIds.has(asset.id)) return;
       const resolved = await resolve(asset);
       if (!resolved) return;
+
+      if (onItemSelect) {
+        onItemSelect(resolved);
+        return;
+      }
+
       openAssetInViewer(resolved);
     },
-    [resolve, resolvingIds, openAssetInViewer],
+    [resolve, resolvingIds, onItemSelect, openAssetInViewer],
   );
 
   const handleSelectSlot = useCallback(

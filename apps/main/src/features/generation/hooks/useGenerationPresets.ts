@@ -28,7 +28,7 @@ export interface UseGenerationPresetsResult {
   loading: boolean;
 
   /** Save current scope state as a new preset */
-  saveCurrentAsPreset: (name: string, description?: string) => GenerationPreset;
+  saveCurrentAsPreset: (name: string, options?: { description?: string; scopeToProvider?: boolean }) => GenerationPreset;
 
   /** Load a preset into the current scope (with sync asset resolver) */
   loadPreset: (presetId: string, resolveAsset: (assetId: number) => AssetModel | null) => boolean;
@@ -49,7 +49,7 @@ export interface UseGenerationPresetsResult {
   duplicatePreset: (presetId: string, newName: string) => GenerationPreset | undefined;
 
   /** Get current scope state as a snapshot (for preview) */
-  getCurrentSnapshot: () => PresetSnapshot;
+  getCurrentSnapshot: (scopeToProvider?: boolean) => PresetSnapshot;
 }
 
 /**
@@ -61,8 +61,10 @@ export function useGenerationPresets(): UseGenerationPresetsResult {
 
   // Current scope state
   const operationType = useSessionStore((s) => s.operationType);
+  const providerId = useSessionStore((s) => s.providerId);
   const prompt = useSessionStore((s) => s.prompt);
   const setPrompt = useSessionStore((s) => s.setPrompt);
+  const setProvider = useSessionStore((s) => s.setProvider);
   const setOperationType = useSessionStore((s) => s.setOperationType);
 
   const params = useSettingsStore((s) => s.params);
@@ -109,20 +111,21 @@ export function useGenerationPresets(): UseGenerationPresetsResult {
   }, [inputsByOperation, operationType]);
 
   // Get current state as snapshot
-  const getCurrentSnapshot = useCallback((): PresetSnapshot => {
+  const getCurrentSnapshot = useCallback((scopeToProvider?: boolean): PresetSnapshot => {
     return {
       operationType,
+      ...(scopeToProvider && providerId ? { providerId } : {}),
       prompt,
       inputs: getCurrentInputRefs(),
       params,
     };
-  }, [operationType, prompt, params, getCurrentInputRefs]);
+  }, [operationType, providerId, prompt, params, getCurrentInputRefs]);
 
   // Save current state as preset
   const saveCurrentAsPreset = useCallback(
-    (name: string, description?: string): GenerationPreset => {
-      const snapshot = getCurrentSnapshot();
-      return savePreset(name, snapshot, description);
+    (name: string, options?: { description?: string; scopeToProvider?: boolean }): GenerationPreset => {
+      const snapshot = getCurrentSnapshot(options?.scopeToProvider);
+      return savePreset(name, snapshot, options?.description);
     },
     [getCurrentSnapshot, savePreset]
   );
@@ -136,6 +139,11 @@ export function useGenerationPresets(): UseGenerationPresetsResult {
       // Set operation type first
       setOperationType(preset.operationType);
       setActiveOperationType(preset.operationType);
+
+      // Restore provider if preset is provider-scoped
+      if (preset.providerId) {
+        setProvider(preset.providerId);
+      }
 
       // Set prompt
       setPrompt(preset.prompt);
@@ -176,6 +184,7 @@ export function useGenerationPresets(): UseGenerationPresetsResult {
       getPreset,
       setOperationType,
       setActiveOperationType,
+      setProvider,
       setPrompt,
       setDynamicParams,
       clearInputs,
@@ -197,6 +206,11 @@ export function useGenerationPresets(): UseGenerationPresetsResult {
         // Set operation type first
         setOperationType(preset.operationType);
         setActiveOperationType(preset.operationType);
+
+        // Restore provider if preset is provider-scoped
+        if (preset.providerId) {
+          setProvider(preset.providerId);
+        }
 
         // Set prompt
         setPrompt(preset.prompt);
@@ -249,6 +263,7 @@ export function useGenerationPresets(): UseGenerationPresetsResult {
       getPreset,
       setOperationType,
       setActiveOperationType,
+      setProvider,
       setPrompt,
       setDynamicParams,
       clearInputs,

@@ -1,5 +1,6 @@
 import { createGeneration, type CreateGenerationRequest, type GenerationNodeConfigSchema } from '@lib/api/generations';
 import { devValidateParams, devLogParams } from '@lib/utils/validation/devValidation';
+import { providerCapabilityRegistry } from '@features/providers';
 
 import type { OperationType } from '@/types/operations';
 
@@ -92,6 +93,9 @@ function buildGenerationConfig(
 
   // Build provider-specific settings (placed in style.<providerId>)
   // The backend will extract these for the provider adapter
+  const declaredParams = providerId
+    ? new Set(providerCapabilityRegistry.getSupportedControls(providerId, generationType))
+    : null;
   const providerSettings: Record<string, any> = {};
   for (const [key, value] of Object.entries(merged)) {
     if (value === undefined) continue;
@@ -101,6 +105,11 @@ function buildGenerationConfig(
       key === 'seed'
       && (value === undefined || value === null || (typeof value === 'string' && value.trim() === ''))
     ) {
+      continue;
+    }
+    // Skip 'model' if the provider doesn't declare it — prevents cross-provider
+    // leakage (e.g. Pixverse model name ending up in Remaker canonical_params).
+    if (key === 'model' && declaredParams && declaredParams.size > 0 && !declaredParams.has('model')) {
       continue;
     }
     providerSettings[key] = value;

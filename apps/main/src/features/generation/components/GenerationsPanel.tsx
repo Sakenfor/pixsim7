@@ -4,7 +4,7 @@
  * Dedicated panel for tracking and managing generation jobs.
  * Shows status, allows filtering, grouping, and batch cancel.
  */
-import { DisclosureSection, Dropdown, DropdownItem, DropdownDivider, FoldableJson, GroupByPillBar, ToolbarToggleButton, toggleInStack, clearStack } from '@pixsim7/shared.ui';
+import { DisclosureSection, Dropdown, DropdownItem, DropdownDivider, FoldableJson, ToolbarToggleButton } from '@pixsim7/shared.ui';
 import { useMemo, useState, useCallback, useRef } from 'react';
 
 import { patchGenerationPrompt, retryGeneration, cancelGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
@@ -38,9 +38,128 @@ export interface GenerationsPanelProps {
   onOpenAsset?: (assetId: number) => void;
 }
 
+const GROUPING_STORAGE_KEY = 'generations-panel-grouping';
+const VIEW_MODE_STORAGE_KEY = 'generations-panel-view-mode';
+const VALID_GROUP_VALUES: GenerationGroupBy[] = ['prompt', 'operation', 'provider', 'model', 'account', 'asset'];
+
+function readStoredGroupByStack(): GenerationGroupBy[] {
+  try {
+    const raw = localStorage.getItem(GROUPING_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((v: unknown) => VALID_GROUP_VALUES.includes(v as GenerationGroupBy));
+  } catch { return []; }
+}
+
+function writeStoredGroupByStack(stack: GenerationGroupBy[]): void {
+  try { localStorage.setItem(GROUPING_STORAGE_KEY, JSON.stringify(stack)); } catch {}
+}
+
+function readStoredViewMode(): 'list' | 'grid' {
+  try {
+    const raw = localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+    return raw === 'grid' ? 'grid' : 'list';
+  } catch { return 'list'; }
+}
+
+/** Multi-check dropdown for selecting grouping dimensions. */
+function GroupByDropdown({
+  selected,
+  onToggle,
+  onClear,
+}: {
+  selected: GenerationGroupBy[];
+  onToggle: (value: GenerationGroupBy) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  const label = selected.length === 0
+    ? 'Group: None'
+    : selected.length === 1
+      ? `Group: ${GROUP_BY_OPTIONS.find(o => o.value === selected[0])?.label ?? selected[0]}`
+      : `Group: ${selected.length} selected`;
+
+  return (
+    <span className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`flex items-center gap-1.5 px-2 py-1.5 text-xs border rounded transition-colors ${
+          selected.length > 0
+            ? 'bg-accent/10 border-accent text-accent dark:text-accent'
+            : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:border-accent-muted'
+        }`}
+      >
+        <Icon name="layers" size={12} />
+        <span>{label}</span>
+        <Icon name="chevronDown" size={10} className="opacity-50" />
+      </button>
+      <Dropdown
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        position="bottom-left"
+        minWidth="160px"
+        triggerRef={triggerRef}
+      >
+        {GROUP_BY_OPTIONS.map((opt) => {
+          const isChecked = selected.includes(opt.value);
+          const index = selected.indexOf(opt.value);
+          return (
+            <DropdownItem
+              key={opt.value}
+              icon={
+                <span className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center text-[9px] font-bold ${
+                  isChecked
+                    ? 'bg-accent border-accent text-accent-text'
+                    : 'border-neutral-400 dark:border-neutral-500'
+                }`}>
+                  {isChecked && (selected.length > 1 ? index + 1 : '\u2713')}
+                </span>
+              }
+              onClick={() => onToggle(opt.value)}
+            >
+              {opt.label}
+            </DropdownItem>
+          );
+        })}
+        {selected.length > 0 && (
+          <>
+            <DropdownDivider />
+            <DropdownItem onClick={onClear}>
+              Clear all
+            </DropdownItem>
+          </>
+        )}
+      </Dropdown>
+    </span>
+  );
+}
+
 export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
-  const [groupByStack, setGroupByStack] = useState<GenerationGroupBy[]>([]);
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [groupByStack, setGroupByStackRaw] = useState<GenerationGroupBy[]>(readStoredGroupByStack);
+  const [viewMode, setViewModeRaw] = useState<'list' | 'grid'>(readStoredViewMode);
+
+  const toggleGroupBy = useCallback((value: GenerationGroupBy) => {
+    setGroupByStackRaw(prev => {
+      const next = prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value];
+      writeStoredGroupByStack(next);
+      return next;
+    });
+  }, []);
+
+  const clearGroupBy = useCallback(() => {
+    setGroupByStackRaw([]);
+    writeStoredGroupByStack([]);
+  }, []);
+
+  const setViewMode = useCallback((value: 'list' | 'grid') => {
+    setViewModeRaw(value);
+    try { localStorage.setItem(VIEW_MODE_STORAGE_KEY, value); } catch {}
+  }, []);
 
   // WebSocket for real-time updates
   const { isConnected: wsConnected } = useGenerationWebSocket();
@@ -221,17 +340,16 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
             popoverMode="inline"
           />
 
-          {/* Group by pill bar */}
-          <GroupByPillBar
-            options={GROUP_BY_OPTIONS}
+          {/* Group by multi-select dropdown */}
+          <GroupByDropdown
             selected={groupByStack}
-            onToggle={(v) => setGroupByStack(prev => toggleInStack(prev, v))}
-            onClear={() => setGroupByStack(clearStack())}
+            onToggle={toggleGroupBy}
+            onClear={clearGroupBy}
           />
           {groupByStack.length > 0 && (
             <ToolbarToggleButton
               active={viewMode === 'grid'}
-              onClick={() => setViewMode(prev => prev === 'grid' ? 'list' : 'grid')}
+              onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
               icon={<Icon name={viewMode === 'grid' ? 'layoutGrid' : 'rows'} size={14} />}
               title={viewMode === 'grid' ? 'Switch to list view' : 'Switch to grid view'}
             />
@@ -317,8 +435,8 @@ interface GenerationGroupSectionProps {
   isBatchCancelling: boolean;
 }
 
-/** Inline 28×28 asset thumbnail for group headers. */
-function GroupAssetPreview({ assetId }: { assetId: number }) {
+/** Inline asset thumbnail for group headers. */
+function GroupAssetPreview({ assetId, size = 'sm' }: { assetId: number; size?: 'sm' | 'md' }) {
   const { asset, loading } = useAsset(assetId);
   const urls = asset ? getAssetDisplayUrls(asset) : undefined;
   const { thumbSrc, thumbLoading } = useResolvedAssetMedia({
@@ -326,11 +444,13 @@ function GroupAssetPreview({ assetId }: { assetId: number }) {
     previewUrl: urls?.previewUrl,
   });
 
+  const sizeClass = size === 'md' ? 'w-12 h-12 rounded-md' : 'w-7 h-7 rounded';
+
   if (!loading && !asset) return null;
 
   if (loading || thumbLoading) {
     return (
-      <div className="w-7 h-7 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse-subtle flex-shrink-0" />
+      <div className={`${sizeClass} bg-neutral-200 dark:bg-neutral-700 animate-pulse-subtle flex-shrink-0`} />
     );
   }
 
@@ -340,7 +460,7 @@ function GroupAssetPreview({ assetId }: { assetId: number }) {
     <img
       src={thumbSrc}
       alt=""
-      className="w-7 h-7 rounded object-cover flex-shrink-0"
+      className={`${sizeClass} object-cover flex-shrink-0`}
     />
   );
 }
@@ -408,9 +528,11 @@ function GenerationAssetGridCard({ assetId, onClick }: { assetId: number; onClic
 /** Grid content for a leaf group — shows completed items as media cards, with a status summary for the rest. */
 function GenerationGroupGridContent({
   items,
+  dimension,
   onOpenAsset,
 }: {
   items: GenerationModel[];
+  dimension?: GenerationGroupBy;
   onOpenAsset: (assetId: number) => void;
 }) {
   const completedWithAsset = items.filter(g => g.status === 'completed' && (g.asset?.id ?? g.assetId));
@@ -425,10 +547,12 @@ function GenerationGroupGridContent({
     return Object.entries(counts);
   }, [others]);
 
+  const isAssetGroup = dimension === 'asset';
+
   return (
     <div className="space-y-2">
       {completedWithAsset.length > 0 && (
-        <AssetGrid preset="compact" gap={2}>
+        <AssetGrid preset={isAssetGroup ? 'review' : 'compact'} gap={isAssetGroup ? 4 : 2}>
           {completedWithAsset.map(g => (
             <GenerationAssetGridCard
               key={g.id}
@@ -438,7 +562,7 @@ function GenerationGroupGridContent({
           ))}
         </AssetGrid>
       )}
-      {statusCounts.length > 0 && (
+      {statusCounts.length > 0 && !isAssetGroup && (
         <div className="text-xs text-neutral-500 dark:text-neutral-500 px-1">
           {statusCounts.map(([status, count], i) => (
             <span key={status}>
@@ -483,9 +607,17 @@ function GenerationGroupSection({
 
   const fullPrompt = group.dimension === 'prompt' ? group.items[0]?.finalPrompt : null;
 
+  // For asset groups, compute per-status counts for header badges
+  const statusBadges = useMemo(() => {
+    if (group.dimension !== 'asset') return null;
+    const counts: Record<string, number> = {};
+    for (const g of group.items) counts[g.status] = (counts[g.status] || 0) + 1;
+    return counts;
+  }, [group.dimension, group.items]);
+
   const groupLabel = (
     <span className="flex items-center gap-2">
-      {assetId != null && <GroupAssetPreview assetId={assetId} />}
+      {assetId != null && <GroupAssetPreview assetId={assetId} size="md" />}
       <span>{group.label}</span>
       <span className="text-neutral-500 dark:text-neutral-500">
         ({group.items.length})
@@ -493,6 +625,20 @@ function GenerationGroupSection({
       {group.activeCount > 0 && (
         <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
           {group.activeCount} active
+        </span>
+      )}
+      {statusBadges && (
+        <span className="flex items-center gap-1">
+          {(statusBadges.completed ?? 0) > 0 && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+              {statusBadges.completed} done
+            </span>
+          )}
+          {(statusBadges.failed ?? 0) > 0 && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
+              {statusBadges.failed} failed
+            </span>
+          )}
         </span>
       )}
     </span>
@@ -643,8 +789,8 @@ function GenerationGroupSection({
               isBatchCancelling={isBatchCancelling}
             />
           ))
-        ) : viewMode === 'grid' ? (
-          <GenerationGroupGridContent items={group.items} onOpenAsset={onOpenAsset} />
+        ) : viewMode === 'grid' || group.dimension === 'asset' ? (
+          <GenerationGroupGridContent items={group.items} dimension={group.dimension} onOpenAsset={onOpenAsset} />
         ) : (
           group.items.map(generation => (
             <GenerationItem

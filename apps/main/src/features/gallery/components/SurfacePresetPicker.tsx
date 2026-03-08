@@ -14,7 +14,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 
 import { gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
-import { mediaCardPresets } from '@lib/ui/overlay';
+import { mediaCardPresets, getOverlayPresetMetadata } from '@lib/ui/overlay';
 
 import type { GallerySurfaceId } from '../lib/core/surfaceRegistry';
 
@@ -101,25 +101,34 @@ export function SurfacePresetPicker({
 
         {/* Preset section */}
         <DropdownSectionHeader>Card Preset</DropdownSectionHeader>
-        <div className="flex flex-wrap gap-1 px-1 pb-1" style={{ maxWidth: '160px' }}>
-          {mediaCardPresets.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => {
-                onPresetChange(preset.id);
-                setOpen(false);
-              }}
-              className={`h-7 w-7 flex items-center justify-center rounded text-sm transition-colors ${
-                currentPresetId === preset.id
-                  ? 'bg-accent/15 ring-1 ring-accent text-accent'
-                  : 'hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-400'
-              }`}
-              title={preset.name}
-            >
-              {preset.icon}
-            </button>
-          ))}
+        <div className="flex flex-col gap-1 px-1 pb-1 min-w-[220px] max-w-[260px]">
+          {mediaCardPresets.map((preset) => {
+            const metadata = getOverlayPresetMetadata(preset);
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  onPresetChange(preset.id);
+                  setOpen(false);
+                }}
+                className={`w-full flex items-start gap-2 rounded px-2 py-1.5 text-left transition-colors ${
+                  currentPresetId === preset.id
+                    ? 'bg-accent/15 ring-1 ring-accent text-accent'
+                    : 'hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-400'
+                }`}
+                title={[preset.name, ...metadata.details].join('\n')}
+              >
+                <span className="text-sm leading-5">{preset.icon ?? 'P'}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-medium truncate">{preset.name}</span>
+                  <span className="block text-[10px] opacity-75 truncate">
+                    {metadata.chips.slice(0, 3).join(' | ')}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </Dropdown>
     </div>

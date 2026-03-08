@@ -18,7 +18,7 @@
  * ```
  */
 
-import { smoothPoints as smoothPathPoints } from '@pixsim7/graphics.geometry';
+import { drawVariableWidthCurve, traceSmoothPath } from './curveRenderUtils';
 import {
   useRef,
   useState,
@@ -340,32 +340,23 @@ export const InteractiveImageSurface = forwardRef<
 
       const toScreenX = (nx: number) => nx * imageRect.width + imageRect.x;
       const toScreenY = (ny: number) => ny * imageRect.height + imageRect.y;
+      const toScreen = (p: { x: number; y: number }) => ({
+        x: toScreenX(p.x),
+        y: toScreenY(p.y),
+      });
       const tracePolygonPath = (poly: PolygonElement) => {
         if (poly.points.length < 2) return false;
         const curved = !!(poly.metadata as Record<string, unknown> | undefined)?.curved;
-        const pts = poly.points;
+        const screenPts = poly.points.map(toScreen);
 
-        const pathPoints = curved && pts.length >= 3
-          ? smoothPathPoints(pts, poly.closed, 0.5, 8)
-          : pts;
-
-        if (pathPoints.length < 2) return false;
-
-        if (!curved || pts.length < 3) {
-          ctx.moveTo(toScreenX(pts[0].x), toScreenY(pts[0].y));
-          for (let i = 1; i < pts.length; i++) {
-            ctx.lineTo(toScreenX(pts[i].x), toScreenY(pts[i].y));
+        if (curved && poly.points.length >= 3) {
+          traceSmoothPath(ctx, screenPts, poly.closed, 0.5);
+        } else {
+          ctx.moveTo(screenPts[0].x, screenPts[0].y);
+          for (let i = 1; i < screenPts.length; i++) {
+            ctx.lineTo(screenPts[i].x, screenPts[i].y);
           }
           if (poly.closed) ctx.closePath();
-          return true;
-        }
-
-        ctx.moveTo(toScreenX(pathPoints[0].x), toScreenY(pathPoints[0].y));
-        for (let i = 1; i < pathPoints.length; i++) {
-          ctx.lineTo(toScreenX(pathPoints[i].x), toScreenY(pathPoints[i].y));
-        }
-        if (poly.closed) {
-          ctx.closePath();
         }
         return true;
       };
@@ -421,19 +412,11 @@ export const InteractiveImageSurface = forwardRef<
           const hasVariableWidth = !poly.closed && poly.pointWidths && poly.pointWidths.length === poly.points.length;
 
           if (hasVariableWidth) {
-            // Variable-width stroke: draw segment-by-segment
+            const curved = !!(poly.metadata as Record<string, unknown> | undefined)?.curved;
             ctx.strokeStyle = poly.style?.strokeColor ?? '#0000ff';
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            for (let i = 0; i < poly.points.length - 1; i++) {
-              const w0 = poly.pointWidths![i];
-              const w1 = poly.pointWidths![i + 1];
-              ctx.lineWidth = ((w0 + w1) / 2) * viewState.zoom;
-              ctx.beginPath();
-              ctx.moveTo(toScreenX(poly.points[i].x), toScreenY(poly.points[i].y));
-              ctx.lineTo(toScreenX(poly.points[i + 1].x), toScreenY(poly.points[i + 1].y));
-              ctx.stroke();
-            }
+            const screenPts = poly.points.map(toScreen);
+            const scaledWidths = poly.pointWidths!.map((w) => w * viewState.zoom);
+            drawVariableWidthCurve(ctx, screenPts, scaledWidths, curved && poly.points.length >= 3);
           } else {
             ctx.beginPath();
             if (!tracePolygonPath(poly)) break;

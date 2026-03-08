@@ -50,14 +50,16 @@ export function findNearestVertex(
  * Find the nearest edge to a point within a threshold distance.
  *
  * @param point - The point to search from
- * @param vertices - The polygon vertices (closed polygon)
+ * @param vertices - The polygon vertices
  * @param threshold - Maximum distance to consider
+ * @param closed - Whether the path is closed (wraps last→first). Default true.
  * @returns Object with edge index and distance (-1 if none within threshold)
  */
 export function findNearestEdge(
   point: Point,
   vertices: Point[],
-  threshold: number
+  threshold: number,
+  closed: boolean = true,
 ): { index: number; distance: number } {
   if (vertices.length < 2) {
     return { index: -1, distance: Infinity };
@@ -66,7 +68,8 @@ export function findNearestEdge(
   let nearestIndex = -1;
   let nearestDistance = Infinity;
 
-  for (let i = 0; i < vertices.length; i++) {
+  const edgeCount = closed ? vertices.length : vertices.length - 1;
+  for (let i = 0; i < edgeCount; i++) {
     const nextI = (i + 1) % vertices.length;
     const dist = pointToSegmentDistance(point, vertices[i], vertices[nextI]);
     if (dist < nearestDistance && dist <= threshold) {
@@ -93,24 +96,26 @@ export function findNearestEdge(
  * @param vertices - The polygon vertices
  * @param vertexThreshold - Distance threshold for vertex hit detection
  * @param edgeThreshold - Distance threshold for edge hit detection (defaults to vertexThreshold)
+ * @param closed - Whether the path is closed. Default true. Open paths always have isInside=false.
  * @returns Complete hit test result
  */
 export function polygonHitTest(
   point: Point,
   vertices: Point[],
   vertexThreshold: number,
-  edgeThreshold?: number
+  edgeThreshold?: number,
+  closed: boolean = true,
 ): PolygonHitResult {
   const effectiveEdgeThreshold = edgeThreshold ?? vertexThreshold;
 
-  // Check if inside polygon
-  const isInside = vertices.length >= 3 ? pointInPolygon(point, vertices) : false;
+  // Check if inside polygon (only meaningful for closed paths)
+  const isInside = closed && vertices.length >= 3 ? pointInPolygon(point, vertices) : false;
 
   // Find nearest vertex
   const vertexResult = findNearestVertex(point, vertices, vertexThreshold);
 
   // Find nearest edge
-  const edgeResult = findNearestEdge(point, vertices, effectiveEdgeThreshold);
+  const edgeResult = findNearestEdge(point, vertices, effectiveEdgeThreshold, closed);
 
   return {
     isInside,
@@ -224,16 +229,18 @@ export function movePolygon(
  * @param vertices - The polygon vertices
  * @param point - Point near where to insert (will be projected onto edge)
  * @param threshold - Maximum distance from edge to allow insertion
+ * @param closed - Whether the path is closed. Default true.
  * @returns New vertices array with inserted vertex, or original if no edge within threshold
  */
 export function insertVertexOnEdge(
   vertices: Point[],
   point: Point,
-  threshold: number
+  threshold: number,
+  closed: boolean = true,
 ): Point[] {
   if (vertices.length < 2) return vertices;
 
-  const edgeResult = findNearestEdge(point, vertices, threshold);
+  const edgeResult = findNearestEdge(point, vertices, threshold, closed);
   if (edgeResult.index < 0) return vertices;
 
   // Project point onto the edge
@@ -272,11 +279,12 @@ export function insertVertexOnEdge(
  *
  * @param vertices - The polygon vertices
  * @param index - Index of vertex to remove
- * @returns New vertices array, or null if removal would make polygon invalid (< 3 vertices)
+ * @param minVertices - Minimum number of vertices to maintain. Default 3 (polygon). Use 2 for open paths.
+ * @returns New vertices array, or null if removal would go below minVertices
  */
-export function removeVertex(vertices: Point[], index: number): Point[] | null {
+export function removeVertex(vertices: Point[], index: number, minVertices: number = 3): Point[] | null {
   if (index < 0 || index >= vertices.length) return vertices;
-  if (vertices.length <= 3) return null; // Can't have less than 3 vertices
+  if (vertices.length <= minVertices) return null;
 
   const result = [...vertices];
   result.splice(index, 1);

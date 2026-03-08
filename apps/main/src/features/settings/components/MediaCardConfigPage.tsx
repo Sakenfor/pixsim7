@@ -9,7 +9,7 @@ import { Button, Select } from '@pixsim7/shared.ui';
 import React, { useState, useMemo } from 'react';
 
 import type { OverlayConfiguration, OverlayPolicyStep } from '@lib/ui/overlay';
-import { mediaCardPresets, PresetManager } from '@lib/ui/overlay';
+import { mediaCardPresets, PresetManager, getOverlayPresetMetadata } from '@lib/ui/overlay';
 import { LocalStoragePresetStorage } from '@lib/ui/overlay';
 import { APIPresetStorage, IndexedDBPresetStorage } from '@lib/ui/overlay';
 
@@ -324,12 +324,10 @@ export function MediaCardConfigPage() {
               {...SAMPLE_MEDIA}
               overlayPolicyChain={policyChain}
               badgeConfig={{
-                showPrimaryIcon: true,
                 showStatusIcon: true,
                 showTagsInOverlay: true,
                 showFooterProvider: true,
                 showGenerationBadge: true,
-                showGenerationOnHoverOnly: true,
               }}
             />
           }
@@ -337,6 +335,8 @@ export function MediaCardConfigPage() {
             id: p.id,
             name: p.name,
             icon: p.icon,
+            description: p.configuration.description,
+            metadata: getOverlayPresetMetadata(p).chips,
             configuration: p.configuration,
           }))}
           onPresetSelect={handlePresetSelect}
@@ -354,4 +354,3 @@ export function MediaCardConfigPage() {
     </div>
   );
 }
-

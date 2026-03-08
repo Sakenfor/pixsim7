@@ -155,6 +155,31 @@ export function resolveGestureHandler(
     return () => context.onToggleFavorite!();
   }
 
+  // Review action fallback chain so review presets remain usable even when a
+  // surface does not provide dedicated review handlers.
+  if (actionId === 'approve') {
+    if (actions?.onApprove) {
+      return actions.onApprove as (id: number) => void;
+    }
+    if (actions?.onAddToActiveSet) {
+      return actions.onAddToActiveSet as (id: number) => void;
+    }
+    if (context.onToggleFavorite) {
+      return () => context.onToggleFavorite!();
+    }
+    return undefined;
+  }
+
+  if (actionId === 'reject') {
+    if (actions?.onReject) {
+      return actions.onReject as (id: number) => void;
+    }
+    if (actions?.onArchive) {
+      return actions.onArchive as (id: number) => void;
+    }
+    return undefined;
+  }
+
   // Special case: upload — actions.onUploadToProvider is rarely populated by
   // the action factory, so resolve via runtime upload props.
   // Priority: provider-aware path first (respects user's chosen default

@@ -2,5 +2,15 @@
  * Media viewer utilities.
  */
 
-export * from './regionsToInputBindings';
-export * from './providerResolution';
+export {
+  regionToInputBinding,
+  regionsToInputBindings,
+  multiAssetRegionsToInputBindings,
+  createFullAssetBinding,
+  createBackgroundBinding,
+  createForegroundBinding,
+  createStyleBinding,
+} from './regionsToInputBindings';
+export type { InputBinding, RegionsToBindingsOptions } from './regionsToInputBindings';
+
+export { resolveViewerAssetProviderId } from './providerResolution';

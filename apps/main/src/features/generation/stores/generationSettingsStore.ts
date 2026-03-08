@@ -191,6 +191,12 @@ export function createGenerationSettingsStore(
           // Load params for the new operation (or empty if none saved)
           const baseParams = updatedParamsPerOp[operationType] || {};
           const newParams = mergeMissingGlobalUiParams(baseParams, globals);
+          // Carry over model from current params when the loaded params don't
+          // have one. This prevents the model resetting to spec default when
+          // auto-switching operation types during asset navigation.
+          if (!newParams.model && state.params.model) {
+            newParams.model = state.params.model;
+          }
           set({
             activeOperationType: operationType,
             paramsPerOperation: {

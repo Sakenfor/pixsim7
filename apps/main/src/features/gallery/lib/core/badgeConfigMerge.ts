@@ -27,17 +27,10 @@ export function mergeBadgeConfig(
 ): MediaCardBadgeConfig {
   // Default values if nothing is specified
   const defaults: MediaCardBadgeConfig = {
-    showPrimaryIcon: true,
     showStatusIcon: true,
-    showStatusTextOnHover: true,
     showTagsInOverlay: true,
     showFooterProvider: false,
-    showFooterDate: true,
     showGenerationBadge: true,
-    showGenerationInMenu: true,
-    showGenerationOnHoverOnly: true,
-    generationQuickAction: 'auto',
-    enableBadgePulse: false,
   };
 
   // Merge in order of priority: defaults < surface < panel < widget
@@ -64,40 +57,32 @@ export function deriveOverlayPresetIdFromBadgeConfig(
     return 'media-card-default';
   }
 
-  const {
-    showPrimaryIcon = true,
-    showStatusIcon = true,
-    showStatusTextOnHover = true,
-    showTagsInOverlay = true,
-    showFooterProvider = true,
-    showFooterDate = true,
-  } = config;
+  const showStatusIcon = config.showStatusIcon ?? true;
+  const showTagsInOverlay = config.showTagsInOverlay ?? true;
+  const showFooterProvider = config.showFooterProvider ?? false;
+  const showGenerationBadge = config.showGenerationBadge ?? true;
 
   // Legacy "Minimal" preset:
-  // - primary icon only
-  // - no status, no tags, no footer
+  // - no status, no tags, no footer, no generation controls
   if (
-    showPrimaryIcon === true &&
     showStatusIcon === false &&
-    showStatusTextOnHover === false &&
     showTagsInOverlay === false &&
     showFooterProvider === false &&
-    showFooterDate === false
+    showGenerationBadge === false
   ) {
     return 'media-card-minimal';
   }
 
-  // Legacy "Compact" preset (approximation):
-  // - primary + status
-  // - no tags, no provider footer
-  // - keep date
+  // Legacy compact approximation:
+  // - status visible
+  // - tags hidden
+  // - provider footer hidden
+  // - generation controls visible
   if (
-    showPrimaryIcon === true &&
     showStatusIcon === true &&
-    showStatusTextOnHover === false &&
     showTagsInOverlay === false &&
     showFooterProvider === false &&
-    showFooterDate === true
+    showGenerationBadge === true
   ) {
     return 'media-card-compact';
   }

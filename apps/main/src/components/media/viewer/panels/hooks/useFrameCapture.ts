@@ -92,10 +92,34 @@ export function useFrameCapture({
   );
 
   /**
+   * Load an untainted draw source from an element.
+   * For images, re-fetches the src as a blob to avoid cross-origin canvas tainting.
+   * For videos, returns the element directly (same-origin blob URLs work fine).
+   */
+  const loadUntaintedSource = useCallback(
+    async (
+      el: HTMLVideoElement | HTMLImageElement,
+      width: number,
+      height: number,
+    ): Promise<CanvasImageSource> => {
+      if (el instanceof HTMLVideoElement) return el;
+      try {
+        const res = await fetch(el.src);
+        const blob = await res.blob();
+        return await createImageBitmap(blob, { resizeWidth: width, resizeHeight: height });
+      } catch {
+        // Fall back to DOM element (may taint canvas for cross-origin images)
+        return el;
+      }
+    },
+    [],
+  );
+
+  /**
    * Render the current frame (with optional region crop) to a JPEG blob.
    */
   const renderCaptureBlob = useCallback(
-    (
+    async (
       sourceElement: HTMLVideoElement | HTMLImageElement,
       sourceWidth: number,
       sourceHeight: number,
@@ -105,6 +129,8 @@ export function useFrameCapture({
       if (!ctx) {
         throw new Error('Failed to capture.');
       }
+
+      const drawSource = await loadUntaintedSource(sourceElement, sourceWidth, sourceHeight);
 
       let regionBounds = null;
       if (captureRegion?.type === 'rect' && captureRegion.bounds) {
@@ -125,21 +151,17 @@ export function useFrameCapture({
         if (sw > 1 && sh > 1) {
           canvas.width = sw;
           canvas.height = sh;
-          try {
-            ctx.drawImage(
-              sourceElement,
-              regionBounds.sx,
-              regionBounds.sy,
-              sw,
-              sh,
-              0,
-              0,
-              canvas.width,
-              canvas.height
-            );
-          } catch {
-            throw new Error('Capture blocked by browser security.');
-          }
+          ctx.drawImage(
+            drawSource,
+            regionBounds.sx,
+            regionBounds.sy,
+            sw,
+            sh,
+            0,
+            0,
+            canvas.width,
+            canvas.height
+          );
         } else {
           regionBounds = null;
         }
@@ -148,11 +170,7 @@ export function useFrameCapture({
       if (!regionBounds) {
         canvas.width = sourceWidth;
         canvas.height = sourceHeight;
-        try {
-          ctx.drawImage(sourceElement, 0, 0, canvas.width, canvas.height);
-        } catch {
-          throw new Error('Capture blocked by browser security.');
-        }
+        ctx.drawImage(drawSource, 0, 0, canvas.width, canvas.height);
       }
 
       return new Promise<Blob>((resolve, reject) => {
@@ -163,7 +181,7 @@ export function useFrameCapture({
         );
       });
     },
-    [captureRegion]
+    [captureRegion, loadUntaintedSource]
   );
 
   // Main capture function

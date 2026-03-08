@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef } from 'react';
 
+import type { PresetGestureOverrides } from '@lib/ui/overlay';
 import { useUploadProviderStore } from '@features/assets/stores/uploadProviderStore';
 
 import type { MediaCardActions } from '@/components/media/MediaCard';
@@ -30,6 +31,7 @@ export interface UseCardGesturesOptions {
   onToggleFavorite?: () => void;
   onUploadClick?: (id: number) => Promise<unknown> | void;
   onUploadToProvider?: (id: number, providerId: string) => Promise<void> | void;
+  presetGestureOverrides?: PresetGestureOverrides;
 }
 
 export interface UseCardGesturesResult {
@@ -77,6 +79,7 @@ export function useCardGestures({
   onToggleFavorite,
   onUploadClick,
   onUploadToProvider,
+  presetGestureOverrides,
 }: UseCardGesturesOptions): UseCardGesturesResult {
   // Config store subscriptions
   const gestureEnabled = useGestureConfigStore((s) => s.enabled);
@@ -92,14 +95,37 @@ export function useCardGestures({
   const chainLeft = useGestureConfigStore((s) => s.chainLeft);
   const chainRight = useGestureConfigStore((s) => s.chainRight);
 
+  const effectiveGestureEnabled = presetGestureOverrides?.enabled ?? gestureEnabled;
+  const effectiveGestureThreshold = presetGestureOverrides?.threshold ?? gestureThreshold;
+  const effectiveGestureEdgeInset = presetGestureOverrides?.edgeInset ?? gestureEdgeInset;
+  const effectiveCascadeStepPixels = presetGestureOverrides?.cascadeStepPixels ?? cascadeStepPixels;
+  const effectiveGestureUp = presetGestureOverrides?.gestureUp ?? gestureUp;
+  const effectiveGestureDown = presetGestureOverrides?.gestureDown ?? gestureDown;
+  const effectiveGestureLeft = presetGestureOverrides?.gestureLeft ?? gestureLeft;
+  const effectiveGestureRight = presetGestureOverrides?.gestureRight ?? gestureRight;
+  const effectiveChainUp = presetGestureOverrides?.chainUp ?? chainUp;
+  const effectiveChainDown = presetGestureOverrides?.chainDown ?? chainDown;
+  const effectiveChainLeft = presetGestureOverrides?.chainLeft ?? chainLeft;
+  const effectiveChainRight = presetGestureOverrides?.chainRight ?? chainRight;
+
   const gestureDirections = useMemo(
-    () => ({ gestureUp, gestureDown, gestureLeft, gestureRight }),
-    [gestureUp, gestureDown, gestureLeft, gestureRight],
+    () => ({
+      gestureUp: effectiveGestureUp,
+      gestureDown: effectiveGestureDown,
+      gestureLeft: effectiveGestureLeft,
+      gestureRight: effectiveGestureRight,
+    }),
+    [effectiveGestureUp, effectiveGestureDown, effectiveGestureLeft, effectiveGestureRight],
   );
 
   const chainDirections = useMemo(
-    () => ({ chainUp, chainDown, chainLeft, chainRight }),
-    [chainUp, chainDown, chainLeft, chainRight],
+    () => ({
+      chainUp: effectiveChainUp,
+      chainDown: effectiveChainDown,
+      chainLeft: effectiveChainLeft,
+      chainRight: effectiveChainRight,
+    }),
+    [effectiveChainUp, effectiveChainDown, effectiveChainLeft, effectiveChainRight],
   );
 
   const defaultUploadProviderId = useUploadProviderStore((s) => s.defaultUploadProviderId);
@@ -117,22 +143,22 @@ export function useCardGestures({
   );
 
   const { gestureHandlers, activeGesture, gestureConsumed } = useMouseGesture({
-    enabled: gestureEnabled,
-    threshold: gestureThreshold,
-    edgeInset: gestureEdgeInset,
+    enabled: effectiveGestureEnabled,
+    threshold: effectiveGestureThreshold,
+    edgeInset: effectiveGestureEdgeInset,
     onGesture: useCallback(
       (event: GestureEvent) => {
         if (event.type !== 'swipe') return;
         const cascadeActions = getCascadeActionsForDirection(gestureDirections, event.direction);
         const cascade = resolveCascadeAction(
-          cascadeActions, event.distance, gestureThreshold, cascadeStepPixels,
+          cascadeActions, event.distance, effectiveGestureThreshold, effectiveCascadeStepPixels,
         );
         const handler = resolveGestureHandler(cascade.actionId, resolverContext);
         if (!handler) return;
 
         // Scalable count only when not in cascade mode
         const count = !cascade.isCascade && isScalableAction(cascade.actionId)
-          ? computeGestureCount(Math.abs(event.dx), gestureThreshold)
+          ? computeGestureCount(Math.abs(event.dx), effectiveGestureThreshold)
           : undefined;
 
         const chainAction = getChainActionForDirection(chainDirections, event.direction);
@@ -141,7 +167,7 @@ export function useCardGestures({
           : undefined;
         handler(id, count, duration !== undefined ? { duration } : undefined);
       },
-      [gestureDirections, chainDirections, gestureThreshold, cascadeStepPixels, resolverContext, id],
+      [gestureDirections, chainDirections, effectiveGestureThreshold, effectiveCascadeStepPixels, resolverContext, id],
     ),
   });
 
@@ -162,8 +188,8 @@ export function useCardGestures({
     const cascade = resolveCascadeAction(
       getCascadeActionsForDirection(gestureDirections, activeGesture.direction),
       activeGesture.distance,
-      gestureThreshold,
-      cascadeStepPixels,
+      effectiveGestureThreshold,
+      effectiveCascadeStepPixels,
     );
     lastCommittedRef.current = {
       direction: activeGesture.direction,
@@ -181,8 +207,8 @@ export function useCardGestures({
     ? resolveCascadeAction(
         getCascadeActionsForDirection(gestureDirections, activeGesture.direction),
         activeGesture.distance,
-        gestureThreshold,
-        cascadeStepPixels,
+        effectiveGestureThreshold,
+        effectiveCascadeStepPixels,
       )
     : null;
 
@@ -190,7 +216,7 @@ export function useCardGestures({
 
   // Scalable count only in single-action (non-cascade) mode
   const activeCount = isCommitted && activeActionId && activeCascade && !activeCascade.isCascade
-    ? computeGestureCount(Math.abs(activeGesture.dx), gestureThreshold)
+    ? computeGestureCount(Math.abs(activeGesture.dx), effectiveGestureThreshold)
     : undefined;
 
   const secondaryState = useGestureSecondaryStore();
@@ -206,7 +232,7 @@ export function useCardGestures({
   return {
     gestureHandlers,
     gestureConsumed,
-    enabled: gestureEnabled,
+    enabled: effectiveGestureEnabled,
     isCommitted,
     direction: isCommitted ? activeGesture.direction : null,
     actionId: activeActionId,
@@ -214,7 +240,7 @@ export function useCardGestures({
     count: activeCount,
     duration: activeDuration,
     durationUnit: secondaryState.unit,
-    edgeInset: gestureEdgeInset,
+    edgeInset: effectiveGestureEdgeInset,
     phase,
     tierIndex: activeCascade?.isCascade ? activeCascade.tierIndex : undefined,
     totalTiers: activeCascade?.isCascade ? activeCascade.totalTiers : undefined,

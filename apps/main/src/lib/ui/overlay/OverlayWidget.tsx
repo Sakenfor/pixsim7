@@ -242,9 +242,10 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
       data-widget-id={widget.id}
       data-widget-type={widget.type}
     >
-      {/* Inner overflow:hidden wrapper is required for grid-template-rows
-          collapse animation when inStack. Without it 0fr won't clip content. */}
-      {inStack ? <div style={{ overflow: 'hidden' }}>{content}</div> : content}
+      {/* Inner wrapper clips content during grid-template-rows 0fr collapse.
+          overflow is visible when expanded so rings/outlines/scale animations
+          aren't clipped to a square bounding box. */}
+      {inStack ? <div style={{ overflow: isStackCollapsed ? 'hidden' : 'visible' }}>{content}</div> : content}
     </div>
   );
 };

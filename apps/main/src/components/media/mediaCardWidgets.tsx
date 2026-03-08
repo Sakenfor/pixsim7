@@ -232,13 +232,13 @@ function ProviderBadge({ providerId, providerColor, innerColor, uploadStatus, ch
 
   const style: React.CSSProperties = {
     backgroundColor: effectiveInner,
-    borderColor: providerColor,
+    borderColor: failed ? '#ef4444' : providerColor,
     borderWidth: '3px',
     borderStyle: 'solid',
   };
 
   return (
-    <div className="relative cursor-pointer hover:animate-hover-pop">
+    <div className={`relative cursor-pointer hover:animate-hover-pop${failed ? ' ring-2 ring-red-500/60 ring-offset-1 rounded-full' : ''}`}>
       {children(style)}
       {failed && (
         <span
@@ -292,11 +292,25 @@ function ProviderStatusContent({ data, widgetProps }: {
       ? 'ring-2 ring-red-500 ring-offset-1'
       : '';
 
-  // Additional providers from cross-provider uploads
+  // Additional providers from cross-provider uploads AND failed upload attempts
   const additionalProviders = useMemo(() => {
-    if (!data.providerUploads) return [];
-    return Object.keys(data.providerUploads).filter(p => p !== data.providerId && !p.includes('_'));
-  }, [data.providerUploads, data.providerId]);
+    const seen = new Set<string>();
+    // Successful cross-provider uploads
+    if (data.providerUploads) {
+      for (const p of Object.keys(data.providerUploads)) {
+        if (p !== data.providerId && !p.includes('_')) seen.add(p);
+      }
+    }
+    // Failed uploads that don't yet have a providerUploads entry
+    if (data.lastUploadStatusByProvider) {
+      for (const p of Object.keys(data.lastUploadStatusByProvider)) {
+        if (p !== data.providerId && !p.includes('_') && data.lastUploadStatusByProvider[p] === 'error') {
+          seen.add(p);
+        }
+      }
+    }
+    return [...seen];
+  }, [data.providerUploads, data.lastUploadStatusByProvider, data.providerId]);
 
   const { actions, id: assetId, providerId, mediaType } = widgetProps;
   const hasActions = !!(actions && (

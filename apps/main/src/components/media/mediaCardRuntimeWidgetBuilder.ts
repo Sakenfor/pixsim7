@@ -24,6 +24,7 @@ interface MediaCardRuntimeWidgetFactories {
   createModelFamilyWidget: MediaCardWidgetFactory;
   createQuickTagWidget: () => OverlayWidget<MediaCardOverlayData> | null;
   createQuickAddButton: () => OverlayWidget<MediaCardOverlayData> | null;
+  createVersionBadge: () => OverlayWidget<MediaCardOverlayData>;
 }
 
 /**
@@ -51,6 +52,7 @@ export function buildMediaCardRuntimeWidgets(
     createModelFamilyWidget,
     createQuickTagWidget,
     createQuickAddButton,
+    createVersionBadge,
   } = factories;
 
   const widgets = [
@@ -70,6 +72,7 @@ export function buildMediaCardRuntimeWidgets(
     createQuickAddButton(),
     createGenerationActionModeBadge(props),
     createGenerationButtonGroup(props),
+    createVersionBadge(),
   ];
 
   let result = widgets

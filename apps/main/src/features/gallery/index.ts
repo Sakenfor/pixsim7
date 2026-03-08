@@ -53,7 +53,60 @@ export {
 // ============================================================================
 
 // Re-export from lib/core (former lib/gallery)
-export * from './lib/core';
+export type {
+  GalleryToolCategory,
+  GalleryAsset,
+  GalleryToolContext,
+  GalleryToolPlugin,
+  GalleryUiToolPlugin,
+  GallerySurfaceId,
+  GallerySurfaceCategory,
+  MediaType,
+  GallerySurfaceDefinition,
+  AssetCharacterId,
+  AssetLocationId,
+  AssetRole,
+  SourceTypeId,
+  SourceCategory,
+  SourceTypeDefinition,
+  AssetSourceId,
+  AssetSourceInfo,
+  AssetSourceComponentProps,
+  AssetSourceDefinition,
+} from './lib/core';
+export {
+  GalleryToolRegistry,
+  galleryToolRegistry,
+  GallerySurfaceRegistry,
+  gallerySurfaceRegistry,
+  registerGallerySurfaces,
+  registerGalleryTools,
+  getAssetRoles,
+  getAssetCharacters,
+  getAssetLocations,
+  hasAssetRole,
+  hasAssetCharacter,
+  hasAssetLocation,
+  getAssetCameraTags,
+  getAssetIdentities,
+  filterAssetsByRole,
+  filterAssetsByCharacter,
+  filterAssetsByLocation,
+  filterAssetsByRoleAndIdentity,
+  inferCompositionRoleFromAsset,
+  sourceTypeRegistry,
+  registerSourceType,
+  getSourceType,
+  getAllSourceTypes,
+  getDefaultInstanceId,
+  assetSourceRegistry,
+  registerAssetSource,
+  getAssetSource,
+  getAllAssetSources,
+  registerAssetSources,
+  mergeBadgeConfig,
+  deriveOverlayPresetIdFromBadgeConfig,
+} from './lib/core';
 
 // ============================================================================
 // Lib - Client-side Filters

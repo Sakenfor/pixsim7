@@ -216,12 +216,10 @@ export const galleryGridWidgetDefinition: WidgetDefinition = {
     rowGap: 16,
     filters: {},
     badgeConfig: {
-      showPrimaryIcon: true,
       showStatusIcon: true,
-      showStatusTextOnHover: true,
       showTagsInOverlay: false,
       showFooterProvider: false,
-      showFooterDate: true,
+      showGenerationBadge: true,
     },
   },
 

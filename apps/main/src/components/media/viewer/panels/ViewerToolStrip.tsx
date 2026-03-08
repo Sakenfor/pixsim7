@@ -17,7 +17,6 @@ interface ViewerToolStripProps {
   overlayTools: MediaOverlayTool[];
   overlayMode: string;
   onToggleOverlay: (id: MediaOverlayId) => void;
-  onExitOverlay: () => void;
   onMoveMode?: () => void;
   isMoveActive?: boolean;
 }
@@ -40,7 +39,6 @@ export function ViewerToolStrip({
   overlayTools,
   overlayMode,
   onToggleOverlay,
-  onExitOverlay,
   onMoveMode,
   isMoveActive,
 }: ViewerToolStripProps) {
@@ -50,14 +48,14 @@ export function ViewerToolStrip({
 
   return (
     <div className="flex-shrink-0 flex flex-col items-center py-2 gap-0.5 w-9 bg-neutral-900/60 border-r border-neutral-700/50">
-      {/* Select/pointer mode — exits overlay */}
+      {/* Select/pointer mode — select within overlay, or idle when no overlay */}
       <div className="relative">
         <button
-          onClick={onExitOverlay}
+          onClick={hasOverlay ? onMoveMode : undefined}
           onMouseEnter={() => setHoveredId('__select__')}
           onMouseLeave={() => setHoveredId(null)}
           className={`p-1.5 rounded-md transition-colors ${
-            isNoneActive
+            isNoneActive || isMoveActive
               ? 'bg-blue-500/20 text-blue-400'
               : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-700/50'
           }`}
@@ -66,37 +64,12 @@ export function ViewerToolStrip({
         </button>
         <Tooltip
           content="Select"
-          shortcut="Esc"
+          shortcut="V"
           position="right"
           show={hoveredId === '__select__'}
           delay={300}
         />
       </div>
-
-      {/* Move/grab — select & move within current overlay */}
-      {hasOverlay && (
-        <div className="relative">
-          <button
-            onClick={onMoveMode}
-            onMouseEnter={() => setHoveredId('__move__')}
-            onMouseLeave={() => setHoveredId(null)}
-            className={`p-1.5 rounded-md transition-colors ${
-              isMoveActive
-                ? 'bg-blue-500/20 text-blue-400'
-                : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-700/50'
-            }`}
-          >
-            <Icon name="hand" size={16} />
-          </button>
-          <Tooltip
-            content="Move"
-            shortcut="V"
-            position="right"
-            show={hoveredId === '__move__'}
-            delay={300}
-          />
-        </div>
-      )}
 
       {/* Divider */}
       <div className="w-5 border-t border-neutral-700/50 my-1" />

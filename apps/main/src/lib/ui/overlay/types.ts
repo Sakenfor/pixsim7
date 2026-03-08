@@ -308,6 +308,25 @@ export interface OverlayConfiguration {
 export type PresetCategory = 'media' | 'video' | 'hud' | 'dashboard' | 'custom';
 
 /**
+ * Optional gesture overrides applied when a preset is active.
+ * Values not provided fall back to global gesture settings.
+ */
+export interface PresetGestureOverrides {
+  enabled?: boolean;
+  threshold?: number;
+  edgeInset?: number;
+  cascadeStepPixels?: number;
+  gestureUp?: string[];
+  gestureDown?: string[];
+  gestureLeft?: string[];
+  gestureRight?: string[];
+  chainUp?: string;
+  chainDown?: string;
+  chainLeft?: string;
+  chainRight?: string;
+}
+
+/**
  * Preset capabilities for runtime widget configuration
  *
  * Used by runtime widget factories to determine which widgets to create
@@ -343,6 +362,12 @@ export interface PresetCapabilities {
    *  this only affects the button within the pill — used by CompactAssetCard
    *  in gallery contexts where assets are already in the library. */
   skipPillUpload?: boolean;
+
+  /**
+   * Preset-scoped gesture behavior overrides for MediaCard interactions.
+   * Lets a visual preset also tune swipe behavior without touching global settings.
+   */
+  gestureOverrides?: PresetGestureOverrides;
 }
 
 /**

@@ -12,7 +12,7 @@ import { useSearchParams } from 'react-router-dom';
 
 import { Icon } from '@lib/icons';
 import type { OverlayConfiguration } from '@lib/ui/overlay';
-import { mediaCardPresets, PresetManager } from '@lib/ui/overlay';
+import { mediaCardPresets, PresetManager, getOverlayPresetMetadata } from '@lib/ui/overlay';
 import { LocalStoragePresetStorage } from '@lib/ui/overlay';
 import { APIPresetStorage, IndexedDBPresetStorage } from '@lib/ui/overlay';
 
@@ -77,12 +77,10 @@ const COMPONENT_CONFIGS: Record<ComponentType, ComponentConfig> = {
       <MediaCard
         {...SAMPLE_MEDIA}
         badgeConfig={{
-          showPrimaryIcon: true,
           showStatusIcon: true,
           showTagsInOverlay: true,
           showFooterProvider: true,
           showGenerationBadge: true,
-          showGenerationOnHoverOnly: true,
         }}
       />
     ),
@@ -425,6 +423,8 @@ export function OverlayConfig() {
               id: p.id,
               name: p.name,
               icon: p.icon,
+              description: p.configuration.description,
+              metadata: getOverlayPresetMetadata(p).chips,
               configuration: p.configuration,
             }))}
             onPresetSelect={handlePresetSelect}

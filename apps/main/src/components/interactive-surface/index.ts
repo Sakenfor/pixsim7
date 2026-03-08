@@ -38,6 +38,26 @@ export type { InteractiveImageSurfaceHandle } from './InteractiveImageSurface';
 // Demo component (reference implementation for mask editing)
 export { InteractiveSurfaceDemo } from './InteractiveSurfaceDemo';
 
+// Curve utilities
+export {
+  hitTestCurve,
+  findNearVertex,
+  moveCurveVertex,
+  insertCurveVertex,
+  removeCurveVertex,
+  adjustVertexWidth,
+  initPointWidths,
+  CURVE_HIT,
+  WIDTH_LIMITS,
+} from './curveEditUtils';
+export type { CurveVertexResult } from './curveEditUtils';
+
+export {
+  traceSmoothPath,
+  drawVariableWidthCurve,
+  interpolateCurvePoints,
+} from './curveRenderUtils';
+
 // Hooks
 export { useInteractionLayer } from './useInteractionLayer';
 export type {

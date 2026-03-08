@@ -32,6 +32,8 @@ export interface GenerationPreset {
   name: string;
   /** Operation type this preset is for */
   operationType: OperationType;
+  /** Provider this preset is scoped to (undefined = works with any provider) */
+  providerId?: string;
   /** The prompt text */
   prompt: string;
   /** Input asset references */
@@ -53,6 +55,7 @@ export interface GenerationPreset {
  */
 export interface PresetSnapshot {
   operationType: OperationType;
+  providerId?: string;
   prompt: string;
   inputs: PresetInputRef[];
   params: Record<string, any>;
@@ -143,6 +146,7 @@ export const useGenerationPresetStore = create<GenerationPresetState & Generatio
           id: createPresetId(),
           name,
           operationType: snapshot.operationType,
+          ...(snapshot.providerId ? { providerId: snapshot.providerId } : {}),
           prompt: snapshot.prompt,
           inputs: snapshot.inputs,
           params: snapshot.params,
@@ -170,6 +174,7 @@ export const useGenerationPresetStore = create<GenerationPresetState & Generatio
             return {
               ...p,
               ...(snapshot.operationType !== undefined && { operationType: snapshot.operationType }),
+              ...(snapshot.providerId !== undefined && { providerId: snapshot.providerId || undefined }),
               ...(snapshot.prompt !== undefined && { prompt: snapshot.prompt }),
               ...(snapshot.inputs !== undefined && { inputs: snapshot.inputs }),
               ...(snapshot.params !== undefined && { params: snapshot.params }),

@@ -7,13 +7,9 @@
 
 import {
   distance,
-  moveVertex,
   pointInPolygon,
   clampNormalized,
   movePolygon,
-  polygonHitTest,
-  insertVertexOnEdge,
-  removeVertex,
   translateRect,
   clampRectNormalized,
   getRectHandles,
@@ -39,8 +35,16 @@ import {
   type RegionElement,
   type PolygonElement,
 } from '@/components/interactive-surface';
+import {
+  hitTestCurve,
+  moveCurveVertex,
+  insertCurveVertex,
+  removeCurveVertex,
+  adjustVertexWidth,
+  initPointWidths,
+  CURVE_HIT,
+} from '@/components/interactive-surface/curveEditUtils';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
-
 
 import type { ViewerSettings } from '../types';
 
@@ -70,17 +74,8 @@ const REGION_COLORS = [
   { stroke: '#ec4899', fill: 'rgba(236, 72, 153, 0.15)' },
 ];
 
-/** Threshold for vertex hit detection (normalized, 3% of viewport) */
-const VERTEX_HIT_THRESHOLD = 0.03;
-
 /** Threshold for polygon auto-close detection (normalized, 3% of viewport) */
 const CLOSE_THRESHOLD = 0.03;
-
-/** Threshold for edge hit detection (normalized, 2% of viewport) */
-const EDGE_HIT_THRESHOLD = 0.02;
-
-/** Threshold for click vs drag discrimination (normalized) */
-const DRAG_THRESHOLD = 0.005;
 
 /** Threshold for rect handle hit detection (normalized, 2.5% of viewport) */
 const RECT_HANDLE_THRESHOLD = 0.025;
@@ -152,6 +147,12 @@ export function RegionAnnotationOverlay({
 
   // Derived
   const editingRegionId = editingPolygonId ?? editingRectId;
+  /** Whether the polygon currently being edited is an open curve (not a closed polygon) */
+  const editingIsCurve = useMemo(() => {
+    if (!editingPolygonId) return false;
+    const region = regions.find((r) => r.id === editingPolygonId);
+    return region?.type === 'curve';
+  }, [editingPolygonId, regions]);
 
   // Initialize interaction layer
   const {
@@ -217,6 +218,7 @@ export function RegionAnnotationOverlay({
           type: 'polygon',
           visible: true,
           points: region.points,
+          pointWidths: isCurve ? region.pointWidths : undefined,
           closed: !isCurve,
           style: {
             strokeColor: isSelected ? '#ffffff' : colors.stroke,
@@ -324,17 +326,20 @@ export function RegionAnnotationOverlay({
         return;
       }
 
-      // ---- Polygon edit mode ----
+      // ---- Polygon/curve edit mode ----
       if (editingPolygonId) {
         const points = getEditingPolygonPoints();
+        const isCurve = editingIsCurve;
+        const closed = !isCurve;
         if (points) {
-          const hit = polygonHitTest(event.normalized, points, VERTEX_HIT_THRESHOLD, EDGE_HIT_THRESHOLD);
+          const hit = hitTestCurve(event.normalized, points, closed);
+          const editingRegion = regions.find((r) => r.id === editingPolygonId);
 
           // Right-click or modifier+click vertex -> remove vertex
           if (hit.vertexIndex >= 0 && (isRightClick || modifierHeld)) {
-            const newPoints = removeVertex(points, hit.vertexIndex);
-            if (newPoints) {
-              updateRegion(asset.id, editingPolygonId, { points: newPoints });
+            const result = removeCurveVertex(points, hit.vertexIndex, closed, editingRegion?.pointWidths);
+            if (result) {
+              updateRegion(asset.id, editingPolygonId, { points: result.points, pointWidths: result.pointWidths });
               setHoveredVertexIndex(-1);
             }
             return;
@@ -349,19 +354,22 @@ export function RegionAnnotationOverlay({
 
           // Edge insert (auto-start drag on inserted vertex)
           if (hit.edgeIndex >= 0 && !isRightClick) {
-            const newPoints = insertVertexOnEdge(points, event.normalized, EDGE_HIT_THRESHOLD);
-            if (newPoints.length > points.length) {
-              updateRegion(asset.id, editingPolygonId, { points: newPoints });
+            const result = insertCurveVertex(points, event.normalized, closed, editingRegion?.pointWidths);
+            if (result) {
+              updateRegion(asset.id, editingPolygonId, { points: result.points, pointWidths: result.pointWidths });
               const insertedIndex = hit.edgeIndex + 1;
               setDraggingVertexIndex(insertedIndex);
-              setVertexDragStartPoints([...newPoints]);
+              setVertexDragStartPoints([...result.points]);
               setHoveredEdgeIndex(-1);
             }
             return;
           }
 
-          // Inside polygon -> drag whole polygon
-          if (hit.isInside && !isRightClick) {
+          // Inside polygon -> drag whole polygon; for curves, use proximity
+          const shouldDrag = isCurve
+            ? pointNearPath(event.normalized, points, CURVE_HIT.PROXIMITY)
+            : hit.isInside;
+          if (shouldDrag && !isRightClick) {
             setIsDraggingRegion(true);
             setRegionDragStart(event.normalized);
             setRegionDragOriginalPoints([...points]);
@@ -408,7 +416,7 @@ export function RegionAnnotationOverlay({
             : selectedRegion.type === 'polygon' && selectedRegion.points
               ? pointInPolygon(event.normalized, selectedRegion.points)
               : selectedRegion.type === 'curve' && selectedRegion.points
-                ? pointNearPath(event.normalized, selectedRegion.points, EDGE_HIT_THRESHOLD)
+                ? pointNearPath(event.normalized, selectedRegion.points, CURVE_HIT.EDGE)
                 : false;
 
           if (isHit) {
@@ -463,7 +471,7 @@ export function RegionAnnotationOverlay({
         setPolygonPoints((prev) => [...prev, event.normalized]);
       }
     },
-    [drawingMode, regions, polygonPoints, selectRegion, onRegionSelected, editingPolygonId, editingRectId, getEditingPolygonPoints, addRegion, getRegion, onRegionCreated, asset.id, modifierHeld, updateRegion, exitEditMode, selectedRegionId]
+    [drawingMode, regions, polygonPoints, selectRegion, onRegionSelected, editingPolygonId, editingRectId, editingIsCurve, getEditingPolygonPoints, addRegion, getRegion, onRegionCreated, asset.id, modifierHeld, updateRegion, exitEditMode, selectedRegionId]
   );
 
   const handlePointerMove = useCallback(
@@ -501,25 +509,25 @@ export function RegionAnnotationOverlay({
       if (regionDragStart && !isDraggingRegion && selectedRegionId) {
         const dx = Math.abs(event.normalized.x - regionDragStart.x);
         const dy = Math.abs(event.normalized.y - regionDragStart.y);
-        if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
+        if (dx > CURVE_HIT.DRAG || dy > CURVE_HIT.DRAG) {
           setIsDraggingRegion(true);
         }
         return;
       }
 
-      // 5. Vertex drag (polygon edit mode)
+      // 5. Vertex drag (polygon/curve edit mode)
       if (editingPolygonId && draggingVertexIndex >= 0 && vertexDragStartPoints) {
         const newPosition = clampNormalized(event.normalized);
-        const newPoints = moveVertex(vertexDragStartPoints, draggingVertexIndex, newPosition);
+        const newPoints = moveCurveVertex(vertexDragStartPoints, draggingVertexIndex, newPosition);
         updateRegion(asset.id, editingPolygonId, { points: newPoints });
         return;
       }
 
-      // 6. Polygon edit hover (vertex + edge)
+      // 6. Polygon/curve edit hover (vertex + edge)
       if (editingPolygonId && draggingVertexIndex < 0) {
         const points = getEditingPolygonPoints();
         if (points) {
-          const hit = polygonHitTest(event.normalized, points, VERTEX_HIT_THRESHOLD, EDGE_HIT_THRESHOLD);
+          const hit = hitTestCurve(event.normalized, points, !editingIsCurve);
           if (hit.vertexIndex !== hoveredVertexIndex) {
             setHoveredVertexIndex(hit.vertexIndex);
           }
@@ -554,7 +562,7 @@ export function RegionAnnotationOverlay({
 
       setCurrentRect({ x, y, width, height });
     },
-    [isDrawing, drawStart, drawingMode, polygonPoints, editingPolygonId, editingRectId, draggingVertexIndex, draggingHandleIndex, vertexDragStartPoints, hoveredVertexIndex, hoveredEdgeIndex, hoveredHandleIndex, getEditingPolygonPoints, updateRegion, asset.id, isDraggingRegion, regionDragStart, regionDragOriginalBounds, regionDragOriginalPoints, selectedRegionId, handleDragStartBounds, regions]
+    [isDrawing, drawStart, drawingMode, polygonPoints, editingPolygonId, editingRectId, editingIsCurve, draggingVertexIndex, draggingHandleIndex, vertexDragStartPoints, hoveredVertexIndex, hoveredEdgeIndex, hoveredHandleIndex, getEditingPolygonPoints, updateRegion, asset.id, isDraggingRegion, regionDragStart, regionDragOriginalBounds, regionDragOriginalPoints, selectedRegionId, handleDragStartBounds, regions]
   );
 
   const handlePointerUp = useCallback(
@@ -678,10 +686,16 @@ export function RegionAnnotationOverlay({
       if (drawingMode === 'select' && !editingRegionId) {
         const clickedRegion = findRegionAtPoint(regions, event.normalized);
         if (clickedRegion) {
-          if (clickedRegion.type === 'polygon' && clickedRegion.points) {
+          if ((clickedRegion.type === 'polygon' || clickedRegion.type === 'curve') && clickedRegion.points) {
             setEditingPolygonId(clickedRegion.id);
             selectRegion(clickedRegion.id);
             onRegionSelected?.(clickedRegion.id);
+            // Initialize pointWidths for curves if not present
+            if (clickedRegion.type === 'curve' && !clickedRegion.pointWidths) {
+              updateRegion(asset.id, clickedRegion.id, {
+                pointWidths: initPointWidths(clickedRegion.points.length, clickedRegion.style?.strokeWidth ?? 3),
+              });
+            }
           } else if (clickedRegion.type === 'rect' && clickedRegion.bounds) {
             setEditingRectId(clickedRegion.id);
             selectRegion(clickedRegion.id);
@@ -690,8 +704,34 @@ export function RegionAnnotationOverlay({
         }
       }
     },
-    [drawingMode, polygonPoints, regions, asset.id, addRegion, selectRegion, getRegion, onRegionCreated, editingRegionId, onRegionSelected]
+    [drawingMode, polygonPoints, regions, asset.id, addRegion, selectRegion, getRegion, onRegionCreated, editingRegionId, onRegionSelected, updateRegion]
   );
+
+  // Scroll wheel handler for per-point width adjustment in curve edit mode
+  const handleWheel = useCallback(
+    (event: WheelEvent) => {
+      if (!editingPolygonId || !editingIsCurve || hoveredVertexIndex < 0) return;
+      const editingRegion = regions.find((r) => r.id === editingPolygonId);
+      if (!editingRegion?.pointWidths) return;
+
+      event.preventDefault();
+      const delta = event.deltaY < 0 ? 0.5 : -0.5;
+      const newWidths = adjustVertexWidth(editingRegion.pointWidths, hoveredVertexIndex, delta);
+      if (newWidths) {
+        updateRegion(asset.id, editingPolygonId, { pointWidths: newWidths });
+      }
+    },
+    [editingPolygonId, editingIsCurve, hoveredVertexIndex, regions, updateRegion, asset.id]
+  );
+
+  // Attach wheel listener (passive: false needed for preventDefault)
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !editingPolygonId || !editingIsCurve) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel, editingPolygonId, editingIsCurve]);
 
   // Combine handlers
   const handlers = useMemo(
@@ -748,6 +788,7 @@ export function RegionAnnotationOverlay({
 
   return (
     <div
+      ref={containerRef}
       className="relative w-full h-full"
       onContextMenu={editingRegionId ? (e) => e.preventDefault() : undefined}
     >
@@ -867,12 +908,14 @@ export function RegionAnnotationOverlay({
           );
         })()}
 
-        {/* Polygon edit mode: vertex handles */}
+        {/* Polygon/curve edit mode: vertex handles */}
         {editingPolygonId && (() => {
           const editingRegion = regions.find((r) => r.id === editingPolygonId);
           if (!editingRegion?.points) return null;
           const colorIndex = regions.indexOf(editingRegion) % REGION_COLORS.length;
           const accentColor = REGION_COLORS[colorIndex].stroke;
+          const isCurve = editingRegion.type === 'curve';
+          const pointWidths = editingRegion.pointWidths;
 
           return (
             <svg
@@ -885,18 +928,32 @@ export function RegionAnnotationOverlay({
                 const isDragging = i === draggingVertexIndex;
                 const showRemoveHint = isHovered && modifierHeld;
                 const radius = (isHovered || isDragging) ? 0.9 : 0.6;
+                const pw = isCurve && pointWidths ? pointWidths[i] : undefined;
 
                 return (
-                  <circle
-                    key={i}
-                    cx={p.x * 100}
-                    cy={p.y * 100}
-                    r={radius}
-                    fill={showRemoveHint ? '#ef4444' : isDragging ? accentColor : 'white'}
-                    stroke={showRemoveHint ? 'white' : isDragging ? 'white' : accentColor}
-                    strokeWidth={isDragging ? 0.3 : 0.15}
-                    style={{ pointerEvents: 'none' }}
-                  />
+                  <g key={i}>
+                    {/* Width indicator ring for curves */}
+                    {pw != null && (
+                      <circle
+                        cx={p.x * 100}
+                        cy={p.y * 100}
+                        r={Math.max(0.4, pw * 0.15)}
+                        fill="none"
+                        stroke={isHovered ? '#ffffff' : accentColor}
+                        strokeWidth={0.1}
+                        strokeDasharray="0.3,0.2"
+                        opacity={0.6}
+                      />
+                    )}
+                    <circle
+                      cx={p.x * 100}
+                      cy={p.y * 100}
+                      r={radius}
+                      fill={showRemoveHint ? '#ef4444' : isDragging ? accentColor : 'white'}
+                      stroke={showRemoveHint ? 'white' : isDragging ? 'white' : accentColor}
+                      strokeWidth={isDragging ? 0.3 : 0.15}
+                    />
+                  </g>
                 );
               })}
             </svg>
@@ -996,7 +1053,7 @@ function findRegionAtPoint(
       }
     } else if (region.type === 'curve' && region.points) {
       // Proximity hit-test for open curves
-      if (pointNearPath(point, region.points, EDGE_HIT_THRESHOLD)) {
+      if (pointNearPath(point, region.points, CURVE_HIT.EDGE)) {
         return region;
       }
     }
