@@ -65,6 +65,9 @@ class TemplateResponse(BaseModel):
     tags: List[str] = Field(default_factory=list)
     is_public: bool = True
     created_by: Optional[str] = None
+    owner_user_id: Optional[int] = None
+    owner_ref: Optional[str] = None
+    owner_username: Optional[str] = None
     roll_count: int = 0
     template_metadata: Dict[str, Any] = Field(default_factory=dict)
     character_bindings: Dict[str, Any] = Field(default_factory=dict)
@@ -85,6 +88,9 @@ class TemplateSummaryResponse(BaseModel):
     package_name: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     is_public: bool = True
+    owner_user_id: Optional[int] = None
+    owner_ref: Optional[str] = None
+    owner_username: Optional[str] = None
     roll_count: int = 0
     composition_role_gap_count: int = 0
     composition_role_ids: List[str] = Field(default_factory=list)

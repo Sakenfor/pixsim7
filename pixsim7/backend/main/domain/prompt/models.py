@@ -700,6 +700,12 @@ class BlockTemplate(SQLModel, table=True):
         max_length=100,
         description="User/system that created this template"
     )
+    owner_user_id: Optional[int] = Field(
+        default=None,
+        foreign_key="users.id",
+        index=True,
+        description="Owning user ID (canonical ownership field)",
+    )
 
     # Usage tracking
     roll_count: int = Field(
@@ -732,6 +738,7 @@ class BlockTemplate(SQLModel, table=True):
 
     __table_args__ = (
         Index("idx_block_template_package_public", "package_name", "is_public"),
+        Index("idx_block_template_owner_public", "owner_user_id", "is_public"),
         Index("idx_block_template_created", "created_at"),
     )
 

@@ -59,6 +59,9 @@ export interface RollTemplateRequest {
 export interface ListTemplatesQuery {
   package_name?: string;
   is_public?: boolean;
+  owner_user_id?: number;
+  mine?: boolean;
+  include_public?: boolean;
   tag?: string;
   limit?: number;
   offset?: number;

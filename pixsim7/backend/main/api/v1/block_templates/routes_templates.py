@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import get_db, get_current_user
+from pixsim7.backend.main.api.dependencies import get_db, get_current_user, get_current_user_optional
 from pixsim7.backend.main.services.prompt.block.template_service import BlockTemplateService
 from pixsim7.backend.main.services.prompt.block.template_slots import normalize_template_slots
 from pixsim7.backend.main.domain.user import User
@@ -21,6 +21,11 @@ from pixsim7.backend.main.services.prompt.block.resolution_core import (
 )
 from pixsim7.backend.main.services.prompt.block.compiler_core import (
     build_default_compiler_registry,
+)
+from pixsim7.backend.main.services.ownership.user_owned import (
+    assert_can_write_user_owned,
+    resolve_user_owner,
+    resolve_user_owned_list_scope,
 )
 from .schemas import (
     CreateTemplateRequest,
@@ -62,6 +67,7 @@ async def create_template(
     template = await service.create_template(
         data=data,
         created_by=current_user.username if current_user else None,
+        owner_user_id=current_user.id if current_user else None,
     )
     return await _template_response_with_hints(template, service=service)
 
@@ -70,16 +76,35 @@ async def create_template(
 async def list_templates(
     package_name: Optional[str] = Query(None),
     is_public: Optional[bool] = Query(None),
+    owner_user_id: Optional[int] = Query(None),
+    mine: bool = Query(False, description="Return current user's templates"),
+    include_public: bool = Query(
+        True,
+        description="When mine=true, include public templates in addition to owned templates",
+    ),
     tag: Optional[str] = Query(None),
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """List/search block templates."""
     service = BlockTemplateService(db)
+    scope = resolve_user_owned_list_scope(
+        current_user=current_user,
+        requested_owner_user_id=owner_user_id,
+        requested_is_public=is_public,
+        mine=mine,
+        include_public_when_mine=include_public,
+        mine_forbidden_cross_owner_detail="Not allowed to query another user's templates with mine=true",
+        private_owner_forbidden_detail="Not allowed to query private templates of another user",
+    )
+
     templates = await service.search_templates(
         package_name=package_name,
-        is_public=is_public,
+        is_public=scope.is_public,
+        owner_user_id=scope.owner_user_id,
+        include_public_for_owner=scope.include_public_for_owner,
         tag=tag,
         limit=limit,
         offset=offset,
@@ -87,6 +112,7 @@ async def list_templates(
     result = []
     for t in templates:
         gap_count, role_ids = _compute_slot_composition_summary(t.slots)
+        owner_fields = _extract_template_owner_fields(t)
         result.append(TemplateSummaryResponse(
             id=t.id,
             name=t.name,
@@ -97,6 +123,9 @@ async def list_templates(
             package_name=t.package_name,
             tags=t.tags or [],
             is_public=t.is_public,
+            owner_user_id=owner_fields["owner_user_id"],
+            owner_ref=owner_fields["owner_ref"],
+            owner_username=owner_fields["owner_username"],
             roll_count=t.roll_count,
             composition_role_gap_count=gap_count,
             composition_role_ids=role_ids,
@@ -141,6 +170,10 @@ async def update_template(
 ):
     """Update a template."""
     service = BlockTemplateService(db)
+    template = await service.get_template(template_id)
+    if not template:
+        raise HTTPException(404, "Template not found")
+    _assert_template_write_access(template=template, current_user=current_user)
 
     if request.slug is not None:
         existing = await service.get_template_by_slug(request.slug)
@@ -169,6 +202,10 @@ async def delete_template(
 ):
     """Delete a template."""
     service = BlockTemplateService(db)
+    template = await service.get_template(template_id)
+    if not template:
+        raise HTTPException(404, "Template not found")
+    _assert_template_write_access(template=template, current_user=current_user)
     success = await service.delete_template(template_id)
     if not success:
         raise HTTPException(404, "Template not found")
@@ -429,6 +466,28 @@ async def compile_template_for_resolver_workbench(
 
 # ===== Helpers =====
 
+
+def _extract_template_owner_fields(template: Any) -> Dict[str, Any]:
+    """Read canonical owner identity fields (DB column first, metadata fallback)."""
+    metadata = template.template_metadata if isinstance(template.template_metadata, dict) else {}
+    owner = metadata.get("owner") if isinstance(metadata.get("owner"), dict) else None
+    return resolve_user_owner(
+        model_owner_user_id=getattr(template, "owner_user_id", None),
+        owner_payload=owner,
+        created_by=getattr(template, "created_by", None),
+    )
+
+
+def _assert_template_write_access(*, template: Any, current_user: User) -> None:
+    owner_fields = _extract_template_owner_fields(template)
+    assert_can_write_user_owned(
+        user=current_user,
+        owner_user_id=owner_fields["owner_user_id"],
+        created_by=getattr(template, "created_by", None),
+        denied_detail="Not allowed to modify this template",
+    )
+
+
 async def _template_response_with_hints(
     template: Any,
     *,
@@ -451,6 +510,7 @@ async def _template_response_with_hints(
                 template_metadata = {**template_metadata, "controls": resolved_controls}
         except Exception:
             template_metadata = dict(template_metadata)
+    owner_fields = _extract_template_owner_fields(template)
     return TemplateResponse(
         id=template.id,
         name=template.name,
@@ -462,6 +522,9 @@ async def _template_response_with_hints(
         tags=template.tags or [],
         is_public=template.is_public,
         created_by=template.created_by,
+        owner_user_id=owner_fields["owner_user_id"],
+        owner_ref=owner_fields["owner_ref"],
+        owner_username=owner_fields["owner_username"],
         roll_count=template.roll_count,
         template_metadata=template_metadata,
         character_bindings=template.character_bindings or {},

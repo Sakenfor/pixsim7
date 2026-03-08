@@ -90,6 +90,9 @@ export interface BlockTemplateSummary {
   package_name?: string | null;
   tags: string[];
   is_public: boolean;
+  owner_user_id?: number | null;
+  owner_ref?: string | null;
+  owner_username?: string | null;
   roll_count: number;
   composition_role_gap_count?: number;
   composition_role_ids?: string[];

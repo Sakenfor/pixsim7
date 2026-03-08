@@ -5,6 +5,7 @@
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useAuthStore } from '@pixsim7/shared.auth.core';
 
 import type {
   BlockTemplateSummary,
@@ -13,6 +14,7 @@ import type {
   TemplateSlot,
   CharacterBindings,
   TemplatePreset,
+  ListTemplatesQuery,
 } from '@lib/api/blockTemplates';
 import {
   getTemplate,
@@ -27,6 +29,7 @@ interface BlockTemplateState {
   // Template list
   templates: BlockTemplateSummary[];
   templatesLoading: boolean;
+  templatesQuery: ListTemplatesQuery | null;
 
   // Active template (full detail)
   activeTemplate: BlockTemplateDetail | null;
@@ -41,7 +44,7 @@ interface BlockTemplateState {
   rolling: boolean;
 
   // Actions
-  fetchTemplates: () => Promise<void>;
+  fetchTemplates: (query?: ListTemplatesQuery) => Promise<void>;
   fetchTemplate: (id: string) => Promise<void>;
   setActiveTemplate: (template: BlockTemplateDetail | null) => void;
 
@@ -150,6 +153,7 @@ function areBindingsEqual(a: CharacterBindings, b: CharacterBindings): boolean {
 export const useBlockTemplateStore = create<BlockTemplateState>()(persist((set, get) => ({
   templates: [],
   templatesLoading: false,
+  templatesQuery: null,
   activeTemplate: null,
   activeLoading: false,
   draftSlots: [],
@@ -162,17 +166,32 @@ export const useBlockTemplateStore = create<BlockTemplateState>()(persist((set, 
   _activeOperation: null,
   controlValues: {},
 
-  fetchTemplates: async () => {
+  fetchTemplates: async (query) => {
     set({ templatesLoading: true });
     try {
+      const currentUserId = useAuthStore.getState().user?.id;
+      const rememberedQuery = get().templatesQuery;
+      const autoQuery: ListTemplatesQuery = currentUserId
+        ? { limit: 200, mine: true, include_public: true }
+        : { limit: 200, is_public: true };
+      const requestedQuery = { ...(query ?? rememberedQuery ?? autoQuery) };
+      if ((requestedQuery.limit ?? null) == null) {
+        requestedQuery.limit = 200;
+      }
+
+      const effectiveQuery: ListTemplatesQuery =
+        requestedQuery.mine && !currentUserId
+          ? { limit: requestedQuery.limit, is_public: true }
+          : requestedQuery;
+
       const templates = await resolveBlockTemplates(
-        { limit: 200 },
+        effectiveQuery,
         {
           consumerId: 'blockTemplateStore.fetchTemplates',
           bypassCache: true,
         },
       );
-      set({ templates });
+      set({ templates, templatesQuery: effectiveQuery });
     } finally {
       set({ templatesLoading: false });
     }

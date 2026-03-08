@@ -130,6 +130,7 @@
 | `prompt_blocks` | `PromptBlock` | — | — |
 | `prompt_version_blocks` | `PromptVersionBlock` | `prompt_versions.id`, `prompt_blocks.id` | — |
 | `prompt_variant_feedback` | `PromptVariantFeedback` | `prompt_versions.id`, `assets.id`, `generations.id`, `users.id` | — |
+| `block_templates` | `BlockTemplate` | `users.id` (`owner_user_id`) | — |
 
 ### Workspace & Scenes (`domain/workspace.py`, `domain/scene.py`)
 
