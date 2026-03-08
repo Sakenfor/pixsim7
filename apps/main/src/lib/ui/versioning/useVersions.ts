@@ -73,9 +73,14 @@ export function useVersions(
       if (mountedRef.current) {
         setVersions(result);
       }
-    } catch (e) {
+    } catch (e: unknown) {
       if (mountedRef.current) {
-        setError(e instanceof Error ? e.message : 'Failed to fetch versions');
+        // 404 = asset no longer exists — silently return empty versions
+        const status = (e as { response?: { status?: number } })?.response?.status;
+        const is404 = status === 404;
+        if (!is404) {
+          setError(e instanceof Error ? e.message : 'Failed to fetch versions');
+        }
         setVersions([]);
       }
     } finally {

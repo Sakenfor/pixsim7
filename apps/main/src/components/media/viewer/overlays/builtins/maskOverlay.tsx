@@ -12,9 +12,10 @@ import { buildMaskFilename, buildMaskUploadContext } from '@pixsim7/shared.media
 import { useToast } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { API_BASE_URL } from '@lib/api';
+import { API_BASE_URL, deleteAsset } from '@lib/api';
 import { uploadAsset } from '@lib/api/upload';
 import { authService } from '@lib/auth';
+import { Icon } from '@lib/icons';
 import { VersionNavigator, useVersions } from '@lib/ui/versioning';
 
 import { useAssets, type AssetModel, type ViewerAsset } from '@features/assets';
@@ -384,6 +385,15 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   const imageUrl = asset.fullUrl || asset.url;
   const { src: resolvedSrc } = useAuthenticatedMedia(imageUrl);
 
+  // Track media dimensions from our own InteractiveImageSurface (more reliable
+  // than the mediaDimensions prop from MediaPanel which can be stale).
+  const [surfaceDimensions, setSurfaceDimensions] = useState<{ width: number; height: number } | undefined>();
+  const handleMediaLoad = useCallback((dims: { width: number; height: number }) => {
+    setSurfaceDimensions(dims);
+  }, []);
+  // Prefer our own dimensions, fall back to prop
+  const resolvedMediaDimensions = surfaceDimensions ?? mediaDimensions;
+
   // Set up interaction layer
   const interaction = useInteractionLayer({
     initialMode: 'draw',
@@ -671,6 +681,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     redo,
     clearLayer: () => activeLayerId && clearLayer(activeLayerId),
     exportMask: async () => {},
+    saveAsNew: async () => {},
     resetView,
     addLayer: handleAddLayer,
     removeLayer: handleRemoveLayer,
@@ -700,12 +711,31 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   /** Tracks the last saved composite mask asset ID so subsequent saves overwrite it. */
   const lastSavedCompositeIdRef = useRef<number | null>(null);
   const isSavingRef = useRef(false);
-  const exportMask = useCallback(async () => {
+
+  /** Resolve version parent from ref or any layer's savedAssetId. */
+  const resolveVersionParent = useCallback((): number | null => {
+    if (lastSavedCompositeIdRef.current) return lastSavedCompositeIdRef.current;
+    // Check all visible mask layers for a savedAssetId (first one wins)
+    for (const layer of state.layers) {
+      if (layer.type === 'mask' && layer.visible && layer.elements.length > 0) {
+        const savedId = layer.config?.savedAssetId as number | undefined;
+        if (savedId) return savedId;
+      }
+    }
+    return null;
+  }, [state.layers]);
+
+  // Sync hasVersionParent to store so toolbar can show Save vs Save As
+  useEffect(() => {
+    store.getState()._syncState({ hasVersionParent: resolveVersionParent() !== null });
+  }, [resolveVersionParent, store]);
+
+  const doExportMask = useCallback(async (forceNew: boolean) => {
     if (isSavingRef.current) return;
     const saveTarget = 'library' as const;
 
-    const width = mediaDimensions?.width || 1024;
-    const height = mediaDimensions?.height || 1024;
+    const width = resolvedMediaDimensions?.width || 1024;
+    const height = resolvedMediaDimensions?.height || 1024;
 
     // Composite all visible mask layers onto one canvas
     const visibleLayers = state.layers.filter((l) => l.type === 'mask' && l.visible && l.elements.length > 0);
@@ -749,6 +779,21 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       }
     }
 
+    // Binarize: any non-black pixel → pure white (clean binary mask)
+    if (store.getState().forceFullAlpha) {
+      const imageData = ctx.getImageData(0, 0, width, height);
+      const d = imageData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const isNonBlack = d[i] > 0 || d[i + 1] > 0 || d[i + 2] > 0;
+        if (isNonBlack) {
+          d[i] = 255;
+          d[i + 1] = 255;
+          d[i + 2] = 255;
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+
     const maskDataUrl = canvas.toDataURL('image/png');
 
     isSavingRef.current = true;
@@ -769,10 +814,13 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         save_target: saveTarget,
       };
 
-      // If we have a previous save, chain as a version instead of creating orphan
-      if (lastSavedCompositeIdRef.current) {
-        uploadContext.version_parent_id = lastSavedCompositeIdRef.current;
-        uploadContext.version_message = 'Mask updated';
+      // Chain as a version unless forced new
+      if (!forceNew) {
+        const versionParentId = resolveVersionParent();
+        if (versionParentId) {
+          uploadContext.version_parent_id = versionParentId;
+          uploadContext.version_message = 'Mask updated';
+        }
       }
 
       const uploadResult = await uploadAsset({
@@ -799,20 +847,40 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         // Track so next save versions from this composite
         lastSavedCompositeIdRef.current = newAssetId;
 
+        // Stamp savedAssetId on all visible layers so reopening the overlay
+        // chains from the correct parent (not stale or missing).
+        for (const layer of visibleLayers) {
+          updateLayer(layer.id, { config: { ...layer.config, savedAssetId: newAssetId } });
+        }
+
         maskAssetsQuery.reset();
         anyMaskAssetsQuery.reset();
       }
 
-      toast.success(attachedToGeneration ? 'Mask saved and set for generation.' : 'Mask saved to library.');
+      const versionedFrom = !forceNew && uploadContext.version_parent_id;
+      const idLabel = newAssetId ? ` #${newAssetId}` : '';
+      if (forceNew) {
+        toast.success(`Mask${idLabel} saved as new asset.`);
+      } else if (versionedFrom) {
+        toast.success(`Mask${idLabel} updated (version of #${uploadContext.version_parent_id}).`);
+      } else if (attachedToGeneration) {
+        toast.success(`Mask${idLabel} saved and set for generation.`);
+      } else {
+        toast.success(`Mask${idLabel} saved to library.`);
+      }
     } catch (err) {
       toast.error(extractUploadError(err, 'Failed to save mask.'));
     } finally {
       isSavingRef.current = false;
       store.getState()._syncState({ isSaving: false });
     }
-  }, [asset, mediaDimensions, state.layers, toast, store, maskAssetsQuery.reset, anyMaskAssetsQuery.reset]);
+  }, [asset, resolvedMediaDimensions, state.layers, toast, store, updateLayer, maskAssetsQuery.reset, anyMaskAssetsQuery.reset, resolveVersionParent]);
+
+  const exportMask = useCallback(() => doExportMask(false), [doExportMask]);
+  const saveAsNew = useCallback(() => doExportMask(true), [doExportMask]);
 
   callbacksRef.current.exportMask = exportMask;
+  callbacksRef.current.saveAsNew = saveAsNew;
 
   // Register stable wrapper callbacks into bridge store (once)
   useEffect(() => {
@@ -824,6 +892,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       redo: () => callbacksRef.current.redo(),
       clearLayer: () => callbacksRef.current.clearLayer(),
       exportMask: () => callbacksRef.current.exportMask(),
+      saveAsNew: () => callbacksRef.current.saveAsNew(),
       resetView: () => callbacksRef.current.resetView(),
       addLayer: () => callbacksRef.current.addLayer(),
       removeLayer: (id) => callbacksRef.current.removeLayer(id),
@@ -890,6 +959,25 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Delete a saved mask asset from the backend and remove its layer
+  const handleDeleteMaskAsset = useCallback(async (assetId: number, layerId: string) => {
+    try {
+      await deleteAsset(assetId);
+    } catch (err) {
+      // 404 = asset already gone — still clean up the layer
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status !== 404) {
+        toast.error(err instanceof Error ? err.message : 'Failed to delete mask.');
+        return;
+      }
+    }
+    // Remove the layer from the editing session
+    interaction.removeLayer(layerId);
+    maskAssetsQuery.reset();
+    anyMaskAssetsQuery.reset();
+    toast.success(`Mask #${assetId} deleted.`);
+  }, [interaction, maskAssetsQuery, anyMaskAssetsQuery, toast]);
+
   const media = useMemo(
     () => resolvedSrc ? { type: 'image' as const, url: resolvedSrc } : null,
     [resolvedSrc],
@@ -917,6 +1005,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
           handlers={handlers}
           cursor={cursor}
           className="w-full h-full"
+          onMediaLoad={handleMediaLoad}
         />
       </div>
       <MaskLayersPanel
@@ -926,6 +1015,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         loadingMasks={maskAssetsQuery.loading || isImportingSavedMask}
         loadingAnyMasks={anyMaskAssetsQuery.loading || isImportingSavedMask}
         currentMaskUrl={currentMaskUrl}
+        onDeleteMaskAsset={handleDeleteMaskAsset}
       />
     </div>
   );
@@ -951,6 +1041,8 @@ function MaskToolsPanel() {
     isSaving,
     zoom,
     isZoomed,
+    forceFullAlpha,
+    hasVersionParent,
     setMode,
     setBrushSize,
     setBrushOpacity,
@@ -958,7 +1050,9 @@ function MaskToolsPanel() {
     redo,
     clearLayer,
     exportMask,
+    saveAsNew,
     resetView,
+    setForceFullAlpha,
   } = useMaskOverlayStore();
 
   return (
@@ -1020,13 +1114,39 @@ function MaskToolsPanel() {
 
       <div className="flex-1" />
 
-      <SidePrimaryButton
-        disabled={!hasContent || isSaving}
-        title="Save composite mask and attach to generation"
-        onClick={exportMask}
+      <label
+        className="px-2 flex items-center gap-1.5 cursor-pointer select-none"
+        title="Binarize mask on export: any painted pixel becomes fully white"
       >
-        {isSaving ? 'Saving...' : 'Save Mask'}
-      </SidePrimaryButton>
+        <input
+          type="checkbox"
+          checked={forceFullAlpha}
+          onChange={(e) => setForceFullAlpha(e.target.checked)}
+          className="accent-accent w-3 h-3"
+        />
+        <span className="text-[10px] text-th-secondary leading-none">Full alpha</span>
+      </label>
+
+      <div className="flex flex-col gap-1">
+        <SidePrimaryButton
+          disabled={!hasContent || isSaving}
+          title={hasVersionParent ? 'Overwrite current mask version' : 'Save as new mask asset'}
+          onClick={exportMask}
+        >
+          {isSaving ? 'Saving...' : 'Save'}
+        </SidePrimaryButton>
+
+        {hasVersionParent && (
+          <button
+            disabled={!hasContent || isSaving}
+            onClick={saveAsNew}
+            className="w-full h-6 rounded bg-th/10 hover:bg-th/15 text-th-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-[10px]"
+            title="Save as a new standalone mask (no version chain)"
+          >
+            Save as new
+          </button>
+        )}
+      </div>
     </OverlaySidePanel>
   );
 }
@@ -1040,6 +1160,7 @@ interface MaskLayersPanelProps {
   loadingMasks: boolean;
   loadingAnyMasks: boolean;
   currentMaskUrl?: string;
+  onDeleteMaskAsset: (assetId: number, layerId: string) => void;
 }
 
 function MaskLayersPanel({
@@ -1048,6 +1169,7 @@ function MaskLayersPanel({
   anyMasks,
   loadingMasks,
   loadingAnyMasks,
+  onDeleteMaskAsset,
 }: MaskLayersPanelProps) {
   const {
     layers,
@@ -1081,12 +1203,24 @@ function MaskLayersPanel({
   const renderLayerExtra = useCallback((layer: MaskLayerInfo) => {
     if (!layer.savedAssetId) return null;
     return (
-      <LayerVersionNavigator
-        assetId={layer.savedAssetId}
-        onVersionSelect={importSavedMask}
-      />
+      <div className="flex items-center gap-1">
+        <LayerVersionNavigator
+          assetId={layer.savedAssetId}
+          onVersionSelect={importSavedMask}
+        />
+        <button
+          className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-th-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteMaskAsset(layer.savedAssetId!, layer.id);
+          }}
+          title={`Delete saved mask #${layer.savedAssetId}`}
+        >
+          <Icon name="trash" size={10} />
+        </button>
+      </div>
     );
-  }, [importSavedMask]);
+  }, [importSavedMask, onDeleteMaskAsset]);
 
   return (
     <OverlaySidePanel className="w-40">

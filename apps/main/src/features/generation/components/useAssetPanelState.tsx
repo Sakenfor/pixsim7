@@ -13,7 +13,7 @@ import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { useDockviewId } from '@lib/dockview';
 import { getArrayParamLimits, type ParamSpec } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
-import { createBadgeWidget, BADGE_SLOT, BADGE_PRIORITY } from '@lib/ui/overlay';
+import { createBadgeWidget, BADGE_SLOT, BADGE_PRIORITY, type OverlayWidget } from '@lib/ui/overlay';
 
 import { uploadAssetToProvider, type AssetModel } from '@features/assets';
 import { resolveAssetSet } from '@features/assets/lib/assetSetResolver';
@@ -45,6 +45,7 @@ import { OPERATION_METADATA } from '@/types/operations';
 
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 
+import { MaskVersionBadge } from './MaskVersionBadge';
 import { EMPTY_INPUTS, type QuickGenPanelProps } from './quickGenPanelTypes';
 
 // ── Slot Badge Definitions ─────────────────────────────────────────────
@@ -86,20 +87,30 @@ function warningBadge(tooltip: string) {
   });
 }
 
-function maskBadge(count: number) {
+function maskBadge(
+  count: number,
+  maskAssetIds: number[],
+  onSwitchVersion?: (oldAssetId: number, newAssetId: number) => void,
+): OverlayWidget {
   const label = count > 1 ? `${count} Masks` : 'Mask';
-  return createBadgeWidget({
+  const primaryAssetId = maskAssetIds[0] ?? null;
+  return {
     id: 'mask-badge',
+    type: 'badge',
     ...BADGE_SLOT.topRight,
-    variant: 'icon-text',
-    icon: 'paintbrush',
-    labelBinding: { kind: 'fn', target: 'label', fn: () => label },
-    color: 'gray',
-    shape: 'rounded',
-    tooltip: count > 1 ? `${count} inpaint masks attached` : 'Inpaint mask attached',
+    visibility: { trigger: 'always' as const, transition: 'none' as const },
     priority: BADGE_PRIORITY.status,
-    className: '!bg-black/60 !text-white',
-  });
+    stackGroup: 'badges-tr',
+    interactive: true,
+    ariaLabel: count > 1 ? `${count} inpaint masks attached` : 'Inpaint mask attached',
+    render: () => (
+      <MaskVersionBadge
+        label={label}
+        primaryAssetId={primaryAssetId}
+        onSwitchVersion={onSwitchVersion}
+      />
+    ),
+  };
 }
 
 export function useAssetPanelState(props: QuickGenPanelProps) {
@@ -175,6 +186,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const setArmedSlot = useInputStore(s => s.setArmedSlot);
   const setInputMode = useInputStore(s => s.setInputMode);
   const storeReorderInput = useInputStore(s => s.reorderInput);
+  const storeUpdateMaskLayer = useInputStore(s => s.updateMaskLayer);
   const reorderInput = ctx?.reorderInput ?? storeReorderInput;
 
   // Mini gallery popover for empty slot / add asset
@@ -807,6 +819,17 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     [handleSetPopoverOpen],
   );
 
+  // Switch a mask layer to a different version asset
+  const handleMaskVersionSwitch = useCallback(
+    (item: InputItem, oldAssetId: number, newAssetId: number) => {
+      const layer = item.maskLayers?.find((l) => l.assetUrl === `asset:${oldAssetId}`);
+      if (layer) {
+        storeUpdateMaskLayer(operationType, item.id, layer.id, { assetUrl: `asset:${newAssetId}` });
+      }
+    },
+    [storeUpdateMaskLayer, operationType],
+  );
+
   // Unified widget assembly for any slot.
   // Combines static badges (module-level) + interactive badges (callbacks above).
   const buildSlotExtraWidgets = useCallback(
@@ -821,12 +844,22 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
       } else {
         widgets.push(buildSetLinkWidget(slotIdx));
       }
-      const maskCount = item.maskLayers?.filter((l) => l.visible).length ?? (item.maskUrl ? 1 : 0);
-      if (maskCount > 0) widgets.push(maskBadge(maskCount));
+      const visibleMasks = item.maskLayers?.filter((l) => l.visible) ?? [];
+      const maskCount = visibleMasks.length || (item.maskUrl ? 1 : 0);
+      if (maskCount > 0) {
+        const maskAssetIds = visibleMasks
+          .map((l) => { const m = l.assetUrl.match(/^asset:(\d+)$/); return m ? Number(m[1]) : null; })
+          .filter((id): id is number => id !== null);
+        widgets.push(maskBadge(
+          maskCount,
+          maskAssetIds,
+          (oldId, newId) => handleMaskVersionSwitch(item, oldId, newId),
+        ));
+      }
       if (isClamped) widgets.push(warningBadge(`Over limit — only the first ${maxAssetItems} assets will be used`));
       return widgets;
     },
-    [clampedSlotIndices, maxAssetItems, buildSetBadgeWidget, buildSetLinkWidget],
+    [clampedSlotIndices, maxAssetItems, buildSetBadgeWidget, buildSetLinkWidget, handleMaskVersionSwitch],
   );
 
   return {

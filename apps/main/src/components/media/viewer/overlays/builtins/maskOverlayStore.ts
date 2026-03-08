@@ -35,9 +35,17 @@ export interface MaskOverlayStoreState {
   zoom: number;
   isZoomed: boolean;
 
+  // ── Export settings ─────────────────────────────────────────────────
+  /** When true, exported masks are binarized: any non-black pixel → full white. Default: true. */
+  forceFullAlpha: boolean;
+  setForceFullAlpha: (value: boolean) => void;
+
   // ── Layer state ─────────────────────────────────────────────────────
   layers: MaskLayerInfo[];
   activeLayerId: string | null;
+
+  /** True when there's a known version parent for the current mask (enables "Save" vs "Save as new"). */
+  hasVersionParent: boolean;
 
   // ── Callbacks (registered by Main, called by panels) ────────────────
   setMode: (mode: InteractionMode) => void;
@@ -46,7 +54,10 @@ export interface MaskOverlayStoreState {
   undo: () => void;
   redo: () => void;
   clearLayer: () => void;
+  /** Save mask, versioning from parent if available. */
   exportMask: () => Promise<void>;
+  /** Save mask as a new standalone asset (no versioning). */
+  saveAsNew: () => Promise<void>;
   resetView: () => void;
 
   // Layer callbacks
@@ -59,10 +70,10 @@ export interface MaskOverlayStoreState {
 
   // ── Internal sync method ────────────────────────────────────────────
   _syncState: (partial: Partial<Pick<MaskOverlayStoreState,
-    'mode' | 'brushSize' | 'brushOpacity' | 'canUndo' | 'canRedo' | 'hasContent' | 'isSaving' | 'zoom' | 'isZoomed' | 'layers' | 'activeLayerId'
+    'mode' | 'brushSize' | 'brushOpacity' | 'canUndo' | 'canRedo' | 'hasContent' | 'isSaving' | 'zoom' | 'isZoomed' | 'layers' | 'activeLayerId' | 'hasVersionParent'
   >>) => void;
   _registerCallbacks: (cbs: Partial<Pick<MaskOverlayStoreState,
-    'setMode' | 'setBrushSize' | 'setBrushOpacity' | 'undo' | 'redo' | 'clearLayer' | 'exportMask' | 'resetView'
+    'setMode' | 'setBrushSize' | 'setBrushOpacity' | 'undo' | 'redo' | 'clearLayer' | 'exportMask' | 'saveAsNew' | 'resetView'
     | 'addLayer' | 'removeLayer' | 'setActiveLayer' | 'toggleLayerVisibility' | 'renameLayer' | 'importSavedMask'
   >>) => void;
 }
@@ -81,6 +92,11 @@ export const useMaskOverlayStore = create<MaskOverlayStoreState>((set) => ({
   zoom: 1,
   isZoomed: false,
 
+  forceFullAlpha: true,
+  setForceFullAlpha: (value) => set({ forceFullAlpha: value }),
+
+  hasVersionParent: false,
+
   layers: [],
   activeLayerId: null,
 
@@ -91,6 +107,7 @@ export const useMaskOverlayStore = create<MaskOverlayStoreState>((set) => ({
   redo: noop,
   clearLayer: noop,
   exportMask: noopAsync,
+  saveAsNew: noopAsync,
   resetView: noop,
 
   addLayer: noop,

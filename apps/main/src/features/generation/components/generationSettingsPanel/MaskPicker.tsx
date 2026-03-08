@@ -5,6 +5,8 @@ import { Icon } from '@lib/icons';
 import type { AssetModel } from '@features/assets';
 import type { InputMaskLayer } from '@features/generation';
 
+import { useMaskOverlayStore } from '@/components/media/viewer/overlays/builtins/maskOverlayStore';
+
 import { MiniGalleryPopover } from '../MiniGalleryPopover';
 
 interface MaskPickerProps {
@@ -42,6 +44,9 @@ export function MaskPicker({
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [showAll, setShowAll] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
+
+  const forceFullAlpha = useMaskOverlayStore((s) => s.forceFullAlpha);
+  const setForceFullAlpha = useMaskOverlayStore((s) => s.setForceFullAlpha);
 
   const layers = useMemo(() => maskLayers ?? [], [maskLayers]);
   const visibleCount = layers.filter((l) => l.visible).length;
@@ -139,6 +144,19 @@ export function MaskPicker({
             <Icon name="x" size={10} />
           </button>
         )}
+
+        <button
+          type="button"
+          onClick={() => setForceFullAlpha(!forceFullAlpha)}
+          className={`ml-auto px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors ${
+            forceFullAlpha
+              ? 'bg-accent/15 text-accent border border-accent/30'
+              : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 border border-neutral-200 dark:border-neutral-700'
+          }`}
+          title={forceFullAlpha ? 'Full alpha ON: painted pixels export as pure white' : 'Full alpha OFF: preserving brush opacity in export'}
+        >
+          {forceFullAlpha ? 'Full \u03B1' : 'Raw \u03B1'}
+        </button>
       </div>
 
       {/* Layer list (visibility toggles for already-added masks) */}
