@@ -39,6 +39,9 @@ from pixsim7.backend.main.services.analysis.analyzer_preset_service import (
     AnalyzerPresetError,
 )
 from pixsim7.backend.main.domain.enums import ReviewStatus
+from pixsim7.backend.main.services.ownership.user_owned import (
+    resolve_user_owned_list_scope,
+)
 
 router = APIRouter()
 
@@ -736,17 +739,18 @@ async def list_analyzer_presets(
     include_public: bool = False,
     owner_user_id: Optional[int] = None,
     include_all: bool = False,
+    mine: bool = False,
 ):
     """
     List analyzer presets.
 
     - Default: list own presets
+    - mine: list own presets (explicit), with include_public to add approved presets
     - include_public: include approved presets
+    - owner_user_id: filter by owner (non-admins can only see approved presets of others)
     - include_all (admin only): list all presets
     """
     if include_all and not user.is_admin():
-        raise HTTPException(status_code=403, detail="Admin access required")
-    if owner_user_id is not None and not user.is_admin():
         raise HTTPException(status_code=403, detail="Admin access required")
 
     proxy = await _proxy_request(
@@ -762,6 +766,7 @@ async def list_analyzer_presets(
                 "include_public": include_public,
                 "owner_user_id": owner_user_id,
                 "include_all": include_all,
+                "mine": mine,
             }.items()
             if v is not None
         },
@@ -769,7 +774,22 @@ async def list_analyzer_presets(
     if proxy.called:
         return AnalyzerPresetListResponse.model_validate(proxy.data)
 
-    service = AnalyzerPresetService(db)
+    scope = resolve_user_owned_list_scope(
+        current_user=user,
+        requested_owner_user_id=owner_user_id,
+        requested_is_public=None,
+        mine=mine,
+        include_public_when_mine=include_public,
+        mine_requires_auth_detail="Authentication required for mine=true",
+        mine_forbidden_cross_owner_detail="Not allowed to query another user's presets with mine=true",
+        private_owner_forbidden_detail="Not allowed to query private presets of another user",
+    )
+
+    # Map scope to service parameters.
+    # Presets use status=APPROVED as the "public" concept (no is_public column).
+    effective_owner = scope.owner_user_id or user.id
+    effective_include_public = scope.include_public_for_owner or include_public
+
     status_enum = None
     if status:
         try:
@@ -777,12 +797,21 @@ async def list_analyzer_presets(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid status '{status}'")
 
+    # When scope forces is_public=True (non-admin querying another user),
+    # restrict to approved presets only.
+    if scope.is_public is True:
+        if status_enum is not None and status_enum != ReviewStatus.APPROVED:
+            return AnalyzerPresetListResponse(presets=[])
+        status_enum = ReviewStatus.APPROVED
+        effective_include_public = False
+
+    service = AnalyzerPresetService(db)
     try:
         presets = await service.list_presets(
-            owner_user_id=owner_user_id or user.id,
+            owner_user_id=effective_owner,
             analyzer_id=analyzer_id,
             status=status_enum,
-            include_public=include_public,
+            include_public=effective_include_public,
             include_all=include_all,
         )
     except AnalyzerPresetError as e:
