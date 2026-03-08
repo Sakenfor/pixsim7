@@ -35,6 +35,11 @@ export interface MaskOverlayStoreState {
   zoom: number;
   isZoomed: boolean;
 
+  // ── Active preset ─────────────────────────────────────────────────
+  /** ID of the currently active ViewerToolPreset. Defaults to 'manual-draw'. */
+  activePresetId: string;
+  setActivePresetId: (id: string) => void;
+
   // ── Export settings ─────────────────────────────────────────────────
   /** When true, exported masks are binarized: any non-black pixel → full white. Default: true. */
   forceFullAlpha: boolean;
@@ -70,7 +75,7 @@ export interface MaskOverlayStoreState {
 
   // ── Internal sync method ────────────────────────────────────────────
   _syncState: (partial: Partial<Pick<MaskOverlayStoreState,
-    'mode' | 'brushSize' | 'brushOpacity' | 'canUndo' | 'canRedo' | 'hasContent' | 'isSaving' | 'zoom' | 'isZoomed' | 'layers' | 'activeLayerId' | 'hasVersionParent'
+    'mode' | 'brushSize' | 'brushOpacity' | 'canUndo' | 'canRedo' | 'hasContent' | 'isSaving' | 'zoom' | 'isZoomed' | 'layers' | 'activeLayerId' | 'hasVersionParent' | 'activePresetId'
   >>) => void;
   _registerCallbacks: (cbs: Partial<Pick<MaskOverlayStoreState,
     'setMode' | 'setBrushSize' | 'setBrushOpacity' | 'undo' | 'redo' | 'clearLayer' | 'exportMask' | 'saveAsNew' | 'resetView'
@@ -91,6 +96,9 @@ export const useMaskOverlayStore = create<MaskOverlayStoreState>((set) => ({
   isSaving: false,
   zoom: 1,
   isZoomed: false,
+
+  activePresetId: 'manual-draw',
+  setActivePresetId: (id) => set({ activePresetId: id }),
 
   forceFullAlpha: true,
   setForceFullAlpha: (value) => set({ forceFullAlpha: value }),

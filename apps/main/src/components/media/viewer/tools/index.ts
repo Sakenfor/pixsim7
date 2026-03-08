@@ -59,4 +59,36 @@ export type {
 export { regionDrawerRegistry, useRegionDrawerRegistry, useRegionDrawer } from './registry';
 
 // Built-in drawers (import to register)
-export * from './builtins';
+export { rectDrawer, pathDrawer, box3dDrawer } from './builtins';
+
+// Viewer Tool Presets — generation-input-producing tools (masks, edits, etc.)
+export type {
+  ToolSource,
+  ToolCategory,
+  ToolOutputKind,
+  ToolOutputMapping,
+  ToolExecutionState,
+  ViewerToolExecution,
+  PresetAvailability,
+  ViewerToolPreset,
+  MaskToolOption,
+} from './viewerToolPresets';
+
+export {
+  PRESET_MANUAL_DRAW,
+  PRESET_MANUAL_POLYGON,
+  PRESET_AUTO_SEGMENT,
+  PRESET_REMOVE_OBJECT,
+  BUILTIN_PRESETS,
+  isMaskPreset,
+  getPresetsByCategory,
+  resolvePresetAvailability,
+} from './viewerToolPresets';
+
+// Analyzer → Preset bridge
+export type { AnalyzerCatalogEntry } from './analyzerPresetBridge';
+export { analyzerToPreset, analyzersToPresets } from './analyzerPresetBridge';
+
+// Hook for consuming presets in viewer components
+export type { ResolvedPreset, ViewerToolPresetsResult, ViewerToolPresetsContext } from './useViewerToolPresets';
+export { useViewerToolPresets } from './useViewerToolPresets';

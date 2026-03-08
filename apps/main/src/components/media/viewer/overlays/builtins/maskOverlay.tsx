@@ -39,6 +39,8 @@ import {
   type PolygonElement,
   useInteractionLayer,
 } from '@/components/interactive-surface';
+import { drawVariableWidthCurve } from '@/components/interactive-surface/curveRenderUtils';
+import { useViewerToolPresets, type ResolvedPreset } from '@/components/media/viewer/tools';
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 
@@ -54,6 +56,7 @@ import {
   SidePrimaryButton,
 } from '../shared/OverlaySidePanel';
 import type { MediaOverlayComponentProps } from '../types';
+
 
 import { useMaskOverlayStore, type MaskLayerInfo } from './maskOverlayStore';
 
@@ -326,25 +329,20 @@ function renderLayerToContext(
       } else {
         // Open curve — stroke with width (variable or uniform)
         if (poly.points.length < 2) continue;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+        const screenPts = poly.points.map((p) => ({ x: p.x * width, y: p.y * height }));
+        const isCurved = !!(poly.metadata as Record<string, unknown> | undefined)?.curved;
+
         if (poly.pointWidths && poly.pointWidths.length === poly.points.length) {
-          // Variable-width: draw segment-by-segment
-          for (let i = 0; i < poly.points.length - 1; i++) {
-            const w0 = poly.pointWidths[i];
-            const w1 = poly.pointWidths[i + 1];
-            ctx.lineWidth = ((w0 + w1) / 2) * (width / 500);
-            ctx.beginPath();
-            ctx.moveTo(poly.points[i].x * width, poly.points[i].y * height);
-            ctx.lineTo(poly.points[i + 1].x * width, poly.points[i + 1].y * height);
-            ctx.stroke();
-          }
+          const scaledWidths = poly.pointWidths.map((w) => w * (width / 500));
+          drawVariableWidthCurve(ctx, screenPts, scaledWidths, isCurved && poly.points.length >= 3);
         } else {
           ctx.lineWidth = (poly.style?.strokeWidth ?? 2) * (width / 500);
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
           ctx.beginPath();
-          ctx.moveTo(poly.points[0].x * width, poly.points[0].y * height);
-          for (let i = 1; i < poly.points.length; i++) {
-            ctx.lineTo(poly.points[i].x * width, poly.points[i].y * height);
+          ctx.moveTo(screenPts[0].x, screenPts[0].y);
+          for (let i = 1; i < screenPts.length; i++) {
+            ctx.lineTo(screenPts[i].x, screenPts[i].y);
           }
           ctx.stroke();
         }
@@ -712,7 +710,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   const lastSavedCompositeIdRef = useRef<number | null>(null);
   const isSavingRef = useRef(false);
 
-  /** Resolve version parent from ref or any layer's savedAssetId. */
+  /** Resolve version parent from ref, any layer's savedAssetId, or existing saved masks. */
   const resolveVersionParent = useCallback((): number | null => {
     if (lastSavedCompositeIdRef.current) return lastSavedCompositeIdRef.current;
     // Check all visible mask layers for a savedAssetId (first one wins)
@@ -722,8 +720,12 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         if (savedId) return savedId;
       }
     }
+    // Fallback: if there are already saved masks for this source asset, version from the latest
+    if (sourceMaskAssets.length > 0) {
+      return sourceMaskAssets[0].id;
+    }
     return null;
-  }, [state.layers]);
+  }, [state.layers, sourceMaskAssets]);
 
   // Sync hasVersionParent to store so toolbar can show Save vs Save As
   useEffect(() => {
@@ -1043,6 +1045,8 @@ function MaskToolsPanel() {
     isZoomed,
     forceFullAlpha,
     hasVersionParent,
+    activePresetId,
+    setActivePresetId,
     setMode,
     setBrushSize,
     setBrushOpacity,
@@ -1055,17 +1059,51 @@ function MaskToolsPanel() {
     setForceFullAlpha,
   } = useMaskOverlayStore();
 
+  const { manual, automatic } = useViewerToolPresets({ hasImage: true });
+
+  const isManualPreset = activePresetId.startsWith('manual-');
+
   return (
     <OverlaySidePanel className="w-32">
-      <SideSection label="Tools">
+      {/* Preset source selector — only shown when non-manual presets exist */}
+      {automatic.length > 0 && (
+        <>
+          <SideSection label="Source">
+            {manual.map(({ preset, availability }) => (
+              <PresetButton
+                key={preset.id}
+                preset={{ preset, availability }}
+                active={activePresetId === preset.id}
+                onClick={() => setActivePresetId(preset.id)}
+              />
+            ))}
+            {automatic.map(({ preset, availability }) => (
+              <PresetButton
+                key={preset.id}
+                preset={{ preset, availability }}
+                active={activePresetId === preset.id}
+                onClick={() => {
+                  if (availability.available) setActivePresetId(preset.id);
+                }}
+              />
+            ))}
+          </SideSection>
+          <SideDivider />
+        </>
+      )}
+
+      <SideSection label={isManualPreset ? 'Tools' : 'Tools (manual only)'}>
         {TOOL_MODES.map(({ mode: m, icon, label, shortcut }) => (
           <SideToolButton
             key={m}
             icon={icon}
             label={label}
-            active={mode === m}
-            title={`${label} (${shortcut})`}
-            onClick={() => setMode(m)}
+            active={isManualPreset && mode === m}
+            title={isManualPreset ? `${label} (${shortcut})` : 'Switch to a manual preset to use drawing tools'}
+            onClick={() => {
+              if (!isManualPreset) setActivePresetId('manual-draw');
+              setMode(m);
+            }}
           />
         ))}
       </SideSection>
@@ -1148,6 +1186,40 @@ function MaskToolsPanel() {
         )}
       </div>
     </OverlaySidePanel>
+  );
+}
+
+// ── PresetButton ──────────────────────────────────────────────────────
+
+function PresetButton({ preset: resolved, active, onClick }: {
+  preset: ResolvedPreset;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const { preset, availability } = resolved;
+  const disabled = !availability.available;
+  const reason = !availability.available ? availability.reason : undefined;
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={reason ?? preset.label}
+      className={[
+        'flex items-center gap-1.5 w-full px-2 py-1 rounded text-[11px] transition-colors',
+        active
+          ? 'bg-accent/20 text-accent'
+          : disabled
+            ? 'opacity-40 cursor-not-allowed text-th-muted'
+            : 'hover:bg-th/10 text-th-secondary',
+      ].join(' ')}
+    >
+      {preset.icon && <Icon name={preset.icon} size={12} />}
+      <span className="truncate">{preset.label}</span>
+      {preset.source !== 'manual' && (
+        <span className="ml-auto text-[9px] text-th-muted uppercase">{preset.source}</span>
+      )}
+    </button>
   );
 }
 
