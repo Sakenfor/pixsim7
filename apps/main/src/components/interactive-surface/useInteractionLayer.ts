@@ -6,14 +6,14 @@
  * creating regions, and managing undo/redo history.
  */
 
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-
 import {
   smoothPoints as smoothPathPoints,
   findNearestVertex as findNearestPolygonVertex,
   calculateVertexThreshold as calculatePolygonVertexThreshold,
   moveVertex as movePolygonVertex,
 } from '@pixsim7/graphics.geometry';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+
 import { generateUUID } from '@lib/utils/uuid';
 
 import type {
@@ -67,6 +67,8 @@ export interface UseInteractionLayerOptions {
   initialTool?: Partial<DrawToolConfig>;
   /** Maximum history entries for undo/redo */
   maxHistorySize?: number;
+  /** When false, polygon mode creates open curves instead of closed filled shapes */
+  polygonCloseOnFinalize?: boolean;
   /** Callback when state changes */
   onStateChange?: (state: SurfaceState) => void;
   /** Callback when an element is added */
@@ -148,6 +150,7 @@ export function useInteractionLayer(
     initialMode = 'view',
     initialTool = {},
     maxHistorySize = 50,
+    polygonCloseOnFinalize = true,
     onStateChange,
     onElementAdd,
     onStrokeComplete,
@@ -284,6 +287,8 @@ export function useInteractionLayer(
     // Finalize or discard in-progress polygon when leaving polygon mode.
     if (mode === 'polygon' && newMode !== 'polygon' && currentPolygonRef.current) {
       const { layerId, elementId } = currentPolygonRef.current;
+      const shouldClose = polygonCloseOnFinalize;
+      const minPoints = shouldClose ? 3 : 2;
       let shouldPushHistory = false;
 
       setLayers((prev) =>
@@ -294,16 +299,16 @@ export function useInteractionLayer(
             elements: l.elements.flatMap((e) => {
               if (e.id !== elementId || e.type !== 'polygon') return [e];
               const poly = e as PolygonElement;
-              if (poly.points.length < 3) return [];
+              if (poly.points.length < minPoints) return [];
               shouldPushHistory = true;
-              return [{ ...poly, closed: true }];
+              return [{ ...poly, closed: shouldClose }];
             }),
           };
         })
       );
 
       if (shouldPushHistory && preShapeLayersRef.current) {
-        pushHistory('Create polygon', { layers: preShapeLayersRef.current });
+        pushHistory(shouldClose ? 'Create polygon' : 'Create curve', { layers: preShapeLayersRef.current });
       }
       preShapeLayersRef.current = null;
       currentPolygonRef.current = null;
@@ -505,6 +510,9 @@ export function useInteractionLayer(
   const modeRef = useRef(mode);
   modeRef.current = mode;
 
+  const polygonCloseRef = useRef(polygonCloseOnFinalize);
+  polygonCloseRef.current = polygonCloseOnFinalize;
+
   const handlePointerDown = useCallback(
     (event: SurfacePointerEvent) => {
       const native = event.nativeEvent;
@@ -559,6 +567,7 @@ export function useInteractionLayer(
         if (!currentPolygonRef.current) {
           preShapeLayersRef.current = layers;
 
+          const willClose = polygonCloseRef.current;
           const polygonId = addElement(activeLayerId!, {
             type: 'polygon',
             visible: true,
@@ -566,8 +575,8 @@ export function useInteractionLayer(
             points: [event.normalized],
             style: {
               strokeColor: tool.color,
-              fillColor: 'rgba(255,255,255,0.18)',
-              strokeWidth: 2,
+              fillColor: willClose ? 'rgba(255,255,255,0.18)' : undefined,
+              strokeWidth: willClose ? 2 : tool.size * 500,
             },
             metadata: {
               curved: true,
@@ -742,6 +751,9 @@ export function useInteractionLayer(
     if (!current) return;
     if (activePolygonVertexDragRef.current) return;
 
+    const shouldClose = polygonCloseRef.current;
+    const minPoints = shouldClose ? 3 : 2;
+
     let finalized = false;
     setLayers((prev) =>
       prev.map((l) => {
@@ -751,18 +763,18 @@ export function useInteractionLayer(
           elements: l.elements.flatMap((e) => {
             if (e.id !== current.elementId || e.type !== 'polygon') return [e];
             const poly = e as PolygonElement;
-            if (poly.points.length < 3) {
+            if (poly.points.length < minPoints) {
               return [];
             }
             finalized = true;
-            return [{ ...poly, closed: true }];
+            return [{ ...poly, closed: shouldClose }];
           }),
         };
       })
     );
 
     if (finalized && preShapeLayersRef.current) {
-      pushHistory('Create polygon', { layers: preShapeLayersRef.current });
+      pushHistory(shouldClose ? 'Create polygon' : 'Create curve', { layers: preShapeLayersRef.current });
     }
     preShapeLayersRef.current = null;
     currentPolygonRef.current = null;

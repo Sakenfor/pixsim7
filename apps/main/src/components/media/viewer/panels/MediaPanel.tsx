@@ -11,11 +11,12 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { OverlayContainer } from '@lib/ui/overlay';
 
 import { useAssetViewerStore } from '@features/assets';
-import { useAssetRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
+import { useAssetRegionStore, useCaptureRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
 
 import { useOverlayWidgetsForAsset } from '../../hooks/useOverlayWidgetsForAsset';
 import { useProvideRegionAnnotations } from '../capabilities';
 import { useMediaOverlayHost, DefaultLayerSidebar } from '../overlays';
+import { useMaskOverlayStore } from '../overlays/builtins/maskOverlayStore';
 import type { ViewerPanelContext } from '../types';
 
 import { useFrameCapture, useOverlayShortcuts, useViewerContext } from './hooks';
@@ -182,6 +183,36 @@ export function MediaPanel({ context }: MediaPanelProps) {
     selectRegion(null);
   }, [setOverlayMode, selectRegion]);
 
+  // Move mode: set the active overlay's internal mode to select/view
+  const annotationDrawingMode = useAssetRegionStore((s) => s.drawingMode);
+  const captureDrawingMode = useCaptureRegionStore((s) => s.drawingMode);
+  const maskMode = useMaskOverlayStore((s) => s.mode);
+
+  const isMoveActive = useMemo(() => {
+    if (!activeOverlay) return false;
+    switch (activeOverlay.id) {
+      case 'annotate': return annotationDrawingMode === 'select';
+      case 'capture': return captureDrawingMode === 'select';
+      case 'mask': return maskMode === 'view';
+      default: return false;
+    }
+  }, [activeOverlay, annotationDrawingMode, captureDrawingMode, maskMode]);
+
+  const handleMoveMode = useCallback(() => {
+    if (!activeOverlay) return;
+    switch (activeOverlay.id) {
+      case 'annotate':
+        useAssetRegionStore.getState().setDrawingMode('select');
+        break;
+      case 'capture':
+        useCaptureRegionStore.getState().setDrawingMode('select');
+        break;
+      case 'mask':
+        useMaskOverlayStore.getState().setMode('view');
+        break;
+    }
+  }, [activeOverlay]);
+
   // Clear selection when asset changes
   useEffect(() => {
     selectRegion(null);
@@ -215,6 +246,8 @@ export function MediaPanel({ context }: MediaPanelProps) {
           overlayMode={effectiveOverlayMode}
           onToggleOverlay={handleToggleOverlay}
           onExitOverlay={handleExitOverlay}
+          onMoveMode={handleMoveMode}
+          isMoveActive={isMoveActive}
         />
 
         {/* Media/overlay display */}

@@ -211,18 +211,19 @@ export function RegionAnnotationOverlay({
           },
           metadata: { storeId: region.id },
         } as Omit<RegionElement, 'id' | 'layerId'>);
-      } else if (region.type === 'polygon' && region.points) {
+      } else if ((region.type === 'polygon' || region.type === 'curve') && region.points) {
+        const isCurve = region.type === 'curve';
         addElement('regions', {
           type: 'polygon',
           visible: true,
           points: region.points,
-          closed: true,
+          closed: !isCurve,
           style: {
             strokeColor: isSelected ? '#ffffff' : colors.stroke,
-            fillColor: isSelected ? 'rgba(255, 255, 255, 0.2)' : colors.fill,
-            strokeWidth: isSelected ? 3 : 2,
+            fillColor: isCurve ? undefined : (isSelected ? 'rgba(255, 255, 255, 0.2)' : colors.fill),
+            strokeWidth: region.style?.strokeWidth ?? (isSelected ? 3 : 2),
           },
-          metadata: { storeId: region.id },
+          metadata: { storeId: region.id, curved: isCurve },
         } as Omit<PolygonElement, 'id' | 'layerId'>);
       }
     }
@@ -392,8 +393,43 @@ export function RegionAnnotationOverlay({
         return;
       }
 
-      // ---- Drawing modes (unchanged) ----
+      // ---- Drawing modes ----
       if (isRightClick) return;
+
+      // Contextual move: if clicking on the selected region, drag it instead of drawing
+      if (selectedRegionId) {
+        const selectedRegion = regions.find((r) => r.id === selectedRegionId);
+        if (selectedRegion) {
+          const isHit = selectedRegion.type === 'rect' && selectedRegion.bounds
+            ? (event.normalized.x >= selectedRegion.bounds.x &&
+               event.normalized.x <= selectedRegion.bounds.x + selectedRegion.bounds.width &&
+               event.normalized.y >= selectedRegion.bounds.y &&
+               event.normalized.y <= selectedRegion.bounds.y + selectedRegion.bounds.height)
+            : selectedRegion.type === 'polygon' && selectedRegion.points
+              ? pointInPolygon(event.normalized, selectedRegion.points)
+              : selectedRegion.type === 'curve' && selectedRegion.points
+                ? pointNearPath(event.normalized, selectedRegion.points, EDGE_HIT_THRESHOLD)
+                : false;
+
+          if (isHit) {
+            setRegionDragStart(event.normalized);
+            if (selectedRegion.type === 'rect' && selectedRegion.bounds) {
+              setRegionDragOriginalBounds({ ...selectedRegion.bounds });
+            } else if ((selectedRegion.type === 'polygon' || selectedRegion.type === 'curve') && selectedRegion.points) {
+              setRegionDragOriginalPoints([...selectedRegion.points]);
+            }
+            return;
+          }
+          // Clicking outside the selected region deselects it
+          selectRegion(null);
+        }
+      }
+
+      // Curve mode: click adds points (open path, no auto-close)
+      if (drawingMode === 'curve') {
+        setPolygonPoints((prev) => [...prev, event.normalized]);
+        return;
+      }
 
       if (drawingMode === 'rect') {
         setIsDrawing(true);
@@ -427,13 +463,13 @@ export function RegionAnnotationOverlay({
         setPolygonPoints((prev) => [...prev, event.normalized]);
       }
     },
-    [drawingMode, regions, polygonPoints, selectRegion, onRegionSelected, editingPolygonId, editingRectId, getEditingPolygonPoints, addRegion, getRegion, onRegionCreated, asset.id, modifierHeld, updateRegion, exitEditMode]
+    [drawingMode, regions, polygonPoints, selectRegion, onRegionSelected, editingPolygonId, editingRectId, getEditingPolygonPoints, addRegion, getRegion, onRegionCreated, asset.id, modifierHeld, updateRegion, exitEditMode, selectedRegionId]
   );
 
   const handlePointerMove = useCallback(
     (event: SurfacePointerEvent) => {
-      // 1. Track cursor for polygon preview line
-      if (drawingMode === 'polygon' && polygonPoints.length > 0) {
+      // 1. Track cursor for polygon/curve preview line
+      if ((drawingMode === 'polygon' || drawingMode === 'curve') && polygonPoints.length > 0) {
         setCursorPosition(event.normalized);
       }
 
@@ -461,8 +497,8 @@ export function RegionAnnotationOverlay({
         return;
       }
 
-      // 4. Drag threshold check (select mode) - promote to drag if threshold exceeded
-      if (drawingMode === 'select' && regionDragStart && !isDraggingRegion && selectedRegionId) {
+      // 4. Drag threshold check - promote to drag if threshold exceeded
+      if (regionDragStart && !isDraggingRegion && selectedRegionId) {
         const dx = Math.abs(event.normalized.x - regionDragStart.x);
         const dy = Math.abs(event.normalized.y - regionDragStart.y);
         if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
@@ -616,6 +652,28 @@ export function RegionAnnotationOverlay({
         return;
       }
 
+      // Complete curve on double-click (open path, no fill)
+      if (drawingMode === 'curve' && polygonPoints.length >= 2) {
+        const colorIndex = regions.length % REGION_COLORS.length;
+        const colors = REGION_COLORS[colorIndex];
+
+        const regionId = addRegion(asset.id, {
+          type: 'curve',
+          points: polygonPoints,
+          label: `Curve ${regions.length + 1}`,
+          style: { strokeColor: colors.stroke, strokeWidth: 3 },
+        });
+
+        selectRegion(regionId);
+        setPolygonPoints([]);
+        setCursorPosition(null);
+        const region = getRegion(asset.id, regionId);
+        if (region) {
+          onRegionCreated?.(region);
+        }
+        return;
+      }
+
       // Enter edit mode on double-click (when in select mode)
       if (drawingMode === 'select' && !editingRegionId) {
         const clickedRegion = findRegionAtPoint(regions, event.normalized);
@@ -714,11 +772,12 @@ export function RegionAnnotationOverlay({
           />
         )}
 
-        {/* Polygon points being drawn */}
+        {/* Polygon/curve points being drawn */}
         {polygonPoints.length > 0 && (() => {
+          const isCurveMode = drawingMode === 'curve';
           const first = polygonPoints[0];
           const last = polygonPoints[polygonPoints.length - 1];
-          const isNearClose = cursorPosition && polygonPoints.length >= 3 &&
+          const isNearClose = !isCurveMode && cursorPosition && polygonPoints.length >= 3 &&
             distance(cursorPosition, first) < CLOSE_THRESHOLD;
 
           return (
@@ -729,10 +788,12 @@ export function RegionAnnotationOverlay({
             >
               <polyline
                 points={polygonPoints.map((p) => `${p.x * 100},${p.y * 100}`).join(' ')}
-                fill="rgba(255,255,255,0.1)"
+                fill={isCurveMode ? 'none' : 'rgba(255,255,255,0.1)'}
                 stroke="white"
-                strokeWidth="0.3"
-                strokeDasharray="1,1"
+                strokeWidth={isCurveMode ? '0.5' : '0.3'}
+                strokeDasharray={isCurveMode ? undefined : '1,1'}
+                strokeLinejoin="round"
+                strokeLinecap="round"
               />
               {/* Preview line from last point to cursor */}
               {cursorPosition && (
@@ -933,8 +994,46 @@ function findRegionAtPoint(
       if (pointInPolygon(point, region.points)) {
         return region;
       }
+    } else if (region.type === 'curve' && region.points) {
+      // Proximity hit-test for open curves
+      if (pointNearPath(point, region.points, EDGE_HIT_THRESHOLD)) {
+        return region;
+      }
     }
   }
 
   return null;
+}
+
+/**
+ * Check if a point is near any segment of an open path
+ */
+function pointNearPath(
+  point: NormalizedPoint,
+  path: NormalizedPoint[],
+  threshold: number,
+): boolean {
+  for (let i = 0; i < path.length - 1; i++) {
+    if (distanceToSegment(point, path[i], path[i + 1]) < threshold) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Distance from a point to a line segment
+ */
+function distanceToSegment(
+  p: NormalizedPoint,
+  a: NormalizedPoint,
+  b: NormalizedPoint,
+): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return distance(p, a);
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq));
+  const proj = { x: a.x + t * dx, y: a.y + t * dy };
+  return distance(p, proj);
 }

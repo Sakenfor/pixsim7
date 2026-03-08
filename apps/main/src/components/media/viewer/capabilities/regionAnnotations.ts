@@ -55,7 +55,7 @@ export interface RegionAnnotationsCapability {
   /** Whether annotation mode is active */
   annotationMode: boolean;
   /** Current drawing mode */
-  drawingMode: 'rect' | 'polygon' | 'select';
+  drawingMode: 'rect' | 'polygon' | 'curve' | 'select';
 
   // Actions
   /** Select a region by ID */

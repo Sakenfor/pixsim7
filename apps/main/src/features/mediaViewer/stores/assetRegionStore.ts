@@ -20,12 +20,14 @@ import type { NormalizedRect, NormalizedPoint } from '@/components/interactive-s
 export interface AssetRegion {
   /** Unique region ID */
   id: string;
-  /** Region type: rectangle or polygon */
-  type: 'rect' | 'polygon';
+  /** Region type: rectangle, polygon (closed+filled), or curve (open stroke) */
+  type: 'rect' | 'polygon' | 'curve';
   /** Bounds for rect regions (normalized 0-1) */
   bounds?: NormalizedRect;
-  /** Points for polygon regions (normalized 0-1) */
+  /** Points for polygon/curve regions (normalized 0-1) */
   points?: NormalizedPoint[];
+  /** Per-point stroke widths (normalized, same length as points) */
+  pointWidths?: number[];
   /** Short label/tag for the region */
   label: string;
   /** Optional longer note/description */
@@ -34,6 +36,7 @@ export interface AssetRegion {
   style?: {
     strokeColor?: string;
     fillColor?: string;
+    strokeWidth?: number;
   };
   /** Creation timestamp */
   createdAt: number;
@@ -46,9 +49,10 @@ export interface AssetRegion {
  */
 export interface ExportedRegion {
   id: string;
-  type: 'rect' | 'polygon';
+  type: 'rect' | 'polygon' | 'curve';
   bounds?: NormalizedRect;
   points?: NormalizedPoint[];
+  pointWidths?: number[];
   label: string;
   note?: string;
 }
@@ -62,7 +66,7 @@ interface AssetRegionState {
   /** Currently selected region ID */
   selectedRegionId: string | null;
   /** Current drawing mode */
-  drawingMode: 'rect' | 'polygon' | 'select';
+  drawingMode: 'rect' | 'polygon' | 'curve' | 'select';
 
   // Actions
   /** Add a region to an asset */
@@ -80,7 +84,7 @@ interface AssetRegionState {
   /** Clear all regions for an asset */
   clearAssetRegions: (assetId: string | number) => void;
   /** Set drawing mode */
-  setDrawingMode: (mode: 'rect' | 'polygon' | 'select') => void;
+  setDrawingMode: (mode: 'rect' | 'polygon' | 'curve' | 'select') => void;
   /** Export regions for an asset as structured data */
   exportRegions: (assetId: string | number) => ExportedRegion[];
 }
@@ -197,6 +201,7 @@ export function createAssetRegionStore() {
         type: r.type,
         bounds: r.bounds,
         points: r.points,
+        pointWidths: r.pointWidths,
         label: r.label,
         note: r.note,
       }));

@@ -19,11 +19,11 @@ export interface RegionStoreSelectors {
   /** Currently selected region ID */
   selectedRegionId: string | null;
   /** Current drawing mode */
-  drawingMode: 'rect' | 'polygon' | 'select';
+  drawingMode: 'rect' | 'polygon' | 'curve' | 'select';
   /** Select a region by ID */
   selectRegion: (regionId: string | null) => void;
   /** Set drawing mode */
-  setDrawingMode: (mode: 'rect' | 'polygon' | 'select') => void;
+  setDrawingMode: (mode: 'rect' | 'polygon' | 'curve' | 'select') => void;
   /** Clear all regions for the asset */
   clearRegions: () => void;
   /** Get a specific region by ID */

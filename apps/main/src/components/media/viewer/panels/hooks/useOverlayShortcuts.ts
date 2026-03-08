@@ -7,7 +7,7 @@
 
 import { useEffect, useCallback } from 'react';
 
-import { useAssetRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
+import { useAssetRegionStore, useCaptureRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
 
 import type { MediaOverlayHostState } from '../../overlays';
 
@@ -100,6 +100,17 @@ export function useOverlayShortcuts({
           // Switch to select mode
           if (annotationMode && !e.ctrlKey && !e.metaKey) {
             setDrawingMode('select');
+          }
+          break;
+        case 'v':
+          // Move/select mode (works in annotation and capture overlays)
+          if (!e.ctrlKey && !e.metaKey && overlayMode !== 'none') {
+            if (overlayMode === 'annotate') {
+              setDrawingMode('select');
+            } else if (overlayMode === 'capture') {
+              useCaptureRegionStore.getState().setDrawingMode('select');
+            }
+            // Mask overlay handles 'v' internally
           }
           break;
         default: {

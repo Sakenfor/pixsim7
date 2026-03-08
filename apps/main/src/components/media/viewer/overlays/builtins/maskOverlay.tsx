@@ -312,14 +312,27 @@ function renderLayerToContext(
       ctx.stroke();
     } else if (element.type === 'polygon') {
       const poly = element as PolygonElement;
-      if (!poly.closed || poly.points.length < 3) continue;
-      ctx.beginPath();
-      ctx.moveTo(poly.points[0].x * width, poly.points[0].y * height);
-      for (let i = 1; i < poly.points.length; i++) {
-        ctx.lineTo(poly.points[i].x * width, poly.points[i].y * height);
+      if (poly.closed) {
+        // Closed polygon — fill
+        if (poly.points.length < 3) continue;
+        ctx.beginPath();
+        ctx.moveTo(poly.points[0].x * width, poly.points[0].y * height);
+        for (let i = 1; i < poly.points.length; i++) {
+          ctx.lineTo(poly.points[i].x * width, poly.points[i].y * height);
+        }
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        // Open curve — stroke with width
+        if (poly.points.length < 2) continue;
+        ctx.lineWidth = (poly.style?.strokeWidth ?? 2) * (width / 500);
+        ctx.beginPath();
+        ctx.moveTo(poly.points[0].x * width, poly.points[0].y * height);
+        for (let i = 1; i < poly.points.length; i++) {
+          ctx.lineTo(poly.points[i].x * width, poly.points[i].y * height);
+        }
+        ctx.stroke();
       }
-      ctx.closePath();
-      ctx.fill();
     } else if (element.type === 'region') {
       const region = element as { bounds: { x: number; y: number; width: number; height: number } };
       ctx.fillRect(region.bounds.x * width, region.bounds.y * height, region.bounds.width * width, region.bounds.height * height);
@@ -360,6 +373,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   const interaction = useInteractionLayer({
     initialMode: 'draw',
     initialTool: { size: 0.03, color: '#ffffff', opacity: 0.7 },
+    polygonCloseOnFinalize: false,
   });
 
   const {
@@ -906,7 +920,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
 
 const TOOL_MODES = [
   { mode: 'draw' as const, icon: 'paintbrush' as const, label: 'Draw', shortcut: 'D' },
-  { mode: 'polygon' as const, icon: 'pencil' as const, label: 'Curve', shortcut: 'C' },
+  { mode: 'polygon' as const, icon: 'penTool' as const, label: 'Curve', shortcut: 'C' },
   { mode: 'erase' as const, icon: 'xCircle' as const, label: 'Erase', shortcut: 'E' },
   { mode: 'view' as const, icon: 'eye' as const, label: 'View', shortcut: 'V' },
 ];
@@ -949,7 +963,7 @@ function MaskToolsPanel() {
 
       {mode === 'polygon' && (
         <div className="px-2 text-[10px] text-th-muted leading-snug">
-          Click to place points. Double-click to close and fill.
+          Click to place points. Double-click to finish. Brush size controls width.
         </div>
       )}
 

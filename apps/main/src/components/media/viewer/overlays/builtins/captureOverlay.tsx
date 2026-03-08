@@ -98,6 +98,13 @@ function CaptureSidePanel({
           onClick={() => setDrawingMode('polygon')}
         />
         <SideToolButton
+          icon="penTool"
+          label="Curve"
+          active={drawingMode === 'curve'}
+          title="Draw open curve (no fill)"
+          onClick={() => setDrawingMode('curve')}
+        />
+        <SideToolButton
           icon="mousePointer"
           label="Select"
           active={drawingMode === 'select'}

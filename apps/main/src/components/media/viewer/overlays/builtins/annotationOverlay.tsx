@@ -46,6 +46,13 @@ function AnnotationSidePanel({ asset }: { asset: MediaOverlayComponentProps['ass
           onClick={() => setDrawingMode('polygon')}
         />
         <SideToolButton
+          icon="penTool"
+          label="Curve"
+          active={drawingMode === 'curve'}
+          title="Draw open curves (C)"
+          onClick={() => setDrawingMode('curve')}
+        />
+        <SideToolButton
           icon="mousePointer"
           label="Select"
           active={drawingMode === 'select'}
