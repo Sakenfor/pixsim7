@@ -21,7 +21,14 @@
 // Types
 // ============================================================================
 
-export * from './types';
+export {
+  PROMPT_SEGMENT_ROLES,
+  isValidPromptSegmentRole,
+} from './types';
+export type {
+  PromptSegmentRole,
+  PromptBlockCandidate,
+} from './types';
 
 // ============================================================================
 // Components

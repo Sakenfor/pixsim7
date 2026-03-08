@@ -4,4 +4,7 @@
  * Display space calculations and layout helpers
  */
 
-export * from './displaySpaces';
+export {
+  getDisplaySpacesFromWorldMeta,
+  resolveDisplayTargetFromWorldMeta,
+} from './displaySpaces';

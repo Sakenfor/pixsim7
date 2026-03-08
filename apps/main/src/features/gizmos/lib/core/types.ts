@@ -3,4 +3,4 @@
  * Re-exports from @pixsim7/interaction.gizmos package
  */
 
-export * from '@pixsim7/interaction.gizmos';
+export type * from '@pixsim7/interaction.gizmos';

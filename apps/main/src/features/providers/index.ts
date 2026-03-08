@@ -72,7 +72,24 @@ export {
 // Lib - Core Provider System
 // ============================================================================
 
-export * from './lib/core';
+export type {
+  OperationParameterSpec,
+  OperationSpec,
+  ProviderFeatures,
+  ProviderLimits,
+  CostHints,
+  CostEstimatorConfig,
+  ProviderCapability,
+  CapabilityRegistryConfig,
+  GenerationUIPluginProps,
+  ValidationResult,
+  GenerationUIPlugin,
+} from './lib/core';
+export {
+  ProviderCapabilityRegistry,
+  GenerationUIPluginRegistry,
+  defineGenerationUIPlugin,
+} from './lib/core';
 
 // Re-export key singletons for convenience
 export { providerCapabilityRegistry } from './lib/core/capabilityRegistry';

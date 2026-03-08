@@ -2,4 +2,9 @@
  * Validation utilities
  */
 
-export * from './devValidation';
+export {
+  isDevValidationEnabled,
+  devValidateParams,
+  devLogParams,
+  withDevValidation,
+} from './devValidation';

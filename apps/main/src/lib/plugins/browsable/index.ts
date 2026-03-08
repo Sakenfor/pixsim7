@@ -12,9 +12,18 @@ import { widgetsConfigs } from './widgetsConfigs';
 import { workspaceConfigs } from './workspaceConfigs';
 
 // Re-export individual configs for direct access
-export * from './workspaceConfigs';
-export * from './toolsConfigs';
-export * from './widgetsConfigs';
+export {
+  dockWidgetConfig,
+  workspacePanelConfig,
+  panelGroupConfig,
+  workspaceConfigs,
+} from './workspaceConfigs';
+export { graphEditorConfig, devToolConfig, toolsConfigs } from './toolsConfigs';
+export {
+  gallerySurfaceConfig,
+  gizmoSurfaceConfig,
+  widgetsConfigs,
+} from './widgetsConfigs';
 
 /**
  * All default Widget Builder family configs.

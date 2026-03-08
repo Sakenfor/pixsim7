@@ -24,6 +24,8 @@
  * ```
  */
 
+import * as Intimacy from './lib/intimacy/types';
+
 // ============================================================================
 // Contract Types (re-exported from @pixsim7/shared.types for convenience)
 // ============================================================================
@@ -36,7 +38,7 @@
  *
  * Source of truth: @pixsim7/shared.types/interactions.ts
  */
-export * from '@pixsim7/shared.types/interactions';
+export type * from '@pixsim7/shared.types/interactions';
 
 // ============================================================================
 // Components - Core Interaction UI
@@ -85,8 +87,12 @@ export type { GizmoSurfaceProps } from './surfaces';
 // ============================================================================
 
 // Named exports for backward compatibility
-export * from './lib/intimacy/types';
-export * from './lib/intimacy/nodeTypes';
+export type * from './lib/intimacy/types';
+export {
+  registerIntimacyNodeTypes,
+  getIntimacyNodeTypeIds,
+  isIntimacyNodeType,
+} from './lib/intimacy/nodeTypes';
 
 // Namespace export (recommended pattern)
-export * as Intimacy from './lib/intimacy/types';
+export { Intimacy };

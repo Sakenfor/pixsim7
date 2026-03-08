@@ -22,7 +22,9 @@ import {
   healthModule,
   simulationModule,
   npcBrainLabModule,
-  devtoolsGatewayModule,
+  codegenPageModule,
+  promptImporterPageModule,
+  blockFitPageModule,
   pluginManagerModule,
   overlayConfigModule,
   assetDetailModule,
@@ -61,7 +63,9 @@ export function registerModules() {
   moduleRegistry.register(healthModule);
   moduleRegistry.register(simulationModule);
   moduleRegistry.register(npcBrainLabModule);
-  moduleRegistry.register(devtoolsGatewayModule);
+  moduleRegistry.register(codegenPageModule);
+  moduleRegistry.register(promptImporterPageModule);
+  moduleRegistry.register(blockFitPageModule);
   moduleRegistry.register(assetDetailModule);
   moduleRegistry.register(generationPageModule);
   moduleRegistry.register(pluginManagerModule);

@@ -6,4 +6,15 @@
  * Main exports for the HUD system.
  */
 
-export * from './types';
+export type {
+  HudRegionId,
+  HudRegionLayout,
+  WorldHudLayout,
+  HudPreset,
+  HudRegionPosition,
+} from './types';
+export {
+  DEFAULT_REGION_POSITIONS,
+  validateHudRegion,
+  validateHudLayout,
+} from './types';

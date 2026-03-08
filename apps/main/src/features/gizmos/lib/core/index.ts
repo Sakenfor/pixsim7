@@ -33,12 +33,29 @@ export {
 export { useGizmoSurfaceStore } from '../../stores/gizmoSurfaceStore';
 
 // Existing gizmo pack registries
-export * from './registry';
-export * from './registry-rings';
-export * from './registry-romance';
-export * from './registry-water-banana';
-export * from './renderers';
-export * from './loadDefaultPacks';
+export {
+  orbGizmo,
+  constellationGizmo,
+  touchTool,
+  temperatureTool,
+  energyTool,
+  defaultGizmos,
+  defaultTools,
+} from './registry';
+export { ringsGizmo, ringsGizmos } from './registry-rings';
+export { bodyMapGizmo } from './registry-romance';
+export { waterTool, waterTools, bananaTool, bananaTools, waterBananaTools } from './registry-water-banana';
+export { getGizmoRenderer, hasGizmoRenderer, getGizmoRendererIds } from './renderers';
+export {
+  getAllGizmos,
+  getAllTools,
+  getGizmo,
+  getTool,
+  getGizmosByCategory,
+  getToolsByType,
+  registerGizmo,
+  registerTool,
+} from './loadDefaultPacks';
 
 // Console integration - exports for external use
 export { useToolConsoleStore, registerGizmoConsoleSync } from './console';

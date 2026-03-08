@@ -11,4 +11,16 @@ export {
   getViewModeConfig,
   getViewModeOptions,
 } from './useViewMode';
-export * from './scifi-tokens';
+export {
+  colors,
+  typography,
+  spacing,
+  effects,
+  animations,
+  components,
+  withOpacity,
+  neonGlow,
+  holographicShimmer,
+  sciFiTheme,
+} from './scifi-tokens';
+export type { SciFiTheme } from './scifi-tokens';

@@ -15,14 +15,43 @@
  * ```
  */
 
+import * as Narrative from './lib/types';
+
 // ============================================================================
 // Types - Narrative Runtime Schema
 // ============================================================================
 
-export * from './lib/types';
+export type {
+  NarrativeProgramId,
+  NodeId,
+  NarrativeProgramKind,
+  ContentRating,
+  ConditionExpression,
+  StateEffects,
+  NarrativeNodeBase,
+  DialogueNode,
+  ChoiceNode,
+  ActionNode,
+  ActionBlockNode,
+  SceneTransitionNode,
+  BranchNode,
+  WaitNode,
+  ExternalCallNode,
+  CommentNode,
+  NarrativeNode,
+  NarrativeEdge,
+  NarrativeProgram,
+  NarrativeRuntimeState,
+  NarrativeStepResult,
+  StartProgramRequest,
+  StepProgramRequest,
+  NarrativeExecutionResponse,
+  ValidationError,
+  ValidationResult,
+} from './lib/types';
 
 // ============================================================================
 // Namespace Export (for clean imports)
 // ============================================================================
 
-export * as Narrative from './lib/types';
+export { Narrative };

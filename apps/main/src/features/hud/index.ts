@@ -72,4 +72,15 @@ export {
   type HudLayoutActions,
 } from './stores/hudLayoutStore';
 // Lib - Hud Core
-export * from './lib/core';
+export type {
+  HudRegionId,
+  HudRegionLayout,
+  WorldHudLayout,
+  HudPreset,
+  HudRegionPosition,
+} from './lib/core';
+export {
+  DEFAULT_REGION_POSITIONS,
+  validateHudRegion,
+  validateHudLayout,
+} from './lib/core';

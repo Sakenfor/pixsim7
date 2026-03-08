@@ -5,5 +5,26 @@
  * Provides HUD-specific config types and visibility conditions.
  */
 
-export * from './hudConfig';
-export * from './hudVisibility';
+export {
+  toUnifiedSurfaceConfig,
+  fromUnifiedSurfaceConfig,
+  toHudToolPlacement,
+  toHudToolPlacements,
+  fromHudToolPlacement,
+  fromHudToolPlacements,
+} from './hudConfig';
+export type {
+  HudWidgetMeta,
+  HudSurfaceMeta,
+  HudWidgetConfig,
+  HudSurfaceConfig,
+} from './hudConfig';
+
+export {
+  evaluateHudVisibilityConditions,
+  evaluateHudVisibility,
+  toAdvancedVisibilityCondition,
+  fromAdvancedVisibilityCondition,
+  HudVisibilityHelpers,
+} from './hudVisibility';
+export type { HudVisibilityKind, HudVisibilityCondition } from './hudVisibility';

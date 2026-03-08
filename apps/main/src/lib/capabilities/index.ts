@@ -27,9 +27,15 @@ import { debugFlags } from '@lib/utils/debugFlags';
 import { logEvent } from '@lib/utils/logging';
 
 // Re-export modules
-export * from './routeConstants';
-export * from './pluginAdapter';
-export * from './securityFilter';
+export { ROUTES, buildRoute, navigateTo } from './routeConstants';
+export { PluginCapabilityAdapter, createPluginCapabilityAdapter } from './pluginAdapter';
+export type {
+  PluginFeatureRegistration,
+  PluginRouteRegistration,
+  PluginStateRegistration,
+} from './pluginAdapter';
+export { CapabilitySecurityFilter, createSecurityFilter, withScope } from './securityFilter';
+export type { CapabilityScope } from './securityFilter';
 
 /**
  * App Capability Types

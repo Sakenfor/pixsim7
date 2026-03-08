@@ -4,4 +4,9 @@
  * App-level re-exports for shared 3D model contracts.
  */
 
-export * from "@pixsim7/shared.models.core";
+export {
+  DEFAULT_ZONE_PROPERTIES,
+  ZONE_COLORS,
+  getZoneColor,
+} from "@pixsim7/shared.models.core";
+export type * from "@pixsim7/shared.models.core";

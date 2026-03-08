@@ -5,6 +5,8 @@
  * Includes node renderers, graph surfaces, templates, and Zustand stores for state management.
  */
 
+import * as NodeTypes from './lib/nodeTypes/registry';
+
 // Components - Graph Editor
 export { GraphEditorHost } from './components/graph/GraphEditorHost';
 export { ActionBlockGraphSurface } from './components/graph/ActionBlockGraphSurface';
@@ -191,7 +193,7 @@ export { registerArcNodeTypes } from './lib/nodeTypes/arc';
 export { registerBuiltinNodeTypes } from './lib/nodeTypes/builtin';
 
 // Namespace export for node types
-export * as NodeTypes from './lib/nodeTypes/registry';
+export { NodeTypes };
 
 // Lib - Refs (canonical IDs and ObjectLinks)
 export type {

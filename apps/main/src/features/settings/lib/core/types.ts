@@ -4,4 +4,4 @@
  * Re-exported from @lib/settingsSchema to keep feature imports stable.
  */
 
-export * from '@lib/settingsSchema';
+export type * from '@lib/settingsSchema';

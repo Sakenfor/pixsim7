@@ -10,14 +10,37 @@ export { updatePluginGameState } from './gameStateSync';
 export { loadPluginInSandbox, SandboxedPlugin } from './sandbox';
 
 // Plugin loader
-export * from './loader';
+export { loadAllPlugins, reloadAllPlugins } from './loader';
+export type { PluginLoaderConfig, PluginLoadResult } from './loader';
 
 // Plugin kernel
 export { initializePluginKernel } from './pluginKernel';
 
 // Manifest discovery + bundle registration
-export * from './manifestLoader';
-export * from './bundleRegistrar';
+export {
+  DEFAULT_BUNDLE_DIR,
+  PLUGIN_FAMILIES,
+  discoverBundles,
+  discoverBundlesFromPublic,
+  hasPluginBundles,
+  getAvailablePluginManifests,
+} from './manifestLoader';
+export type {
+  BundlePluginFamily,
+  BundleManifest,
+  BundleLoadResult,
+  LoadPluginBundlesOptions,
+  DiscoveredBundle,
+} from './manifestLoader';
+export {
+  discoverBundleRegistrations,
+  loadPluginBundles,
+  loadSceneViewBundles,
+  loadRemotePluginBundle,
+  loadRemotePluginBundles,
+  unregisterPlugin,
+} from './bundleRegistrar';
+export type { RemotePluginDescriptor } from './bundleRegistrar';
 
 // Unified plugin catalog and system
 export { pluginCatalog, pluginActivationManager } from './pluginSystem';

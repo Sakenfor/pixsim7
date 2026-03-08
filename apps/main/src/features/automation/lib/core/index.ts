@@ -2,4 +2,4 @@
  * Automation Core Library Exports
  */
 
-export * from './automationService';
+export { automationService } from './automationService';

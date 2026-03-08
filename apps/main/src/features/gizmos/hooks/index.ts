@@ -1,2 +1,7 @@
-export * from './gizmoSurfaceHooks';
-export * from './useToolWithOverrides';
+export { useEnabledGizmoSurfaces, useIsSurfaceEnabled, useToggleSurface } from './gizmoSurfaceHooks';
+export {
+  useToolWithOverrides,
+  useToolInstanceWithOverrides,
+  useToolHasOverrides,
+  useAllToolsWithOverrides,
+} from './useToolWithOverrides';

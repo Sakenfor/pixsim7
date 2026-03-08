@@ -40,7 +40,30 @@ export { createPanelSchemaSettingsSection } from './components/shared/panelSchem
 // Lib - Core Settings System
 // ============================================================================
 
-export * from './lib/core';
+export type {
+  SettingsSubSection,
+  SettingsModule,
+  SettingCategory,
+  SettingTab,
+  SettingGroup,
+  SettingStoreAdapter,
+  SettingRegistration,
+  SettingFieldType,
+  BaseSettingField,
+  ToggleSettingField,
+  SelectSettingField,
+  RangeSettingField,
+  NumberSettingField,
+  TextSettingField,
+  ColorSettingField,
+  CustomSettingField,
+  SettingField,
+} from './lib/core';
+export {
+  collectSchemaFields,
+  collectSchemaDefaults,
+  resolveSchemaValues,
+} from './lib/core';
 
 // ============================================================================
 // Lib - Backup Utilities

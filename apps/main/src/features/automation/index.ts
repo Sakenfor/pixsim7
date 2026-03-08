@@ -18,7 +18,35 @@
 // Types (re-export all from types.ts)
 // ============================================================================
 
-export * from './types';
+export {
+  ActionType,
+  MatchMode,
+  VariableType,
+} from './types';
+export type {
+  DeviceType,
+  ConnectionMethod,
+  DeviceStatus,
+  AutomationStatus,
+  LoopStatus,
+  LoopSelectionMode,
+  PresetExecutionMode,
+  AndroidDevice,
+  AppActionPreset,
+  AutomationExecution,
+  ExecutionLoop,
+  ElementSelector,
+  PresetVariable,
+  ActionDefinition,
+  DeviceScanResult,
+  ActionParameterType,
+  ActionCategory,
+  ActionParameter,
+  ActionSchema,
+  ActionSchemasResponse,
+  ActionSchemasByCategoryResponse,
+  LoopRunResponse,
+} from './types';
 
 // ============================================================================
 // Components - Device Management
@@ -84,4 +112,4 @@ export {
   type ActionTestStatus,
 } from './components/actionUtils';
 // Lib - Automation Core
-export * from './lib/core';
+export { automationService } from './lib/core';

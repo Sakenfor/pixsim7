@@ -18,7 +18,12 @@ export { createBackendStorage } from './storage';
 export { manuallyRehydrateStore, exposeStoreForDebugging } from './zustandPersist';
 
 // Validation utilities
-export * from './validation';
+export {
+  isDevValidationEnabled,
+  devValidateParams,
+  devLogParams,
+  withDevValidation,
+} from './validation';
 
 // HMR-safe factories
 export { createHmrSafeContext, hmrSingleton } from './hmrSafe';

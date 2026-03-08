@@ -34,7 +34,27 @@ export interface ApiError {
 }
 
 // Re-export game types
-export * from './game';
+export { getDefaultWorldSchedulerConfig } from './game';
+export type {
+  GameWorldMeta,
+  NPCState,
+  NPCSchedule,
+  WorldSchedulerTierConfig,
+  WorldSchedulerConfig,
+  GameWorldState,
+  GameWorld,
+  GameNPC,
+  GameSession,
+  GameSessionDTO,
+} from './game';
 
 // Re-export display types
-export * from './display';
+export type {
+  DisplaySpaceKind,
+  DisplaySurfaceConfig,
+  DisplaySpaceDefinition,
+  DisplaySpacesMap,
+  DisplayTarget,
+  ResolvedDisplayTarget,
+  GameWorldDisplayMeta,
+} from './display';
