@@ -36,6 +36,8 @@ export interface VersioningAdapter {
   getVersions(entityId: string | number): Promise<VersionEntry[]>;
   /** Set HEAD version for a family. Null if entity doesn't support HEAD. */
   setHead?(familyId: string, entityId: string | number): Promise<void>;
+  /** Retroactively link an existing asset as a version of another. */
+  linkVersion?(parentId: string | number, childId: string | number, message?: string): Promise<VersionFamilyInfo>;
 }
 
 // ===== Asset Versioning =====
@@ -87,6 +89,25 @@ export function createAssetVersioningApi(client: PixSimApiClient): VersioningAda
       await client.post(`/assets/versions/families/${familyId}/set-head`, {
         asset_id: Number(assetId),
       });
+    },
+
+    async linkVersion(
+      parentId: string | number,
+      childId: string | number,
+      message?: string,
+    ): Promise<VersionFamilyInfo> {
+      const raw = await client.post<AssetFamilyRaw>(`/assets/versions/link-version`, {
+        parent_asset_id: Number(parentId),
+        child_asset_id: Number(childId),
+        version_message: message ?? null,
+      });
+      return {
+        familyId: raw.id,
+        name: raw.name,
+        headEntityId: raw.head_asset_id,
+        versionCount: raw.version_count,
+        latestVersionNumber: raw.latest_version_number,
+      };
     },
   };
 }

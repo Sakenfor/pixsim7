@@ -289,20 +289,12 @@ class AssetCreationMixin:
 
     @staticmethod
     def _extract_input_asset_ids(generation: Any) -> List[int]:
-        ids: List[int] = []
+        from pixsim7.backend.main.services.generation.context import extract_source_asset_ids
+
         inputs = getattr(generation, "inputs", None) or []
         if not isinstance(inputs, list):
-            return ids
-        for item in inputs:
-            if not isinstance(item, dict):
-                continue
-            asset_ref = item.get("asset")
-            if isinstance(asset_ref, str) and asset_ref.startswith("asset:"):
-                try:
-                    ids.append(int(asset_ref.split(":", 1)[1]))
-                except (TypeError, ValueError):
-                    continue
-        return ids
+            return []
+        return extract_source_asset_ids(inputs)
 
     @staticmethod
     def _extract_run_context(generation: Any) -> Optional[Dict[str, Any]]:

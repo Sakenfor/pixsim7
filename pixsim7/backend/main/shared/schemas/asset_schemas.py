@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Literal, Dict, Any, Union
 from uuid import UUID
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDomain, OperationType
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
 from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
@@ -207,6 +207,13 @@ class AssetResponse(BaseModel):
     version_number: Optional[int] = None
     parent_asset_id: Optional[int] = None
     version_message: Optional[str] = None
+
+    @field_validator("version_family_id", mode="before")
+    @classmethod
+    def _coerce_version_family_id(cls, v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        return str(v)
 
     # Generation context availability (computed)
     has_generation_context: bool = False

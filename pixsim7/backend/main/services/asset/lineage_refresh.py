@@ -20,6 +20,7 @@ from sqlalchemy import select, delete
 from pixsim7.backend.main.domain import Asset, User
 from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 from pixsim7.backend.main.domain.generation.models import Generation
+from pixsim7.backend.main.shared.asset_refs import extract_asset_id
 from pixsim_logging import get_logger
 
 
@@ -220,15 +221,12 @@ class LineageRefreshService:
         # Filter out inputs that already have lineage edges
         new_inputs = []
         for inp in inputs_with_assets:
-            asset_ref = inp.get("asset", "")
-            if not asset_ref.startswith("asset:"):
+            parent_id = extract_asset_id(inp.get("asset"))
+            if parent_id is None:
                 continue
-            try:
-                parent_id = int(asset_ref.split(":", 1)[1])
-                if parent_id not in existing_parents:
-                    new_inputs.append(inp)
-            except (ValueError, IndexError):
+            if parent_id in existing_parents:
                 continue
+            new_inputs.append(inp)
 
         if not new_inputs:
             return 0
@@ -298,4 +296,3 @@ class LineageRefreshService:
             "count": len(results),
             "results": results,
         }
-

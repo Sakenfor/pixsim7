@@ -184,6 +184,13 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
         self.db = db
         self._validate_config()
 
+    @staticmethod
+    def _coerce_uuid(value: Any) -> UUID:
+        """Safely coerce a UUID-like value (asyncpg UUID, str, etc.) to stdlib UUID."""
+        if isinstance(value, UUID):
+            return value
+        return UUID(str(value))
+
     def _validate_config(self) -> None:
         """Fail fast if required config attributes are missing."""
         missing = [
@@ -267,6 +274,18 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
             select(EntityModel).where(self.build_entity_id_filter(entity_id))
         )
         return result.scalar_one_or_none()
+
+    async def get_family_for_entity(self, entity_id: Any) -> Optional[TFamily]:
+        """Get the version family for an entity, if it belongs to one."""
+        EntityModel = self.get_entity_model()
+        family_col = getattr(EntityModel, self.family_id_attr)
+        result = await self.db.execute(
+            select(family_col).where(self.build_entity_id_filter(entity_id))
+        )
+        family_id_raw = result.scalar_one_or_none()
+        if not family_id_raw:
+            return None
+        return await self.get_family(self._coerce_uuid(family_id_raw))
 
     async def get_family_stats(self, family_id: UUID) -> FamilyStats:
         """

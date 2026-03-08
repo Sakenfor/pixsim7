@@ -69,6 +69,13 @@ class SetHeadRequest(BaseModel):
     asset_id: int = Field(..., description="Asset ID to set as HEAD")
 
 
+class LinkVersionRequest(BaseModel):
+    """Request to link an asset as a new version of another"""
+    parent_asset_id: int = Field(..., description="Asset to version from (becomes v1 if standalone)")
+    child_asset_id: int = Field(..., description="Asset to link as the next version (becomes HEAD)")
+    version_message: Optional[str] = Field(None, max_length=500, description="What changed")
+
+
 class ForkRequest(BaseModel):
     """Request to fork an asset to a new family"""
     name: Optional[str] = Field(None, max_length=255, description="Name for the new family")
@@ -278,6 +285,68 @@ async def get_asset_ancestry(
         )
         for a in ancestors
     ]
+
+
+@router.post("/link-version", response_model=VersionFamilyResponse)
+async def link_version(
+    request: LinkVersionRequest,
+    user: CurrentUser,
+    db: DatabaseSession,
+):
+    """
+    Retroactively link an existing asset as a version of another.
+
+    If the parent is standalone, creates a new family and upgrades the parent to v1.
+    The child becomes the next version and HEAD; the old HEAD is hidden from gallery.
+
+    Use this to fix assets that should have been versioned but were saved as standalone,
+    or to manually chain related assets together.
+    """
+    from pixsim7.backend.main.domain.assets.models import Asset as AssetModel
+
+    service = AssetVersioningService(db)
+
+    # Load and validate both assets
+    parent_result = await db.execute(
+        select(AssetModel).where(AssetModel.id == request.parent_asset_id)
+    )
+    parent = parent_result.scalar_one_or_none()
+    if not parent:
+        raise HTTPException(status_code=404, detail=f"Parent asset {request.parent_asset_id} not found")
+    if parent.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access parent asset")
+
+    child_result = await db.execute(
+        select(AssetModel).where(AssetModel.id == request.child_asset_id)
+    )
+    child = child_result.scalar_one_or_none()
+    if not child:
+        raise HTTPException(status_code=404, detail=f"Child asset {request.child_asset_id} not found")
+    if child.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access child asset")
+
+    # Reject if child already belongs to a version family
+    if child.version_family_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Child asset {request.child_asset_id} already belongs to a version family",
+        )
+
+    try:
+        await service.apply_version_for_upload(
+            new_asset_id=request.child_asset_id,
+            parent_asset_id=request.parent_asset_id,
+            version_message=request.version_message,
+        )
+        await db.commit()
+
+        family = await service.get_family_for_asset(request.child_asset_id)
+        if not family:
+            raise HTTPException(status_code=500, detail="Family not created")
+
+        return await _build_family_response(family, service)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/{asset_id}/fork", response_model=VersionFamilyResponse)

@@ -203,13 +203,7 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
         self, asset_id: int
     ) -> Optional[AssetVersionFamily]:
         """Get the version family for an asset, if it belongs to one."""
-        result = await self.db.execute(
-            select(Asset.version_family_id).where(Asset.id == asset_id)
-        )
-        family_id_str = result.scalar_one_or_none()
-        if not family_id_str:
-            return None
-        return await self.get_family(UUID(family_id_str))
+        return await self.get_family_for_entity(asset_id)
 
     # =========================================================================
     # VERSION FOR UPLOADS (non-generation path, e.g. mask saves)

@@ -24,6 +24,16 @@ UPLOAD_CONTEXT_SPEC: dict[str, Any] = json.loads(r'''{
         "type": "string",
         "label": "Source",
         "description": "Sub-source or tool identifier (e.g., video_player)"
+      },
+      "version_parent_id": {
+        "type": "number",
+        "label": "Version Parent",
+        "description": "Asset ID to version from (chains new upload as next version)"
+      },
+      "version_message": {
+        "type": "string",
+        "label": "Version Message",
+        "description": "What changed in this version"
       }
     }
   },

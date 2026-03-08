@@ -41,6 +41,16 @@ export const uploadContextSpec: UploadContextSpec = {
         "type": "string",
         "label": "Source",
         "description": "Sub-source or tool identifier (e.g., video_player)"
+      },
+      "version_parent_id": {
+        "type": "number",
+        "label": "Version Parent",
+        "description": "Asset ID to version from (chains new upload as next version)"
+      },
+      "version_message": {
+        "type": "string",
+        "label": "Version Message",
+        "description": "What changed in this version"
       }
     }
   },
@@ -72,14 +82,12 @@ export const uploadContextSpec: UploadContextSpec = {
         "source_folder": {
           "type": "string",
           "label": "Folder Name",
-          "description": "Local folder display name",
-          "filterable": true
+          "description": "Local folder display name"
         },
         "source_subfolder": {
           "type": "string",
           "label": "Subfolder",
-          "description": "Subfolder name within the source folder",
-          "filterable": true
+          "description": "Subfolder name within the source folder"
         },
         "source_relative_path": {
           "type": "string",
@@ -105,14 +113,12 @@ export const uploadContextSpec: UploadContextSpec = {
         "source_folder": {
           "type": "string",
           "label": "Source Folder",
-          "description": "Top-level folder for local video captures",
-          "filterable": true
+          "description": "Top-level folder for local video captures"
         },
         "source_filename": {
           "type": "string",
           "label": "Source Video",
-          "description": "Source video file name",
-          "filterable": true
+          "description": "Source video file name"
         },
         "source_asset_id": {
           "type": "number",

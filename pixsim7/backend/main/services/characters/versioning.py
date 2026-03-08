@@ -276,7 +276,7 @@ class CharacterVersioningService(
                 Character.is_active == True,  # noqa: E712
             ).limit(1)
         )
-        family_id = result.scalar_one_or_none()
-        if not family_id:
+        family_id_raw = result.scalar_one_or_none()
+        if not family_id_raw:
             return None
-        return await self.get_family(family_id)
+        return await self.get_family(self._coerce_uuid(family_id_raw))

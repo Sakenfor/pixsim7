@@ -9,10 +9,7 @@ from __future__ import annotations
 from typing import Any, Optional
 import re
 
-try:
-    from pixsim7.backend.main.shared.schemas.entity_ref import EntityRef
-except Exception:  # pragma: no cover - avoid import cycles in edge cases
-    EntityRef = None  # type: ignore
+from pixsim7.backend.main.shared.entity_refs import parse_entity_ref
 
 
 # Pattern for asset references: "asset_123", "asset:123"
@@ -39,6 +36,26 @@ def _coerce_int(value: Any) -> Optional[int]:
         return None
 
 
+def _parse_entity_ref(value: Any) -> Any:
+    """Best-effort canonical EntityRef parsing with compatibility adapters."""
+    if value is None:
+        return None
+
+    candidate = value
+    if isinstance(value, str):
+        raw = value.strip()
+        if raw.startswith("asset_"):
+            candidate = f"asset:{raw.split('_', 1)[1]}"
+    elif isinstance(value, dict):
+        if value.get("type") is None:
+            if value.get("asset_id") is not None:
+                candidate = {"type": "asset", "id": value.get("asset_id")}
+            elif value.get("assetId") is not None:
+                candidate = {"type": "asset", "id": value.get("assetId")}
+
+    return parse_entity_ref(candidate)
+
+
 def extract_asset_id(value: Any, *, allow_numeric_string: bool = True) -> Optional[int]:
     """
     Extract an integer asset ID from common reference formats.
@@ -58,18 +75,19 @@ def extract_asset_id(value: Any, *, allow_numeric_string: bool = True) -> Option
     if isinstance(value, int):
         return value
 
-    if EntityRef is not None and isinstance(value, EntityRef):
-        return value.id if value.type == "asset" else None
+    parsed_ref = _parse_entity_ref(value)
+    if parsed_ref is not None:
+        return parsed_ref.id if parsed_ref.type == "asset" else None
 
     if isinstance(value, dict):
+        if "asset" in value:
+            return extract_asset_id(value.get("asset"))
         if value.get("type") == "asset" and value.get("id") is not None:
             return _coerce_int(value.get("id"))
         if "asset_id" in value:
             return _coerce_int(value.get("asset_id"))
         if "assetId" in value:
             return _coerce_int(value.get("assetId"))
-        if "asset" in value:
-            return extract_asset_id(value.get("asset"))
         if "id" in value:
             return _coerce_int(value.get("id"))
 
@@ -135,6 +153,9 @@ def extract_asset_ref(value: Any, *, allow_url_asset_id: bool = False) -> Option
                 if asset_id is not None:
                     return f"asset:{asset_id}"
             return raw
+        parsed_ref = _parse_entity_ref(raw)
+        if parsed_ref is not None and parsed_ref.type == "asset":
+            return f"asset:{parsed_ref.id}"
         match = _ASSET_REF_RE.match(raw)
         if match:
             return f"asset:{match.group('id')}"
@@ -144,6 +165,10 @@ def extract_asset_ref(value: Any, *, allow_url_asset_id: bool = False) -> Option
             return f"asset:{raw.split('_', 1)[1]}"
         if raw.isdigit():
             return f"asset:{raw}"
+
+    parsed_ref = _parse_entity_ref(value)
+    if parsed_ref is not None and parsed_ref.type == "asset":
+        return f"asset:{parsed_ref.id}"
 
     asset_id = extract_asset_id(value)
     if asset_id is not None:
