@@ -12,7 +12,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Icon } from '@lib/icons';
 
 import type { PromptTimeline } from '../hooks/usePromptHistory';
-import { diffPrompt, diffSummary } from '../lib/promptDiff';
+import { diffHoverSummary, diffPrompt, diffSummary } from '../lib/promptDiff';
 
 function truncate(text: string, max: number) {
   if (text.length <= max) return text;
@@ -110,6 +110,7 @@ export function PromptHistoryPopover({
           const prev = idx > 0 ? entries[idx - 1] : null;
           const summary = prev !== null ? diffSummary(prev, entry) : 'Initial';
           const isExpanded = expandedSet.has(idx);
+          const hoverTitle = !isExpanded && prev !== null ? diffHoverSummary(prev, entry) : undefined;
 
           return (
             <div
@@ -121,7 +122,7 @@ export function PromptHistoryPopover({
               )}
             >
               {/* Collapsed header — always visible */}
-              <div className="flex items-center gap-2 px-3 py-1.5">
+              <div className="flex items-center gap-2 px-3 py-1.5" title={hoverTitle}>
                 {/* Expand/collapse chevron */}
                 <button
                   type="button"

@@ -106,3 +106,39 @@ export function diffSummary(prev: string, next: string): string {
   if (delta < 0) return `${delta} word${delta === -1 ? '' : 's'}`;
   return 'Modified';
 }
+
+/**
+ * Hover-friendly summary that shows actual changed words when the diff is small.
+ * Falls back to a word-count summary for larger changes.
+ */
+export function diffHoverSummary(prev: string, next: string): string {
+  if (prev === next) return '';
+  if (!prev.trim()) return `Set to: "${next.length > 80 ? next.slice(0, 77) + '…' : next}"`;
+  if (!next.trim()) return 'Cleared prompt';
+
+  const prevWords = prev.split(/\s+/);
+  const nextWords = next.split(/\s+/);
+  const prevSet = new Set(prevWords);
+  const nextSet = new Set(nextWords);
+
+  const added = nextWords.filter((w) => !prevSet.has(w));
+  const removed = prevWords.filter((w) => !nextSet.has(w));
+
+  // Show actual words if the change is small enough for a tooltip
+  const MAX_WORDS = 8;
+  const parts: string[] = [];
+
+  if (removed.length > 0 && removed.length <= MAX_WORDS) {
+    parts.push(`− ${removed.join(' ')}`);
+  } else if (removed.length > MAX_WORDS) {
+    parts.push(`− ${removed.length} words`);
+  }
+
+  if (added.length > 0 && added.length <= MAX_WORDS) {
+    parts.push(`+ ${added.join(' ')}`);
+  } else if (added.length > MAX_WORDS) {
+    parts.push(`+ ${added.length} words`);
+  }
+
+  return parts.join('\n') || 'Reordered';
+}
