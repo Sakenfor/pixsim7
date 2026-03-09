@@ -1,10 +1,13 @@
 """
 ARQ worker configuration - main worker entry point
 
-Combines job processor and status poller into a single worker.
+Defines the ARQ worker family:
+- WorkerSettings: main generation/automation worker
+- GenerationRetryWorkerSettings: deferred generation retry worker
+- SimulationWorkerSettings: dedicated world simulation scheduler worker
 
 Usage:
-    # Start worker
+    # Start main worker
     arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 
 Redis configuration:
@@ -26,12 +29,18 @@ from pixsim7.backend.main.workers.status_poller import poll_job_statuses, requeu
 from pixsim7.backend.main.workers.analysis_processor import process_analysis, requeue_pending_analyses
 from pixsim7.backend.main.workers.analysis_backfill import run_analysis_backfill_batch
 from pixsim7.backend.main.services.automation.device_sync_service import poll_device_ads
-from pixsim7.backend.main.workers.health import update_heartbeat, get_health_tracker
-from pixsim7.backend.main.workers.world_simulation import tick_active_worlds, SIMULATION_ENABLED
+from pixsim7.backend.main.workers.health import (
+    update_main_heartbeat,
+    update_retry_heartbeat,
+    update_simulation_heartbeat,
+    get_health_tracker,
+)
+from pixsim7.backend.main.workers.world_simulation import tick_active_worlds
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.infrastructure.queue import (
     GENERATION_FRESH_QUEUE_NAME,
     GENERATION_RETRY_QUEUE_NAME,
+    SIMULATION_SCHEDULER_QUEUE_NAME,
 )
 from pixsim7.backend.main.shared.debug import load_global_debug_from_env
 from pixsim_logging import configure_logging, configure_stdlib_root_logger, bind_domain_context
@@ -125,12 +134,14 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_component_registered", component="queue_pending_executions", schedule="*/15s")
     logger.info("worker_component_registered", component="requeue_pending_generations", schedule="*/30s")
     logger.info("worker_component_registered", component="requeue_pending_analyses", schedule="*/30s")
-    logger.info("worker_component_registered", component="update_heartbeat", schedule="*/30s")
+    logger.info("worker_component_registered", component="update_main_heartbeat", schedule="*/30s")
     logger.info("worker_component_registered", component="poll_device_ads", schedule="*/5s")
-    if SIMULATION_ENABLED:
-        logger.info("worker_component_registered", component="tick_active_worlds", schedule="*/5s")
-    else:
-        logger.info("worker_simulation_disabled", msg="World simulation disabled (set SIMULATION_ENABLED=true to enable)")
+    logger.info(
+        "worker_component_externalized",
+        component="tick_active_worlds",
+        worker="SimulationWorkerSettings",
+        queue=SIMULATION_SCHEDULER_QUEUE_NAME,
+    )
 
     logger.info(
         "worker_effective_config",
@@ -153,7 +164,7 @@ async def startup(ctx: dict) -> None:
     _event_bridge = await start_event_bus_bridge(role="arq_worker")
 
     # Send initial heartbeat
-    await update_heartbeat(ctx)
+    await update_main_heartbeat(ctx)
 
 
 async def shutdown(ctx: dict) -> None:
@@ -175,6 +186,7 @@ async def retry_startup(ctx: dict) -> None:
     """Startup for generation retry worker (no cron/bootstrap side effects)."""
     global _retry_event_bridge
     AccountEventService.initialize()
+    get_health_tracker()
     logger.info("worker_start", msg="PixSim7 Generation Retry Worker Starting")
 
     debug_flags = load_global_debug_from_env()
@@ -187,7 +199,9 @@ async def retry_startup(ctx: dict) -> None:
     await _load_persisted_system_config_for_worker()
     register_default_providers()
     logger.info("worker_component_registered", component="process_generation", queue=GENERATION_RETRY_QUEUE_NAME)
+    logger.info("worker_component_registered", component="update_retry_heartbeat", schedule="*/30s")
     _retry_event_bridge = await start_event_bus_bridge(role="arq_generation_retry_worker")
+    await update_retry_heartbeat(ctx)
 
 
 async def retry_shutdown(ctx: dict) -> None:
@@ -198,6 +212,26 @@ async def retry_shutdown(ctx: dict) -> None:
     if _retry_event_bridge:
         await stop_event_bus_bridge()
         _retry_event_bridge = None
+
+
+async def simulation_startup(ctx: dict) -> None:
+    """Startup for dedicated simulation scheduler worker."""
+    get_health_tracker()
+    logger.info("worker_start", msg="PixSim7 Simulation Scheduler Worker Starting")
+    await _load_persisted_system_config_for_worker()
+    logger.info(
+        "worker_component_registered",
+        component="tick_active_worlds",
+        schedule="*/5s",
+        queue=SIMULATION_SCHEDULER_QUEUE_NAME,
+    )
+    logger.info("worker_component_registered", component="update_simulation_heartbeat", schedule="*/30s")
+    await update_simulation_heartbeat(ctx)
+
+
+async def simulation_shutdown(ctx: dict) -> None:
+    """Shutdown for dedicated simulation scheduler worker."""
+    logger.info("worker_shutdown", msg="PixSim7 Simulation Scheduler Worker Shutting Down")
 
 
 _sync_preload_system_config()
@@ -230,7 +264,6 @@ class WorkerSettings:
         queue_pending_executions,
         requeue_pending_generations,
         requeue_pending_analyses,
-        tick_active_worlds,
         poll_device_ads,
     ]
 
@@ -268,7 +301,7 @@ class WorkerSettings:
         ),
         # Update worker heartbeat every 30 seconds
         cron(
-            update_heartbeat,
+            update_main_heartbeat,
             second={0, 30},
             run_at_startup=False,  # Will be called in startup
         ),
@@ -278,13 +311,6 @@ class WorkerSettings:
             minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
             second={5},
             run_at_startup=False,
-        ),
-        # Tick active worlds every 5 seconds (if SIMULATION_ENABLED=true)
-        # This runs NPC behavior simulation, activity selection, and effects
-        cron(
-            tick_active_worlds,
-            second={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},  # Every 5 seconds
-            run_at_startup=False,  # Wait for first interval before starting
         ),
         # Poll device ad activity every 5 seconds
         # Detects when ads are playing and marks device as BUSY
@@ -322,7 +348,13 @@ class GenerationRetryWorkerSettings:
     functions = [
         process_generation,
     ]
-    cron_jobs = []
+    cron_jobs = [
+        cron(
+            update_retry_heartbeat,
+            second={0, 30},
+            run_at_startup=False,
+        ),
+    ]
 
     on_startup = retry_startup
     on_shutdown = retry_shutdown
@@ -331,6 +363,42 @@ class GenerationRetryWorkerSettings:
     job_timeout = int(os.getenv("ARQ_JOB_TIMEOUT", "3600"))
     max_tries = int(os.getenv("ARQ_MAX_TRIES", "3"))
     retry_jobs = True
+
+    log_results = True
+    verbose = True
+    health_check_interval = 60
+
+
+class SimulationWorkerSettings:
+    """ARQ worker dedicated to periodic world simulation scheduling."""
+
+    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    queue_name = SIMULATION_SCHEDULER_QUEUE_NAME
+
+    functions = [
+        tick_active_worlds,
+    ]
+
+    cron_jobs = [
+        cron(
+            tick_active_worlds,
+            second={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
+            run_at_startup=False,
+        ),
+        cron(
+            update_simulation_heartbeat,
+            second={0, 30},
+            run_at_startup=False,
+        ),
+    ]
+
+    on_startup = simulation_startup
+    on_shutdown = simulation_shutdown
+
+    max_jobs = int(os.getenv("ARQ_SIMULATION_MAX_JOBS", "2"))
+    job_timeout = int(os.getenv("ARQ_SIMULATION_JOB_TIMEOUT", "120"))
+    max_tries = 1
+    retry_jobs = False
 
     log_results = True
     verbose = True
@@ -350,3 +418,5 @@ if __name__ == "__main__":
     print("=" * 60)
     print("\nTo start worker, run:")
     print("  arq pixsim7.backend.main.workers.arq_worker.WorkerSettings")
+    print("  arq pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings")
+    print("  arq pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings")

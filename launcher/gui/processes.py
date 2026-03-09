@@ -81,7 +81,7 @@ class ServiceProcess:
         self.max_log_lines = MAX_LOG_LINES
         self.detected_pid: Optional[int] = None  # PID of externally running process
         self.started_pid: Optional[int] = None  # PID of process we started (for detached processes)
-        self.extra_started_pids: list[int] = []  # Companion processes started with this service (e.g. retry worker)
+        self.extra_started_pids: list[int] = []  # Companion processes started with this service (e.g. retry/simulation workers)
         self.persisted_pid: Optional[int] = None  # PID loaded from persistent storage (survives launcher restart)
         self.requested_running = False  # User's intended state (start/stop button clicks)
         self.externally_managed = False  # True if service is running outside launcher control
@@ -176,7 +176,7 @@ class ServiceProcess:
                     self.externally_managed = True
                     self.health_status = HealthStatus.STARTING
                     _log("loaded_persisted_pid", service_key=self.defn.key, pid=stored_pid)
-                    # Recover companion PIDs (e.g. retry worker)
+                    # Recover companion PIDs (e.g. retry/simulation workers)
                     companion = entry.get("companion_pids", [])
                     if companion:
                         alive = [int(p) for p in companion if pid_store.is_pid_running(int(p))]
@@ -308,15 +308,21 @@ class ServiceProcess:
             start_new_session=True,
         )
 
-    def _build_companion_worker_cmd(self, primary_cmd: list[str]) -> Optional[list[str]]:
-        """Build a companion retry-worker command for the ARQ worker service."""
+    def _build_companion_worker_cmds(self, primary_cmd: list[str]) -> list[list[str]]:
+        """Build companion worker commands (retry + simulation) for the ARQ worker service."""
         if self.defn.key != "worker":
-            return None
+            return []
         marker = "pixsim7.backend.main.workers.arq_worker.WorkerSettings"
         retry_marker = "pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings"
+        simulation_marker = "pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings"
         if not any(arg == marker for arg in primary_cmd):
-            return None
-        return [retry_marker if arg == marker else arg for arg in primary_cmd]
+            return []
+        companions: list[list[str]] = []
+        for companion_marker in (retry_marker, simulation_marker):
+            companions.append(
+                [companion_marker if arg == marker else arg for arg in primary_cmd]
+            )
+        return companions
 
     def _kill_extra_started_processes(self, graceful: bool) -> None:
         """Best-effort kill companion detached processes started with this service."""
@@ -372,6 +378,7 @@ class ServiceProcess:
                         if (
                             "pixsim7.backend.main.workers.arq_worker.WorkerSettings" in cmd
                             or "pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings" in cmd
+                            or "pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings" in cmd
                         ):
                             found.append(int(pid))
             else:
@@ -393,6 +400,7 @@ class ServiceProcess:
                     if (
                         "arq_worker.WorkerSettings" in cmd
                         or "GenerationRetryWorkerSettings" in cmd
+                        or "SimulationWorkerSettings" in cmd
                     ):
                         found.append(pid)
         except Exception:
@@ -401,7 +409,7 @@ class ServiceProcess:
         return sorted(set(found))
 
     def _kill_worker_family_processes(self, graceful: bool, exclude_pids: Optional[set[int]] = None) -> list[int]:
-        """Best-effort kill all worker-family ARQ processes (main + retry), excluding tracked PIDs."""
+        """Best-effort kill all worker-family ARQ processes (main + retry + simulation), excluding tracked PIDs."""
         if self.defn.key != "worker":
             return []
         pu = _get_process_utils()
@@ -694,29 +702,44 @@ class ServiceProcess:
             self.last_error_line = ''
             self.detected_pid = None  # Clear any detected PID since we're starting fresh
 
-            # Worker service companion: start retry queue consumer under the same launcher card.
-            companion_cmd = self._build_companion_worker_cmd(cmd)
-            if companion_cmd:
-                # Kill any stale retry workers left over from a previous session
-                # to prevent duplicate retry workers.
+            # Worker service companions: start retry + simulation workers under the same launcher card.
+            companion_cmds = self._build_companion_worker_cmds(cmd)
+            if companion_cmds:
+                # Kill any stale worker-family processes left over from a previous
+                # session to prevent duplicate companions.
                 self._kill_worker_family_processes(
                     graceful=False,
                     exclude_pids={self.started_pid},
                 )
+                started_companion_pids: list[int] = []
                 try:
-                    companion_proc = self._spawn_detached_subprocess(companion_cmd, env, log_file)
-                    self.extra_started_pids.append(companion_proc.pid)
-                    _log(
-                        "worker_retry_started_detached",
-                        service_key=self.defn.key,
-                        pid=companion_proc.pid,
-                        cmd=companion_cmd,
-                    )
+                    for companion_cmd in companion_cmds:
+                        companion_proc = self._spawn_detached_subprocess(companion_cmd, env, log_file)
+                        self.extra_started_pids.append(companion_proc.pid)
+                        started_companion_pids.append(companion_proc.pid)
+                        companion_role = (
+                            "retry"
+                            if any("GenerationRetryWorkerSettings" in part for part in companion_cmd)
+                            else (
+                                "simulation"
+                                if any("SimulationWorkerSettings" in part for part in companion_cmd)
+                                else "unknown"
+                            )
+                        )
+                        _log(
+                            "worker_companion_started_detached",
+                            service_key=self.defn.key,
+                            role=companion_role,
+                            pid=companion_proc.pid,
+                            cmd=companion_cmd,
+                        )
                 except Exception as companion_error:
-                    # Avoid half-started state when the card is expected to manage both workers.
+                    # Avoid half-started state when the card is expected to manage all companions.
                     try:
                         pu = _get_process_utils()
                         pu.kill_process_by_pid(self.started_pid, force=True)
+                        for companion_pid in started_companion_pids:
+                            pu.kill_process_by_pid(companion_pid, force=True)
                     except Exception:
                         pass
                     self.proc = None
@@ -724,9 +747,9 @@ class ServiceProcess:
                     self.extra_started_pids = []
                     self.running = False
                     self.health_status = HealthStatus.UNHEALTHY
-                    self.last_error_line = f"Failed to start retry worker: {companion_error}"
+                    self.last_error_line = f"Failed to start companion worker: {companion_error}"
                     _log(
-                        "worker_retry_start_failed",
+                        "worker_companion_start_failed",
                         "error",
                         service_key=self.defn.key,
                         error=str(companion_error),

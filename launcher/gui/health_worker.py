@@ -102,6 +102,7 @@ class HealthWorker(QThread):
 
         main_pids: list[int] = []
         retry_pids: list[int] = []
+        simulation_pids: list[int] = []
 
         try:
             if os.name == 'nt':
@@ -122,7 +123,7 @@ class HealthWorker(QThread):
                 )
                 raw = (result.stdout or "").strip()
                 if not raw:
-                    return {"main_pids": [], "retry_pids": []}
+                    return {"main_pids": [], "retry_pids": [], "simulation_pids": []}
                 data = json.loads(raw)
                 rows = data if isinstance(data, list) else [data]
                 for row in rows:
@@ -132,6 +133,8 @@ class HealthWorker(QThread):
                         continue
                     if "GenerationRetryWorkerSettings" in cmd:
                         retry_pids.append(int(pid))
+                    elif "SimulationWorkerSettings" in cmd:
+                        simulation_pids.append(int(pid))
                     elif "arq_worker.WorkerSettings" in cmd:
                         main_pids.append(int(pid))
             else:
@@ -152,12 +155,34 @@ class HealthWorker(QThread):
                         continue
                     if "GenerationRetryWorkerSettings" in cmd:
                         retry_pids.append(pid)
+                    elif "SimulationWorkerSettings" in cmd:
+                        simulation_pids.append(pid)
                     elif "arq_worker.WorkerSettings" in cmd:
                         main_pids.append(pid)
         except Exception:
             pass
 
-        return {"main_pids": sorted(set(main_pids)), "retry_pids": sorted(set(retry_pids))}
+        return {
+            "main_pids": sorted(set(main_pids)),
+            "retry_pids": sorted(set(retry_pids)),
+            "simulation_pids": sorted(set(simulation_pids)),
+        }
+
+    def _classify_arq_worker_pid(self, pid: int) -> Optional[str]:
+        """Classify an ARQ worker PID as main/retry/simulation if possible."""
+        try:
+            import psutil
+
+            cmd = " ".join(psutil.Process(pid).cmdline())
+            if "GenerationRetryWorkerSettings" in cmd:
+                return "retry"
+            if "SimulationWorkerSettings" in cmd:
+                return "simulation"
+            if "arq_worker.WorkerSettings" in cmd:
+                return "main"
+        except Exception:
+            return None
+        return None
 
     def _update_worker_card_details(
         self,
@@ -196,11 +221,13 @@ class HealthWorker(QThread):
 
         fresh_pending = None
         retry_pending = None
+        simulation_pending = None
         legacy_pending = None
         in_progress = None
         if redis_reachable:
             fresh_pending = self._redis_simple_int(host, port, "LLEN", "arq:queue")
             retry_pending = self._redis_simple_int(host, port, "LLEN", "arq:queue:generation-retry")
+            simulation_pending = self._redis_simple_int(host, port, "LLEN", "arq:queue:simulation-scheduler")
             legacy_pending = self._redis_simple_int(host, port, "LLEN", "arq:queue:default")
             in_progress = self._redis_simple_int(host, port, "ZCARD", "arq:in-progress")
 
@@ -209,7 +236,27 @@ class HealthWorker(QThread):
         # scan is only needed at startup for orphan recovery (done in
         # processes.py _recover_worker_family).
         extra_pids = getattr(sp, "extra_started_pids", None) or []
-        retry_pids = [p for p in extra_pids if p != main_pid] if extra_pids else []
+        retry_pids: list[int] = []
+        simulation_pids: list[int] = []
+        unknown_companion_pids: list[int] = []
+        for pid in extra_pids:
+            if pid == main_pid:
+                continue
+            role = self._classify_arq_worker_pid(pid)
+            if role == "retry":
+                retry_pids.append(pid)
+            elif role == "simulation":
+                simulation_pids.append(pid)
+            elif role == "main":
+                # Keep visibility if the main worker PID tracking drifted.
+                pass
+            else:
+                unknown_companion_pids.append(pid)
+        # Backward-compatible fallback: unknown companion under worker card is most
+        # likely retry on older launcher/runtime combinations.
+        if unknown_companion_pids and not retry_pids:
+            retry_pids = list(unknown_companion_pids)
+            unknown_companion_pids = []
         main_pids = [main_pid] if main_pid else []
 
         details = {
@@ -217,24 +264,34 @@ class HealthWorker(QThread):
             "main_worker_pid": main_pid,
             "retry_worker_running": bool(retry_pids),
             "retry_worker_pids": retry_pids or None,
+            "simulation_worker_running": bool(simulation_pids),
+            "simulation_worker_pids": simulation_pids or None,
             "redis_endpoint": f"{host}:{port}",
             "redis_reachable": bool(redis_reachable),
             "queue_pending_fresh": fresh_pending,
             "queue_pending_retry": retry_pending,
+            "queue_pending_simulation": simulation_pending,
             "queue_in_progress": in_progress,
             "queue_pending_legacy_default": legacy_pending if legacy_pending not in (None, 0) else None,
+            "companion_worker_pids_unknown": unknown_companion_pids or None,
             "details_updated_at": time.strftime("%H:%M:%S"),
         }
         if len(main_pids) > 1:
             details["note"] = f"Multiple ARQ main workers detected: {main_pids}"
         elif len(retry_pids) > 1:
             details["note"] = f"Multiple ARQ retry workers detected: {retry_pids}"
+        elif len(simulation_pids) > 1:
+            details["note"] = f"Multiple ARQ simulation workers detected: {simulation_pids}"
         elif main_pids and main_pid and main_pid not in main_pids:
             details["note"] = f"Launcher PID {main_pid} differs from detected ARQ main PIDs {main_pids}"
         elif retry_pending and retry_pending > 0 and not retry_pids:
             details["note"] = "Retry queue has jobs but no retry worker process detected"
+        elif simulation_pending and simulation_pending > 0 and not simulation_pids:
+            details["note"] = "Simulation queue has jobs but no simulation worker process detected"
         elif not retry_pids:
             details["note"] = "Retry worker not detected (may be started separately)"
+        elif not simulation_pids:
+            details["note"] = "Simulation worker not detected (may be started separately)"
 
         sp.card_details = details
         sp._worker_card_details_ts = now

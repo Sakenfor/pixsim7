@@ -3,7 +3,6 @@ Worker health tracking module
 
 Provides heartbeat and health monitoring for ARQ workers.
 """
-import os
 import time
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
@@ -11,12 +10,30 @@ import platform
 import psutil
 
 from pixsim_logging import configure_logging
+from pixsim7.backend.main.infrastructure.queue import (
+    GENERATION_FRESH_QUEUE_NAME,
+    GENERATION_RETRY_QUEUE_NAME,
+    SIMULATION_SCHEDULER_QUEUE_NAME,
+)
 
 logger = configure_logging("worker.health").bind(channel="cron")
 
 # Redis keys for health tracking
-WORKER_HEARTBEAT_KEY = "arq:worker:heartbeat"
-WORKER_STATS_KEY = "arq:worker:stats"
+WORKER_ROLE_MAIN = "main"
+WORKER_ROLE_RETRY = "retry"
+WORKER_ROLE_SIMULATION = "simulation"
+WORKER_ROLES = (
+    WORKER_ROLE_MAIN,
+    WORKER_ROLE_RETRY,
+    WORKER_ROLE_SIMULATION,
+)
+
+WORKER_HEARTBEAT_KEY_TEMPLATE = "arq:worker:{role}:heartbeat"
+WORKER_STATS_KEY_TEMPLATE = "arq:worker:{role}:stats"
+
+# Backward compatibility with previous single-key worker health.
+LEGACY_WORKER_HEARTBEAT_KEY = "arq:worker:heartbeat"
+LEGACY_WORKER_STATS_KEY = "arq:worker:stats"
 HEARTBEAT_TTL = 120  # 2 minutes - if no heartbeat, worker is considered down
 
 
@@ -86,11 +103,32 @@ async def update_heartbeat(ctx: dict) -> None:
     Called periodically by ARQ cron to signal worker is alive.
     Stores heartbeat timestamp and worker stats.
     """
+    await update_main_heartbeat(ctx)
+
+
+def _normalize_worker_role(worker_role: Optional[str]) -> str:
+    """Normalize worker role for keying."""
+    role = (worker_role or WORKER_ROLE_MAIN).strip().lower()
+    if role not in WORKER_ROLES:
+        return WORKER_ROLE_MAIN
+    return role
+
+
+def _worker_heartbeat_key(worker_role: str) -> str:
+    return WORKER_HEARTBEAT_KEY_TEMPLATE.format(role=_normalize_worker_role(worker_role))
+
+
+def _worker_stats_key(worker_role: str) -> str:
+    return WORKER_STATS_KEY_TEMPLATE.format(role=_normalize_worker_role(worker_role))
+
+
+async def _update_worker_heartbeat(ctx: dict, worker_role: str) -> None:
     try:
         from pixsim7.backend.main.infrastructure.redis import get_redis
 
         redis = await get_redis()
         health = get_health_tracker()
+        normalized_role = _normalize_worker_role(worker_role)
 
         # Current timestamp
         now = datetime.now(timezone.utc)
@@ -102,6 +140,7 @@ async def update_heartbeat(ctx: dict) -> None:
             "hostname": platform.node(),
             "python_version": platform.python_version(),
             "platform": platform.platform(),
+            "worker_role": normalized_role,
         }
 
         # Stats data
@@ -119,19 +158,35 @@ async def update_heartbeat(ctx: dict) -> None:
 
         # Store in Redis with TTL
         import json
+        heartbeat_key = _worker_heartbeat_key(normalized_role)
+        stats_key = _worker_stats_key(normalized_role)
         await redis.setex(
-            WORKER_HEARTBEAT_KEY,
+            heartbeat_key,
             HEARTBEAT_TTL,
             json.dumps(heartbeat_data)
         )
         await redis.setex(
-            WORKER_STATS_KEY,
+            stats_key,
             HEARTBEAT_TTL,
             json.dumps(stats_data)
         )
 
+        # Preserve legacy keys for main worker to avoid breaking older readers.
+        if normalized_role == WORKER_ROLE_MAIN:
+            await redis.setex(
+                LEGACY_WORKER_HEARTBEAT_KEY,
+                HEARTBEAT_TTL,
+                json.dumps(heartbeat_data)
+            )
+            await redis.setex(
+                LEGACY_WORKER_STATS_KEY,
+                HEARTBEAT_TTL,
+                json.dumps(stats_data)
+            )
+
         logger.debug(
             "worker_heartbeat",
+            role=normalized_role,
             uptime=health.get_uptime_seconds(),
             processed=health.processed_jobs,
             failed=health.failed_jobs,
@@ -141,7 +196,22 @@ async def update_heartbeat(ctx: dict) -> None:
         logger.error(f"Failed to update worker heartbeat: {e}")
 
 
-async def get_worker_health() -> Optional[Dict[str, Any]]:
+async def update_main_heartbeat(ctx: dict) -> None:
+    await _update_worker_heartbeat(ctx, WORKER_ROLE_MAIN)
+
+
+async def update_retry_heartbeat(ctx: dict) -> None:
+    await _update_worker_heartbeat(ctx, WORKER_ROLE_RETRY)
+
+
+async def update_simulation_heartbeat(ctx: dict) -> None:
+    await _update_worker_heartbeat(ctx, WORKER_ROLE_SIMULATION)
+
+
+async def get_worker_health(
+    worker_role: str = WORKER_ROLE_MAIN,
+    allow_legacy_fallback: bool = True,
+) -> Optional[Dict[str, Any]]:
     """
     Get current worker health from Redis
 
@@ -153,10 +223,22 @@ async def get_worker_health() -> Optional[Dict[str, Any]]:
         import json
 
         redis = await get_redis()
+        normalized_role = _normalize_worker_role(worker_role)
+        heartbeat_key = _worker_heartbeat_key(normalized_role)
+        stats_key = _worker_stats_key(normalized_role)
 
         # Get heartbeat
-        heartbeat_raw = await redis.get(WORKER_HEARTBEAT_KEY)
-        stats_raw = await redis.get(WORKER_STATS_KEY)
+        heartbeat_raw = await redis.get(heartbeat_key)
+        stats_raw = await redis.get(stats_key)
+
+        if (
+            not heartbeat_raw
+            and normalized_role == WORKER_ROLE_MAIN
+            and allow_legacy_fallback
+        ):
+            # Support previous single-key schema.
+            heartbeat_raw = await redis.get(LEGACY_WORKER_HEARTBEAT_KEY)
+            stats_raw = await redis.get(LEGACY_WORKER_STATS_KEY)
 
         if not heartbeat_raw:
             return None  # Worker is down (no heartbeat)
@@ -168,6 +250,7 @@ async def get_worker_health() -> Optional[Dict[str, Any]]:
         return {
             **heartbeat,
             **stats,
+            "worker_role": heartbeat.get("worker_role", normalized_role),
             "status": "running",
             "healthy": True,
         }
@@ -175,6 +258,17 @@ async def get_worker_health() -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to get worker health: {e}")
         return None
+
+
+async def get_worker_family_health() -> Dict[str, Optional[Dict[str, Any]]]:
+    """Get health for main, retry, and simulation workers."""
+    results: Dict[str, Optional[Dict[str, Any]]] = {}
+    for role in WORKER_ROLES:
+        results[role] = await get_worker_health(
+            worker_role=role,
+            allow_legacy_fallback=(role == WORKER_ROLE_MAIN),
+        )
+    return results
 
 
 async def get_queue_stats() -> Dict[str, Any]:
@@ -189,11 +283,20 @@ async def get_queue_stats() -> Dict[str, Any]:
 
         redis = await get_redis()
 
-        # Get queue length (pending jobs)
-        queue_length = await redis.llen("arq:queue:default")
+        # Pending jobs can exist in fresh, retry, or legacy default queue names.
+        pending_fresh = await redis.llen(GENERATION_FRESH_QUEUE_NAME)
+        pending_retry = await redis.llen(GENERATION_RETRY_QUEUE_NAME)
+        pending_simulation = await redis.llen(SIMULATION_SCHEDULER_QUEUE_NAME)
+        pending_legacy = await redis.llen("arq:queue:default")
+        pending = pending_fresh + pending_retry + pending_simulation + pending_legacy
 
-        # Get in-progress jobs (ARQ uses a sorted set for in-progress)
-        in_progress = await redis.zcard("arq:in-progress")
+        # ARQ in-progress keying differs by version/configuration.
+        # Use the most complete available count to avoid under-reporting.
+        in_progress_global = await redis.zcard("arq:in-progress")
+        in_progress_fresh = await redis.zcard(f"arq:in-progress:{GENERATION_FRESH_QUEUE_NAME}")
+        in_progress_retry = await redis.zcard(f"arq:in-progress:{GENERATION_RETRY_QUEUE_NAME}")
+        in_progress_simulation = await redis.zcard(f"arq:in-progress:{SIMULATION_SCHEDULER_QUEUE_NAME}")
+        in_progress = max(in_progress_global, in_progress_fresh + in_progress_retry + in_progress_simulation)
 
         # Count completed jobs in last hour (from results)
         # ARQ stores results with keys like "arq:result:{job_id}"
@@ -207,10 +310,14 @@ async def get_queue_stats() -> Dict[str, Any]:
         # Note: ARQ doesn't track failed jobs by default, but we can check logs
 
         return {
-            "pending": queue_length,
+            "pending": pending,
+            "pending_fresh": pending_fresh,
+            "pending_retry": pending_retry,
+            "pending_simulation": pending_simulation,
+            "pending_legacy": pending_legacy,
             "in_progress": in_progress,
             "completed_recent": completed_count,
-            "total_tracked": queue_length + in_progress + completed_count,
+            "total_tracked": pending + in_progress + completed_count,
         }
 
     except Exception as e:

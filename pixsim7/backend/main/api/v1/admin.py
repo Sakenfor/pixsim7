@@ -253,45 +253,96 @@ async def get_services_status(admin: CurrentAdminUser):
             details={"error": str(e)}
         ))
 
-    # ARQ Worker (comprehensive health check)
+    # ARQ Worker family (main + retry + simulation)
     try:
-        from pixsim7.backend.main.workers.health import get_worker_health, get_queue_stats
-        # Get worker heartbeat data
-        worker_health = await get_worker_health()
+        from pixsim7.backend.main.workers.health import get_worker_family_health, get_queue_stats
 
-        # Get queue statistics
+        worker_family_health = await get_worker_family_health()
         queue_stats = await get_queue_stats()
 
-        if worker_health:
-            # Worker is running and healthy
-            # Calculate time since last heartbeat
-            heartbeat_time = datetime.fromisoformat(worker_health["timestamp"])
-            time_since_heartbeat = (datetime.now(timezone.utc) - heartbeat_time).total_seconds()
+        def _role_snapshot(data: Dict[str, Any] | None) -> Dict[str, Any]:
+            if not data:
+                return {
+                    "status": "stopped",
+                    "healthy": False,
+                    "last_heartbeat": None,
+                    "seconds_since_heartbeat": None,
+                    "uptime_seconds": None,
+                    "processed_jobs": 0,
+                    "failed_jobs": 0,
+                    "success_rate": "0.0%",
+                    "memory_mb": 0.0,
+                    "cpu_percent": 0.0,
+                }
 
+            heartbeat_time = datetime.fromisoformat(data["timestamp"])
+            seconds_since_heartbeat = (datetime.now(timezone.utc) - heartbeat_time).total_seconds()
+            return {
+                "status": "running",
+                "healthy": seconds_since_heartbeat < 120,
+                "last_heartbeat": data["timestamp"],
+                "seconds_since_heartbeat": round(seconds_since_heartbeat, 1),
+                "uptime_seconds": data.get("uptime_seconds"),
+                "processed_jobs": data.get("processed_jobs", 0),
+                "failed_jobs": data.get("failed_jobs", 0),
+                "success_rate": f"{data.get('success_rate', 1.0) * 100:.1f}%",
+                "memory_mb": round(data.get("memory_mb", 0), 2),
+                "cpu_percent": round(data.get("cpu_percent", 0), 2),
+            }
+
+        worker_roles = ("main", "retry", "simulation")
+        worker_family = {
+            role: _role_snapshot(worker_family_health.get(role))
+            for role in worker_roles
+        }
+        running_roles = [role for role, snap in worker_family.items() if snap["status"] == "running"]
+        healthy_roles = [role for role, snap in worker_family.items() if snap["healthy"]]
+        missing_roles = [role for role in worker_roles if role not in running_roles]
+
+        primary_health = (
+            worker_family_health.get("main")
+            or worker_family_health.get("retry")
+            or worker_family_health.get("simulation")
+        )
+        primary_snap = (
+            worker_family["main"]
+            if worker_family["main"]["status"] == "running"
+            else (
+                worker_family["retry"]
+                if worker_family["retry"]["status"] == "running"
+                else worker_family["simulation"]
+            )
+        )
+
+        if running_roles:
             services.append(ServiceStatus(
                 name="worker",
                 status="running",
-                healthy=time_since_heartbeat < 120,  # Healthy if heartbeat within 2 minutes
-                uptime_seconds=worker_health.get("uptime_seconds"),
+                healthy=len(healthy_roles) == len(worker_roles),
+                uptime_seconds=primary_snap.get("uptime_seconds"),
                 last_check=now,
                 details={
-                    "hostname": worker_health.get("hostname"),
-                    "python_version": worker_health.get("python_version"),
-                    "platform": worker_health.get("platform"),
-                    "processed_jobs": worker_health.get("processed_jobs", 0),
-                    "failed_jobs": worker_health.get("failed_jobs", 0),
-                    "success_rate": f"{worker_health.get('success_rate', 1.0) * 100:.1f}%",
-                    "memory_mb": round(worker_health.get("memory_mb", 0), 2),
-                    "cpu_percent": round(worker_health.get("cpu_percent", 0), 2),
+                    "hostname": primary_health.get("hostname") if primary_health else None,
+                    "python_version": primary_health.get("python_version") if primary_health else None,
+                    "platform": primary_health.get("platform") if primary_health else None,
+                    "processed_jobs": primary_snap.get("processed_jobs", 0),
+                    "failed_jobs": primary_snap.get("failed_jobs", 0),
+                    "success_rate": primary_snap.get("success_rate", "0.0%"),
+                    "memory_mb": primary_snap.get("memory_mb", 0.0),
+                    "cpu_percent": primary_snap.get("cpu_percent", 0.0),
                     "queue_pending": queue_stats.get("pending", 0),
                     "queue_in_progress": queue_stats.get("in_progress", 0),
+                    "queue_pending_simulation": queue_stats.get("pending_simulation", 0),
                     "queue_completed_recent": queue_stats.get("completed_recent", 0),
-                    "last_heartbeat": worker_health["timestamp"],
-                    "seconds_since_heartbeat": round(time_since_heartbeat, 1),
+                    "last_heartbeat": primary_snap.get("last_heartbeat"),
+                    "seconds_since_heartbeat": primary_snap.get("seconds_since_heartbeat"),
+                    "worker_family": worker_family,
+                    "worker_running_roles": running_roles,
+                    "worker_healthy_roles": healthy_roles,
+                    "worker_missing_roles": missing_roles,
                 }
             ))
         else:
-            # No heartbeat - worker is down
             services.append(ServiceStatus(
                 name="worker",
                 status="stopped",
@@ -301,7 +352,8 @@ async def get_services_status(admin: CurrentAdminUser):
                     "error": "No heartbeat detected",
                     "queue_pending": queue_stats.get("pending", 0),
                     "queue_in_progress": queue_stats.get("in_progress", 0),
-                    "note": "Worker appears to be offline. Check if ARQ worker is running."
+                    "worker_family": worker_family,
+                    "note": "Worker family appears to be offline. Check ARQ main/retry/simulation workers.",
                 }
             ))
 

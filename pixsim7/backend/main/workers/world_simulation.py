@@ -8,6 +8,11 @@ and progress their behavior based on world time.
 Usage:
     This module is imported by arq_worker.py and registered as a cron job.
     It runs every 5 seconds by default (configurable via SIMULATION_TICK_INTERVAL).
+    Runtime enable/disable is controlled primarily per world via:
+    - world.meta.simulation.enabled
+    - world.meta.simulation.pauseSimulation
+    - world.meta.gameProfile.simulationMode
+    Env vars act only as optional global fallbacks/kill-switches.
 """
 
 import os
@@ -15,7 +20,6 @@ from datetime import datetime, timezone
 from typing import Dict, Any
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim_logging import configure_logging
 from pixsim7.backend.main.infrastructure.database.session import get_async_session
@@ -25,11 +29,94 @@ from pixsim7.backend.game import GameWorld, GameWorldState
 logger = configure_logging("worker.world_sim").bind(channel="cron")
 
 # Configuration
-SIMULATION_ENABLED = os.getenv("SIMULATION_ENABLED", "false").lower() == "true"
-SIMULATION_TICK_INTERVAL = float(os.getenv("SIMULATION_TICK_INTERVAL", "5.0"))
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _coerce_positive_float(value: Any, *, default: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+SIMULATION_GLOBAL_ENABLED = _coerce_bool(
+    os.getenv("SIMULATION_GLOBAL_ENABLED", os.getenv("SIMULATION_ENABLED", "true"))
+)
+# Backward-compatible alias used by worker bootstrap/imports.
+SIMULATION_ENABLED = SIMULATION_GLOBAL_ENABLED
+SIMULATION_TICK_INTERVAL = _coerce_positive_float(
+    os.getenv("SIMULATION_TICK_INTERVAL", "5.0"),
+    default=5.0,
+)
 
 # Track last tick times per world
 _last_tick_times: Dict[int, datetime] = {}
+
+
+def _get_simulation_config(world: GameWorld) -> Dict[str, Any]:
+    meta = getattr(world, "meta", None)
+    if not isinstance(meta, dict):
+        return {}
+    config = meta.get("simulation")
+    return config if isinstance(config, dict) else {}
+
+
+def _get_game_profile(world: GameWorld) -> Dict[str, Any]:
+    meta = getattr(world, "meta", None)
+    if not isinstance(meta, dict):
+        return {}
+    profile = meta.get("gameProfile")
+    return profile if isinstance(profile, dict) else {}
+
+
+def _is_world_paused(simulation_config: Dict[str, Any]) -> bool:
+    return _coerce_bool(simulation_config.get("pauseSimulation", False))
+
+
+def _get_simulation_mode(game_profile: Dict[str, Any]) -> str:
+    raw = game_profile.get("simulationMode", "real_time")
+    if not isinstance(raw, str):
+        return "real_time"
+    mode = raw.strip().lower()
+    if mode not in {"real_time", "turn_based", "paused"}:
+        return "real_time"
+    return mode
+
+
+def _is_world_auto_tick_enabled(
+    simulation_config: Dict[str, Any],
+    game_profile: Dict[str, Any],
+) -> bool:
+    if "enabled" in simulation_config and not _coerce_bool(simulation_config.get("enabled")):
+        return False
+    if _is_world_paused(simulation_config):
+        return False
+    simulation_mode = _get_simulation_mode(game_profile)
+    if simulation_mode in {"paused", "turn_based"}:
+        return False
+    return True
+
+
+def _get_world_tick_interval(simulation_config: Dict[str, Any]) -> float:
+    return _coerce_positive_float(
+        simulation_config.get("tickIntervalSeconds", SIMULATION_TICK_INTERVAL),
+        default=SIMULATION_TICK_INTERVAL,
+    )
+
+
+def _prune_stale_last_tick_cache(world_ids: list[int]) -> None:
+    world_id_set = set(world_ids)
+    for world_id in list(_last_tick_times.keys()):
+        if world_id not in world_id_set:
+            _last_tick_times.pop(world_id, None)
 
 
 async def tick_active_worlds(ctx: dict) -> Dict[str, Any]:
@@ -44,81 +131,108 @@ async def tick_active_worlds(ctx: dict) -> Dict[str, Any]:
     Returns:
         Dict with tick results summary
     """
-    if not SIMULATION_ENABLED:
-        return {"skipped": True, "reason": "SIMULATION_ENABLED=false"}
+    if not SIMULATION_GLOBAL_ENABLED:
+        return {"skipped": True, "reason": "SIMULATION_GLOBAL_ENABLED=false"}
 
     now = datetime.now(timezone.utc)
     results = {
+        "worlds_seen": 0,
         "worlds_ticked": 0,
+        "worlds_disabled": 0,
+        "worlds_paused": 0,
+        "worlds_not_due": 0,
         "npcs_simulated": 0,
         "errors": [],
         "timestamp": now.isoformat(),
     }
 
-    async for db in get_async_session():
-        try:
-            # Query active worlds (not paused)
-            query = select(GameWorld).where(GameWorld.meta.isnot(None))
+    # Snapshot world IDs + meta as plain scalars first; do not carry ORM instances
+    # across per-world rollback paths (avoids expired-attribute lazy-load in async).
+    worlds: list[tuple[int, Dict[str, Any]]] = []
+    try:
+        async with get_async_session() as db:
+            query = select(GameWorld.id, GameWorld.meta)
             result = await db.execute(query)
-            worlds = list(result.scalars().all())
+            for world_id, meta in result.all():
+                if world_id is None:
+                    continue
+                worlds.append((int(world_id), meta if isinstance(meta, dict) else {}))
+    except Exception as e:
+        results["errors"].append(f"Database error: {str(e)}")
+        logger.error(f"tick_active_worlds database error: {e}", exc_info=True)
+        return results
 
-            if not worlds:
-                logger.debug("tick_active_worlds: No worlds found")
-                return results
+    results["worlds_seen"] = len(worlds)
+    if not worlds:
+        logger.debug("tick_active_worlds: No worlds found")
+        return results
 
-            # Create scheduler
-            scheduler = WorldScheduler(db)
+    _prune_stale_last_tick_cache([world_id for world_id, _ in worlds])
 
-            for world in worlds:
-                try:
-                    # Check if simulation is paused for this world
-                    simulation_config = world.meta.get("simulation", {}) if world.meta else {}
-                    if simulation_config.get("pauseSimulation", False):
-                        logger.debug(f"World {world.id} simulation is paused, skipping")
-                        continue
+    for world_id, meta in worlds:
+        try:
+            simulation_config = (
+                meta.get("simulation") if isinstance(meta.get("simulation"), dict) else {}
+            )
+            game_profile = (
+                meta.get("gameProfile") if isinstance(meta.get("gameProfile"), dict) else {}
+            )
+            tick_interval = _get_world_tick_interval(simulation_config)
 
-                    # Calculate delta time since last tick
-                    last_tick = _last_tick_times.get(world.id)
-                    if last_tick:
-                        delta_seconds = (now - last_tick).total_seconds()
-                    else:
-                        delta_seconds = SIMULATION_TICK_INTERVAL
+            if _is_world_paused(simulation_config):
+                results["worlds_paused"] += 1
+                logger.debug(f"World {world_id} simulation is paused, skipping")
+                continue
 
-                    # Register world if not already registered
-                    await scheduler.register_world(world.id)
+            if not _is_world_auto_tick_enabled(simulation_config, game_profile):
+                results["worlds_disabled"] += 1
+                logger.debug(f"World {world_id} auto-tick disabled, skipping")
+                continue
 
-                    # Run tick
-                    await scheduler.tick_world(world.id, delta_seconds)
-                    _last_tick_times[world.id] = now
+            # Calculate delta time since last tick
+            last_tick = _last_tick_times.get(world_id)
+            if last_tick:
+                delta_seconds = (now - last_tick).total_seconds()
+                if delta_seconds < tick_interval:
+                    results["worlds_not_due"] += 1
+                    continue
+            else:
+                delta_seconds = tick_interval
 
-                    # Collect stats
-                    context = scheduler.get_context(world.id)
-                    if context:
-                        results["npcs_simulated"] += context.npcs_simulated_this_tick
+            async with get_async_session() as world_db:
+                scheduler = WorldScheduler(world_db)
+                await scheduler.register_world(world_id)
+                await scheduler.tick_world(world_id, delta_seconds)
+                await world_db.commit()
+                context = scheduler.get_context(world_id)
 
-                    results["worlds_ticked"] += 1
+            _last_tick_times[world_id] = now
 
-                    logger.debug(
-                        f"tick_active_worlds: World {world.id} ticked, "
-                        f"NPCs simulated: {context.npcs_simulated_this_tick if context else 0}"
-                    )
+            # Collect stats
+            if context:
+                results["npcs_simulated"] += context.npcs_simulated_this_tick
 
-                except Exception as e:
-                    error_msg = f"World {world.id}: {str(e)}"
-                    results["errors"].append(error_msg)
-                    logger.error(f"tick_active_worlds error: {error_msg}", exc_info=True)
+            results["worlds_ticked"] += 1
 
-            # Commit any changes
-            await db.commit()
+            logger.debug(
+                f"tick_active_worlds: World {world_id} ticked, "
+                f"delta={delta_seconds:.2f}s, interval={tick_interval:.2f}s, "
+                f"NPCs simulated: {context.npcs_simulated_this_tick if context else 0}"
+            )
 
         except Exception as e:
-            results["errors"].append(f"Database error: {str(e)}")
-            logger.error(f"tick_active_worlds database error: {e}", exc_info=True)
+            error_msg = f"World {world_id}: {str(e)}"
+            results["errors"].append(error_msg)
+            logger.error(f"tick_active_worlds error: {error_msg}", exc_info=True)
 
-    if results["worlds_ticked"] > 0:
+    if results["worlds_ticked"] > 0 or results["errors"]:
         logger.info(
             "tick_active_worlds_complete",
+            worlds_seen=results["worlds_seen"],
             worlds=results["worlds_ticked"],
+            disabled=results["worlds_disabled"],
+            paused=results["worlds_paused"],
+            not_due=results["worlds_not_due"],
             npcs=results["npcs_simulated"],
             errors=len(results["errors"]),
         )
@@ -134,15 +248,15 @@ async def get_simulation_status(ctx: dict) -> Dict[str, Any]:
         Dict with simulation status for each world
     """
     status = {
-        "enabled": SIMULATION_ENABLED,
+        "enabled": SIMULATION_GLOBAL_ENABLED,
         "tick_interval": SIMULATION_TICK_INTERVAL,
         "worlds": {},
     }
 
-    if not SIMULATION_ENABLED:
+    if not SIMULATION_GLOBAL_ENABLED:
         return status
 
-    async for db in get_async_session():
+    async with get_async_session() as db:
         try:
             query = select(GameWorld, GameWorldState).outerjoin(
                 GameWorldState, GameWorld.id == GameWorldState.world_id
@@ -151,15 +265,23 @@ async def get_simulation_status(ctx: dict) -> Dict[str, Any]:
             rows = result.all()
 
             for world, world_state in rows:
-                simulation_config = world.meta.get("simulation", {}) if world.meta else {}
+                if world.id is None:
+                    continue
+                simulation_config = _get_simulation_config(world)
+                game_profile = _get_game_profile(world)
+                simulation_mode = _get_simulation_mode(game_profile)
                 world_time = world_state.world_time if world_state else 0.0
                 last_tick = _last_tick_times.get(world.id)
+                tick_interval = _get_world_tick_interval(simulation_config)
 
                 status["worlds"][world.id] = {
                     "name": world.name,
                     "world_time": world_time,
-                    "paused": simulation_config.get("pauseSimulation", False),
+                    "auto_tick_enabled": _is_world_auto_tick_enabled(simulation_config, game_profile),
+                    "paused": _is_world_paused(simulation_config),
+                    "simulation_mode": simulation_mode,
                     "time_scale": simulation_config.get("timeScale", 60),
+                    "tick_interval_seconds": tick_interval,
                     "last_tick": last_tick.isoformat() if last_tick else None,
                 }
 
