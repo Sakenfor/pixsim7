@@ -55,3 +55,7 @@ pnpm prompt-packs:check
 - CI enforces drift via `prompt-packs:check`; stale YAML fails the build.
 - Top-level `block_schema` in generated YAML is no longer supported. Use `blocks[].block_schema`.
 - Generator lint enforces cross-field invariants (e.g. duplicate resolved block IDs, unknown op arg keys, invalid ref bindings).
+- `block_schema.mode` controls contract enforcement (`surface`, `hybrid`, `op`).
+  - `surface`: requires renderable text.
+  - `hybrid`: requires renderable text + resolvable op id.
+  - `op`: requires resolvable op id (text optional for future non-text runtimes).

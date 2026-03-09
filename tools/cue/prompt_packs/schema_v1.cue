@@ -14,6 +14,7 @@ package promptpacks
 #BlockId:      #DottedId
 #OpId:         #DottedId
 #OpIdTemplate: #TemplateId
+#BlockMode:    "surface" | "hybrid" | "op"
 
 // Canonical shared enum values.
 #SpeedValues: ["slow", "normal", "fast"]
@@ -128,6 +129,7 @@ package promptpacks
 
 #BlockSchema: {
 	id_prefix: #IdPrefix
+	mode?:    *"surface" | #BlockMode
 	category?: #SimpleId
 	role?:     #SimpleId
 	capabilities?: [...#CapabilityId]

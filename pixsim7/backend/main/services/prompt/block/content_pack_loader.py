@@ -629,6 +629,20 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
             return "video"
         return None
 
+    def _normalize_block_mode(*, value: Any) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise ContentPackValidationError(
+                f"{src}: block_schema.mode must be one of: surface, hybrid, op"
+            )
+        mode = value.strip().lower()
+        if mode not in {"surface", "hybrid", "op"}:
+            raise ContentPackValidationError(
+                f"{src}: block_schema.mode must be one of: surface, hybrid, op"
+            )
+        return mode
+
     def _normalize_schema_op(*, value: Any) -> Dict[str, Any] | None:
         if value is None:
             return None
@@ -846,8 +860,26 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
         raise ContentPackValidationError(f"{src}: block_schema.variants must be a non-empty list")
 
     schema_op = _normalize_schema_op(value=block_schema.get("op"))
+    block_mode = _normalize_block_mode(value=block_schema.get("mode"))
+    if block_mode is None:
+        declares_ops = schema_op is not None or any(
+            isinstance(item, dict)
+            and any(field in item for field in ("op_id", "op_modalities", "op_args", "ref_bindings"))
+            for item in variants
+        )
+        if declares_ops:
+            has_text_template = isinstance(text_template, str)
+            has_variant_text = any(
+                isinstance(item, dict)
+                and isinstance(item.get("text"), str)
+                and bool(item.get("text").strip())
+                for item in variants
+            )
+            block_mode = "hybrid" if has_text_template or has_variant_text else "op"
+        else:
+            block_mode = "surface"
 
-    reserved_schema_keys = {"id_prefix", "text_template", "tags", "variants", "op"}
+    reserved_schema_keys = {"id_prefix", "mode", "text_template", "tags", "variants", "op"}
     base_block = {k: v for k, v in block_schema.items() if k not in reserved_schema_keys}
 
     compiled: List[Dict[str, Any]] = []
@@ -973,6 +1005,26 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
                 f"{src}: block_schema.variants[{i}] defines op fields but no op_id could be resolved"
             )
 
+        has_text = isinstance(text, str) and bool(text.strip())
+        has_op = isinstance(effective_op_id, str) and bool(effective_op_id.strip())
+        if block_mode == "surface" and not has_text:
+            raise ContentPackValidationError(
+                f"{src}: block_schema.variants[{i}] mode=surface requires text or text_template output"
+            )
+        if block_mode == "hybrid":
+            if not has_text:
+                raise ContentPackValidationError(
+                    f"{src}: block_schema.variants[{i}] mode=hybrid requires text or text_template output"
+                )
+            if not has_op:
+                raise ContentPackValidationError(
+                    f"{src}: block_schema.variants[{i}] mode=hybrid requires op_id resolution"
+                )
+        if block_mode == "op" and not has_op:
+            raise ContentPackValidationError(
+                f"{src}: block_schema.variants[{i}] mode=op requires op_id resolution"
+            )
+
         schema_modalities: List[str] = []
         if schema_op is not None:
             schema_modalities = list(schema_op.get("modalities") or [])
@@ -993,6 +1045,17 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
         if schema_op is not None and isinstance(schema_op.get("params"), list):
             schema_params = [dict(item) for item in schema_op.get("params") or [] if isinstance(item, dict)]
 
+        block_metadata = block.get("block_metadata")
+        if block_metadata is None:
+            normalized_metadata: Dict[str, Any] = {}
+        elif not isinstance(block_metadata, dict):
+            raise ContentPackValidationError(
+                f"{src}: block_schema.variants[{i}].block_metadata must be an object"
+            )
+        else:
+            normalized_metadata = dict(block_metadata)
+        normalized_metadata.setdefault("mode", block_mode)
+
         if effective_op_id is not None:
             op_payload: Dict[str, Any] = {"op_id": effective_op_id}
             if effective_modalities:
@@ -1006,17 +1069,7 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
             if variant_ref_bindings:
                 op_payload["ref_bindings"] = variant_ref_bindings
 
-            block_metadata = block.get("block_metadata")
-            if block_metadata is None:
-                normalized_metadata: Dict[str, Any] = {}
-            elif not isinstance(block_metadata, dict):
-                raise ContentPackValidationError(
-                    f"{src}: block_schema.variants[{i}].block_metadata must be an object"
-                )
-            else:
-                normalized_metadata = dict(block_metadata)
             normalized_metadata["op"] = op_payload
-            block["block_metadata"] = normalized_metadata
 
             tags.setdefault("op_id", effective_op_id)
             op_namespace = effective_op_id.split(".", 1)[0].strip()
@@ -1043,6 +1096,8 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
 
         block["block_id"] = block_id
         block["tags"] = tags
+        tags.setdefault("block_mode", block_mode)
+        block["block_metadata"] = normalized_metadata
         if text is not None:
             block["text"] = text
 

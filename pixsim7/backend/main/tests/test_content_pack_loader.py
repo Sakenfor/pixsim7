@@ -147,7 +147,9 @@ blocks:
         assert [b["block_id"] for b in parsed] == ["core.direction.in", "core.direction.out"]
         assert parsed[0]["package_name"] == "schema_pkg"
         assert parsed[0]["tags"]["variant"] == "in"
+        assert parsed[0]["tags"]["block_mode"] == "surface"
         assert parsed[1]["tags"]["direction"] == "out"
+        assert parsed[1]["block_metadata"]["mode"] == "surface"
         assert parsed[0]["text"] == "Direction token: in."
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -205,8 +207,10 @@ blocks:
         assert zoom["tags"]["op_namespace"] == "camera"
         assert zoom["tags"]["op_modalities"] == "image,video"
         assert zoom["tags"]["modality_support"] == "both"
+        assert zoom["tags"]["block_mode"] == "hybrid"
         assert "op:camera.motion.zoom" in zoom["capabilities"]
         assert "ref:camera_target" in zoom["capabilities"]
+        assert zoom["block_metadata"]["mode"] == "hybrid"
         assert zoom["block_metadata"]["op"]["op_id"] == "camera.motion.zoom"
         assert zoom["block_metadata"]["op"]["args"]["speed"] == "fast"
         assert zoom["block_metadata"][loader.CONTENT_PACK_SOURCE_KEY] == "demo_pack"
@@ -238,6 +242,77 @@ blocks:
         )
 
         with pytest.raises(loader.ContentPackValidationError, match="requires exactly one of op_id or op_id_template"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_mode_surface_without_text() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: direction_axis
+    block_schema:
+      id_prefix: core.direction
+      mode: surface
+      variants:
+        - key: in
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="mode=surface requires text"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_mode_hybrid_without_op() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: direction_axis
+    block_schema:
+      id_prefix: core.direction
+      mode: hybrid
+      text_template: "Direction token: {variant}."
+      variants:
+        - key: in
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="mode=hybrid requires op_id resolution"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_mode_op_without_op() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: direction_axis
+    block_schema:
+      id_prefix: core.direction
+      mode: op
+      variants:
+        - key: in
+          text: "Direction token: in."
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="mode=op requires op_id resolution"):
             loader.parse_blocks(pack_dir)
     finally:
         shutil.rmtree(root, ignore_errors=True)
