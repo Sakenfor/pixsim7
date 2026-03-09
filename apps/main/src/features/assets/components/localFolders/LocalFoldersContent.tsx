@@ -19,14 +19,20 @@ import type { LocalFoldersController } from '@/types/localSources';
 
 import { useViewerScopeSync } from '../../hooks/useAssetViewer';
 import { useLocalAssetPreview } from '../../hooks/useLocalAssetPreview';
-import { buildFavoriteGroupKey, extractGroupKey, groupLocalAssets, type LocalGroupBy } from '../../lib/localGroupEngine';
+import {
+  buildFavoriteGroupKey,
+  bucketLocalAssets,
+  getLocalGroupLabel,
+  localAssetToPreviewShim,
+  type LocalGroupBy,
+} from '../../lib/localGroupEngine';
 import { getUploadCapableProviders } from '../../lib/resolveUploadTarget';
 import type { AssetModel } from '../../models/asset';
 import type { ViewerAsset } from '../../stores/assetViewerStore';
 import { useLocalFolderSettingsStore } from '../../stores/localFolderSettingsStore';
 import type { LocalAsset } from '../../stores/localFoldersStore';
 import { GroupFolderTile, GroupListRow } from '../GroupCards';
-import { GROUP_PAGE_SIZE, sortGroups } from '../groupHelpers';
+import { GROUP_PAGE_SIZE, GROUP_PREVIEW_LIMIT, sortGroups } from '../groupHelpers';
 import { PaginationStrip } from '../shared/PaginationStrip';
 
 import {
@@ -37,6 +43,14 @@ import {
 import { LocalGroupBreadcrumb } from './LocalGroupBreadcrumb';
 import { LocalGroupingMenu } from './LocalGroupingMenu';
 import { useLocalFolderCardAssetAdapter } from './useLocalFolderCardAssetAdapter';
+
+type LocalGroupSummary = {
+  key: string;
+  label: string;
+  count: number;
+  latestTimestamp: number;
+  previewSeedAssets: LocalAsset[];
+};
 
 export interface LocalFoldersContentProps {
   controller: LocalFoldersController;
@@ -132,6 +146,8 @@ export function LocalFoldersContent({
 
   // --- Drill-down state for group navigation ---
   const [drilledGroupKey, setDrilledGroupKey] = useState<string | null>(null);
+  const showGroupOverview = hasActiveGrouping && drilledGroupKey === null;
+  const showDrilledView = hasActiveGrouping && drilledGroupKey !== null;
 
   // Reset drill-down when grouping mode, folder scope, filters, or tree selection changes.
   // Tree folder navigation can change the active asset scope without touching filterState.
@@ -162,37 +178,76 @@ export function LocalFoldersContent({
     }
   }, [localGroupBy, filterState, hasFolderScope, controller.selectedFolderPath, controller.viewMode]);
 
-  // --- Group overview: compute groups from all filteredItems ---
+  // --- Group bucket cache: computed once per active scope and reused for drill-in ---
+  const groupBuckets = useMemo(() => {
+    if (!hasActiveGrouping) return new Map<string, LocalAsset[]>();
+    return bucketLocalAssets(filteredItems, localGroupBy as LocalGroupBy);
+  }, [hasActiveGrouping, filteredItems, localGroupBy]);
+
+  // --- Group summaries: stable metadata independent of preview URL churn ---
+  const groupSummaries = useMemo<LocalGroupSummary[]>(() => {
+    if (!hasActiveGrouping || groupBuckets.size === 0) return [];
+
+    const gb = localGroupBy as LocalGroupBy;
+    const summaries: LocalGroupSummary[] = [];
+
+    for (const [key, bucket] of groupBuckets) {
+      let latestTimestamp = 0;
+      for (const asset of bucket) {
+        if (asset.lastModified && asset.lastModified > latestTimestamp) {
+          latestTimestamp = asset.lastModified;
+        }
+      }
+
+      summaries.push({
+        key,
+        label: getLocalGroupLabel(gb, key),
+        count: bucket.length,
+        latestTimestamp,
+        previewSeedAssets: bucket.slice(0, GROUP_PREVIEW_LIMIT),
+      });
+    }
+
+    return summaries;
+  }, [hasActiveGrouping, groupBuckets, localGroupBy]);
+
+  // --- Group overview: lightweight preview hydration on top of cached summaries ---
   const groups = useMemo(() => {
-    if (!hasActiveGrouping || drilledGroupKey !== null) return [];
-    return groupLocalAssets(filteredItems, localGroupBy as LocalGroupBy, {
-      getPreviewUrl,
-    });
-  }, [hasActiveGrouping, drilledGroupKey, filteredItems, localGroupBy, getPreviewUrl]);
+    if (!showGroupOverview || groupSummaries.length === 0) return [];
+
+    return groupSummaries.map((summary) => ({
+      key: summary.key,
+      label: summary.label,
+      count: summary.count,
+      latestTimestamp: summary.latestTimestamp,
+      previewAssets: summary.previewSeedAssets.map((asset, idx) =>
+        localAssetToPreviewShim(asset, getPreviewUrl(asset), idx),
+      ),
+    }));
+  }, [showGroupOverview, groupSummaries, getPreviewUrl]);
 
   const sortedGroups = useMemo(() => {
     if (groups.length === 0) return [];
     return sortGroups(groups, localGroupSort);
   }, [groups, localGroupSort]);
 
-  // --- Drilled-in: filter items to matching group ---
+  // --- Drilled-in: O(1) lookup from cached buckets instead of re-filtering all items ---
   const drilledItems = useMemo(() => {
     if (!hasActiveGrouping || drilledGroupKey === null) return filteredItems;
-    const gb = localGroupBy as LocalGroupBy;
-    return filteredItems.filter((asset) => {
-      const key = extractGroupKey(asset, gb);
-      return key === drilledGroupKey;
-    });
-  }, [hasActiveGrouping, drilledGroupKey, filteredItems, localGroupBy]);
-
-  const showGroupOverview = hasActiveGrouping && drilledGroupKey === null;
-  const showDrilledView = hasActiveGrouping && drilledGroupKey !== null;
+    return groupBuckets.get(drilledGroupKey) ?? [];
+  }, [hasActiveGrouping, drilledGroupKey, filteredItems, groupBuckets]);
 
   // --- Viewer scope sync: use drilled items when inside a group ---
   const viewerScopeItems = showDrilledView ? drilledItems : filteredItems;
+  const viewerPreviewMap = isViewerOpen ? controller.previews : undefined;
   const viewerScopeAssets = useMemo<ViewerAsset[]>(
-    () => viewerScopeItems.map((a) => localAssetToViewer(a, controller.previews?.[a.key])),
-    [viewerScopeItems, controller.previews, localAssetToViewer],
+    () => {
+      // Building 10k+ viewer assets on every preview update is expensive.
+      // Only derive scope assets while the viewer is actually open.
+      if (!isViewerOpen || viewerScopeItems.length === 0) return [];
+      return viewerScopeItems.map((a) => localAssetToViewer(a, viewerPreviewMap?.[a.key]));
+    },
+    [isViewerOpen, viewerScopeItems, viewerPreviewMap, localAssetToViewer],
   );
   const scopeLabel = showDrilledView
     ? `Local: ${drilledGroupKey} (${viewerScopeItems.length})`
