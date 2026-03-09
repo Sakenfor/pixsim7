@@ -6,8 +6,11 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+
 import { Icon } from '@lib/icons';
+
 import { useAssetRegionStore } from '@features/mediaViewer';
+
 import { useLabelsForAutocomplete, type LabelSuggestion } from '@/stores/conceptStore';
 
 // ============================================================================
@@ -60,6 +63,7 @@ interface LabelAutocompleteProps {
   onBlur: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   inputRef: React.RefObject<HTMLInputElement>;
+  disabled?: boolean;
 }
 
 function LabelAutocomplete({
@@ -69,13 +73,14 @@ function LabelAutocomplete({
   onBlur,
   onKeyDown,
   inputRef,
+  disabled = false,
 }: LabelAutocompleteProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Fetch labels from concept store
-  const { labels: allLabels, isLoading } = useLabelsForAutocomplete();
+  const { labels: allLabels } = useLabelsForAutocomplete();
 
   // Get recent labels
   const recentLabels = useMemo(() => getRecentLabels(), []);
@@ -140,6 +145,7 @@ function LabelAutocomplete({
   const handleKeyDownInternal = useCallback(
     (e: React.KeyboardEvent) => {
       if (!isOpen) {
+        if (disabled) return;
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           setIsOpen(true);
           setHighlightedIndex(0);
@@ -186,25 +192,22 @@ function LabelAutocomplete({
           onKeyDown(e);
       }
     },
-    [isOpen, highlightedIndex, flatSuggestions, onSelect, onKeyDown]
+    [disabled, isOpen, highlightedIndex, flatSuggestions, onSelect, onKeyDown]
   );
 
   const handleFocus = useCallback(() => {
     setIsOpen(true);
   }, []);
 
-  const handleBlur = useCallback(
-    (e: React.FocusEvent) => {
-      // Delay to allow click on dropdown item
-      setTimeout(() => {
-        if (!dropdownRef.current?.contains(document.activeElement)) {
-          setIsOpen(false);
-          onBlur();
-        }
-      }, 150);
-    },
-    [onBlur]
-  );
+  const handleBlur = useCallback(() => {
+    // Delay to allow click on dropdown item
+    setTimeout(() => {
+      if (!dropdownRef.current?.contains(document.activeElement)) {
+        setIsOpen(false);
+        onBlur();
+      }
+    }, 150);
+  }, [onBlur]);
 
   const handleSelectItem = useCallback(
     (suggestion: LabelSuggestion) => {
@@ -232,6 +235,7 @@ function LabelAutocomplete({
         ref={inputRef}
         type="text"
         value={value}
+        disabled={disabled}
         onChange={(e) => {
           onChange(e.target.value);
           setIsOpen(true);
@@ -298,6 +302,11 @@ function LabelAutocomplete({
 
 export function RegionEditForm({ assetId, regionId, onClose }: RegionEditFormProps) {
   const region = useAssetRegionStore((s) => s.getRegion(assetId, regionId));
+  const isLayerLocked = useAssetRegionStore((s) => {
+    const target = s.getRegion(assetId, regionId);
+    if (!target) return false;
+    return !!s.getLayer(assetId, target.layerId)?.locked;
+  });
   const updateRegion = useAssetRegionStore((s) => s.updateRegion);
   const removeRegion = useAssetRegionStore((s) => s.removeRegion);
   const selectRegion = useAssetRegionStore((s) => s.selectRegion);
@@ -321,7 +330,7 @@ export function RegionEditForm({ assetId, regionId, onClose }: RegionEditFormPro
   }, []);
 
   const handleSave = useCallback(() => {
-    if (!region) return;
+    if (!region || isLayerLocked) return;
 
     const finalLabel = label.trim() || 'Untitled';
     updateRegion(assetId, regionId, {
@@ -333,13 +342,14 @@ export function RegionEditForm({ assetId, regionId, onClose }: RegionEditFormPro
     if (finalLabel !== 'Untitled') {
       addRecentLabel(finalLabel);
     }
-  }, [assetId, regionId, label, note, region, updateRegion]);
+  }, [assetId, regionId, label, note, region, updateRegion, isLayerLocked]);
 
   const handleDelete = useCallback(() => {
+    if (isLayerLocked) return;
     removeRegion(assetId, regionId);
     selectRegion(null);
     onClose?.();
-  }, [assetId, regionId, removeRegion, selectRegion, onClose]);
+  }, [assetId, regionId, removeRegion, selectRegion, onClose, isLayerLocked]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -367,10 +377,15 @@ export function RegionEditForm({ assetId, regionId, onClose }: RegionEditFormPro
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-medium text-neutral-400 uppercase tracking-wide">
-          {region.type === 'rect' ? 'Rectangle' : 'Polygon'} Region
+          {region.type === 'rect'
+            ? 'Rectangle'
+            : region.type === 'curve'
+              ? 'Curve'
+              : 'Polygon'} Region
         </span>
         <button
           onClick={handleDelete}
+          disabled={isLayerLocked}
           className="p-1 rounded hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-colors"
           title="Delete region"
         >
@@ -388,6 +403,7 @@ export function RegionEditForm({ assetId, regionId, onClose }: RegionEditFormPro
           onBlur={handleSave}
           onKeyDown={handleKeyDown}
           inputRef={labelInputRef as React.RefObject<HTMLInputElement>}
+          disabled={isLayerLocked}
         />
       </div>
 
@@ -398,6 +414,7 @@ export function RegionEditForm({ assetId, regionId, onClose }: RegionEditFormPro
           value={note}
           onChange={(e) => setNote(e.target.value)}
           onBlur={handleSave}
+          disabled={isLayerLocked}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
               selectRegion(null);
@@ -422,6 +439,12 @@ export function RegionEditForm({ assetId, regionId, onClose }: RegionEditFormPro
           <span>{region.points.length} points</span>
         )}
       </div>
+
+      {isLayerLocked && (
+        <div className="mt-2 text-[10px] text-amber-400">
+          This region's layer is locked. Unlock the layer to edit or delete.
+        </div>
+      )}
     </div>
   );
 }
@@ -436,17 +459,43 @@ interface RegionListProps {
 
 export function RegionList({ assetId }: RegionListProps) {
   const regions = useAssetRegionStore((s) => s.getRegions(assetId));
+  const layers = useAssetRegionStore((s) => s.getLayers(assetId));
+  const activeLayerId = useAssetRegionStore((s) => s.getActiveLayerId(assetId));
   const selectedRegionId = useAssetRegionStore((s) => s.selectedRegionId);
   const selectRegion = useAssetRegionStore((s) => s.selectRegion);
   const exportRegions = useAssetRegionStore((s) => s.exportRegions);
   const clearAssetRegions = useAssetRegionStore((s) => s.clearAssetRegions);
+  const [layerFilter, setLayerFilter] = useState<'all' | 'active' | string>('all');
+
+  const layerById = useMemo(
+    () => new Map(layers.map((layer) => [layer.id, layer])),
+    [layers]
+  );
+  const matchesLayerFilter = useCallback((layerId: string): boolean => {
+    if (layerFilter === 'all') return true;
+    if (layerFilter === 'active') return activeLayerId ? layerId === activeLayerId : false;
+    return layerId === layerFilter;
+  }, [activeLayerId, layerFilter]);
+
+  const filteredRegions = useMemo(
+    () => regions.filter((region) => matchesLayerFilter(region.layerId)),
+    [regions, matchesLayerFilter]
+  );
+
+  // If current layer filter becomes invalid, reset to all.
+  useEffect(() => {
+    if (layerFilter === 'all' || layerFilter === 'active') return;
+    if (!layers.some((layer) => layer.id === layerFilter)) {
+      setLayerFilter('all');
+    }
+  }, [layerFilter, layers]);
 
   const handleExport = useCallback(() => {
-    const exported = exportRegions(assetId);
+    const exported = exportRegions(assetId).filter((region) => matchesLayerFilter(region.layerId));
 
     // Copy to clipboard
     navigator.clipboard.writeText(JSON.stringify(exported, null, 2));
-  }, [assetId, exportRegions]);
+  }, [assetId, exportRegions, matchesLayerFilter]);
 
   if (regions.length === 0) {
     return (
@@ -458,40 +507,75 @@ export function RegionList({ assetId }: RegionListProps) {
 
   return (
     <div className="space-y-1">
-      {regions.map((region) => (
-        <button
-          key={region.id}
-          onClick={() => selectRegion(region.id)}
-          className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors ${
-            selectedRegionId === region.id
-              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/50'
-              : 'hover:bg-neutral-700/50 text-neutral-300'
-          }`}
+      <div className="px-0.5 pb-1">
+        <select
+          className="w-full bg-neutral-800 border border-neutral-700 rounded text-[10px] text-neutral-300 px-1.5 py-1 outline-none focus:border-blue-500"
+          value={layerFilter}
+          onChange={(e) => setLayerFilter(e.target.value)}
+          title="Filter regions by layer"
         >
-          <div className="flex items-center gap-2">
-            <span
-              className="w-2 h-2 rounded-full flex-shrink-0"
-              style={{ backgroundColor: region.style?.strokeColor ?? '#22c55e' }}
-            />
-            <span className="truncate">{region.label}</span>
-            <span className="text-neutral-500 ml-auto">
-              {region.type === 'rect' ? '▭' : '⬡'}
-            </span>
-          </div>
-          {region.note && (
-            <div className="text-[10px] text-neutral-500 mt-0.5 truncate pl-4">
-              {region.note}
+          <option value="all">All layers</option>
+          <option value="active">Active layer</option>
+          {layers.map((layer) => (
+            <option key={layer.id} value={layer.id}>
+              {layer.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {filteredRegions.map((region) => {
+        const layer = layerById.get(region.layerId);
+        const isHidden = layer ? !layer.visible : false;
+
+        return (
+          <button
+            key={region.id}
+            onClick={() => {
+              if (!isHidden) selectRegion(region.id);
+            }}
+            disabled={isHidden}
+            className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors ${
+              selectedRegionId === region.id
+                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/50'
+                : 'hover:bg-neutral-700/50 text-neutral-300'
+            } ${isHidden ? 'opacity-55 cursor-not-allowed' : ''}`}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className="w-2 h-2 rounded-full flex-shrink-0"
+                style={{ backgroundColor: region.style?.strokeColor ?? '#22c55e' }}
+              />
+              <span className={`truncate ${isHidden ? 'line-through' : ''}`}>{region.label}</span>
+              <span className="text-neutral-500 ml-auto">
+                {region.type === 'rect' ? 'Rect' : region.type === 'curve' ? 'Curve' : 'Poly'}
+              </span>
             </div>
-          )}
-        </button>
-      ))}
+            <div className="text-[10px] text-neutral-500 mt-0.5 pl-4 flex items-center gap-2">
+              <span className="truncate">{layer?.name ?? 'Layer'}</span>
+              {isHidden && <span className="text-neutral-500/90">(hidden)</span>}
+            </div>
+            {region.note && (
+              <div className="text-[10px] text-neutral-500 mt-0.5 truncate pl-4">
+                {region.note}
+              </div>
+            )}
+          </button>
+        );
+      })}
+
+      {filteredRegions.length === 0 && (
+        <div className="text-xs text-neutral-500 text-center py-2">
+          No regions in the selected layer filter.
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex gap-1 pt-2 border-t border-neutral-700 mt-2">
         <button
           onClick={handleExport}
           className="flex-1 px-2 py-1 text-[10px] bg-neutral-700 hover:bg-neutral-600 rounded text-neutral-300 transition-colors"
-          title="Copy regions as JSON"
+          title="Copy visible regions as JSON"
         >
           Export JSON
         </button>

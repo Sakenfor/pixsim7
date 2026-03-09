@@ -15,7 +15,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { generateUUID } from '@lib/utils/uuid';
 
 import { findNearVertex, adjustVertexWidth } from './curveEditUtils';
-
+import { drawVariableWidthCurve } from './curveRenderUtils';
 import type {
   SurfaceState,
   InteractionLayer,
@@ -999,10 +999,37 @@ export function useInteractionLayer(
 
         if (element.type === 'polygon') {
           const poly = element as PolygonElement;
-          if (!poly.closed || poly.points.length < 3) continue;
-          ctx.beginPath();
-          if (tracePolygonPath(poly)) {
-            ctx.fill();
+          const curved = !!(poly.metadata as Record<string, unknown> | undefined)?.curved;
+
+          if (poly.closed) {
+            if (poly.points.length < 3) continue;
+            ctx.beginPath();
+            if (tracePolygonPath(poly)) {
+              ctx.fill();
+            }
+            continue;
+          }
+
+          if (poly.points.length < 2) continue;
+
+          if (poly.pointWidths && poly.pointWidths.length === poly.points.length) {
+            const screenPoints = poly.points.map((p) => ({
+              x: p.x * width,
+              y: p.y * height,
+            }));
+            const scaledWidths = poly.pointWidths.map((w) => w * (width / 500));
+            drawVariableWidthCurve(
+              ctx,
+              screenPoints,
+              scaledWidths,
+              curved && poly.points.length >= 3
+            );
+          } else {
+            ctx.lineWidth = (poly.style?.strokeWidth ?? 2) * (width / 500);
+            ctx.beginPath();
+            if (tracePolygonPath(poly)) {
+              ctx.stroke();
+            }
           }
           continue;
         }

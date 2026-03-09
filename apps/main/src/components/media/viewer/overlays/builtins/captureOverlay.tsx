@@ -7,6 +7,7 @@ import { useCaptureRegionStore } from '@features/mediaViewer';
 import type { CaptureAction } from '../../panels/hooks/useFrameCapture';
 import { RegionAnnotationOverlay } from '../../panels/RegionAnnotationOverlay';
 import { findActiveRegion, getRegionPixelDimensions, useRegionStoreSelectors } from '../index';
+import { LayerPanel } from '../shared/LayerPanel';
 import {
   OverlaySidePanel,
   SideSection,
@@ -59,18 +60,48 @@ function CaptureSidePanel({
 }: CaptureSidePanelProps) {
   const {
     regions,
+    layers,
+    activeLayerId,
     regionCount,
     selectedRegionId,
     drawingMode,
     setDrawingMode,
+    addLayer,
+    removeLayer,
+    setActiveLayer,
+    toggleLayerVisibility,
+    toggleLayerLock,
+    moveLayer,
+    renameLayer,
     clearRegions,
   } = useRegionStoreSelectors(useCaptureRegionStore, asset.id);
 
+  const layerInfos = useMemo(
+    () => layers.map((layer) => ({
+      id: layer.id,
+      name: layer.name,
+      visible: layer.visible,
+      locked: layer.locked,
+      opacity: layer.opacity,
+      hasContent: regions.some((region) => region.layerId === layer.id),
+    })),
+    [layers, regions]
+  );
+
+  const visibleLayerIds = useMemo(
+    () => new Set(layers.filter((layer) => layer.visible).map((layer) => layer.id)),
+    [layers]
+  );
+  const visibleRegions = useMemo(
+    () => regions.filter((region) => visibleLayerIds.has(region.layerId)),
+    [regions, visibleLayerIds]
+  );
+
   const regionPixelDimensions = useMemo(() => {
-    const activeRegion = findActiveRegion(regions, selectedRegionId);
+    const activeRegion = findActiveRegion(visibleRegions, selectedRegionId);
     if (!activeRegion?.bounds || activeRegion.type !== 'rect') return null;
     return getRegionPixelDimensions(activeRegion.bounds, mediaDimensions);
-  }, [mediaDimensions, regions, selectedRegionId]);
+  }, [mediaDimensions, selectedRegionId, visibleRegions]);
 
   const isVideo = asset.type === 'video';
   const canCapture = Boolean(onCaptureFrame) && (asset.type === 'video' || asset.type === 'image');
@@ -110,6 +141,22 @@ function CaptureSidePanel({
           active={drawingMode === 'select'}
           title="Select a capture region"
           onClick={() => setDrawingMode('select')}
+        />
+      </SideSection>
+
+      <SideDivider />
+
+      <SideSection label="Layers">
+        <LayerPanel
+          layers={layerInfos}
+          activeLayerId={activeLayerId}
+          onSelectLayer={setActiveLayer}
+          onToggleVisibility={toggleLayerVisibility}
+          onToggleLock={toggleLayerLock}
+          onMoveLayer={moveLayer}
+          onRenameLayer={renameLayer}
+          onAddLayer={addLayer}
+          onRemoveLayer={removeLayer}
         />
       </SideSection>
 

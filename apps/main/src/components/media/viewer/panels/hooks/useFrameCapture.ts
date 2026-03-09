@@ -19,7 +19,11 @@ import { uploadAsset } from '@lib/api/upload';
 
 import type { ViewerAsset } from '@features/assets';
 import { extractUploadError, notifyGalleryOfNewAsset } from '@features/assets/lib/uploadActions';
-import { useCaptureRegionStore, type AssetRegion } from '@features/mediaViewer';
+import {
+  useCaptureRegionStore,
+  type AssetRegion,
+  type AssetRegionLayer,
+} from '@features/mediaViewer';
 
 import { findActiveRegion, type MediaOverlayId } from '../../overlays';
 import { resolveViewerAssetProviderId } from '../../utils/providerResolution';
@@ -27,6 +31,7 @@ import { resolveViewerAssetProviderId } from '../../utils/providerResolution';
 export type CaptureAction = 'clipboard' | 'upload';
 
 const EMPTY_CAPTURE_REGIONS: AssetRegion[] = [];
+const EMPTY_CAPTURE_LAYERS: AssetRegionLayer[] = [];
 
 export interface UseFrameCaptureOptions {
   /** Current asset being viewed */
@@ -46,7 +51,7 @@ export interface UseFrameCaptureResult {
   captureFrame: (action?: CaptureAction) => Promise<void>;
   /** Currently selected capture region (if any) */
   captureRegion: AssetRegion | null;
-  /** All capture regions for the current asset */
+  /** All visible capture regions for the current asset */
   captureRegions: AssetRegion[];
 }
 
@@ -69,15 +74,27 @@ export function useFrameCapture({
   const captureRegions = useCaptureRegionStore((s) =>
     asset ? s.getRegions(asset.id) : EMPTY_CAPTURE_REGIONS
   );
+  const captureLayers = useCaptureRegionStore((s) =>
+    asset ? s.getLayers(asset.id) : EMPTY_CAPTURE_LAYERS
+  );
   const captureSelectedRegionId = useCaptureRegionStore((s) => s.selectedRegionId);
+
+  const visibleCaptureLayerIds = useMemo(
+    () => new Set(captureLayers.filter((layer) => layer.visible).map((layer) => layer.id)),
+    [captureLayers]
+  );
+  const visibleCaptureRegions = useMemo(
+    () => captureRegions.filter((region) => visibleCaptureLayerIds.has(region.layerId)),
+    [captureRegions, visibleCaptureLayerIds]
+  );
 
   // Determine which region to use for capture
   const captureRegion = useMemo(() => {
     if (!asset || activeOverlayId !== 'capture') {
       return null;
     }
-    return findActiveRegion(captureRegions, captureSelectedRegionId);
-  }, [asset, activeOverlayId, captureSelectedRegionId, captureRegions]);
+    return findActiveRegion(visibleCaptureRegions, captureSelectedRegionId);
+  }, [asset, activeOverlayId, captureSelectedRegionId, visibleCaptureRegions]);
 
   // Resolve the provider ID for upload
   const resolveCaptureProviderId = useCallback((): string | null => {
@@ -324,6 +341,6 @@ export function useFrameCapture({
     isCapturing,
     captureFrame,
     captureRegion,
-    captureRegions,
+    captureRegions: visibleCaptureRegions,
   };
 }

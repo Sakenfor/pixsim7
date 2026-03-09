@@ -32,6 +32,7 @@ import {
   type InteractiveImageSurfaceHandle,
   type SurfacePointerEvent,
   type NormalizedPoint,
+  type AnyElement,
   type RegionElement,
   type PolygonElement,
 } from '@/components/interactive-surface';
@@ -109,8 +110,11 @@ export function RegionAnnotationOverlay({
 
   // Store state
   const regions = useRegionStore((s) => s.getRegions(asset.id));
+  const layers = useRegionStore((s) => s.getLayers(asset.id));
+  const activeLayerId = useRegionStore((s) => s.getActiveLayerId(asset.id));
   const selectedRegionId = useRegionStore((s) => s.selectedRegionId);
   const drawingMode = useRegionStore((s) => s.drawingMode);
+  const ensureDefaultLayer = useRegionStore((s) => s.ensureDefaultLayer);
   const addRegion = useRegionStore((s) => s.addRegion);
   const updateRegion = useRegionStore((s) => s.updateRegion);
   const selectRegion = useRegionStore((s) => s.selectRegion);
@@ -158,10 +162,10 @@ export function RegionAnnotationOverlay({
   const {
     state,
     handlers: baseHandlers,
-    addLayer,
-    getLayer,
-    addElement,
-    removeElement,
+    addLayer: addInteractionLayer,
+    removeLayer: removeInteractionLayer,
+    updateLayer: updateInteractionLayer,
+    setActiveLayer: setInteractionActiveLayer,
     setMode,
   } = useInteractionLayer({
     initialMode: drawingMode === 'select' ? 'view' : 'region',
@@ -171,65 +175,151 @@ export function RegionAnnotationOverlay({
   // Effects
   // ============================================================================
 
-  // Create region layer on mount
+  // Ensure each asset has at least one region layer.
   useEffect(() => {
-    if (!getLayer('regions')) {
-      addLayer({
-        type: 'region',
-        name: 'Regions',
-        id: 'regions',
-      });
-    }
-  }, [addLayer, getLayer]);
+    ensureDefaultLayer(asset.id);
+  }, [asset.id, ensureDefaultLayer]);
 
-  // Sync store regions to layer elements
+  const visibleLayerIds = useMemo(() => {
+    return new Set(
+      layers
+        .filter((layer) => layer.visible)
+        .map((layer) => layer.id)
+    );
+  }, [layers]);
+  const layerById = useMemo(
+    () => new Map(layers.map((layer) => [layer.id, layer])),
+    [layers]
+  );
+
+  const interactiveRegions = useMemo(() => {
+    return regions.filter((region) => visibleLayerIds.has(region.layerId));
+  }, [regions, visibleLayerIds]);
+  const isRegionLayerLocked = useCallback(
+    (region: AssetRegion | null | undefined): boolean =>
+      !!region && !!layerById.get(region.layerId)?.locked,
+    [layerById]
+  );
+  const isActiveLayerEditable = useMemo(() => {
+    const id = activeLayerId ?? null;
+    if (!id) return false;
+    const layer = layerById.get(id);
+    return !!layer && layer.visible && !layer.locked;
+  }, [activeLayerId, layerById]);
+
+  const syncSignatureRef = useRef('');
+
+  // Sync store layers + regions into interaction layers.
   useEffect(() => {
-    const layer = getLayer('regions');
-    if (!layer) return;
-
-    // Clear existing elements
-    for (const el of layer.elements) {
-      removeElement('regions', el.id);
+    const signature = [
+      activeLayerId ?? '',
+      selectedRegionId ?? '',
+      layers
+        .map((layer) => `${layer.id}:${layer.name}:${layer.visible ? 1 : 0}:${layer.opacity}:${layer.locked ? 1 : 0}:${layer.zIndex}:${layer.updatedAt}`)
+        .join(','),
+      regions
+        .map((region) => `${region.id}:${region.layerId}:${region.updatedAt}`)
+        .join(','),
+    ].join('|');
+    if (syncSignatureRef.current === signature) {
+      return;
     }
+    syncSignatureRef.current = signature;
 
-    // Add regions from store
-    for (let i = 0; i < regions.length; i++) {
-      const region = regions[i];
-      const colorIndex = i % REGION_COLORS.length;
-      const colors = REGION_COLORS[colorIndex];
-      const isSelected = region.id === selectedRegionId;
+    const layerIds = new Set(layers.map((layer) => layer.id));
 
-      if (region.type === 'rect' && region.bounds) {
-        addElement('regions', {
-          type: 'region',
-          visible: true,
-          bounds: region.bounds,
-          label: region.label || '',
-          style: {
-            strokeColor: isSelected ? '#ffffff' : colors.stroke,
-            fillColor: isSelected ? 'rgba(255, 255, 255, 0.2)' : colors.fill,
-            strokeWidth: isSelected ? 3 : 2,
-          },
-          metadata: { storeId: region.id },
-        } as Omit<RegionElement, 'id' | 'layerId'>);
-      } else if ((region.type === 'polygon' || region.type === 'curve') && region.points) {
-        const isCurve = region.type === 'curve';
-        addElement('regions', {
-          type: 'polygon',
-          visible: true,
-          points: region.points,
-          pointWidths: isCurve ? region.pointWidths : undefined,
-          closed: !isCurve,
-          style: {
-            strokeColor: isSelected ? '#ffffff' : colors.stroke,
-            fillColor: isCurve ? undefined : (isSelected ? 'rgba(255, 255, 255, 0.2)' : colors.fill),
-            strokeWidth: region.style?.strokeWidth ?? (isSelected ? 3 : 2),
-          },
-          metadata: { storeId: region.id, curved: isCurve },
-        } as Omit<PolygonElement, 'id' | 'layerId'>);
+    // Remove stale interaction layers.
+    for (const layer of state.layers) {
+      if (layer.type !== 'region') continue;
+      if (!layerIds.has(layer.id)) {
+        removeInteractionLayer(layer.id);
       }
     }
-  }, [regions, selectedRegionId, addElement, removeElement, getLayer]);
+
+    // Keep color assignment stable across all regions.
+    const regionIndexById = new Map<string, number>(
+      regions.map((region, index) => [region.id, index])
+    );
+
+    for (const layer of layers) {
+      if (!state.layers.some((existing) => existing.id === layer.id)) {
+        addInteractionLayer({
+          type: 'region',
+          id: layer.id,
+          name: layer.name,
+        });
+      }
+
+      const layerElements: AnyElement[] = regions
+        .filter((region) => region.layerId === layer.id)
+        .flatMap((region) => {
+          const colorIndex = (regionIndexById.get(region.id) ?? 0) % REGION_COLORS.length;
+          const colors = REGION_COLORS[colorIndex];
+          const isSelected = region.id === selectedRegionId;
+
+          if (region.type === 'rect' && region.bounds) {
+            return [{
+              id: `region-${region.id}`,
+              type: 'region',
+              layerId: layer.id,
+              visible: true,
+              bounds: region.bounds,
+              label: region.label || '',
+              style: {
+                strokeColor: isSelected ? '#ffffff' : colors.stroke,
+                fillColor: isSelected ? 'rgba(255, 255, 255, 0.2)' : colors.fill,
+                strokeWidth: isSelected ? 3 : 2,
+              },
+              metadata: { storeId: region.id },
+            } as RegionElement];
+          }
+
+          if ((region.type === 'polygon' || region.type === 'curve') && region.points) {
+            const isCurve = region.type === 'curve';
+            return [{
+              id: `region-${region.id}`,
+              type: 'polygon',
+              layerId: layer.id,
+              visible: true,
+              points: region.points,
+              pointWidths: isCurve ? region.pointWidths : undefined,
+              closed: !isCurve,
+              style: {
+                strokeColor: isSelected ? '#ffffff' : colors.stroke,
+                fillColor: isCurve ? undefined : (isSelected ? 'rgba(255, 255, 255, 0.2)' : colors.fill),
+                strokeWidth: region.style?.strokeWidth ?? (isSelected ? 3 : 2),
+              },
+              metadata: { storeId: region.id, curved: isCurve },
+            } as PolygonElement];
+          }
+
+          return [];
+        });
+
+      updateInteractionLayer(layer.id, {
+        name: layer.name,
+        visible: layer.visible,
+        locked: layer.locked,
+        opacity: layer.opacity,
+        zIndex: layer.zIndex,
+        elements: layerElements,
+      });
+    }
+
+    if (activeLayerId && layers.some((layer) => layer.id === activeLayerId)) {
+      setInteractionActiveLayer(activeLayerId);
+    }
+  }, [
+    activeLayerId,
+    addInteractionLayer,
+    layers,
+    regions,
+    removeInteractionLayer,
+    selectedRegionId,
+    setInteractionActiveLayer,
+    state.layers,
+    updateInteractionLayer,
+  ]);
 
   // Update interaction mode when drawing mode changes
   useEffect(() => {
@@ -263,6 +353,25 @@ export function RegionAnnotationOverlay({
       exitEditMode();
     }
   }, [drawingMode, exitEditMode]);
+
+  // Edit mode always tracks a selected region. If selection is cleared
+  // (e.g. layer hidden/removed), drop local edit state immediately.
+  useEffect(() => {
+    if (selectedRegionId) return;
+    if (editingPolygonId || editingRectId) {
+      exitEditMode();
+    }
+  }, [selectedRegionId, editingPolygonId, editingRectId, exitEditMode]);
+
+  // If the edited region's layer becomes locked, leave edit mode.
+  useEffect(() => {
+    const editingId = editingPolygonId ?? editingRectId;
+    if (!editingId) return;
+    const region = regions.find((r) => r.id === editingId);
+    if (isRegionLayerLocked(region)) {
+      exitEditMode();
+    }
+  }, [editingPolygonId, editingRectId, regions, isRegionLayerLocked, exitEditMode]);
 
   // Modifier key tracking
   useEffect(() => {
@@ -299,6 +408,10 @@ export function RegionAnnotationOverlay({
       // ---- Rect edit mode ----
       if (editingRectId) {
         const editingRegion = regions.find((r) => r.id === editingRectId);
+        if (isRegionLayerLocked(editingRegion)) {
+          exitEditMode();
+          return;
+        }
         if (editingRegion?.bounds) {
           // Check handle hit
           const handleIdx = findRectHandle(event.normalized, editingRegion.bounds, RECT_HANDLE_THRESHOLD);
@@ -331,9 +444,13 @@ export function RegionAnnotationOverlay({
         const points = getEditingPolygonPoints();
         const isCurve = editingIsCurve;
         const closed = !isCurve;
+        const editingRegion = regions.find((r) => r.id === editingPolygonId);
+        if (isRegionLayerLocked(editingRegion)) {
+          exitEditMode();
+          return;
+        }
         if (points) {
           const hit = hitTestCurve(event.normalized, points, closed);
-          const editingRegion = regions.find((r) => r.id === editingPolygonId);
 
           // Right-click or modifier+click vertex -> remove vertex
           if (hit.vertexIndex >= 0 && (isRightClick || modifierHeld)) {
@@ -383,7 +500,7 @@ export function RegionAnnotationOverlay({
 
       // ---- Select mode ----
       if (drawingMode === 'select') {
-        const clickedRegion = findRegionAtPoint(regions, event.normalized);
+        const clickedRegion = findRegionAtPoint(interactiveRegions, event.normalized);
         if (clickedRegion && !isRightClick) {
           selectRegion(clickedRegion.id);
           onRegionSelected?.(clickedRegion.id);
@@ -406,8 +523,11 @@ export function RegionAnnotationOverlay({
 
       // Contextual move: if clicking on the selected region, drag it instead of drawing
       if (selectedRegionId) {
-        const selectedRegion = regions.find((r) => r.id === selectedRegionId);
+        const selectedRegion = interactiveRegions.find((r) => r.id === selectedRegionId);
         if (selectedRegion) {
+          if (isRegionLayerLocked(selectedRegion)) {
+            return;
+          }
           const isHit = selectedRegion.type === 'rect' && selectedRegion.bounds
             ? (event.normalized.x >= selectedRegion.bounds.x &&
                event.normalized.x <= selectedRegion.bounds.x + selectedRegion.bounds.width &&
@@ -435,9 +555,14 @@ export function RegionAnnotationOverlay({
 
       // Curve mode: click adds points (open path, no auto-close)
       if (drawingMode === 'curve') {
+        if (!isActiveLayerEditable) return;
         setPolygonPoints((prev) => [...prev, event.normalized]);
         return;
       }
+
+      if (!isActiveLayerEditable) return;
+
+      const targetLayerId = activeLayerId ?? ensureDefaultLayer(asset.id);
 
       if (drawingMode === 'rect') {
         setIsDrawing(true);
@@ -455,6 +580,7 @@ export function RegionAnnotationOverlay({
             const colorIndex = regions.length % REGION_COLORS.length;
             const colors = REGION_COLORS[colorIndex];
             const regionId = addRegion(asset.id, {
+              layerId: targetLayerId,
               type: 'polygon',
               points: polygonPoints,
               label: `Region ${regions.length + 1}`,
@@ -471,7 +597,30 @@ export function RegionAnnotationOverlay({
         setPolygonPoints((prev) => [...prev, event.normalized]);
       }
     },
-    [drawingMode, regions, polygonPoints, selectRegion, onRegionSelected, editingPolygonId, editingRectId, editingIsCurve, getEditingPolygonPoints, addRegion, getRegion, onRegionCreated, asset.id, modifierHeld, updateRegion, exitEditMode, selectedRegionId]
+    [
+      activeLayerId,
+      addRegion,
+      asset.id,
+      drawingMode,
+      editingIsCurve,
+      editingPolygonId,
+      editingRectId,
+      ensureDefaultLayer,
+      exitEditMode,
+      getEditingPolygonPoints,
+      getRegion,
+      isActiveLayerEditable,
+      isRegionLayerLocked,
+      interactiveRegions,
+      modifierHeld,
+      onRegionCreated,
+      onRegionSelected,
+      polygonPoints,
+      regions,
+      selectRegion,
+      selectedRegionId,
+      updateRegion,
+    ]
   );
 
   const handlePointerMove = useCallback(
@@ -491,6 +640,9 @@ export function RegionAnnotationOverlay({
 
       // 3. Region drag (both types)
       if (isDraggingRegion && regionDragStart && selectedRegionId) {
+        const selectedRegion = regions.find((r) => r.id === selectedRegionId);
+        if (isRegionLayerLocked(selectedRegion)) return;
+
         const dx = event.normalized.x - regionDragStart.x;
         const dy = event.normalized.y - regionDragStart.y;
 
@@ -517,6 +669,9 @@ export function RegionAnnotationOverlay({
 
       // 5. Vertex drag (polygon/curve edit mode)
       if (editingPolygonId && draggingVertexIndex >= 0 && vertexDragStartPoints) {
+        const editingRegion = regions.find((r) => r.id === editingPolygonId);
+        if (isRegionLayerLocked(editingRegion)) return;
+
         const newPosition = clampNormalized(event.normalized);
         const newPoints = moveCurveVertex(vertexDragStartPoints, draggingVertexIndex, newPosition);
         updateRegion(asset.id, editingPolygonId, { points: newPoints });
@@ -562,7 +717,32 @@ export function RegionAnnotationOverlay({
 
       setCurrentRect({ x, y, width, height });
     },
-    [isDrawing, drawStart, drawingMode, polygonPoints, editingPolygonId, editingRectId, editingIsCurve, draggingVertexIndex, draggingHandleIndex, vertexDragStartPoints, hoveredVertexIndex, hoveredEdgeIndex, hoveredHandleIndex, getEditingPolygonPoints, updateRegion, asset.id, isDraggingRegion, regionDragStart, regionDragOriginalBounds, regionDragOriginalPoints, selectedRegionId, handleDragStartBounds, regions]
+    [
+      isDrawing,
+      drawStart,
+      drawingMode,
+      polygonPoints,
+      editingPolygonId,
+      editingRectId,
+      editingIsCurve,
+      draggingVertexIndex,
+      draggingHandleIndex,
+      vertexDragStartPoints,
+      hoveredVertexIndex,
+      hoveredEdgeIndex,
+      hoveredHandleIndex,
+      getEditingPolygonPoints,
+      updateRegion,
+      asset.id,
+      isDraggingRegion,
+      regionDragStart,
+      regionDragOriginalBounds,
+      regionDragOriginalPoints,
+      selectedRegionId,
+      handleDragStartBounds,
+      regions,
+      isRegionLayerLocked,
+    ]
   );
 
   const handlePointerUp = useCallback(
@@ -605,11 +785,13 @@ export function RegionAnnotationOverlay({
       }
 
       // Minimum size check
-      if (currentRect.width > 0.01 && currentRect.height > 0.01) {
+      if (isActiveLayerEditable && currentRect.width > 0.01 && currentRect.height > 0.01) {
+        const targetLayerId = activeLayerId ?? ensureDefaultLayer(asset.id);
         const colorIndex = regions.length % REGION_COLORS.length;
         const colors = REGION_COLORS[colorIndex];
 
         const regionId = addRegion(asset.id, {
+          layerId: targetLayerId,
           type: 'rect',
           bounds: currentRect,
           label: `Region ${regions.length + 1}`,
@@ -630,17 +812,37 @@ export function RegionAnnotationOverlay({
       setDrawStart(null);
       setCurrentRect(null);
     },
-    [isDrawing, drawingMode, currentRect, regions.length, asset.id, addRegion, selectRegion, getRegion, onRegionCreated, draggingVertexIndex, draggingHandleIndex, isDraggingRegion, regionDragStart]
+    [
+      activeLayerId,
+      addRegion,
+      asset.id,
+      currentRect,
+      draggingHandleIndex,
+      draggingVertexIndex,
+      drawingMode,
+      ensureDefaultLayer,
+      getRegion,
+      isDraggingRegion,
+      isDrawing,
+      isActiveLayerEditable,
+      onRegionCreated,
+      regionDragStart,
+      regions.length,
+      selectRegion,
+    ]
   );
 
   const handleDoubleClick = useCallback(
     (event: SurfacePointerEvent) => {
+      const targetLayerId = activeLayerId ?? ensureDefaultLayer(asset.id);
+
       // Complete polygon on double-click when drawing
-      if (drawingMode === 'polygon' && polygonPoints.length >= 3) {
+      if (drawingMode === 'polygon' && polygonPoints.length >= 3 && isActiveLayerEditable) {
         const colorIndex = regions.length % REGION_COLORS.length;
         const colors = REGION_COLORS[colorIndex];
 
         const regionId = addRegion(asset.id, {
+          layerId: targetLayerId,
           type: 'polygon',
           points: polygonPoints,
           label: `Region ${regions.length + 1}`,
@@ -661,11 +863,12 @@ export function RegionAnnotationOverlay({
       }
 
       // Complete curve on double-click (open path, no fill)
-      if (drawingMode === 'curve' && polygonPoints.length >= 2) {
+      if (drawingMode === 'curve' && polygonPoints.length >= 2 && isActiveLayerEditable) {
         const colorIndex = regions.length % REGION_COLORS.length;
         const colors = REGION_COLORS[colorIndex];
 
         const regionId = addRegion(asset.id, {
+          layerId: targetLayerId,
           type: 'curve',
           points: polygonPoints,
           label: `Curve ${regions.length + 1}`,
@@ -684,8 +887,14 @@ export function RegionAnnotationOverlay({
 
       // Enter edit mode on double-click (when in select mode)
       if (drawingMode === 'select' && !editingRegionId) {
-        const clickedRegion = findRegionAtPoint(regions, event.normalized);
+        const clickedRegion = findRegionAtPoint(interactiveRegions, event.normalized);
         if (clickedRegion) {
+          if (isRegionLayerLocked(clickedRegion)) {
+            selectRegion(clickedRegion.id);
+            onRegionSelected?.(clickedRegion.id);
+            return;
+          }
+
           if ((clickedRegion.type === 'polygon' || clickedRegion.type === 'curve') && clickedRegion.points) {
             setEditingPolygonId(clickedRegion.id);
             selectRegion(clickedRegion.id);
@@ -704,7 +913,24 @@ export function RegionAnnotationOverlay({
         }
       }
     },
-    [drawingMode, polygonPoints, regions, asset.id, addRegion, selectRegion, getRegion, onRegionCreated, editingRegionId, onRegionSelected, updateRegion]
+    [
+      activeLayerId,
+      addRegion,
+      asset.id,
+      drawingMode,
+      editingRegionId,
+      ensureDefaultLayer,
+      getRegion,
+      isActiveLayerEditable,
+      isRegionLayerLocked,
+      interactiveRegions,
+      onRegionCreated,
+      onRegionSelected,
+      polygonPoints,
+      regions,
+      selectRegion,
+      updateRegion,
+    ]
   );
 
   // Scroll wheel handler for per-point width adjustment in curve edit mode

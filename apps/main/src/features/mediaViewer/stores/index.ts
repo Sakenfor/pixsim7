@@ -10,6 +10,7 @@ export {
   selectSelectedRegionId,
   selectDrawingMode,
   type AssetRegion,
+  type AssetRegionLayer,
   type ExportedRegion,
   type AssetRegionStoreHook,
 } from './assetRegionStore';

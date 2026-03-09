@@ -25,11 +25,13 @@ import {
   useAssetRegionStore,
   useAssetViewerOverlayStore,
   type AssetRegion,
+  type AssetRegionLayer,
   type ExportedRegion,
 } from '@features/mediaViewer';
 
 /** Stable empty array to avoid infinite re-renders */
 const EMPTY_REGIONS: AssetRegion[] = [];
+const EMPTY_LAYERS: AssetRegionLayer[] = [];
 
 // ============================================================================
 // Capability Key
@@ -50,6 +52,10 @@ export interface RegionAnnotationsCapability {
   assetId: string | number | null;
   /** All regions for the current asset */
   regions: AssetRegion[];
+  /** All layers for the current asset */
+  layers: AssetRegionLayer[];
+  /** Active layer ID for new regions */
+  activeLayerId: string | null;
   /** Currently selected region ID */
   selectedRegionId: string | null;
   /** Whether annotation mode is active */
@@ -60,10 +66,12 @@ export interface RegionAnnotationsCapability {
   // Actions
   /** Select a region by ID */
   selectRegion: (regionId: string | null) => void;
+  /** Set active layer */
+  setActiveLayer: (layerId: string) => void;
   /** Toggle annotation mode */
   setAnnotationMode: (enabled: boolean) => void;
   /** Set drawing mode */
-  setDrawingMode: (mode: 'rect' | 'polygon' | 'select') => void;
+  setDrawingMode: (mode: 'rect' | 'polygon' | 'curve' | 'select') => void;
   /** Export regions as structured data for prompt generation */
   exportRegions: () => ExportedRegion[];
   /** Clear all regions for current asset */
@@ -116,11 +124,18 @@ export function useProvideRegionAnnotations({
   const regions = useAssetRegionStore((s) =>
     assetId ? s.getRegions(assetId) : EMPTY_REGIONS
   );
+  const layers = useAssetRegionStore((s) =>
+    assetId ? s.getLayers(assetId) : EMPTY_LAYERS
+  );
+  const activeLayerId = useAssetRegionStore((s) =>
+    assetId ? s.getActiveLayerId(assetId) : null
+  );
   const selectedRegionId = useAssetRegionStore((s) => s.selectedRegionId);
   const annotationMode = useAssetViewerOverlayStore((s) => s.overlayMode === 'annotate');
   const drawingMode = useAssetRegionStore((s) => s.drawingMode);
 
   const selectRegion = useAssetRegionStore((s) => s.selectRegion);
+  const setActiveLayerInStore = useAssetRegionStore((s) => s.setActiveLayer);
   const setOverlayMode = useAssetViewerOverlayStore((s) => s.setOverlayMode);
   const setDrawingMode = useAssetRegionStore((s) => s.setDrawingMode);
   const exportRegionsFromStore = useAssetRegionStore((s) => s.exportRegions);
@@ -145,15 +160,23 @@ export function useProvideRegionAnnotations({
     }
   }, [assetId, clearAssetRegions]);
 
+  const setActiveLayer = useCallback((layerId: string) => {
+    if (!assetId) return;
+    setActiveLayerInStore(assetId, layerId);
+  }, [assetId, setActiveLayerInStore]);
+
   // Build capability value
   const capabilityValue = useMemo<RegionAnnotationsCapability>(
     () => ({
       assetId,
       regions,
+      layers,
+      activeLayerId,
       selectedRegionId,
       annotationMode,
       drawingMode,
       selectRegion,
+      setActiveLayer,
       setAnnotationMode,
       setDrawingMode,
       exportRegions,
@@ -165,10 +188,13 @@ export function useProvideRegionAnnotations({
     [
       assetId,
       regions,
+      layers,
+      activeLayerId,
       selectedRegionId,
       annotationMode,
       drawingMode,
       selectRegion,
+      setActiveLayer,
       setAnnotationMode,
       setDrawingMode,
       exportRegions,

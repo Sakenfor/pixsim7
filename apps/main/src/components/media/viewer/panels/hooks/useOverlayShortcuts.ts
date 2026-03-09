@@ -29,6 +29,7 @@ export interface UseOverlayShortcutsOptions {
  * - Escape: exit overlay mode or deselect region
  * - R: switch to rect drawing mode (in annotation mode)
  * - P: switch to polygon drawing mode (in annotation mode)
+ * - C: switch to curve drawing mode (in annotation/capture mode)
  * - S: switch to select mode (in annotation mode)
  * - Overlay-specific shortcuts (e.g., A for annotate)
  *
@@ -94,6 +95,21 @@ export function useOverlayShortcuts({
           // Switch to polygon mode
           if (annotationMode && !e.ctrlKey && !e.metaKey) {
             setDrawingMode('polygon');
+          }
+          break;
+        case 'c':
+          // Switch to curve mode (annotation and capture overlays)
+          if (!e.ctrlKey && !e.metaKey) {
+            if (overlayMode === 'annotate') {
+              setDrawingMode('curve');
+            } else if (overlayMode === 'capture') {
+              useCaptureRegionStore.getState().setDrawingMode('curve');
+            } else {
+              const matchingOverlay = getOverlayForShortcut(e.key);
+              if (matchingOverlay) {
+                handleToggleOverlay(matchingOverlay.id);
+              }
+            }
           }
           break;
         case 's':

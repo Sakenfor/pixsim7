@@ -1,8 +1,11 @@
+import { useMemo } from 'react';
+
 import { useAssetRegionStore } from '@features/mediaViewer';
 
 import { RegionAnnotationOverlay } from '../../panels/RegionAnnotationOverlay';
 import { RegionEditForm, RegionList } from '../../panels/RegionEditForm';
 import { useRegionStoreSelectors } from '../index';
+import { LayerPanel } from '../shared/LayerPanel';
 import {
   OverlaySidePanel,
   SideSection,
@@ -25,8 +28,35 @@ export function AnnotationOverlayMain({ asset, settings }: MediaOverlayComponent
 // ── AnnotationSidePanel ───────────────────────────────────────────────
 
 function AnnotationSidePanel({ asset }: { asset: MediaOverlayComponentProps['asset'] }) {
-  const { selectedRegionId, drawingMode, setDrawingMode, selectRegion } =
+  const {
+    regions,
+    layers,
+    activeLayerId,
+    selectedRegionId,
+    drawingMode,
+    setDrawingMode,
+    addLayer,
+    removeLayer,
+    setActiveLayer,
+    toggleLayerVisibility,
+    toggleLayerLock,
+    moveLayer,
+    renameLayer,
+    selectRegion,
+  } =
     useRegionStoreSelectors(useAssetRegionStore, asset.id);
+
+  const layerInfos = useMemo(
+    () => layers.map((layer) => ({
+      id: layer.id,
+      name: layer.name,
+      visible: layer.visible,
+      locked: layer.locked,
+      opacity: layer.opacity,
+      hasContent: regions.some((region) => region.layerId === layer.id),
+    })),
+    [layers, regions]
+  );
 
   return (
     <OverlaySidePanel className="w-56">
@@ -58,6 +88,22 @@ function AnnotationSidePanel({ asset }: { asset: MediaOverlayComponentProps['ass
           active={drawingMode === 'select'}
           title="Select and edit regions (S)"
           onClick={() => setDrawingMode('select')}
+        />
+      </SideSection>
+
+      <SideDivider />
+
+      <SideSection label="Layers">
+        <LayerPanel
+          layers={layerInfos}
+          activeLayerId={activeLayerId}
+          onSelectLayer={setActiveLayer}
+          onToggleVisibility={toggleLayerVisibility}
+          onToggleLock={toggleLayerLock}
+          onMoveLayer={moveLayer}
+          onRenameLayer={renameLayer}
+          onAddLayer={addLayer}
+          onRemoveLayer={removeLayer}
         />
       </SideSection>
 

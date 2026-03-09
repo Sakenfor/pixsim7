@@ -32,6 +32,7 @@ export {
 } from '@features/mediaViewer';
 export type {
   AssetRegion,
+  AssetRegionLayer,
   ExportedRegion,
   AssetRegionStoreHook,
   AssetViewerOverlayMode,

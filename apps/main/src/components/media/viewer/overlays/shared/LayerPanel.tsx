@@ -23,6 +23,7 @@ export interface LayerInfo {
   id: string;
   name: string;
   visible: boolean;
+  locked?: boolean;
   opacity: number;
   hasContent: boolean;
 }
@@ -32,6 +33,8 @@ export interface LayerPanelProps {
   activeLayerId: string | null;
   onSelectLayer: (layerId: string) => void;
   onToggleVisibility: (layerId: string) => void;
+  onToggleLock?: (layerId: string) => void;
+  onMoveLayer?: (layerId: string, direction: 'up' | 'down') => void;
   onRenameLayer: (layerId: string, name: string) => void;
   onAddLayer: () => void;
   onRemoveLayer: (layerId: string) => void;
@@ -48,6 +51,8 @@ export function LayerPanel({
   activeLayerId,
   onSelectLayer,
   onToggleVisibility,
+  onToggleLock,
+  onMoveLayer,
   onRenameLayer,
   onAddLayer,
   onRemoveLayer,
@@ -76,6 +81,8 @@ export function LayerPanel({
         {layers.map((layer) => {
           const isActive = layer.id === activeLayerId;
           const isEditing = editingLayerId === layer.id;
+          const canMoveUp = !!onMoveLayer && layer !== layers[layers.length - 1];
+          const canMoveDown = !!onMoveLayer && layer !== layers[0];
 
           return (
             <div
@@ -101,6 +108,22 @@ export function LayerPanel({
                 >
                   <Icon name={layer.visible ? 'eye' : 'eyeOff'} size={11} />
                 </button>
+
+                {/* Lock toggle */}
+                {onToggleLock && (
+                  <button
+                    className={`flex-shrink-0 w-5 h-5 flex items-center justify-center rounded transition-colors ${
+                      layer.locked ? 'text-th-secondary' : 'text-th-muted'
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleLock(layer.id);
+                    }}
+                    title={layer.locked ? 'Unlock layer' : 'Lock layer'}
+                  >
+                    <Icon name={layer.locked ? 'lock' : 'unlock'} size={11} />
+                  </button>
+                )}
 
                 {/* Layer name */}
                 {isEditing ? (
@@ -129,6 +152,34 @@ export function LayerPanel({
                   >
                     {layer.name}
                   </span>
+                )}
+
+                {/* Reorder controls */}
+                {onMoveLayer && (
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      className="flex-shrink-0 w-4 h-4 flex items-center justify-center rounded text-th-muted hover:text-th-secondary disabled:opacity-30 disabled:cursor-not-allowed"
+                      disabled={!canMoveUp}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (canMoveUp) onMoveLayer(layer.id, 'up');
+                      }}
+                      title="Bring layer forward"
+                    >
+                      <Icon name="chevronUp" size={10} />
+                    </button>
+                    <button
+                      className="flex-shrink-0 w-4 h-4 flex items-center justify-center rounded text-th-muted hover:text-th-secondary disabled:opacity-30 disabled:cursor-not-allowed"
+                      disabled={!canMoveDown}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (canMoveDown) onMoveLayer(layer.id, 'down');
+                      }}
+                      title="Send layer backward"
+                    >
+                      <Icon name="chevronDown" size={10} />
+                    </button>
+                  </div>
                 )}
 
                 {/* Content indicator */}
