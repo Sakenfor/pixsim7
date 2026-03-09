@@ -22,6 +22,10 @@ from pixsim7.backend.main.services.prompt.candidates import candidates_from_segm
 from pixsim7.backend.main.services.prompt.tag_derivation import (
     derive_structured_and_flat_tags,
 )
+from pixsim7.backend.main.services.prompt.parser.primitive_projection import (
+    enrich_candidates_with_primitive_projection,
+    normalize_primitive_projection_mode,
+)
 from .simple import SimplePromptParser
 
 
@@ -65,7 +69,18 @@ async def parse_prompt_to_candidates(
     parsed = await parser.parse(text)
 
     candidates = candidates_from_segments(parsed.segments, source_type="parsed")
-    return {"candidates": [candidate.model_dump() for candidate in candidates]}
+    dumped_candidates = [candidate.model_dump() for candidate in candidates]
+
+    projection_mode = normalize_primitive_projection_mode(
+        (parser_config or {}).get("primitive_projection_mode")
+    )
+    if projection_mode != "off":
+        dumped_candidates = enrich_candidates_with_primitive_projection(
+            dumped_candidates,
+            mode=projection_mode,
+        )
+
+    return {"candidates": dumped_candidates}
 
 
 async def analyze_prompt(
