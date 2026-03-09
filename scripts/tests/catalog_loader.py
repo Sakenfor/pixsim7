@@ -1,22 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
-import re
 from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CATALOG_PATH = (
-    ROOT
-    / "apps"
-    / "main"
-    / "src"
-    / "features"
-    / "devtools"
-    / "services"
-    / "testCatalogRegistry.ts"
-)
+DEFAULT_CATALOG_JSON_PATH = ROOT / "scripts" / "tests" / "test-catalog.json"
 
 
 @dataclass(frozen=True)
@@ -69,175 +60,87 @@ class CatalogSuite:
         }
 
 
-def _extract_array_literal(source: str, marker: str) -> str | None:
-    marker_index = source.find(marker)
-    if marker_index < 0:
-        return None
-
-    equals_index = source.find("=", marker_index)
-    if equals_index < 0:
-        return None
-
-    start = source.find("[", equals_index)
-    if start < 0:
-        return None
-
-    depth = 0
-    in_string = False
-    escaped = False
-    for index in range(start, len(source)):
-        char = source[index]
-        if in_string:
-            if escaped:
-                escaped = False
-                continue
-            if char == "\\":
-                escaped = True
-                continue
-            if char == "'":
-                in_string = False
-            continue
-
-        if char == "'":
-            in_string = True
-            continue
-        if char == "[":
-            depth += 1
-            continue
-        if char == "]":
-            depth -= 1
-            if depth == 0:
-                return source[start : index + 1]
-
+def _coerce_str(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value
     return None
 
 
-def _extract_object_literals(array_literal: str) -> list[str]:
-    objects: list[str] = []
-    depth = 0
-    in_string = False
-    escaped = False
-    object_start = -1
-
-    for index, char in enumerate(array_literal):
-        if in_string:
-            if escaped:
-                escaped = False
-                continue
-            if char == "\\":
-                escaped = True
-                continue
-            if char == "'":
-                in_string = False
-            continue
-
-        if char == "'":
-            in_string = True
-            continue
-        if char == "{":
-            if depth == 0:
-                object_start = index
-            depth += 1
-            continue
-        if char == "}":
-            depth -= 1
-            if depth == 0 and object_start >= 0:
-                objects.append(array_literal[object_start : index + 1])
-                object_start = -1
-
-    return objects
+def _coerce_int(value: Any) -> int | None:
+    if isinstance(value, int):
+        return value
+    return None
 
 
-def _extract_string_field(obj_literal: str, field_name: str) -> str | None:
-    match = re.search(rf"{re.escape(field_name)}:\s*'([^']+)'", obj_literal)
-    if not match:
-        return None
-    return match.group(1)
-
-
-def _extract_number_field(obj_literal: str, field_name: str) -> int | None:
-    match = re.search(rf"{re.escape(field_name)}:\s*(-?\d+)", obj_literal)
-    if not match:
-        return None
-    return int(match.group(1))
-
-
-def _extract_string_list_field(obj_literal: str, field_name: str) -> tuple[str, ...]:
-    match = re.search(rf"{re.escape(field_name)}:\s*\[(.*?)\]", obj_literal, flags=re.DOTALL)
-    if not match:
+def _coerce_str_tuple(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list):
         return tuple()
-    values = tuple(item for item in re.findall(r"'([^']+)'", match.group(1)) if item.strip())
-    return values
+    return tuple(item for item in value if isinstance(item, str) and item.strip())
 
 
-def _extract_object_body(obj_literal: str, field_name: str) -> str | None:
-    match = re.search(rf"{re.escape(field_name)}:\s*\{{(.*?)\}}", obj_literal, flags=re.DOTALL)
-    if not match:
-        return None
-    return match.group(1)
-
-
-def _parse_run_request(obj_literal: str) -> dict[str, Any]:
-    body = _extract_object_body(obj_literal, "runRequest")
-    if not body:
-        return {}
-
-    values: dict[str, Any] = {}
-    for key, raw_value in re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([^,\n}]+)", body):
-        value = raw_value.strip()
-        if value.startswith("'") and value.endswith("'"):
-            values[key] = value[1:-1]
-            continue
-        if value in {"true", "false"}:
-            values[key] = value == "true"
-            continue
-        if re.fullmatch(r"-?\d+", value):
-            values[key] = int(value)
-            continue
-        values[key] = value
-
-    return values
+def _coerce_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    return {}
 
 
 def load_catalog(
-    catalog_path: Path = DEFAULT_CATALOG_PATH,
+    catalog_path: Path = DEFAULT_CATALOG_JSON_PATH,
+    *,
+    require: bool = True,
 ) -> tuple[tuple[CatalogProfile, ...], tuple[CatalogSuite, ...]]:
     if not catalog_path.exists():
+        if require:
+            raise FileNotFoundError(
+                f"Missing generated catalog: {catalog_path}. "
+                "Run `pnpm test:catalog:gen`."
+            )
         return tuple(), tuple()
 
-    source = catalog_path.read_text(encoding="utf-8")
-    profiles_array = _extract_array_literal(source, "const BUILTIN_PROFILES")
-    suites_array = _extract_array_literal(source, "const BUILTIN_SUITES")
+    raw = json.loads(catalog_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"Invalid catalog JSON shape in {catalog_path}: expected object.")
+
+    raw_profiles = raw.get("profiles")
+    raw_suites = raw.get("suites")
+    if not isinstance(raw_profiles, list) or not isinstance(raw_suites, list):
+        raise ValueError(
+            f"Invalid catalog JSON shape in {catalog_path}: expected 'profiles' and 'suites' arrays."
+        )
 
     profiles: list[CatalogProfile] = []
     suites: list[CatalogSuite] = []
 
-    for obj_literal in _extract_object_literals(profiles_array or ""):
+    for entry in raw_profiles:
+        if not isinstance(entry, dict):
+            continue
         profiles.append(
             CatalogProfile(
-                id=_extract_string_field(obj_literal, "id"),
-                label=_extract_string_field(obj_literal, "label"),
-                command=_extract_string_field(obj_literal, "command"),
-                description=_extract_string_field(obj_literal, "description"),
-                targets=_extract_string_list_field(obj_literal, "targets"),
-                tags=_extract_string_list_field(obj_literal, "tags"),
-                order=_extract_number_field(obj_literal, "order"),
-                run_request=_parse_run_request(obj_literal),
+                id=_coerce_str(entry.get("id")),
+                label=_coerce_str(entry.get("label")),
+                command=_coerce_str(entry.get("command")),
+                description=_coerce_str(entry.get("description")),
+                targets=_coerce_str_tuple(entry.get("targets")),
+                tags=_coerce_str_tuple(entry.get("tags")),
+                order=_coerce_int(entry.get("order")),
+                run_request=_coerce_dict(entry.get("run_request")),
             )
         )
 
-    for obj_literal in _extract_object_literals(suites_array or ""):
+    for entry in raw_suites:
+        if not isinstance(entry, dict):
+            continue
         suites.append(
             CatalogSuite(
-                id=_extract_string_field(obj_literal, "id"),
-                label=_extract_string_field(obj_literal, "label"),
-                path=_extract_string_field(obj_literal, "path"),
-                layer=_extract_string_field(obj_literal, "layer"),
-                kind=_extract_string_field(obj_literal, "kind"),
-                category=_extract_string_field(obj_literal, "category"),
-                subcategory=_extract_string_field(obj_literal, "subcategory"),
-                covers=_extract_string_list_field(obj_literal, "covers"),
-                order=_extract_number_field(obj_literal, "order"),
+                id=_coerce_str(entry.get("id")),
+                label=_coerce_str(entry.get("label")),
+                path=_coerce_str(entry.get("path")),
+                layer=_coerce_str(entry.get("layer")),
+                kind=_coerce_str(entry.get("kind")),
+                category=_coerce_str(entry.get("category")),
+                subcategory=_coerce_str(entry.get("subcategory")),
+                covers=_coerce_str_tuple(entry.get("covers")),
+                order=_coerce_int(entry.get("order")),
             )
         )
 

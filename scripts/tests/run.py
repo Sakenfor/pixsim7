@@ -106,7 +106,7 @@ def _load_catalog_records() -> tuple[tuple[CatalogProfile, ...], tuple[CatalogSu
     global _CATALOG_CACHE
     if _CATALOG_CACHE is not None:
         return _CATALOG_CACHE
-    _CATALOG_CACHE = load_catalog()
+    _CATALOG_CACHE = load_catalog(require=False)
     return _CATALOG_CACHE
 
 

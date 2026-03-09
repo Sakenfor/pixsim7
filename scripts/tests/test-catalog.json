@@ -1,0 +1,325 @@
+{
+  "version": 1,
+  "source": "apps/main/src/features/devtools/services/testCatalogRegistry.ts",
+  "profiles": [
+    {
+      "id": "changed",
+      "label": "Changed",
+      "command": "pnpm test",
+      "description": "Resolve backend/frontend targets from changed files with fast-profile fallback.",
+      "targets": [
+        "Backend + Frontend"
+      ],
+      "tags": [
+        "default",
+        "mapped",
+        "incremental"
+      ],
+      "order": 10,
+      "run_request": {
+        "profile": "changed"
+      }
+    },
+    {
+      "id": "fast",
+      "label": "Fast",
+      "command": "pnpm test:fast",
+      "description": "Focused suite for lifecycle/runtime/ownership and project-bundle frontend paths.",
+      "targets": [
+        "Backend + Frontend"
+      ],
+      "tags": [
+        "local",
+        "smoke"
+      ],
+      "order": 20,
+      "run_request": {
+        "profile": "fast"
+      }
+    },
+    {
+      "id": "project-bundle",
+      "label": "Project Bundle",
+      "command": "pnpm test:project-bundle",
+      "description": "Lifecycle/project-bundle profile, including Bananza sync/registration coverage.",
+      "targets": [
+        "Backend + Frontend"
+      ],
+      "tags": [
+        "lifecycle",
+        "project-bundle"
+      ],
+      "order": 30,
+      "run_request": {
+        "profile": "project-bundle"
+      }
+    },
+    {
+      "id": "full",
+      "label": "Full",
+      "command": "pnpm test:full",
+      "description": "Full backend + frontend test targets configured by the unified test runner.",
+      "targets": [
+        "Backend + Frontend"
+      ],
+      "tags": [
+        "broad",
+        "pre-merge"
+      ],
+      "order": 40,
+      "run_request": {
+        "profile": "full"
+      }
+    },
+    {
+      "id": "backend",
+      "label": "Backend Only",
+      "command": "pnpm test:backend",
+      "description": "Changed-profile backend-only command.",
+      "targets": [
+        "Backend"
+      ],
+      "tags": [
+        "backend"
+      ],
+      "order": 50,
+      "run_request": {
+        "backend_only": true,
+        "profile": "changed"
+      }
+    },
+    {
+      "id": "frontend",
+      "label": "Frontend Only",
+      "command": "pnpm test:frontend",
+      "description": "Changed-profile frontend-only command.",
+      "targets": [
+        "Frontend"
+      ],
+      "tags": [
+        "frontend"
+      ],
+      "order": 60,
+      "run_request": {
+        "frontend_only": true,
+        "profile": "changed"
+      }
+    }
+  ],
+  "suites": [
+    {
+      "id": "project-bundle-ui",
+      "label": "Project Bundle UI",
+      "path": "apps/main/src/lib/game/projectBundle/__tests__",
+      "layer": "frontend",
+      "kind": "integration",
+      "category": "frontend/project-bundle",
+      "subcategory": "all",
+      "covers": [
+        "apps/main/src/lib/game/projectBundle"
+      ],
+      "order": 10
+    },
+    {
+      "id": "project-bundle-lifecycle-ui",
+      "label": "Project Bundle Lifecycle UI",
+      "path": "apps/main/src/lib/game/projectBundle/__tests__/lifecycleRuntime.test.ts",
+      "layer": "frontend",
+      "kind": "integration",
+      "category": "frontend/project-bundle",
+      "subcategory": "lifecycle",
+      "covers": [
+        "apps/main/src/lib/game/projectBundle/lifecycle.ts",
+        "apps/main/src/lib/game/projectBundle/service.ts"
+      ],
+      "order": 15
+    },
+    {
+      "id": "project-bundle-runtime-meta-ui",
+      "label": "Project Bundle Runtime Meta UI",
+      "path": "apps/main/src/lib/game/projectBundle/__tests__/runtimeMeta.test.ts",
+      "layer": "frontend",
+      "kind": "unit",
+      "category": "frontend/project-bundle",
+      "subcategory": "runtime-meta",
+      "covers": [
+        "apps/main/src/lib/game/projectBundle/runtimeMeta.ts"
+      ],
+      "order": 16
+    },
+    {
+      "id": "project-bundle-version-migration-ui",
+      "label": "Project Bundle Version Migration UI",
+      "path": "apps/main/src/lib/game/projectBundle/__tests__/versionMigration.test.ts",
+      "layer": "frontend",
+      "kind": "integration",
+      "category": "frontend/project-bundle",
+      "subcategory": "version-migration",
+      "covers": [
+        "apps/main/src/lib/game/projectBundle/index.ts",
+        "apps/main/src/lib/game/projectBundle/service.ts"
+      ],
+      "order": 17
+    },
+    {
+      "id": "project-bundle-contributor-ui",
+      "label": "Project Bundle Contributor UI",
+      "path": "apps/main/src/lib/game/projectBundle/__tests__/contributorClass.test.ts",
+      "layer": "frontend",
+      "kind": "unit",
+      "category": "frontend/project-bundle",
+      "subcategory": "contributors",
+      "covers": [
+        "apps/main/src/lib/game/projectBundle/registry.ts"
+      ],
+      "order": 18
+    },
+    {
+      "id": "backend-tests",
+      "label": "Backend Tests",
+      "path": "pixsim7/backend/tests",
+      "layer": "backend",
+      "kind": "integration",
+      "category": "backend",
+      "subcategory": "all",
+      "covers": [
+        "pixsim7/backend/tests"
+      ],
+      "order": 20
+    },
+    {
+      "id": "codegen-admin-api",
+      "label": "Codegen Admin API Tests",
+      "path": "pixsim7/backend/tests/api/test_codegen_admin_endpoints.py",
+      "layer": "backend",
+      "kind": "contract",
+      "category": "backend/api",
+      "subcategory": "codegen",
+      "covers": [
+        "pixsim7/backend/main/api/v1/codegen.py",
+        "pixsim7/backend/main/services/codegen/test_runner.py"
+      ],
+      "order": 25
+    },
+    {
+      "id": "assets-upload-api",
+      "label": "Assets Upload API Tests",
+      "path": "pixsim7/backend/tests/api/test_assets_upload_library_mode.py",
+      "layer": "backend",
+      "kind": "contract",
+      "category": "backend/api",
+      "subcategory": "assets-upload",
+      "covers": [
+        "pixsim7/backend/main/api/v1/assets_upload.py",
+        "pixsim7/backend/main/services/asset/ingestion.py"
+      ],
+      "order": 26
+    },
+    {
+      "id": "ownership-service",
+      "label": "Ownership Service Tests",
+      "path": "pixsim7/backend/tests/services/ownership",
+      "layer": "backend",
+      "kind": "integration",
+      "category": "backend/ownership",
+      "subcategory": "all",
+      "covers": [
+        "pixsim7/backend/main/services/ownership"
+      ],
+      "order": 30
+    },
+    {
+      "id": "ownership-policies-service",
+      "label": "Ownership Policies Tests",
+      "path": "pixsim7/backend/tests/services/ownership/test_ownership_policies.py",
+      "layer": "backend",
+      "kind": "unit",
+      "category": "backend/ownership",
+      "subcategory": "policies",
+      "covers": [
+        "pixsim7/backend/main/services/ownership/policies.py"
+      ],
+      "order": 31
+    },
+    {
+      "id": "ownership-user-owned-service",
+      "label": "Ownership User-Owned Tests",
+      "path": "pixsim7/backend/tests/services/ownership/test_user_owned.py",
+      "layer": "backend",
+      "kind": "unit",
+      "category": "backend/ownership",
+      "subcategory": "user-owned",
+      "covers": [
+        "pixsim7/backend/main/services/ownership/user_owned.py"
+      ],
+      "order": 32
+    },
+    {
+      "id": "runtime-meta-domain",
+      "label": "Runtime Meta Domain Tests",
+      "path": "pixsim7/backend/tests/domain/game",
+      "layer": "backend",
+      "kind": "unit",
+      "category": "backend/domain",
+      "subcategory": "runtime-meta",
+      "covers": [
+        "pixsim7/backend/main/domain/game/project_runtime_meta.py",
+        "pixsim7/backend/main/domain/game/schemas/project_bundle.py"
+      ],
+      "order": 40
+    },
+    {
+      "id": "bananza-tests",
+      "label": "Bananza Seed Tests",
+      "path": "scripts/seeds/game/bananza/tests",
+      "layer": "scripts",
+      "kind": "integration",
+      "category": "scripts/bananza",
+      "subcategory": "all",
+      "covers": [
+        "scripts/seeds/game/bananza"
+      ],
+      "order": 50
+    },
+    {
+      "id": "bananza-runtime-preferences",
+      "label": "Bananza Runtime Preferences Tests",
+      "path": "scripts/seeds/game/bananza/tests/test_cli_runtime_preferences.py",
+      "layer": "scripts",
+      "kind": "integration",
+      "category": "scripts/bananza",
+      "subcategory": "runtime-preferences",
+      "covers": [
+        "scripts/seeds/game/bananza/cli.py"
+      ],
+      "order": 51
+    },
+    {
+      "id": "bananza-project-sync",
+      "label": "Bananza Project Sync Tests",
+      "path": "scripts/seeds/game/bananza/tests/test_project_sync_and_registration.py",
+      "layer": "scripts",
+      "kind": "integration",
+      "category": "scripts/bananza",
+      "subcategory": "sync-registration",
+      "covers": [
+        "scripts/seeds/game/bananza/cli.py",
+        "pixsim7/backend/main/shared/extension_contract.py"
+      ],
+      "order": 52
+    },
+    {
+      "id": "bananza-direct-mode-hardening",
+      "label": "Bananza Direct Mode Hardening Tests",
+      "path": "scripts/seeds/game/bananza/tests/test_direct_mode_hardening.py",
+      "layer": "scripts",
+      "kind": "integration",
+      "category": "scripts/bananza",
+      "subcategory": "direct-mode-hardening",
+      "covers": [
+        "scripts/seeds/game/bananza/cli.py"
+      ],
+      "order": 53
+    }
+  ]
+}

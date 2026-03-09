@@ -14,6 +14,18 @@ Entry point: `python scripts/tests/run.py <profile> [flags]`
 - `full`
   - Full backend (`pixsim7/backend/tests`) + frontend targets configured in the script.
 
+## Catalog Artifact
+
+The canonical machine-readable catalog is generated to:
+
+- `scripts/tests/test-catalog.json`
+
+Generate/update it with:
+
+```bash
+pnpm test:catalog:gen
+```
+
 ## Flags
 
 - `--list` print resolved targets/commands without executing
@@ -40,6 +52,7 @@ python scripts/tests/run.py changed --list --json
 python scripts/tests/run.py fast --backend-only
 python scripts/tests/run.py project-bundle
 python scripts/tests/run.py full
+pnpm test:catalog:gen
 python scripts/tests/validate_catalog.py
 ```
 
@@ -52,6 +65,7 @@ python scripts/tests/validate_catalog.py
 - required suite fields: `category`, `subcategory`, `kind`, `covers`
 - valid `layer` / `kind` values
 - existing `path` / `covers` filesystem targets
+- generated catalog artifact exists (`scripts/tests/test-catalog.json`)
 
 ## Maintenance
 

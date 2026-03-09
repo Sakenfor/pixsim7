@@ -6,9 +6,14 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from scripts.tests.catalog_loader import ROOT, CatalogSuite, load_catalog
+    from scripts.tests.catalog_loader import (
+        ROOT,
+        DEFAULT_CATALOG_JSON_PATH,
+        CatalogSuite,
+        load_catalog,
+    )
 except ImportError:
-    from catalog_loader import ROOT, CatalogSuite, load_catalog
+    from catalog_loader import ROOT, DEFAULT_CATALOG_JSON_PATH, CatalogSuite, load_catalog
 
 
 ALLOWED_SUITE_KINDS = {"unit", "contract", "integration", "e2e", "smoke"}
@@ -60,7 +65,17 @@ def _validate_suite(
 
 
 def validate_catalog() -> tuple[list[str], dict[str, Any]]:
-    profiles, suites = load_catalog()
+    try:
+        profiles, suites = load_catalog(require=True)
+    except Exception as exc:
+        summary = {
+            "catalog_path": str(DEFAULT_CATALOG_JSON_PATH.as_posix()),
+            "profile_count": 0,
+            "suite_count": 0,
+            "unique_profile_ids": 0,
+            "unique_suite_ids": 0,
+        }
+        return [str(exc)], summary
 
     errors: list[str] = []
     profile_ids: set[str] = set()
@@ -78,7 +93,7 @@ def validate_catalog() -> tuple[list[str], dict[str, Any]]:
         errors.extend(_validate_suite(suite, seen_ids=suite_ids))
 
     summary = {
-        "catalog_path": str((ROOT / "apps/main/src/features/devtools/services/testCatalogRegistry.ts").as_posix()),
+        "catalog_path": str(DEFAULT_CATALOG_JSON_PATH.as_posix()),
         "profile_count": len(profiles),
         "suite_count": len(suites),
         "unique_profile_ids": len(profile_ids),

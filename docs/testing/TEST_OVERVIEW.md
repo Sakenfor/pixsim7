@@ -57,6 +57,7 @@ pnpm test:project-bundle   # lifecycle/project-bundle focus
 pnpm test:full             # broad run
 pnpm test:backend          # changed profile backend only
 pnpm test:frontend         # changed profile frontend only
+pnpm test:catalog:gen      # regenerate scripts/tests/test-catalog.json from TS registry
 pnpm test:catalog:check    # validate suite metadata and covers paths
 ```
 
@@ -82,6 +83,7 @@ Recommended suite metadata fields (for agent-friendly categorization):
 Catalog metadata can be validated with:
 
 ```bash
+pnpm test:catalog:gen
 python scripts/tests/validate_catalog.py
 python scripts/tests/validate_catalog.py --json
 ```
