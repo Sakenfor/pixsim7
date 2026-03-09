@@ -25,10 +25,12 @@ import {
   VariantSuggestionsDrawer,
 } from '@/plugins/ui/prompt-companion/components';
 
+import { usePromptHistory } from '../hooks/usePromptHistory';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useBlockTemplateStore } from '../stores/blockTemplateStore';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptTag } from '../types';
+
 
 import { InlineBlocksEditor } from './InlineBlocksEditor';
 import { RoleBadge } from './shared/RoleBadge';
@@ -152,6 +154,56 @@ export function PromptComposer({
   onChangeRef.current = onChange;
   const valueRef = useRef(value);
   valueRef.current = value;
+
+  // --- Undo/redo history ---
+  const history = usePromptHistory(value, 80);
+  const undoDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const undoingRef = useRef(false);
+
+  const flushSnapshot = useCallback(() => {
+    clearTimeout(undoDebounceRef.current);
+    history.snapshot(valueRef.current);
+  }, [history]);
+
+  // Debounced snapshot: captures typing pauses (600ms idle)
+  useEffect(() => {
+    if (undoingRef.current) {
+      undoingRef.current = false;
+      return;
+    }
+    clearTimeout(undoDebounceRef.current);
+    undoDebounceRef.current = setTimeout(() => {
+      history.snapshot(value);
+    }, 600);
+    return () => clearTimeout(undoDebounceRef.current);
+  }, [value, history]);
+
+  // Capture-phase keyboard handler — intercepts before native textarea undo
+  const handleUndoKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+
+      if (e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        flushSnapshot();
+        const prev = history.undo();
+        if (prev !== null) {
+          undoingRef.current = true;
+          onChangeRef.current(prev);
+        }
+      } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+        e.preventDefault();
+        e.stopPropagation();
+        const next = history.redo();
+        if (next !== null) {
+          undoingRef.current = true;
+          onChangeRef.current(next);
+        }
+      }
+    },
+    [flushSnapshot, history],
+  );
 
   const roleOptions = useMemo(() => {
     const roles = new Set<string>(BASE_PROMPT_ROLES);
@@ -394,10 +446,11 @@ export function PromptComposer({
 
   const handleSelectVariant = useCallback(
     (variant: string) => {
+      flushSnapshot();
       onChange(variant);
       setShowVariants(false);
     },
-    [onChange]
+    [onChange, flushSnapshot]
   );
 
   const handlePasteFromClipboard = useCallback(async () => {
@@ -405,18 +458,19 @@ export function PromptComposer({
       const text = await navigator.clipboard.readText();
       if (!text) return;
       // Allow pasting full text even if over limit — truncation happens at generation time
+      flushSnapshot();
       onChange(text);
     } catch {
       // Clipboard access denied or unavailable
     }
-  }, [onChange]);
+  }, [onChange, flushSnapshot]);
 
   const composedPrompt = useMemo(() => composePrompt(blocks), [blocks]);
   const remaining = typeof maxChars === 'number' ? maxChars - composedPrompt.length : null;
   const isOverLimit = remaining !== null && remaining < 0;
 
   return (
-    <div className={clsx('flex flex-col gap-2 min-h-0', className)}>
+    <div className={clsx('flex flex-col gap-2 min-h-0', className)} onKeyDownCapture={handleUndoKeyDown}>
       <div className="flex items-center gap-2 shrink-0">
         <div className="relative">
           <button
