@@ -62,3 +62,6 @@ pnpm prompt-packs:check
 - `block_schema.descriptors` and `variants[].descriptors` define semantic overlay state.
   - Loader merges `block_schema.descriptors` with per-variant overrides.
   - Merged descriptors are persisted in `block_metadata.descriptors`.
+- `block_schema.op.signature_id` can opt into canonical op contract validation.
+  - Unknown signatures fail pack loading.
+  - Known signatures can enforce required params/refs and op id namespace rules.

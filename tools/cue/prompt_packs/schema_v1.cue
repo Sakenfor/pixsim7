@@ -14,6 +14,7 @@ package promptpacks
 #BlockId:      #DottedId
 #OpId:         #DottedId
 #OpIdTemplate: #TemplateId
+#OpSignatureId: #DottedId
 #BlockMode:    "surface" | "hybrid" | "op"
 
 // Canonical shared enum values.
@@ -104,6 +105,7 @@ package promptpacks
 	// Loader enforces exactly one of these.
 	op_id?:          #OpId
 	op_id_template?: #OpIdTemplate
+	signature_id?:   #OpSignatureId
 	modalities?: [...#Modality]
 	refs?: [...#RefSpec]
 	params?: [...#OpParam]

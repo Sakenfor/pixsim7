@@ -49,6 +49,10 @@ from pixsim7.backend.main.services.prompt.block.capabilities import (
     derive_block_capabilities,
     normalize_capability_ids,
 )
+from pixsim7.backend.main.services.prompt.block.op_signatures import (
+    get_op_signature,
+    validate_signature_contract,
+)
 from pixsim7.backend.main.services.prompt.block.template_slots import (
     TEMPLATE_SLOT_SCHEMA_VERSION,
     normalize_template_slots,
@@ -681,6 +685,13 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
                 f"{src}: block_schema.op requires exactly one of op_id or op_id_template"
             )
 
+        signature_id = value.get("signature_id")
+        if signature_id is not None and (not isinstance(signature_id, str) or not signature_id.strip()):
+            raise ContentPackValidationError(
+                f"{src}: block_schema.op.signature_id must be a non-empty string"
+            )
+        signature_id_text = signature_id.strip() if isinstance(signature_id, str) else None
+
         refs = value.get("refs")
         normalized_refs: List[Dict[str, Any]] = []
         if refs is not None:
@@ -826,9 +837,30 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
                     )
                 normalized_default_args[key_text] = raw_value
 
+        modalities = _normalize_op_modalities(value=value.get("modalities"), field="block_schema.op.modalities")
+        if signature_id_text is not None:
+            signature = get_op_signature(signature_id_text)
+            if signature is None:
+                raise ContentPackValidationError(
+                    f"{src}: block_schema.op.signature_id '{signature_id_text}' is not registered"
+                )
+            signature_errors = validate_signature_contract(
+                signature=signature,
+                op_id=op_id_text,
+                op_id_template=op_id_template_text,
+                params=normalized_params,
+                refs=normalized_refs,
+                modalities=modalities,
+            )
+            if signature_errors:
+                details = "; ".join(signature_errors)
+                raise ContentPackValidationError(
+                    f"{src}: block_schema.op does not satisfy signature '{signature_id_text}': {details}"
+                )
+
         normalized_op: Dict[str, Any] = {}
         for key, entry in value.items():
-            if key in {"op_id", "op_id_template", "modalities", "refs", "params", "default_args"}:
+            if key in {"op_id", "op_id_template", "signature_id", "modalities", "refs", "params", "default_args"}:
                 continue
             normalized_op[key] = entry
 
@@ -836,8 +868,9 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
             normalized_op["op_id"] = op_id_text
         if op_id_template_text is not None:
             normalized_op["op_id_template"] = op_id_template_text
+        if signature_id_text is not None:
+            normalized_op["signature_id"] = signature_id_text
 
-        modalities = _normalize_op_modalities(value=value.get("modalities"), field="block_schema.op.modalities")
         if modalities:
             normalized_op["modalities"] = modalities
         if normalized_refs:
@@ -1095,6 +1128,8 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
 
         if effective_op_id is not None:
             op_payload: Dict[str, Any] = {"op_id": effective_op_id}
+            if schema_op is not None and isinstance(schema_op.get("signature_id"), str):
+                op_payload["signature_id"] = str(schema_op.get("signature_id"))
             if effective_modalities:
                 op_payload["modalities"] = effective_modalities
             if schema_refs:

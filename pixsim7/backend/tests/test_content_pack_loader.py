@@ -171,6 +171,7 @@ blocks:
       capabilities: [camera.motion]
       op:
         op_id_template: "camera.motion.{variant}"
+        signature_id: "camera.motion.v1"
         modalities: [video]
         refs:
           - key: target
@@ -181,8 +182,13 @@ blocks:
             type: enum
             enum: [slow, normal, fast]
             default: normal
+          - key: direction
+            type: enum
+            enum: [in, out, left, right, up, down, forward, backward, around, none]
+            default: none
         default_args:
           speed: normal
+          direction: none
       text_template: "Camera motion token: {variant}."
       variants:
         - key: zoom
@@ -212,6 +218,7 @@ blocks:
         assert "ref:camera_target" in zoom["capabilities"]
         assert zoom["block_metadata"]["mode"] == "hybrid"
         assert zoom["block_metadata"]["op"]["op_id"] == "camera.motion.zoom"
+        assert zoom["block_metadata"]["op"]["signature_id"] == "camera.motion.v1"
         assert zoom["block_metadata"]["op"]["args"]["speed"] == "fast"
         assert zoom["block_metadata"][loader.CONTENT_PACK_SOURCE_KEY] == "demo_pack"
 
@@ -278,6 +285,69 @@ blocks:
         )
 
         with pytest.raises(loader.ContentPackValidationError, match="requires exactly one of op_id or op_id_template"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_unknown_op_signature() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: camera_motion
+    block_schema:
+      id_prefix: core.camera.motion
+      text_template: "Camera motion token: {variant}."
+      op:
+        op_id_template: "camera.motion.{variant}"
+        signature_id: "camera.motion.v999"
+        params:
+          - key: speed
+            type: enum
+            enum: [slow, normal, fast]
+          - key: direction
+            type: enum
+            enum: [in, out, none]
+      variants:
+        - key: zoom
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="is not registered"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_op_signature_missing_required_param() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: camera_motion
+    block_schema:
+      id_prefix: core.camera.motion
+      text_template: "Camera motion token: {variant}."
+      op:
+        op_id_template: "camera.motion.{variant}"
+        signature_id: "camera.motion.v1"
+        params:
+          - key: speed
+            type: enum
+            enum: [slow, normal, fast]
+      variants:
+        - key: zoom
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="missing required params: direction"):
             loader.parse_blocks(pack_dir)
     finally:
         shutil.rmtree(root, ignore_errors=True)
