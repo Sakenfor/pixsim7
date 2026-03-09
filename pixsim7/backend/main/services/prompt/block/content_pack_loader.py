@@ -1083,6 +1083,18 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
             raise ContentPackValidationError(
                 f"{src}: block_schema.variants[{i}] mode=op requires op_id resolution"
             )
+        # Compile-time renderability guard:
+        # hybrid/op blocks should keep at least one human-inspectable surface.
+        image_surface_tag = tags.get("image_surface")
+        video_surface_tag = tags.get("video_surface")
+        has_surface_hint = (
+            (isinstance(image_surface_tag, str) and bool(image_surface_tag.strip()))
+            or (isinstance(video_surface_tag, str) and bool(video_surface_tag.strip()))
+        )
+        if block_mode in {"hybrid", "op"} and not (has_text or has_surface_hint):
+            raise ContentPackValidationError(
+                f"{src}: block_schema.variants[{i}] mode={block_mode} requires text or image_surface/video_surface tags"
+            )
 
         schema_modalities: List[str] = []
         if schema_op is not None:

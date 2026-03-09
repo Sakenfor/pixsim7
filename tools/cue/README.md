@@ -65,3 +65,5 @@ pnpm prompt-packs:check
 - `block_schema.op.signature_id` can opt into canonical op contract validation.
   - Unknown signatures fail pack loading.
   - Known signatures can enforce required params/refs and op id namespace rules.
+- Renderability guard:
+  - `hybrid`/`op` variants must expose at least one surface (`text` or `image_surface`/`video_surface` tags).

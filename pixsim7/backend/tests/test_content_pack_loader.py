@@ -475,6 +475,63 @@ blocks:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_parse_blocks_rejects_mode_op_without_render_surface() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: camera_motion
+    block_schema:
+      id_prefix: core.camera.motion
+      mode: op
+      op:
+        op_id_template: "camera.motion.{variant}"
+      variants:
+        - key: zoom
+""",
+        )
+
+        with pytest.raises(
+            loader.ContentPackValidationError,
+            match="mode=op requires text or image_surface/video_surface tags",
+        ):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_accepts_mode_op_with_surface_tags() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: camera_motion
+    block_schema:
+      id_prefix: core.camera.motion
+      mode: op
+      op:
+        op_id_template: "camera.motion.{variant}"
+      variants:
+        - key: zoom
+          tags:
+            video_surface: "camera zooms"
+""",
+        )
+
+        parsed = loader.parse_blocks(pack_dir)
+        assert len(parsed) == 1
+        assert parsed[0]["tags"]["video_surface"] == "camera zooms"
+        assert parsed[0]["tags"]["block_mode"] == "op"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_parse_blocks_rejects_top_level_block_schema() -> None:
     root, pack_dir = _make_pack_dir()
     try:
