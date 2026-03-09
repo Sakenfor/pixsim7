@@ -96,6 +96,10 @@ package promptpacks
 
 #OpParam: #StringOpParam | #NumberOpParam | #IntegerOpParam | #BooleanOpParam | #EnumOpParam | #RefOpParam
 
+#DescriptorOverlay: {
+	[string]: _
+}
+
 #OpTemplate: {
 	// Loader enforces exactly one of these.
 	op_id?:          #OpId
@@ -124,6 +128,7 @@ package promptpacks
 	ref_bindings?: {
 		[string]: string
 	}
+	descriptors?: #DescriptorOverlay
 	[string]: _
 }
 
@@ -134,6 +139,7 @@ package promptpacks
 	role?:     #SimpleId
 	capabilities?: [...#CapabilityId]
 	text_template?: string
+	descriptors?: #DescriptorOverlay
 	tags?: {
 		[string]: string
 	}

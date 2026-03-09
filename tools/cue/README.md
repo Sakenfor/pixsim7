@@ -59,3 +59,6 @@ pnpm prompt-packs:check
   - `surface`: requires renderable text.
   - `hybrid`: requires renderable text + resolvable op id.
   - `op`: requires resolvable op id (text optional for future non-text runtimes).
+- `block_schema.descriptors` and `variants[].descriptors` define semantic overlay state.
+  - Loader merges `block_schema.descriptors` with per-variant overrides.
+  - Merged descriptors are persisted in `block_metadata.descriptors`.

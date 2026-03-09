@@ -643,6 +643,21 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
             )
         return mode
 
+    def _normalize_descriptors_map(*, value: Any, field: str) -> Dict[str, Any]:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise ContentPackValidationError(f"{src}: {field} must be an object")
+        normalized: Dict[str, Any] = {}
+        for raw_key, raw_value in value.items():
+            key_text = str(raw_key).strip()
+            if not key_text:
+                raise ContentPackValidationError(
+                    f"{src}: {field} keys must be non-empty strings"
+                )
+            normalized[key_text] = raw_value
+        return normalized
+
     def _normalize_schema_op(*, value: Any) -> Dict[str, Any] | None:
         if value is None:
             return None
@@ -849,6 +864,11 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
     if text_template is not None and not isinstance(text_template, str):
         raise ContentPackValidationError(f"{src}: block_schema.text_template must be a string")
 
+    base_descriptors = _normalize_descriptors_map(
+        value=block_schema.get("descriptors"),
+        field="block_schema.descriptors",
+    )
+
     base_tags = block_schema.get("tags", {})
     if base_tags is None:
         base_tags = {}
@@ -879,7 +899,7 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
         else:
             block_mode = "surface"
 
-    reserved_schema_keys = {"id_prefix", "mode", "text_template", "tags", "variants", "op"}
+    reserved_schema_keys = {"id_prefix", "mode", "text_template", "descriptors", "tags", "variants", "op"}
     base_block = {k: v for k, v in block_schema.items() if k not in reserved_schema_keys}
 
     compiled: List[Dict[str, Any]] = []
@@ -906,6 +926,10 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
             variant_tags = {}
         if not isinstance(variant_tags, dict):
             raise ContentPackValidationError(f"{src}: block_schema.variants[{i}].tags must be an object")
+        variant_descriptors = _normalize_descriptors_map(
+            value=variant.get("descriptors"),
+            field=f"block_schema.variants[{i}].descriptors",
+        )
 
         text = variant.get("text")
         if text is not None and not isinstance(text, str):
@@ -970,7 +994,7 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
 
         reserved_variant_keys = {
             "key", "id", "block_id", "text", "tags",
-            "op_id", "op_modalities", "op_args", "ref_bindings",
+            "op_id", "op_modalities", "op_args", "ref_bindings", "descriptors",
         }
         block = dict(base_block)
         for key, value in variant.items():
@@ -981,6 +1005,8 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
         tags = dict(base_tags)
         tags.update(variant_tags)
         tags.setdefault("variant", variant_key)
+        effective_descriptors = dict(base_descriptors)
+        effective_descriptors.update(variant_descriptors)
 
         effective_op_id: str | None = variant_op_id_text
         if effective_op_id is None and schema_op is not None:
@@ -1055,6 +1081,17 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
         else:
             normalized_metadata = dict(block_metadata)
         normalized_metadata.setdefault("mode", block_mode)
+        existing_descriptors = normalized_metadata.get("descriptors")
+        if existing_descriptors is not None and not isinstance(existing_descriptors, dict):
+            raise ContentPackValidationError(
+                f"{src}: block_schema.variants[{i}].block_metadata.descriptors must be an object"
+            )
+        merged_descriptors: Dict[str, Any] = {}
+        if isinstance(existing_descriptors, dict):
+            merged_descriptors.update(existing_descriptors)
+        merged_descriptors.update(effective_descriptors)
+        if merged_descriptors:
+            normalized_metadata["descriptors"] = merged_descriptors
 
         if effective_op_id is not None:
             op_payload: Dict[str, Any] = {"op_id": effective_op_id}

@@ -223,6 +223,42 @@ blocks:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_parse_blocks_supports_descriptor_overlay_merge() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+package_name: descriptor_pkg
+blocks:
+  - id: lighting_overlay
+    block_schema:
+      id_prefix: core.light.overlay
+      mode: hybrid
+      text_template: "Lighting descriptor: {variant}."
+      descriptors:
+        light.temperature: warm
+        light.key: soft
+      op:
+        op_id_template: "light.overlay.{variant}"
+      variants:
+        - key: keylight
+          descriptors:
+            light.temperature: cool
+""",
+        )
+
+        parsed = loader.parse_blocks(pack_dir)
+        assert [b["block_id"] for b in parsed] == ["core.light.overlay.keylight"]
+        descriptors = parsed[0]["block_metadata"]["descriptors"]
+        assert descriptors["light.temperature"] == "cool"
+        assert descriptors["light.key"] == "soft"
+        assert parsed[0]["block_metadata"]["mode"] == "hybrid"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_parse_blocks_rejects_schema_op_missing_id_source() -> None:
     root, pack_dir = _make_pack_dir()
     try:
@@ -242,6 +278,57 @@ blocks:
         )
 
         with pytest.raises(loader.ContentPackValidationError, match="requires exactly one of op_id or op_id_template"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_non_object_schema_descriptors() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: bad_descriptors
+    block_schema:
+      id_prefix: core.light.overlay
+      descriptors: [bad]
+      variants:
+        - key: in
+          text: "Direction token: in."
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="block_schema.descriptors must be an object"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_non_object_variant_descriptors() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: bad_variant_descriptors
+    block_schema:
+      id_prefix: core.light.overlay
+      variants:
+        - key: in
+          text: "Direction token: in."
+          descriptors: bad
+""",
+        )
+
+        with pytest.raises(
+            loader.ContentPackValidationError,
+            match="block_schema.variants\\[0\\].descriptors must be an object",
+        ):
             loader.parse_blocks(pack_dir)
     finally:
         shutil.rmtree(root, ignore_errors=True)
