@@ -10,6 +10,9 @@ from pixsim7.backend.main.shared.extension_contract import (
     build_extension_identity,
     parse_extension_identity,
 )
+from pixsim7.backend.main.domain.game.project_runtime_meta import (
+    canonicalize_project_runtime_meta,
+)
 
 
 PROJECT_BUNDLE_SCHEMA_VERSION = 1
@@ -34,6 +37,11 @@ class ProjectProvenance(BaseModel):
     source_key: Optional[str] = Field(default=None, max_length=160)
     parent_project_id: Optional[int] = None
     meta: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("meta", mode="before")
+    @classmethod
+    def _canonicalize_runtime_meta(cls, value: Any) -> Dict[str, Any]:
+        return canonicalize_project_runtime_meta(value)
 
 
 class BundleWorldData(BaseModel):

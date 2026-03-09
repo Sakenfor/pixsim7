@@ -19,6 +19,7 @@ import {
   typesExplorerTool,
   sqlQueryExplorerTool,
   logViewerTool,
+  testOverviewTool,
   codegenTool,
 } from './tools';
 
@@ -36,6 +37,7 @@ export {
   typesExplorerTool,
   sqlQueryExplorerTool,
   logViewerTool,
+  testOverviewTool,
   codegenTool,
 };
 
@@ -67,6 +69,9 @@ export const builtInDevTools = [
 
   // Log Viewer
   logViewerTool,
+
+  // Testing
+  testOverviewTool,
 
   // Codegen
   codegenTool,

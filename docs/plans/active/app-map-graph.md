@@ -193,7 +193,7 @@ Exit criteria:
 
 Files:
 
-- `pixsim7/backend/main/tests/api/test_dev_architecture_api.py` (new)
+- `pixsim7/backend/tests/api/test_dev_architecture_api.py` (new)
 - `.github/workflows/contracts-and-typecheck.yml`
 
 Changes:
@@ -229,7 +229,7 @@ All must pass:
 
 1. `pnpm docs:app-map`
 2. `pnpm docs:app-map:check`
-3. `python -m pytest pixsim7/backend/main/tests/api/test_dev_architecture_api.py -q`
+3. `python -m pytest pixsim7/backend/tests/api/test_dev_architecture_api.py -q`
 4. `npx tsc --noEmit --project apps/main/tsconfig.json`
 5. Manual endpoint smoke:
    - `/dev/architecture/graph` includes `version`, `sources`, `frontend`, `backend`, `links`, `metrics`.

@@ -75,6 +75,33 @@ def test_read_runtime_preferences_supports_project_runtime_keys() -> None:
     }
 
 
+def test_read_runtime_preferences_prefers_canonical_when_legacy_conflicts() -> None:
+    snapshot = {
+        "provenance": {
+            "meta": {
+                "project_runtime": {
+                    "mode": "api",
+                    "sync_mode": "two_way",
+                    "watch_enabled": True,
+                },
+                "bananza_runtime": {
+                    "seeder_mode": "direct",
+                    "sync_mode": "none",
+                    "watch_enabled": False,
+                },
+            }
+        }
+    }
+
+    preferences = cli._read_runtime_preferences_from_snapshot(snapshot)
+
+    assert preferences == {
+        "mode": "api",
+        "sync_mode": "two_way",
+        "watch": True,
+    }
+
+
 def test_resolve_runtime_config_precedence() -> None:
     project_preferences = {
         "mode": "direct",

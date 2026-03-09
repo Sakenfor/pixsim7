@@ -374,3 +374,4 @@ This allows gradual migration from hardcoded imports to bundle-driven loading.
 - [Plugin Architecture](./PLUGIN_ARCHITECTURE.md) - Overall plugin system design
 - [Comic Panels](./COMIC_PANELS.md) - Comic panel system documentation
 - [Control Center Plugin Migration](./CONTROL_CENTER_PLUGIN_MIGRATION.md) - Control center plugins
+- [Project Bundle Runtime Lifecycle](./PROJECT_BUNDLE_RUNTIME_LIFECYCLE.md) - Runtime-only module lifecycle contract

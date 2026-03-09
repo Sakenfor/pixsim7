@@ -54,6 +54,45 @@ class ExtensionLifecycleStatus(str, Enum):
     DEPRECATED = "deprecated"
 
 
+class ExtensionRuntimeLifecycleState(str, Enum):
+    BOOTSTRAP = "bootstrap"
+    REGISTERED = "registered"
+    IMPORTED = "imported"
+    ACTIVE = "active"
+    DISABLED = "disabled"
+    REMOVED = "removed"
+
+
+_RUNTIME_LIFECYCLE_TRANSITIONS = {
+    ExtensionRuntimeLifecycleState.BOOTSTRAP.value: {
+        ExtensionRuntimeLifecycleState.REGISTERED.value,
+        ExtensionRuntimeLifecycleState.REMOVED.value,
+    },
+    ExtensionRuntimeLifecycleState.REGISTERED.value: {
+        ExtensionRuntimeLifecycleState.IMPORTED.value,
+        ExtensionRuntimeLifecycleState.ACTIVE.value,
+        ExtensionRuntimeLifecycleState.DISABLED.value,
+        ExtensionRuntimeLifecycleState.REMOVED.value,
+    },
+    ExtensionRuntimeLifecycleState.IMPORTED.value: {
+        ExtensionRuntimeLifecycleState.ACTIVE.value,
+        ExtensionRuntimeLifecycleState.DISABLED.value,
+        ExtensionRuntimeLifecycleState.REMOVED.value,
+    },
+    ExtensionRuntimeLifecycleState.ACTIVE.value: {
+        ExtensionRuntimeLifecycleState.DISABLED.value,
+        ExtensionRuntimeLifecycleState.REMOVED.value,
+    },
+    ExtensionRuntimeLifecycleState.DISABLED.value: {
+        ExtensionRuntimeLifecycleState.REGISTERED.value,
+        ExtensionRuntimeLifecycleState.REMOVED.value,
+    },
+    ExtensionRuntimeLifecycleState.REMOVED.value: {
+        ExtensionRuntimeLifecycleState.REGISTERED.value,
+    },
+}
+
+
 @dataclass(frozen=True)
 class ExtensionIdentity:
     """
@@ -189,6 +228,31 @@ def can_publish_lifecycle(status: str | ExtensionLifecycleStatus) -> bool:
     return _status_value(status) == ExtensionLifecycleStatus.APPROVED.value
 
 
+def can_transition_runtime_lifecycle(
+    from_state: str | ExtensionRuntimeLifecycleState,
+    to_state: str | ExtensionRuntimeLifecycleState,
+) -> bool:
+    from_value = _runtime_state_value(from_state)
+    to_value = _runtime_state_value(to_state)
+    if from_value == to_value:
+        return True
+    allowed = _RUNTIME_LIFECYCLE_TRANSITIONS.get(from_value, set())
+    return to_value in allowed
+
+
+def assert_runtime_lifecycle_transition(
+    from_state: str | ExtensionRuntimeLifecycleState,
+    to_state: str | ExtensionRuntimeLifecycleState,
+    *,
+    extension_key: str,
+) -> None:
+    if can_transition_runtime_lifecycle(from_state, to_state):
+        return
+    raise ValueError(
+        f"invalid_runtime_lifecycle_transition:{extension_key}:{_runtime_state_value(from_state)}->{_runtime_state_value(to_state)}"
+    )
+
+
 def _infer_legacy_kind(raw: str) -> str:
     prefix = raw.split(":", 1)[0]
     known = {
@@ -214,3 +278,9 @@ def _status_value(status: str | ExtensionLifecycleStatus) -> str:
     if isinstance(status, ExtensionLifecycleStatus):
         return status.value
     return str(status or "").strip().lower()
+
+
+def _runtime_state_value(state: str | ExtensionRuntimeLifecycleState) -> str:
+    if isinstance(state, ExtensionRuntimeLifecycleState):
+        return state.value
+    return str(state or "").strip().lower()

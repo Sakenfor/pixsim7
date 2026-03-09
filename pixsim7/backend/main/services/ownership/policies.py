@@ -54,6 +54,9 @@ def assert_can_access(
         return
 
     if policy.scope == OwnershipScope.USER:
+        user_id = getattr(user, "id", None)
+        if owner_id is None and user_id is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
         if owner_id is not None and owner_id != getattr(user, "id", None):
             raise HTTPException(status_code=403, detail="Access denied")
         return
@@ -90,8 +93,11 @@ def apply_ownership_filter(
     if policy.scope == OwnershipScope.USER:
         if policy.owner_field and owner_id is not None:
             conditions.append(getattr(model, policy.owner_field) == owner_id)
-        elif policy.owner_field and user is not None and getattr(user, "id", None) is not None:
-            conditions.append(getattr(model, policy.owner_field) == user.id)
+        elif policy.owner_field:
+            user_id = getattr(user, "id", None)
+            if user_id is None:
+                raise HTTPException(status_code=401, detail="Authentication required")
+            conditions.append(getattr(model, policy.owner_field) == user_id)
 
     if policy.scope == OwnershipScope.WORLD:
         if world_id is None:

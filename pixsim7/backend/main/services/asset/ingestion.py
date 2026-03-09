@@ -1238,7 +1238,7 @@ class AssetIngestionService:
         """Compute SHA256 hash of file."""
         return shared_compute_sha256(file_path)
 
-    async def queue_ingestion(self, asset_id: int) -> None:
+    async def queue_ingestion(self, asset_id: int, *, commit: bool = True) -> None:
         """
         Queue asset for background ingestion.
 
@@ -1252,7 +1252,10 @@ class AssetIngestionService:
             return
 
         asset.ingest_status = INGEST_PENDING
-        await self.db.commit()
+        if commit:
+            await self.db.commit()
+        else:
+            await self.db.flush()
 
         logger.debug("ingestion_queued", asset_id=asset_id)
 

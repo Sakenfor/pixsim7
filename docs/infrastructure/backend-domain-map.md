@@ -336,7 +336,7 @@ Tests should be organized to mirror the domain structure.
 ### Target Structure
 
 ```
-pixsim7/backend/main/tests/
+pixsim7/backend/tests/
 ├── conftest.py              # Shared fixtures (db, auth, etc.)
 ├── test_game/               # Game domain tests
 │   ├── conftest.py          # Game-specific fixtures

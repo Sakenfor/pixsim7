@@ -77,7 +77,7 @@ from pixsim7.backend.main.services.game.game_session_service import GameSessionS
 Documented test organization structure in `docs/backend-domain-map.md`:
 
 ```
-pixsim7/backend/main/tests/
+pixsim7/backend/tests/
 ├── conftest.py              # Shared fixtures
 ├── test_game/               # Game domain tests
 ├── test_simulation/         # Simulation domain tests

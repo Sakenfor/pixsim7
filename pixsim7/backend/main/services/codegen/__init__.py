@@ -11,11 +11,16 @@ from .runner import (
     load_codegen_tasks,
     run_codegen_task,
 )
+from .test_runner import (
+    DevtoolsTestRunResult,
+    run_test_profile,
+)
 
 __all__ = [
     "CodegenTask",
     "CodegenRunResult",
     "load_codegen_tasks",
     "run_codegen_task",
+    "DevtoolsTestRunResult",
+    "run_test_profile",
 ]
-

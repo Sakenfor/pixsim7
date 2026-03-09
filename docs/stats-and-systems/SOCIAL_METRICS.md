@@ -855,7 +855,7 @@ export async function previewSkillLevel(
 
 ### Backend Tests
 
-Location: `pixsim7/backend/main/tests/domain/metrics/`
+Location: `pixsim7/backend/tests/domain/metrics/`
 
 Test cases:
 - Schema loading and fallback behavior

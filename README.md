@@ -268,12 +268,20 @@ GET /api/v1/jobs/{job_id}
 
 ### Running Tests
 ```bash
-# Backend tests
-pytest pixsim7/backend/main/tests/
+# Default (changed files profile, backend + frontend)
+pnpm test
 
-# Frontend tests
-cd admin && npm test
+# Show what would run without executing
+pnpm test:list
+
+# Focused lifecycle/project-bundle suite
+pnpm test:project-bundle
+
+# Full backend + frontend suite
+pnpm test:full
 ```
+
+Test profiles and folder layout are documented in [docs/testing/TEST_OVERVIEW.md](./docs/testing/TEST_OVERVIEW.md).
 
 ### Code Style
 ```bash

@@ -66,6 +66,7 @@ class AssetSyncService:
         error_message: Optional[str] = None,
         method: Optional[str] = None,
         context: Optional[Dict[str, Any]] = None,
+        commit: bool = True,
     ) -> None:
         """
         Record an upload attempt in asset.media_metadata.upload_history
@@ -141,7 +142,10 @@ class AssetSyncService:
             from sqlalchemy.orm import attributes
             attributes.flag_modified(asset, 'media_metadata')
 
-            await self.db.commit()
+            if commit:
+                await self.db.commit()
+            else:
+                await self.db.flush()
 
             logger.debug(
                 "upload_attempt_recorded",

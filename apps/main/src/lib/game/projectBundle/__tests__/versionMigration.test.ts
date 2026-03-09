@@ -20,6 +20,19 @@ vi.mock('@lib/api', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return {
     ...actual,
+    exportWorldProject: vi.fn().mockResolvedValue({
+      schema_version: 1,
+      exported_at: '2026-01-01T00:00:00Z',
+      core: {
+        world: { name: 'Test' },
+        locations: [],
+        npcs: [],
+        scenes: [],
+        items: [],
+      },
+      modules: [],
+      extensions: {},
+    }),
     importWorldProject: vi.fn().mockResolvedValue({
       schema_version: 1,
       world_id: 1,

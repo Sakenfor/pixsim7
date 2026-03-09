@@ -6,7 +6,7 @@ Upload, upload-from-url, frame extraction, and reupload operations.
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.params import Form as FormParam
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 import json
 import os
 import tempfile
@@ -49,7 +49,7 @@ class UploadAssetResponse(BaseModel):
     provider_asset_id: str | None = None
     asset_id: int | None = None
     note: str | None = None
-    version_applied: bool | None = None
+    versioning_status: Literal["applied", "not_requested"]
 
 
 class UploadFromUrlRequest(BaseModel):
@@ -251,6 +251,7 @@ async def upload_asset_to_provider(
             provider_asset_id=provider_specific_id,
             asset_id=existing.id,
             note=prep.dedup_note,
+            versioning_status="not_requested",
         )
 
     if existing:
@@ -347,7 +348,46 @@ async def upload_asset_to_provider(
             media_metadata["upload_attribution"] = upload_attribution
 
         created_asset_id = None
-        version_applied: bool | None = None
+        versioning_status: Literal["applied", "not_requested"] = "not_requested"
+
+        # Strict pre-validation for version uploads.
+        # Invalid version parents fail fast (422) before any asset writes.
+        version_parent_id_raw = normalized_context.get("version_parent_id") if normalized_context else None
+        validated_version_parent: int | None = None
+        if version_parent_id_raw is not None:
+            try:
+                validated_version_parent = int(version_parent_id_raw)
+            except (ValueError, TypeError):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid version_parent_id: {version_parent_id_raw}",
+                )
+
+            from sqlalchemy import select as sa_select
+            from pixsim7.backend.main.domain.assets.models import Asset as AssetModel
+
+            parent_result = await db.execute(
+                sa_select(AssetModel.id, AssetModel.user_id).where(
+                    AssetModel.id == validated_version_parent
+                )
+            )
+            parent_row = parent_result.one_or_none()
+            if not parent_row:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"version_parent_id {validated_version_parent} not found",
+                )
+            if parent_row.user_id != user.id:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "version_parent_id owner mismatch: "
+                        f"parent_user_id={parent_row.user_id}, request_user_id={user.id}"
+                    ),
+                )
+
+        # Single-commit boundary for strict versioning path.
+        defer_commit = validated_version_parent is not None
         try:
             # Check if we're updating an existing asset (cross-provider upload)
             if provider_id != "local" and existing and not (existing.provider_id == provider_id or provider_id in (existing.provider_uploads or {})):
@@ -377,46 +417,9 @@ async def upload_asset_to_provider(
                     provider_asset_id=provider_asset_id,
                     asset_id=existing.id,
                     note=f"Reused existing asset (deduplicated by sha256, uploaded to {provider_id})",
+                    versioning_status="not_requested",
                 )
             else:
-                # Pre-validate version parent before creating asset
-                version_parent_id = normalized_context.get('version_parent_id') if normalized_context else None
-                validated_version_parent: int | None = None
-                if version_parent_id:
-                    try:
-                        validated_version_parent = int(version_parent_id)
-                        from sqlalchemy import select as sa_select
-                        from pixsim7.backend.main.domain.assets.models import Asset as AssetModel
-                        parent_result = await db.execute(
-                            sa_select(AssetModel.id, AssetModel.user_id).where(
-                                AssetModel.id == validated_version_parent
-                            )
-                        )
-                        parent_row = parent_result.one_or_none()
-                        if not parent_row:
-                            logger.warning(
-                                "version_parent_not_found",
-                                version_parent_id=validated_version_parent,
-                            )
-                            validated_version_parent = None
-                        elif parent_row.user_id != user.id:
-                            logger.warning(
-                                "version_parent_wrong_owner",
-                                version_parent_id=validated_version_parent,
-                                parent_user_id=parent_row.user_id,
-                                request_user_id=user.id,
-                            )
-                            validated_version_parent = None
-                    except (ValueError, TypeError):
-                        logger.warning(
-                            "version_parent_id_invalid",
-                            raw_value=version_parent_id,
-                        )
-                        validated_version_parent = None
-
-                # Defer commit when versioning so asset+versioning are atomic
-                defer_commit = validated_version_parent is not None
-
                 # Create new asset with CAS storage
                 new_asset = await add_asset(
                     db,
@@ -445,12 +448,25 @@ async def upload_asset_to_provider(
                 if new_asset:
                     created_asset_id = new_asset.id
 
+                if validated_version_parent and new_asset and new_asset.id == validated_version_parent:
+                    await db.rollback()
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Version upload deduplicated to the parent asset; "
+                            "no new version was created"
+                        ),
+                    )
+
                 # Queue thumbnail generation if we have a local copy
                 if stored_key and new_asset:
                     try:
                         from pixsim7.backend.main.services.asset.ingestion import AssetIngestionService
                         ingestion_service = AssetIngestionService(db)
-                        await ingestion_service.queue_ingestion(new_asset.id)
+                        await ingestion_service.queue_ingestion(
+                            new_asset.id,
+                            commit=not defer_commit,
+                        )
                     except Exception as e:
                         logger.warning(
                             "thumbnail_queue_failed",
@@ -468,6 +484,7 @@ async def upload_asset_to_provider(
                             status='success',
                             method=upload_history_method,
                             context={"upload_method": upload_method},
+                            commit=not defer_commit,
                         )
                     except Exception as e:
                         logger.warning(
@@ -490,6 +507,7 @@ async def upload_asset_to_provider(
                             parent_asset_id=source_asset_id,
                             upload_method=upload_method,
                             timestamp=frame_time,
+                            commit=not defer_commit,
                         )
                         logger.info(
                             "capture_lineage_created",
@@ -517,27 +535,39 @@ async def upload_asset_to_provider(
                             version_message=version_message,
                         )
                         await db.commit()
-                        version_applied = True
+                        versioning_status = "applied"
                         logger.info(
                             "asset_version_applied",
                             new_asset_id=new_asset.id,
                             parent_asset_id=validated_version_parent,
                         )
+                    except ValueError as e:
+                        await db.rollback()
+                        raise HTTPException(status_code=422, detail=str(e))
                     except Exception as e:
-                        # Versioning failed — still commit the asset so user data isn't lost
-                        await db.commit()
-                        version_applied = False
-                        logger.warning(
+                        await db.rollback()
+                        logger.error(
                             "asset_version_failed",
                             new_asset_id=new_asset.id,
                             parent_asset_id=validated_version_parent,
                             error=str(e),
+                            exc_info=True,
+                        )
+                        raise HTTPException(
+                            status_code=500,
+                            detail="Failed to apply versioning for upload",
                         )
                 elif defer_commit:
-                    # Shouldn't happen, but ensure commit if deferred
-                    await db.commit()
+                    await db.rollback()
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Failed to create asset for requested versioning",
+                    )
+        except HTTPException:
+            raise
         except Exception as e:
-            # Non-fatal if asset creation fails; log and return upload response anyway
+            if defer_commit:
+                await db.rollback()
             logger.error(
                 "asset_create_failed",
                 provider_id=provider_id,
@@ -546,6 +576,7 @@ async def upload_asset_to_provider(
                 error=str(e),
                 exc_info=True,
             )
+            raise HTTPException(status_code=500, detail=f"Failed to create asset: {e}")
         return UploadAssetResponse(
             provider_id=result.provider_id,
             media_type=result.media_type,
@@ -553,10 +584,12 @@ async def upload_asset_to_provider(
             provider_asset_id=result.provider_asset_id,
             asset_id=created_asset_id,
             note=result.note,
-            version_applied=version_applied,
+            versioning_status=versioning_status,
         )
     except InvalidOperationError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Provider upload failed: {e}")
     finally:
@@ -760,6 +793,7 @@ async def upload_asset_from_url(
                 provider_asset_id=provider_specific_id,
                 asset_id=existing.id,
                 note=note,
+                versioning_status="not_requested",
             )
 
         if not stored_key or not final_local_path:
@@ -939,6 +973,7 @@ async def upload_asset_from_url(
         provider_asset_id=asset.provider_asset_id,
         asset_id=asset.id,
         note=provider_upload_note,
+        versioning_status="not_requested",
     )
 
 

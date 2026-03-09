@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from pixsim7.backend.main.domain.game.schemas.project_bundle import GameProjectBundle
+from pixsim7.backend.main.domain.game.schemas.project_bundle import (
+    GameProjectBundle,
+    ProjectProvenance,
+)
 
 
 def _minimal_core() -> dict:
@@ -69,3 +72,28 @@ def test_bundle_migrates_legacy_modules_from_extensions() -> None:
     bundle = GameProjectBundle.model_validate(payload)
     assert len(bundle.modules) == 1
     assert bundle.modules[0].id == "plugin:core.pixsim/world-basics@1.0.0"
+
+
+def test_project_provenance_canonicalizes_legacy_runtime_meta() -> None:
+    provenance = ProjectProvenance.model_validate(
+        {
+            "kind": "import",
+            "meta": {
+                "bananza_runtime": {
+                    "seeder_mode": "direct",
+                    "sync_mode": "none",
+                    "watch_enabled": False,
+                },
+                "bananza_seeder_mode": "api",
+            },
+        }
+    )
+
+    assert provenance.meta["project_runtime"] == {
+        "mode": "direct",
+        "sync_mode": "none",
+        "watch_enabled": False,
+    }
+    assert provenance.meta["project_runtime_mode"] == "direct"
+    assert "bananza_runtime" not in provenance.meta
+    assert "bananza_seeder_mode" not in provenance.meta

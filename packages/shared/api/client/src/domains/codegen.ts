@@ -38,6 +38,31 @@ export interface CodegenRunResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Tests Runner Types
+// ---------------------------------------------------------------------------
+
+export type TestProfile = 'changed' | 'fast' | 'project-bundle' | 'full';
+
+export interface TestRunRequest {
+  profile: TestProfile;
+  backend_only?: boolean;
+  frontend_only?: boolean;
+  list_only?: boolean;
+}
+
+export interface TestRunResponse {
+  profile: TestProfile;
+  ok: boolean;
+  exit_code: number | null;
+  duration_ms: number;
+  stdout: string;
+  stderr: string;
+  backend_only: boolean;
+  frontend_only: boolean;
+  list_only: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Migration Types
 // ---------------------------------------------------------------------------
 
@@ -90,6 +115,10 @@ export function createCodegenApi(client: PixSimApiClient) {
 
     async runTask(request: CodegenRunRequest): Promise<CodegenRunResponse> {
       return client.post<CodegenRunResponse>('/devtools/codegen/run', request);
+    },
+
+    async runTests(request: TestRunRequest): Promise<TestRunResponse> {
+      return client.post<TestRunResponse>('/devtools/codegen/tests/run', request);
     },
 
     async getMigrationStatus(): Promise<MigrationStatusResponse> {

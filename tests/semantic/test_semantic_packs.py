@@ -9,10 +9,18 @@ Demonstrates:
 """
 
 import asyncio
+import os
+
+import pytest
 from pixsim7.backend.main.services.prompt.parser.simple import SimplePromptParser
 from pixsim7.backend.main.services.prompt.parser.hints import ParserHintProvider
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_SEMANTIC_PACK_SMOKE") != "1",
+    reason="Manual smoke test. Set RUN_SEMANTIC_PACK_SMOKE=1 to execute.",
+)
 
 
 async def test_parser_with_hints():

@@ -14,6 +14,8 @@ Developer tools and debug panels for development and diagnostics.
 - **GizmoSurfacesPanel** - Manage gizmo overlays and debug surfaces
 - **SessionStateViewer** - Inspect GameSession state, flags, and relationships
 - **TemplateAnalyticsPanel** - Template usage analytics and metrics
+- **TestOverviewPanel** - User-facing test profile and suite overview
+  - Backed by canonical test catalog registry in `features/devtools/services/testCatalogRegistry.ts`
 
 ## Usage
 

@@ -3,6 +3,7 @@
 ## Quick Start
 - [Getting Started](./getting-started/README.md) - Setup, launcher, ports
 - [Architecture Overview](./architecture/README.md) - System design
+- [Testing Overview](./testing/TEST_OVERVIEW.md) - Test folders, runner profiles, and commands
 - [Ongoing Work Status](./plans/active/ongoing-work-status.md) - Current active implementation lanes and next steps
 - [Repository Map](./repo-map.md) - Codebase structure
 - [App Map](./APP_MAP.md) - Auto-generated feature/route/store index

@@ -20,6 +20,7 @@ try:
         MigrationStatusResponse,
     )
     from pixsim7.backend.main.domain.user import User
+    from pixsim7.backend.main.services.codegen import DevtoolsTestRunResult
     from pixsim7.backend.main.services.codegen.runner import CodegenRunResult, CodegenTask
 
     IMPORTS_AVAILABLE = True
@@ -160,6 +161,67 @@ class TestDevtoolsCodegenEndpoints:
             )
 
         assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_run_tests_profile(self):
+        app = _app(authenticated=True, can_codegen=True)
+        result = DevtoolsTestRunResult(
+            profile="fast",
+            ok=True,
+            exit_code=0,
+            duration_ms=890,
+            stdout="[tests] all requested suites passed",
+            stderr="",
+            backend_only=False,
+            frontend_only=False,
+            list_only=False,
+        )
+
+        with patch("pixsim7.backend.main.api.v1.codegen.run_test_profile", return_value=result):
+            async with _client(app) as c:
+                response = await c.post(
+                    "/api/v1/devtools/codegen/tests/run",
+                    json={"profile": "fast"},
+                )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["profile"] == "fast"
+        assert payload["ok"] is True
+        assert payload["exit_code"] == 0
+
+    @pytest.mark.asyncio
+    async def test_run_tests_rejects_conflicting_flags(self):
+        app = _app(authenticated=True, can_codegen=True)
+
+        with patch(
+            "pixsim7.backend.main.api.v1.codegen.run_test_profile",
+            side_effect=ValueError("--backend-only and --frontend-only are mutually exclusive"),
+        ):
+            async with _client(app) as c:
+                response = await c.post(
+                    "/api/v1/devtools/codegen/tests/run",
+                    json={
+                        "profile": "changed",
+                        "backend_only": True,
+                        "frontend_only": True,
+                    },
+                )
+
+        assert response.status_code == 400
+        assert "mutually exclusive" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_run_tests_requires_permission(self):
+        app = _app(authenticated=True, can_codegen=False)
+
+        async with _client(app) as c:
+            response = await c.post(
+                "/api/v1/devtools/codegen/tests/run",
+                json={"profile": "fast"},
+            )
+
+        assert response.status_code == 403
 
 
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")

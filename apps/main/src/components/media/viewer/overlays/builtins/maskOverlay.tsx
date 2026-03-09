@@ -837,7 +837,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       const newAssetId = uploadResult.asset_id;
       let attachedToGeneration = false;
 
-      const versionWasApplied = uploadResult.version_applied === true;
+      const versionWasApplied = uploadResult.versioning_status === 'applied';
 
       if (newAssetId) {
         try {

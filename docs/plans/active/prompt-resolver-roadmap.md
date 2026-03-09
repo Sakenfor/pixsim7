@@ -66,7 +66,7 @@ Includes:
 
 Test:
 
-- `pixsim7/backend/main/tests/services/prompt/test_resolution_core.py`
+- `pixsim7/backend/tests/services/prompt/test_resolution_core.py`
 
 ### Backend: workbench dev endpoints (implemented)
 
@@ -116,7 +116,7 @@ Important: resolver execution is **backend-backed** (Python), not a frontend TS 
 
 In:
 
-- `pixsim7/backend/main/tests/api/test_resolver_workbench_endpoints.py`
+- `pixsim7/backend/tests/api/test_resolver_workbench_endpoints.py`
 
 Covers:
 - `resolve`: result shape, desired-tag scoring, trace events, `forbid_tag` constraint, invalid resolver_id → 400
@@ -227,7 +227,7 @@ Examples:
 Files:
 
 - `pixsim7/backend/main/api/v1/block_templates.py` (`_compile_template_to_resolution_request`)
-- `pixsim7/backend/main/tests/api/test_resolver_workbench_endpoints.py`
+- `pixsim7/backend/tests/api/test_resolver_workbench_endpoints.py`
 
 ### Track 2: `next_v1` Relational Scoring (FIRST REAL DIFFERENTIATOR)
 
@@ -247,7 +247,7 @@ Files:
 
 - `pixsim7/backend/main/services/prompt/block/resolution_core/next_v1_resolver.py`
 - `pixsim7/backend/main/services/prompt/block/resolution_core/types.py` (additive only)
-- `pixsim7/backend/main/tests/services/prompt/test_resolution_core.py`
+- `pixsim7/backend/tests/services/prompt/test_resolution_core.py`
 
 ### Track 3: Trace Usability (PRACTICAL NECESSITY)
 
@@ -280,7 +280,7 @@ Remaining:
 
 Files:
 
-- `pixsim7/backend/main/tests/api/test_resolver_workbench_endpoints.py`
+- `pixsim7/backend/tests/api/test_resolver_workbench_endpoints.py`
 
 ### Track 5: Migration Confidence (DEFERRED — migration instrumentation, not resolver development)
 
@@ -424,7 +424,7 @@ Validation:
 
 ### Backend tests
 
-- `pixsim7/backend/main/tests/services/prompt/test_resolution_core.py`
+- `pixsim7/backend/tests/services/prompt/test_resolution_core.py`
 - add endpoint tests in a nearby API test module (preferred) or new targeted test file
 
 ### Frontend (hot)

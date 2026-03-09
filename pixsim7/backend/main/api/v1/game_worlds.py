@@ -27,6 +27,9 @@ from pixsim7.backend.main.domain.game.schemas.project_bundle import (
     UpsertDraftRequest,
     DraftSummary,
 )
+from pixsim7.backend.main.domain.game.project_runtime_meta import (
+    canonicalize_project_runtime_meta,
+)
 from pixsim7.backend.main.services.game.project_bundle import GameProjectBundleService
 from pixsim7.backend.main.services.game.project_storage import GameProjectStorageService
 from pixsim7.backend.main.services.game.derived_projections import resync_world_projections, ResyncResult
@@ -130,8 +133,7 @@ def _to_project_provenance(project) -> ProjectProvenance:
         source_key = None
 
     meta = getattr(project, "origin_meta", None)
-    if not isinstance(meta, dict):
-        meta = {}
+    meta = canonicalize_project_runtime_meta(meta if isinstance(meta, dict) else {})
 
     parent_project_id = getattr(project, "origin_parent_project_id", None)
 
@@ -139,7 +141,7 @@ def _to_project_provenance(project) -> ProjectProvenance:
         kind=kind,
         source_key=source_key,
         parent_project_id=parent_project_id,
-        meta=dict(meta),
+        meta=meta,
     )
 
 
@@ -1369,4 +1371,3 @@ async def get_world_config_endpoint(
     config = get_world_config(world.meta)
 
     return config
-

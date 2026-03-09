@@ -5,11 +5,20 @@ Tests basic functionality without requiring the full backend environment.
 """
 
 import asyncio
-import sys
 import os
+import sys
+from pathlib import Path
+
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_PROMPT_PARSER_SMOKE") != "1",
+    reason="Manual smoke test. Set RUN_PROMPT_PARSER_SMOKE=1 to execute.",
+)
 
 # Add the backend to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "pixsim7", "backend"))
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "pixsim7" / "backend"))
 
 from main.services.prompt.parser import SimplePromptParser, parse_prompt_to_candidates, analyze_prompt
 

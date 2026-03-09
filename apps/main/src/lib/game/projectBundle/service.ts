@@ -4,6 +4,7 @@ import {
   type GameProjectBundle,
 } from '@lib/api';
 
+import { ProjectBundleRuntimeLifecycleTracker } from './lifecycle';
 import {
   PROJECT_BUNDLE_EXTENSION_KEY_PATTERN,
   projectBundleExtensionRegistry,
@@ -51,8 +52,8 @@ function readModuleExtensionKey(moduleRef: unknown): string | null {
   return null;
 }
 
-function buildModuleEnabledMap(bundle: GameProjectBundle): Map<string, boolean> {
-  const map = new Map<string, boolean>();
+function buildModuleEnabledMap(bundle: GameProjectBundle): Map<string, { enabled: boolean }> {
+  const map = new Map<string, { enabled: boolean }>();
   const modules = Array.isArray(bundle.modules) ? bundle.modules : [];
 
   for (const moduleRef of modules) {
@@ -62,10 +63,108 @@ function buildModuleEnabledMap(bundle: GameProjectBundle): Map<string, boolean> 
     }
 
     const enabled = (moduleRef as { enabled?: unknown }).enabled;
-    map.set(extensionKey, enabled !== false);
+    map.set(extensionKey, { enabled: enabled !== false });
   }
 
   return map;
+}
+
+function isModuleEnabled(
+  extensionKey: string,
+  moduleEnabledMap: Map<string, { enabled: boolean }>,
+): boolean {
+  return moduleEnabledMap.get(extensionKey)?.enabled !== false;
+}
+
+function stableSerialize(value: unknown): string {
+  if (value === null || value === undefined) {
+    return 'null';
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return JSON.stringify(value);
+  }
+
+  if (typeof value === 'string') {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableSerialize(entry)).join(',')}]`;
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`).join(',')}}`;
+  }
+
+  return JSON.stringify(String(value));
+}
+
+function buildImportFingerprint(
+  extensionKey: string,
+  payload: unknown,
+  handlerVersion: number | undefined,
+): string {
+  return stableSerialize({
+    extensionKey,
+    handlerVersion: handlerVersion ?? null,
+    payload,
+  });
+}
+
+function readImportedWorldId(response: unknown): number | null {
+  if (!response || typeof response !== 'object') {
+    return null;
+  }
+  const worldId = (response as { world_id?: unknown }).world_id;
+  return typeof worldId === 'number' && Number.isFinite(worldId) ? worldId : null;
+}
+
+function buildImportCacheKey(worldId: number | null, extensionKey: string): string {
+  return `${worldId ?? 'unknown'}::${extensionKey}`;
+}
+
+function clearCachedImportStateForWorldExtension(worldId: number | null, extensionKey: string): void {
+  extensionImportReplayCache.delete(buildImportCacheKey(worldId, extensionKey));
+}
+
+function pruneRemovedExtensionsForWorld(
+  worldId: number | null,
+  retainedExtensionKeys: Set<string>,
+): string[] {
+  const worldPrefix = `${worldId ?? 'unknown'}::`;
+  const removed: string[] = [];
+  for (const key of Array.from(extensionImportReplayCache.keys())) {
+    if (!key.startsWith(worldPrefix)) {
+      continue;
+    }
+    const extensionKey = key.slice(worldPrefix.length);
+    if (retainedExtensionKeys.has(extensionKey)) {
+      continue;
+    }
+    extensionImportReplayCache.delete(key);
+    removed.push(extensionKey);
+  }
+  return removed;
+}
+
+function assertCanImportModule(
+  extensionKey: string,
+  moduleEnabledMap: Map<string, { enabled: boolean }>,
+): void {
+  if (isModuleEnabled(extensionKey, moduleEnabledMap)) {
+    return;
+  }
+  throw new Error(`project_bundle_module_disabled:${extensionKey}`);
+}
+
+const extensionImportReplayCache = new Map<string, { fingerprint: string }>();
+
+// Test-only utility to keep import replay checks deterministic across suites.
+export function __resetProjectBundleRuntimeImportCacheForTests(): void {
+  extensionImportReplayCache.clear();
 }
 
 function buildModuleEntriesForIncludedExtensions(
@@ -159,21 +258,52 @@ export async function importWorldProjectWithExtensions(
   };
   const moduleEnabledMap = buildModuleEnabledMap(bundle);
 
+  const extensionKeys = new Set<string>();
+  for (const key of Object.keys(bundle.extensions || {})) {
+    extensionKeys.add(key);
+  }
+  for (const key of moduleEnabledMap.keys()) {
+    extensionKeys.add(key);
+  }
+  for (const handler of projectBundleExtensionRegistry.list()) {
+    extensionKeys.add(handler.key);
+  }
+
+  const lifecycle = new ProjectBundleRuntimeLifecycleTracker(extensionKeys);
+  for (const handler of projectBundleExtensionRegistry.list()) {
+    lifecycle.transition(handler.key, 'registered');
+  }
+
+  const importedWorldId = readImportedWorldId(response);
+  for (const [key, moduleRef] of moduleEnabledMap.entries()) {
+    if (moduleRef.enabled !== false) {
+      continue;
+    }
+    lifecycle.transition(key, 'disabled');
+    clearCachedImportStateForWorldExtension(importedWorldId, key);
+  }
+
   const extensionEntries = Object.entries(bundle.extensions || {});
+  const retainedWorldKeys = new Set<string>();
   for (const [key, rawPayload] of extensionEntries) {
+    retainedWorldKeys.add(key);
     const handler = projectBundleExtensionRegistry.get(key);
     if (!handler) {
+      lifecycle.transition(key, 'removed');
       extensionReport.unknown.push(key);
       continue;
     }
 
-    if (moduleEnabledMap.get(key) === false) {
+    if (!isModuleEnabled(key, moduleEnabledMap)) {
+      lifecycle.transition(key, 'disabled');
       extensionReport.skipped.push(key);
       extensionReport.warnings.push(`${key}: skipped because module is disabled`);
+      clearCachedImportStateForWorldExtension(importedWorldId, key);
       continue;
     }
 
     if (!handler.import) {
+      lifecycle.transition(key, 'active');
       extensionReport.skipped.push(key);
       continue;
     }
@@ -199,34 +329,69 @@ export async function importWorldProjectWithExtensions(
             payload = migrated;
             extensionReport.migrated.push(key);
           } else {
+            lifecycle.transition(key, 'removed');
             extensionReport.failed.push(key);
             extensionReport.warnings.push(
-              `migrate ${key}: migration returned null (v${payloadVersion} → v${handlerVersion})`,
+              `migrate ${key}: migration returned null (v${payloadVersion} -> v${handlerVersion})`,
             );
             continue;
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
+          lifecycle.transition(key, 'removed');
           extensionReport.failed.push(key);
           extensionReport.warnings.push(`migrate ${key}: ${message}`);
           continue;
         }
       } else {
         extensionReport.warnings.push(
-          `${key}: version mismatch (payload v${payloadVersion}, handler v${handlerVersion}) — no migrate function, attempting import anyway`,
+          `${key}: version mismatch (payload v${payloadVersion}, handler v${handlerVersion}) - no migrate function, attempting import anyway`,
         );
       }
     }
 
     try {
+      assertCanImportModule(key, moduleEnabledMap);
+    } catch (error) {
+      lifecycle.transition(key, 'disabled');
+      extensionReport.skipped.push(key);
+      extensionReport.warnings.push(
+        error instanceof Error ? error.message : String(error),
+      );
+      clearCachedImportStateForWorldExtension(importedWorldId, key);
+      continue;
+    }
+
+    const replayFingerprint = buildImportFingerprint(key, payload, handler.version);
+    const replayCacheKey = buildImportCacheKey(importedWorldId, key);
+    const previousReplay = extensionImportReplayCache.get(replayCacheKey);
+    if (previousReplay?.fingerprint === replayFingerprint) {
+      lifecycle.transition(key, 'active');
+      extensionReport.skipped.push(key);
+      extensionReport.warnings.push(`${key}: skipped idempotent replay`);
+      continue;
+    }
+
+    try {
+      lifecycle.transition(key, 'imported');
       const outcome = await handler.import(payload, { bundle, response });
+      lifecycle.transition(key, 'active');
       extensionReport.applied.push(key);
       extensionReport.warnings.push(...toWarnings(outcome));
+      extensionImportReplayCache.set(replayCacheKey, {
+        fingerprint: replayFingerprint,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      lifecycle.transition(key, 'removed');
       extensionReport.failed.push(key);
       extensionReport.warnings.push(`import ${key}: ${message}`);
     }
+  }
+
+  const removedWorldKeys = pruneRemovedExtensionsForWorld(importedWorldId, retainedWorldKeys);
+  for (const key of removedWorldKeys) {
+    lifecycle.transition(key, 'removed');
   }
 
   return { response, extensionReport };

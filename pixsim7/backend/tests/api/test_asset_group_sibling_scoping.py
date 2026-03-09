@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pixsim7.backend.main.api.v1.assets import (
+from pixsim7.backend.main.api.v1.assets_search import (
     AssetGroupBy,
     AssetGroupRequest,
     list_asset_groups,

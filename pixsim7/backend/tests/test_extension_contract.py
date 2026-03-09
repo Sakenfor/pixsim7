@@ -5,7 +5,10 @@ import pytest
 from pixsim7.backend.main.shared.extension_contract import (
     ExtensionIdentity,
     ExtensionLifecycleStatus,
+    ExtensionRuntimeLifecycleState,
+    assert_runtime_lifecycle_transition,
     build_extension_identity,
+    can_transition_runtime_lifecycle,
     can_approve_lifecycle,
     can_publish_lifecycle,
     can_submit_lifecycle,
@@ -117,3 +120,26 @@ def test_lifecycle_helpers() -> None:
 def test_parse_empty_extension_id_raises() -> None:
     with pytest.raises(ValueError, match="cannot be empty"):
         parse_extension_identity("")
+
+
+def test_runtime_lifecycle_transition_matrix() -> None:
+    assert can_transition_runtime_lifecycle("bootstrap", "registered")
+    assert can_transition_runtime_lifecycle("registered", "imported")
+    assert can_transition_runtime_lifecycle("imported", "active")
+    assert can_transition_runtime_lifecycle("active", "disabled")
+    assert can_transition_runtime_lifecycle("disabled", "registered")
+    assert can_transition_runtime_lifecycle("removed", "registered")
+    assert can_transition_runtime_lifecycle("active", "active")
+
+    assert not can_transition_runtime_lifecycle("bootstrap", "active")
+    assert not can_transition_runtime_lifecycle("removed", "active")
+    assert not can_transition_runtime_lifecycle("disabled", "imported")
+
+
+def test_runtime_lifecycle_invalid_transition_raises() -> None:
+    with pytest.raises(ValueError, match="invalid_runtime_lifecycle_transition"):
+        assert_runtime_lifecycle_transition(
+            ExtensionRuntimeLifecycleState.BOOTSTRAP,
+            ExtensionRuntimeLifecycleState.ACTIVE,
+            extension_key="plugin:user.stefan/example",
+        )

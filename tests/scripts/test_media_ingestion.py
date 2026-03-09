@@ -9,7 +9,7 @@ Validates the complete ingestion pipeline:
 4. Gallery uses local URLs
 
 Usage:
-    python scripts/test_media_ingestion.py
+    python tests/scripts/test_media_ingestion.py
 
 Requirements:
     - Backend server running on localhost:8000
@@ -21,7 +21,13 @@ import json
 import time
 import asyncio
 import httpx
+import pytest
 from pathlib import Path
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("RUN_MEDIA_INGESTION_SMOKE") != "1",
+    reason="Manual smoke test. Set RUN_MEDIA_INGESTION_SMOKE=1 to execute.",
+)
 
 # Configuration
 API_BASE = os.getenv("PIXSIM_API_BASE", "http://localhost:8000")

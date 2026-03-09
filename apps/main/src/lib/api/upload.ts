@@ -35,7 +35,7 @@ export interface UploadAssetResponse {
   provider_asset_id?: string;
   asset_id?: number;
   note?: string;
-  version_applied?: boolean | null;
+  versioning_status: 'applied' | 'not_requested';
 }
 
 /**

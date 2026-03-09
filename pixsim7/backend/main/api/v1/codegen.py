@@ -23,8 +23,10 @@ from pixsim7.backend.main.api.dependencies import CurrentCodegenUser
 from pixsim7.backend.main.services.codegen import (
     CodegenRunResult,
     CodegenTask,
+    DevtoolsTestRunResult,
     load_codegen_tasks,
     run_codegen_task,
+    run_test_profile,
 )
 
 router = APIRouter(prefix="/devtools/codegen", tags=["devtools", "codegen"])
@@ -57,6 +59,28 @@ class CodegenRunResponse(BaseModel):
     stderr: str
 
 
+TestProfile = Literal["changed", "fast", "project-bundle", "full"]
+
+
+class TestRunRequest(BaseModel):
+    profile: TestProfile
+    backend_only: bool = False
+    frontend_only: bool = False
+    list_only: bool = False
+
+
+class TestRunResponse(BaseModel):
+    profile: TestProfile
+    ok: bool
+    exit_code: int | None
+    duration_ms: int
+    stdout: str
+    stderr: str
+    backend_only: bool = False
+    frontend_only: bool = False
+    list_only: bool = False
+
+
 def _to_task_response(task: CodegenTask) -> CodegenTaskResponse:
     return CodegenTaskResponse(
         id=task.id,
@@ -75,6 +99,20 @@ def _to_run_response(result: CodegenRunResult) -> CodegenRunResponse:
         duration_ms=result.duration_ms,
         stdout=result.stdout,
         stderr=result.stderr,
+    )
+
+
+def _to_test_run_response(result: DevtoolsTestRunResult) -> TestRunResponse:
+    return TestRunResponse(
+        profile=result.profile,
+        ok=result.ok,
+        exit_code=result.exit_code,
+        duration_ms=result.duration_ms,
+        stdout=result.stdout,
+        stderr=result.stderr,
+        backend_only=result.backend_only,
+        frontend_only=result.frontend_only,
+        list_only=result.list_only,
     )
 
 
@@ -110,6 +148,28 @@ async def run_codegen_task_endpoint(
         raise HTTPException(status_code=500, detail=f"Failed to run codegen task: {exc}") from exc
 
     return _to_run_response(result)
+
+
+@router.post("/tests/run", response_model=TestRunResponse)
+async def run_tests_endpoint(
+    payload: TestRunRequest,
+    user: CurrentCodegenUser,
+):
+    _ = user
+    try:
+        result = await run_in_threadpool(
+            run_test_profile,
+            payload.profile,
+            payload.backend_only,
+            payload.frontend_only,
+            payload.list_only,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to run tests: {exc}") from exc
+
+    return _to_test_run_response(result)
 
 
 # ---------------------------------------------------------------------------

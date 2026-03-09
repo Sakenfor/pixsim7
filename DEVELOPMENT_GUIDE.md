@@ -239,40 +239,43 @@ rm -rf data/
 
 ## 🧪 Testing
 
-### **Backend Tests**
+### **Unified Test Runner (Recommended)**
 
 ```bash
-cd pixsim7/backend/main
+# Changed-files profile (backend + frontend)
+pnpm test
 
-# Run all tests
-pytest
+# Preview resolved commands/targets
+pnpm test:list
 
-# Run specific test file
-pytest tests/test_structured_logging.py
+# Fast project-focused suite
+pnpm test:fast
 
-# Run with coverage
-pytest --cov=pixsim7.backend.main --cov-report=html
+# Lifecycle + project bundle focused suite
+pnpm test:project-bundle
 
-# Watch mode (re-run on file changes)
-pytest-watch
+# Full suite
+pnpm test:full
+
+# Scope override examples
+pnpm test:backend
+pnpm test:frontend
 ```
 
-### **Frontend Tests**
+The runner lives at `scripts/tests/run.py` and centralizes profile routing for pytest + vitest.
+
+### **Direct Commands (When Needed)**
 
 ```bash
-cd frontend
+# Backend specific paths
+python -m pytest pixsim7/backend/tests/services/ownership
+python -m pytest pixsim7/backend/tests/domain/game
 
-# Run tests
-npm test
-
-# Run with coverage
-npm run test:coverage
-
-# Watch mode
-npm run test:watch
+# Frontend project-bundle tests
+pnpm dlx vitest run apps/main/src/lib/game/projectBundle/__tests__
 ```
 
----
+See `docs/testing/TEST_OVERVIEW.md` and `scripts/tests/README.md` for profile details and folder conventions.
 
 ## 🗄️ Database Management
 

@@ -63,7 +63,7 @@ File: `pixsim7/backend/main/shared/__init__.py`
 
 1. Exports the new shared contract symbols.
 
-File: `pixsim7/backend/main/tests/test_extension_contract.py`
+File: `pixsim7/backend/tests/test_extension_contract.py`
 
 1. Tests canonical parse/build.
 2. Tests legacy fallback parse.

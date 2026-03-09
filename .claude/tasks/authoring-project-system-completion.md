@@ -33,7 +33,7 @@
 - [ ] `pixsim7/backend/main/domain/game/schemas/__init__.py`
 - [ ] `pixsim7/backend/main/services/game/project_storage.py`
 - [ ] `pixsim7/backend/main/api/v1/game_worlds.py`
-- [ ] `pixsim7/backend/main/tests/api/test_game_world_project_bundle_endpoints.py`
+- [ ] `pixsim7/backend/tests/api/test_game_world_project_bundle_endpoints.py`
 
 ## Implementation Scope
 
@@ -84,7 +84,7 @@
 - [ ] Add/extend Project panel logic tests where practical.
 - [ ] Keep existing snapshot endpoint tests passing.
 - [ ] Run and report:
-  - [ ] `pytest -q pixsim7/backend/main/tests/api/test_game_world_project_bundle_endpoints.py`
+  - [ ] `pytest -q pixsim7/backend/tests/api/test_game_world_project_bundle_endpoints.py`
   - [ ] Relevant new backend tests
   - [ ] `pnpm --filter @pixsim7/main exec tsc --noEmit --pretty false`
 

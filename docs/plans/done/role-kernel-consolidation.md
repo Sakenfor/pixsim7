@@ -42,7 +42,7 @@ Files:
 
 - `pixsim7/backend/main/services/prompt/block/composition_role_inference.py`
 - `pixsim7/backend/main/shared/composition.py`
-- `pixsim7/backend/main/tests/test_composition_role_inference.py`
+- `pixsim7/backend/tests/test_composition_role_inference.py`
 
 Tasks:
 
@@ -64,8 +64,8 @@ Acceptance:
 Files:
 
 - `pixsim7/backend/main/services/prompt/role_registry.py`
-- `pixsim7/backend/main/tests/test_prompt_parser_authority.py`
-- `pixsim7/backend/main/tests/test_prompt_role_pack_authority.py`
+- `pixsim7/backend/tests/test_prompt_parser_authority.py`
+- `pixsim7/backend/tests/test_prompt_role_pack_authority.py`
 
 Tasks:
 
@@ -130,7 +130,7 @@ Acceptance:
 
 Run at minimum:
 
-1. `pytest -q pixsim7/backend/main/tests/test_composition.py pixsim7/backend/main/tests/test_composition_role_inference.py pixsim7/backend/main/tests/test_prompt_parser_authority.py pixsim7/backend/main/tests/test_prompt_role_pack_authority.py`
+1. `pytest -q pixsim7/backend/tests/test_composition.py pixsim7/backend/tests/test_composition_role_inference.py pixsim7/backend/tests/test_prompt_parser_authority.py pixsim7/backend/tests/test_prompt_role_pack_authority.py`
 2. `pnpm prompt-roles:check`
 3. `pnpm composition-roles:check`
 

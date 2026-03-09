@@ -11,6 +11,13 @@ from typing import Any, Dict, Iterable, Optional
 import httpx
 
 from .seed_data import BOOTSTRAP_PROFILE, DEMO_PROJECT_NAME, DEMO_WORLD_NAME
+from pixsim7.backend.main.domain.game.project_runtime_meta import (
+    LEGACY_BANANZA_RUNTIME_META_KEY,
+    LEGACY_BANANZA_META_SEEDER_MODE,
+    LEGACY_BANANZA_META_SYNC_MODE,
+    LEGACY_BANANZA_META_WATCH_ENABLED,
+    read_project_runtime_preferences,
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -126,16 +133,11 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-PROJECT_RUNTIME_META_KEY = "project_runtime"
-PROJECT_META_RUNTIME_MODE = "project_runtime_mode"
-PROJECT_META_SYNC_MODE = "project_sync_mode"
-PROJECT_META_WATCH_ENABLED = "project_watch_enabled"
-
-# Backward-compatibility for older Bananza-scoped metadata keys.
-BANANZA_RUNTIME_META_KEY = "bananza_runtime"
-BANANZA_META_SEEDER_MODE = "bananza_seeder_mode"
-BANANZA_META_SYNC_MODE = "bananza_sync_mode"
-BANANZA_META_WATCH_ENABLED = "bananza_watch_enabled"
+# Backward-compatibility aliases retained for test contracts and imports.
+BANANZA_RUNTIME_META_KEY = LEGACY_BANANZA_RUNTIME_META_KEY
+BANANZA_META_SEEDER_MODE = LEGACY_BANANZA_META_SEEDER_MODE
+BANANZA_META_SYNC_MODE = LEGACY_BANANZA_META_SYNC_MODE
+BANANZA_META_WATCH_ENABLED = LEGACY_BANANZA_META_WATCH_ENABLED
 
 
 def _is_record(value: Any) -> bool:
@@ -220,43 +222,12 @@ def _read_runtime_preferences_from_snapshot(snapshot: Optional[Dict[str, Any]]) 
 
     provenance = snapshot.get("provenance") if _is_record(snapshot.get("provenance")) else {}
     meta = provenance.get("meta") if _is_record(provenance.get("meta")) else {}
-    runtime: Dict[str, Any] = {}
-    if _is_record(meta.get(PROJECT_RUNTIME_META_KEY)):
-        runtime = dict(meta.get(PROJECT_RUNTIME_META_KEY) or {})
-    elif _is_record(meta.get(BANANZA_RUNTIME_META_KEY)):
-        runtime = dict(meta.get(BANANZA_RUNTIME_META_KEY) or {})
-
-    mode = _normalize_mode(
-        runtime.get("mode") if _is_record(runtime) else None,
-    ) or _normalize_mode(
-        runtime.get("seeder_mode") if _is_record(runtime) else None,
-    ) or _normalize_mode(
-        meta.get(PROJECT_META_RUNTIME_MODE) if _is_record(meta) else None
-    ) or _normalize_mode(
-        meta.get(BANANZA_META_SEEDER_MODE) if _is_record(meta) else None
-    )
-
-    sync_mode = _normalize_sync_mode(
-        runtime.get("sync_mode") if _is_record(runtime) else None,
-    ) or _normalize_sync_mode(
-        meta.get(PROJECT_META_SYNC_MODE) if _is_record(meta) else None
-    ) or _normalize_sync_mode(
-        meta.get(BANANZA_META_SYNC_MODE) if _is_record(meta) else None
-    )
-
-    watch = _normalize_bool(
-        runtime.get("watch_enabled") if _is_record(runtime) else None,
-    )
-    if watch is None:
-        watch = _normalize_bool(
-            meta.get(PROJECT_META_WATCH_ENABLED) if _is_record(meta) else None
-        )
-    if watch is None:
-        watch = _normalize_bool(
-            meta.get(BANANZA_META_WATCH_ENABLED) if _is_record(meta) else None
-        )
-
-    return {"mode": mode, "sync_mode": sync_mode, "watch": watch}
+    preferences = read_project_runtime_preferences(meta)
+    return {
+        "mode": _normalize_mode(preferences.get("mode")),
+        "sync_mode": _normalize_sync_mode(preferences.get("sync_mode")),
+        "watch": _normalize_bool(preferences.get("watch")),
+    }
 
 
 def _resolve_runtime_config(

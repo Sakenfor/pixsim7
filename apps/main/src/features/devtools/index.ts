@@ -29,6 +29,7 @@ export {
   typesExplorerTool,
   sqlQueryExplorerTool,
   logViewerTool,
+  testOverviewTool,
   codegenTool,
   builtInDevTools,
 } from './plugins';

@@ -182,7 +182,7 @@ The migration creates the `semantic_packs` table with all necessary indexes.
 
 ## Testing
 
-A test script is provided: `test_semantic_packs.py`
+A test script is provided: `tests/semantic/test_semantic_packs.py`
 
 This demonstrates:
 1. Creating a semantic pack
@@ -193,7 +193,7 @@ This demonstrates:
 
 To run (requires environment setup):
 ```bash
-python test_semantic_packs.py
+python tests/semantic/test_semantic_packs.py
 ```
 
 ---
@@ -235,7 +235,7 @@ As noted in the task spec, these are **non-goals** for now:
 5. `pixsim7/backend/main/routes/semantic_packs/__init__.py`
 6. `pixsim7/backend/main/routes/semantic_packs/manifest.py`
 7. `pixsim7/backend/main/services/prompt/parser/hints.py`
-8. `test_semantic_packs.py`
+8. `tests/semantic/test_semantic_packs.py`
 9. `SEMANTIC_PACKS_IMPLEMENTATION.md` (this file)
 
 ### Modified:

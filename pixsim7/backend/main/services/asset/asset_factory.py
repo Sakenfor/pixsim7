@@ -308,7 +308,10 @@ async def add_asset(
             existing.sync_status = sync_status
 
         existing.last_accessed_at = datetime.now(timezone.utc)
-        await db.commit()
+        if commit:
+            await db.commit()
+        else:
+            await db.flush()
         await db.refresh(existing)
         return existing
 
@@ -362,14 +365,16 @@ async def add_asset(
         await db.flush()  # Get ID without committing (caller will commit)
     await db.refresh(asset)
 
-    # Emit asset:created event
-    await event_bus.publish(ASSET_CREATED, {
-        "asset_id": asset.id,
-        "user_id": asset.user_id,
-        "media_type": asset.media_type.value,
-        "provider_id": asset.provider_id,
-        "source": "upload" if not source_generation_id else "generation",
-    })
+    # Emit asset:created only after a committed write.
+    # Deferred transactions must not emit before final commit.
+    if commit:
+        await event_bus.publish(ASSET_CREATED, {
+            "asset_id": asset.id,
+            "user_id": asset.user_id,
+            "media_type": asset.media_type.value,
+            "provider_id": asset.provider_id,
+            "source": "upload" if not source_generation_id else "generation",
+        })
 
     # Create lineage links if provided
     if parent_asset_ids:
@@ -441,6 +446,7 @@ async def create_capture_lineage(
     upload_method: str,
     timestamp: Optional[float] = None,
     frame_number: Optional[int] = None,
+    commit: bool = True,
 ) -> None:
     """
     Create a single lineage edge for frame captures / image crops.
@@ -468,7 +474,10 @@ async def create_capture_lineage(
             sequence_order=0,
         )
     )
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
 
 
 async def create_lineage_links_with_metadata(

@@ -36,6 +36,6 @@ The following keys are no longer part of the typed API/schema contract:
 
 Primary tests:
 
-- `pixsim7/backend/main/tests/services/analysis/test_analyzer_defaults.py`
-- `pixsim7/backend/main/tests/services/llm/test_ai_hub_resolution.py`
-- `pixsim7/backend/main/tests/services/prompt/test_prompt_analysis_local_routing.py`
+- `pixsim7/backend/tests/services/analysis/test_analyzer_defaults.py`
+- `pixsim7/backend/tests/services/llm/test_ai_hub_resolution.py`
+- `pixsim7/backend/tests/services/prompt/test_prompt_analysis_local_routing.py`

@@ -33,11 +33,11 @@ Prompt analyzers now delegate to this runtime path via:
 
 Policy coverage lives in:
 
-- `pixsim7/backend/main/tests/services/llm/test_ai_hub_resolution.py`
+- `pixsim7/backend/tests/services/llm/test_ai_hub_resolution.py`
 
 Regression coverage for prompt analyzer routing remains in:
 
-- `pixsim7/backend/main/tests/services/prompt/test_prompt_analysis_local_routing.py`
+- `pixsim7/backend/tests/services/prompt/test_prompt_analysis_local_routing.py`
 
 ## Analyzer Preference Contract (`_ids`-only)
 

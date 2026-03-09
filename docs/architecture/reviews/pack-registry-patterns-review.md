@@ -201,7 +201,7 @@ WorldMergeMixin[P, T]
 
 ### 6.1 PackRegistryBase & SimplePackRegistryBase (COMPLETE)
 
-Tests added in `backend/main/tests/test_pack_registry.py`:
+Tests added in `backend/tests/test_pack_registry.py`:
 
 **SimplePackRegistryBase tests (18 tests):**
 - `test_register_pack_stores_items` - Items stored via `_register_item` hook
@@ -330,6 +330,6 @@ class PackRegistry(Protocol[P, I, M]):
 | NPC Surfaces | `backend/main/domain/game/entities/npc_surfaces/package_registry.py` |
 | Vocabularies | `backend/main/shared/ontology/vocabularies/registry.py` |
 | Semantic Packs | `backend/main/domain/semantic_pack.py` |
-| Pack registry tests | `backend/main/tests/test_pack_registry.py` (NEW) |
-| Registry utilities tests | `backend/main/tests/test_registry_utilities.py` |
-| Composition tests | `backend/main/tests/test_composition_packages.py` |
+| Pack registry tests | `backend/tests/test_pack_registry.py` (NEW) |
+| Registry utilities tests | `backend/tests/test_registry_utilities.py` |
+| Composition tests | `backend/tests/test_composition_packages.py` |

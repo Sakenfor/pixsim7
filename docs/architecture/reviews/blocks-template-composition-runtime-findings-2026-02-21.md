@@ -113,4 +113,4 @@ Step 2 completed: narrative runtime immediate action-block launch now uses real 
 - Action block preparation now also returns assembled prompt content for canonical prompt wiring:
   - `pixsim7/backend/main/domain/narrative/action_block_resolver.py:274`
 - Added focused tests for launch success/failure behavior:
-  - `pixsim7/backend/main/tests/services/narrative/test_runtime_generation_launch.py`
+  - `pixsim7/backend/tests/services/narrative/test_runtime_generation_launch.py`

@@ -19,13 +19,20 @@ import {
 } from '@lib/api';
 import { useEditorContext } from '@lib/context/editorContext';
 import {
+  DEFAULT_PROJECT_RUNTIME_PREFERENCES,
+  canonicalizeProjectRuntimeMeta,
   clearAuthoringProjectBundleDirtyState,
   clearDraftAfterSave,
   exportWorldProjectWithExtensions,
+  hasExplicitProjectRuntimePreferences,
   importWorldProjectWithExtensions,
   isAnyAuthoringProjectBundleContributorDirty,
   projectBundleExtensionRegistry,
+  readProjectRuntimePreferences,
   type ImportWorldProjectWithExtensionsResult,
+  type ProjectRuntimePreferences,
+  type ProjectRuntimeSeederMode,
+  type ProjectRuntimeSyncMode,
   type ProjectBundleExtensionExportReport,
   type ProjectBundleExtensionImportReport,
 } from '@lib/game';
@@ -66,117 +73,27 @@ type LastProjectAction =
       extensionReport: ProjectBundleExtensionImportReport;
     };
 
-type BananzaSeederMode = 'api' | 'direct';
-type BananzaSyncMode = 'two_way' | 'backend_to_file' | 'file_to_backend' | 'none';
+type BananzaSeederMode = ProjectRuntimeSeederMode;
+type BananzaSyncMode = ProjectRuntimeSyncMode;
+type BananzaRuntimePreferences = ProjectRuntimePreferences;
 
-interface BananzaRuntimePreferences {
-  seederMode: BananzaSeederMode;
-  syncMode: BananzaSyncMode;
-  watchEnabled: boolean;
-}
-
-const DEFAULT_BANANZA_RUNTIME_PREFERENCES: BananzaRuntimePreferences = {
-  seederMode: 'api',
-  syncMode: 'two_way',
-  watchEnabled: true,
-};
-
-const PROJECT_RUNTIME_META_KEY = 'project_runtime';
-const PROJECT_META_RUNTIME_MODE = 'project_runtime_mode';
-const PROJECT_META_SYNC_MODE = 'project_sync_mode';
-const PROJECT_META_WATCH_ENABLED = 'project_watch_enabled';
-
-// Backward-compatibility for older Bananza-scoped metadata keys.
-const LEGACY_BANANZA_RUNTIME_META_KEY = 'bananza_runtime';
-const LEGACY_BANANZA_META_SEEDER_MODE = 'bananza_seeder_mode';
-const LEGACY_BANANZA_META_SYNC_MODE = 'bananza_sync_mode';
-const LEGACY_BANANZA_META_WATCH_ENABLED = 'bananza_watch_enabled';
+const DEFAULT_BANANZA_RUNTIME_PREFERENCES: BananzaRuntimePreferences =
+  DEFAULT_PROJECT_RUNTIME_PREFERENCES;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function normalizeBananzaSeederMode(value: unknown): BananzaSeederMode | null {
-  if (value === 'api' || value === 'direct') {
-    return value;
-  }
-  return null;
-}
-
-function normalizeBananzaSyncMode(value: unknown): BananzaSyncMode | null {
-  if (
-    value === 'two_way' ||
-    value === 'backend_to_file' ||
-    value === 'file_to_backend' ||
-    value === 'none'
-  ) {
-    return value;
-  }
-  return null;
-}
-
-function normalizeBoolean(value: unknown): boolean | null {
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  return null;
-}
-
 function readBananzaRuntimePreferences(
   project: SavedGameProjectSummary | null | undefined,
 ): BananzaRuntimePreferences {
-  const provenance = project?.provenance;
-  const meta = isRecord(provenance?.meta) ? provenance.meta : {};
-  const runtime: Record<string, unknown> = isRecord(meta[PROJECT_RUNTIME_META_KEY])
-    ? meta[PROJECT_RUNTIME_META_KEY]
-    : isRecord(meta[LEGACY_BANANZA_RUNTIME_META_KEY])
-      ? meta[LEGACY_BANANZA_RUNTIME_META_KEY]
-      : {};
-
-  const seederMode =
-    normalizeBananzaSeederMode(runtime.mode) ??
-    normalizeBananzaSeederMode(runtime.seeder_mode) ??
-    normalizeBananzaSeederMode(meta[PROJECT_META_RUNTIME_MODE]) ??
-    normalizeBananzaSeederMode(meta[LEGACY_BANANZA_META_SEEDER_MODE]) ??
-    DEFAULT_BANANZA_RUNTIME_PREFERENCES.seederMode;
-
-  const syncMode =
-    normalizeBananzaSyncMode(runtime.sync_mode) ??
-    normalizeBananzaSyncMode(meta[PROJECT_META_SYNC_MODE]) ??
-    normalizeBananzaSyncMode(meta[LEGACY_BANANZA_META_SYNC_MODE]) ??
-    DEFAULT_BANANZA_RUNTIME_PREFERENCES.syncMode;
-
-  const watchEnabled =
-    normalizeBoolean(runtime.watch_enabled) ??
-    normalizeBoolean(meta[PROJECT_META_WATCH_ENABLED]) ??
-    normalizeBoolean(meta[LEGACY_BANANZA_META_WATCH_ENABLED]) ??
-    DEFAULT_BANANZA_RUNTIME_PREFERENCES.watchEnabled;
-
-  return { seederMode, syncMode, watchEnabled };
+  return readProjectRuntimePreferences(project?.provenance?.meta);
 }
 
 function hasExplicitBananzaRuntimePreferences(
   project: SavedGameProjectSummary | null | undefined,
 ): boolean {
-  const provenance = project?.provenance;
-  const meta = isRecord(provenance?.meta) ? provenance.meta : {};
-  const runtime: Record<string, unknown> = isRecord(meta[PROJECT_RUNTIME_META_KEY])
-    ? meta[PROJECT_RUNTIME_META_KEY]
-    : isRecord(meta[LEGACY_BANANZA_RUNTIME_META_KEY])
-      ? meta[LEGACY_BANANZA_RUNTIME_META_KEY]
-      : {};
-  return (
-    runtime.mode !== undefined ||
-    runtime.seeder_mode !== undefined ||
-    runtime.sync_mode !== undefined ||
-    runtime.watch_enabled !== undefined ||
-    meta[PROJECT_META_RUNTIME_MODE] !== undefined ||
-    meta[PROJECT_META_SYNC_MODE] !== undefined ||
-    meta[PROJECT_META_WATCH_ENABLED] !== undefined ||
-    meta[LEGACY_BANANZA_META_SEEDER_MODE] !== undefined ||
-    meta[LEGACY_BANANZA_META_SYNC_MODE] !== undefined ||
-    meta[LEGACY_BANANZA_META_WATCH_ENABLED] !== undefined
-  );
+  return hasExplicitProjectRuntimePreferences(project?.provenance?.meta);
 }
 
 function buildProjectProvenanceRequest(
@@ -184,26 +101,19 @@ function buildProjectProvenanceRequest(
   preferences: BananzaRuntimePreferences,
 ): SaveGameProjectRequest['provenance'] {
   const existingProvenance = existingProject?.provenance;
-  const existingMeta = isRecord(existingProvenance?.meta) ? existingProvenance.meta : {};
-  const existingRuntime: Record<string, unknown> = isRecord(existingMeta[PROJECT_RUNTIME_META_KEY])
-    ? existingMeta[PROJECT_RUNTIME_META_KEY]
-    : isRecord(existingMeta[LEGACY_BANANZA_RUNTIME_META_KEY])
-      ? existingMeta[LEGACY_BANANZA_RUNTIME_META_KEY]
-      : {};
-
-  const mergedMeta: Record<string, unknown> = {
+  const existingMeta = canonicalizeProjectRuntimeMeta(existingProvenance?.meta);
+  const mergedMeta = canonicalizeProjectRuntimeMeta({
     ...existingMeta,
-    [PROJECT_RUNTIME_META_KEY]: {
-      ...existingRuntime,
+    project_runtime: {
+      ...(isRecord(existingMeta['project_runtime']) ? existingMeta['project_runtime'] : {}),
       mode: preferences.seederMode,
-      seeder_mode: preferences.seederMode,
       sync_mode: preferences.syncMode,
       watch_enabled: preferences.watchEnabled,
     },
-    [PROJECT_META_RUNTIME_MODE]: preferences.seederMode,
-    [PROJECT_META_SYNC_MODE]: preferences.syncMode,
-    [PROJECT_META_WATCH_ENABLED]: preferences.watchEnabled,
-  };
+    project_runtime_mode: preferences.seederMode,
+    project_sync_mode: preferences.syncMode,
+    project_watch_enabled: preferences.watchEnabled,
+  });
 
   return {
     kind: existingProvenance?.kind ?? 'user',

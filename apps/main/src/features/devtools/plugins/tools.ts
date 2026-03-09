@@ -21,6 +21,7 @@ const GizmoSurfacesPanel = lazy(() => import('@features/panels/components/dev/Gi
 const TypesExplorerPanel = lazy(() => import('@features/panels/components/dev/TypesExplorerPanel').then(m => ({ default: m.TypesExplorerPanel })));
 const SqlQueryExplorerPanel = lazy(() => import('@features/panels/components/dev/SqlQueryExplorerPanel').then(m => ({ default: m.SqlQueryExplorerPanel })));
 const LogViewerPanel = lazy(() => import('@features/panels/components/dev/LogViewerPanel').then(m => ({ default: m.LogViewerPanel })));
+const TestOverviewPanel = lazy(() => import('@features/panels/components/dev/TestOverviewPanel').then(m => ({ default: m.TestOverviewPanel })));
 
 // ============================================================================
 // Session & World State Tools
@@ -174,6 +175,21 @@ export const logViewerTool: DevToolDefinition = {
   category: 'debug',
   panelComponent: LogViewerPanel,
   tags: ['logs', 'trace', 'debug', 'worker', 'pipeline', 'jobs', 'requests', 'errors'],
+  safeForNonDev: true,
+};
+
+// ============================================================================
+// Testing Overview
+// ============================================================================
+
+export const testOverviewTool: DevToolDefinition = {
+  id: 'test-overview',
+  label: 'Test Overview',
+  description: 'View test runner profiles, suite coverage, and local run snapshots.',
+  icon: 'flask',
+  category: 'debug',
+  panelComponent: TestOverviewPanel,
+  tags: ['tests', 'quality', 'profiles', 'pytest', 'vitest'],
   safeForNonDev: true,
 };
 

@@ -1,4 +1,4 @@
-﻿# Add Local LLM (llama-cpp-python) for Prompt Analysis
+# Add Local LLM (llama-cpp-python) for Prompt Analysis
 
 ## Context
 
@@ -193,7 +193,7 @@ Small local model gets a shorter instruction variant:
 Run focused tests first, then broader regression.
 
 1. **Engine dependency gating**
-   - Add tests: `pixsim7/backend/main/tests/services/llm/test_local_llm_engine.py`
+   - Add tests: `pixsim7/backend/tests/services/llm/test_local_llm_engine.py`
    - Cases:
      - missing `llama_cpp` import only fails on local-provider use
      - no startup or import-time crash
@@ -203,13 +203,13 @@ Run focused tests first, then broader regression.
    - Expect `ProviderError` path and analyzer fallback to simple parser result shape
 
 3. **Provider normalization + routing**
-   - Add tests: `pixsim7/backend/main/tests/services/prompt/test_prompt_analysis_local_routing.py`
+   - Add tests: `pixsim7/backend/tests/services/prompt/test_prompt_analysis_local_routing.py`
    - Cases:
      - `local` and `local-llm` normalize to `local-llm`
      - `prompt:local` and `llm:local` route to local provider
 
 4. **LLMResponse contract correctness**
-   - Add tests: `pixsim7/backend/main/tests/services/llm/test_local_llm_provider.py`
+   - Add tests: `pixsim7/backend/tests/services/llm/test_local_llm_provider.py`
    - Validate required `LLMResponse` fields are populated
 
 5. **Engine serialization**
@@ -222,9 +222,9 @@ Run focused tests first, then broader regression.
    - Verify non-empty `candidates`, valid JSON path, tags produced
 
 7. **Regression pass**
-   - `pytest pixsim7/backend/main/tests/test_prompt_llm_analyzer_tags.py`
-   - `pytest pixsim7/backend/main/tests/test_prompt_tag_inference.py`
-   - `pytest pixsim7/backend/main/tests/services/llm/test_command_llm_provider.py`
+   - `pytest pixsim7/backend/tests/test_prompt_llm_analyzer_tags.py`
+   - `pytest pixsim7/backend/tests/test_prompt_tag_inference.py`
+   - `pytest pixsim7/backend/tests/services/llm/test_command_llm_provider.py`
 
 ## Risks
 

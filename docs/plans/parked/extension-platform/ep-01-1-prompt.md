@@ -36,7 +36,7 @@ Scope (out):
 Files to modify (expected):
 - `pixsim7/backend/main/services/analysis/analyzer_preset_service.py`
 - `pixsim7/backend/main/api/v1/analyzers.py`
-- `pixsim7/backend/main/tests/services/analysis/` (new EP-01.1 tests)
+- `pixsim7/backend/tests/services/analysis/` (new EP-01.1 tests)
 - `docs/architecture/extension-platform-program-tracker.md`
 
 Implementation requirements:
@@ -93,8 +93,8 @@ Deliverables:
 
 ```bash
 pytest -q \
-  pixsim7/backend/main/tests/test_extension_contract.py \
-  pixsim7/backend/main/tests/services/analysis/test_analyzer_preset_identity_adapter.py
+  pixsim7/backend/tests/test_extension_contract.py \
+  pixsim7/backend/tests/services/analysis/test_analyzer_preset_identity_adapter.py
 ```
 
 ## Notes
