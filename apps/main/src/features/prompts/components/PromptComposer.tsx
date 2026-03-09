@@ -35,6 +35,7 @@ import type { PromptTag } from '../types';
 
 
 import { InlineBlocksEditor } from './InlineBlocksEditor';
+import { PromptHistoryPopover } from './PromptHistoryPopover';
 import { RoleBadge } from './shared/RoleBadge';
 
 type PromptComposerMode = 'text' | 'blocks';
@@ -134,6 +135,8 @@ export function PromptComposer({
   const [showPackHints, setShowPackHints] = useState(false);
   const [showBlockBuilder, setShowBlockBuilder] = useState(false);
   const [showBlockTools, setShowBlockTools] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const historyTriggerRef = useRef<HTMLButtonElement>(null);
 
   const [analyzingBlocks, setAnalyzingBlocks] = useState(false);
   const [fetchingVariants, setFetchingVariants] = useState(false);
@@ -231,6 +234,29 @@ export function PromptComposer({
     canUndo: history.canUndo(),
     canRedo: history.canRedo(),
   }, [value, onChange, flushSnapshot, history]);
+
+  // --- History popover ---
+  const historyTimeline = useMemo(
+    () => (showHistory ? history.getTimeline() : { entries: [], currentIndex: 0 }),
+    // Re-compute only when popover opens (showHistory toggle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [showHistory],
+  );
+  const handleOpenHistory = useCallback(() => {
+    flushSnapshot();
+    setShowHistory((prev) => !prev);
+  }, [flushSnapshot]);
+  const handleHistoryJump = useCallback(
+    (index: number) => {
+      const restored = history.jumpTo(index);
+      if (restored !== null) {
+        undoingRef.current = true;
+        onChangeRef.current(restored);
+      }
+      setShowHistory(false);
+    },
+    [history],
+  );
 
   const roleOptions = useMemo(() => {
     const roles = new Set<string>(BASE_PROMPT_ROLES);
@@ -577,6 +603,22 @@ export function PromptComposer({
           className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
         >
           <Icon name="clipboard-paste" size={14} />
+        </button>
+
+        <button
+          ref={historyTriggerRef}
+          type="button"
+          disabled={disabled}
+          onClick={handleOpenHistory}
+          title="Prompt history"
+          className={clsx(
+            'p-1 rounded transition-colors',
+            showHistory
+              ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200'
+              : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+          )}
+        >
+          <Icon name="history" size={14} />
         </button>
 
         <button
@@ -955,6 +997,15 @@ export function PromptComposer({
         onClose={() => setShowBlockBuilder(false)}
         candidates={blockAnalysis?.candidates || []}
         onInsertBlock={handleInsertBlock}
+      />
+
+      <PromptHistoryPopover
+        open={showHistory}
+        onClose={() => setShowHistory(false)}
+        anchor={historyTriggerRef.current}
+        triggerRef={historyTriggerRef}
+        timeline={historyTimeline}
+        onJumpTo={handleHistoryJump}
       />
     </div>
   );
