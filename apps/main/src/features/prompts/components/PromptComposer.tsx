@@ -9,8 +9,9 @@ import {
 import type { PromptBlockCandidate } from '@pixsim7/shared.types/prompt';
 import { DropdownItem, DropdownDivider, FoldGroup, GroupedFold, Popover, PromptInput } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
+import { contextMenuAttrs, useRegisterContextData } from '@lib/dockview/contextMenu';
 import { Icon } from '@lib/icons';
 
 import { openWorkspacePanel } from '@features/workspace';
@@ -24,6 +25,7 @@ import {
   PackHintsDrawer,
   VariantSuggestionsDrawer,
 } from '@/plugins/ui/prompt-companion/components';
+
 
 import { usePromptHistory } from '../hooks/usePromptHistory';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
@@ -110,6 +112,7 @@ export function PromptComposer({
   resizable = false,
   minHeight,
 }: PromptComposerProps) {
+  const composerId = useId();
   const api = useApi();
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const pinnedTemplateId = useBlockTemplateStore((s) => s.pinnedTemplateId);
@@ -204,6 +207,30 @@ export function PromptComposer({
     },
     [flushSnapshot, history],
   );
+
+  // --- Context menu data for prompt-text right-click ---
+  const promptContextAttrs = contextMenuAttrs('prompt-text', composerId, 'Prompt');
+  useRegisterContextData('prompt-text', composerId, {
+    prompt: value,
+    setPrompt: onChange,
+    undo: () => {
+      flushSnapshot();
+      const prev = history.undo();
+      if (prev !== null) {
+        undoingRef.current = true;
+        onChangeRef.current(prev);
+      }
+    },
+    redo: () => {
+      const next = history.redo();
+      if (next !== null) {
+        undoingRef.current = true;
+        onChangeRef.current(next);
+      }
+    },
+    canUndo: history.canUndo(),
+    canRedo: history.canRedo(),
+  }, [value, onChange, flushSnapshot, history]);
 
   const roleOptions = useMemo(() => {
     const roles = new Set<string>(BASE_PROMPT_ROLES);
@@ -470,7 +497,7 @@ export function PromptComposer({
   const isOverLimit = remaining !== null && remaining < 0;
 
   return (
-    <div className={clsx('flex flex-col gap-2 min-h-0', className)} onKeyDownCapture={handleUndoKeyDown}>
+    <div className={clsx('flex flex-col gap-2 min-h-0', className)} onKeyDownCapture={handleUndoKeyDown} {...promptContextAttrs}>
       <div className="flex items-center gap-2 shrink-0">
         <div className="relative">
           <button

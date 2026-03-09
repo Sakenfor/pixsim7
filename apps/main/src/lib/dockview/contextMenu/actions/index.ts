@@ -45,6 +45,7 @@ import {
   resetLayoutAction,
   getScopeLabel,
 } from './presetActions';
+import { promptActions } from './promptActions';
 
 // Export individual action modules
 export {
@@ -98,6 +99,7 @@ export { assetActions } from './assetActions';
 export { contextHubActions } from './contextHubActions';
 export { cubeActions } from './cubeActions';
 export { debugActions } from './debugActions';
+export { promptActions } from './promptActions';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Composite Submenus
@@ -256,6 +258,8 @@ export const allActions = [
   // Composite submenus
   panelsSubmenuAction,
   layoutPresetsSubmenuAction,
+  // Prompt text actions
+  ...promptActions,
   // Context hub
   ...contextHubActions,
   // Cube spawn
