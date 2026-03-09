@@ -51,11 +51,13 @@ Manual smoke tests (skipped by default, opt-in via env vars):
 ```bash
 pnpm test                  # changed
 pnpm test:list             # list resolved commands
+pnpm test:list:json        # machine-readable profile/targets/catalog payload
 pnpm test:fast             # focused local validation
 pnpm test:project-bundle   # lifecycle/project-bundle focus
 pnpm test:full             # broad run
 pnpm test:backend          # changed profile backend only
 pnpm test:frontend         # changed profile frontend only
+pnpm test:catalog:check    # validate suite metadata and covers paths
 ```
 
 ## Canonical Registration (Devtools)
@@ -76,6 +78,13 @@ Recommended suite metadata fields (for agent-friendly categorization):
 - `subcategory`: focused domain inside a category (`codegen`, `lifecycle`, `runtime-meta`)
 - `kind`: `unit | contract | integration | e2e | smoke`
 - `covers`: source paths that the suite validates
+
+Catalog metadata can be validated with:
+
+```bash
+python scripts/tests/validate_catalog.py
+python scripts/tests/validate_catalog.py --json
+```
 
 Example:
 

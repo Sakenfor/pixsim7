@@ -10,6 +10,7 @@ on:
       - 'services/main-api/**'
       - 'tools/codegen/**'
       - 'tools/cue/**'
+      - 'scripts/tests/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/contracts-and-typecheck.yml'
@@ -22,6 +23,7 @@ on:
       - 'services/main-api/**'
       - 'tools/codegen/**'
       - 'tools/cue/**'
+      - 'scripts/tests/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/contracts-and-typecheck.yml'
@@ -90,6 +92,9 @@ jobs:
 
       - name: App-map artifact freshness check
         run: pnpm docs:app-map:check
+
+      - name: Test catalog metadata check
+        run: pnpm test:catalog:check
 
       - name: App typecheck
         run: npx tsc --noEmit --project apps/main/tsconfig.json

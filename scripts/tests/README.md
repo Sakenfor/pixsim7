@@ -17,10 +17,12 @@ Entry point: `python scripts/tests/run.py <profile> [flags]`
 ## Flags
 
 - `--list` print resolved targets/commands without executing
+- `--json` emit machine-readable output (requires `--list`)
 - `--backend-only` run only pytest command(s)
 - `--frontend-only` run only vitest command(s)
 
-`--backend-only` and `--frontend-only` are mutually exclusive.
+`--backend-only` and `--frontend-only` are mutually exclusive.  
+`--json` is currently list-only and must be combined with `--list`.
 
 ## Manual Smoke Tests
 
@@ -34,10 +36,22 @@ Some smoke scripts are located under `tests/` for visibility but are skipped by 
 
 ```bash
 python scripts/tests/run.py changed --list
+python scripts/tests/run.py changed --list --json
 python scripts/tests/run.py fast --backend-only
 python scripts/tests/run.py project-bundle
 python scripts/tests/run.py full
+python scripts/tests/validate_catalog.py
 ```
+
+## Catalog Validation
+
+`validate_catalog.py` enforces canonical suite metadata in
+`apps/main/src/features/devtools/services/testCatalogRegistry.ts`:
+
+- unique suite IDs
+- required suite fields: `category`, `subcategory`, `kind`, `covers`
+- valid `layer` / `kind` values
+- existing `path` / `covers` filesystem targets
 
 ## Maintenance
 

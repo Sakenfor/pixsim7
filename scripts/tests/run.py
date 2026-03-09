@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-import re
+import json
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable, Sequence, Tuple
+from typing import Any, Iterable, Sequence, Tuple
+
+try:
+    from scripts.tests.catalog_loader import CatalogProfile, CatalogSuite, load_catalog
+except ImportError:
+    from catalog_loader import CatalogProfile, CatalogSuite, load_catalog
 
 
 ROOT = Path(__file__).resolve().parents[2]
-TEST_CATALOG_REGISTRY_TS = ROOT / "apps" / "main" / "src" / "features" / "devtools" / "services" / "testCatalogRegistry.ts"
 
 FAST_BACKEND_TARGETS = [
     "pixsim7/backend/tests/test_extension_contract.py",
@@ -53,6 +57,7 @@ class SuiteCoverMapping:
     covers: tuple[str, ...]
 
 
+_CATALOG_CACHE: tuple[tuple[CatalogProfile, ...], tuple[CatalogSuite, ...]] | None = None
 _SUITE_COVER_MAPPINGS_CACHE: tuple[SuiteCoverMapping, ...] | None = None
 
 
@@ -97,98 +102,12 @@ def _compact_targets(paths: Iterable[str]) -> list[str]:
     return compacted
 
 
-def _extract_array_literal(source: str, marker: str) -> str | None:
-    marker_index = source.find(marker)
-    if marker_index < 0:
-        return None
-
-    start = source.find("[", marker_index)
-    if start < 0:
-        return None
-
-    depth = 0
-    in_string = False
-    escaped = False
-    for index in range(start, len(source)):
-        char = source[index]
-        if in_string:
-            if escaped:
-                escaped = False
-                continue
-            if char == "\\":
-                escaped = True
-                continue
-            if char == "'":
-                in_string = False
-            continue
-
-        if char == "'":
-            in_string = True
-            continue
-        if char == "[":
-            depth += 1
-            continue
-        if char == "]":
-            depth -= 1
-            if depth == 0:
-                return source[start : index + 1]
-
-    return None
-
-
-def _extract_object_literals(array_literal: str) -> list[str]:
-    objects: list[str] = []
-    depth = 0
-    in_string = False
-    escaped = False
-    object_start = -1
-
-    for index, char in enumerate(array_literal):
-        if in_string:
-            if escaped:
-                escaped = False
-                continue
-            if char == "\\":
-                escaped = True
-                continue
-            if char == "'":
-                in_string = False
-            continue
-
-        if char == "'":
-            in_string = True
-            continue
-        if char == "{":
-            if depth == 0:
-                object_start = index
-            depth += 1
-            continue
-        if char == "}":
-            depth -= 1
-            if depth == 0 and object_start >= 0:
-                objects.append(array_literal[object_start : index + 1])
-                object_start = -1
-
-    return objects
-
-
-def _extract_field_value(obj_literal: str, field_name: str) -> str | None:
-    match = re.search(rf"{re.escape(field_name)}:\s*'([^']+)'", obj_literal)
-    if not match:
-        return None
-    return match.group(1)
-
-
-def _extract_covers(obj_literal: str) -> tuple[str, ...]:
-    covers_match = re.search(r"covers:\s*\[(.*?)\]", obj_literal, flags=re.DOTALL)
-    if not covers_match:
-        return tuple()
-    covers = tuple(
-        entry.strip()
-        for entry in re.findall(r"'([^']+)'", covers_match.group(1))
-        if entry.strip()
-    )
-    return covers
+def _load_catalog_records() -> tuple[tuple[CatalogProfile, ...], tuple[CatalogSuite, ...]]:
+    global _CATALOG_CACHE
+    if _CATALOG_CACHE is not None:
+        return _CATALOG_CACHE
+    _CATALOG_CACHE = load_catalog()
+    return _CATALOG_CACHE
 
 
 def _load_suite_cover_mappings() -> tuple[SuiteCoverMapping, ...]:
@@ -196,33 +115,18 @@ def _load_suite_cover_mappings() -> tuple[SuiteCoverMapping, ...]:
     if _SUITE_COVER_MAPPINGS_CACHE is not None:
         return _SUITE_COVER_MAPPINGS_CACHE
 
-    if not TEST_CATALOG_REGISTRY_TS.exists():
-        _SUITE_COVER_MAPPINGS_CACHE = tuple()
-        return _SUITE_COVER_MAPPINGS_CACHE
-
-    source = TEST_CATALOG_REGISTRY_TS.read_text(encoding="utf-8")
-    array_literal = _extract_array_literal(source, "const BUILTIN_SUITES")
-    if not array_literal:
-        _SUITE_COVER_MAPPINGS_CACHE = tuple()
-        return _SUITE_COVER_MAPPINGS_CACHE
-
+    _, suites = _load_catalog_records()
     mappings: list[SuiteCoverMapping] = []
-    for obj_literal in _extract_object_literals(array_literal):
-        suite_id = _extract_field_value(obj_literal, "id")
-        suite_path = _extract_field_value(obj_literal, "path")
-        layer = _extract_field_value(obj_literal, "layer")
-        if not suite_id or not suite_path or not layer:
+    for suite in suites:
+        if not suite.id or not suite.path or not suite.layer:
             continue
 
-        covers = _extract_covers(obj_literal)
-        if not covers:
-            covers = (suite_path,)
-
+        covers = suite.covers if suite.covers else (suite.path,)
         mappings.append(
             SuiteCoverMapping(
-                id=suite_id,
-                path=suite_path,
-                layer=layer,
+                id=suite.id,
+                path=suite.path.replace("\\", "/").rstrip("/"),
+                layer=suite.layer,
                 covers=tuple(item.replace("\\", "/").rstrip("/") for item in covers),
             )
         )
@@ -421,6 +325,47 @@ def _commands_for_targets(
     return commands
 
 
+def _build_list_payload(
+    *,
+    profile: str,
+    backend_targets: list[str],
+    frontend_targets: list[str],
+    commands: list[Tuple[str, list[str]]],
+    backend_only: bool,
+    frontend_only: bool,
+) -> dict[str, Any]:
+    profiles, suites = _load_catalog_records()
+    payload: dict[str, Any] = {
+        "profile": profile,
+        "flags": {
+            "backend_only": backend_only,
+            "frontend_only": frontend_only,
+            "list_only": True,
+        },
+        "targets": {
+            "backend": backend_targets,
+            "frontend": frontend_targets,
+        },
+        "commands": [
+            {
+                "label": label,
+                "argv": cmd,
+                "command": " ".join(cmd),
+            }
+            for label, cmd in commands
+        ],
+        "catalog": {
+            "profiles": [entry.to_dict() for entry in profiles],
+            "suites": [entry.to_dict() for entry in suites],
+        },
+    }
+
+    if profile == "changed":
+        payload["changed_files"] = _changed_files()
+
+    return payload
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Unified test runner profiles for backend/frontend suites.",
@@ -445,10 +390,19 @@ def main() -> int:
         action="store_true",
         help="Print resolved commands without executing them.",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON output (requires --list).",
+    )
     args = parser.parse_args()
 
     if args.backend_only and args.frontend_only:
         print("[tests] --backend-only and --frontend-only are mutually exclusive")
+        return 2
+
+    if args.json and not args.list:
+        print("[tests] --json requires --list")
         return 2
 
     backend_targets, frontend_targets = _build_profile_targets(args.profile)
@@ -459,16 +413,27 @@ def main() -> int:
         frontend_only=args.frontend_only,
     )
 
-    if not commands:
-        print("[tests] No commands to run for the selected profile and flags.")
+    if args.list:
+        if args.json:
+            payload = _build_list_payload(
+                profile=args.profile,
+                backend_targets=backend_targets,
+                frontend_targets=frontend_targets,
+                commands=commands,
+                backend_only=args.backend_only,
+                frontend_only=args.frontend_only,
+            )
+            print(json.dumps(payload, indent=2, sort_keys=False))
+        else:
+            print(f"[tests] profile={args.profile}")
+            print(f"[tests] backend targets={backend_targets}")
+            print(f"[tests] frontend targets={frontend_targets}")
+            for label, cmd in commands:
+                print(f"[tests] {label}: {' '.join(cmd)}")
         return 0
 
-    if args.list:
-        print(f"[tests] profile={args.profile}")
-        print(f"[tests] backend targets={backend_targets}")
-        print(f"[tests] frontend targets={frontend_targets}")
-        for label, cmd in commands:
-            print(f"[tests] {label}: {' '.join(cmd)}")
+    if not commands:
+        print("[tests] No commands to run for the selected profile and flags.")
         return 0
 
     failures = 0
