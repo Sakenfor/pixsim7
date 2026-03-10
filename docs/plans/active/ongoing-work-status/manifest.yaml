@@ -1,0 +1,14 @@
+id: ongoing-work-status
+title: Ongoing Work Status
+status: active
+stage: rolling
+owner: active dev loop
+last_updated: 2026-03-10
+priority: high
+summary: "Live status board tracking all active implementation lanes and next steps."
+plan_path: ./plan.md
+code_paths: []
+companions: []
+handoffs: []
+tags: []
+depends_on: []

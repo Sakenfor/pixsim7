@@ -2,7 +2,7 @@
 
 Task: `room-nav-v1`  
 Date: March 10, 2026  
-Primary plan: [`pseudo-3d-checkpoint-navigation.md`](../pseudo-3d-checkpoint-navigation.md)
+Primary plan: [`pseudo-3d-checkpoint-navigation/plan.md`](../plan.md)
 
 ## Copy-Paste Prompt (for Claude)
 
@@ -10,7 +10,7 @@ Primary plan: [`pseudo-3d-checkpoint-navigation.md`](../pseudo-3d-checkpoint-nav
 You are implementing `room-nav-v1` from the pseudo-3D checkpoint navigation plan.
 
 Primary reference:
-- `docs/plans/active/pseudo-3d-checkpoint-navigation.md`
+- `docs/plans/active/pseudo-3d-checkpoint-navigation/plan.md`
 
 Objective:
 Implement the first vertical slice of pseudo-3D room navigation using 2D checkpoints (not real 3D meshes):
@@ -46,7 +46,7 @@ Required deliverables:
 1. Code implementing scope above.
 2. Tests for schema validation and basic editor/viewer state flow.
 3. Docs update:
-   - update `docs/plans/active/pseudo-3d-checkpoint-navigation.md` checklist statuses for completed items
+   - update `docs/plans/active/pseudo-3d-checkpoint-navigation/plan.md` checklist statuses for completed items
    - add a short "Implementation Updates (YYYY-MM-DD)" section with factual notes
 
 Suggested file anchors (adjust if needed):

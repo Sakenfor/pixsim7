@@ -1,0 +1,13 @@
+id: mixed-legacy-areas-cleanup
+title: Mixed Legacy Areas Cleanup
+status: active
+stage: proposed
+owner: architecture-cleanup lane
+last_updated: 2026-03-10
+summary: "Identify and clean up mixed legacy code areas across the codebase."
+plan_path: ./plan.md
+code_paths: []
+companions: []
+handoffs: []
+tags: []
+depends_on: []

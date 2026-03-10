@@ -1,0 +1,22 @@
+id: prompt-tool-module
+title: Prompt Tool Module
+status: active
+stage: phase_3_complete_phase_4_pending
+owner: prompt-tool module lane
+last_updated: 2026-03-10
+summary: "PromptComposer tools rail — catalog, execute, preset CRUD, review workflow."
+plan_path: ./plan.md
+code_paths:
+  - apps/main/src/features/prompts/components/PromptComposer.tsx
+  - apps/main/src/lib/api/promptTools.ts
+  - pixsim7/backend/main/api/v1/prompt_tools.py
+  - pixsim7/backend/main/domain/prompt/tools.py
+  - pixsim7/backend/main/infrastructure/database/migrations/versions/20260310_0004_add_prompt_tool_presets.py
+  - pixsim7/backend/main/routes/prompt_tools
+  - pixsim7/backend/main/services/prompt/tools
+  - pixsim7/backend/tests/api/test_prompt_tools_api.py
+  - pixsim7/backend/tests/services/prompt/test_prompt_tools_service.py
+companions: []
+handoffs: []
+tags: []
+depends_on: []

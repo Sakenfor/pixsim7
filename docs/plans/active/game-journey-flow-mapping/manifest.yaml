@@ -1,0 +1,19 @@
+id: game-journey-flow-mapping
+title: Game Journey Flow Mapping
+status: active
+stage: phase_7_complete
+owner: journey-map lane
+last_updated: 2026-03-10
+summary: "Dynamic journey flow mapping for scene/character creation paths in AppMap."
+plan_path: ./plan.md
+code_paths:
+  - apps/main/src/features/panels/components/dev/appMap
+  - packages/shared/types/src/flowMap.ts
+  - pixsim7/backend/main/api/v1/dev_flows.py
+  - pixsim7/backend/main/api/v1/dev_flows_contract.py
+  - pixsim7/backend/main/api/v1/dev_flows_templates.py
+companions: []
+handoffs:
+  - ./handoffs/game-journey-flow-mapping-claude-prompt.md
+tags: []
+depends_on: []

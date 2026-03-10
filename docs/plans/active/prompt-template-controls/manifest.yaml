@@ -1,0 +1,16 @@
+id: prompt-template-controls
+title: Prompt Template Controls
+status: active
+stage: backlog
+owner: template-controls lane
+last_updated: 2026-03-10
+summary: "Slider/select controls on templates — SlotKey migration, theme modifier packs."
+plan_path: ./plan.md
+code_paths:
+  - apps/main/src/features/prompts/components/templates
+  - pixsim7/backend/main/services/prompt/block/template_service.py
+  - docs/prompts
+companions: []
+handoffs: []
+tags: []
+depends_on: []

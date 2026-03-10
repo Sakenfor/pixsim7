@@ -1,16 +1,51 @@
 # Plans Registry and Governance
 
-This folder uses a registry-driven governance model so implementation and planning docs stay synchronized.
+This folder uses a manifest-driven bundle model so implementation plans, companions, and ownership metadata stay synchronized.
+
+## Active Plans
+
+<!-- BEGIN:GENERATED_PLAN_INDEX -->
+| Plan | Stage | Owner | Priority | Summary |
+| ---- | ----- | ----- | -------- | ------- |
+| [Ongoing Work Status](active/ongoing-work-status/plan.md) | rolling | active dev loop | high | Live status board tracking all active implementation lanes and next steps. |
+| [App Map Graph](active/app-map-graph/plan.md) | execution | frontend/backend app-map lane |  | Dev-only AppMap panel with architecture dependency graph visualization. |
+| [Bananza Project First Hardening](active/bananza-project-first-hardening/plan.md) | rollout | bananza seed/runtime lane |  | Seed data robustness and game runtime hardening for Bananza project. |
+| [Block Primitives Evolution](active/block-primitives-evolution/plan.md) | phase_0_baseline | block-primitives lane |  | BlockPrimitive model, PromptBlock retirement, composition and migration paths. |
+| [Contexthub Implementation](active/contexthub-implementation/plan.md) | packet_a_complete | contexthub lane |  | Project/world context inheritance across panels via ContextHub. |
+| [Game Journey Flow Mapping](active/game-journey-flow-mapping/plan.md) | phase_7_complete | journey-map lane |  | Dynamic journey flow mapping for scene/character creation paths in AppMap. |
+| [Mask Tool Capability Task List](active/mask-tool-capability-task-list/plan.md) | phase_4_complete_phase_5_pending | viewer-mask-tools lane |  | Viewer mask overlay tools — draw, import, presets, analyzer bridge. |
+| [Mixed Legacy Areas Cleanup](active/mixed-legacy-areas-cleanup/plan.md) | proposed | architecture-cleanup lane |  | Identify and clean up mixed legacy code areas across the codebase. |
+| [Non Admin Cue Pack Authoring](active/non-admin-cue-pack-authoring/plan.md) | implementation | prompt-pack authoring lane |  | User-facing cue pack creation and editing without admin privileges. |
+| [Prompt Resolver Roadmap](active/prompt-resolver-roadmap/plan.md) | multi_iteration | prompt-resolver lane |  | Multi-iteration resolver workbench — parallel resolver, dev endpoints, tests. |
+| [Prompt Template Controls](active/prompt-template-controls/plan.md) | backlog | template-controls lane |  | Slider/select controls on templates — SlotKey migration, theme modifier packs. |
+| [Prompt Tool Module](active/prompt-tool-module/plan.md) | phase_3_complete_phase_4_pending | prompt-tool module lane |  | PromptComposer tools rail — catalog, execute, preset CRUD, review workflow. |
+| [Pseudo 3d Checkpoint Navigation](active/pseudo-3d-checkpoint-navigation/plan.md) | phase_6_complete_rollout_pending | pseudo-3d navigation lane |  | Pseudo-3D room navigation using 2D checkpoint graphs, not real 3D meshes. |
+<!-- END:GENERATED_PLAN_INDEX -->
+
+## Plan bundle contract
+
+Each plan is a folder (bundle) under one of:
+
+- `docs/plans/active/<plan-id>/`
+- `docs/plans/done/<plan-id>/`
+- `docs/plans/parked/<plan-id>/`
+
+Minimum bundle files:
+
+- `plan.md` - canonical markdown plan content (use `docs/plans/TEMPLATE.md`).
+- `manifest.yaml` - ownership/status metadata used to generate registry output.
+
+Optional bundle files:
+
+- `companions/*.md` - supporting design/rationale docs for the plan.
+- `handoffs/*.md` - prompt handoffs scoped to the plan.
 
 ## Folder semantics
 
 - `docs/plans/active/`
   - Execution plans that own current code lanes.
-  - Must follow `docs/plans/TEMPLATE.md` metadata contract.
-  - Must be listed in `docs/plans/registry.yaml`.
-- `docs/plans/active/handoffs/`
-  - Prompt-only handoff docs for other agents.
-  - Not canonical plans and not required in `registry.yaml`.
+  - Bundle source of truth for active lane ownership.
+  - Handoffs are colocated inside each plan bundle (`handoffs/` subfolder).
 - `docs/plans/done/`
   - Completed plans kept for historical traceability.
   - Should not own active `code_paths`.
@@ -28,11 +63,34 @@ This folder uses a registry-driven governance model so implementation and planni
   - ownership should no longer trigger active drift expectations.
 - Move `parked` -> `active` when restarting:
   - refresh metadata (`Status`, `Stage`, `Owner`, `Last updated`),
-  - restore/update `registry.yaml` entry and `code_paths`.
+  - keep `manifest.yaml` current and run `docs:plans:sync`.
 
 ## Registry contract
 
-`docs/plans/registry.yaml` is the canonical ownership map. Each plan entry must include:
+`docs/plans/registry.yaml` is now a generated artifact for active plans.
+Source of truth is each active bundle `manifest.yaml`.
+
+Manifest required fields:
+
+- `id`: stable identifier
+- `title`: display title
+- `status`: plan state (`active`, `done`, `parked`, ...)
+- `stage`: current execution phase marker
+- `owner`: owner lane/team
+- `last_updated`: `YYYY-MM-DD`
+- `plan_path`: plan markdown path (`./plan.md` recommended)
+- `code_paths`: owned files/directories (scoped as tightly as practical)
+
+Manifest optional fields:
+
+- `priority`: `high` | `normal` | `low` (default `normal`) — controls index sort order
+- `summary`: one-line description for the generated plan index
+- `companions`: supporting docs paths
+- `handoffs`: handoff prompt docs paths
+- `tags`: classification tags
+- `depends_on`: upstream plan IDs
+
+Generated registry entries include:
 
 - `id`: stable identifier
 - `path`: markdown plan path under `docs/plans/...`
@@ -41,26 +99,37 @@ This folder uses a registry-driven governance model so implementation and planni
 - `owner`: owner lane/team
 - `last_updated`: `YYYY-MM-DD`
 - `code_paths`: owned files/directories (scoped as tightly as practical)
+- `priority`: plan urgency (`high`, `normal`, `low`)
+- `summary`: one-line description
 
 ## Update log policy (per PR)
 
 - Every active plan must have `## Update Log`.
-- Any PR that touches a plan-owned lane should add at least one update-log line in impacted plans, or update `registry.yaml` when ownership changes.
+- Any PR that touches a plan-owned lane should add at least one update-log line in impacted plans, or update bundle manifests when ownership changes.
 - Log entries should be concise and dated (`YYYY-MM-DD`) with what changed (phase shift, scope change, guardrail, ownership, etc.).
 
 ## Commands
 
 ```bash
+pnpm docs:plans:sync
 pnpm docs:plans:check
 ```
+
+`docs:plans:sync`:
+
+1. Discovers active plan manifests.
+2. Validates manifest contract and path existence.
+3. Regenerates `docs/plans/registry.yaml` deterministically.
+4. Regenerates the Active Plans index table in this README.
 
 Checks:
 
 1. Registry schema + duplicate IDs/paths.
-2. Plan file existence + `code_paths` existence.
-3. Plan metadata markers (`Last updated`, `Owner`, `Status`, `Stage`, `Update Log`).
-4. Plan doc path references.
-5. Code-to-plan drift (when `PLAN_BASE_SHA` and `PLAN_HEAD_SHA` are provided).
+2. Manifest-to-registry parity (registry must match generated manifest view).
+3. Plan file existence + `code_paths` existence.
+4. Plan metadata markers (`Last updated`, `Owner`, `Status`, `Stage`, `Update Log`).
+5. Plan doc path references.
+6. Code-to-plan drift (when `PLAN_BASE_SHA` and `PLAN_HEAD_SHA` are provided).
 
 ## Strict modes
 
@@ -82,11 +151,12 @@ Path-reference ignore configuration (for intentional pseudo paths/wildcards):
 
 ## Quick New-Plan Checklist
 
-1. Copy `docs/plans/TEMPLATE.md` into `docs/plans/active/<plan>.md`.
-2. Fill required metadata fields and initial `Update Log` entry.
-3. Scope delivery phases and explicit out-of-scope.
-4. Add/update registry entry with scoped `code_paths`.
-5. Place prompt-only handoff docs (if any) under `docs/plans/active/handoffs/`.
+1. Create bundle folder `docs/plans/active/<plan-id>/`.
+2. Copy `docs/plans/TEMPLATE.md` to `docs/plans/active/<plan-id>/plan.md`.
+3. Copy `docs/plans/MANIFEST_TEMPLATE.yaml` to `docs/plans/active/<plan-id>/manifest.yaml` and fill fields.
+4. Fill required plan metadata fields and initial `Update Log` entry.
+5. Add optional bundle-local `companions/` and `handoffs/` as needed.
 6. Run:
+   - `pnpm docs:plans:sync`
    - `pnpm docs:plans:check`
    - `STRICT_PLAN_DOCS=1 pnpm docs:plans:check`

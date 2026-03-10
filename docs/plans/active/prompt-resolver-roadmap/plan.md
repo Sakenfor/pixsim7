@@ -402,7 +402,7 @@ When handing off, provide:
 Minimal handoff snippet:
 
 ```txt
-Continue Prompt Resolver Workbench work using `docs/plans/active/prompt-resolver-roadmap.md`.
+Continue Prompt Resolver Workbench work using `docs/plans/active/prompt-resolver-roadmap/plan.md`.
 
 Target iteration:
 - Iteration N: <name>

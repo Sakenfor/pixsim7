@@ -1,0 +1,15 @@
+id: plan-id
+title: Plan Title
+status: active
+stage: proposed
+owner: team or agent lane
+last_updated: YYYY-MM-DD
+priority: normal
+summary: ""
+plan_path: ./plan.md
+code_paths:
+  - path/to/owned/code
+companions: []
+handoffs: []
+tags: []
+depends_on: []

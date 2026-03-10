@@ -4,6 +4,7 @@
  *
  * Validates docs/plans/registry.yaml and enforces light plan hygiene:
  * - Registry schema is valid.
+ * - Registry is in sync with active plan manifests.
  * - Registered plan paths and code_paths exist.
  * - Registered plan docs include key metadata markers.
  * - If mapped code paths changed, at least one impacted plan doc (or registry)
@@ -28,21 +29,13 @@ import path from 'node:path';
 import process from 'node:process';
 
 import YAML from 'yaml';
-
-type RegistryFile = {
-  version: number;
-  plans: PlanEntry[];
-};
-
-type PlanEntry = {
-  id: string;
-  path: string;
-  status: string;
-  stage: string;
-  owner: string;
-  last_updated: string;
-  code_paths: string[];
-};
+import {
+  buildRegistryFromActiveManifests,
+  loadPlanManifests,
+  toPosix,
+  type PlanRegistryEntry as PlanEntry,
+  type PlanRegistryFile as RegistryFile,
+} from './plan_manifest_utils';
 
 type ValidationState = {
   errors: string[];
@@ -62,10 +55,6 @@ const PATH_REF_IGNORE_PATTERNS = (process.env.PLAN_PATH_REF_IGNORE_PATTERNS ?? '
   .split(',')
   .map((token) => token.trim())
   .filter((token) => token.length > 0);
-
-function toPosix(p: string): string {
-  return p.replace(/\\/g, '/');
-}
 
 function addError(state: ValidationState, message: string): void {
   state.errors.push(message);
@@ -182,6 +171,18 @@ function validatePlanEntryShape(entry: PlanEntry, index: number, state: Validati
         addError(state, `${prefix}.code_paths[${i}] must be a non-empty string`);
       }
     }
+  }
+
+  if (!('priority' in entry)) {
+    addError(state, `${prefix} missing required field: priority`);
+  } else if (typeof entry.priority !== 'string' || !['high', 'normal', 'low'].includes(entry.priority)) {
+    addError(state, `${prefix}.priority must be one of: high, normal, low`);
+  }
+
+  if (!('summary' in entry)) {
+    addError(state, `${prefix} missing required field: summary`);
+  } else if (typeof entry.summary !== 'string') {
+    addError(state, `${prefix}.summary must be a string`);
   }
 }
 
@@ -460,6 +461,45 @@ function validateRegistryEntries(registry: RegistryFile, state: ValidationState)
   return entries;
 }
 
+function canonicalizeRegistry(registry: RegistryFile): RegistryFile {
+  const plans = [...registry.plans]
+    .map((plan) => ({
+      ...plan,
+      code_paths: [...plan.code_paths],
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  return {
+    version: 1,
+    plans,
+  };
+}
+
+function checkManifestRegistryParity(registry: RegistryFile, state: ValidationState): void {
+  const manifestResult = loadPlanManifests(PROJECT_ROOT, ['active']);
+  for (const warning of manifestResult.warnings) {
+    addWarning(state, warning);
+  }
+  for (const err of manifestResult.errors) {
+    addError(state, err);
+  }
+  if (manifestResult.errors.length > 0) return;
+
+  if (manifestResult.manifests.length === 0) {
+    addWarning(state, 'No active plan manifests discovered under docs/plans/active.');
+    return;
+  }
+
+  const generated = buildRegistryFromActiveManifests(manifestResult.manifests);
+  const canonicalActual = canonicalizeRegistry(registry);
+  const canonicalGenerated = canonicalizeRegistry(generated);
+  if (JSON.stringify(canonicalActual) !== JSON.stringify(canonicalGenerated)) {
+    addError(
+      state,
+      'docs/plans/registry.yaml is out of sync with plan manifests. Run: pnpm docs:plans:sync',
+    );
+  }
+}
+
 function main(): number {
   const state: ValidationState = { errors: [], warnings: [] };
 
@@ -485,6 +525,8 @@ function main(): number {
     }
     return 1;
   }
+
+  checkManifestRegistryParity(registry, state);
 
   const entries = validateRegistryEntries(registry, state);
   const pathRefIgnoreRegexes = loadPathRefIgnoreRegexes(state);

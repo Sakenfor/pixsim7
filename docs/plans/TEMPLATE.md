@@ -1,5 +1,8 @@
 # Plan Title
 
+Use this template for `plan.md` inside a bundle folder, for example:
+`docs/plans/active/<plan-id>/plan.md`.
+
 Last updated: YYYY-MM-DD
 Owner: team or agent lane
 Status: proposed | in progress | blocked | completed
@@ -52,4 +55,3 @@ Exit criteria:
 
 - YYYY-MM-DD (`<commit-hash>`): Created plan.
 - YYYY-MM-DD (`<commit-hash>`): Updated phase/checklist status.
-

@@ -1,0 +1,24 @@
+id: block-primitives-evolution
+title: Block Primitives Evolution
+status: active
+stage: phase_0_baseline
+owner: block-primitives lane
+last_updated: 2026-03-10
+summary: "BlockPrimitive model, PromptBlock retirement, composition and migration paths."
+plan_path: ./plan.md
+code_paths:
+  - tools/cue/prompt_packs
+  - pixsim7/backend/main/content_packs/prompt
+  - pixsim7/backend/main/services/prompt/block
+  - pixsim7/backend/main/services/prompt/parser
+  - pixsim7/backend/main/api/v1/block_templates
+  - apps/main/src/features/prompts
+  - docs/prompts/BLOCK_PRIMITIVES_API_AGENT_QUICKSTART.md
+  - docs/architecture/block-primitives-evolution.md
+companions:
+  - docs/architecture/block-primitives-evolution.md
+  - docs/architecture/reviews/block-primitives-snapshot-2026-03-10.md
+  - docs/prompts/BLOCK_PRIMITIVES_API_AGENT_QUICKSTART.md
+handoffs: []
+tags: []
+depends_on: []

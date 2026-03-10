@@ -3,7 +3,7 @@
 Last updated: 2026-03-10
 Owner: prompt-tool module lane
 Status: in progress
-Stage: phase_3_complete_phase_4_pending
+Stage: phase_4_complete_phase_5_pending
 
 ## Goal
 
@@ -238,10 +238,11 @@ Exit criteria:
 - Non-admin user can create and run private presets.
 
 ### Phase 4: Submit/approve/share workflow
+Status: completed (2026-03-10)
 
-- [ ] Add review status transitions (`DRAFT -> SUBMITTED -> APPROVED/REJECTED`).
-- [ ] Add moderator/admin actions and audit trail.
-- [ ] Expose shared presets in catalog with badges.
+- [x] Add review status transitions (`DRAFT -> SUBMITTED -> APPROVED/REJECTED`).
+- [x] Add moderator/admin actions and audit trail.
+- [x] Expose shared presets in catalog with badges.
 
 Exit criteria:
 
@@ -304,3 +305,4 @@ Keep this set minimal for first implementation; add more after telemetry.
 - 2026-03-10 (`uncommitted`): Aligned section naming/checklist style with `docs/plans/TEMPLATE.md`; marked Phase 0/1 complete.
 - 2026-03-10 (`uncommitted`): Completed Phase 2 PromptComposer integration (tools rail, execute preview, apply modes with undo-safe snapshots).
 - 2026-03-10 (`uncommitted`): Completed Phase 3 backend lane (DB model + migration, CRUD/list/execute ownership wiring, and prompt-tools API/service tests).
+- 2026-03-10 (`uncommitted`): Completed Phase 4 review workflow (submit/approve/reject endpoints, status metadata, admin moderation paths, and workflow tests).

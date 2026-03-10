@@ -7,13 +7,13 @@ This directory contains architectural documentation for PixSim7 — specs, desig
 ### Active Architecture Tracks
 
 **Execution Status**
-- [Ongoing Work Status](../plans/active/ongoing-work-status.md) - Live status board for current in-progress lanes.
+- [Ongoing Work Status](../plans/active/ongoing-work-status/plan.md) - Live status board for current in-progress lanes.
 
 **Block & Prompt System**
 - [Block Primitives Evolution](./block-primitives-evolution.md) - **Canonical doc** for block systems. Covers BlockPrimitive model, PromptBlock retirement, composition paths, and migration status.
 - [Prompt Resolver `next_v1` Spec](./prompt-resolver-next-v1.md) - Parallel resolver architecture, interfaces, and migration strategy.
-- [Prompt Resolver Workbench Roadmap](../plans/active/prompt-resolver-roadmap.md) - Multi-iteration implementation plan and handoff guide.
-- [Prompt Template Controls Backlog](../plans/active/prompt-template-controls.md) - SlotKey migration, theme modifier packs.
+- [Prompt Resolver Workbench Roadmap](../plans/active/prompt-resolver-roadmap/plan.md) - Multi-iteration implementation plan and handoff guide.
+- [Prompt Template Controls Backlog](../plans/active/prompt-template-controls/plan.md) - SlotKey migration, theme modifier packs.
 - [Parser/Vocab Authority Analysis](./parser-vocab-authority.md) - Keyword authority across parser/vocabulary/ontology systems.
 - [Versioning Systems Map](./versioning-systems-map.md) - Layered map of shared versioning core vs prompt git workflows.
 
@@ -24,7 +24,7 @@ This directory contains architectural documentation for PixSim7 — specs, desig
 
 **System Architecture**
 - [Scene Concepts Map](./scene-concepts-map.md) - Distinguishes Scene Prep vs game/runtime scenes vs legacy scene concepts.
-- [ContextHub Authoring Context Plan](../plans/active/contexthub-implementation.md) - Canonical rollout plan for project/world context inheritance across panels.
+- [ContextHub Authoring Context Plan](../plans/active/contexthub-implementation/plan.md) - Canonical rollout plan for project/world context inheritance across panels.
 - [HMR Stability Plan](./hmr-stability.md) - Runtime identity hardening + wildcard barrel reduction strategy for stable frontend hot-reload behavior.
 - [Capability-Driven QuickGen](./capability-driven-quickgen.md) - ContextHub capability contracts for portable QuickGen panels.
 - [Generic Links](./generic-links.md) - Template-to-runtime link pattern (ObjectLink, FieldMapping, activation).
