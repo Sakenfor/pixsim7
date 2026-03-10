@@ -355,6 +355,23 @@ class ModuleRegistry {
   }
 
   /**
+   * Get all activity bar widgets contributed by registered modules,
+   * sorted by `order` ascending (lower = higher in tray).
+   */
+  getActivityBarWidgets() {
+    const widgets: Array<import('@pixsim7/shared.modules.core').ActivityBarWidget & { moduleId: string }> = [];
+    for (const module of this.modules.values()) {
+      if (module.activityBarWidgets) {
+        for (const w of module.activityBarWidgets) {
+          widgets.push({ ...w, moduleId: module.id });
+        }
+      }
+    }
+    widgets.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    return widgets;
+  }
+
+  /**
    * Get pages grouped by category
    */
   getPagesByCategory(options?: { includeHidden?: boolean }) {

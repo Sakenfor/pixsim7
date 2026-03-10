@@ -1,5 +1,5 @@
 import type { ActionDefinition, AppMapMetadata } from '@pixsim7/shared.types';
-import type { ComponentType, LazyExoticComponent } from 'react';
+import type { ComponentType, LazyExoticComponent, ReactNode } from 'react';
 
 // Lifecycle helpers
 export {
@@ -202,6 +202,25 @@ export interface ModulePageConfig<DevToolCategory = string, CapabilityCategory =
 }
 
 /**
+ * Activity Bar Widget
+ *
+ * A small status/action widget contributed by a module to the ActivityBar's
+ * bottom tray area. Widgets are rendered in `order` ascending.
+ */
+export interface ActivityBarWidget {
+  /** Unique widget id (scoped to the contributing module) */
+  id: string;
+  /** Sort order — lower values render higher in the tray (default 0) */
+  order?: number;
+  /** Tooltip / accessible label */
+  label?: string;
+  /** Icon name from the icon library (used as fallback when component is not provided) */
+  icon?: string;
+  /** React component rendered as the widget. Receives no props. */
+  component: ComponentType<object>;
+}
+
+/**
  * Base Module Interface
  *
  * All modules should implement this interface to ensure consistent communication
@@ -260,6 +279,12 @@ export interface ModuleDefinition<
    * If the module provides a user-accessible page, define it here
    */
   page?: ModulePageConfig<DevToolCategory, CapabilityCategory>;
+
+  /**
+   * Activity Bar widgets (optional)
+   * Small status/action widgets rendered in the bottom tray of the ActivityBar.
+   */
+  activityBarWidgets?: ActivityBarWidget[];
 }
 
 export type Module<

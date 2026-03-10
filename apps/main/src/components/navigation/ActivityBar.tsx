@@ -57,6 +57,20 @@ function useRegistryPages() {
   }, [version]);
 }
 
+/** Reactive activity bar widgets from all registered modules */
+function useActivityBarWidgets() {
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    return moduleRegistry.subscribe(() => setVersion((v) => v + 1));
+  }, []);
+
+  return useMemo(() => {
+    void version;
+    return moduleRegistry.getActivityBarWidgets();
+  }, [version]);
+}
+
 function groupByCategory(pages: PageEntry[]) {
   const groups: Partial<Record<PageCategory, PageEntry[]>> = {};
   for (const page of pages) {
@@ -250,6 +264,8 @@ export function ActivityBar() {
   const homeRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLDivElement>(null);
 
+  const activityBarWidgets = useActivityBarWidgets();
+
   const { isExpanded: homeHovered, handlers: homeHandlers } = useHoverExpand({ expandDelay: 400, collapseDelay: 0 });
   const { isExpanded: toggleHovered, handlers: toggleHandlers } = useHoverExpand({ expandDelay: 400, collapseDelay: 0 });
 
@@ -303,6 +319,15 @@ export function ActivityBar() {
 
         {/* Spacer */}
         <div className="flex-1" />
+
+        {/* Activity bar widgets (contributed by modules) */}
+        {activityBarWidgets.length > 0 && (
+          <div className="flex flex-col items-center gap-0.5 mb-1">
+            {activityBarWidgets.map((widget) => (
+              <widget.component key={widget.id} />
+            ))}
+          </div>
+        )}
 
         {/* Collapse toggle */}
         <div ref={toggleRef} className="relative flex items-center justify-center mb-1" {...toggleHandlers}>

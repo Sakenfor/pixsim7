@@ -4,7 +4,7 @@
  * Dedicated panel for tracking and managing generation jobs.
  * Shows status, allows filtering, grouping, and batch cancel.
  */
-import { DisclosureSection, Dropdown, DropdownItem, DropdownDivider, FoldableJson, ToolbarToggleButton } from '@pixsim7/shared.ui';
+import { DisclosureSection, Dropdown, DropdownItem, DropdownDivider, FoldableJson, ToolbarToggleButton, ConfirmModal, PromptModal, useToast } from '@pixsim7/shared.ui';
 import { useMemo, useState, useCallback, useRef } from 'react';
 
 import { patchGenerationPrompt, retryGeneration, cancelGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
@@ -53,7 +53,7 @@ function readStoredGroupByStack(): GenerationGroupBy[] {
 }
 
 function writeStoredGroupByStack(stack: GenerationGroupBy[]): void {
-  try { localStorage.setItem(GROUPING_STORAGE_KEY, JSON.stringify(stack)); } catch {}
+  try { localStorage.setItem(GROUPING_STORAGE_KEY, JSON.stringify(stack)); } catch { /* ignore */ }
 }
 
 function readStoredViewMode(): 'list' | 'grid' {
@@ -158,7 +158,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
 
   const setViewMode = useCallback((value: 'list' | 'grid') => {
     setViewModeRaw(value);
-    try { localStorage.setItem(VIEW_MODE_STORAGE_KEY, value); } catch {}
+    try { localStorage.setItem(VIEW_MODE_STORAGE_KEY, value); } catch { /* ignore */ }
   }, []);
 
   // WebSocket for real-time updates
@@ -203,52 +203,74 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
 
   // Batch cancel
   const { batchCancel, isCancelling: isBatchCancelling } = useBatchCancelGenerations();
+  const toast = useToast();
+
+  // ---- Modal state for confirm / prompt dialogs ----
+  const [confirmState, setConfirmState] = useState<{
+    message: string;
+    variant?: 'danger' | 'primary';
+    onConfirm: () => void;
+  } | null>(null);
+
+  const [promptReplaceState, setPromptReplaceState] = useState<{
+    items: GenerationModel[];
+    defaultValue: string;
+  } | null>(null);
+
+  const requestConfirm = useCallback(
+    (message: string, onConfirm: () => void, variant?: 'danger' | 'primary') => {
+      setConfirmState({ message, onConfirm, variant });
+    },
+    [],
+  );
 
   const handleBatchCancel = useCallback(async (ids: number[]) => {
-    if (!confirm(`Cancel ${ids.length} active generation(s)?`)) return;
-    const result = await batchCancel(ids);
-    if (result.failed > 0) {
-      alert(`Cancelled ${result.succeeded}, failed ${result.failed}:\n${result.errors.join('\n')}`);
-    }
-  }, [batchCancel]);
+    requestConfirm(`Cancel ${ids.length} active generation(s)?`, async () => {
+      const result = await batchCancel(ids);
+      if (result.failed > 0) {
+        toast.error(`Cancelled ${result.succeeded}, failed ${result.failed}: ${result.errors.join(', ')}`);
+      } else {
+        toast.success(`Cancelled ${result.succeeded} generation(s)`);
+      }
+    });
+  }, [batchCancel, requestConfirm, toast]);
 
   const handleRetry = useCallback(async (id: number) => {
     try {
       const newGeneration = await retryGeneration(id);
-      // Map at boundary and add to store
       useGenerationsStore.getState().addOrUpdate(fromGenerationResponse(newGeneration));
+      toast.success('Generation retried');
     } catch (error) {
       console.error('Failed to retry generation:', error);
-      alert('Failed to retry generation');
+      toast.error('Failed to retry generation');
     }
-  }, []);
+  }, [toast]);
 
   const handleCancel = useCallback(async (id: number) => {
     try {
       const updated = await cancelGeneration(id);
-      // Map at boundary and update store
       useGenerationsStore.getState().addOrUpdate(fromGenerationResponse(updated));
     } catch (error) {
       console.error('Failed to cancel generation:', error);
-      alert('Failed to cancel generation');
+      toast.error('Failed to cancel generation');
     }
-  }, []);
+  }, [toast]);
 
   const handleDelete = useCallback(async (id: number) => {
     if (!id) {
       console.error('Cannot delete generation: invalid id', id);
       return;
     }
-    if (!confirm('Delete this generation permanently?')) return;
-    try {
-      await deleteGeneration(id);
-      // Remove from store
-      useGenerationsStore.getState().remove(id);
-    } catch (error) {
-      console.error('Failed to delete generation:', error);
-      alert('Failed to delete generation');
-    }
-  }, []);
+    requestConfirm('Delete this generation permanently?', async () => {
+      try {
+        await deleteGeneration(id);
+        useGenerationsStore.getState().remove(id);
+      } catch (error) {
+        console.error('Failed to delete generation:', error);
+        toast.error('Failed to delete generation');
+      }
+    }, 'danger');
+  }, [requestConfirm, toast]);
 
   const handleOpenAsset = useCallback((assetId: number) => {
     onOpenAsset?.(assetId);
@@ -293,8 +315,15 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
       }
     }
     if (results.failed > 0) {
-      alert(`Updated ${results.succeeded}, failed ${results.failed}:\n${results.errors.join('\n')}`);
+      toast.error(`Updated ${results.succeeded}, failed ${results.failed}: ${results.errors.join(', ')}`);
+    } else {
+      toast.success(`Prompt replaced for ${results.succeeded} generation(s)`);
     }
+  }, [toast]);
+
+  /** Called from group sections to open the prompt-replace modal */
+  const handleRequestPromptReplace = useCallback((items: GenerationModel[], defaultValue: string) => {
+    setPromptReplaceState({ items, defaultValue });
   }, []);
 
   return (
@@ -393,6 +422,8 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
                 onLoadToQuickGen={handleLoadToQuickGen}
                 onBatchCancel={handleBatchCancel}
                 onReplacePrompt={handleReplacePrompt}
+                onRequestConfirm={requestConfirm}
+                onRequestPromptReplace={handleRequestPromptReplace}
                 isBatchCancelling={isBatchCancelling}
               />
             ))}
@@ -413,6 +444,37 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
           </div>
         )}
       </div>
+
+      {/* Confirm modal */}
+      <ConfirmModal
+        isOpen={confirmState != null}
+        message={confirmState?.message ?? ''}
+        variant={confirmState?.variant}
+        onConfirm={() => {
+          confirmState?.onConfirm();
+          setConfirmState(null);
+        }}
+        onCancel={() => setConfirmState(null)}
+      />
+
+      {/* Prompt replace modal */}
+      <PromptModal
+        isOpen={promptReplaceState != null}
+        title="Replace Prompt"
+        message={`Replace prompt for ${promptReplaceState?.items.length ?? 0} generation(s):`}
+        defaultValue={promptReplaceState?.defaultValue ?? ''}
+        confirmText="Replace"
+        multiline
+        rows={6}
+        onConfirm={(value) => {
+          const trimmed = value.trim();
+          if (promptReplaceState && trimmed && trimmed !== promptReplaceState.defaultValue) {
+            handleReplacePrompt(promptReplaceState.items, trimmed);
+          }
+          setPromptReplaceState(null);
+        }}
+        onCancel={() => setPromptReplaceState(null)}
+      />
     </div>
   );
 }
@@ -432,6 +494,8 @@ interface GenerationGroupSectionProps {
   onLoadToQuickGen: (generation: GenerationModel) => void;
   onBatchCancel: (ids: number[]) => void;
   onReplacePrompt: (generations: GenerationModel[], newPrompt: string) => void;
+  onRequestConfirm: (message: string, onConfirm: () => void, variant?: 'danger' | 'primary') => void;
+  onRequestPromptReplace: (items: GenerationModel[], defaultValue: string) => void;
   isBatchCancelling: boolean;
 }
 
@@ -587,6 +651,8 @@ function GenerationGroupSection({
   onLoadToQuickGen,
   onBatchCancel,
   onReplacePrompt,
+  onRequestConfirm,
+  onRequestPromptReplace,
   isBatchCancelling,
 }: GenerationGroupSectionProps) {
   const activeIds = useMemo(() => collectActiveIds(group), [group]);
@@ -669,26 +735,26 @@ function GenerationGroupSection({
     setMenuOpen(false);
   };
 
-  const handleRetryAllFailed = async () => {
+  const handleRetryAllFailed = () => {
     setMenuOpen(false);
     if (retryableIds.length === 0) return;
-    if (!confirm(`Retry ${retryableIds.length} failed/cancelled generation(s)?`)) return;
-    for (const id of retryableIds) onRetry(id);
+    onRequestConfirm(`Retry ${retryableIds.length} failed/cancelled generation(s)?`, () => {
+      for (const id of retryableIds) onRetry(id);
+    });
   };
 
-  const handleDeleteAllTerminal = async () => {
+  const handleDeleteAllTerminal = () => {
     setMenuOpen(false);
     if (terminalIds.length === 0) return;
-    if (!confirm(`Delete ${terminalIds.length} completed/failed/cancelled generation(s)?`)) return;
-    for (const id of terminalIds) onDelete(id);
+    onRequestConfirm(`Delete ${terminalIds.length} completed/failed/cancelled generation(s)?`, () => {
+      for (const id of terminalIds) onDelete(id);
+    }, 'danger');
   };
 
   const handleReplacePromptInGroup = () => {
     setMenuOpen(false);
     const currentPrompt = fullPrompt ?? group.items[0]?.finalPrompt ?? '';
-    const newPrompt = window.prompt('Replace prompt for all generations in this group:', currentPrompt);
-    if (newPrompt == null || newPrompt.trim() === '' || newPrompt === currentPrompt) return;
-    onReplacePrompt(group.items, newPrompt.trim());
+    onRequestPromptReplace(group.items, currentPrompt);
   };
 
   const groupActions = (
@@ -786,6 +852,8 @@ function GenerationGroupSection({
               onLoadToQuickGen={onLoadToQuickGen}
               onBatchCancel={onBatchCancel}
               onReplacePrompt={onReplacePrompt}
+              onRequestConfirm={onRequestConfirm}
+              onRequestPromptReplace={onRequestPromptReplace}
               isBatchCancelling={isBatchCancelling}
             />
           ))

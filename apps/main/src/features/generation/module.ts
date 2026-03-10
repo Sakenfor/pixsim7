@@ -2,6 +2,7 @@ import { registerState } from '@lib/capabilities';
 
 import type { Module } from '@app/modules/types';
 
+import { GenerationActivityBarWidget } from './components/GenerationActivityBarWidget';
 import { getGenerationSessionStore } from './stores/generationScopeStores';
 
 /**
@@ -29,6 +30,16 @@ function registerGenerationState() {
 export const generationModule: Module = {
   id: 'generation',
   name: 'Generation Module',
+
+  activityBarWidgets: [
+    {
+      id: 'generation-status',
+      order: 0,
+      label: 'Generations',
+      icon: 'sparkles',
+      component: GenerationActivityBarWidget,
+    },
+  ],
 
   async initialize() {
     // Register generation state capabilities

@@ -164,6 +164,10 @@ export interface PromptModalProps {
   defaultValue?: string;
   confirmText?: string;
   cancelText?: string;
+  /** Render a textarea instead of a single-line input. Ctrl+Enter submits. */
+  multiline?: boolean;
+  /** Rows for textarea (default 4) */
+  rows?: number;
 }
 
 export function PromptModal({
@@ -176,41 +180,72 @@ export function PromptModal({
   defaultValue = '',
   confirmText = 'OK',
   cancelText = 'Cancel',
+  multiline = false,
+  rows = 4,
 }: PromptModalProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const activeRef = multiline ? textareaRef : inputRef;
 
   useEffect(() => {
-    if (isOpen && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
+    if (isOpen) {
+      const el = activeRef.current;
+      if (el) {
+        el.focus();
+        if ('select' in el) el.select();
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, multiline]);
 
   const handleConfirm = () => {
-    const value = inputRef.current?.value || '';
+    const value = activeRef.current?.value || '';
     onConfirm(value);
     onCancel();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleConfirm();
+    if (multiline) {
+      // Ctrl/Cmd+Enter submits for textarea
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        handleConfirm();
+      }
+    } else {
+      if (e.key === 'Enter') {
+        handleConfirm();
+      }
     }
   };
+
+  const inputClassName = "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-accent";
 
   return (
     <Modal isOpen={isOpen} onClose={onCancel} title={title} size="sm" showClose={false}>
       <div className="space-y-4">
         <p className="text-gray-700 dark:text-gray-300">{message}</p>
-        <input
-          ref={inputRef}
-          type="text"
-          defaultValue={defaultValue}
-          placeholder={placeholder}
-          onKeyDown={handleKeyDown}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-accent"
-        />
-        <div className="flex gap-3 justify-end">
+        {multiline ? (
+          <textarea
+            ref={textareaRef}
+            defaultValue={defaultValue}
+            placeholder={placeholder}
+            onKeyDown={handleKeyDown}
+            rows={rows}
+            className={clsx(inputClassName, 'resize-y text-sm')}
+          />
+        ) : (
+          <input
+            ref={inputRef}
+            type="text"
+            defaultValue={defaultValue}
+            placeholder={placeholder}
+            onKeyDown={handleKeyDown}
+            className={inputClassName}
+          />
+        )}
+        <div className="flex items-center gap-3 justify-end">
+          {multiline && (
+            <span className="text-xs text-gray-400 mr-auto">Ctrl+Enter to submit</span>
+          )}
           <button
             onClick={onCancel}
             className="px-4 py-2 rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 transition-colors"
