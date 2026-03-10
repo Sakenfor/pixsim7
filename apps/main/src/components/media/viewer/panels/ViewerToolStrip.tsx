@@ -68,7 +68,7 @@ export function ViewerToolStrip({
           <Icon name="mousePointer" size={16} />
         </button>
         <Tooltip
-          content="Select"
+          content="Move / Select"
           shortcut="V"
           position="right"
           show={hoveredId === '__select__'}

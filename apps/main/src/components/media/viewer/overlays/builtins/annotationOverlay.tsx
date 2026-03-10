@@ -58,13 +58,6 @@ function AnnotationToolsPanel({ asset }: { asset: MediaOverlayComponentProps['as
           title="Draw open curves (C)"
           onClick={() => setDrawingMode('curve')}
         />
-        <SideToolButton
-          icon="mousePointer"
-          label="Select"
-          active={drawingMode === 'select'}
-          title="Select and edit regions (S)"
-          onClick={() => setDrawingMode('select')}
-        />
       </SideSection>
 
       <SideDivider />

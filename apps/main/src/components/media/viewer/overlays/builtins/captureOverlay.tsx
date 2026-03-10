@@ -114,13 +114,6 @@ function CaptureToolsPanel({
           title="Draw open curve (no fill)"
           onClick={() => setDrawingMode('curve')}
         />
-        <SideToolButton
-          icon="mousePointer"
-          label="Select"
-          active={drawingMode === 'select'}
-          title="Select a capture region"
-          onClick={() => setDrawingMode('select')}
-        />
       </SideSection>
 
       <SideDivider />

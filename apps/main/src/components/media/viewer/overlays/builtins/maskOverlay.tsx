@@ -955,9 +955,6 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         case 'c':
           callbacksRef.current.setMode('polygon');
           break;
-        case 'v':
-          callbacksRef.current.setMode('view');
-          break;
         case '0':
           callbacksRef.current.resetView();
           break;
@@ -1036,7 +1033,6 @@ const TOOL_MODES = [
   { mode: 'draw' as const, icon: 'paintbrush' as const, label: 'Draw', shortcut: 'D' },
   { mode: 'polygon' as const, icon: 'penTool' as const, label: 'Curve', shortcut: 'C' },
   { mode: 'erase' as const, icon: 'xCircle' as const, label: 'Erase', shortcut: 'E' },
-  { mode: 'view' as const, icon: 'eye' as const, label: 'View', shortcut: 'V' },
 ];
 
 function MaskToolsPanel() {

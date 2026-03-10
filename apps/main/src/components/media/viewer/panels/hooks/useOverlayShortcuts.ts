@@ -10,6 +10,7 @@ import { useEffect, useCallback } from 'react';
 import { useAssetRegionStore, useCaptureRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
 
 import type { MediaOverlayHostState } from '../../overlays';
+import { useMaskOverlayStore } from '../../overlays/builtins/maskOverlayStore';
 
 export interface UseOverlayShortcutsOptions {
   /** Current overlay mode (from useMediaOverlayHost) */
@@ -30,7 +31,7 @@ export interface UseOverlayShortcutsOptions {
  * - R: switch to rect drawing mode (in annotation mode)
  * - P: switch to polygon drawing mode (in annotation mode)
  * - C: switch to curve drawing mode (in annotation/capture mode)
- * - S: switch to select mode (in annotation mode)
+ * - V: switch to canonical select/view mode (from the global select tool)
  * - Overlay-specific shortcuts (e.g., A for annotate)
  *
  * @param options - Configuration options
@@ -112,21 +113,16 @@ export function useOverlayShortcuts({
             }
           }
           break;
-        case 's':
-          // Switch to select mode
-          if (annotationMode && !e.ctrlKey && !e.metaKey) {
-            setDrawingMode('select');
-          }
-          break;
         case 'v':
-          // Move/select mode (works in annotation and capture overlays)
+          // Move/select mode (canonical across overlays)
           if (!e.ctrlKey && !e.metaKey && overlayMode !== 'none') {
             if (overlayMode === 'annotate') {
               setDrawingMode('select');
             } else if (overlayMode === 'capture') {
               useCaptureRegionStore.getState().setDrawingMode('select');
+            } else if (overlayMode === 'mask') {
+              useMaskOverlayStore.getState().setMode('view');
             }
-            // Mask overlay handles 'v' internally
           }
           break;
         default: {
