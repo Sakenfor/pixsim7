@@ -1458,7 +1458,21 @@ export function AnalyzersSettings() {
   const [imageDefaultChain, setImageDefaultChain] = useState<string[]>([DEFAULT_ASSET_ANALYZER_ID]);
   const [videoDefaultChain, setVideoDefaultChain] = useState<string[]>([DEFAULT_ASSET_ANALYZER_ID]);
   const [intentAnalyzerChains, setIntentAnalyzerChains] = useState<Partial<Record<AssetIntentKey, string[]>>>({});
-  const [analysisPointChains, setAnalysisPointChains] = useState<Record<string, string[]>>({});
+  // Analysis-point chains now live in the v2 store (pointAnalyzerChains).
+  // We derive the "custom point chains" view (excluding well-known IDs) for the UI.
+  const storePointChains = useAnalyzerSettingsStore((s) => s.pointAnalyzerChains);
+  const storeSetPointChain = useAnalyzerSettingsStore((s) => s.setPointAnalyzerChain);
+  const analysisPointChains = useMemo(() => {
+    const result: Record<string, string[]> = {};
+    for (const [key, chain] of Object.entries(storePointChains)) {
+      // Skip well-known control/intent point IDs; those are managed via their own controls
+      if (key.startsWith('_control:') || key.startsWith('_intent:')) continue;
+      if (Array.isArray(chain) && chain.length > 0) {
+        result[key] = chain;
+      }
+    }
+    return result;
+  }, [storePointChains]);
   const [backfillRuns, setBackfillRuns] = useState<AnalysisBackfillResponse[]>([]);
   const [backfillForm, setBackfillForm] = useState<BackfillFormState>(INITIAL_BACKFILL_FORM_STATE);
   const [isLoadingBackfills, setIsLoadingBackfills] = useState(false);
@@ -1563,6 +1577,8 @@ export function AnalyzersSettings() {
         }
       }
 
+      // Parse custom analysis-point chains from backend preferences and write
+      // them into the v2 store alongside the control/intent chains.
       const rawPointChains = (prefs.analysis_point_default_ids ?? {}) as Record<string, unknown>;
       const nextAnalysisPointChains: Record<string, string[]> = {};
       const pointIds = new Set<string>(Object.keys(rawPointChains));
@@ -1580,8 +1596,8 @@ export function AnalyzersSettings() {
       setImageDefaultChain(imageChain);
       setVideoDefaultChain(videoChain);
       setIntentAnalyzerChains(nextIntentChains);
-      setAnalysisPointChains(nextAnalysisPointChains);
 
+      // Sync all chains into the v2 store in one pass
       setDefaultPromptAnalyzer(promptChain[0]);
       setDefaultImageAnalyzers(imageChain);
       setDefaultImageAnalyzer(imageChain[0]);
@@ -1594,6 +1610,10 @@ export function AnalyzersSettings() {
         } else {
           clearIntentAssetAnalyzer(intentKey);
         }
+      }
+      // Write custom analysis-point chains into the v2 store
+      for (const [pointId, chain] of Object.entries(nextAnalysisPointChains)) {
+        storeSetPointChain(pointId, chain);
       }
 
       void fetchBackfillRuns();
@@ -1610,6 +1630,7 @@ export function AnalyzersSettings() {
     setDefaultVideoAnalyzer,
     setDefaultVideoAnalyzers,
     setIntentAssetAnalyzerChain,
+    storeSetPointChain,
     fetchBackfillRuns,
   ]);
 
@@ -1799,22 +1820,28 @@ export function AnalyzersSettings() {
   const handleAnalysisPointChainChange = useCallback(
     (pointId: string, values: string[]) => {
       const chain = normalizeOptionalAnalyzerChainInput(values);
-      setAnalysisPointChains((prev) => {
-        const next = { ...prev };
-        if (chain.length > 0) {
-          next[pointId] = chain;
-        } else {
-          delete next[pointId];
+      // Write to v2 store
+      storeSetPointChain(pointId, chain);
+      // Persist to backend — rebuild the custom-point-only map from current store
+      const currentChains = useAnalyzerSettingsStore.getState().pointAnalyzerChains;
+      const customPointChains: Record<string, string[]> = {};
+      for (const [key, value] of Object.entries(currentChains)) {
+        if (key.startsWith('_control:') || key.startsWith('_intent:')) continue;
+        if (Array.isArray(value) && value.length > 0) {
+          customPointChains[key] = value;
         }
-
-        void persistAnalyzerPreferences({
-          analysis_point_default_ids: next,
-        });
-
-        return next;
+      }
+      // Apply the pending change (store update may be async in batch)
+      if (chain.length > 0) {
+        customPointChains[pointId] = chain;
+      } else {
+        delete customPointChains[pointId];
+      }
+      void persistAnalyzerPreferences({
+        analysis_point_default_ids: customPointChains,
       });
     },
-    [persistAnalyzerPreferences]
+    [persistAnalyzerPreferences, storeSetPointChain]
   );
 
   const handleBackfillFormChange = useCallback((updates: Partial<BackfillFormState>) => {
@@ -1953,8 +1980,10 @@ export function AnalyzersSettings() {
     setImageDefaultChain(imageChain);
     setVideoDefaultChain(videoChain);
     setIntentAnalyzerChains({});
-    setAnalysisPointChains({});
 
+    // Reset the entire store to defaults (clears all point chains including custom)
+    useAnalyzerSettingsStore.getState().resetAnalyzerSettings();
+    // Re-apply the prompt chain defaults
     setDefaultPromptAnalyzer(promptChain[0]);
     setDefaultImageAnalyzers(imageChain);
     setDefaultImageAnalyzer(imageChain[0]);
@@ -1979,7 +2008,6 @@ export function AnalyzersSettings() {
     setDefaultVideoAnalyzer,
     setDefaultVideoAnalyzers,
     clearIntentAssetAnalyzer,
-    setAnalysisPointChains,
     setVisualSimilarityThreshold,
   ]);
 
