@@ -7,9 +7,11 @@ Runs periodically to:
 3. Create assets when completed
 4. Update generation status
 """
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Any, Iterable
 
-from sqlalchemy import select, func, distinct
+from sqlalchemy import select, func, distinct, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim_logging import configure_logging
@@ -50,6 +52,67 @@ from pixsim7.backend.main.infrastructure.events.redis_bridge import (
 
 logger = configure_logging("worker").bind(channel="pipeline", domain="provider")
 _poller_debug_initialized = False
+
+
+@dataclass(frozen=True, slots=True)
+class _AccountCapacitySnapshot:
+    account_id: int
+    max_concurrent_jobs: int
+    current_processing_jobs: int
+
+    @classmethod
+    def from_row(cls, row: tuple[Any, Any, Any]) -> "_AccountCapacitySnapshot | None":
+        account_id, max_concurrent_jobs, current_processing_jobs = row
+        if account_id is None:
+            return None
+        return cls(
+            account_id=int(account_id),
+            max_concurrent_jobs=int(max_concurrent_jobs or 0),
+            current_processing_jobs=int(current_processing_jobs or 0),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingGenerationSnapshot:
+    generation_id: int
+    updated_at: datetime | None
+
+    @classmethod
+    def from_row(cls, row: tuple[Any, Any]) -> "_PendingGenerationSnapshot | None":
+        generation_id, updated_at = row
+        if generation_id is None:
+            return None
+        ts: datetime | None = updated_at if isinstance(updated_at, datetime) else None
+        return cls(generation_id=int(generation_id), updated_at=ts)
+
+
+def _to_account_capacity_snapshots(
+    rows: Iterable[tuple[Any, Any, Any]],
+) -> list[_AccountCapacitySnapshot]:
+    snapshots: list[_AccountCapacitySnapshot] = []
+    for row in rows:
+        snapshot = _AccountCapacitySnapshot.from_row(row)
+        if snapshot is not None:
+            snapshots.append(snapshot)
+    return snapshots
+
+
+def _to_pending_generation_snapshots(
+    rows: Iterable[tuple[Any, Any]],
+) -> list[_PendingGenerationSnapshot]:
+    snapshots: list[_PendingGenerationSnapshot] = []
+    for row in rows:
+        snapshot = _PendingGenerationSnapshot.from_row(row)
+        if snapshot is not None:
+            snapshots.append(snapshot)
+    return snapshots
+
+
+def _snapshot_age_seconds(updated_at: datetime | None, *, now: datetime) -> float | None:
+    if updated_at is None:
+        return None
+    normalized = updated_at if updated_at.tzinfo is not None else updated_at.replace(tzinfo=timezone.utc)
+    return (now - normalized).total_seconds()
 
 
 def _normalize_for_attempt_compare(value: datetime) -> datetime:
@@ -1293,7 +1356,11 @@ async def requeue_pending_generations(ctx: dict) -> dict:
             # Include EXHAUSTED accounts: pinned generations skip credit checks,
             # and process_generation allows exhausted accounts for preferred use.
             capacity_accounts_result = await db.execute(
-                select(ProviderAccount).where(
+                select(
+                    ProviderAccount.id,
+                    ProviderAccount.max_concurrent_jobs,
+                    ProviderAccount.current_processing_jobs,
+                ).where(
                     ProviderAccount.status.in_([AccountStatus.ACTIVE, AccountStatus.EXHAUSTED]),
                     ProviderAccount.max_concurrent_jobs > ProviderAccount.current_processing_jobs,
                     (
@@ -1302,7 +1369,7 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                     ),
                 )
             )
-            capacity_accounts = list(capacity_accounts_result.scalars().all())
+            capacity_accounts = _to_account_capacity_snapshots(capacity_accounts_result.all())
 
             if capacity_accounts:
                 try:
@@ -1320,12 +1387,12 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                         continue
 
                     ready_pinned_result = await db.execute(
-                        select(Generation)
+                        select(Generation.id)
                         .where(Generation.status == GenerationStatus.PENDING)
-                        .where(Generation.preferred_account_id == account.id)
+                        .where(Generation.preferred_account_id == account.account_id)
                         .where(
                             (Generation.account_id == None)
-                            | (Generation.account_id == account.id)
+                            | (Generation.account_id == account.account_id)
                         )
                         .where(
                             (Generation.scheduled_at == None) |
@@ -1334,40 +1401,47 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                         .order_by(Generation.priority.desc(), Generation.created_at)
                         .limit(free_slots)
                     )
-                    ready_pinned = list(ready_pinned_result.scalars().all())
-                    if not ready_pinned:
+                    ready_pinned_ids = [
+                        int(generation_id)
+                        for generation_id in ready_pinned_result.scalars().all()
+                        if generation_id is not None
+                    ]
+                    if not ready_pinned_ids:
                         continue
 
-                    for generation in ready_pinned:
+                    for generation_id in ready_pinned_ids:
                         try:
-                            wait_meta = await get_generation_wait_metadata(arq_pool, generation.id)
+                            wait_meta = await get_generation_wait_metadata(arq_pool, generation_id)
                             wait_reason = (
                                 str(wait_meta.get("reason"))
                                 if isinstance(wait_meta, dict) and wait_meta.get("reason")
                                 else None
                             )
-                            enqueued = await enqueue_generation_fresh_job(arq_pool, generation.id)
+                            enqueued = await enqueue_generation_fresh_job(arq_pool, generation_id)
                             if not enqueued:
                                 skipped += 1
                                 logger.warning(
                                     "dispatch_pinned_ready_generation_deduped",
-                                    generation_id=generation.id,
-                                    account_id=account.id,
+                                    generation_id=generation_id,
+                                    account_id=account.account_id,
                                     free_slots=free_slots,
                                     wait_reason=wait_reason,
                                 )
                                 continue
 
-                            await clear_generation_wait_metadata(arq_pool, generation.id)
-                            generation.scheduled_at = None
-                            generation.updated_at = now
+                            await clear_generation_wait_metadata(arq_pool, generation_id)
+                            await db.execute(
+                                update(Generation)
+                                .where(Generation.id == generation_id)
+                                .values(scheduled_at=None, updated_at=now)
+                            )
                             await db.commit()
                             pinned_dispatched += 1
                             requeued += 1
                             logger.info(
                                 "dispatch_pinned_ready_generation",
-                                generation_id=generation.id,
-                                account_id=account.id,
+                                generation_id=generation_id,
+                                account_id=account.account_id,
                                 free_slots=free_slots,
                                 wait_reason=wait_reason,
                             )
@@ -1375,8 +1449,8 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                             await db.rollback()
                             logger.error(
                                 "dispatch_pinned_ready_generation_error",
-                                generation_id=generation.id,
-                                account_id=account.id,
+                                generation_id=generation_id,
+                                account_id=account.account_id,
                                 error=str(e),
                             )
                             errors += 1
@@ -1387,7 +1461,7 @@ async def requeue_pending_generations(ctx: dict) -> dict:
             threshold = now - timedelta(seconds=STALE_THRESHOLD_SECONDS)
 
             result = await db.execute(
-                select(Generation)
+                select(Generation.id, Generation.updated_at)
                 .where(Generation.status == GenerationStatus.PENDING)
                 .where(Generation.preferred_account_id == None)
                 .where(Generation.updated_at < threshold)
@@ -1398,7 +1472,7 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                 .order_by(Generation.created_at)
                 .limit(MAX_REQUEUE_PER_RUN)
             )
-            stuck_generations = list(result.scalars().all())
+            stuck_generations = _to_pending_generation_snapshots(result.all())
 
             # Third pass: catch stale PINNED generations that Pass 1 missed.
             # Pass 1 only dispatches pinned gens whose preferred account has
@@ -1410,7 +1484,7 @@ async def requeue_pending_generations(ctx: dict) -> dict:
             PINNED_STALE_THRESHOLD_SECONDS = 180
             pinned_threshold = now - timedelta(seconds=PINNED_STALE_THRESHOLD_SECONDS)
             pinned_stale_result = await db.execute(
-                select(Generation)
+                select(Generation.id, Generation.updated_at)
                 .where(Generation.status == GenerationStatus.PENDING)
                 .where(Generation.preferred_account_id != None)
                 .where(Generation.updated_at < pinned_threshold)
@@ -1421,13 +1495,13 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                 .order_by(Generation.created_at)
                 .limit(MAX_REQUEUE_PER_RUN)
             )
-            stale_pinned = list(pinned_stale_result.scalars().all())
+            stale_pinned = _to_pending_generation_snapshots(pinned_stale_result.all())
             if stale_pinned:
                 stuck_generations.extend(stale_pinned)
                 logger.info(
                     "requeue_found_stale_pinned",
                     count=len(stale_pinned),
-                    generation_ids=[g.id for g in stale_pinned],
+                    generation_ids=[g.generation_id for g in stale_pinned],
                 )
 
             if not stuck_generations:
@@ -1449,33 +1523,35 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                 }
 
             for generation in stuck_generations:
+                generation_id = generation.generation_id
+                age_seconds = _snapshot_age_seconds(generation.updated_at, now=datetime.now(timezone.utc))
                 try:
                     # Check if already in queue (avoid duplicates)
                     # ARQ doesn't have a great way to check this, so we just requeue
                     # The job processor will skip if status changed
 
-                    enqueue_result = await enqueue_generation_retry_job(arq_pool, generation.id)
+                    enqueue_result = await enqueue_generation_retry_job(arq_pool, generation_id)
 
                     if enqueue_result.get("deduped"):
                         logger.warning(
                             "requeue_generation_deduped",
-                            generation_id=generation.id,
-                            age_seconds=(datetime.now(timezone.utc) - generation.updated_at).total_seconds(),
+                            generation_id=generation_id,
+                            age_seconds=age_seconds,
                             age_basis="updated_at",
                         )
                         skipped += 1
                     else:
                         logger.info(
                             "requeue_generation",
-                            generation_id=generation.id,
-                            age_seconds=(datetime.now(timezone.utc) - generation.updated_at).total_seconds(),
+                            generation_id=generation_id,
+                            age_seconds=age_seconds,
                             age_basis="updated_at",
                         )
                         requeued += 1
 
                 except Exception as e:
                     logger.error("requeue_generation_error",
-                               generation_id=generation.id, error=str(e))
+                               generation_id=generation_id, error=str(e))
                     errors += 1
 
             stats = {
