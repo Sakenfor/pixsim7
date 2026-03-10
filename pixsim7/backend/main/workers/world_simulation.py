@@ -16,8 +16,9 @@ Usage:
 """
 
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Iterable
 
 from sqlalchemy import select
 
@@ -61,18 +62,87 @@ SIMULATION_TICK_INTERVAL = _coerce_positive_float(
 _last_tick_times: Dict[int, datetime] = {}
 
 
-def _get_simulation_config(world: GameWorld) -> Dict[str, Any]:
-    meta = getattr(world, "meta", None)
-    if not isinstance(meta, dict):
-        return {}
+def _coerce_meta(meta: Any) -> Dict[str, Any]:
+    return meta if isinstance(meta, dict) else {}
+
+
+def _coerce_world_time(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class WorldTickSnapshot:
+    world_id: int
+    meta: Dict[str, Any]
+
+    @classmethod
+    def from_row(cls, row: tuple[Any, Any]) -> "WorldTickSnapshot | None":
+        world_id, meta = row
+        if world_id is None:
+            return None
+        return cls(world_id=int(world_id), meta=_coerce_meta(meta))
+
+
+@dataclass(frozen=True, slots=True)
+class WorldStatusSnapshot:
+    world_id: int
+    name: str
+    meta: Dict[str, Any]
+    world_time: float
+
+    @classmethod
+    def from_row(cls, row: tuple[Any, Any, Any, Any]) -> "WorldStatusSnapshot | None":
+        world_id, name, meta, world_time = row
+        if world_id is None:
+            return None
+        if isinstance(name, str) and name.strip():
+            world_name = name
+        else:
+            world_name = f"World {world_id}"
+        return cls(
+            world_id=int(world_id),
+            name=world_name,
+            meta=_coerce_meta(meta),
+            world_time=_coerce_world_time(world_time),
+        )
+
+
+def _to_tick_snapshots(rows: Iterable[tuple[Any, Any]]) -> list[WorldTickSnapshot]:
+    snapshots: list[WorldTickSnapshot] = []
+    for row in rows:
+        snapshot = WorldTickSnapshot.from_row(row)
+        if snapshot is not None:
+            snapshots.append(snapshot)
+    return snapshots
+
+
+def _to_status_snapshots(rows: Iterable[tuple[Any, Any, Any, Any]]) -> list[WorldStatusSnapshot]:
+    snapshots: list[WorldStatusSnapshot] = []
+    for row in rows:
+        snapshot = WorldStatusSnapshot.from_row(row)
+        if snapshot is not None:
+            snapshots.append(snapshot)
+    return snapshots
+
+
+def _get_meta(source: Any) -> Dict[str, Any]:
+    if isinstance(source, dict):
+        return source
+    meta = getattr(source, "meta", None)
+    return _coerce_meta(meta)
+
+
+def _get_simulation_config(source: Any) -> Dict[str, Any]:
+    meta = _get_meta(source)
     config = meta.get("simulation")
     return config if isinstance(config, dict) else {}
 
 
-def _get_game_profile(world: GameWorld) -> Dict[str, Any]:
-    meta = getattr(world, "meta", None)
-    if not isinstance(meta, dict):
-        return {}
+def _get_game_profile(source: Any) -> Dict[str, Any]:
+    meta = _get_meta(source)
     profile = meta.get("gameProfile")
     return profile if isinstance(profile, dict) else {}
 
@@ -148,15 +218,12 @@ async def tick_active_worlds(ctx: dict) -> Dict[str, Any]:
 
     # Snapshot world IDs + meta as plain scalars first; do not carry ORM instances
     # across per-world rollback paths (avoids expired-attribute lazy-load in async).
-    worlds: list[tuple[int, Dict[str, Any]]] = []
+    worlds: list[WorldTickSnapshot] = []
     try:
         async with get_async_session() as db:
             query = select(GameWorld.id, GameWorld.meta)
             result = await db.execute(query)
-            for world_id, meta in result.all():
-                if world_id is None:
-                    continue
-                worlds.append((int(world_id), meta if isinstance(meta, dict) else {}))
+            worlds = _to_tick_snapshots(result.all())
     except Exception as e:
         results["errors"].append(f"Database error: {str(e)}")
         logger.error(f"tick_active_worlds database error: {e}", exc_info=True)
@@ -167,16 +234,13 @@ async def tick_active_worlds(ctx: dict) -> Dict[str, Any]:
         logger.debug("tick_active_worlds: No worlds found")
         return results
 
-    _prune_stale_last_tick_cache([world_id for world_id, _ in worlds])
+    _prune_stale_last_tick_cache([world.world_id for world in worlds])
 
-    for world_id, meta in worlds:
+    for world in worlds:
+        world_id = world.world_id
         try:
-            simulation_config = (
-                meta.get("simulation") if isinstance(meta.get("simulation"), dict) else {}
-            )
-            game_profile = (
-                meta.get("gameProfile") if isinstance(meta.get("gameProfile"), dict) else {}
-            )
+            simulation_config = _get_simulation_config(world.meta)
+            game_profile = _get_game_profile(world.meta)
             tick_interval = _get_world_tick_interval(simulation_config)
 
             if _is_world_paused(simulation_config):
@@ -258,25 +322,27 @@ async def get_simulation_status(ctx: dict) -> Dict[str, Any]:
 
     async with get_async_session() as db:
         try:
-            query = select(GameWorld, GameWorldState).outerjoin(
+            query = select(
+                GameWorld.id,
+                GameWorld.name,
+                GameWorld.meta,
+                GameWorldState.world_time,
+            ).outerjoin(
                 GameWorldState, GameWorld.id == GameWorldState.world_id
             )
             result = await db.execute(query)
-            rows = result.all()
+            worlds = _to_status_snapshots(result.all())
 
-            for world, world_state in rows:
-                if world.id is None:
-                    continue
-                simulation_config = _get_simulation_config(world)
-                game_profile = _get_game_profile(world)
+            for world in worlds:
+                simulation_config = _get_simulation_config(world.meta)
+                game_profile = _get_game_profile(world.meta)
                 simulation_mode = _get_simulation_mode(game_profile)
-                world_time = world_state.world_time if world_state else 0.0
-                last_tick = _last_tick_times.get(world.id)
+                last_tick = _last_tick_times.get(world.world_id)
                 tick_interval = _get_world_tick_interval(simulation_config)
 
-                status["worlds"][world.id] = {
+                status["worlds"][world.world_id] = {
                     "name": world.name,
-                    "world_time": world_time,
+                    "world_time": world.world_time,
                     "auto_tick_enabled": _is_world_auto_tick_enabled(simulation_config, game_profile),
                     "paused": _is_world_paused(simulation_config),
                     "simulation_mode": simulation_mode,
