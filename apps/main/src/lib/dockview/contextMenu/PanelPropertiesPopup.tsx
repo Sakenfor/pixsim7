@@ -80,11 +80,31 @@ function PropertyRow({
     : 'text-neutral-800 dark:text-neutral-200';
 
   return (
-    <div className="flex items-center justify-between gap-2 text-xs">
-      <span className="text-neutral-500">{label}</span>
-      <span className={`${valueClass} ${mono ? 'font-mono' : ''}`}>
+    <div className="flex items-start justify-between gap-3 text-xs min-w-0">
+      <span className="text-neutral-500 shrink-0">{label}</span>
+      <span className={`${valueClass} ${mono ? 'font-mono' : ''} truncate text-right select-text`}>
         {value}
       </span>
+    </div>
+  );
+}
+
+/**
+ * Renders a long-text property as a label + copyable block below.
+ */
+function PropertyBlock({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="text-xs space-y-1">
+      <span className="text-neutral-500">{label}</span>
+      <pre className="whitespace-pre-wrap break-words text-neutral-800 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 rounded px-2 py-1.5 font-mono text-[11px] leading-relaxed select-text max-h-[120px] overflow-y-auto">
+        {value}
+      </pre>
     </div>
   );
 }
@@ -292,15 +312,24 @@ function ItemProperties({ data, contextType }: { data?: Record<string, unknown>;
   }
 
   return (
-    <div className="space-y-1">
-      {displayableEntries.map(({ key, label, value }) => (
-        <PropertyRow
-          key={key}
-          label={label}
-          value={formatValue(value)}
-          mono={typeof value === 'string' || typeof value === 'number'}
-        />
-      ))}
+    <div className="space-y-1.5">
+      {displayableEntries.map(({ key, label, value }) => {
+        const strVal = typeof value === 'string' ? value : null;
+        const isLongText = strVal != null && (strVal.length > 60 || strVal.includes('\n'));
+
+        if (isLongText) {
+          return <PropertyBlock key={key} label={label} value={strVal} />;
+        }
+
+        return (
+          <PropertyRow
+            key={key}
+            label={label}
+            value={formatValue(value)}
+            mono={typeof value === 'string' || typeof value === 'number'}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -516,32 +545,34 @@ export function PropertiesPopup() {
       style={{ left: `${coords.x}px`, top: `${coords.y}px` }}
       data-properties-popup
     >
-      <Panel className="w-[320px] p-4 shadow-lg">
-        <div className="flex items-center justify-between mb-3">
-          <div>
+      <Panel className="w-[320px] shadow-lg">
+        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+          <div className="min-w-0">
             <div className="text-[10px] uppercase text-neutral-400">{title} Properties</div>
-            <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate max-w-[240px]">
+            <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
               {String(itemName)}
             </div>
           </div>
           <button
             type="button"
             onClick={close}
-            className="text-xs text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+            className="text-xs text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 shrink-0 ml-2"
           >
             Close
           </button>
         </div>
 
-        {isPanelContext ? (
-          <>
-            <PanelProperties panelId={panelId} instanceId={instanceId} panelTitle={panelTitle} panelDefinition={panelDefinition} />
-            <ConsumesSection hostId={hostId} />
-            <CapabilitiesSection capabilities={capabilities} />
-          </>
-        ) : (
-          <ItemProperties data={data as Record<string, unknown>} contextType={contextType} />
-        )}
+        <div className="px-4 pb-4 max-h-[60vh] overflow-y-auto">
+          {isPanelContext ? (
+            <>
+              <PanelProperties panelId={panelId} instanceId={instanceId} panelTitle={panelTitle} panelDefinition={panelDefinition} />
+              <ConsumesSection hostId={hostId} />
+              <CapabilitiesSection capabilities={capabilities} />
+            </>
+          ) : (
+            <ItemProperties data={data as Record<string, unknown>} contextType={contextType} />
+          )}
+        </div>
       </Panel>
     </div>,
     document.body,
