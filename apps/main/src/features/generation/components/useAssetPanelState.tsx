@@ -22,8 +22,11 @@ import { notifyGalleryOfUpdatedAsset } from '@features/assets/lib/uploadActions'
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import {
   CAP_ASSET_INPUT,
+  CAP_CHARACTER_CONTEXT,
+  useCapability,
   useProvideCapability,
   type AssetInputContext,
+  type CharacterContextSummary,
 } from '@features/contextHub';
 import {
   type InputItem,
@@ -171,6 +174,13 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const operationType = ctx?.operationType ?? controller.operationType;
   const isFlexibleOperation = ctx?.isFlexibleOperation ?? (OPERATION_METADATA[operationType]?.flexibleInput === true);
   const operationMeta = OPERATION_METADATA[operationType];
+  const { value: activeCharacterContext } = useCapability<CharacterContextSummary>(CAP_CHARACTER_CONTEXT);
+  const activeCharacterLabel = useMemo(() => {
+    if (!activeCharacterContext) return null;
+    if (activeCharacterContext.displayName?.trim()) return activeCharacterContext.displayName.trim();
+    if (activeCharacterContext.name?.trim()) return activeCharacterContext.name.trim();
+    return activeCharacterContext.characterId;
+  }, [activeCharacterContext]);
   const removeInput = ctxRemoveInput ?? controller.removeInput;
   const workbench = useGenerationWorkbench({ operationType });
   const model = ctx?.model ?? (workbench.dynamicParams?.model as string | undefined);
@@ -546,55 +556,72 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     };
   }, []);
 
-  const isFusionOperation = operationType === 'fusion';
+  const supportsCompositionRoleOverlay = operationType === 'fusion'
+    || operationType === 'image_to_image'
+    || operationType === 'video_transition';
 
   const buildFusionRoleOverlay = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     (item: InputItem, slotIdx: number) => {
-      if (!isFusionOperation) return undefined;
-
-      // Three-state cycle: none → main_character → environment → none
-      const currentRole = item.roleOverride; // undefined = simple mode (no role)
-
-      const nextRole =
-        currentRole === undefined ? 'main_character'
-        : currentRole === 'main_character' ? 'environment'
-        : undefined; // environment → none
-
-      const title =
-        currentRole === undefined ? 'No role (simple mode) — click to assign Character'
-        : currentRole === 'main_character' ? 'Character — click to switch to Background'
-        : 'Background — click to clear role';
-
-      const iconName =
-        currentRole === 'environment' ? 'image'
-        : currentRole === 'main_character' ? 'user'
-        : 'minus';
-
-      const bgClass =
-        currentRole === undefined
-          ? 'bg-black/40'
-          : 'bg-black/70';
+      if (!supportsCompositionRoleOverlay) return undefined;
+      const currentRole = item.roleOverride;
+      const isCharacter = currentRole === 'main_character';
+      const isEnvironment = currentRole === 'environment';
+      const characterTitle = activeCharacterLabel
+        ? `Set as Character (${activeCharacterLabel})`
+        : 'Set as Character';
+      const clearTitle = activeCharacterLabel
+        ? `Clear role override (auto can still infer ${activeCharacterLabel})`
+        : 'Clear role override (use auto inference)';
 
       return (
-        <button
-          type="button"
-          className={`cq-badge-xs cq-inset-br absolute rounded-full pointer-events-auto cursor-pointer hover:bg-black/90 transition-colors ${bgClass}`}
-          title={title}
-          onClick={(e) => {
-            e.stopPropagation();
-            storeUpdateRoleOverride(operationType, item.id, nextRole);
-          }}
-        >
-          <Icon name={iconName} size={10} color="#fff" />
-        </button>
+        <div className="cq-inset-br absolute flex items-center gap-1 pointer-events-auto">
+          <button
+            type="button"
+            className={`cq-badge-xs rounded-full transition-colors ${
+              isCharacter ? 'bg-accent text-accent-text' : 'bg-black/55 text-white hover:bg-black/75'
+            }`}
+            title={characterTitle}
+            onClick={(e) => {
+              e.stopPropagation();
+              storeUpdateRoleOverride(operationType, item.id, 'main_character');
+            }}
+          >
+            <Icon name="user" size={10} />
+          </button>
+          <button
+            type="button"
+            className={`cq-badge-xs rounded-full transition-colors ${
+              isEnvironment ? 'bg-accent text-accent-text' : 'bg-black/55 text-white hover:bg-black/75'
+            }`}
+            title="Set as Background / Environment"
+            onClick={(e) => {
+              e.stopPropagation();
+              storeUpdateRoleOverride(operationType, item.id, 'environment');
+            }}
+          >
+            <Icon name="image" size={10} />
+          </button>
+          {currentRole && (
+            <button
+              type="button"
+              className="cq-badge-xs rounded-full bg-black/45 text-white hover:bg-black/70 transition-colors"
+              title={clearTitle}
+              onClick={(e) => {
+                e.stopPropagation();
+                storeUpdateRoleOverride(operationType, item.id, undefined);
+              }}
+            >
+              <Icon name="x" size={10} />
+            </button>
+          )}
+        </div>
       );
     },
-    [isFusionOperation, storeUpdateRoleOverride, operationType],
+    [supportsCompositionRoleOverlay, activeCharacterLabel, storeUpdateRoleOverride, operationType],
   );
 
-  // (Static badge builders are module-level — see top of file)
-
+  // (Static badge builders are module-level - see top of file)
   const hasAsset = displayAssets.length > 0;
   const isMultiAssetDisplay = displayAssets.length > 1;
 
@@ -953,3 +980,4 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
 }
 
 export type AssetPanelState = ReturnType<typeof useAssetPanelState>;
+
