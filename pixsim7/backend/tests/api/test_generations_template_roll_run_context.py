@@ -117,12 +117,21 @@ class TestCreateGenerationTemplateRollViaRunContext:
             def __init__(self, db):
                 self.db = db
 
-            async def roll_template(self, template_id_arg, *, seed=None, exclude_block_ids=None, character_bindings=None):
+            async def roll_template(
+                self,
+                template_id_arg,
+                *,
+                seed=None,
+                exclude_block_ids=None,
+                character_bindings=None,
+                current_user_id=None,
+            ):
                 return await roll_template_mock(
                     template_id_arg,
                     seed=seed,
                     exclude_block_ids=exclude_block_ids,
                     character_bindings=character_bindings,
+                    current_user_id=current_user_id,
                 )
 
         request_payload = {
@@ -166,6 +175,7 @@ class TestCreateGenerationTemplateRollViaRunContext:
         roll_call = roll_template_mock.await_args
         assert str(roll_call.args[0]) == template_id
         assert roll_call.kwargs["character_bindings"] == character_bindings
+        assert roll_call.kwargs["current_user_id"] == user_id
 
         create_call = local_service.create_generation.await_args
         params = create_call.kwargs["params"]

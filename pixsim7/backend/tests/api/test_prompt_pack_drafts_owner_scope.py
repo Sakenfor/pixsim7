@@ -10,6 +10,9 @@ from fastapi import HTTPException
 
 import pixsim7.backend.main.api.v1.prompt_packs as prompt_packs_module
 from pixsim7.backend.main.api.v1.prompt_packs import (
+    activate_prompt_pack_version,
+    deactivate_prompt_pack_version,
+    list_prompt_pack_catalog,
     PromptPackDraftSourceUpdate,
     PromptPackDraftCreate,
     PromptPackDraftUpdate,
@@ -194,6 +197,57 @@ class _VersionServiceCapture:
     async def get_version(self, version_id):
         self.get_calls.append({"version_id": version_id})
         return self._version
+
+
+class _RuntimeServiceCapture:
+    def __init__(self) -> None:
+        self.catalog_calls: list[dict] = []
+        self.activate_calls: list[dict] = []
+        self.deactivate_calls: list[dict] = []
+
+    async def list_catalog(self, *, user_id: int, scope: str):
+        self.catalog_calls.append({"user_id": user_id, "scope": scope})
+        return [
+            {
+                "catalog_source": "self",
+                "source_pack": "demo_pack",
+                "version_id": uuid4(),
+                "draft_id": uuid4(),
+                "namespace": f"user.{user_id}",
+                "pack_slug": "demo-pack",
+                "version": 3,
+                "checksum": "c" * 64,
+                "status": "compile_ok",
+                "created_at": datetime.now(timezone.utc),
+                "owner_user_id": user_id,
+                "is_active": True,
+                "block_count": 12,
+            }
+        ]
+
+    async def activate_version(self, *, user_id: int, version_id):
+        self.activate_calls.append({"user_id": user_id, "version_id": version_id})
+        return SimpleNamespace(
+            version_id=version_id,
+            draft_id=uuid4(),
+            source_pack="demo_pack",
+            active_version_ids=[str(version_id)],
+            blocks_created=3,
+            blocks_updated=1,
+            blocks_pruned=0,
+        )
+
+    async def deactivate_version(self, *, user_id: int, version_id):
+        self.deactivate_calls.append({"user_id": user_id, "version_id": version_id})
+        return SimpleNamespace(
+            version_id=version_id,
+            draft_id=uuid4(),
+            source_pack="demo_pack",
+            active_version_ids=[],
+            blocks_created=0,
+            blocks_updated=0,
+            blocks_pruned=0,
+        )
 
 
 @pytest.mark.asyncio
@@ -525,3 +579,66 @@ async def test_get_version_blocks_non_owner(monkeypatch: pytest.MonkeyPatch) -> 
         )
 
     assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_catalog_returns_runtime_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime_capture = _RuntimeServiceCapture()
+    monkeypatch.setattr(prompt_packs_module, "PromptPackRuntimeService", lambda _db: runtime_capture)
+
+    rows = await list_prompt_pack_catalog(
+        scope="self",
+        current_user=_user(user_id=42, username="owner"),
+        db=_DummyDB(),
+    )
+
+    assert runtime_capture.catalog_calls[0]["user_id"] == 42
+    assert runtime_capture.catalog_calls[0]["scope"] == "self"
+    assert rows[0].catalog_source == "self"
+    assert rows[0].source_pack == "demo_pack"
+    assert rows[0].is_active is True
+
+
+@pytest.mark.asyncio
+async def test_activate_catalog_version_commits_and_returns_activation_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_capture = _RuntimeServiceCapture()
+    db = _DummyDB()
+    version_id = uuid4()
+    monkeypatch.setattr(prompt_packs_module, "PromptPackRuntimeService", lambda _db: runtime_capture)
+
+    response = await activate_prompt_pack_version(
+        version_id=version_id,
+        current_user=_user(user_id=7, username="alice"),
+        db=db,
+    )
+
+    assert runtime_capture.activate_calls[0]["user_id"] == 7
+    assert runtime_capture.activate_calls[0]["version_id"] == version_id
+    assert db.commit_calls == 1
+    assert response.version_id == version_id
+    assert response.active_version_ids == [version_id]
+    assert response.blocks_created == 3
+
+
+@pytest.mark.asyncio
+async def test_deactivate_catalog_version_commits_and_clears_activation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime_capture = _RuntimeServiceCapture()
+    db = _DummyDB()
+    version_id = uuid4()
+    monkeypatch.setattr(prompt_packs_module, "PromptPackRuntimeService", lambda _db: runtime_capture)
+
+    response = await deactivate_prompt_pack_version(
+        version_id=version_id,
+        current_user=_user(user_id=7, username="alice"),
+        db=db,
+    )
+
+    assert runtime_capture.deactivate_calls[0]["user_id"] == 7
+    assert runtime_capture.deactivate_calls[0]["version_id"] == version_id
+    assert db.commit_calls == 1
+    assert response.version_id == version_id
+    assert response.active_version_ids == []

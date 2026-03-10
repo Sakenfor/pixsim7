@@ -490,6 +490,7 @@ class ChainExecutor:
                 template_uuid,
                 control_values=control_overrides,
                 character_bindings=char_overrides,
+                current_user_id=user.id,
             )
 
             if not roll_result.get("success"):

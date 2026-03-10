@@ -13,6 +13,11 @@ from .version_service import (
     PromptPackVersionError,
     PromptPackVersionService,
 )
+from .runtime_service import (
+    PromptPackActivationResult,
+    PromptPackRuntimeError,
+    PromptPackRuntimeService,
+)
 
 __all__ = [
     "PromptPackCompileResult",
@@ -22,4 +27,7 @@ __all__ = [
     "PromptPackDraftService",
     "PromptPackVersionError",
     "PromptPackVersionService",
+    "PromptPackActivationResult",
+    "PromptPackRuntimeError",
+    "PromptPackRuntimeService",
 ]

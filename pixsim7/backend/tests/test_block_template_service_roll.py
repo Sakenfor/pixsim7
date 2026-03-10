@@ -671,3 +671,33 @@ async def test_update_template_normalizes_legacy_owner_keys() -> None:
     assert owner["username"] == "legacy-name"
     assert updated.owner_user_id == 11
     assert "owner_user_id" not in updated.template_metadata
+
+
+def test_build_primitive_slot_query_applies_runtime_private_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: Dict[str, Any] = {}
+
+    def _fake_query_builder(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace()
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.prompt.block.template_service.build_block_primitive_query",
+        _fake_query_builder,
+    )
+
+    service = BlockTemplateService(SimpleNamespace())
+    with service._scoped_runtime_candidate_filter(
+        owner_user_id=7,
+        active_source_packs=["demo_pack"],
+    ):
+        _ = service._build_primitive_slot_query(
+            {
+                "block_source": "primitives",
+                "category": "camera",
+            }
+        )
+
+    assert captured["private_owner_user_id"] == 7
+    assert captured["private_source_packs"] == ["demo_pack"]

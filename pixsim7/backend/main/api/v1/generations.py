@@ -218,6 +218,7 @@ async def create_generation(
             roll_result = await template_service.roll_template(
                 block_template_id,
                 character_bindings=character_bindings,
+                current_user_id=user.id,
             )
             if roll_result.get("success") and roll_result.get("assembled_prompt"):
                 request.config.prompt = roll_result["assembled_prompt"]

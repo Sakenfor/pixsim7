@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
@@ -18,6 +18,8 @@ from pixsim7.backend.main.services.prompt.packs import (
     PromptPackCompileService,
     PromptPackDraftError,
     PromptPackDraftService,
+    PromptPackRuntimeError,
+    PromptPackRuntimeService,
     PromptPackVersionError,
     PromptPackVersionService,
 )
@@ -83,6 +85,32 @@ class PromptPackVersionResponse(BaseModel):
     compiled_blocks_json: List[Dict[str, Any]] = Field(default_factory=list)
     checksum: str
     created_at: datetime
+
+
+class PromptPackCatalogResponse(BaseModel):
+    catalog_source: Literal["self", "shared", "system"]
+    source_pack: str
+    version_id: Optional[UUID] = None
+    draft_id: Optional[UUID] = None
+    namespace: Optional[str] = None
+    pack_slug: Optional[str] = None
+    version: Optional[int] = None
+    checksum: Optional[str] = None
+    status: Optional[str] = None
+    created_at: Optional[datetime] = None
+    owner_user_id: Optional[int] = None
+    is_active: bool = False
+    block_count: int = 0
+
+
+class PromptPackActivationResponse(BaseModel):
+    version_id: UUID
+    draft_id: UUID
+    source_pack: str
+    active_version_ids: List[UUID] = Field(default_factory=list)
+    blocks_created: int = 0
+    blocks_updated: int = 0
+    blocks_pruned: int = 0
 
 
 @router.post("/drafts", response_model=PromptPackDraftResponse, status_code=201)
@@ -424,6 +452,65 @@ async def get_prompt_pack_version(
     )
 
 
+@router.get("/catalog", response_model=List[PromptPackCatalogResponse])
+async def list_prompt_pack_catalog(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    scope: str = Query("self", description="self | shared | system | all"),
+) -> List[PromptPackCatalogResponse]:
+    """List runtime prompt-pack catalog rows for the current user."""
+    runtime_service = PromptPackRuntimeService(db)
+    try:
+        rows = await runtime_service.list_catalog(
+            user_id=current_user.id,
+            scope=scope,
+        )
+    except PromptPackRuntimeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+    return [PromptPackCatalogResponse(**row) for row in rows]
+
+
+@router.post("/catalog/{version_id}/activate", response_model=PromptPackActivationResponse)
+async def activate_prompt_pack_version(
+    version_id: UUID,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> PromptPackActivationResponse:
+    """Activate a private version for current user's runtime prompt flow."""
+    runtime_service = PromptPackRuntimeService(db)
+    try:
+        result = await runtime_service.activate_version(
+            user_id=current_user.id,
+            version_id=version_id,
+        )
+        await db.commit()
+    except PromptPackRuntimeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+    return _build_activation_response(result)
+
+
+@router.post("/catalog/{version_id}/deactivate", response_model=PromptPackActivationResponse)
+async def deactivate_prompt_pack_version(
+    version_id: UUID,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> PromptPackActivationResponse:
+    """Deactivate a private version for current user's runtime prompt flow."""
+    runtime_service = PromptPackRuntimeService(db)
+    try:
+        result = await runtime_service.deactivate_version(
+            user_id=current_user.id,
+            version_id=version_id,
+        )
+        await db.commit()
+    except PromptPackRuntimeError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+    return _build_activation_response(result)
+
+
 def _assert_draft_access(*, draft: Any, current_user: Any) -> None:
     assert_can_write_user_owned(
         user=current_user,
@@ -498,4 +585,23 @@ def _build_version_response(
         compiled_blocks_json=blocks,
         checksum=version.checksum,
         created_at=version.created_at,
+    )
+
+
+def _build_activation_response(result: Any) -> PromptPackActivationResponse:
+    parsed_ids: List[UUID] = []
+    for raw in list(getattr(result, "active_version_ids", []) or []):
+        try:
+            parsed_ids.append(UUID(str(raw)))
+        except (TypeError, ValueError):
+            continue
+
+    return PromptPackActivationResponse(
+        version_id=getattr(result, "version_id"),
+        draft_id=getattr(result, "draft_id"),
+        source_pack=str(getattr(result, "source_pack", "")),
+        active_version_ids=parsed_ids,
+        blocks_created=int(getattr(result, "blocks_created", 0) or 0),
+        blocks_updated=int(getattr(result, "blocks_updated", 0) or 0),
+        blocks_pruned=int(getattr(result, "blocks_pruned", 0) or 0),
     )

@@ -229,6 +229,7 @@ async def roll_template(
         exclude_block_ids=request.exclude_block_ids,
         character_bindings=request.character_bindings,
         control_values=request.control_values,
+        current_user_id=current_user.id if current_user else None,
     )
     if not result.get("success"):
         raise HTTPException(404, result.get("error", "Roll failed"))

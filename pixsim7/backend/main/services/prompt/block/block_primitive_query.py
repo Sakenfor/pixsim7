@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, Optional
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 
 from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.services.prompt.block.block_query import normalize_tag_query
@@ -23,6 +23,8 @@ def build_block_primitive_query(
     min_rating: Optional[float] = None,
     exclude_block_ids: Optional[Iterable[str]] = None,
     is_public: Optional[bool] = True,
+    private_owner_user_id: Optional[int] = None,
+    private_source_packs: Optional[Iterable[str]] = None,
     text_query: Optional[str] = None,
 ) -> Select:
     """Build a SQLAlchemy select for BlockPrimitive with shared filter semantics."""
@@ -70,7 +72,38 @@ def build_block_primitive_query(
     if exclude_block_ids:
         query = query.where(BlockPrimitive.block_id.notin_(exclude_block_ids))
 
-    if is_public is not None:
+    if private_owner_user_id is not None:
+        owner_expr = func.jsonb_extract_path_text(BlockPrimitive.tags, "owner_user_id") == str(private_owner_user_id)
+        private_clauses = [
+            BlockPrimitive.is_public.is_(False),
+            owner_expr,
+        ]
+        source_pack_values = [
+            str(value).strip()
+            for value in (private_source_packs or [])
+            if str(value).strip()
+        ]
+        include_private_scope = bool(source_pack_values)
+        if source_pack_values:
+            source_pack_expr = func.jsonb_extract_path_text(BlockPrimitive.tags, "source_pack")
+            private_clauses.append(source_pack_expr.in_(source_pack_values))
+        private_scope_clause = and_(*private_clauses)
+
+        if is_public is True:
+            if include_private_scope:
+                query = query.where(
+                    or_(
+                        BlockPrimitive.is_public.is_(True),
+                        private_scope_clause,
+                    )
+                )
+            else:
+                query = query.where(BlockPrimitive.is_public.is_(True))
+        elif is_public is False:
+            query = query.where(private_scope_clause)
+        else:
+            query = query.where(private_scope_clause)
+    elif is_public is not None:
         query = query.where(BlockPrimitive.is_public == is_public)
 
     if text_query:

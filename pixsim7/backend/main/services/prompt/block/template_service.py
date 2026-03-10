@@ -7,7 +7,8 @@ Provides database operations for block templates including:
 """
 import random
 import math
-from typing import List, Optional, Dict, Any, Tuple
+from contextlib import contextmanager
+from typing import Iterator, List, Optional, Dict, Any, Tuple
 from uuid import UUID
 from datetime import datetime, timezone
 
@@ -71,6 +72,25 @@ class BlockTemplateService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._runtime_owner_user_id: Optional[int] = None
+        self._runtime_active_source_packs: Optional[List[str]] = None
+
+    @contextmanager
+    def _scoped_runtime_candidate_filter(
+        self,
+        *,
+        owner_user_id: Optional[int],
+        active_source_packs: Optional[List[str]],
+    ) -> Iterator[None]:
+        prev_owner = self._runtime_owner_user_id
+        prev_source_packs = list(self._runtime_active_source_packs or [])
+        self._runtime_owner_user_id = owner_user_id
+        self._runtime_active_source_packs = list(active_source_packs or [])
+        try:
+            yield
+        finally:
+            self._runtime_owner_user_id = prev_owner
+            self._runtime_active_source_packs = prev_source_packs
 
     @staticmethod
     def _get_slot_schema_version(template: BlockTemplate) -> Optional[int]:
@@ -411,6 +431,8 @@ class BlockTemplateService:
             min_rating=slot.get("min_rating"),
             exclude_block_ids=slot.get("exclude_block_ids"),
             is_public=True,
+            private_owner_user_id=self._runtime_owner_user_id,
+            private_source_packs=self._runtime_active_source_packs,
         )
 
     async def count_candidates(self, slot: Dict[str, Any]) -> int:
@@ -1299,6 +1321,7 @@ class BlockTemplateService:
         exclude_block_ids: Optional[List[UUID]] = None,
         character_bindings: Optional[Dict[str, Any]] = None,
         control_values: Optional[Dict[str, Any]] = None,
+        current_user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Roll a template: compile + resolve slot selections and compose a prompt."""
         template = await self.get_template(template_id)
@@ -1335,16 +1358,39 @@ class BlockTemplateService:
         else:
             effective_bindings = template_bindings
 
+        runtime_owner_user_id: Optional[int] = None
+        if current_user_id is not None:
+            try:
+                runtime_owner_user_id = int(current_user_id)
+            except (TypeError, ValueError):
+                runtime_owner_user_id = None
+
+        runtime_active_source_packs: List[str] = []
+        if runtime_owner_user_id is not None:
+            try:
+                from pixsim7.backend.main.services.prompt.packs import PromptPackRuntimeService
+
+                runtime_service = PromptPackRuntimeService(self.db)
+                runtime_active_source_packs = await runtime_service.resolve_active_source_packs(
+                    user_id=runtime_owner_user_id
+                )
+            except Exception:
+                runtime_active_source_packs = []
+
         compiler = _compiler_registry.get(_ROLL_COMPILER_ID)
         try:
-            compiled_request: ResolverResolutionRequest = await compiler.compile(
-                service=self,
-                template=template,
-                candidate_limit=_ROLL_CANDIDATE_LIMIT,
-                control_values=control_values,
-                exclude_block_ids=list(exclude_block_ids or []),
-                resolver_id=_ROLL_RESOLVER_ID,
-            )
+            with self._scoped_runtime_candidate_filter(
+                owner_user_id=runtime_owner_user_id,
+                active_source_packs=runtime_active_source_packs,
+            ):
+                compiled_request: ResolverResolutionRequest = await compiler.compile(
+                    service=self,
+                    template=template,
+                    candidate_limit=_ROLL_CANDIDATE_LIMIT,
+                    control_values=control_values,
+                    exclude_block_ids=list(exclude_block_ids or []),
+                    resolver_id=_ROLL_RESOLVER_ID,
+                )
         except Exception as exc:
             return {"success": False, "error": f"Template compile failed: {exc}"}
 
