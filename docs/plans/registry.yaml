@@ -81,6 +81,20 @@ plans:
       - apps/main/src/features/generation/components/generationSettingsPanel
     priority: normal
     summary: Viewer mask overlay tools — draw, import, presets, analyzer bridge.
+  - id: md-governance-rulebook
+    path: docs/plans/active/md-governance-rulebook/plan.md
+    status: active
+    stage: phase_0_bootstrap
+    owner: docs-governance lane
+    last_updated: 2026-03-11
+    code_paths:
+      - docs/plans
+      - docs/architecture
+      - docs/decisions
+      - scripts/check_plan_registry.ts
+      - scripts/sync_plan_registry.ts
+    priority: high
+    summary: Unified markdown plan + rulebook for AI/human doc authoring, ownership, and drift control.
   - id: mixed-legacy-areas-cleanup
     path: docs/plans/active/mixed-legacy-areas-cleanup/plan.md
     status: active

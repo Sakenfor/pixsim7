@@ -353,6 +353,109 @@ blocks:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_parse_blocks_rejects_op_signature_prefix_mismatch() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: camera_motion
+    block_schema:
+      id_prefix: core.camera.motion
+      text_template: "Camera motion token: {variant}."
+      op:
+        op_id_template: "subject.move.{variant}"
+        signature_id: "camera.motion.v1"
+        params:
+          - key: speed
+            type: enum
+            enum: [slow, normal, fast]
+          - key: direction
+            type: enum
+            enum: [in, out, none]
+      variants:
+        - key: zoom
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="must start with 'camera.motion.'"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_op_signature_unsupported_modalities() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: subject_motion
+    block_schema:
+      id_prefix: core.subject.motion
+      text_template: "Subject motion token: {variant}."
+      op:
+        op_id_template: "subject.move.{variant}"
+        signature_id: "subject.motion.v1"
+        modalities: [image]
+        params:
+          - key: direction
+            type: enum
+            enum: [in, out, left, right, up, down, forward, backward, around, none]
+          - key: speed
+            type: enum
+            enum: [slow, normal, fast]
+          - key: gait
+            type: enum
+            enum: [step, walk, run, drift, turn]
+      variants:
+        - key: walk
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="unsupported modalities for signature"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_op_signature_missing_variant_template() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: camera_motion
+    block_schema:
+      id_prefix: core.camera.motion
+      text_template: "Camera motion token: {variant}."
+      op:
+        op_id: "camera.motion.zoom"
+        signature_id: "camera.motion.v1"
+        params:
+          - key: speed
+            type: enum
+            enum: [slow, normal, fast]
+          - key: direction
+            type: enum
+            enum: [in, out, left, right, up, down, forward, backward, around, none]
+      variants:
+        - key: zoom
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="requires op_id_template"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_parse_blocks_rejects_non_object_schema_descriptors() -> None:
     root, pack_dir = _make_pack_dir()
     try:

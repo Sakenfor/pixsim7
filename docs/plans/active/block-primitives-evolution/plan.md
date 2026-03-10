@@ -38,6 +38,58 @@ Own the canonical execution plan for the block-primitives system so CUE pack aut
   - `docs/architecture/block-primitives-evolution.md` (deep context + historical rationale)
   - `docs/architecture/reviews/block-primitives-snapshot-2026-03-10.md` (point-in-time drift snapshot)
 
+## Layered Assembly Policy (Proposed Canon)
+
+### Layer stack
+
+1. `L0 - Safety/Hard constraints`
+   - Rating/safety constraints and explicit forbid constraints.
+2. `L1 - Context anchors`
+   - World/location/POV/character identity and other non-negotiable scene anchors.
+3. `L2 - Core composition`
+   - Camera/shot/angle/focus/light/placement primitives that define the scene skeleton.
+4. `L3 - Stateful modifiers`
+   - Mood/interaction/tone directives derived from session and NPC relationship state.
+5. `L4 - Optional style/prose overlays`
+   - Prose descriptors and polish modifiers that can be dropped first under budget pressure.
+
+### Prompt budget + priority policy
+
+- Budget must be provider/model-aware, not hardcoded to one value.
+- Source of truth for max chars should come from provider capability limits (for example `prompt_max_chars`), with conservative fallback.
+- If a product surface uses a fixed cap (for example 5000 chars), apply the same priority/drop policy below.
+
+Deterministic budget handling:
+
+1. Reserve budget:
+   - `L0 + L1`: must fit (hard floor, not dropped).
+2. Allocate remaining budget by priority:
+   - `L2` before `L3` before `L4`.
+3. Overflow handling order:
+   - Drop/trim `L4` first,
+   - then trim `L3`,
+   - keep `L2` unless impossible,
+   - never violate `L0/L1` constraints.
+4. Within each layer, trim by stable rank:
+   - lower score / lower confidence / lower explicit priority is removed first.
+
+Implementation target:
+
+- Add an assembly budget pass in prompt composition so selection is deterministic and explainable in traces (`dropped_for_budget`, `trimmed_for_budget`).
+
+### NPC/stat state policy layer
+
+- Introduce a normalized policy packet before compile/resolve:
+  - Inputs: relationship/intimacy stats, NPC personality flags, session/world context.
+  - Outputs: desired tags, avoid tags, allowed rating band, intensity bounds, optional slot hints.
+- Reuse existing social-context computation as upstream signal source where possible (avoid duplicate intimacy/rating mappings).
+- Missing stats must degrade gracefully to neutral defaults (no hard fail).
+
+Policy examples:
+
+- Higher intimacy band can widen allowed mood/style ranges, but still bounded by rating policy.
+- NPC personality traits can bias desired tags (for example assertive vs reserved) without hard-locking all slots.
+
 ## Decisions Already Settled
 
 - CUE is the write-path source of truth for core system packs.
@@ -77,11 +129,15 @@ Exit criteria:
 - [ ] Remove duplicate prompt-analysis calls across shadow mode and block-seeding paths.
 - [ ] Keep a single adapter boundary for primitive refs and downstream resolvers.
 - [ ] Add/finish dev tooling surface for primitive interaction debugging.
+- [ ] Implement budget-aware layered assembly pass with deterministic drop/trim tracing.
+- [ ] Implement normalized NPC/state policy packet feeding resolver intent.
 
 Exit criteria:
 
 - Projection quality metrics improve while false positives stay bounded.
 - Text and blocks flows share analysis cache/results instead of repeated requests.
+- Budgeted assembly behavior is deterministic and traceable.
+- NPC/state signals influence resolver intent through one canonical mapping path.
 
 ### Phase 3: Legacy Retirement
 
@@ -110,3 +166,4 @@ Exit criteria:
 
 - 2026-03-10 (`uncommitted`): Promoted block-primitives evolution to canonical active plan; snapshot moved to supporting architecture review doc.
 - 2026-03-10 (`uncommitted`): Hardened op-signature contract enforcement (`requires_variant_template`) and added prompt-service + content-pack loader tests for signature template/prefix/modality guards.
+- 2026-03-10 (`uncommitted`): Added explicit layered assembly canon (L0-L4), budget/priority overflow policy, and NPC/stat policy-packet direction to avoid future hardcoded drift.

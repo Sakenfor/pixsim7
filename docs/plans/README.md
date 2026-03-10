@@ -2,11 +2,17 @@
 
 This folder uses a manifest-driven bundle model so implementation plans, companions, and ownership metadata stay synchronized.
 
+## Markdown Rulebook
+
+- Canonical guide for AI/human markdown process:
+  - `docs/plans/active/md-governance-rulebook/companions/MD_RULEBOOK.md`
+
 ## Active Plans
 
 <!-- BEGIN:GENERATED_PLAN_INDEX -->
 | Plan | Stage | Owner | Priority | Summary |
 | ---- | ----- | ----- | -------- | ------- |
+| [Markdown Governance and Rulebook](active/md-governance-rulebook/plan.md) | phase_0_bootstrap | docs-governance lane | high | Unified markdown plan + rulebook for AI/human doc authoring, ownership, and drift control. |
 | [Ongoing Work Status](active/ongoing-work-status/plan.md) | rolling | active dev loop | high | Live status board tracking all active implementation lanes and next steps. |
 | [App Map Graph](active/app-map-graph/plan.md) | execution | frontend/backend app-map lane |  | Dev-only AppMap panel with architecture dependency graph visualization. |
 | [Bananza Project First Hardening](active/bananza-project-first-hardening/plan.md) | rollout | bananza seed/runtime lane |  | Seed data robustness and game runtime hardening for Bananza project. |

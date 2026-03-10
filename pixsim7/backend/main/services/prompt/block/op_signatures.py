@@ -115,6 +115,9 @@ def validate_signature_contract(
     """Return validation errors for a concrete op template against signature."""
     errors: List[str] = []
 
+    if signature.requires_variant_template and op_id_template is None:
+        errors.append("signature requires op_id_template containing '{variant}'")
+
     if op_id is not None and not op_id.startswith(signature.op_id_prefix):
         errors.append(
             f"op_id '{op_id}' must start with '{signature.op_id_prefix}'"
