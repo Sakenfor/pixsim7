@@ -31,7 +31,9 @@ import {
   type BlockMatrixPreset,
 } from '../block-matrix/presets';
 
-type TabId = 'packages' | 'templates' | 'blocks' | 'matrix';
+import { PromptInteractionsWorkbench } from './PromptInteractionsWorkbench';
+
+type TabId = 'packages' | 'templates' | 'blocks' | 'matrix' | 'interactions';
 
 interface PromptLibraryInspectorPanelProps {
   tab?: TabId;
@@ -91,7 +93,9 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
   const { roles: compositionRoles, packages: compositionPackages } = useCompositionPackages();
   const contextTab = ((): TabId | undefined => {
     const raw = props.context?.tab;
-    return raw === 'packages' || raw === 'templates' || raw === 'blocks' || raw === 'matrix' ? raw : undefined;
+    return raw === 'packages' || raw === 'templates' || raw === 'blocks' || raw === 'matrix' || raw === 'interactions'
+      ? raw
+      : undefined;
   })();
   const contextFocusTemplateId =
     typeof props.context?.focusTemplateId === 'string' ? props.context.focusTemplateId : undefined;
@@ -345,6 +349,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
             ['templates', 'Templates', 'layers'],
             ['blocks', 'Blocks', 'grid'],
             ['matrix', 'Matrix', 'grid'],
+            ['interactions', 'Interactions', 'sparkles'],
           ] as Array<[TabId, string, string]>).map(([id, label, icon]) => (
             <button
               key={id}
@@ -830,6 +835,12 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
             lockedFields={selectedPackage ? { package_name: true } : undefined}
             presets={matrixPresets}
           />
+        </div>
+      )}
+
+      {tab === 'interactions' && (
+        <div className="flex-1 min-h-0">
+          <PromptInteractionsWorkbench />
         </div>
       )}
     </div>
