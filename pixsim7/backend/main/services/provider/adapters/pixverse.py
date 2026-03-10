@@ -192,7 +192,11 @@ class PixverseProvider(
 
         Delegates to standalone function in pixverse_params module.
         """
-        return _map_parameters_standalone(operation_type, params)
+        return _map_parameters_standalone(
+            operation_type,
+            params,
+            estimate_video_credit_change_fn=estimate_video_credit_change,
+        )
 
     async def prepare_execution_params(
         self,

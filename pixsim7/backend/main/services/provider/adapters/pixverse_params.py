@@ -101,7 +101,9 @@ def normalize_transition_durations(
 
 def map_parameters(
     operation_type: OperationType,
-    params: Dict[str, Any]
+    params: Dict[str, Any],
+    *,
+    estimate_video_credit_change_fn=estimate_video_credit_change,
 ) -> Dict[str, Any]:
     """
     Map generic parameters to Pixverse-specific format.
@@ -282,7 +284,7 @@ def map_parameters(
     elif is_video_op:
         duration = mapped.get("duration") or params.get("duration")
         if duration is not None and isinstance(duration, (int, float)):
-            credit_change = estimate_video_credit_change(
+            credit_change = estimate_video_credit_change_fn(
                 quality=quality or "360p",
                 duration=int(duration),
                 model=model or "v5",

@@ -14,12 +14,22 @@ Usage:
 """
 from typing import Optional
 from pathlib import Path
+import inspect
 from fastapi import FastAPI
 
 from pixsim_logging import configure_logging
 from pixsim7.backend.main.shared.operation_mapping import assert_operation_coverage
 
 logger = configure_logging("startup")
+
+# Module-level dependency aliases are intentionally patchable for unit tests.
+# These are loaded lazily in setup helpers to avoid import-time side effects.
+check_redis_connection = None
+register_default_providers = None
+register_handlers = None
+register_websocket_handlers = None
+register_core_components = None
+init_plugin_manager = None
 
 
 def validate_settings(settings) -> None:
@@ -247,10 +257,20 @@ async def setup_redis() -> bool:
     - Returns status for readiness checks
     - Explicit degraded mode handling
     """
-    from pixsim7.backend.main.infrastructure.redis import check_redis_connection
+    global check_redis_connection
+    if check_redis_connection is None:
+        from pixsim7.backend.main.infrastructure.redis import (
+            check_redis_connection as _check_redis_connection,
+        )
+
+        check_redis_connection = _check_redis_connection
 
     try:
-        available = await check_redis_connection()
+        redis_check_result = check_redis_connection()
+        if inspect.isawaitable(redis_check_result):
+            available = await redis_check_result
+        else:
+            available = bool(redis_check_result)
         if available:
             logger.info("redis_connected")
         else:
@@ -282,7 +302,14 @@ def setup_providers() -> None:
     - Can be tested in isolation
     - Clear registration point
     """
-    from pixsim7.backend.main.services.provider import register_default_providers
+    global register_default_providers
+    if register_default_providers is None:
+        from pixsim7.backend.main.services.provider import (
+            register_default_providers as _register_default_providers,
+        )
+
+        register_default_providers = _register_default_providers
+
     register_default_providers()
     logger.info("providers_registered")
 
@@ -343,10 +370,20 @@ def setup_event_handlers() -> None:
     - Can be disabled for testing
     - Clear registration point
     """
-    from pixsim7.backend.main.infrastructure.events.handlers import register_handlers
-    from pixsim7.backend.main.infrastructure.events.websocket_handler import (
-        register_websocket_handlers
-    )
+    global register_handlers, register_websocket_handlers
+    if register_handlers is None:
+        from pixsim7.backend.main.infrastructure.events.handlers import (
+            register_handlers as _register_handlers,
+        )
+
+        register_handlers = _register_handlers
+
+    if register_websocket_handlers is None:
+        from pixsim7.backend.main.infrastructure.events.websocket_handler import (
+            register_websocket_handlers as _register_websocket_handlers,
+        )
+
+        register_websocket_handlers = _register_websocket_handlers
 
     register_handlers()
     register_websocket_handlers()
@@ -367,7 +404,14 @@ def setup_ecs_components() -> int:
     - Testable independently
     - Returns count for logging/assertions
     """
-    from pixsim7.backend.main.domain.game.core.ecs import register_core_components
+    global register_core_components
+    if register_core_components is None:
+        from pixsim7.backend.main.domain.game.core.ecs import (
+            register_core_components as _register_core_components,
+        )
+
+        register_core_components = _register_core_components
+
     count = register_core_components()
     logger.info("ecs_components_registered", count=count)
     return count
@@ -571,7 +615,14 @@ async def setup_plugins(
     - Testable with dummy app
     - Returns managers for app.state attachment
     """
-    from pixsim7.backend.main.infrastructure.plugins import init_plugin_manager
+    global init_plugin_manager
+    if init_plugin_manager is None:
+        from pixsim7.backend.main.infrastructure.plugins import (
+            init_plugin_manager as _init_plugin_manager,
+        )
+
+        init_plugin_manager = _init_plugin_manager
+
     from pixsim7.backend.main.lib.registry import RegistryManager, set_registry_manager
 
     registry_manager = RegistryManager()

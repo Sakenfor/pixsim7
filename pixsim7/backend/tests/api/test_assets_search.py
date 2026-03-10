@@ -143,7 +143,8 @@ class TestBasicFilters:
 
     def test_filter_by_date_range(self, sample_assets):
         """Filter by date range returns assets within range."""
-        cutoff = datetime.utcnow() - timedelta(days=2)
+        # Small margin prevents microsecond drift flakiness around the 2-day boundary.
+        cutoff = datetime.utcnow() - timedelta(days=2, seconds=1)
         filtered = [a for a in sample_assets if a.created_at >= cutoff]
         assert len(filtered) == 2  # Only assets from last 2 days
 
@@ -309,7 +310,7 @@ class TestCombinedFilters:
 
     def test_date_range_and_media_type(self, sample_assets):
         """Combine date range and media_type filters."""
-        cutoff = datetime.utcnow() - timedelta(days=2)
+        cutoff = datetime.utcnow() - timedelta(days=2, seconds=1)
         filtered = [
             a for a in sample_assets
             if a.created_at >= cutoff and a.media_type == MediaType.VIDEO

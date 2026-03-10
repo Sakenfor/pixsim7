@@ -754,6 +754,7 @@ try:
 
     from pixsim7.backend.main.api.dependencies import (
         get_current_game_principal,
+        get_current_user,
         get_game_world_service,
     )
     from pixsim7.backend.main.api.v1.game_worlds import router
@@ -777,9 +778,9 @@ class TestResyncProjectionsEndpoint:
             )
         )
         app.dependency_overrides[get_game_world_service] = lambda: service
-        app.dependency_overrides[get_current_game_principal] = lambda: SimpleNamespace(
-            id=1, is_active=True
-        )
+        principal = SimpleNamespace(id=1, is_active=True)
+        app.dependency_overrides[get_current_game_principal] = lambda: principal
+        app.dependency_overrides[get_current_user] = lambda: principal
         return app
 
     @pytest.mark.asyncio

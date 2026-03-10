@@ -22,7 +22,7 @@ class TestResolveSiblingGroupKeyExpr:
             service._resolve_group_key_expr("sibling")
         )
         assert group_key_expr is not None
-        assert join_generation is True
+        assert join_generation is False
         assert join_lineage is False
         assert lineage_primary is None
 

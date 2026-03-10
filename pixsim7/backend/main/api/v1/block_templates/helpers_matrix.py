@@ -32,7 +32,7 @@ def _resolve_block_matrix_value(
     if key.startswith("tag:"):
         tag_key = key[4:]
         value = tags_dict.get(tag_key)
-    elif key == "composition_role":
+    elif key in {"composition_role", "role"}:
         value = _infer_block_composition_role(block)
     elif key == "package_name":
         source_pack = tags_dict.get("source_pack")

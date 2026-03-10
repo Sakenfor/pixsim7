@@ -1104,7 +1104,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             debug.worker("generation_started", generation_id=generation_id)
 
             # Stagger concurrent dispatches to avoid thundering-herd on provider API
-            concurrent = account.current_processing_jobs or 0
+            concurrent = getattr(account, "current_processing_jobs", 0) or 0
             if concurrent > 1:
                 stagger = random.uniform(
                     0,
@@ -1388,41 +1388,29 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     )
                     account_released = True
                     if _is_pinned_account(generation, account):
-                        # Pinned account auth failure — fail immediately with a
-                        # clear message instead of deferring in a loop for hours.
+                        # Pinned account auth failure: clear the pin and rotate so
+                        # generation can continue on another valid account.
                         gen_logger.warning(
-                            "pinned_account_auth_failed",
+                            "pinned_account_auth_failed_requeue",
                             account_id=account.id,
                             error=str(e),
-                            msg="pinned account authentication failed, failing generation",
+                            msg="pinned account authentication failed, clearing pin and requeueing",
                         )
-                        await generation_service.mark_failed(
-                            generation_id,
-                            error_message=f"Pinned account authentication failed ({account.email}). Re-authenticate the account and retry.",
-                            error_code=error_code or "pinned_account_auth_failure",
-                        )
-                        failed_marked = True
-                        return {
-                            "status": "failed",
-                            "reason": "pinned_account_auth_failure",
-                            "account_id": account.id,
-                            "generation_id": generation_id,
-                        }
-                    else:
-                        requeue_result = await _requeue_generation_for_account_rotation(
-                            db=db,
-                            generation=generation,
-                            generation_id=generation_id,
-                            failed_account_id=account.id,
-                            reason="account_auth_failure",
-                            log_event="generation_requeued_auth_failure",
-                            account_log_field="failed_account_id",
-                            gen_logger=gen_logger,
-                            clear_preferred_on_account_match=True,
-                            error_code=error_code,
-                        )
-                        if requeue_result:
-                            return requeue_result
+
+                    requeue_result = await _requeue_generation_for_account_rotation(
+                        db=db,
+                        generation=generation,
+                        generation_id=generation_id,
+                        failed_account_id=account.id,
+                        reason="account_auth_failure",
+                        log_event="generation_requeued_auth_failure",
+                        account_log_field="failed_account_id",
+                        gen_logger=gen_logger,
+                        clear_preferred_on_account_match=True,
+                        error_code=error_code,
+                    )
+                    if requeue_result:
+                        return requeue_result
                     # Fall through to mark as failed if requeue fails
 
                 # Content filtered - retry only if retryable (output rejection, not prompt rejection)

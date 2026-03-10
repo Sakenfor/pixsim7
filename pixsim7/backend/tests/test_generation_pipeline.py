@@ -13,6 +13,7 @@ Usage:
     pytest pixsim7/backend/tests/test_generation_pipeline.py -v
 """
 import pytest
+import copy
 from typing import Dict, Any
 from uuid import uuid4
 from datetime import datetime
@@ -170,11 +171,11 @@ def test_canonical_params_sensitivity(structured_generation_params):
 
     Regression anchor: Small changes in params should change the hash
     """
-    params1 = structured_generation_params.copy()
-    params2 = structured_generation_params.copy()
+    params1 = copy.deepcopy(structured_generation_params)
+    params2 = copy.deepcopy(structured_generation_params)
 
     # Change a nested field
-    params2["scene_context"]["to_scene"]["id"] = "scene_003"
+    params2["scene_context"]["to_scene"]["id"] = "scene_999"
 
     hash1 = Generation.compute_hash(params1, [])
     hash2 = Generation.compute_hash(params2, [])

@@ -22,6 +22,7 @@ Usage:
     link = await service.get_active_link_for_runtime('npc', 456, context)
 """
 from typing import List, Optional, Dict, Any
+import inspect
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -50,6 +51,19 @@ class LinkService:
         """
         self.db = db
         self.registry = get_mapping_registry()
+
+    @staticmethod
+    async def _collect_scalars(result: Any) -> list[Any]:
+        """Collect scalar rows from SQLAlchemy results and AsyncMock-compatible doubles."""
+        scalars_result = result.scalars()
+        if inspect.isawaitable(scalars_result):
+            scalars_result = await scalars_result
+
+        rows = scalars_result.all()
+        if inspect.isawaitable(rows):
+            rows = await rows
+
+        return list(rows)
 
     async def create_link(
         self,
@@ -153,7 +167,7 @@ class LinkService:
                 )
             )
         )
-        return list(result.scalars().all())
+        return await self._collect_scalars(result)
 
     async def get_links_for_runtime(
         self,
@@ -184,7 +198,7 @@ class LinkService:
             )
             .order_by(ObjectLink.priority.desc())
         )
-        links = list(result.scalars().all())
+        links = await self._collect_scalars(result)
 
         # Filter by activation if requested
         if active_only and context is not None:
@@ -227,7 +241,7 @@ class LinkService:
             )
             .order_by(ObjectLink.priority.desc())
         )
-        links = list(result.scalars().all())
+        links = await self._collect_scalars(result)
 
         if not links:
             return None
@@ -275,7 +289,7 @@ class LinkService:
             )
             .order_by(ObjectLink.priority.desc())
         )
-        links = list(result.scalars().all())
+        links = await self._collect_scalars(result)
 
         if not links:
             return None

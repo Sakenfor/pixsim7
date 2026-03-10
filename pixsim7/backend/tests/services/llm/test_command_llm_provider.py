@@ -92,7 +92,7 @@ class TestCommandLlmProvider:
                 prompt_before="Original prompt"
             )
 
-        assert "invalid JSON" in str(exc_info.value).lower()
+        assert "invalid json" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
     async def test_edit_prompt_command_error(self):

@@ -153,16 +153,16 @@ class OpenAiLlmProvider:
             raise ProviderAuthenticationError(self.provider_id, str(e))
         except openai.RateLimitError as e:
             logger.warning(f"OpenAI rate limit hit: {e}")
-            raise ProviderError(self.provider_id, f"Rate limit exceeded: {e}")
+            raise ProviderError(f"Rate limit exceeded: {e}")
         except openai.APIConnectionError as e:
             logger.error(f"OpenAI connection error: {e}")
-            raise ProviderError(self.provider_id, f"Connection error: {e}")
+            raise ProviderError(f"Connection error: {e}")
         except openai.APIStatusError as e:
             logger.error(f"OpenAI API status error: {e.status_code} - {e}")
-            raise ProviderError(self.provider_id, f"API error ({e.status_code}): {e}")
+            raise ProviderError(f"API error ({e.status_code}): {e}")
         except Exception as e:
             logger.error(f"OpenAI prompt edit error: {e}")
-            raise ProviderError(self.provider_id, str(e))
+            raise ProviderError(str(e))
 
 
 class AnthropicLlmProvider:
@@ -244,16 +244,16 @@ class AnthropicLlmProvider:
             raise ProviderAuthenticationError(self.provider_id, str(e))
         except anthropic.RateLimitError as e:
             logger.warning(f"Anthropic rate limit hit: {e}")
-            raise ProviderError(self.provider_id, f"Rate limit exceeded: {e}")
+            raise ProviderError(f"Rate limit exceeded: {e}")
         except anthropic.APIConnectionError as e:
             logger.error(f"Anthropic connection error: {e}")
-            raise ProviderError(self.provider_id, f"Connection error: {e}")
+            raise ProviderError(f"Connection error: {e}")
         except anthropic.APIStatusError as e:
             logger.error(f"Anthropic API status error: {e.status_code} - {e}")
-            raise ProviderError(self.provider_id, f"API error ({e.status_code}): {e}")
+            raise ProviderError(f"API error ({e.status_code}): {e}")
         except Exception as e:
             logger.error(f"Anthropic prompt edit error: {e}")
-            raise ProviderError(self.provider_id, str(e))
+            raise ProviderError(str(e))
 
 
 class LocalLlmProvider:
@@ -462,6 +462,28 @@ class CommandLlmProvider:
         """
         return parse_shell_args(args_str, logger=logger)
 
+    def _parse_inline_python_command(self, cmd_str: str) -> list[str] | None:
+        """
+        Parse `<python-exe> -c <script>` commands while preserving script content.
+
+        This keeps compatibility with command strings where the `-c` script contains
+        nested quotes/newlines that generic shell parsers may not handle reliably.
+        """
+        marker = " -c "
+        if marker not in cmd_str:
+            return None
+
+        executable_part, script_part = cmd_str.split(marker, 1)
+        executable_tokens = self._parse_shell_args(executable_part.strip())
+        if not executable_tokens:
+            return None
+
+        script = script_part.strip()
+        if len(script) >= 2 and script[0] == script[-1] and script[0] in {'"', "'"}:
+            script = script[1:-1]
+
+        return [*executable_tokens, "-c", script]
+
     def _get_command_parts(self) -> list[str]:
         """
         Get the full command as a list of parts (executable + args).
@@ -480,13 +502,15 @@ class CommandLlmProvider:
 
         if not cmd_str.strip():
             raise ProviderError(
-                self.provider_id,
                 "No command configured. Set CMD_LLM_COMMAND environment variable "
                 "or provide 'command' argument to CommandLlmProvider."
             )
 
-        # Parse the command string (handles quoted paths/args)
-        cmd_parts = self._parse_shell_args(cmd_str)
+        # Parse full inline `python -c "<script>"` safely when present.
+        cmd_parts = self._parse_inline_python_command(cmd_str)
+        if cmd_parts is None:
+            # Parse the command string (handles quoted paths/args)
+            cmd_parts = self._parse_shell_args(cmd_str)
 
         # Add additional args
         if self._args is not None:
@@ -527,7 +551,9 @@ class CommandLlmProvider:
         if instance_config:
             cmd = instance_config.get("command")
             if cmd:
-                cmd_parts = self._parse_shell_args(cmd)
+                cmd_parts = self._parse_inline_python_command(str(cmd))
+                if cmd_parts is None:
+                    cmd_parts = self._parse_shell_args(str(cmd))
                 args = instance_config.get("args", [])
                 if isinstance(args, list):
                     cmd_parts.extend(args)
@@ -635,7 +661,6 @@ class CommandLlmProvider:
                     f"{result.returncode}. stderr: {stderr_preview}"
                 )
                 raise ProviderError(
-                    self.provider_id,
                     f"Command exited with status {result.returncode}: {stderr_preview}"
                 )
 
@@ -643,7 +668,6 @@ class CommandLlmProvider:
             stdout_text = result.stdout.strip()
             if not stdout_text:
                 raise ProviderError(
-                    self.provider_id,
                     "Command returned empty output; expected JSON with 'edited_prompt'"
                 )
 
@@ -656,7 +680,6 @@ class CommandLlmProvider:
                     f"Output preview: {preview}"
                 )
                 raise ProviderError(
-                    self.provider_id,
                     f"Command returned invalid JSON: {e}"
                 )
 
@@ -667,7 +690,6 @@ class CommandLlmProvider:
                     f"Keys found: {list(output_data.keys())}"
                 )
                 raise ProviderError(
-                    self.provider_id,
                     "Command output missing 'edited_prompt' key. "
                     f"Keys found: {list(output_data.keys())}"
                 )
@@ -686,8 +708,7 @@ class CommandLlmProvider:
                 f"CommandLlmProvider: command timed out (timeout={timeout}s)"
             )
             raise ProviderError(
-                self.provider_id,
-                f"Command timed out after {timeout} seconds"
+                f"Command timeout after {timeout} seconds"
             )
 
         except FileNotFoundError:
@@ -695,7 +716,6 @@ class CommandLlmProvider:
                 f"CommandLlmProvider: command not found: {cmd_executable}"
             )
             raise ProviderError(
-                self.provider_id,
                 f"Command not found: {cmd_executable}. "
                 "Ensure the command exists and is executable."
             )
@@ -705,7 +725,6 @@ class CommandLlmProvider:
                 f"CommandLlmProvider: permission denied for command: {cmd_executable}"
             )
             raise ProviderError(
-                self.provider_id,
                 f"Permission denied executing: {cmd_executable}. "
                 "Ensure the command has execute permissions."
             )

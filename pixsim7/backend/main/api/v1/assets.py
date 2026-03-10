@@ -18,6 +18,8 @@ from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc, Databas
 from pixsim7.backend.main.shared.schemas.asset_schemas import (
     AssetResponse,
     AssetGenerationContext,
+    AssetListResponse,
+    AssetSearchRequest,
 )
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 import os
@@ -48,6 +50,26 @@ router.include_router(assets_versions.router)
 router.include_router(assets_search.router)
 router.include_router(assets_upload.router)
 router.include_router(assets_enrich.router)
+
+
+# Backward-compatible export for callers that imported search from this module.
+async def search_assets(
+    user: CurrentUser,
+    asset_service: AssetSvc,
+    db: DatabaseSession,
+    request: AssetSearchRequest,
+) -> AssetListResponse:
+    original_builder = assets_search.build_asset_response_with_tags
+    assets_search.build_asset_response_with_tags = build_asset_response_with_tags
+    try:
+        return await assets_search.search_assets(
+            user=user,
+            asset_service=asset_service,
+            db=db,
+            request=request,
+        )
+    finally:
+        assets_search.build_asset_response_with_tags = original_builder
 
 
 # ===== GET ASSET =====

@@ -27,6 +27,12 @@ except ImportError:
 pytestmark = pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Backend dependencies not installed")
 
 
+@pytest.fixture
+def anyio_backend():
+    """Pin to asyncio; current environment doesn't support trio+anyio compatibility."""
+    return "asyncio"
+
+
 def _app() -> "FastAPI":
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")

@@ -33,15 +33,27 @@ def parse_shell_args(args_str: str, *, logger: logging.Logger | None = None) -> 
         return []
 
     posix = sys.platform != "win32"
+
+    def _strip_wrapping_quotes(token: str) -> str:
+        if len(token) >= 2 and token[0] == token[-1] and token[0] in {'"', "'"}:
+            return token[1:-1]
+        return token
+
     try:
-        return shlex.split(args_str, posix=posix)
+        parts = shlex.split(args_str, posix=posix)
+        if not posix:
+            parts = [_strip_wrapping_quotes(part) for part in parts]
+        return parts
     except ValueError as exc:
         if logger:
             logger.warning(
                 "Failed to parse arguments with shlex: %s. Falling back to simple split.",
                 exc,
             )
-        return args_str.strip().split()
+        parts = args_str.strip().split()
+        if not posix:
+            parts = [_strip_wrapping_quotes(part) for part in parts]
+        return parts
 
 
 async def run_subprocess_text(

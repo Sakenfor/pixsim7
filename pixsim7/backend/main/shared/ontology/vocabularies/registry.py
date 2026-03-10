@@ -871,6 +871,16 @@ class VocabularyRegistry:
         level = self.get_intimacy_level(level_id)
         if level:
             return level.data.get("level", 0)
+        legacy_order = {
+            "intimacy:none": 0,
+            "intimacy:acquaintance": 1,
+            "intimacy:light_flirt": 2,
+            "intimacy:romantic": 3,
+            "intimacy:intimate": 4,
+            "intimacy:very_intimate": 5,
+        }
+        if level_id in legacy_order:
+            return legacy_order[level_id]
         return 0
 
     def intimacy_distance(self, level1: str, level2: str) -> int:

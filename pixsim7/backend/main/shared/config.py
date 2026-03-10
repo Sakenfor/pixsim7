@@ -389,6 +389,24 @@ class Settings(BaseSettings):
         default=0.0,
         description="Default cache freshness threshold (0.0=always use cache, 1.0=always regenerate)"
     )
+    local_llm_model_path: str | None = Field(
+        default=None,
+        description="Optional absolute path to a local GGUF model file."
+    )
+    local_llm_context_size: int = Field(
+        default=4096,
+        ge=256,
+        description="Context window size for local llama-cpp models."
+    )
+    local_llm_threads: int = Field(
+        default=4,
+        ge=1,
+        description="CPU threads to use for local llama-cpp inference."
+    )
+    local_llm_auto_download: bool = Field(
+        default=False,
+        description="Auto-download a default local GGUF model when not found."
+    )
     # ===== LOGGING =====
     log_level: str = Field(
         default="INFO",
