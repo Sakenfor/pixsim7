@@ -139,6 +139,7 @@ Where to apply:
 - `apps/main/src/features/panels/domain/definitions/**`
 - `apps/main/src/features/devtools/plugins/tools.ts`
 - `apps/main/src/features/*/module.ts`
+- `apps/main/src/features/*/routes/index.ts` (when it contains module definitions)
 - `apps/main/src/app/modules/core/*.ts`
 
 Use strict helpers where available:

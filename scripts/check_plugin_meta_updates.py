@@ -123,7 +123,26 @@ def is_target_file(path: str) -> bool:
         return True
     if re.match(r"^apps/main/src/app/modules/core/[^/]+\.ts$", normalized):
         return True
+    if re.match(r"^apps/main/src/features/[^/]+/routes/index\.ts$", normalized):
+        return True
     return False
+
+
+def is_module_file(path: str) -> bool:
+    normalized = path.replace("\\", "/")
+    return bool(
+        re.match(r"^apps/main/src/features/[^/]+/module\.ts$", normalized)
+        or re.match(r"^apps/main/src/app/modules/core/[^/]+\.ts$", normalized)
+        or re.match(r"^apps/main/src/features/[^/]+/routes/index\.ts$", normalized)
+    )
+
+
+def file_contains_module_definition(path: str) -> bool:
+    file_path = PROJECT_ROOT / path
+    if not file_path.exists():
+        return True
+    content = file_path.read_text(encoding="utf-8", errors="ignore")
+    return "defineModule(" in content or bool(re.search(r":\s*Module\s*=", content))
 
 
 def get_changed_files(diff_range: str) -> List[str]:
@@ -166,6 +185,8 @@ def check_metadata(diff_range: str) -> int:
 
     missing: List[str] = []
     for path in sorted(target_files):
+        if is_module_file(path) and not file_contains_module_definition(path):
+            continue
         changed_lines = get_changed_lines(diff_range, path)
         if not changed_lines:
             continue
