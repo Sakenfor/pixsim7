@@ -21,7 +21,7 @@ import type {
   UpsertDraftRequest,
   DraftSummary,
 } from '@pixsim7/shared.api.model';
-import { IDs } from '@pixsim7/shared.types';
+import { IDs, ROOM_NAVIGATION_META_KEY, validateRoomNavigation } from '@pixsim7/shared.types';
 
 import type {
   Scene,
@@ -55,6 +55,11 @@ import { pixsimClient } from './client';
 
 // Create shared domain API instance
 const gameApi = createGameApi(pixsimClient);
+
+type RoomNavigationData = Extract<
+  ReturnType<typeof validateRoomNavigation>,
+  { ok: true }
+>['data'];
 
 // Re-exported from Orval-generated types
 export type { PaginatedWorldsResponse, WorldConfigResponse, InventoryStatsResponse, MessageResponse };
@@ -129,12 +134,39 @@ export function getNpcSlots(location: GameLocationDetail): NpcSlot2d[] {
   return meta?.npcSlots2d || [];
 }
 
+export function getRoomNavigation(location: GameLocationDetail): RoomNavigationData | null {
+  const meta = location.meta as Record<string, unknown> | null | undefined;
+  const payload = meta?.[ROOM_NAVIGATION_META_KEY];
+  if (!payload) {
+    return null;
+  }
+
+  const result = validateRoomNavigation(payload);
+  if (!result.ok) {
+    return null;
+  }
+  return result.data;
+}
+
 export function setNpcSlots(location: GameLocationDetail, slots: NpcSlot2d[]): GameLocationDetail {
   return {
     ...location,
     meta: {
       ...(location.meta || {}),
       npcSlots2d: slots,
+    },
+  };
+}
+
+export function setRoomNavigation(
+  location: GameLocationDetail,
+  roomNavigation: RoomNavigationData,
+): GameLocationDetail {
+  return {
+    ...location,
+    meta: {
+      ...(location.meta || {}),
+      [ROOM_NAVIGATION_META_KEY]: roomNavigation,
     },
   };
 }

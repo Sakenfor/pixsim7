@@ -7,6 +7,7 @@ import { resolveGameLocations, resolveGameWorlds } from '@lib/resolvers';
 import { InteractionPresetUsagePanel } from '@/components/game/panels/InteractionPresetUsagePanel';
 
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
+import { RoomNavigationEditor } from '../components/game/RoomNavigationEditor';
 import { NpcSlotEditor } from '../components/NpcSlotEditor';
 import type { GameLocationSummary, GameLocationDetail, GameHotspotDTO, GameWorldSummary, GameWorldDetail } from '../lib/api/game';
 import { getGameLocation, saveGameLocationHotspots, getGameWorld } from '../lib/api/game';
@@ -22,7 +23,7 @@ export function GameWorld() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState<Record<number, boolean>>({});
-  const [activeTab, setActiveTab] = useState<'hotspots' | '2d-layout' | 'presets' | 'usage'>('hotspots');
+  const [activeTab, setActiveTab] = useState<'hotspots' | '2d-layout' | 'room-nav' | 'presets' | 'usage'>('hotspots');
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
   const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
   const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
@@ -243,6 +244,16 @@ export function GameWorld() {
               </button>
               <button
                 className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'room-nav'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
+                }`}
+                onClick={() => setActiveTab('room-nav')}
+              >
+                Room Nav (Beta)
+              </button>
+              <button
+                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === 'presets'
                     ? 'border-blue-600 text-blue-600'
                     : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
@@ -440,6 +451,12 @@ export function GameWorld() {
               <NpcSlotEditor
                 location={detail}
                 world={worldDetail}
+                onLocationUpdate={(updatedLocation) => setDetail(updatedLocation)}
+              />
+            ) : activeTab === 'room-nav' ? (
+              /* Room Navigation Tab */
+              <RoomNavigationEditor
+                location={detail}
                 onLocationUpdate={(updatedLocation) => setDetail(updatedLocation)}
               />
             ) : activeTab === 'presets' && worldDetail ? (
