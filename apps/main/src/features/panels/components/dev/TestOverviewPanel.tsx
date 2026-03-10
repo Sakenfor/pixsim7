@@ -21,6 +21,9 @@ import {
 
 import { useAuthStore } from '@/stores/authStore';
 
+import { TestAnalyticsGraphs } from './TestAnalyticsGraphs';
+
+
 
 
 function statusClasses(status: TestRunStatus): string {
@@ -184,7 +187,7 @@ export function TestOverviewPanel() {
   const overview = useMemo(() => getTestOverview(), []);
   const user = useAuthStore((state) => state.user);
   const canExecute = canRunCodegen(user);
-  const [runs, setRuns] = useState<TestRunSnapshot[]>(() => listTestRunSnapshots(30));
+  const [runs, setRuns] = useState<TestRunSnapshot[]>(() => listTestRunSnapshots(60));
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
   const [runningProfileId, setRunningProfileId] = useState<string | null>(null);
   const [runError, setRunError] = useState<string>('');
@@ -207,7 +210,7 @@ export function TestOverviewPanel() {
 
   const handleRecordRun = (profileId: TestProfileDefinition['id'], status: TestRunStatus) => {
     recordTestRunSnapshot(profileId, status);
-    setRuns(listTestRunSnapshots(30));
+    setRuns(listTestRunSnapshots(60));
   };
 
   const handleRunProfile = async (profile: TestProfileDefinition) => {
@@ -288,6 +291,8 @@ export function TestOverviewPanel() {
             )}
           </section>
         )}
+
+        <TestAnalyticsGraphs snapshots={runs} />
 
         <section className="space-y-3">
           <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Profiles</h3>
