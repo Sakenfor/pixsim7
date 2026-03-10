@@ -11,17 +11,18 @@
  * - Bulk validation across multiple scenes/graphs
  */
 
-import { useState, useEffect } from "react";
-import type {
-  GenerationNodeConfig,
-  GenerationValidationResult,
-} from "@lib/registries";
 import {
   validateGenerationNode,
   getValidationStatus,
   getValidationSummary,
   type ValidationStatus,
 } from "@pixsim7/game.engine";
+import { useState, useEffect } from "react";
+
+import type {
+  GenerationNodeConfig,
+  GenerationValidationResult,
+} from "@lib/registries";
 
 interface GenerationNodeHealth {
   nodeId: string;
@@ -51,7 +52,7 @@ interface GenerationHealthViewProps {
 export function GenerationHealthView({
   worldId,
   sceneId,
-  nodes,
+  nodes = [],
 }: GenerationHealthViewProps) {
   const [nodeHealth, setNodeHealth] = useState<GenerationNodeHealth[]>([]);
   const [filter, setFilter] = useState<"all" | "error" | "warning" | "ok">(
