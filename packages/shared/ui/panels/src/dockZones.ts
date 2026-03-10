@@ -1,5 +1,7 @@
 // Dock zone contract types
 
+import type { PluginMeta } from '@pixsim7/shared.plugins';
+
 /**
  * Preset scope type - can be extended by features.
  */
@@ -9,7 +11,7 @@ export type PresetScope = string;
  * Dock zone definition for dockview containers.
  * Describes a dockview's metadata for presets and panel filtering.
  */
-export interface DockZoneDefinition {
+export interface DockZoneDefinition extends PluginMeta {
   /** Stable zone ID (used for presets and settings) */
   id: string;
   /** Human-friendly label */

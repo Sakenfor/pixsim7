@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pixsim7/shared.plugins": "workspace:*",
     "@pixsim7/shared.types": "workspace:*"
   },
   "peerDependencies": {

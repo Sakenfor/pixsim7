@@ -40,6 +40,7 @@
   },
   "dependencies": {
     "@pixsim7/shared.helpers.core": "workspace:*",
+    "@pixsim7/shared.plugins": "workspace:*",
     "@pixsim7/shared.types": "workspace:*"
   },
   "peerDependencies": {},

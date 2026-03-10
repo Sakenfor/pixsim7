@@ -6,6 +6,7 @@
  */
 
 import type { ComponentType } from 'react';
+import type { PluginMeta } from '@pixsim7/shared.plugins';
 
 export type DevToolId =
   | 'session-state-viewer'
@@ -82,7 +83,7 @@ export type DevToolSetting =
   | DevToolSettingSelect
   | DevToolSettingNumber;
 
-export interface DevToolDefinition {
+export interface DevToolDefinition extends PluginMeta {
   /** Unique identifier for this dev tool */
   id: DevToolId;
 

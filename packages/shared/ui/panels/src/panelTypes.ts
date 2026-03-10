@@ -6,6 +6,7 @@
  */
 
 import type { ComponentType } from "react";
+import type { PluginMeta } from "@pixsim7/shared.plugins";
 
 export type PanelInstancePolicy = "single" | "multiple" | { max: number };
 
@@ -69,7 +70,7 @@ export interface PanelAvailabilityPolicy {
 /**
  * Base panel definition - common fields between local and global panels.
  */
-export interface BasePanelDefinition<TParams = any> {
+export interface BasePanelDefinition<TParams = any> extends PluginMeta {
   /** Unique panel ID */
   id: string;
   /** Display title (shown in tabs) */

@@ -9,6 +9,7 @@
 
 // Core types
 export type {
+  PluginMeta,
   PluginOrigin,
   PluginFamily,
   ActivationState,

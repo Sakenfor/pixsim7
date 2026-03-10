@@ -6,6 +6,7 @@
  */
 
 import type { ComponentType, LazyExoticComponent } from "react";
+import type { PluginMeta } from "@pixsim7/shared.plugins";
 
 /**
  * Graph editor identifier - unique ID for each graph editor surface
@@ -22,7 +23,7 @@ export type GraphEditorComponent =
 /**
  * Graph editor definition - describes a graph editor surface
  */
-export interface GraphEditorDefinition {
+export interface GraphEditorDefinition extends PluginMeta {
   /** Unique identifier for this editor */
   id: GraphEditorId;
 

@@ -5,6 +5,19 @@
  * No framework dependencies.
  */
 
+/**
+ * Lightweight metadata that can be attached to plugin-like definitions
+ * (panels, dev tools, analyzers, and similar extension points).
+ */
+export interface PluginMeta {
+  /** ISO timestamp of the most recent update */
+  updatedAt?: string;
+  /** Short summary of what changed in the latest update */
+  changeNote?: string;
+  /** Optional highlights of recently added features */
+  featureHighlights?: string[];
+}
+
 // ============================================================================
 // Core Types
 // ============================================================================
@@ -86,7 +99,7 @@ export const CAPABILITY_LABELS: Record<keyof PluginCapabilityHints, string> = {
 /**
  * Core metadata that all plugins should have
  */
-export interface PluginMetadata {
+export interface PluginMetadata extends PluginMeta {
   /** Unique identifier */
   id: string;
 

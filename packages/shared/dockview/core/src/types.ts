@@ -5,6 +5,8 @@
  * panel positions, and configuration without any React dependencies.
  */
 
+import type { PluginMeta } from '@pixsim7/shared.plugins';
+
 /**
  * Position hint for panel layout
  */
@@ -99,7 +101,7 @@ export type PresetScope = string;
 /**
  * Dock zone definition for dockview containers
  */
-export interface DockZoneDefinition {
+export interface DockZoneDefinition extends PluginMeta {
   /** Stable zone ID (used for presets and settings) */
   id: string;
   /** Human-friendly label */

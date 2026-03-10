@@ -6,6 +6,7 @@
  */
 
 import type { AppMapMetadata } from '@pixsim7/shared.types';
+import type { PluginMeta } from '@pixsim7/shared.plugins';
 
 export type AppCapabilityCategory = string;
 
@@ -38,7 +39,7 @@ export interface AppActionContextMenu {
   disabled?: (ctx?: AppActionContext) => boolean | string;
 }
 
-export interface AppFeatureCapability {
+export interface AppFeatureCapability extends PluginMeta {
   id: string;
   name: string;
   description: string;

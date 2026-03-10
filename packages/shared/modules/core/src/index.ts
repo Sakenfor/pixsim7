@@ -1,4 +1,5 @@
 import type { ActionDefinition, AppMapMetadata } from '@pixsim7/shared.types';
+import type { PluginMeta } from '@pixsim7/shared.plugins';
 import type { ComponentType, LazyExoticComponent, ReactNode } from 'react';
 
 // Lifecycle helpers
@@ -105,7 +106,29 @@ export interface SubNavItem {
   route?: string;
 }
 
-export interface ModulePageConfig<DevToolCategory = string, CapabilityCategory = string> {
+export interface ModuleDevToolConfig<DevToolCategory = string> extends PluginMeta {
+  /**
+   * Panel component for the dev tool.
+   * If omitted, the route component is used (wrapped appropriately).
+   */
+  panelComponent?: ComponentType<any>;
+  /**
+   * Dev tool category for grouping in the palette.
+   * Defaults to 'misc' if not specified.
+   */
+  category?: DevToolCategory;
+  /**
+   * Tags for filtering/search in the dev tools palette.
+   */
+  tags?: string[];
+  /**
+   * Whether this tool is safe for non-dev users.
+   * Defaults to false.
+   */
+  safeForNonDev?: boolean;
+}
+
+export interface ModulePageConfig<DevToolCategory = string, CapabilityCategory = string> extends PluginMeta {
   /** Route path (e.g., '/assets', '/workspace') */
   route: string;
   /** Icon name from icon library */
@@ -178,27 +201,7 @@ export interface ModulePageConfig<DevToolCategory = string, CapabilityCategory =
    * When defined, this module is auto-registered as a dev tool,
    * accessible via the dev tools palette/panel system.
    */
-  devTool?: {
-    /**
-     * Panel component for the dev tool.
-     * If omitted, the route component is used (wrapped appropriately).
-     */
-    panelComponent?: ComponentType<any>;
-    /**
-     * Dev tool category for grouping in the palette.
-     * Defaults to 'misc' if not specified.
-     */
-    category?: DevToolCategory;
-    /**
-     * Tags for filtering/search in the dev tools palette.
-     */
-    tags?: string[];
-    /**
-     * Whether this tool is safe for non-dev users.
-     * Defaults to false.
-     */
-    safeForNonDev?: boolean;
-  };
+  devTool?: ModuleDevToolConfig<DevToolCategory>;
 }
 
 /**
@@ -230,7 +233,7 @@ export interface ModuleDefinition<
   PanelDefinition = unknown,
   DevToolCategory = string,
   CapabilityCategory = string
-> {
+> extends PluginMeta {
   /** Unique identifier for the module */
   id: string;
 

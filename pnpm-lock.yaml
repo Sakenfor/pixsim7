@@ -916,6 +916,9 @@ importers:
       '@pixsim7/shared.helpers.core':
         specifier: workspace:*
         version: link:../../helpers/core
+      '@pixsim7/shared.plugins':
+        specifier: workspace:*
+        version: link:../../plugins
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../types
@@ -954,6 +957,9 @@ importers:
 
   packages/shared/devtools/core:
     dependencies:
+      '@pixsim7/shared.plugins':
+        specifier: workspace:*
+        version: link:../../plugins
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.2.0
@@ -967,6 +973,9 @@ importers:
 
   packages/shared/dockview/core:
     dependencies:
+      '@pixsim7/shared.plugins':
+        specifier: workspace:*
+        version: link:../../plugins
       dockview-core:
         specifier: ^4.11.0
         version: 4.11.0
@@ -1037,6 +1046,9 @@ importers:
 
   packages/shared/graph/editors:
     dependencies:
+      '@pixsim7/shared.plugins':
+        specifier: workspace:*
+        version: link:../../plugins
       react:
         specifier: '>=18'
         version: 19.2.0
@@ -1074,6 +1086,9 @@ importers:
 
   packages/shared/modules/core:
     dependencies:
+      '@pixsim7/shared.plugins':
+        specifier: workspace:*
+        version: link:../../plugins
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../types
@@ -1270,6 +1285,9 @@ importers:
 
   packages/shared/ui/panels:
     dependencies:
+      '@pixsim7/shared.plugins':
+        specifier: workspace:*
+        version: link:../../plugins
       react:
         specifier: '>=18'
         version: 19.2.0
@@ -1286,6 +1304,9 @@ importers:
       '@pixsim7/shared.assets.core':
         specifier: workspace:*
         version: link:../../assets/core
+      '@pixsim7/shared.plugins':
+        specifier: workspace:*
+        version: link:../../plugins
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../types

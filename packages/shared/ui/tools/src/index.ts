@@ -11,6 +11,7 @@
  */
 
 import type { ReactNode } from 'react';
+import type { PluginMeta } from '@pixsim7/shared.plugins';
 import type {
   BrainState,
   GameSessionDTO,
@@ -40,7 +41,7 @@ export interface Identifiable {
  *
  * @typeParam TContext - The context type passed to render/whenVisible/onMount
  */
-export interface ToolPlugin<TContext = unknown> extends Identifiable {
+export interface ToolPlugin<TContext = unknown> extends Identifiable, PluginMeta {
   /** Unique identifier */
   id: string;
 

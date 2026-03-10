@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pixsim7/shared.plugins": "workspace:*",
     "dockview-core": "^4.11.0"
   },
   "devDependencies": {
