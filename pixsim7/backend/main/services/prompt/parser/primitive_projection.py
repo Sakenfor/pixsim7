@@ -64,12 +64,31 @@ _CANDIDATE_STOP_TOKENS = {
     "scene",
     "shot",
 }
+_DIRECTIONAL_TOKENS = {
+    "left",
+    "right",
+    "up",
+    "down",
+    "forward",
+    "backward",
+    "above",
+    "below",
+    "behind",
+    "front",
+    "around",
+    "across",
+    "in",
+    "out",
+}
 _LOW_SIGNAL_OVERLAP_TOKENS = {
     "camera",
     "motion",
     "direction",
     "axis",
     "move",
+}
+_ROLE_STOP_TOKEN_OVERRIDES: dict[str, set[str]] = {
+    "camera": {"camera"},
 }
 
 
@@ -118,6 +137,24 @@ def _tokenize(value: Any, *, stop_tokens: set[str] | None = None) -> set[str]:
             continue
         filtered.add(token)
     return filtered
+
+
+def _candidate_stop_tokens(*, role: str | None) -> set[str]:
+    """Build candidate stop-token set while preserving directional signal."""
+    tokens = set(_CANDIDATE_STOP_TOKENS)
+    tokens.difference_update(_DIRECTIONAL_TOKENS)
+    if role:
+        overrides = _ROLE_STOP_TOKEN_OVERRIDES.get(role)
+        if overrides:
+            tokens.difference_update(overrides)
+    return tokens
+
+
+def _token_weight(token: str) -> float:
+    """Down-weight directional words instead of dropping them outright."""
+    if token in _DIRECTIONAL_TOKENS:
+        return 0.5
+    return 1.0
 
 
 def _iter_tag_tokens(tags: Mapping[str, Any]) -> Iterable[str]:
@@ -226,6 +263,43 @@ def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str,
     }
 
 
+def _annotate_category_distinguishing_tokens(entries: List[Dict[str, Any]]) -> None:
+    """Annotate per-entry distinguishing block-ID tokens for variant discrimination."""
+    category_groups: Dict[str, List[Dict[str, Any]]] = {}
+    for entry in entries:
+        category = _as_text(entry.get("category"))
+        if not category:
+            continue
+        category_groups.setdefault(category, []).append(entry)
+
+    for category_entries in category_groups.values():
+        token_counts: Dict[str, int] = {}
+        for entry in category_entries:
+            block_tokens = set(entry.get("block_tokens") or set())
+            for token in block_tokens:
+                if token in _INDEX_STOP_TOKENS or token in _LOW_SIGNAL_OVERLAP_TOKENS:
+                    continue
+                if len(token) < 3:
+                    continue
+                token_counts[token] = token_counts.get(token, 0) + 1
+
+        category_distinguishing = frozenset(
+            token
+            for token, count in token_counts.items()
+            if count < len(category_entries)
+        )
+
+        for entry in category_entries:
+            block_tokens = set(entry.get("block_tokens") or set())
+            entry_distinguishing = frozenset(
+                token
+                for token in block_tokens
+                if token_counts.get(token, 0) == 1
+            )
+            entry["distinguishing_tokens"] = entry_distinguishing
+            entry["category_distinguishing_tokens"] = category_distinguishing
+
+
 @lru_cache(maxsize=1)
 def _get_primitive_index() -> Tuple[Dict[str, Any], ...]:
     """Build and cache primitive index from prompt content packs."""
@@ -252,22 +326,11 @@ def _get_primitive_index() -> Tuple[Dict[str, Any], ...]:
             entry = _build_index_entry(block=block, pack_name=pack_name)
             if entry:
                 entries.append(entry)
+    _annotate_category_distinguishing_tokens(entries)
     return tuple(entries)
 
 
 def _extract_candidate_evidence(candidate: Mapping[str, Any]) -> Dict[str, Any]:
-    text_tokens = _tokenize(
-        candidate.get("text"),
-        stop_tokens=_CANDIDATE_STOP_TOKENS,
-    )
-    matched_keywords = candidate.get("matched_keywords")
-    keyword_tokens: set[str] = set()
-    if isinstance(matched_keywords, list):
-        for keyword in matched_keywords:
-            keyword_tokens.update(
-                _tokenize(keyword, stop_tokens=_CANDIDATE_STOP_TOKENS)
-            )
-
     role = _as_text(candidate.get("role"))
     category = _as_text(candidate.get("category"))
 
@@ -277,6 +340,20 @@ def _extract_candidate_evidence(candidate: Mapping[str, Any]) -> Dict[str, Any]:
         role = _as_text(metadata.get("inferred_role"))
     if not category:
         category = _as_text(metadata.get("category"))
+
+    stop_tokens = _candidate_stop_tokens(role=role)
+    text_tokens = _tokenize(
+        candidate.get("text"),
+        stop_tokens=stop_tokens,
+    )
+
+    matched_keywords = candidate.get("matched_keywords")
+    keyword_tokens: set[str] = set()
+    if isinstance(matched_keywords, list):
+        for keyword in matched_keywords:
+            keyword_tokens.update(
+                _tokenize(keyword, stop_tokens=stop_tokens)
+            )
 
     return {
         "text_tokens": text_tokens,
@@ -307,6 +384,10 @@ def _score_entry(
     if not overlap_all:
         return None
 
+    overlap_weight = sum(_token_weight(token) for token in overlap_all)
+    probe_weight = sum(_token_weight(token) for token in probe_tokens)
+    normalized_probe_weight = max(min(probe_weight, 3.0), 1.0)
+
     role = _as_text(evidence.get("role"))
     category = _as_text(evidence.get("category"))
     entry_role = _as_text(entry.get("role"))
@@ -321,21 +402,51 @@ def _score_entry(
     if category and entry_role and category == entry_role:
         cross_bonus += 0.1
 
-    lexical_score = (len(overlap_all) / max(len(probe_tokens), 1)) * 0.6
+    lexical_score = (overlap_weight / normalized_probe_weight) * 0.6
     keyword_bonus = min(0.2, 0.1 * len(overlap_keywords))
     specific_bonus = 0.1 if any(
         token not in _LOW_SIGNAL_OVERLAP_TOKENS for token in overlap_all
     ) else 0.0
+    entry_block_tokens = {
+        token
+        for token in set(entry.get("block_tokens") or set())
+        if token not in _INDEX_STOP_TOKENS and token not in _LOW_SIGNAL_OVERLAP_TOKENS
+    }
+    block_id_overlap = sorted(probe_tokens & entry_block_tokens)
+    block_id_bonus = min(0.24, 0.12 * len(block_id_overlap))
 
     score = min(
         1.0,
-        lexical_score + keyword_bonus + specific_bonus + role_bonus + category_bonus + cross_bonus,
+        lexical_score
+        + keyword_bonus
+        + specific_bonus
+        + block_id_bonus
+        + role_bonus
+        + category_bonus
+        + cross_bonus,
     )
+
+    entry_distinguishing = set(entry.get("distinguishing_tokens") or set())
+    category_distinguishing = set(entry.get("category_distinguishing_tokens") or set())
+    overlap_distinguishing = sorted(probe_tokens & entry_distinguishing)
+    competing_distinguishing = sorted(
+        (probe_tokens & category_distinguishing) - set(overlap_distinguishing)
+    )
+    negative_penalty = 1.0
+    if competing_distinguishing and not overlap_distinguishing:
+        negative_penalty = 0.65
+    elif entry_distinguishing and not overlap_distinguishing:
+        negative_penalty = 0.85
+    score *= negative_penalty
 
     has_specific_evidence = (
         len(overlap_all) >= 2
         or len(overlap_keywords) > 0
-        or any(token not in _LOW_SIGNAL_OVERLAP_TOKENS for token in overlap_all)
+        or any(
+            token not in _LOW_SIGNAL_OVERLAP_TOKENS and token not in _DIRECTIONAL_TOKENS
+            for token in overlap_all
+        )
+        or bool(overlap_distinguishing)
     )
     if not has_specific_evidence:
         return None
@@ -345,6 +456,10 @@ def _score_entry(
         "overlap_tokens": overlap_all,
         "overlap_text": overlap_text,
         "overlap_keywords": overlap_keywords,
+        "block_id_overlap": block_id_overlap,
+        "overlap_distinguishing": overlap_distinguishing,
+        "competing_distinguishing": competing_distinguishing,
+        "negative_penalty": negative_penalty,
     }
 
 

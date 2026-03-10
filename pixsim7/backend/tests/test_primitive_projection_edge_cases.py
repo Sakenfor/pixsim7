@@ -532,6 +532,16 @@ class TestEvidenceExtraction:
         assert "dolly" in evidence["keyword_tokens"]
         assert "dolly" in evidence["text_tokens"]
 
+    def test_directional_tokens_are_preserved(self):
+        evidence = _extract_candidate_evidence({
+            "text": "Zoom in, then move left and forward before backing out.",
+            "matched_keywords": [],
+        })
+        assert "in" in evidence["text_tokens"]
+        assert "left" in evidence["text_tokens"]
+        assert "forward" in evidence["text_tokens"]
+        assert "out" in evidence["text_tokens"]
+
 
 # ---------------------------------------------------------------------------
 # EDGE CASE 7: Scoring edge cases
@@ -632,6 +642,75 @@ class TestScoringEdgeCases:
         # because has_specific_evidence requires either 2+ tokens,
         # keyword match, or a non-low-signal token
         assert scored is None
+
+    def test_negative_evidence_penalizes_wrong_variant(self):
+        """When probe includes competing distinguishing token, wrong variant is penalized."""
+        evidence = {
+            "text_tokens": {"worm", "eye", "angle", "low"},
+            "keyword_tokens": set(),
+            "role": "camera",
+            "category": "camera",
+        }
+        bird_entry = {
+            "tokens": {"bird", "eye", "angle", "low"},
+            "block_tokens": {"core", "camera", "angle", "bird", "eye"},
+            "distinguishing_tokens": {"bird"},
+            "category_distinguishing_tokens": {"bird", "worm"},
+            "role": "camera",
+            "category": "camera",
+        }
+        worm_entry = {
+            "tokens": {"worm", "eye", "angle", "low"},
+            "block_tokens": {"core", "camera", "angle", "worm", "eye"},
+            "distinguishing_tokens": {"worm"},
+            "category_distinguishing_tokens": {"bird", "worm"},
+            "role": "camera",
+            "category": "camera",
+        }
+        bird_score = _score_entry(evidence=evidence, entry=bird_entry)
+        worm_score = _score_entry(evidence=evidence, entry=worm_entry)
+        assert bird_score is not None and worm_score is not None
+        assert bird_score["negative_penalty"] < 1.0
+        assert worm_score["score"] > bird_score["score"]
+
+    def test_variant_discrimination_prefers_matching_block_id_tokens(self):
+        variant_index = (
+            {
+                "block_id": "core.camera.angle.bird_eye",
+                "package_name": "core_angle",
+                "role": "camera",
+                "category": "camera",
+                "tokens": frozenset({"bird", "eye", "angle", "low"}),
+                "block_tokens": frozenset({"core", "camera", "angle", "bird", "eye"}),
+                "distinguishing_tokens": frozenset({"bird"}),
+                "category_distinguishing_tokens": frozenset({"bird", "worm"}),
+                "op_id": "camera.angle.bird_eye",
+                "signature_id": None,
+                "op_modalities": ("image", "video"),
+            },
+            {
+                "block_id": "core.camera.angle.worm_eye",
+                "package_name": "core_angle",
+                "role": "camera",
+                "category": "camera",
+                "tokens": frozenset({"worm", "eye", "angle", "low"}),
+                "block_tokens": frozenset({"core", "camera", "angle", "worm", "eye"}),
+                "distinguishing_tokens": frozenset({"worm"}),
+                "category_distinguishing_tokens": frozenset({"bird", "worm"}),
+                "op_id": "camera.angle.worm_eye",
+                "signature_id": None,
+                "op_modalities": ("image", "video"),
+            },
+        )
+        candidate = {
+            "text": "Low angle worm-eye perspective.",
+            "role": "camera",
+            "matched_keywords": [],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=variant_index)
+        assert match is not None
+        assert match["block_id"] == "core.camera.angle.worm_eye"
 
 
 # ---------------------------------------------------------------------------
