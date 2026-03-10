@@ -52,7 +52,7 @@ pack: #PromptBlockPackV1 & {
 				variants: [
 					{
 						key: "zoom"
-						op_modalities: ["both"]
+						op_modalities: ["video"]
 						op_args: {
 							direction: "in"
 						}

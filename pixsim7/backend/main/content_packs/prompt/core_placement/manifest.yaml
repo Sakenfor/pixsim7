@@ -1,4 +1,4 @@
-﻿id: core-placement
+id: core-placement
 title: Core Placement
 description: Anchor and relative placement primitives for scene layout.
 matrix_presets:

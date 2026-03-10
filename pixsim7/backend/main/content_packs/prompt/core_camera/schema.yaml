@@ -56,7 +56,7 @@ blocks:
             image_surface: zoomed-in framing
             video_surface: camera zooms
           op_modalities:
-            - both
+            - video
           op_args:
             direction: in
         - key: pan
