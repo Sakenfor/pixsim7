@@ -39,14 +39,14 @@ Primitive Index Summary:
 
 | Category | Total | TP | FP | Miss | TN | P@1 | Coverage | FPR |
 |----------|------:|---:|---:|-----:|---:|----:|---------:|----:|
-| ambiguous | 53 | 0 | 33 | 0 | 20 | 0.0% | 100.0% | 62.3% |
-| camera_framing | 25 | 18 | 6 | 1 | 0 | 75.0% | 72.0% | 0.0% |
-| camera_motion | 30 | 27 | 2 | 1 | 0 | 93.1% | 90.0% | 0.0% |
-| direction | 25 | 3 | 9 | 13 | 0 | 25.0% | 12.0% | 0.0% |
+| ambiguous | 53 | 0 | 30 | 0 | 23 | 0.0% | 100.0% | 56.6% |
+| camera_framing | 25 | 16 | 6 | 3 | 0 | 72.7% | 64.0% | 0.0% |
+| camera_motion | 30 | 26 | 2 | 2 | 0 | 92.9% | 86.7% | 0.0% |
+| direction | 25 | 2 | 8 | 15 | 0 | 20.0% | 8.0% | 0.0% |
 | lighting | 18 | 14 | 0 | 4 | 0 | 100.0% | 77.8% | 0.0% |
 | subject_action | 28 | 18 | 2 | 8 | 0 | 90.0% | 64.3% | 0.0% |
 | unrelated | 75 | 0 | 0 | 0 | 75 | 100.0% | 100.0% | 0.0% |
-| OVERALL | 254 | 80 | 52 | 27 | 95 | 60.6% | 63.5% | 40.6% |
+| OVERALL | 254 | 76 | 48 | 32 | 98 | 61.3% | 60.3% | 37.5% |
 
 ## Threshold Sweep
 
@@ -55,15 +55,15 @@ Threshold Sweep:
 --------------------------------------------------------------------------------
  Threshold  Matches    TP    FP     P@1     FPR
 -----------------------------------------------
-      0.30      132    80    52   60.6%   40.6%
-      0.35      132    80    52   60.6%   40.6%
-      0.40      132    80    52   60.6%   40.6%
-      0.45      132    80    52   60.6%   40.6%
-      0.50      128    80    48   62.5%   37.5%
-      0.55      113    71    42   62.8%   32.8%
-      0.60      110    68    42   61.8%   32.8%
-      0.65       81    51    30   63.0%   23.4%
-      0.70       76    49    27   64.5%   21.1%
+      0.30      124    76    48   61.3%   37.5%
+      0.35      124    76    48   61.3%   37.5%
+      0.40      124    76    48   61.3%   37.5%
+      0.45      124    76    48   61.3%   37.5%
+      0.50      120    76    44   63.3%   34.4%
+      0.55      107    69    38   64.5%   29.7%
+      0.60      104    66    38   63.5%   29.7%
+      0.65       77    50    27   64.9%   21.1%
+      0.70       72    48    24   66.7%   18.8%
 ```
 
 ## Top 20 False Positives
@@ -75,60 +75,60 @@ Threshold Sweep:
 | 3 | am09 | Eye level medium shot with soft warm lighting. | core.light.state.soft_warm | 1.000 | lighting, medium, soft, warm | _none_ |
 | 4 | am27 | A massive low angle building dominates the skyline | core.camera.angle.low_angle | 1.000 | angle, low | _none_ |
 | 5 | am32 | Low angle dolly forward tracking the hero as she r | core.camera.angle.low_angle | 1.000 | angle, low | _none_ |
-| 6 | am33 | Medium close-up over-the-shoulder shot with rack f | core.light.state.rim_dramatic | 1.000 | light, medium, rim, warm | _none_ |
-| 7 | am35 | Dolly. | core.camera.motion.dolly | 1.000 | dolly | _none_ |
-| 8 | am36 | Zoom. | core.camera.motion.zoom | 1.000 | zoom | _none_ |
-| 9 | am37 | Pan. | core.camera.motion.pan | 1.000 | pan | _none_ |
-| 10 | cf23 | Low angle worm's-eye perspective. | core.camera.angle.low_angle | 1.000 | angle, eye, low, worm | core.camera.angle.worm |
-| 11 | am49 | Focus on the warm soft glow and the subject's low  | core.subject.look.look_away_soft | 1.000 | focus, low, pose, soft, subject | _none_ |
-| 12 | cf15 | Rack focus from foreground to background. | core.camera.focus.background_deep | 0.940 | background, focus, rack | core.camera.focus.rack |
-| 13 | am03 | Warm light from behind creates a rim effect. | core.light.state.rim_dramatic | 0.940 | light, rim, warm | _none_ |
-| 14 | am31 | The subject moves forward with purpose. Camera orb | core.light.state.soft_warm | 0.940 | light, soft, warm | _none_ |
-| 15 | am48 | Third person narrative style. | core.camera.pov.third_person_follow | 0.940 | person, third | _none_ |
-| 16 | am05 | Close-up dolly forward with shallow focus. | core.camera.motion.dolly | 0.920 | dolly, forward, up | _none_ |
-| 17 | am19 | He pans for gold in the river. | core.camera.motion.pan | 0.920 | in, pan, pans | _none_ |
-| 18 | am40 | Speed ramp from slow to fast as the camera pushes  | core.camera.motion.dolly | 0.850 | camera, fast, in, slow, speed | _none_ |
-| 19 | am06 | Standing behind the subject near the wall. | core.subject.pose.standing_neutral | 0.840 | behind, standing, subject | _none_ |
-| 20 | am08 | Move forward then zoom out. | core.camera.motion.zoom | 0.820 | forward, out, zoom | _none_ |
+| 6 | am35 | Dolly. | core.camera.motion.dolly | 1.000 | dolly | _none_ |
+| 7 | am36 | Zoom. | core.camera.motion.zoom | 1.000 | zoom | _none_ |
+| 8 | am37 | Pan. | core.camera.motion.pan | 1.000 | pan | _none_ |
+| 9 | cf23 | Low angle worm's-eye perspective. | core.camera.angle.low_angle | 1.000 | angle, eye, low, worm | core.camera.angle.worm |
+| 10 | cf15 | Rack focus from foreground to background. | core.camera.focus.background_deep | 0.940 | background, focus, rack | core.camera.focus.rack |
+| 11 | am03 | Warm light from behind creates a rim effect. | core.light.state.rim_dramatic | 0.940 | light, rim, warm | _none_ |
+| 12 | am31 | The subject moves forward with purpose. Camera orb | core.light.state.soft_warm | 0.940 | light, soft, warm | _none_ |
+| 13 | am48 | Third person narrative style. | core.camera.pov.third_person_follow | 0.940 | person, third | _none_ |
+| 14 | am05 | Close-up dolly forward with shallow focus. | core.camera.motion.dolly | 0.920 | dolly, forward, up | _none_ |
+| 15 | am19 | He pans for gold in the river. | core.camera.motion.pan | 0.920 | in, pan, pans | _none_ |
+| 16 | am06 | Standing behind the subject near the wall. | core.subject.pose.standing_neutral | 0.840 | behind, standing, subject | _none_ |
+| 17 | am08 | Move forward then zoom out. | core.camera.motion.zoom | 0.820 | forward, out, zoom | _none_ |
+| 18 | am38 | Tilt. | core.camera.motion.tilt | 0.820 | tilt | _none_ |
+| 19 | am11 | Camera shot. | core.camera.angle.eye_level | 0.800 | camera | _none_ |
+| 20 | am07 | The light is harsh and cool, backlighting the figu | core.light.state.hard_cool | 0.740 | cool, light | _none_ |
 
 ## Top 20 Missed Matches
 
 | # | ID | Prompt | Expected | Category | Notes |
 |---|-----|--------|----------|----------|-------|
-| 1 | dr05 | The bird flies above the rooftops. | core.placement.anchor.above | direction | Above |
-| 2 | dr06 | Water flowing below the bridge. | core.placement.anchor.below | direction | Below |
-| 3 | dr08 | Moving forward through the tunnel. | core.direction | direction | Direction forward |
-| 4 | dr09 | She steps backward away from the edge. | core.direction | direction | Direction backward |
-| 5 | dr10 | Looking up toward the ceiling. | core.direction | direction | Direction up |
-| 6 | dr11 | Glancing down at the floor. | core.direction | direction | Direction down |
-| 7 | dr13 | Sliding right across the frame. | core.direction | direction | Direction right |
-| 8 | dr14 | Moving outward from the center. | core.direction | direction | Direction out |
-| 9 | dr17 | Character positioned below the balcony. | core.placement.anchor.below | direction | Below placement |
-| 10 | dr20 | Positioned above the crowd. | core.placement.anchor.above | direction | Above crowd |
-| 11 | lt10 | Strong backlighting creating a halo effect. | core.light.state.backlit_silhouette | lighting | Backlighting halo |
-| 12 | lt14 | Harsh specular highlights on the metal surface. | core.light.state.hard_cool | lighting | Specular highlights |
-| 13 | lt15 | Gentle diffused overcast light. | core.light.state.diffuse_neutral | lighting | Overcast diffused |
-| 14 | sa06 | Walking forward at a steady pace. | core.subject.motion.move_forward | subject_action | Move forward |
-| 15 | sa16 | Pointing toward the horizon. | core.subject.hands.hands_point | subject_action | Hands point |
-| 16 | sa18 | Running quickly toward the gate. | core.subject.motion.move_forward | subject_action | Running forward |
-| 17 | sa20 | Crouching behind the wall. | core.subject.pose.crouched_ready | subject_action | Crouching behind |
-| 18 | cm28 | Tilt from the boots to the hat. | core.camera.motion.tilt | camera_motion | Tilt vertical reveal |
-| 19 | cf24 | Shallow bokeh on the main character. | core.camera.focus.subject_shallow | camera_framing | Bokeh = shallow DOF |
-| 20 | sa21 | Seated with legs crossed casually. | core.subject.pose.seated_relaxed | subject_action | Seated variant |
+| 1 | cm20 | Zoom slowly into the character's eyes. | core.camera.motion.zoom | camera_motion | Slow zoom in |
+| 2 | cf03 | Medium shot of the two characters talking. | core.camera.shot.medium | camera_framing | Medium shot |
+| 3 | cf05 | Bird's eye view looking straight down. | core.camera.angle.bird | camera_framing | Bird's eye angle |
+| 4 | dr01 | Subject positioned to the left of frame. | core.placement.anchor.left_of | direction | Left placement |
+| 5 | dr03 | Standing in front of the mirror. | core.placement.anchor.in_front_of | direction | In front of |
+| 6 | dr05 | The bird flies above the rooftops. | core.placement.anchor.above | direction | Above |
+| 7 | dr06 | Water flowing below the bridge. | core.placement.anchor.below | direction | Below |
+| 8 | dr08 | Moving forward through the tunnel. | core.direction | direction | Direction forward |
+| 9 | dr09 | She steps backward away from the edge. | core.direction | direction | Direction backward |
+| 10 | dr10 | Looking up toward the ceiling. | core.direction | direction | Direction up |
+| 11 | dr11 | Glancing down at the floor. | core.direction | direction | Direction down |
+| 12 | dr13 | Sliding right across the frame. | core.direction | direction | Direction right |
+| 13 | dr14 | Moving outward from the center. | core.direction | direction | Direction out |
+| 14 | dr17 | Character positioned below the balcony. | core.placement.anchor.below | direction | Below placement |
+| 15 | dr20 | Positioned above the crowd. | core.placement.anchor.above | direction | Above crowd |
+| 16 | lt10 | Strong backlighting creating a halo effect. | core.light.state.backlit_silhouette | lighting | Backlighting halo |
+| 17 | lt14 | Harsh specular highlights on the metal surface. | core.light.state.hard_cool | lighting | Specular highlights |
+| 18 | lt15 | Gentle diffused overcast light. | core.light.state.diffuse_neutral | lighting | Overcast diffused |
+| 19 | sa06 | Walking forward at a steady pace. | core.subject.motion.move_forward | subject_action | Move forward |
+| 20 | sa16 | Pointing toward the horizon. | core.subject.hands.hands_point | subject_action | Hands point |
 
 ## Recommendation
 
 **Decision: `stay shadow`**
 
-**Rationale**: FPR (40.6%) too high for promotion. Tune scoring first.
+**Rationale**: FPR (37.5%) too high for promotion. Tune scoring first.
 
 ### Promotion Criteria
 
 | Criterion | Target | Current | Status |
 |-----------|--------|---------|--------|
-| Precision@1 | >= 85% | 60.6% | FAIL |
-| Coverage | >= 60% | 63.5% | PASS |
-| FPR | <= 5% | 40.6% | FAIL |
+| Precision@1 | >= 85% | 61.3% | FAIL |
+| Coverage | >= 60% | 60.3% | PASS |
+| FPR | <= 5% | 37.5% | FAIL |
 
 ### Suggested Scoring Tweaks (do NOT apply yet)
 

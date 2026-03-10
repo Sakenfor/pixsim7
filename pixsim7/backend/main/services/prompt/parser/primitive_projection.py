@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 PROJECTION_MODE_OFF = "off"
 PROJECTION_MODE_SHADOW = "shadow"
+_MIN_MATCH_SCORE = 0.45
+_CROSS_DOMAIN_AMBIGUITY_DELTA = 0.08
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _INDEX_STOP_TOKENS = {
@@ -463,6 +465,46 @@ def _score_entry(
     }
 
 
+def _primitive_domain(entry: Mapping[str, Any]) -> str | None:
+    category = _as_text(entry.get("category"))
+    if category:
+        return f"category:{category}"
+    role = _as_text(entry.get("role"))
+    if role:
+        return f"role:{role}"
+    package_name = _as_text(entry.get("package_name"))
+    if package_name:
+        return f"package:{package_name}"
+    return None
+
+
+def _is_cross_domain_ambiguous(
+    ranked_matches: Sequence[Tuple[Mapping[str, Any], Mapping[str, Any]]],
+) -> bool:
+    if len(ranked_matches) < 2:
+        return False
+
+    best_scored, best_entry = ranked_matches[0]
+    best_score = float(best_scored.get("score") or 0.0)
+    if best_score < _MIN_MATCH_SCORE:
+        return False
+    best_domain = _primitive_domain(best_entry)
+    if not best_domain:
+        return False
+
+    for contender_scored, contender_entry in ranked_matches[1:]:
+        contender_score = float(contender_scored.get("score") or 0.0)
+        if contender_score < _MIN_MATCH_SCORE:
+            continue
+        contender_domain = _primitive_domain(contender_entry)
+        if not contender_domain or contender_domain == best_domain:
+            continue
+        score_delta = best_score - contender_score
+        return score_delta <= _CROSS_DOMAIN_AMBIGUITY_DELTA
+
+    return False
+
+
 def match_candidate_to_primitive(
     candidate: Mapping[str, Any],
     *,
@@ -483,34 +525,28 @@ def match_candidate_to_primitive(
         return None
 
     evidence = _extract_candidate_evidence(candidate)
-    best: Dict[str, Any] | None = None
-    best_entry: Mapping[str, Any] | None = None
+    ranked_matches: List[Tuple[Dict[str, Any], Mapping[str, Any]]] = []
 
     for entry in index:
         scored = _score_entry(evidence=evidence, entry=entry)
         if scored is None:
             continue
-        if best is None:
-            best = scored
-            best_entry = entry
-            continue
-        if scored["score"] > best["score"]:
-            best = scored
-            best_entry = entry
-            continue
-        if scored["score"] == best["score"]:
-            if len(scored["overlap_tokens"]) > len(best["overlap_tokens"]):
-                best = scored
-                best_entry = entry
-                continue
-            if len(scored["overlap_tokens"]) == len(best["overlap_tokens"]):
-                if str(entry.get("block_id") or "") < str(best_entry.get("block_id") or ""):
-                    best = scored
-                    best_entry = entry
+        ranked_matches.append((scored, entry))
 
-    if best is None or best_entry is None:
+    if not ranked_matches:
         return None
-    if best["score"] < 0.45:
+    ranked_matches.sort(
+        key=lambda item: (
+            -float(item[0].get("score") or 0.0),
+            -len(item[0].get("overlap_tokens") or []),
+            str(item[1].get("block_id") or ""),
+        )
+    )
+
+    best, best_entry = ranked_matches[0]
+    if float(best["score"]) < _MIN_MATCH_SCORE:
+        return None
+    if _is_cross_domain_ambiguous(ranked_matches):
         return None
 
     payload: Dict[str, Any] = {

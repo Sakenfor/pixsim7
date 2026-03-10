@@ -355,6 +355,82 @@ class TestMultiSentenceMixed:
             )
 
 
+class TestCrossDomainAmbiguitySuppression:
+    """Cross-domain near-ties should be suppressed in shadow metadata."""
+
+    def test_near_tied_cross_domain_candidates_are_suppressed(self):
+        ambiguous_index = (
+            {
+                "block_id": "core.camera.intent.focus",
+                "package_name": "core_camera",
+                "role": "camera",
+                "category": "camera",
+                "tokens": frozenset({"focus", "subject", "framing"}),
+                "block_tokens": frozenset({"core", "camera", "intent", "focus"}),
+                "op_id": "camera.intent.focus",
+                "signature_id": None,
+                "op_modalities": ("both",),
+            },
+            {
+                "block_id": "core.light.intent.focus",
+                "package_name": "core_light",
+                "role": None,
+                "category": "light",
+                "tokens": frozenset({"focus", "subject", "ambient"}),
+                "block_tokens": frozenset({"core", "light", "intent", "focus"}),
+                "op_id": "light.intent.focus",
+                "signature_id": None,
+                "op_modalities": ("both",),
+            },
+        )
+        candidate = {
+            "text": "Focus subject",
+            "role": None,
+            "matched_keywords": [],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=ambiguous_index)
+        assert match is None
+
+    def test_near_tied_same_domain_candidates_still_resolve(self):
+        same_domain_index = (
+            {
+                "block_id": "core.camera.intent.alpha",
+                "package_name": "core_camera",
+                "role": "camera",
+                "category": "camera",
+                "tokens": frozenset({"focus", "subject", "alpha"}),
+                "block_tokens": frozenset({"core", "camera", "intent", "alpha"}),
+                "op_id": "camera.intent.alpha",
+                "signature_id": None,
+                "op_modalities": ("both",),
+            },
+            {
+                "block_id": "core.camera.intent.beta",
+                "package_name": "core_camera",
+                "role": "camera",
+                "category": "camera",
+                "tokens": frozenset({"focus", "subject", "beta"}),
+                "block_tokens": frozenset({"core", "camera", "intent", "beta"}),
+                "op_id": "camera.intent.beta",
+                "signature_id": None,
+                "op_modalities": ("both",),
+            },
+        )
+        candidate = {
+            "text": "Focus subject",
+            "role": "camera",
+            "matched_keywords": [],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=same_domain_index)
+        assert match is not None
+        assert match["block_id"] in {
+            "core.camera.intent.alpha",
+            "core.camera.intent.beta",
+        }
+
+
 # ---------------------------------------------------------------------------
 # EDGE CASE 4: False-friend words
 # ---------------------------------------------------------------------------
