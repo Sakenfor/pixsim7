@@ -19,6 +19,14 @@ pack: #PromptBlockPackV1 & {
 					modifier_family:  "placement"
 					modality_support: "both"
 					temporal:         "neutral"
+					placement_context_synonyms: [
+						"positioned",
+						"placed",
+						"standing",
+						"located",
+						"sits",
+						"sitting",
+					]
 				}
 				op: {
 					op_id: "scene.anchor.place"
@@ -84,6 +92,13 @@ pack: #PromptBlockPackV1 & {
 						tags: {
 							placement_relation: "near"
 							placement_distance: "near"
+							placement_synonyms: [
+								"nearby",
+								"close",
+								"close to",
+								"next to",
+								"beside",
+							]
 						}
 						op_args: {
 							relation: "near"
@@ -95,6 +110,12 @@ pack: #PromptBlockPackV1 & {
 						tags: {
 							placement_relation: "left_of"
 							placement_distance: "medium"
+							placement_synonyms: [
+								"left of",
+								"to the left",
+								"left side",
+								"left side of frame",
+							]
 						}
 						op_args: {
 							relation: "left_of"
@@ -106,6 +127,12 @@ pack: #PromptBlockPackV1 & {
 						tags: {
 							placement_relation: "right_of"
 							placement_distance: "medium"
+							placement_synonyms: [
+								"right of",
+								"to the right",
+								"right side",
+								"right side of frame",
+							]
 						}
 						op_args: {
 							relation: "right_of"
@@ -117,6 +144,12 @@ pack: #PromptBlockPackV1 & {
 						tags: {
 							placement_relation: "in_front_of"
 							placement_distance: "medium"
+							placement_synonyms: [
+								"in front of",
+								"in front",
+								"ahead of",
+								"before",
+							]
 						}
 						op_args: {
 							relation: "in_front_of"
@@ -128,6 +161,12 @@ pack: #PromptBlockPackV1 & {
 						tags: {
 							placement_relation: "behind"
 							placement_distance: "medium"
+							placement_synonyms: [
+								"behind",
+								"in back of",
+								"at the back",
+								"rear of",
+							]
 						}
 						op_args: {
 							relation: "behind"
@@ -139,6 +178,13 @@ pack: #PromptBlockPackV1 & {
 						tags: {
 							placement_relation: "above"
 							placement_distance: "far"
+							placement_synonyms: [
+								"above",
+								"over",
+								"overhead",
+								"higher than",
+								"elevated",
+							]
 						}
 						op_args: {
 							relation: "above"
@@ -150,6 +196,13 @@ pack: #PromptBlockPackV1 & {
 						tags: {
 							placement_relation: "below"
 							placement_distance: "far"
+							placement_synonyms: [
+								"below",
+								"under",
+								"beneath",
+								"underneath",
+								"lower than",
+							]
 						}
 						op_args: {
 							relation: "below"

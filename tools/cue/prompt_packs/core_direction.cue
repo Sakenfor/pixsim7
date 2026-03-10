@@ -30,54 +30,124 @@ pack: #PromptBlockPackV1 & {
 					modifier_family:  "direction"
 					modality_support: "both"
 					temporal:         "neutral"
+					direction_context_synonyms: [
+						"move",
+						"moving",
+						"turn",
+						"turning",
+						"step",
+						"steps",
+						"glance",
+						"glancing",
+						"look",
+						"looking",
+						"positioned",
+						"placed",
+					]
 				}
 				variants: [
 					{
 						key: "in"
 						tags: {
 							direction: "in"
+							direction_synonyms: [
+								"inward",
+								"inside",
+								"into",
+								"toward center",
+								"closer",
+							]
 						}
 					},
 					{
 						key: "out"
 						tags: {
 							direction: "out"
+							direction_synonyms: [
+								"outward",
+								"outside",
+								"away",
+								"from center",
+								"further",
+							]
 						}
 					},
 					{
 						key: "left"
 						tags: {
 							direction: "left"
+							direction_synonyms: [
+								"leftward",
+								"port",
+								"left side",
+								"to the left",
+								"slide left",
+							]
 						}
 					},
 					{
 						key: "right"
 						tags: {
 							direction: "right"
+							direction_synonyms: [
+								"rightward",
+								"starboard",
+								"right side",
+								"to the right",
+								"slide right",
+							]
 						}
 					},
 					{
 						key: "up"
 						tags: {
 							direction: "up"
+							direction_synonyms: [
+								"upward",
+								"rise",
+								"ascend",
+								"look up",
+								"toward ceiling",
+							]
 						}
 					},
 					{
 						key: "down"
 						tags: {
 							direction: "down"
+							direction_synonyms: [
+								"downward",
+								"lower",
+								"descend",
+								"look down",
+								"toward floor",
+							]
 						}
 					},
 					{
 						key: "forward"
 						tags: {
 							direction: "forward"
+							direction_synonyms: [
+								"ahead",
+								"onward",
+								"toward",
+								"advance",
+								"move forward",
+							]
 						}
 					},
 					{
 						key: "backward"
 						tags: {
 							direction: "backward"
+							direction_synonyms: [
+								"back",
+								"reverse",
+								"rearward",
+								"retreat",
+								"step back",
+							]
 						}
 					},
 				]

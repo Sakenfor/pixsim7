@@ -1,4 +1,4 @@
-version: 1.0.0
+﻿version: 1.0.0
 package_name: core_placement
 defaults:
   is_public: true
@@ -15,6 +15,13 @@ blocks:
         modifier_family: placement
         modality_support: both
         temporal: neutral
+        placement_context_synonyms:
+          - positioned
+          - placed
+          - standing
+          - located
+          - sits
+          - sitting
       op:
         op_id: scene.anchor.place
         modalities:
@@ -74,6 +81,12 @@ blocks:
           tags:
             placement_relation: near
             placement_distance: near
+            placement_synonyms:
+              - nearby
+              - close
+              - close to
+              - next to
+              - beside
           op_args:
             relation: near
             distance: near
@@ -81,6 +94,11 @@ blocks:
           tags:
             placement_relation: left_of
             placement_distance: medium
+            placement_synonyms:
+              - left of
+              - to the left
+              - left side
+              - left side of frame
           op_args:
             relation: left_of
             distance: medium
@@ -88,6 +106,11 @@ blocks:
           tags:
             placement_relation: right_of
             placement_distance: medium
+            placement_synonyms:
+              - right of
+              - to the right
+              - right side
+              - right side of frame
           op_args:
             relation: right_of
             distance: medium
@@ -95,6 +118,11 @@ blocks:
           tags:
             placement_relation: in_front_of
             placement_distance: medium
+            placement_synonyms:
+              - in front of
+              - in front
+              - ahead of
+              - before
           op_args:
             relation: in_front_of
             distance: medium
@@ -102,6 +130,11 @@ blocks:
           tags:
             placement_relation: behind
             placement_distance: medium
+            placement_synonyms:
+              - behind
+              - in back of
+              - at the back
+              - rear of
           op_args:
             relation: behind
             distance: medium
@@ -109,6 +142,12 @@ blocks:
           tags:
             placement_relation: above
             placement_distance: far
+            placement_synonyms:
+              - above
+              - over
+              - overhead
+              - higher than
+              - elevated
           op_args:
             relation: above
             distance: far
@@ -116,6 +155,12 @@ blocks:
           tags:
             placement_relation: below
             placement_distance: far
+            placement_synonyms:
+              - below
+              - under
+              - beneath
+              - underneath
+              - lower than
           op_args:
             relation: below
             distance: far

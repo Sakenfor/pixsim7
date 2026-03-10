@@ -16,6 +16,7 @@ package promptpacks
 #OpIdTemplate: #TemplateId
 #OpSignatureId: #DottedId
 #BlockMode:    "surface" | "hybrid" | "op"
+#TagValue:     string | [...string]
 
 // Canonical shared enum values.
 #SpeedValues: ["slow", "normal", "fast"]
@@ -120,7 +121,7 @@ package promptpacks
 	block_id?: #BlockId
 	text?:     string
 	tags?: {
-		[string]: string
+		[string]: #TagValue
 	}
 	op_id?: #OpId
 	op_modalities?: [...#Modality]
@@ -143,7 +144,7 @@ package promptpacks
 	text_template?: string
 	descriptors?: #DescriptorOverlay
 	tags?: {
-		[string]: string
+		[string]: #TagValue
 	}
 	op?: #OpTemplate
 	variants: [...#Variant]

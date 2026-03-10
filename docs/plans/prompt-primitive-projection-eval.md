@@ -39,14 +39,14 @@ Primitive Index Summary:
 
 | Category | Total | TP | FP | Miss | TN | P@1 | Coverage | FPR |
 |----------|------:|---:|---:|-----:|---:|----:|---------:|----:|
-| ambiguous | 53 | 0 | 30 | 0 | 23 | 0.0% | 100.0% | 56.6% |
+| ambiguous | 53 | 0 | 29 | 0 | 24 | 0.0% | 100.0% | 54.7% |
 | camera_framing | 25 | 16 | 6 | 3 | 0 | 72.7% | 64.0% | 0.0% |
 | camera_motion | 30 | 26 | 2 | 2 | 0 | 92.9% | 86.7% | 0.0% |
-| direction | 25 | 2 | 8 | 15 | 0 | 20.0% | 8.0% | 0.0% |
+| direction | 25 | 13 | 6 | 6 | 0 | 68.4% | 52.0% | 0.0% |
 | lighting | 18 | 14 | 0 | 4 | 0 | 100.0% | 77.8% | 0.0% |
-| subject_action | 28 | 18 | 2 | 8 | 0 | 90.0% | 64.3% | 0.0% |
+| subject_action | 28 | 16 | 5 | 7 | 0 | 76.2% | 57.1% | 0.0% |
 | unrelated | 75 | 0 | 0 | 0 | 75 | 100.0% | 100.0% | 0.0% |
-| OVERALL | 254 | 76 | 48 | 32 | 98 | 61.3% | 60.3% | 37.5% |
+| OVERALL | 254 | 85 | 48 | 22 | 99 | 63.9% | 67.5% | 37.5% |
 
 ## Threshold Sweep
 
@@ -55,15 +55,15 @@ Threshold Sweep:
 --------------------------------------------------------------------------------
  Threshold  Matches    TP    FP     P@1     FPR
 -----------------------------------------------
-      0.30      124    76    48   61.3%   37.5%
-      0.35      124    76    48   61.3%   37.5%
-      0.40      124    76    48   61.3%   37.5%
-      0.45      124    76    48   61.3%   37.5%
-      0.50      120    76    44   63.3%   34.4%
-      0.55      107    69    38   64.5%   29.7%
-      0.60      104    66    38   63.5%   29.7%
-      0.65       77    50    27   64.9%   21.1%
-      0.70       72    48    24   66.7%   18.8%
+      0.30      133    85    48   63.9%   37.5%
+      0.35      133    85    48   63.9%   37.5%
+      0.40      133    85    48   63.9%   37.5%
+      0.45      133    85    48   63.9%   37.5%
+      0.50      130    85    45   65.4%   35.2%
+      0.55      119    78    41   65.5%   32.0%
+      0.60      115    74    41   64.3%   32.0%
+      0.65       88    59    29   67.0%   22.7%
+      0.70       83    57    26   68.7%   20.3%
 ```
 
 ## Top 20 False Positives
@@ -83,13 +83,13 @@ Threshold Sweep:
 | 11 | am03 | Warm light from behind creates a rim effect. | core.light.state.rim_dramatic | 0.940 | light, rim, warm | _none_ |
 | 12 | am31 | The subject moves forward with purpose. Camera orb | core.light.state.soft_warm | 0.940 | light, soft, warm | _none_ |
 | 13 | am48 | Third person narrative style. | core.camera.pov.third_person_follow | 0.940 | person, third | _none_ |
-| 14 | am05 | Close-up dolly forward with shallow focus. | core.camera.motion.dolly | 0.920 | dolly, forward, up | _none_ |
-| 15 | am19 | He pans for gold in the river. | core.camera.motion.pan | 0.920 | in, pan, pans | _none_ |
-| 16 | am06 | Standing behind the subject near the wall. | core.subject.pose.standing_neutral | 0.840 | behind, standing, subject | _none_ |
-| 17 | am08 | Move forward then zoom out. | core.camera.motion.zoom | 0.820 | forward, out, zoom | _none_ |
-| 18 | am38 | Tilt. | core.camera.motion.tilt | 0.820 | tilt | _none_ |
-| 19 | am11 | Camera shot. | core.camera.angle.eye_level | 0.800 | camera | _none_ |
-| 20 | am07 | The light is harsh and cool, backlighting the figu | core.light.state.hard_cool | 0.740 | cool, light | _none_ |
+| 14 | sa07 | Stepping to the left slowly. | core.direction.left | 0.920 | left, step, steps | core.subject.motion.move_left |
+| 15 | am05 | Close-up dolly forward with shallow focus. | core.camera.motion.dolly | 0.920 | dolly, forward, up | _none_ |
+| 16 | am06 | Standing behind the subject near the wall. | core.placement.anchor.behind | 0.920 | behind, near, standing, subject | _none_ |
+| 17 | am19 | He pans for gold in the river. | core.camera.motion.pan | 0.920 | in, pan, pans | _none_ |
+| 18 | sa08 | Moving to the right across the stage. | core.direction.right | 0.820 | move, moving, right | core.subject.motion.move_right |
+| 19 | am04 | Looking down from above. | core.direction.down | 0.820 | down, look, looking | _none_ |
+| 20 | am08 | Move forward then zoom out. | core.camera.motion.zoom | 0.820 | forward, out, zoom | _none_ |
 
 ## Top 20 Missed Matches
 
@@ -98,23 +98,23 @@ Threshold Sweep:
 | 1 | cm20 | Zoom slowly into the character's eyes. | core.camera.motion.zoom | camera_motion | Slow zoom in |
 | 2 | cf03 | Medium shot of the two characters talking. | core.camera.shot.medium | camera_framing | Medium shot |
 | 3 | cf05 | Bird's eye view looking straight down. | core.camera.angle.bird | camera_framing | Bird's eye angle |
-| 4 | dr01 | Subject positioned to the left of frame. | core.placement.anchor.left_of | direction | Left placement |
-| 5 | dr03 | Standing in front of the mirror. | core.placement.anchor.in_front_of | direction | In front of |
-| 6 | dr05 | The bird flies above the rooftops. | core.placement.anchor.above | direction | Above |
-| 7 | dr06 | Water flowing below the bridge. | core.placement.anchor.below | direction | Below |
-| 8 | dr08 | Moving forward through the tunnel. | core.direction | direction | Direction forward |
-| 9 | dr09 | She steps backward away from the edge. | core.direction | direction | Direction backward |
-| 10 | dr10 | Looking up toward the ceiling. | core.direction | direction | Direction up |
-| 11 | dr11 | Glancing down at the floor. | core.direction | direction | Direction down |
-| 12 | dr13 | Sliding right across the frame. | core.direction | direction | Direction right |
-| 13 | dr14 | Moving outward from the center. | core.direction | direction | Direction out |
-| 14 | dr17 | Character positioned below the balcony. | core.placement.anchor.below | direction | Below placement |
-| 15 | dr20 | Positioned above the crowd. | core.placement.anchor.above | direction | Above crowd |
-| 16 | lt10 | Strong backlighting creating a halo effect. | core.light.state.backlit_silhouette | lighting | Backlighting halo |
-| 17 | lt14 | Harsh specular highlights on the metal surface. | core.light.state.hard_cool | lighting | Specular highlights |
-| 18 | lt15 | Gentle diffused overcast light. | core.light.state.diffuse_neutral | lighting | Overcast diffused |
-| 19 | sa06 | Walking forward at a steady pace. | core.subject.motion.move_forward | subject_action | Move forward |
-| 20 | sa16 | Pointing toward the horizon. | core.subject.hands.hands_point | subject_action | Hands point |
+| 4 | dr05 | The bird flies above the rooftops. | core.placement.anchor.above | direction | Above |
+| 5 | dr06 | Water flowing below the bridge. | core.placement.anchor.below | direction | Below |
+| 6 | dr12 | Turn left at the corridor junction. | core.direction | direction | Direction left |
+| 7 | lt10 | Strong backlighting creating a halo effect. | core.light.state.backlit_silhouette | lighting | Backlighting halo |
+| 8 | lt14 | Harsh specular highlights on the metal surface. | core.light.state.hard_cool | lighting | Specular highlights |
+| 9 | lt15 | Gentle diffused overcast light. | core.light.state.diffuse_neutral | lighting | Overcast diffused |
+| 10 | sa06 | Walking forward at a steady pace. | core.subject.motion.move_forward | subject_action | Move forward |
+| 11 | sa16 | Pointing toward the horizon. | core.subject.hands.hands_point | subject_action | Hands point |
+| 12 | sa18 | Running quickly toward the gate. | core.subject.motion.move_forward | subject_action | Running forward |
+| 13 | sa20 | Crouching behind the wall. | core.subject.pose.crouched_ready | subject_action | Crouching behind |
+| 14 | cm28 | Tilt from the boots to the hat. | core.camera.motion.tilt | camera_motion | Tilt vertical reveal |
+| 15 | cf24 | Shallow bokeh on the main character. | core.camera.focus.subject_shallow | camera_framing | Bokeh = shallow DOF |
+| 16 | sa21 | Seated with legs crossed casually. | core.subject.pose.seated_relaxed | subject_action | Seated variant |
+| 17 | sa23 | Hands making a fist. | core.subject.hands | subject_action | Fist is a hands gesture but not a specific variant |
+| 18 | dr21 | Object placed in front of the character. | core.placement.anchor.in_front_of | direction | In front placement |
+| 19 | dr22 | Flying above the cityscape. | core.placement.anchor.above | direction | Above city |
+| 20 | dr23 | Crouching below the table. | core.placement.anchor.below | direction | Below table |
 
 ## Recommendation
 
@@ -126,8 +126,8 @@ Threshold Sweep:
 
 | Criterion | Target | Current | Status |
 |-----------|--------|---------|--------|
-| Precision@1 | >= 85% | 61.3% | FAIL |
-| Coverage | >= 60% | 60.3% | PASS |
+| Precision@1 | >= 85% | 63.9% | FAIL |
+| Coverage | >= 60% | 67.5% | PASS |
 | FPR | <= 5% | 37.5% | FAIL |
 
 ### Suggested Scoring Tweaks (do NOT apply yet)
