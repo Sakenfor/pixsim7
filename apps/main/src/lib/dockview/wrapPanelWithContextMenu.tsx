@@ -142,8 +142,14 @@ export function wrapPanelWithContextMenu(
       if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;
       if (event.ctrlKey || event.metaKey) return;
 
-      // Skip if event target is inside a nested SmartDockview (let the nested one handle it)
       const target = event.target as HTMLElement;
+      // Opt-out escape hatch for interactive children that manage their own
+      // right-click behavior (e.g. upload target pickers).
+      if (target.closest('[data-context-ignore="true"]')) {
+        return;
+      }
+
+      // Skip if event target is inside a nested SmartDockview (let the nested one handle it)
       const nestedDockview = target.closest('[data-smart-dockview]');
       const thisDockview = (event.currentTarget as HTMLElement).closest(
         '[data-smart-dockview]',

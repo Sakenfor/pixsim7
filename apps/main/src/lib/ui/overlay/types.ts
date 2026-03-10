@@ -339,7 +339,7 @@ export interface PresetCapabilities {
   /** Whether this preset provides its own status widget (skip runtime status) */
   providesStatusWidget?: boolean;
 
-  /** Whether to skip the upload button (e.g., for review/generation modes) */
+  /** Legacy flag to hide upload controls. Kept for preset/backward compatibility. */
   skipUploadButton?: boolean;
 
   /** Whether to skip the tags tooltip (e.g., for focused workflows) */
@@ -358,9 +358,7 @@ export interface PresetCapabilities {
   showsQuickGenerate?: boolean;
 
   /** Hide the upload button inside the generation button group pill only.
-   *  Unlike skipUploadButton (which also hides the standalone upload widget),
-   *  this only affects the button within the pill — used by CompactAssetCard
-   *  in gallery contexts where assets are already in the library. */
+   *  Use this for compact/gallery contexts where assets are already in the library. */
   skipPillUpload?: boolean;
 
   /**

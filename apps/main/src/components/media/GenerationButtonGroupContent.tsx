@@ -47,12 +47,25 @@ type UploadTargetOption = {
   label: string;
 };
 
+type ProviderMenuMode = 'set-default' | 'upload-now';
+
+const UPLOAD_PROVIDER_COLORS: Record<string, string> = {
+  pixverse: '#7C3AED',
+  sora: '#6B7280',
+  remaker: '#059669',
+};
+
+function getUploadProviderColor(providerId: string): string {
+  return UPLOAD_PROVIDER_COLORS[providerId] ?? '#6B7280';
+}
+
 export function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroupContentProps) {
   const { id, mediaType } = cardProps;
   const toast = useToast();
 
   const [isProviderMenuOpen, setIsProviderMenuOpen] = useState(false);
   const [providerMenuPos, setProviderMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [providerMenuMode, setProviderMenuMode] = useState<ProviderMenuMode>('set-default');
   const [isUploading, setIsUploading] = useState(false);
   const triggerRef = useRef<HTMLDivElement>(null);
   const storedActionMode = useMediaCardActionModeStore((s) => s.byAssetId[id]);
@@ -294,6 +307,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       if (rect) {
         setProviderMenuPos({ x: rect.left, y: rect.bottom + 4 });
       }
+      setProviderMenuMode('upload-now');
       setIsProviderMenuOpen(true);
     }
   }, [
@@ -311,14 +325,17 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     e.preventDefault();
     e.stopPropagation();
     setProviderMenuPos({ x: e.clientX, y: e.clientY });
+    setProviderMenuMode('set-default');
     setIsProviderMenuOpen(true);
   }, [uploadTargetOptions.length]);
 
   const handleProviderSelect = useCallback((targetId: string) => {
     setDefaultUploadProvider(targetId);
     setIsProviderMenuOpen(false);
-    void handleUploadToTarget(targetId);
-  }, [setDefaultUploadProvider, handleUploadToTarget]);
+    if (providerMenuMode === 'upload-now') {
+      void handleUploadToTarget(targetId);
+    }
+  }, [setDefaultUploadProvider, providerMenuMode, handleUploadToTarget]);
 
   const hasGenContext = data.sourceGenerationId || data.hasGenerationContext;
 
@@ -385,7 +402,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const inputScopeId = widgetContext?.scopeId;
   const buttonItems: ButtonGroupItem[] = [];
 
-  // Upload button — context-aware: local folders get "Upload to library", library cards get "Upload to provider"
+  // Upload button - context-aware: local folders get "Upload to library", library cards get "Upload to provider"
   // Both support right-click to choose provider when multiple upload-capable providers exist.
   const externalUploadState = (data.uploadState || 'idle') as keyof typeof UPLOAD_BUTTON_STATES;
   const effectiveUploadState: keyof typeof UPLOAD_BUTTON_STATES = isUploading ? 'uploading' : externalUploadState;
@@ -395,18 +412,30 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     const defaultTarget = defaultTargetId
       ? uploadTargetOptions.find((option) => option.id === defaultTargetId)
       : null;
+    const providerAccentColor =
+      defaultTargetId && defaultTargetId !== 'library'
+        ? getUploadProviderColor(defaultTargetId)
+        : null;
+    const uploadButtonStyle = providerAccentColor
+      ? {
+          backgroundColor: `${providerAccentColor}26`,
+          boxShadow: `inset 0 0 0 1px ${providerAccentColor}88`,
+        } satisfies React.CSSProperties
+      : undefined;
     const uploadTitle = hasLocalUpload
       ? defaultTarget
-        ? `Upload to ${defaultTarget.label} (right-click to choose target)`
-        : 'Upload (right-click to choose target)'
+        ? `Upload to ${defaultTarget.label} (right-click to set default target)`
+        : 'Upload (right-click to set default target)'
       : (() => {
           const target = resolveUploadTarget(defaultUploadProviderId);
           if (target) return `Upload to ${target.name}`;
-          return 'Upload to provider (right-click to choose)';
+          return 'Upload to provider (right-click to set default)';
         })();
     buttonItems.push({
       id: 'upload',
       ...resolved,
+      buttonStyle: uploadButtonStyle,
+      icon: resolved.icon,
       title: uploadTitle,
       onClick: handleUploadClick,
       onContextMenu: handleUploadContextMenu,
@@ -570,7 +599,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   }
 
   return (
-    <div className="relative">
+    <div className="relative" data-context-ignore="true">
       <div
         ref={triggerRef}
         onClick={(e) => e.stopPropagation()}
@@ -605,13 +634,23 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
           placement="bottom"
           align="start"
           offset={4}
+          style={{ zIndex: 12050 }}
           className="min-w-[180px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
         >
           {uploadTargetOptions.map((target) => (
             <DropdownItem
               key={target.id}
               onClick={() => handleProviderSelect(target.id)}
-              icon={<Icon name="upload" size={12} />}
+              icon={
+                target.id === 'library'
+                  ? <Icon name="database" size={12} />
+                  : (
+                    <span
+                      className="inline-block h-2 w-2 rounded-full border border-white/70"
+                      style={{ backgroundColor: getUploadProviderColor(target.id) }}
+                    />
+                  )
+              }
               rightSlot={
                 defaultUploadProviderId === target.id
                   ? <Icon name="check" size={12} className="text-accent" />

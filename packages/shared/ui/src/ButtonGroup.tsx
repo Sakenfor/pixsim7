@@ -11,6 +11,10 @@ export interface ButtonGroupItem {
   id: string;
   icon: React.ReactNode;
   label?: string;
+  /** Additional className applied to this item's button element */
+  buttonClassName?: string;
+  /** Inline style applied to this item's button element */
+  buttonStyle?: React.CSSProperties;
   onClick?: (e: React.MouseEvent) => void;
   /** Middle-click handler */
   onAuxClick?: (e: React.MouseEvent) => void;
@@ -361,10 +365,12 @@ export function ButtonGroup({
                     sizeClass,
                     'text-white transition-colors flex items-center gap-1.5',
                     hoverClass,
+                    item.buttonClassName,
                     isFirst && config.firstRounding,
                     isLast && config.lastRounding,
                     item.disabled && 'opacity-50 cursor-not-allowed'
                   )}
+                  style={item.buttonStyle}
                   title={item.title}
                   type="button"
                 >
@@ -437,10 +443,12 @@ function ExpandableItem({
           sizeClass,
           'text-white transition-colors flex items-center gap-1.5',
           hoverClass,
+          item.buttonClassName,
           isFirst && config.firstRounding,
           isLast && config.lastRounding,
           item.disabled && 'opacity-50 cursor-not-allowed'
         )}
+        style={item.buttonStyle}
         title={item.title}
         type="button"
       >

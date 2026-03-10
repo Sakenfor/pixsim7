@@ -36,9 +36,6 @@ import type { AssetModel } from '../../types';
 
 /** Stable objects to avoid busting the useMemo inside useOverlayWidgetsForAsset */
 const STABLE_RUNTIME_PROPS = {};
-const STABLE_RUNTIME_PROPS_SKIP_UPLOAD = {
-  presetCapabilities: { skipPillUpload: true },
-};
 
 export interface ThumbnailGridItem {
   id: string | number;
@@ -220,14 +217,12 @@ export function CompactAssetCard({
   // Context menu: automatic registration with type-specific preset
   const contextMenuProps = useAssetAutoContextMenu(asset);
 
-  // Shared overlay widgets (favorite, quick-tag, etc.) from overlay context settings
-  // When using a non-compact context (e.g. gallery for mini-gallery cards), skip the
-  // upload button in the generation bar — these cards are already in the library.
+  // Shared overlay widgets (favorite, quick-tag, etc.) from overlay context settings.
   const effectiveContext = overlayContext ?? 'compact';
   const { overlayConfig, overlayData } = useOverlayWidgetsForAsset({
     asset,
     context: effectiveContext,
-    runtimeProps: effectiveContext !== 'compact' ? STABLE_RUNTIME_PROPS_SKIP_UPLOAD : STABLE_RUNTIME_PROPS,
+    runtimeProps: STABLE_RUNTIME_PROPS,
     useCompactPositions: true,
     suppressGenerationButtonGroup: !!hoverActions,
     policyChain: overlayPolicyChain,

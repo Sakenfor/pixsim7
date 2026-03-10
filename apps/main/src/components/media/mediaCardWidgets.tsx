@@ -6,9 +6,8 @@
  * These can be used directly, extended, or completely replaced via overlay config.
  */
 
-import { Badge, Button, useHoverExpand, PortalFloat } from '@pixsim7/shared.ui';
+import { Badge, useHoverExpand, PortalFloat } from '@pixsim7/shared.ui';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-
 
 import { createBindingFromValue } from '@lib/editing-core';
 import type { ModelFamilyInfo } from '@lib/generation-ui';
@@ -24,21 +23,26 @@ import {
 import {
   getOverlayWidgetSettings,
   type VideoScrubWidgetSettings,
-  type UploadWidgetSettings,
   type TooltipWidgetSettings,
 } from '@lib/widgets';
-
 
 import { applyQuickTag, normalizeTagInput } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
 import { useTagAutocomplete, TAG_NAMESPACES } from '@features/assets/lib/useTagAutocomplete';
 import { PROVIDER_BRANDS } from '@features/generation/components/generationSettingsPanel/constants';
-import { useProviders, providerCapabilityRegistry, useModelBadgeStore } from '@features/providers';
+import { providerCapabilityRegistry, useModelBadgeStore } from '@features/providers';
 
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardResolvedProps } from './MediaCard';
+import {
+  createQueueStatusWidget,
+  createSelectionStatusWidget,
+} from './mediaCardBadges';
+import {
+  createGenerationButtonGroup,
+  createGenerationActionModeBadge,
+} from './mediaCardGeneration';
 import { buildMediaCardRuntimeWidgets } from './mediaCardRuntimeWidgetBuilder';
-import { UploadProviderMenu } from './UploadProviderMenu';
 
 // Re-export from split files for backwards compatibility
 export {
@@ -573,158 +577,6 @@ export function createVideoScrubber(props: MediaCardResolvedProps): OverlayWidge
       ? () => actions.onExtractLastFrame?.(id)
       : undefined,
   });
-}
-
-/**
- * Self-contained upload button with optional provider right-click menu.
- * Follows the QuickTagWidgetContent pattern — a render component that uses hooks.
- */
-function UploadButtonContent({
-  data,
-  onUploadClick,
-  assetId,
-}: {
-  data: MediaCardOverlayData;
-  onUploadClick: (id: number) => Promise<{ ok: boolean; note?: string } | void> | void;
-  assetId: number;
-}) {
-  const { providers } = useProviders();
-  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
-
-  // Get user-customized settings (merged with defaults)
-  const settings = getOverlayWidgetSettings<UploadWidgetSettings>('upload');
-
-  const state = data.uploadState || 'idle';
-  const progress = data.uploadProgress || 0;
-
-  const handleClick = async () => {
-    if (state === 'uploading') return;
-    await onUploadClick(assetId);
-  };
-
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent) => {
-      if (!data.onUploadToProvider || providers.length === 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      setMenuPos({ x: e.clientX, y: e.clientY });
-    },
-    [data.onUploadToProvider, providers.length],
-  );
-
-  const handleProviderSelect = useCallback(
-    (providerId: string) => {
-      data.onUploadToProvider?.(providerId);
-      setMenuPos(null);
-    },
-    [data.onUploadToProvider],
-  );
-
-  // State-based styling
-  const stateConfig = {
-    idle: { label: 'Upload', icon: 'upload', variant: settings.variant || ('secondary' as const), disabled: false },
-    uploading: { label: 'Uploading...', icon: 'loader', variant: 'secondary' as const, disabled: true },
-    success: { label: 'Uploaded', icon: 'check', variant: 'secondary' as const, disabled: true },
-    error: { label: 'Failed', icon: 'alertCircle', variant: 'secondary' as const, disabled: false },
-  };
-
-  const currentConfig = stateConfig[state];
-
-  return (
-    <>
-      <div className="flex flex-col gap-1" onContextMenu={handleContextMenu}>
-        <Button
-          onClick={handleClick}
-          variant={currentConfig.variant}
-          size={settings.size || 'sm'}
-          disabled={currentConfig.disabled}
-          className={`
-            ${state === 'uploading' ? 'cursor-wait' : ''}
-            ${state === 'success' ? 'bg-green-500 hover:bg-green-600' : ''}
-            ${state === 'error' ? 'bg-red-500 hover:bg-red-600' : ''}
-          `}
-        >
-          <Icon
-            name={currentConfig.icon}
-            size={settings.size === 'lg' ? 16 : settings.size === 'md' ? 14 : 12}
-            className={state === 'uploading' ? 'animate-spin' : ''}
-          />
-          <span className="ml-1.5">{currentConfig.label}</span>
-        </Button>
-
-        {/* Progress bar (only shown when uploading) */}
-        {(settings.showProgress ?? true) && state === 'uploading' && (
-          <div className="w-full">
-            <div className="h-1 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 transition-all duration-300 rounded-full"
-                style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
-              />
-            </div>
-            {progress > 0 && (
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                {Math.round(progress)}%
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Error message hint */}
-        {state === 'error' && (
-          <span className="text-xs text-red-600 dark:text-red-400">
-            Click to retry
-          </span>
-        )}
-      </div>
-
-      {/* Provider selection menu (portal) */}
-      {menuPos && (
-        <UploadProviderMenu
-          x={menuPos.x}
-          y={menuPos.y}
-          providers={providers}
-          onSelect={handleProviderSelect}
-          onClose={() => setMenuPos(null)}
-          extraItems={
-            state === 'success' && data.actions?.onQuickGenerate
-              ? [{ id: 'quick-generate', label: 'Generate', icon: 'sparkles', onClick: () => data.actions!.onQuickGenerate!(data.id) }]
-              : undefined
-          }
-        />
-      )}
-    </>
-  );
-}
-
-/**
- * Create upload widget (bottom-left or custom position)
- * Self-contained: includes provider right-click menu when onUploadToProvider is present.
- * Settings are read from overlayWidgetSettingsStore for user customization
- */
-export function createUploadButton(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { id, onUploadClick, presetCapabilities } = props;
-
-  // Skip if preset capabilities indicate no upload button
-  if (presetCapabilities?.skipUploadButton) {
-    return null;
-  }
-
-  if (!onUploadClick) {
-    return null;
-  }
-
-  return {
-    id: 'upload-button',
-    type: 'custom',
-    position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
-    visibility: { trigger: 'hover-container' },
-    priority: BADGE_PRIORITY.important,
-    interactive: true,
-    handlesOwnInteraction: true,
-    render: (data: MediaCardOverlayData) => (
-      <UploadButtonContent data={data} onUploadClick={onUploadClick} assetId={id} />
-    ),
-  };
 }
 
 /**
@@ -1266,16 +1118,6 @@ export function createQuickAddButton(): OverlayWidget<MediaCardOverlayData> | nu
   return null;
 }
 
-// Import for use in createDefaultMediaCardWidgets
-import {
-  createQueueStatusWidget,
-  createSelectionStatusWidget,
-} from './mediaCardBadges';
-import {
-  createGenerationButtonGroup,
-  createGenerationActionModeBadge,
-} from './mediaCardGeneration';
-
 /**
  * Look up model family info from the provider capability registry.
  * Searches operation_specs for model params carrying model_families metadata.
@@ -1316,7 +1158,6 @@ export function createDefaultMediaCardWidgets(props: MediaCardResolvedProps): Ov
     createDurationWidget,
     createProviderWidget,
     createVideoScrubber,
-    createUploadButton,
     createInfoPopover,
     createGenerationButtonGroup,
     createGenerationActionModeBadge,

@@ -23,7 +23,7 @@ function asMediaCardPresetWidget(widget: OverlayWidget): OverlayWidget {
  *
  * Shows all badges and information - ideal for detailed browsing.
  * Runtime widgets provide: primary icon, status menu, duration, provider badge,
- * video scrubber, upload button, and tags tooltip.
+ * video scrubber, generation button group (with upload), and tags tooltip.
  */
 export const defaultPreset: OverlayPreset = {
   id: 'media-card-default',
