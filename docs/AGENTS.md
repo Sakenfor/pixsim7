@@ -125,6 +125,29 @@ Follow these rules when working on game features:
 - Cross-link docs where helpful; avoid duplicating content
 - Update `docs/game-systems/SYSTEM_OVERVIEW.md` if you add new major concepts
 
+### Definition Metadata Discipline
+
+When editing plugin-style definitions (panels, dev tools, modules), always update
+latest-change metadata in the same file so UI surfaces and tooling can show recency.
+
+Required update fields:
+- `updatedAt` (ISO timestamp)
+- `changeNote` (one-sentence summary)
+- `featureHighlights` (optional short bullets)
+
+Where to apply:
+- `apps/main/src/features/panels/domain/definitions/**`
+- `apps/main/src/features/devtools/plugins/tools.ts`
+- `apps/main/src/features/*/module.ts`
+- `apps/main/src/app/modules/core/*.ts`
+
+Use strict helpers where available:
+- `definePanelWithMeta(...)`
+- `defineDevTool(...)`
+- `defineModule(...)`
+
+CI enforces this through `pnpm meta:check`.
+
 ### Git Workflow
 
 - Create feature branches for new work

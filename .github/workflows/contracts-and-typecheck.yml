@@ -37,6 +37,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -95,6 +97,9 @@ jobs:
 
       - name: Test catalog metadata check
         run: pnpm test:catalog:check
+
+      - name: Plugin metadata change-note check
+        run: pnpm meta:check
 
       - name: App typecheck
         run: npx tsc --noEmit --project apps/main/tsconfig.json

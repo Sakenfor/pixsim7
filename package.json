@@ -40,6 +40,7 @@
     "generate-docs": "tsx packages/game/engine/src/utils/generatePluginDocs.ts",
     "generate-registry-docs": "tsx scripts/generate-registry-docs.ts",
     "docs:check": "python scripts/docs_check.py",
+    "meta:check": "python scripts/check_plugin_meta_updates.py",
     "docs:app-map": "tsx packages/shared/app-map/src/cli.ts",
     "docs:app-map:check": "tsx packages/shared/app-map/src/cli.ts --check",
     "docs:openapi": "python scripts/gen_openapi_docs.py",
