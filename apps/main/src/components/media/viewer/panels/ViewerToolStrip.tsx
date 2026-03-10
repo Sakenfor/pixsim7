@@ -13,8 +13,13 @@ import { Icon, type IconName } from '@lib/icons';
 
 import type { MediaOverlayId, MediaOverlayTone, MediaOverlayTool } from '../overlays';
 
+export interface ViewerToolStripTool extends MediaOverlayTool {
+  disabled?: boolean;
+  disabledReason?: string;
+}
+
 interface ViewerToolStripProps {
-  overlayTools: MediaOverlayTool[];
+  overlayTools: ViewerToolStripTool[];
   overlayMode: string;
   onToggleOverlay: (id: MediaOverlayId) => void;
   onMoveMode?: () => void;
@@ -79,16 +84,23 @@ export function ViewerToolStrip({
         const isActive = overlayMode === tool.id;
         const tone = tool.tone ?? 'blue';
         const iconName = (tool.icon ?? 'edit') as IconName;
+        const isDisabled = !!tool.disabled;
+        const tooltipContent = isDisabled
+          ? `${tool.label} (${tool.disabledReason ?? 'Unavailable'})`
+          : tool.label;
 
         return (
           <div key={tool.id} className="relative">
             <button
               onClick={() => onToggleOverlay(tool.id)}
+              disabled={isDisabled}
               onMouseEnter={() => setHoveredId(tool.id)}
               onMouseLeave={() => setHoveredId(null)}
               className={`p-1.5 rounded-md transition-colors ${
                 isActive
                   ? TONE_ACTIVE[tone]
+                  : isDisabled
+                    ? 'text-neutral-600 opacity-50 cursor-not-allowed'
                   : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-700/50'
               }`}
             >
@@ -99,8 +111,8 @@ export function ViewerToolStrip({
               <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r ${TONE_INDICATOR[tone]}`} />
             )}
             <Tooltip
-              content={tool.label}
-              shortcut={tool.shortcut}
+              content={tooltipContent}
+              shortcut={isDisabled ? undefined : tool.shortcut}
               position="right"
               show={hoveredId === tool.id}
               delay={300}

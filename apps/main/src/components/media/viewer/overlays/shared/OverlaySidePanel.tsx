@@ -1,8 +1,8 @@
 /**
  * Overlay Side Panel — Shared Primitives
  *
- * Reusable building blocks for the embedded left sidebar used by
- * mask, capture, and annotation overlays. Themed with surface / th / accent tokens.
+ * Reusable building blocks for embedded overlay sidebars (left/right).
+ * Themed with surface / th / accent tokens.
  */
 
 import type { ReactNode } from 'react';
@@ -14,12 +14,17 @@ import { Icon, type IconName } from '@lib/icons';
 interface OverlaySidePanelProps {
   children: ReactNode;
   className?: string;
+  side?: 'left' | 'right';
 }
 
-export function OverlaySidePanel({ children, className }: OverlaySidePanelProps) {
+export function OverlaySidePanel({ children, className, side = 'left' }: OverlaySidePanelProps) {
+  const sideClass = side === 'right'
+    ? 'border-l border-th/10'
+    : 'border-r border-th/10';
+
   return (
     <div
-      className={`${className ?? 'w-36'} flex-shrink-0 flex flex-col gap-2 py-2 bg-surface-secondary/95 border-r border-th/10 text-xs select-none`}
+      className={`${className ?? 'w-36'} flex-shrink-0 flex flex-col gap-2 py-2 bg-surface-secondary/95 ${sideClass} text-xs select-none`}
     >
       {children}
     </div>

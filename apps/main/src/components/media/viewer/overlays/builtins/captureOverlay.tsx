@@ -26,7 +26,7 @@ export function CaptureOverlayMain({
 }: MediaOverlayComponentProps) {
   return (
     <div className="absolute inset-0 flex bg-surface-inset">
-      <CaptureSidePanel
+      <CaptureToolsPanel
         asset={asset}
         onCaptureFrame={onCaptureFrame}
         captureDisabled={captureDisabled}
@@ -39,54 +39,33 @@ export function CaptureOverlayMain({
           useRegionStore={useCaptureRegionStore}
         />
       </div>
+      <CaptureLayersPanel asset={asset} />
     </div>
   );
 }
 
-// ── CaptureSidePanel ──────────────────────────────────────────────────
-
-interface CaptureSidePanelProps {
+interface CaptureToolsPanelProps {
   asset: MediaOverlayComponentProps['asset'];
   onCaptureFrame?: (action?: CaptureAction) => void;
   captureDisabled?: boolean;
   mediaDimensions?: { width: number; height: number };
 }
 
-function CaptureSidePanel({
+function CaptureToolsPanel({
   asset,
   onCaptureFrame,
   captureDisabled,
   mediaDimensions,
-}: CaptureSidePanelProps) {
+}: CaptureToolsPanelProps) {
   const {
     regions,
     layers,
-    activeLayerId,
     regionCount,
     selectedRegionId,
     drawingMode,
     setDrawingMode,
-    addLayer,
-    removeLayer,
-    setActiveLayer,
-    toggleLayerVisibility,
-    toggleLayerLock,
-    moveLayer,
-    renameLayer,
     clearRegions,
   } = useRegionStoreSelectors(useCaptureRegionStore, asset.id);
-
-  const layerInfos = useMemo(
-    () => layers.map((layer) => ({
-      id: layer.id,
-      name: layer.name,
-      visible: layer.visible,
-      locked: layer.locked,
-      opacity: layer.opacity,
-      hasContent: regions.some((region) => region.layerId === layer.id),
-    })),
-    [layers, regions]
-  );
 
   const visibleLayerIds = useMemo(
     () => new Set(layers.filter((layer) => layer.visible).map((layer) => layer.id)),
@@ -146,22 +125,6 @@ function CaptureSidePanel({
 
       <SideDivider />
 
-      <SideSection label="Layers">
-        <LayerPanel
-          layers={layerInfos}
-          activeLayerId={activeLayerId}
-          onSelectLayer={setActiveLayer}
-          onToggleVisibility={toggleLayerVisibility}
-          onToggleLock={toggleLayerLock}
-          onMoveLayer={moveLayer}
-          onRenameLayer={renameLayer}
-          onAddLayer={addLayer}
-          onRemoveLayer={removeLayer}
-        />
-      </SideSection>
-
-      <SideDivider />
-
       <SideSection label="Actions">
         <button
           onClick={clearRegions}
@@ -178,7 +141,7 @@ function CaptureSidePanel({
           <SideDivider />
           <SideSection label="Info">
             <span className="text-th-secondary text-[11px] tabular-nums">
-              {regionPixelDimensions.width} × {regionPixelDimensions.height} px
+              {regionPixelDimensions.width} x {regionPixelDimensions.height} px
             </span>
           </SideSection>
         </>
@@ -211,6 +174,51 @@ function CaptureSidePanel({
           </span>
         </button>
       </div>
+    </OverlaySidePanel>
+  );
+}
+
+function CaptureLayersPanel({ asset }: { asset: MediaOverlayComponentProps['asset'] }) {
+  const {
+    regions,
+    layers,
+    activeLayerId,
+    addLayer,
+    removeLayer,
+    setActiveLayer,
+    toggleLayerVisibility,
+    toggleLayerLock,
+    moveLayer,
+    renameLayer,
+  } = useRegionStoreSelectors(useCaptureRegionStore, asset.id);
+
+  const layerInfos = useMemo(
+    () => layers.map((layer) => ({
+      id: layer.id,
+      name: layer.name,
+      visible: layer.visible,
+      locked: layer.locked,
+      opacity: layer.opacity,
+      hasContent: regions.some((region) => region.layerId === layer.id),
+    })),
+    [layers, regions]
+  );
+
+  return (
+    <OverlaySidePanel className="w-44" side="right">
+      <SideSection label="Layers">
+        <LayerPanel
+          layers={layerInfos}
+          activeLayerId={activeLayerId}
+          onSelectLayer={setActiveLayer}
+          onToggleVisibility={toggleLayerVisibility}
+          onToggleLock={toggleLayerLock}
+          onMoveLayer={moveLayer}
+          onRenameLayer={renameLayer}
+          onAddLayer={addLayer}
+          onRemoveLayer={removeLayer}
+        />
+      </SideSection>
     </OverlaySidePanel>
   );
 }

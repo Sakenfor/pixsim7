@@ -1302,7 +1302,7 @@ function MaskLayersPanel({
   }, [importSavedMask, onDeleteMaskAsset]);
 
   return (
-    <OverlaySidePanel className="w-40">
+    <OverlaySidePanel className="w-40" side="right">
       <SideSection label="Layers">
         <LayerPanel
           layers={layers}
