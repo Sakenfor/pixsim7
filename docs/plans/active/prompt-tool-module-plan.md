@@ -3,7 +3,7 @@
 Last updated: 2026-03-10
 Owner: prompt-tool module lane
 Status: in progress
-Stage: phase_1_complete_phase_2_pending
+Stage: phase_2_complete_phase_3_pending
 
 ## Goal
 
@@ -216,10 +216,11 @@ Exit criteria:
 - Backend routes and tests validate catalog + execute contract for builtin presets.
 
 ### Phase 2: PromptComposer integration
+Status: completed (2026-03-10)
 
-- [ ] Add tools rail to PromptComposer.
-- [ ] Add result preview + apply modes.
-- [ ] Preserve current undo/redo behavior and history snapshots after apply.
+- [x] Add tools rail to PromptComposer.
+- [x] Add result preview + apply modes.
+- [x] Preserve current undo/redo behavior and history snapshots after apply.
 
 Exit criteria:
 
@@ -300,3 +301,4 @@ Keep this set minimal for first implementation; add more after telemetry.
 - 2026-03-10 (`uncommitted`): Normalized metadata fields to template contract (`Last updated`, `Owner`, `Status`, `Stage`).
 - 2026-03-10 (`uncommitted`): Added to `docs/plans/registry.yaml`; enabled `docs:plans:check` lint + CI integration.
 - 2026-03-10 (`uncommitted`): Aligned section naming/checklist style with `docs/plans/TEMPLATE.md`; marked Phase 0/1 complete.
+- 2026-03-10 (`uncommitted`): Completed Phase 2 PromptComposer integration (tools rail, execute preview, apply modes with undo-safe snapshots).

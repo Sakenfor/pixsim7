@@ -18,6 +18,13 @@ import { openWorkspacePanel } from '@features/workspace';
 import { useWorkspaceStore } from '@features/workspace';
 
 import { useApi } from '@/hooks/useApi';
+import {
+  executePromptTool,
+  listPromptToolCatalog,
+  type PromptToolCatalogScope,
+  type PromptToolExecuteResponse,
+  type PromptToolPreset,
+} from '@/lib/api/promptTools';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 import {
   BlockBreakdownDrawer,
@@ -31,6 +38,7 @@ import { usePromptHistory } from '../hooks/usePromptHistory';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
 import { getCachedAnalysis, setCachedAnalysis, type AnalysisResult } from '../lib/promptAnalysisCache';
+import { diffPrompt, diffSummary } from '../lib/promptDiff';
 import { useBlockTemplateStore } from '../stores/blockTemplateStore';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptTag } from '../types';
@@ -43,6 +51,7 @@ import { ShadowTextarea } from './ShadowTextarea';
 import { RoleBadge } from './shared/RoleBadge';
 
 type PromptComposerMode = 'text' | 'blocks';
+type PromptToolApplyMode = 'replace_text' | 'append_text' | 'apply_overlay_only' | 'apply_all';
 
 interface PromptBlockItem extends PromptBlockLike {
   id: string;
@@ -143,7 +152,19 @@ export function PromptComposer({
   const [showBlockBuilder, setShowBlockBuilder] = useState(false);
   const [showBlockTools, setShowBlockTools] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showPromptTools, setShowPromptTools] = useState(false);
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
+  const [promptToolScope, setPromptToolScope] = useState<PromptToolCatalogScope>('builtin');
+  const [promptToolCatalogLoading, setPromptToolCatalogLoading] = useState(false);
+  const [promptToolCatalogError, setPromptToolCatalogError] = useState<string | null>(null);
+  const [promptToolCatalog, setPromptToolCatalog] = useState<PromptToolPreset[]>([]);
+  const [selectedPromptToolId, setSelectedPromptToolId] = useState('');
+  const [promptToolParamsText, setPromptToolParamsText] = useState('{}');
+  const [promptToolContextText, setPromptToolContextText] = useState('{}');
+  const [runningPromptTool, setRunningPromptTool] = useState(false);
+  const [promptToolRunError, setPromptToolRunError] = useState<string | null>(null);
+  const [promptToolResult, setPromptToolResult] = useState<PromptToolExecuteResponse | null>(null);
+  const [promptToolApplyMode, setPromptToolApplyMode] = useState<PromptToolApplyMode>('replace_text');
 
   const [analyzingBlocks, setAnalyzingBlocks] = useState(false);
   const [fetchingVariants, setFetchingVariants] = useState(false);
@@ -575,9 +596,173 @@ export function PromptComposer({
     }
   }, [onChange, flushSnapshot]);
 
+  const parseJsonObject = useCallback((raw: string, label: string): Record<string, unknown> => {
+    const trimmed = raw.trim();
+    if (!trimmed) return {};
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      throw new Error(`${label} must be valid JSON`);
+    }
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+      throw new Error(`${label} must be a JSON object`);
+    }
+    return parsed as Record<string, unknown>;
+  }, []);
+
+  const loadPromptToolCatalog = useCallback(async () => {
+    setPromptToolCatalogLoading(true);
+    setPromptToolCatalogError(null);
+    try {
+      const response = await listPromptToolCatalog(promptToolScope);
+      const presets = response.presets ?? [];
+      setPromptToolCatalog(presets);
+      setSelectedPromptToolId((prev) => {
+        if (prev && presets.some((item) => item.id === prev)) return prev;
+        return presets[0]?.id ?? '';
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load prompt tools catalog';
+      setPromptToolCatalog([]);
+      setSelectedPromptToolId('');
+      setPromptToolCatalogError(message);
+    } finally {
+      setPromptToolCatalogLoading(false);
+    }
+  }, [promptToolScope]);
+
+  useEffect(() => {
+    if (!showPromptTools) return;
+    void loadPromptToolCatalog();
+  }, [loadPromptToolCatalog, showPromptTools]);
+
+  const appendPromptToolOverlayToBlocks = useCallback(
+    (overlay: Array<Record<string, unknown>> | undefined | null): boolean => {
+      if (!overlay || overlay.length === 0) return false;
+      const nextOverlayBlocks: PromptBlockItem[] = [];
+      for (const item of overlay) {
+        const textCandidate =
+          (typeof item.text === 'string' && item.text.trim()) ||
+          (typeof item.prompt_text === 'string' && item.prompt_text.trim()) ||
+          (typeof item.content === 'string' && item.content.trim()) ||
+          (typeof item.value === 'string' && item.value.trim()) ||
+          '';
+        if (!textCandidate) continue;
+        const roleCandidate =
+          (typeof item.role === 'string' && item.role.trim()) ||
+          DEFAULT_PROMPT_ROLE;
+        nextOverlayBlocks.push({
+          id: `block-${idCounterRef.current++}`,
+          role: roleCandidate,
+          text: textCandidate,
+        });
+      }
+
+      if (nextOverlayBlocks.length === 0) return false;
+      updateBlocks([...blocks, ...nextOverlayBlocks]);
+      return true;
+    },
+    [blocks, updateBlocks],
+  );
+
+  const handleRunPromptTool = useCallback(async () => {
+    if (disabled) return;
+    if (!selectedPromptToolId) {
+      setPromptToolRunError('Select a tool preset first');
+      return;
+    }
+
+    setRunningPromptTool(true);
+    setPromptToolRunError(null);
+    try {
+      const params = parseJsonObject(promptToolParamsText, 'Params');
+      const runContext = parseJsonObject(promptToolContextText, 'Run context');
+      const result = await executePromptTool({
+        preset_id: selectedPromptToolId,
+        prompt_text: value,
+        params,
+        run_context: runContext,
+      });
+      setPromptToolResult(result);
+      setPromptToolApplyMode(
+        result.block_overlay && result.block_overlay.length > 0 ? 'apply_all' : 'replace_text',
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to execute prompt tool';
+      setPromptToolRunError(message);
+    } finally {
+      setRunningPromptTool(false);
+    }
+  }, [
+    disabled,
+    parseJsonObject,
+    promptToolContextText,
+    promptToolParamsText,
+    selectedPromptToolId,
+    value,
+  ]);
+
+  const handleApplyPromptToolResult = useCallback(() => {
+    if (!promptToolResult || disabled) return;
+    const sourceText = value;
+    const outputText = promptToolResult.prompt_text ?? '';
+
+    if (promptToolApplyMode === 'apply_overlay_only') {
+      flushSnapshot();
+      const applied = appendPromptToolOverlayToBlocks(promptToolResult.block_overlay);
+      if (!applied) {
+        setPromptToolRunError('Selected result does not include a usable block overlay');
+        return;
+      }
+      setPromptToolRunError(null);
+      setMode('blocks');
+      return;
+    }
+
+    const nextText =
+      promptToolApplyMode === 'append_text'
+        ? sourceText.trim()
+          ? `${sourceText}\n\n${outputText}`
+          : outputText
+        : outputText;
+    flushSnapshot();
+    onChangeRef.current(nextText);
+    if (mode === 'blocks') {
+      lastComposedRef.current = null;
+      void seedBlocksFromPrompt(nextText, { force: true });
+    }
+    if (
+      promptToolApplyMode === 'apply_all' &&
+      promptToolResult.block_overlay &&
+      promptToolResult.block_overlay.length > 0
+    ) {
+      setPromptToolRunError('Applied text output. Use overlay-only mode to apply block overlays in this build.');
+      return;
+    }
+    setPromptToolRunError(null);
+  }, [
+    appendPromptToolOverlayToBlocks,
+    disabled,
+    flushSnapshot,
+    mode,
+    promptToolApplyMode,
+    promptToolResult,
+    seedBlocksFromPrompt,
+    value,
+  ]);
+
   const composedPrompt = useMemo(() => composePrompt(blocks), [blocks]);
   const remaining = typeof maxChars === 'number' ? maxChars - composedPrompt.length : null;
   const isOverLimit = remaining !== null && remaining < 0;
+  const selectedPromptTool = useMemo(
+    () => promptToolCatalog.find((preset) => preset.id === selectedPromptToolId) ?? null,
+    [promptToolCatalog, selectedPromptToolId],
+  );
+  const promptToolDiffSegments = useMemo(() => {
+    if (!promptToolResult) return [];
+    return diffPrompt(value, promptToolResult.prompt_text);
+  }, [promptToolResult, value]);
 
   return (
     <div className={clsx('flex flex-col gap-2 min-h-0', className)} onKeyDownCapture={handleUndoKeyDown} {...promptContextAttrs}>
@@ -710,6 +895,21 @@ export function PromptComposer({
           </button>
         )}
 
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setShowPromptTools((prev) => !prev)}
+          title={showPromptTools ? 'Hide prompt tools' : 'Show prompt tools'}
+          className={clsx(
+            'p-1 rounded transition-colors',
+            showPromptTools
+              ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200'
+              : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+          )}
+        >
+          <Icon name="wand" size={14} />
+        </button>
+
         {mode === 'blocks' && (
           <>
             <button
@@ -813,6 +1013,190 @@ export function PromptComposer({
           </>
         )}
       </div>
+
+      {showPromptTools && (
+        <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50/70 dark:bg-neutral-900/60 p-2 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-[11px] text-neutral-600 dark:text-neutral-300" htmlFor={`${composerId}-tool-scope`}>
+              Scope
+            </label>
+            <select
+              id={`${composerId}-tool-scope`}
+              value={promptToolScope}
+              disabled={disabled || promptToolCatalogLoading || runningPromptTool}
+              onChange={(event) => setPromptToolScope(event.target.value as PromptToolCatalogScope)}
+              className="text-xs rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1"
+            >
+              <option value="builtin">builtin</option>
+              <option value="all">all</option>
+              <option value="self">self</option>
+              <option value="shared">shared</option>
+            </select>
+
+            <label className="text-[11px] text-neutral-600 dark:text-neutral-300" htmlFor={`${composerId}-tool-preset`}>
+              Preset
+            </label>
+            <select
+              id={`${composerId}-tool-preset`}
+              value={selectedPromptToolId}
+              disabled={disabled || promptToolCatalogLoading || runningPromptTool || promptToolCatalog.length === 0}
+              onChange={(event) => setSelectedPromptToolId(event.target.value)}
+              className="min-w-[220px] max-w-full text-xs rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1"
+            >
+              {promptToolCatalog.length === 0 ? (
+                <option value="">No presets</option>
+              ) : (
+                promptToolCatalog.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.id}
+                  </option>
+                ))
+              )}
+            </select>
+
+            <button
+              type="button"
+              disabled={disabled || runningPromptTool || promptToolCatalogLoading || !selectedPromptToolId}
+              onClick={handleRunPromptTool}
+              className={clsx(
+                'ml-auto text-xs px-2 py-1 rounded border',
+                'border-neutral-200 dark:border-neutral-700',
+                'text-neutral-700 dark:text-neutral-200',
+                'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+              )}
+            >
+              {runningPromptTool ? 'Running...' : 'Run tool'}
+            </button>
+          </div>
+
+          {selectedPromptTool && (
+            <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              {selectedPromptTool.label}: {selectedPromptTool.description}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <label className="text-[11px] text-neutral-600 dark:text-neutral-300">
+              Params (JSON)
+              <textarea
+                value={promptToolParamsText}
+                disabled={disabled || runningPromptTool}
+                onChange={(event) => setPromptToolParamsText(event.target.value)}
+                spellCheck={false}
+                className="mt-1 w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs font-mono min-h-[56px]"
+              />
+            </label>
+            <label className="text-[11px] text-neutral-600 dark:text-neutral-300">
+              Run context (JSON)
+              <textarea
+                value={promptToolContextText}
+                disabled={disabled || runningPromptTool}
+                onChange={(event) => setPromptToolContextText(event.target.value)}
+                spellCheck={false}
+                className="mt-1 w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs font-mono min-h-[56px]"
+              />
+            </label>
+          </div>
+
+          {promptToolCatalogError && (
+            <div className="text-xs text-red-600 dark:text-red-400">{promptToolCatalogError}</div>
+          )}
+          {promptToolRunError && (
+            <div className="text-xs text-red-600 dark:text-red-400">{promptToolRunError}</div>
+          )}
+
+          {promptToolResult && (
+            <div className="rounded border border-neutral-200 dark:border-neutral-700 bg-white/70 dark:bg-neutral-950/40 p-2 space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-600 dark:text-neutral-300">
+                <span>
+                  Result from <strong>{promptToolResult.provenance.preset_id}</strong>
+                </span>
+                <span className="ml-auto">{diffSummary(value, promptToolResult.prompt_text)}</span>
+              </div>
+
+              <div className="rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1.5 text-xs leading-relaxed max-h-32 overflow-y-auto">
+                {promptToolDiffSegments.length === 0 ? (
+                  <span className="text-neutral-500 dark:text-neutral-400">No diff</span>
+                ) : (
+                  promptToolDiffSegments.map((segment, index) => (
+                    <span
+                      key={`${segment.type}-${index}`}
+                      className={clsx(
+                        segment.type === 'add' && 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300',
+                        segment.type === 'remove' && 'line-through bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',
+                        segment.type === 'keep' && 'text-neutral-700 dark:text-neutral-200',
+                      )}
+                    >
+                      {segment.text}
+                      {' '}
+                    </span>
+                  ))
+                )}
+              </div>
+
+              {promptToolResult.warnings && promptToolResult.warnings.length > 0 && (
+                <div className="text-xs text-amber-700 dark:text-amber-400">
+                  Warnings: {promptToolResult.warnings.join(' | ')}
+                </div>
+              )}
+              {promptToolResult.block_overlay && promptToolResult.block_overlay.length > 0 && (
+                <div className="text-xs text-neutral-600 dark:text-neutral-300">
+                  Block overlay entries: {promptToolResult.block_overlay.length}
+                </div>
+              )}
+              {promptToolResult.guidance_patch && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-neutral-600 dark:text-neutral-300">Guidance patch</summary>
+                  <pre className="mt-1 max-h-28 overflow-y-auto rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-[11px] whitespace-pre-wrap break-words">
+                    {JSON.stringify(promptToolResult.guidance_patch, null, 2)}
+                  </pre>
+                </details>
+              )}
+              {promptToolResult.composition_assets_patch && promptToolResult.composition_assets_patch.length > 0 && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-neutral-600 dark:text-neutral-300">Composition assets patch</summary>
+                  <pre className="mt-1 max-h-28 overflow-y-auto rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2 text-[11px] whitespace-pre-wrap break-words">
+                    {JSON.stringify(promptToolResult.composition_assets_patch, null, 2)}
+                  </pre>
+                </details>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-[11px] text-neutral-600 dark:text-neutral-300" htmlFor={`${composerId}-tool-apply`}>
+                  Apply mode
+                </label>
+                <select
+                  id={`${composerId}-tool-apply`}
+                  value={promptToolApplyMode}
+                  disabled={disabled || runningPromptTool}
+                  onChange={(event) => setPromptToolApplyMode(event.target.value as PromptToolApplyMode)}
+                  className="text-xs rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1"
+                >
+                  <option value="replace_text">replace_text</option>
+                  <option value="append_text">append_text</option>
+                  <option value="apply_overlay_only">apply_overlay_only</option>
+                  <option value="apply_all">apply_all</option>
+                </select>
+                <button
+                  type="button"
+                  disabled={disabled || runningPromptTool}
+                  onClick={handleApplyPromptToolResult}
+                  className={clsx(
+                    'text-xs px-2 py-1 rounded border',
+                    'border-neutral-200 dark:border-neutral-700',
+                    'text-neutral-700 dark:text-neutral-200',
+                    'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                    'disabled:opacity-50 disabled:cursor-not-allowed',
+                  )}
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {mode === 'blocks' && assistantError && (
         <div className="text-xs text-red-600 dark:text-red-400">{assistantError}</div>
@@ -1104,3 +1488,4 @@ export function PromptComposer({
     </div>
   );
 }
+
