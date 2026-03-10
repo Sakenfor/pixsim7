@@ -38,7 +38,7 @@ import type { PromptTag } from '../types';
 
 import { InlineBlocksEditor } from './InlineBlocksEditor';
 import { PromptHistoryPopover } from './PromptHistoryPopover';
-import { ShadowOverlay } from './ShadowOverlay';
+import { ShadowSidePanel } from './ShadowSidePanel';
 import { ShadowTextarea } from './ShadowTextarea';
 import { RoleBadge } from './shared/RoleBadge';
 
@@ -819,38 +819,38 @@ export function PromptComposer({
       )}
 
       {mode === 'text' ? (
-        <>
-          {showShadow && autoAnalyze ? (
-            <ShadowTextarea
-              value={value}
-              onChange={onChange}
-              candidates={shadowAnalysis.result?.candidates ?? []}
-              maxChars={maxChars}
-              placeholder={placeholder}
-              disabled={disabled}
-              variant={variant}
-              showCounter={showCounter}
-              resizable={resizable}
-              minHeight={minHeight}
-            />
-          ) : (
-            <PromptInput
-              value={value}
-              onChange={onChange}
-              maxChars={maxChars}
-              placeholder={placeholder}
-              disabled={disabled}
-              variant={variant}
-              showCounter={showCounter}
-              resizable={resizable}
-              minHeight={minHeight}
-              className="h-full"
-            />
-          )}
-          {showShadow && autoAnalyze && (
-            <ShadowOverlay analysis={shadowAnalysis} />
-          )}
-        </>
+        showShadow && autoAnalyze ? (
+          <div className="flex-1 min-h-0 flex">
+            <div className="flex-1 min-w-0">
+              <ShadowTextarea
+                value={value}
+                onChange={onChange}
+                candidates={shadowAnalysis.result?.candidates ?? []}
+                maxChars={maxChars}
+                placeholder={placeholder}
+                disabled={disabled}
+                variant={variant}
+                showCounter={showCounter}
+                resizable={resizable}
+                minHeight={minHeight}
+              />
+            </div>
+            <ShadowSidePanel analysis={shadowAnalysis} />
+          </div>
+        ) : (
+          <PromptInput
+            value={value}
+            onChange={onChange}
+            maxChars={maxChars}
+            placeholder={placeholder}
+            disabled={disabled}
+            variant={variant}
+            showCounter={showCounter}
+            resizable={resizable}
+            minHeight={minHeight}
+            className="h-full"
+          />
+        )
       ) : (
         <div className="flex flex-col gap-2 min-h-0 overflow-y-auto thin-scrollbar">
           {parseError && (
