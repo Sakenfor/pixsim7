@@ -38,6 +38,7 @@ import type { PromptTag } from '../types';
 import { InlineBlocksEditor } from './InlineBlocksEditor';
 import { PromptHistoryPopover } from './PromptHistoryPopover';
 import { ShadowOverlay } from './ShadowOverlay';
+import { ShadowTextarea } from './ShadowTextarea';
 import { RoleBadge } from './shared/RoleBadge';
 
 type PromptComposerMode = 'text' | 'blocks';
@@ -134,6 +135,7 @@ export function PromptComposer({
   const [parseError, setParseError] = useState<string | null>(null);
   const [assistantError, setAssistantError] = useState<string | null>(null);
 
+  const [showShadow, setShowShadow] = useState(false);
   const [showBlockBreakdown, setShowBlockBreakdown] = useState(false);
   const [showVariants, setShowVariants] = useState(false);
   const [showPackHints, setShowPackHints] = useState(false);
@@ -271,7 +273,7 @@ export function PromptComposer({
   }, [blocks]);
 
   const shadowAnalysis = useShadowAnalysis(value, {
-    enabled: mode === 'text' && autoAnalyze,
+    enabled: mode === 'text' && showShadow && autoAnalyze,
     analyzerId: defaultAnalyzer,
   });
 
@@ -645,6 +647,23 @@ export function PromptComposer({
           <Icon name={pinnedTemplateId ? 'pin' : 'shuffle'} size={14} />
         </button>
 
+        {mode === 'text' && autoAnalyze && (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setShowShadow((prev) => !prev)}
+            title={showShadow ? 'Hide shadow analysis' : 'Show shadow analysis'}
+            className={clsx(
+              'p-1 rounded transition-colors',
+              showShadow
+                ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'
+                : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+            )}
+          >
+            <Icon name="sparkles" size={14} />
+          </button>
+        )}
+
         {mode === 'blocks' && (
           <>
             <button
@@ -755,20 +774,35 @@ export function PromptComposer({
 
       {mode === 'text' ? (
         <>
-          <PromptInput
-            value={value}
-            onChange={onChange}
-            maxChars={maxChars}
-            placeholder={placeholder}
-            disabled={disabled}
-            variant={variant}
-            showCounter={showCounter}
-            resizable={resizable}
-            minHeight={minHeight}
-            className="h-full"
-          />
-          {autoAnalyze && (
-            <ShadowOverlay prompt={value} analysis={shadowAnalysis} />
+          {showShadow && autoAnalyze ? (
+            <ShadowTextarea
+              value={value}
+              onChange={onChange}
+              candidates={shadowAnalysis.result?.candidates ?? []}
+              maxChars={maxChars}
+              placeholder={placeholder}
+              disabled={disabled}
+              variant={variant}
+              showCounter={showCounter}
+              resizable={resizable}
+              minHeight={minHeight}
+            />
+          ) : (
+            <PromptInput
+              value={value}
+              onChange={onChange}
+              maxChars={maxChars}
+              placeholder={placeholder}
+              disabled={disabled}
+              variant={variant}
+              showCounter={showCounter}
+              resizable={resizable}
+              minHeight={minHeight}
+              className="h-full"
+            />
+          )}
+          {showShadow && autoAnalyze && (
+            <ShadowOverlay analysis={shadowAnalysis} />
           )}
         </>
       ) : (

@@ -1,95 +1,77 @@
 /**
  * ShadowOverlay
  *
- * Compact overlay displayed under the raw prompt input in text mode.
- * Shows inline highlighted prompt text and primitive match metadata
- * from the shadow-mode analysis.
+ * Inline chip strip rendered beneath the prompt textarea.
+ * Shows candidate role chips + primitive match chips from analysis.
+ * No border/box — flows as part of the prompt area.
  */
 import clsx from 'clsx';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { Icon } from '@lib/icons';
+
+import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 
 import type { ShadowAnalysisState } from '../hooks/useShadowAnalysis';
 import {
   extractPrimitiveMatches,
-  hasPositionData,
   type CandidateWithPrimitiveMatch,
 } from '../lib/parsePrimitiveMatch';
-
-import { PromptInlineViewer, PromptCandidateList } from './PromptInlineViewer';
+import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ShadowOverlayProps {
-  /** Current prompt text (for display sync) */
-  prompt: string;
-  /** Analysis state from useShadowAnalysis */
   analysis: ShadowAnalysisState;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sub-components
+// Chips
 // ─────────────────────────────────────────────────────────────────────────────
 
-function PrimitiveMatchRow({ item }: { item: CandidateWithPrimitiveMatch }) {
+function MatchChip({ item }: { item: CandidateWithPrimitiveMatch }) {
   const { match } = item;
-  const scorePercent = Math.round(match.score * 100);
+  const pct = Math.round(match.score * 100);
+
+  const parts: string[] = [match.block_id];
+  if (match.op?.op_id) parts.push(`op:${match.op.op_id}`);
+  if (match.op?.signature_id) parts.push(`sig:${match.op.signature_id}`);
 
   return (
-    <div className="flex items-center gap-2 text-[11px] leading-tight">
+    <span
+      className={clsx(
+        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono whitespace-nowrap',
+        'bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300',
+        'border border-violet-200/60 dark:border-violet-700/40',
+      )}
+      title={parts.join(' · ')}
+    >
+      {match.block_id}
       <span
         className={clsx(
-          'inline-flex items-center gap-1 px-1.5 py-0.5 rounded',
-          'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300',
-          'font-mono',
-        )}
-      >
-        {match.block_id}
-      </span>
-
-      <span
-        className={clsx(
-          'tabular-nums',
-          scorePercent >= 80
+          'tabular-nums font-sans',
+          pct >= 80
             ? 'text-green-600 dark:text-green-400'
-            : scorePercent >= 60
+            : pct >= 60
               ? 'text-yellow-600 dark:text-yellow-400'
-              : 'text-neutral-500 dark:text-neutral-400',
+              : 'text-neutral-400 dark:text-neutral-500',
         )}
       >
-        {scorePercent}%
+        {pct}%
       </span>
-
-      {match.op?.op_id && (
-        <span className="text-neutral-400 dark:text-neutral-500 font-mono text-[10px]">
-          op:{match.op.op_id}
-        </span>
-      )}
-      {match.op?.signature_id && (
-        <span className="text-neutral-400 dark:text-neutral-500 font-mono text-[10px]">
-          sig:{match.op.signature_id}
-        </span>
-      )}
-      {match.category && (
-        <span className="text-neutral-400 dark:text-neutral-500 text-[10px]">
-          {match.category}
-        </span>
-      )}
-    </div>
+    </span>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main Component
+// Main
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ShadowOverlay({ prompt, analysis }: ShadowOverlayProps) {
+export function ShadowOverlay({ analysis }: ShadowOverlayProps) {
   const { result, loading, refresh } = analysis;
-  const [collapsed, setCollapsed] = useState(false);
-
+  const promptRoleColors = usePromptSettingsStore((s) => s.promptRoleColors);
   const candidates = result?.candidates ?? [];
 
   const primitiveMatches = useMemo(
@@ -97,98 +79,73 @@ export function ShadowOverlay({ prompt, analysis }: ShadowOverlayProps) {
     [candidates],
   );
 
-  const hasPositions = useMemo(
-    () => hasPositionData(candidates),
-    [candidates],
-  );
+  // Collect unique roles from candidates
+  const roleCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const c of candidates) {
+      const role = c.role ?? 'other';
+      counts[role] = (counts[role] ?? 0) + 1;
+    }
+    return counts;
+  }, [candidates]);
 
-  // Don't render if there's nothing to show and not loading
-  if (!loading && !result) return null;
+  const hasContent = loading || candidates.length > 0;
+  if (!hasContent) return null;
 
   return (
-    <div
-      className={clsx(
-        'rounded-md border text-xs',
-        'border-neutral-200/80 dark:border-neutral-700/80',
-        'bg-neutral-50/60 dark:bg-neutral-900/40',
+    <div className="flex items-center gap-1 overflow-x-auto -mt-1">
+      {/* Icon label */}
+      <span className="inline-flex items-center justify-center w-5 h-5 rounded border border-violet-200 dark:border-violet-700/50 text-violet-500 dark:text-violet-400 flex-shrink-0">
+        <Icon name="sparkles" size={12} />
+      </span>
+
+      {/* Loading spinner */}
+      {loading && (
+        <Icon
+          name="refresh"
+          size={12}
+          className="text-neutral-400 dark:text-neutral-500 animate-spin flex-shrink-0"
+        />
       )}
-    >
-      {/* Header bar */}
-      <div className="flex items-center gap-1.5 px-2 py-1">
-        <button
-          type="button"
-          onClick={() => setCollapsed((prev) => !prev)}
-          className="p-0.5 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 transition-colors"
-          title={collapsed ? 'Expand shadow overlay' : 'Collapse shadow overlay'}
+
+      {/* Role chips — always show when we have candidates */}
+      {Object.entries(roleCounts).map(([role, count]) => (
+        <span
+          key={role}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap border border-neutral-200/60 dark:border-neutral-700/40"
+          title={`${count} ${getPromptRoleLabel(role)} segment${count > 1 ? 's' : ''}`}
         >
-          <Icon
-            name={collapsed ? 'chevronRight' : 'chevronDown'}
-            size={10}
-          />
-        </button>
-
-        <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 select-none">
-          Shadow Analysis
+          <span className={clsx('w-1.5 h-1.5 rounded-full', getPromptRoleBadgeClass(role, promptRoleColors))} />
+          <span className="text-neutral-600 dark:text-neutral-300">
+            {getPromptRoleLabel(role)}
+          </span>
+          <span className="text-neutral-400 dark:text-neutral-500">{count}</span>
         </span>
+      ))}
 
-        {loading && (
-          <Icon
-            name="refresh"
-            size={10}
-            className="text-neutral-400 dark:text-neutral-500 animate-spin"
-          />
-        )}
+      {/* Separator when both roles and primitives exist */}
+      {Object.keys(roleCounts).length > 0 && primitiveMatches.length > 0 && (
+        <span className="w-px h-3 bg-neutral-300 dark:bg-neutral-600 flex-shrink-0" />
+      )}
 
+      {/* Primitive match chips */}
+      {primitiveMatches.map((item) => (
+        <MatchChip
+          key={`${item.candidateIndex}-${item.match.block_id}`}
+          item={item}
+        />
+      ))}
+
+      {/* Refresh button */}
+      {!loading && candidates.length > 0 && (
         <button
           type="button"
           onClick={refresh}
-          disabled={loading}
           title="Refresh analysis"
-          className="ml-auto p-0.5 rounded text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 transition-colors disabled:opacity-40"
+          className="p-0.5 rounded text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300 transition-colors flex-shrink-0 ml-auto"
         >
           <Icon name="refresh" size={10} />
         </button>
-      </div>
-
-      {/* Collapsible content */}
-      {!collapsed && result && (
-        <div className="px-2 pb-2 space-y-2">
-          {/* Inline highlighted prompt or fallback list */}
-          {candidates.length > 0 && (
-            <div className="rounded border border-neutral-200/60 dark:border-neutral-700/60 p-1.5 bg-white/50 dark:bg-neutral-800/30">
-              {hasPositions ? (
-                <PromptInlineViewer
-                  prompt={prompt}
-                  candidates={candidates}
-                  className="text-[11px]"
-                />
-              ) : (
-                <PromptCandidateList candidates={candidates} />
-              )}
-            </div>
-          )}
-
-          {/* Primitive matches section */}
-          {primitiveMatches.length > 0 ? (
-            <div className="space-y-1">
-              <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">
-                Primitive Matches
-              </span>
-              <div className="space-y-1">
-                {primitiveMatches.map((item) => (
-                  <PrimitiveMatchRow
-                    key={`${item.candidateIndex}-${item.match.block_id}`}
-                    item={item}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : candidates.length > 0 ? (
-            <div className="text-[10px] text-neutral-400 dark:text-neutral-500 italic">
-              No primitive matches detected
-            </div>
-          ) : null}
-        </div>
       )}
     </div>
   );

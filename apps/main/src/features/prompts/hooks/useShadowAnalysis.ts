@@ -64,6 +64,14 @@ export function useShadowAnalysis(
 
   const requestIdRef = useRef(0);
 
+  // Stable refs — prevent callback identity churn from useApi / analyzerId
+  const apiRef = useRef(api);
+  apiRef.current = api;
+  const analyzerIdRef = useRef(analyzerId);
+  analyzerIdRef.current = analyzerId;
+  const textRef = useRef(text);
+  textRef.current = text;
+
   const runAnalysis = useCallback(
     async (promptText: string) => {
       const normalized = promptText.trim();
@@ -78,11 +86,11 @@ export function useShadowAnalysis(
 
       try {
         const payload: Record<string, unknown> = { text: normalized };
-        if (analyzerId) {
-          payload.analyzer_id = analyzerId;
+        if (analyzerIdRef.current) {
+          payload.analyzer_id = analyzerIdRef.current;
         }
 
-        const response = await api.post<AnalyzePromptResponse>(
+        const response = await apiRef.current.post<AnalyzePromptResponse>(
           '/prompts/analyze',
           payload,
         );
@@ -96,16 +104,13 @@ export function useShadowAnalysis(
         });
       } catch {
         // Fail silently — no hard error UI for background analysis
-        if (requestId === requestIdRef.current) {
-          // Keep previous result on error
-        }
       } finally {
         if (requestId === requestIdRef.current) {
           setLoading(false);
         }
       }
     },
-    [api, analyzerId],
+    [], // stable — reads from refs
   );
 
   // Debounced analysis on text changes
@@ -129,8 +134,8 @@ export function useShadowAnalysis(
 
   const refresh = useCallback(() => {
     setRefreshToken((prev) => prev + 1);
-    void runAnalysis(text);
-  }, [runAnalysis, text]);
+    void runAnalysis(textRef.current);
+  }, [runAnalysis]);
 
   return { result, loading, refresh };
 }
