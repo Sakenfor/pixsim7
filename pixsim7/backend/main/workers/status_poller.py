@@ -86,6 +86,110 @@ class _PendingGenerationSnapshot:
         return cls(generation_id=int(generation_id), updated_at=ts)
 
 
+@dataclass(frozen=True, slots=True)
+class _ProcessingGenerationSnapshot:
+    id: int
+    account_id: int | None
+    operation_type: OperationType | str | None
+    started_at: datetime | None
+    attempt_id: int
+
+    @classmethod
+    def from_row(cls, row: tuple[Any, Any, Any, Any, Any]) -> "_ProcessingGenerationSnapshot | None":
+        generation_id, account_id, operation_type, started_at, attempt_id = row
+        if generation_id is None:
+            return None
+        started_ts: datetime | None = started_at if isinstance(started_at, datetime) else None
+        parsed_attempt_id = 0
+        try:
+            parsed_attempt_id = int(attempt_id or 0)
+        except Exception:
+            parsed_attempt_id = 0
+        parsed_account_id: int | None = None
+        if account_id is not None:
+            try:
+                parsed_account_id = int(account_id)
+            except Exception:
+                parsed_account_id = None
+        return cls(
+            id=int(generation_id),
+            account_id=parsed_account_id,
+            operation_type=operation_type,
+            started_at=started_ts,
+            attempt_id=parsed_attempt_id,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _GenerationSubmissionSnapshot:
+    id: int
+    generation_id: int | None
+    generation_attempt_id: int | None
+    account_id: int | None
+    provider_job_id: str | None
+    status: str | None
+    submitted_at: datetime | None
+    responded_at: datetime | None
+    response: Any
+
+    @classmethod
+    def from_row(
+        cls,
+        row: tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any],
+    ) -> "_GenerationSubmissionSnapshot | None":
+        (
+            submission_id,
+            generation_id,
+            generation_attempt_id,
+            account_id,
+            provider_job_id,
+            status,
+            submitted_at,
+            responded_at,
+            response,
+        ) = row
+        if submission_id is None:
+            return None
+
+        parsed_generation_id: int | None = None
+        if generation_id is not None:
+            try:
+                parsed_generation_id = int(generation_id)
+            except Exception:
+                parsed_generation_id = None
+
+        parsed_attempt_id: int | None = None
+        if generation_attempt_id is not None:
+            try:
+                parsed_attempt_id = int(generation_attempt_id)
+            except Exception:
+                parsed_attempt_id = None
+
+        parsed_account_id: int | None = None
+        if account_id is not None:
+            try:
+                parsed_account_id = int(account_id)
+            except Exception:
+                parsed_account_id = None
+
+        submitted_ts: datetime | None = submitted_at if isinstance(submitted_at, datetime) else None
+        responded_ts: datetime | None = responded_at if isinstance(responded_at, datetime) else None
+        provider_job = str(provider_job_id) if provider_job_id is not None else None
+        submission_status = str(status) if status is not None else None
+
+        return cls(
+            id=int(submission_id),
+            generation_id=parsed_generation_id,
+            generation_attempt_id=parsed_attempt_id,
+            account_id=parsed_account_id,
+            provider_job_id=provider_job,
+            status=submission_status,
+            submitted_at=submitted_ts,
+            responded_at=responded_ts,
+            response=response,
+        )
+
+
 def _to_account_capacity_snapshots(
     rows: Iterable[tuple[Any, Any, Any]],
 ) -> list[_AccountCapacitySnapshot]:
@@ -106,6 +210,31 @@ def _to_pending_generation_snapshots(
         if snapshot is not None:
             snapshots.append(snapshot)
     return snapshots
+
+
+def _to_processing_generation_snapshots(
+    rows: Iterable[tuple[Any, Any, Any, Any, Any]],
+) -> list[_ProcessingGenerationSnapshot]:
+    snapshots: list[_ProcessingGenerationSnapshot] = []
+    for row in rows:
+        snapshot = _ProcessingGenerationSnapshot.from_row(row)
+        if snapshot is not None:
+            snapshots.append(snapshot)
+    return snapshots
+
+
+def _submission_snapshot_query():
+    return select(
+        ProviderSubmission.id,
+        ProviderSubmission.generation_id,
+        ProviderSubmission.generation_attempt_id,
+        ProviderSubmission.account_id,
+        ProviderSubmission.provider_job_id,
+        ProviderSubmission.status,
+        ProviderSubmission.submitted_at,
+        ProviderSubmission.responded_at,
+        ProviderSubmission.response,
+    )
 
 
 def _snapshot_age_seconds(updated_at: datetime | None, *, now: datetime) -> float | None:
@@ -224,8 +353,8 @@ def _submission_is_likely_current_attempt(
 
 async def _select_current_attempt_submission(
     db: AsyncSession,
-    generation: Generation,
-) -> tuple[ProviderSubmission | None, ProviderSubmission | None, int]:
+    generation: _ProcessingGenerationSnapshot,
+) -> tuple[_GenerationSubmissionSnapshot | None, _GenerationSubmissionSnapshot | None, int]:
     """
     Select submission owned by generation's active attempt.
 
@@ -241,23 +370,33 @@ async def _select_current_attempt_submission(
 
     if current_attempt_id > 0:
         attempt_result = await db.execute(
-            select(ProviderSubmission)
+            _submission_snapshot_query()
             .where(ProviderSubmission.generation_id == generation.id)
             .where(ProviderSubmission.generation_attempt_id == current_attempt_id)
             .order_by(ProviderSubmission.submitted_at.desc())
             .limit(1)
         )
-        attempt_submission = attempt_result.scalars().first()
+        attempt_row = attempt_result.first()
+        attempt_submission = (
+            _GenerationSubmissionSnapshot.from_row(tuple(attempt_row))
+            if attempt_row is not None
+            else None
+        )
         if attempt_submission is not None:
             return attempt_submission, attempt_submission, current_attempt_id
 
     latest_result = await db.execute(
-        select(ProviderSubmission)
+        _submission_snapshot_query()
         .where(ProviderSubmission.generation_id == generation.id)
         .order_by(ProviderSubmission.submitted_at.desc())
         .limit(1)
     )
-    latest_submission = latest_result.scalars().first()
+    latest_row = latest_result.first()
+    latest_submission = (
+        _GenerationSubmissionSnapshot.from_row(tuple(latest_row))
+        if latest_row is not None
+        else None
+    )
     if latest_submission is None:
         return None, None, current_attempt_id
 
@@ -321,7 +460,9 @@ def _is_stale_unsubmitted_error_submission(
     return False
 
 
-def _processing_generations_snapshot(processing_generations: list[Generation]) -> dict:
+def _processing_generations_snapshot(
+    processing_generations: list[_ProcessingGenerationSnapshot],
+) -> dict:
     now = datetime.now(timezone.utc)
     by_account: dict[str, int] = {}
     sample: list[dict] = []
@@ -364,6 +505,23 @@ def _init_poller_debug_flags() -> None:
     _poller_debug_initialized = True
 
 
+async def _load_processing_generation_snapshots(
+    db: AsyncSession,
+) -> list[_ProcessingGenerationSnapshot]:
+    result = await db.execute(
+        select(
+            Generation.id,
+            Generation.account_id,
+            Generation.operation_type,
+            Generation.started_at,
+            Generation.attempt_id,
+        )
+        .where(Generation.status == GenerationStatus.PROCESSING)
+        .order_by(Generation.started_at)
+    )
+    return _to_processing_generation_snapshots(result.all())
+
+
 async def poll_job_statuses(ctx: dict) -> dict:
     """
     Poll status of all processing generations.
@@ -403,12 +561,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
             account_service = AccountService(db)
             asset_service = AssetService(db, user_service)
 
-            result = await db.execute(
-                select(Generation)
-                .where(Generation.status == GenerationStatus.PROCESSING)
-                .order_by(Generation.started_at)
-            )
-            processing_generations = list(result.scalars().all())
+            processing_generations = await _load_processing_generation_snapshots(db)
 
             if processing_generations:
                 logger.info("poll_found_generations", count=len(processing_generations))
@@ -436,6 +589,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
             for generation in processing_generations:
                 checked += 1
+                generation_id = generation.id
+                generation_started_at = generation.started_at
+                generation_operation_type = generation.operation_type
 
                 try:
                     latest_error_submission_without_job_id = None
@@ -526,7 +682,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             ProviderSubmission.generation_id == generation.id
                         )
                         previous_valid_query = (
-                            select(ProviderSubmission)
+                            _submission_snapshot_query()
                             .where(ProviderSubmission.generation_id == generation.id)
                             .where(ProviderSubmission.provider_job_id.is_not(None))
                         )
@@ -546,7 +702,12 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             .order_by(ProviderSubmission.submitted_at.desc())
                             .limit(1)
                         )
-                        previous_valid_submission = previous_valid_result.scalars().first()
+                        previous_valid_row = previous_valid_result.first()
+                        previous_valid_submission = (
+                            _GenerationSubmissionSnapshot.from_row(tuple(previous_valid_row))
+                            if previous_valid_row is not None
+                            else None
+                        )
 
                         response_keys = []
                         if isinstance(submission.response, dict):
@@ -659,12 +820,13 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                             try:
                                 billing_service = GenerationBillingService(db)
-                                await db.refresh(generation)
-                                await billing_service.finalize_billing(
-                                    generation=generation,
-                                    final_submission=submission,
-                                    account=account,
-                                )
+                                generation_model = await db.get(Generation, generation.id)
+                                if generation_model is not None:
+                                    await billing_service.finalize_billing(
+                                        generation=generation_model,
+                                        final_submission=submission,
+                                        account=account,
+                                    )
                             except Exception as billing_err:
                                 logger.warning(
                                     "billing_finalization_error",
@@ -672,6 +834,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                     error=str(billing_err),
                                 )
 
+                            refreshed_account = await db.get(ProviderAccount, account.id)
+                            if refreshed_account is not None:
+                                account = refreshed_account
                             account.total_videos_failed += 1
                             account.failure_streak += 1
                             account.success_rate = account.calculate_success_rate()
@@ -746,12 +911,13 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                         try:
                             billing_service = GenerationBillingService(db)
-                            await db.refresh(generation)
-                            await billing_service.finalize_billing(
-                                generation=generation,
-                                final_submission=latest_error_submission_without_job_id,
-                                account=account,
-                            )
+                            generation_model = await db.get(Generation, generation.id)
+                            if generation_model is not None:
+                                await billing_service.finalize_billing(
+                                    generation=generation_model,
+                                    final_submission=latest_error_submission_without_job_id,
+                                    account=account,
+                                )
                         except Exception as billing_err:
                             logger.warning(
                                 "billing_finalization_error",
@@ -759,6 +925,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 error=str(billing_err),
                             )
 
+                        refreshed_account = await db.get(ProviderAccount, account.id)
+                        if refreshed_account is not None:
+                            account = refreshed_account
                         account.total_videos_failed += 1
                         account.failure_streak += 1
                         account.success_rate = account.calculate_success_rate()
@@ -787,12 +956,13 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                         try:
                             billing_service = GenerationBillingService(db)
-                            await db.refresh(generation)
-                            await billing_service.finalize_billing(
-                                generation=generation,
-                                final_submission=submission,
-                                account=account,
-                            )
+                            generation_model = await db.get(Generation, generation.id)
+                            if generation_model is not None:
+                                await billing_service.finalize_billing(
+                                    generation=generation_model,
+                                    final_submission=submission,
+                                    account=account,
+                                )
                         except Exception as billing_err:
                             logger.warning(
                                 "billing_finalization_error",
@@ -801,6 +971,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             )
 
                         # Track failure stats on account
+                        refreshed_account = await db.get(ProviderAccount, account.id)
+                        if refreshed_account is not None:
+                            account = refreshed_account
                         account.total_videos_failed += 1
                         account.failure_streak += 1
                         account.success_rate = account.calculate_success_rate()
@@ -817,12 +990,13 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         # Finalize billing as skipped (no charge for timed-out generations)
                         try:
                             billing_service = GenerationBillingService(db)
-                            await db.refresh(generation)
-                            await billing_service.finalize_billing(
-                                generation=generation,
-                                final_submission=submission,
-                                account=account,
-                            )
+                            generation_model = await db.get(Generation, generation.id)
+                            if generation_model is not None:
+                                await billing_service.finalize_billing(
+                                    generation=generation_model,
+                                    final_submission=submission,
+                                    account=account,
+                                )
                         except Exception as billing_err:
                             logger.warning(
                                 "billing_finalization_error",
@@ -831,6 +1005,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             )
 
                         # Track failure stats on account
+                        refreshed_account = await db.get(ProviderAccount, account.id)
+                        if refreshed_account is not None:
+                            account = refreshed_account
                         account.total_videos_failed += 1
                         account.failure_streak += 1
                         account.success_rate = account.calculate_success_rate()
@@ -842,12 +1019,24 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         continue
 
                     try:
+                        submission_model = await db.get(ProviderSubmission, submission.id)
+                        if submission_model is None:
+                            logger.warning(
+                                "generation_submission_missing_before_poll",
+                                generation_id=generation_id,
+                                submission_id=submission.id,
+                            )
+                            still_processing += 1
+                            still_processing_ids.append(generation_id)
+                            continue
+
                         status_result = await provider_service.check_status(
-                            submission=submission,
+                            submission=submission_model,
                             account=account,
-                            operation_type=generation.operation_type,
+                            operation_type=generation_operation_type,
                             poll_cache=poll_status_cache,
                         )
+                        submission = submission_model
 
                         # Include provider's raw status/metadata for debugging
                         provider_status = None
@@ -873,11 +1062,19 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         # Handle status
                         if status_result.status == ProviderStatus.COMPLETED:
                             # Re-check: generation may have been cancelled while we polled
-                            await db.refresh(generation)
-                            if generation.status == GenerationStatus.CANCELLED:
+                            generation_model = await db.get(Generation, generation.id)
+                            if generation_model and generation_model.status == GenerationStatus.CANCELLED:
                                 logger.info("generation_cancelled_during_poll", generation_id=generation.id)
                                 account = await account_service.release_account(account.id)
                                 completed += 1
+                                continue
+                            if generation_model is None:
+                                logger.warning(
+                                    "generation_not_found_during_poll",
+                                    generation_id=generation.id,
+                                )
+                                account = await account_service.release_account(account.id)
+                                failed += 1
                                 continue
 
                             # Refresh submission to get updated response from check_status
@@ -885,7 +1082,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             # Create asset from submission
                             asset = await asset_service.create_from_submission(
                                 submission=submission,
-                                generation=generation
+                                generation=generation_model
                             )
                             logger.info("generation_completed", generation_id=generation.id, asset_id=asset.id)
                             worker_debug.worker(
@@ -901,13 +1098,14 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             # This handles credit deduction and updates Generation.billing fields
                             try:
                                 billing_service = GenerationBillingService(db)
-                                await db.refresh(generation)  # Get updated status
-                                await billing_service.finalize_billing(
-                                    generation=generation,
-                                    final_submission=submission,
-                                    account=account,
-                                    actual_duration=status_result.duration_sec,
-                                )
+                                billing_generation = await db.get(Generation, generation.id)
+                                if billing_generation is not None:
+                                    await billing_service.finalize_billing(
+                                        generation=billing_generation,
+                                        final_submission=submission,
+                                        account=account,
+                                        actual_duration=status_result.duration_sec,
+                                    )
                             except Exception as billing_err:
                                 logger.warning(
                                     "billing_finalization_error",
@@ -916,6 +1114,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 )
 
                             # Track generation stats on account
+                            refreshed_account = await db.get(ProviderAccount, account.id)
+                            if refreshed_account is not None:
+                                account = refreshed_account
                             account.total_videos_generated += 1
                             account.videos_today += 1
                             account.failure_streak = 0
@@ -938,8 +1139,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             ProviderStatus.CANCELLED,
                         }:
                             # Re-check: generation may have been cancelled while we polled
-                            await db.refresh(generation)
-                            if generation.status == GenerationStatus.CANCELLED:
+                            generation_model = await db.get(Generation, generation.id)
+                            if generation_model and generation_model.status == GenerationStatus.CANCELLED:
                                 logger.info("generation_cancelled_during_poll", generation_id=generation.id)
                                 account = await account_service.release_account(account.id)
                                 failed += 1
@@ -961,7 +1162,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 if status_result.status == ProviderStatus.FILTERED
                                 else None
                             )
-                            generation = await generation_service.mark_failed(
+                            await generation_service.mark_failed(
                                 generation.id,
                                 error_text,
                                 error_code=error_code,
@@ -970,12 +1171,13 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             # Finalize billing as skipped (no charge for failed generations)
                             try:
                                 billing_service = GenerationBillingService(db)
-                                await db.refresh(generation)  # Get updated status
-                                await billing_service.finalize_billing(
-                                    generation=generation,
-                                    final_submission=submission,
-                                    account=account,
-                                )
+                                billing_generation = await db.get(Generation, generation.id)
+                                if billing_generation is not None:
+                                    await billing_service.finalize_billing(
+                                        generation=billing_generation,
+                                        final_submission=submission,
+                                        account=account,
+                                    )
                             except Exception as billing_err:
                                 logger.warning(
                                     "billing_finalization_error",
@@ -984,6 +1186,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 )
 
                             # Track failure stats on account
+                            refreshed_account = await db.get(ProviderAccount, account.id)
+                            if refreshed_account is not None:
+                                account = refreshed_account
                             account.total_videos_failed += 1
                             account.failure_streak += 1
                             account.success_rate = account.calculate_success_rate()
@@ -1005,7 +1210,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 "auto_retry_delegated_to_event_handler",
                                 generation_id=generation.id,
                                 status=str(status_result.status),
-                                error_code=getattr(generation, "error_code", None),
+                                error_code=error_code,
                             )
 
                         elif status_result.status == ProviderStatus.PROCESSING:
