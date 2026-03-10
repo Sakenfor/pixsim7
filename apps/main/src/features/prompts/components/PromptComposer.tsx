@@ -29,6 +29,7 @@ import {
 
 import { usePromptHistory } from '../hooks/usePromptHistory';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
+import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
 import { useBlockTemplateStore } from '../stores/blockTemplateStore';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptTag } from '../types';
@@ -36,6 +37,7 @@ import type { PromptTag } from '../types';
 
 import { InlineBlocksEditor } from './InlineBlocksEditor';
 import { PromptHistoryPopover } from './PromptHistoryPopover';
+import { ShadowOverlay } from './ShadowOverlay';
 import { RoleBadge } from './shared/RoleBadge';
 
 type PromptComposerMode = 'text' | 'blocks';
@@ -118,6 +120,8 @@ export function PromptComposer({
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const pinnedTemplateId = useBlockTemplateStore((s) => s.pinnedTemplateId);
   const promptRoleColors = usePromptSettingsStore((state) => state.promptRoleColors);
+  const autoAnalyze = usePromptSettingsStore((state) => state.autoAnalyze);
+  const defaultAnalyzer = usePromptSettingsStore((state) => state.defaultAnalyzer);
   const blocksLayout = usePromptSettingsStore((state) => state.blocksLayout);
   const setBlocksLayout = usePromptSettingsStore((state) => state.setBlocksLayout);
   const [mode, setMode] = useState<PromptComposerMode>('text');
@@ -265,6 +269,11 @@ export function PromptComposer({
     });
     return Array.from(roles);
   }, [blocks]);
+
+  const shadowAnalysis = useShadowAnalysis(value, {
+    enabled: mode === 'text' && autoAnalyze,
+    analyzerId: defaultAnalyzer,
+  });
 
   const {
     results: semanticMatches,
@@ -745,18 +754,23 @@ export function PromptComposer({
       )}
 
       {mode === 'text' ? (
-        <PromptInput
-          value={value}
-          onChange={onChange}
-          maxChars={maxChars}
-          placeholder={placeholder}
-          disabled={disabled}
-          variant={variant}
-          showCounter={showCounter}
-          resizable={resizable}
-          minHeight={minHeight}
-          className="h-full"
-        />
+        <>
+          <PromptInput
+            value={value}
+            onChange={onChange}
+            maxChars={maxChars}
+            placeholder={placeholder}
+            disabled={disabled}
+            variant={variant}
+            showCounter={showCounter}
+            resizable={resizable}
+            minHeight={minHeight}
+            className="h-full"
+          />
+          {autoAnalyze && (
+            <ShadowOverlay prompt={value} analysis={shadowAnalysis} />
+          )}
+        </>
       ) : (
         <div className="flex flex-col gap-2 min-h-0 overflow-y-auto thin-scrollbar">
           {parseError && (

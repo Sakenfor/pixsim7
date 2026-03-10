@@ -15,9 +15,11 @@
  */
 
 import { useMemo, useState, useCallback } from 'react';
-import type { PromptBlockCandidate } from '../types';
+
 import { getPromptRoleBadgeClass, getPromptRoleInlineClasses, getPromptRoleLabel } from '@/lib/promptRoleUi';
+
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
+import type { PromptBlockCandidate } from '../types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -235,6 +237,8 @@ export interface PromptCandidateListProps {
  * Shows candidates as a grouped list below the prompt.
  */
 export function PromptCandidateList({ candidates, onCandidateClick }: PromptCandidateListProps) {
+  const promptRoleColors = usePromptSettingsStore((state) => state.promptRoleColors);
+
   // Group by role
   const grouped = useMemo(() => {
     const groups: Record<string, PromptCandidateDisplay[]> = {};
