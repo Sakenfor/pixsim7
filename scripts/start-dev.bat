@@ -79,7 +79,8 @@ echo.
 echo Next steps:
 echo   1. Start backend:  set PYTHONPATH=G:\code\pixsim7 ^&^& python -m pixsim7.backend.main.main
 echo   2. Start worker:   set PYTHONPATH=G:\code\pixsim7 ^&^& arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
-echo   3. Start admin:    cd admin ^&^& npm run dev
+echo   3. Start sim worker:set PYTHONPATH=G:\code\pixsim7 ^&^& arq pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings
+echo   4. Start admin:    cd admin ^&^& npm run dev
 echo.
 echo Or open separate terminals for each
 echo.

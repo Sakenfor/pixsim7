@@ -6,6 +6,7 @@ setlocal enabledelayedexpansion
 
 set BACKEND_PID_FILE=%TEMP%\pixsim7_backend_main.pid
 set WORKER_PID_FILE=%TEMP%\pixsim7_worker.pid
+set SIM_WORKER_PID_FILE=%TEMP%\pixsim7_simulation_worker.pid
 
 if "%1"=="start" goto :start
 if "%1"=="stop" goto :stop
@@ -19,19 +20,23 @@ exit /b 1
 :start
     call :start_backend
     call :start_worker
+    call :start_sim_worker
     goto :eof
 
 :stop
     call :stop_backend
     call :stop_worker
+    call :stop_sim_worker
     goto :eof
 
 :restart
     call :stop_backend
     call :stop_worker
+    call :stop_sim_worker
     timeout /t 2 /nobreak >nul
     call :start_backend
     call :start_worker
+    call :start_sim_worker
     goto :eof
 
 :status
@@ -60,6 +65,18 @@ exit /b 1
     ) else (
         echo Worker: Stopped
     )
+
+    if exist %SIM_WORKER_PID_FILE% (
+        set /p SIM_WORKER_PID=<%SIM_WORKER_PID_FILE%
+        tasklist /FI "PID eq !SIM_WORKER_PID!" 2>nul | find "!SIM_WORKER_PID!" >nul
+        if !errorlevel! equ 0 (
+            echo Simulation Worker: Running ^(PID: !SIM_WORKER_PID!^)
+        ) else (
+            echo Simulation Worker: Dead ^(stale PID file^)
+        )
+    ) else (
+        echo Simulation Worker: Stopped
+    )
     goto :eof
 
 :cleanup
@@ -68,6 +85,7 @@ exit /b 1
     taskkill /F /FI "IMAGENAME eq python.exe" /FI "COMMANDLINE eq *pixsim7*" 2>nul
     if exist %BACKEND_PID_FILE% del %BACKEND_PID_FILE%
     if exist %WORKER_PID_FILE% del %WORKER_PID_FILE%
+    if exist %SIM_WORKER_PID_FILE% del %SIM_WORKER_PID_FILE%
     echo Cleaned up all processes and PID files
     goto :eof
 
@@ -137,5 +155,39 @@ exit /b 1
         del %WORKER_PID_FILE%
     ) else (
         echo Worker not running
+    )
+    goto :eof
+
+:start_sim_worker
+    if exist %SIM_WORKER_PID_FILE% (
+        set /p PID=<%SIM_WORKER_PID_FILE%
+        tasklist /FI "PID eq !PID!" 2>nul | find "!PID!" >nul
+        if !errorlevel! equ 0 (
+            echo Simulation worker already running ^(PID: !PID!^)
+            goto :eof
+        )
+    )
+
+    cd /d %~dp0\..
+    echo Starting simulation worker...
+    start "PixSim7 Worker Simulation" /min cmd /c "set PYTHONPATH=G:\code\pixsim7 && arq pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings"
+
+    REM Wait a moment for process to start
+    timeout /t 2 /nobreak >nul
+
+    echo Simulation worker started ^(check with 'manage.bat status'^)
+    goto :eof
+
+:stop_sim_worker
+    if exist %SIM_WORKER_PID_FILE% (
+        set /p PID=<%SIM_WORKER_PID_FILE%
+        tasklist /FI "PID eq !PID!" 2>nul | find "!PID!" >nul
+        if !errorlevel! equ 0 (
+            taskkill /PID !PID! /F
+            echo Simulation worker stopped ^(PID: !PID!^)
+        )
+        del %SIM_WORKER_PID_FILE%
+    ) else (
+        echo Simulation worker not running
     )
     goto :eof

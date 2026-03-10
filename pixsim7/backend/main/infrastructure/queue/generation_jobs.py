@@ -15,11 +15,11 @@ from datetime import timedelta
 from datetime import datetime
 from datetime import timezone
 
-# ARQ default queue name for fresh jobs.
-GENERATION_FRESH_QUEUE_NAME = "arq:queue"
+from .queue_names import (
+    GENERATION_FRESH_QUEUE_NAME,
+    GENERATION_RETRY_QUEUE_NAME,
+)
 
-# Dedicated queue for generation retries/deferred work.
-GENERATION_RETRY_QUEUE_NAME = "arq:queue:generation-retry"
 GENERATION_ENQUEUE_LEASE_KEY_PREFIX = "pixsim7:generation:enqueue_lease"
 GENERATION_WAIT_META_KEY_PREFIX = "pixsim7:generation:wait_meta"
 

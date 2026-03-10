@@ -73,7 +73,7 @@ async def control_service(
 
     Services:
     - backend: FastAPI server
-    - worker: ARQ worker
+    - worker: ARQ workers (main + retry + simulation)
     - postgres: PostgreSQL (via Docker)
     - redis: Redis (via Docker)
     - admin: Admin panel (Vite dev server)
@@ -181,12 +181,14 @@ async def stop_backend() -> ServiceControlResponse:
 
 
 async def start_worker(root: str) -> ServiceControlResponse:
-    """Start ARQ worker"""
+    """Start ARQ worker family (main + retry + simulation)."""
     main_worker_pattern = "arq pixsim7.backend.main.workers.arq_worker.WorkerSettings"
     retry_worker_pattern = "arq pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings"
+    simulation_worker_pattern = "arq pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings"
 
     main_procs = find_process_by_command(main_worker_pattern)
     retry_procs = find_process_by_command(retry_worker_pattern)
+    simulation_procs = find_process_by_command(simulation_worker_pattern)
 
     started = []
     already_running = []
@@ -225,13 +227,38 @@ async def start_worker(root: str) -> ServiceControlResponse:
             subprocess.Popen(cmd, shell=True, executable='/bin/bash')
         started.append("retry")
 
+    if simulation_procs:
+        already_running.append(f"simulation(PID {simulation_procs[0].pid})")
+    else:
+        if is_windows():
+            cmd = (
+                f'start "PixSim7 Worker Simulation" /min cmd /c '
+                f'"set PYTHONPATH={root} && arq pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings"'
+            )
+            subprocess.Popen(cmd, shell=True)
+        else:
+            cmd = (
+                f'PYTHONPATH={root} nohup arq '
+                f'pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings > /dev/null 2>&1 &'
+            )
+            subprocess.Popen(cmd, shell=True, executable='/bin/bash')
+        started.append("simulation")
+
     if not started:
         return ServiceControlResponse(
             service="worker",
             action="start",
             success=False,
             message=f"Workers already running ({', '.join(already_running)})",
-            pid=main_procs[0].pid if main_procs else (retry_procs[0].pid if retry_procs else None),
+            pid=(
+                main_procs[0].pid
+                if main_procs
+                else (
+                    retry_procs[0].pid
+                    if retry_procs
+                    else (simulation_procs[0].pid if simulation_procs else None)
+                )
+            ),
         )
 
     return ServiceControlResponse(
@@ -246,7 +273,7 @@ async def start_worker(root: str) -> ServiceControlResponse:
 
 
 async def stop_worker() -> ServiceControlResponse:
-    """Stop ARQ worker"""
+    """Stop ARQ worker family (main + retry + simulation)."""
     # Check for both old and new paths for backward compatibility
     procs = find_process_by_command("arq pixsim7.backend.main.workers") or find_process_by_command("arq pixsim7_backend.workers")
 

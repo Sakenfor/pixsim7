@@ -1,0 +1,11 @@
+{
+  "id": "simulation-worker",
+  "type": "worker",
+  "name": "Worker (Simulation)",
+  "description": "Dedicated world simulation scheduler worker",
+  "module": "arq",
+  "args": ["pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings"],
+  "depends_on": ["db"],
+  "auto_start": false,
+  "enabled": true
+}

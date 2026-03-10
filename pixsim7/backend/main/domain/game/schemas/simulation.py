@@ -146,6 +146,10 @@ class WorldSchedulerConfigSchema(BaseModel):
         le=1000.0,
         description="Game time multiplier (1 real second = timeScale game seconds)"
     )
+    enabled: bool = Field(
+        default=True,
+        description="If false, background auto-ticks are disabled for this world"
+    )
     maxNpcTicksPerStep: int = Field(
         default=50,
         ge=1,
@@ -201,6 +205,7 @@ def get_default_world_scheduler_config() -> Dict:
     """
     return {
         "timeScale": 60.0,  # 1 real second = 60 game seconds (1 minute)
+        "enabled": True,
         "maxNpcTicksPerStep": 50,
         "maxJobOpsPerStep": 10,
         "tickIntervalSeconds": 1.0,
@@ -351,4 +356,3 @@ def get_default_game_profile() -> Dict:
         "behaviorProfile": "balanced",
         "narrativeProfile": "moderate"
     }
-

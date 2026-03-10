@@ -93,11 +93,12 @@ echo "=========================================="
 echo "Starting Development Services"
 echo "=========================================="
 echo ""
-echo "This will start 3-4 processes in the background:"
+echo "This will start 4-5 processes in the background:"
 echo "  1. Backend API (with hot-reload)"
-echo "  2. Background Worker"
-echo "  3. Main Frontend (admin panel)"
-echo "  4. Game Frontend (optional)"
+echo "  2. Background Worker (generation/automation)"
+echo "  3. Simulation Worker (world scheduler)"
+echo "  4. Main Frontend (admin panel)"
+echo "  5. Game Frontend (optional)"
 echo ""
 echo "All output will be logged to: $DEV_LOG_DIR"
 echo ""
@@ -122,6 +123,12 @@ cleanup() {
     if [ -f "$DEV_LOG_DIR/worker.pid" ]; then
         kill $(cat "$DEV_LOG_DIR/worker.pid") 2>/dev/null || true
         rm -f "$DEV_LOG_DIR/worker.pid"
+    fi
+
+    # Kill simulation worker
+    if [ -f "$DEV_LOG_DIR/simulation-worker.pid" ]; then
+        kill $(cat "$DEV_LOG_DIR/simulation-worker.pid") 2>/dev/null || true
+        rm -f "$DEV_LOG_DIR/simulation-worker.pid"
     fi
 
     # Kill frontend(s)
@@ -161,6 +168,13 @@ nohup arq pixsim7.backend.main.workers.arq_worker.WorkerSettings \
 echo $! > "$DEV_LOG_DIR/worker.pid"
 echo "   Logs: $DEV_LOG_DIR/worker.log"
 
+# Start dedicated simulation worker
+echo "Starting simulation worker..."
+nohup arq pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings \
+    > "$DEV_LOG_DIR/simulation-worker.log" 2>&1 &
+echo $! > "$DEV_LOG_DIR/simulation-worker.pid"
+echo "   Logs: $DEV_LOG_DIR/simulation-worker.log"
+
 # Start main frontend
 if [ "$SKIP_FRONTEND" = false ]; then
     echo "Starting main frontend (http://localhost:5173)..."
@@ -189,6 +203,7 @@ echo ""
 echo "View logs:"
 echo "  tail -f $DEV_LOG_DIR/backend.log"
 echo "  tail -f $DEV_LOG_DIR/worker.log"
+echo "  tail -f $DEV_LOG_DIR/simulation-worker.log"
 echo "  tail -f $DEV_LOG_DIR/frontend-main.log"
 echo ""
 echo "Press Ctrl+C to stop all services"

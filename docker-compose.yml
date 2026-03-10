@@ -112,6 +112,39 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ARQ Simulation Worker (World Scheduler)
+  simulation-worker:
+    build:
+      context: ./pixsim7/backend/main
+      dockerfile: Dockerfile
+    container_name: pixsim7-simulation-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://pixsim:${DB_PASSWORD:-pixsim123}@postgres:5432/pixsim7
+      BLOCKS_DATABASE_URL: postgresql://pixsim:${DB_PASSWORD:-pixsim123}@postgres:5432/pixsim7_blocks
+      REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app
+      SIMULATION_ENABLED: ${SIMULATION_ENABLED:-true}
+      SIMULATION_TICK_INTERVAL: ${SIMULATION_TICK_INTERVAL:-5.0}
+      ARQ_SIMULATION_MAX_JOBS: ${ARQ_SIMULATION_MAX_JOBS:-2}
+      ARQ_SIMULATION_JOB_TIMEOUT: ${ARQ_SIMULATION_JOB_TIMEOUT:-120}
+    volumes:
+      - ./pixsim7:/app/pixsim7
+      - ./data/storage:/app/storage
+      - ./data/logs:/app/logs
+      - ./data/cache:/app/cache
+    command: arq pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   postgres_data:
   redis_data:

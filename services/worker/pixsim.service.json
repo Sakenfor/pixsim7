@@ -2,7 +2,7 @@
   "id": "worker",
   "type": "worker",
   "name": "Worker (ARQ)",
-  "description": "Background task worker",
+  "description": "Background task worker (generation/automation)",
   "module": "arq",
   "args": ["pixsim7.backend.main.workers.arq_worker.WorkerSettings"],
   "depends_on": ["db"],

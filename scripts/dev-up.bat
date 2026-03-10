@@ -77,11 +77,12 @@ echo ==========================================
 echo Starting Development Services
 echo ==========================================
 echo.
-echo This will start 3-4 processes in separate windows:
+echo This will start 4-5 processes in separate windows:
 echo   1. Backend API (with hot-reload)
-echo   2. Background Worker
-echo   3. Main Frontend (admin panel)
-echo   4. Game Frontend (optional)
+echo   2. Background Worker (generation/automation)
+echo   3. Simulation Worker (world scheduler)
+echo   4. Main Frontend (admin panel)
+echo   5. Game Frontend (optional)
 echo.
 echo All output will be logged to: data\logs\dev\
 echo.
@@ -98,6 +99,11 @@ REM Start worker in new window
 echo Starting background worker...
 start "PixSim7 Worker" /MIN cmd /c "set PYTHONPATH=%PROJECT_ROOT% && arq pixsim7.backend.main.workers.arq_worker.WorkerSettings > data\logs\dev\worker.log 2>&1"
 echo    Logs: data\logs\dev\worker.log
+
+REM Start dedicated simulation worker in new window
+echo Starting simulation worker...
+start "PixSim7 Worker Simulation" /MIN cmd /c "set PYTHONPATH=%PROJECT_ROOT% && arq pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings > data\logs\dev\simulation-worker.log 2>&1"
+echo    Logs: data\logs\dev\simulation-worker.log
 
 REM Start main frontend
 if "%SKIP_FRONTEND%"=="false" (
@@ -124,6 +130,7 @@ echo.
 echo View logs:
 echo   type data\logs\dev\backend.log
 echo   type data\logs\dev\worker.log
+echo   type data\logs\dev\simulation-worker.log
 echo   type data\logs\dev\frontend-main.log
 echo.
 echo Services are running in minimized windows.

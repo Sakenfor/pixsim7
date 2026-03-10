@@ -1098,6 +1098,7 @@ class SchedulerStatsResponse(BaseModel):
 class UpdateSchedulerConfigRequest(BaseModel):
     """Request to update scheduler configuration."""
     timeScale: Optional[float] = None
+    enabled: Optional[bool] = None
     maxNpcTicksPerStep: Optional[int] = None
     maxJobOpsPerStep: Optional[int] = None
     tickIntervalSeconds: Optional[float] = None
@@ -1138,6 +1139,7 @@ async def update_scheduler_config(
 
     Allows runtime adjustment of:
     - timeScale: Game time multiplier
+    - enabled: Enable/disable background auto-ticks for this world
     - maxNpcTicksPerStep: NPC simulation budget
     - maxJobOpsPerStep: Generation job budget
     - tickIntervalSeconds: Real-time tick interval

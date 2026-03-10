@@ -147,6 +147,7 @@ class WorldSimulationContext:
             "average_tick_duration_ms": self.average_tick_duration_ms,
             "config": {
                 "timeScale": self.config.timeScale,
+                "enabled": self.config.enabled,
                 "maxNpcTicksPerStep": self.config.maxNpcTicksPerStep,
                 "maxJobOpsPerStep": self.config.maxJobOpsPerStep,
                 "tickIntervalSeconds": self.config.tickIntervalSeconds,
