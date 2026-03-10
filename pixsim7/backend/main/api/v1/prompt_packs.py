@@ -8,7 +8,11 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7.backend.main.api.dependencies import (
+    CurrentAdminUser,
+    CurrentUser,
+    DatabaseSession,
+)
 from pixsim7.backend.main.services.ownership.user_owned import (
     assert_can_write_user_owned,
     resolve_user_owner,
@@ -18,6 +22,8 @@ from pixsim7.backend.main.services.prompt.packs import (
     PromptPackCompileService,
     PromptPackDraftError,
     PromptPackDraftService,
+    PromptPackPublicationError,
+    PromptPackPublicationService,
     PromptPackRuntimeError,
     PromptPackRuntimeService,
     PromptPackVersionError,
@@ -72,6 +78,26 @@ class PromptPackCompileResponse(BaseModel):
     compiled_at: Optional[datetime] = None
 
 
+class PromptPackPublicationReject(BaseModel):
+    review_notes: Optional[str] = Field(default=None, max_length=4000)
+
+
+class PromptPackPublicationResponse(BaseModel):
+    id: UUID
+    version_id: UUID
+    draft_id: UUID
+    owner_user_id: int
+    owner_ref: Optional[str] = None
+    owner_username: Optional[str] = None
+    visibility: str
+    review_status: str
+    reviewed_by_user_id: Optional[int] = None
+    reviewed_at: Optional[datetime] = None
+    review_notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class PromptPackVersionResponse(BaseModel):
     id: UUID
     draft_id: UUID
@@ -85,6 +111,7 @@ class PromptPackVersionResponse(BaseModel):
     compiled_blocks_json: List[Dict[str, Any]] = Field(default_factory=list)
     checksum: str
     created_at: datetime
+    publication: Optional[PromptPackPublicationResponse] = None
 
 
 class PromptPackCatalogResponse(BaseModel):
@@ -97,6 +124,8 @@ class PromptPackCatalogResponse(BaseModel):
     version: Optional[int] = None
     checksum: Optional[str] = None
     status: Optional[str] = None
+    review_status: Optional[str] = None
+    publication_visibility: Optional[str] = None
     created_at: Optional[datetime] = None
     owner_user_id: Optional[int] = None
     is_active: bool = False
@@ -388,6 +417,7 @@ async def create_prompt_pack_version(
     return _build_version_response(
         version=version,
         draft=draft,
+        publication=None,
         current_user_id=current_user.id,
         current_username=current_user.username,
     )
@@ -415,10 +445,15 @@ async def list_prompt_pack_versions(
         limit=limit,
         offset=offset,
     )
+    publication_service = PromptPackPublicationService(db)
+    publication_map = await publication_service.list_publications_for_versions(
+        version_ids=[version.id for version in versions],
+    )
     return [
         _build_version_response(
             version=version,
             draft=draft,
+            publication=publication_map.get(str(version.id)),
             current_user_id=current_user.id,
             current_username=current_user.username,
         )
@@ -444,7 +479,179 @@ async def get_prompt_pack_version(
         raise HTTPException(status_code=404, detail="Parent draft not found")
 
     _assert_draft_access(draft=draft, current_user=current_user)
+    publication_service = PromptPackPublicationService(db)
+    publication = await publication_service.get_publication(version_id=version.id)
     return _build_version_response(
+        version=version,
+        draft=draft,
+        publication=publication,
+        current_user_id=current_user.id,
+        current_username=current_user.username,
+    )
+
+
+@router.post("/versions/{version_id}/submit", response_model=PromptPackPublicationResponse)
+async def submit_prompt_pack_version(
+    version_id: UUID,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> PromptPackPublicationResponse:
+    """Submit a version for review."""
+    version, draft = await _get_version_and_draft(
+        version_id=version_id,
+        current_user=current_user,
+        db=db,
+    )
+
+    publication_service = PromptPackPublicationService(db)
+    try:
+        publication = await publication_service.submit_version(
+            version=version,
+            draft=draft,
+            owner_user_id=current_user.id,
+        )
+        await db.commit()
+    except PromptPackPublicationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+    return _build_publication_response(
+        publication=publication,
+        version=version,
+        draft=draft,
+        current_user_id=current_user.id,
+        current_username=current_user.username,
+    )
+
+
+@router.post("/versions/{version_id}/approve", response_model=PromptPackPublicationResponse)
+async def approve_prompt_pack_version(
+    version_id: UUID,
+    current_user: CurrentAdminUser,
+    db: DatabaseSession,
+) -> PromptPackPublicationResponse:
+    """Approve a submitted version (admin only)."""
+    version, draft = await _get_version_and_draft(
+        version_id=version_id,
+        current_user=current_user,
+        db=db,
+    )
+
+    publication_service = PromptPackPublicationService(db)
+    try:
+        publication = await publication_service.approve_version(
+            version=version,
+            draft=draft,
+            admin_user_id=current_user.id,
+        )
+        await db.commit()
+    except PromptPackPublicationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+    return _build_publication_response(
+        publication=publication,
+        version=version,
+        draft=draft,
+        current_user_id=current_user.id,
+        current_username=current_user.username,
+    )
+
+
+@router.post("/versions/{version_id}/reject", response_model=PromptPackPublicationResponse)
+async def reject_prompt_pack_version(
+    version_id: UUID,
+    request: PromptPackPublicationReject,
+    current_user: CurrentAdminUser,
+    db: DatabaseSession,
+) -> PromptPackPublicationResponse:
+    """Reject a submitted version (admin only)."""
+    version, draft = await _get_version_and_draft(
+        version_id=version_id,
+        current_user=current_user,
+        db=db,
+    )
+
+    publication_service = PromptPackPublicationService(db)
+    try:
+        publication = await publication_service.reject_version(
+            version=version,
+            draft=draft,
+            admin_user_id=current_user.id,
+            review_notes=request.review_notes,
+        )
+        await db.commit()
+    except PromptPackPublicationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+    return _build_publication_response(
+        publication=publication,
+        version=version,
+        draft=draft,
+        current_user_id=current_user.id,
+        current_username=current_user.username,
+    )
+
+
+@router.post("/versions/{version_id}/publish-private", response_model=PromptPackPublicationResponse)
+async def publish_prompt_pack_version_private(
+    version_id: UUID,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> PromptPackPublicationResponse:
+    """Set publication visibility to private."""
+    version, draft = await _get_version_and_draft(
+        version_id=version_id,
+        current_user=current_user,
+        db=db,
+    )
+
+    publication_service = PromptPackPublicationService(db)
+    try:
+        publication = await publication_service.publish_private(
+            version=version,
+            draft=draft,
+            actor_user_id=current_user.id,
+            actor_is_admin=_is_admin_user(current_user),
+        )
+        await db.commit()
+    except PromptPackPublicationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+    return _build_publication_response(
+        publication=publication,
+        version=version,
+        draft=draft,
+        current_user_id=current_user.id,
+        current_username=current_user.username,
+    )
+
+
+@router.post("/versions/{version_id}/publish-shared", response_model=PromptPackPublicationResponse)
+async def publish_prompt_pack_version_shared(
+    version_id: UUID,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> PromptPackPublicationResponse:
+    """Publish an approved version to shared catalog."""
+    version, draft = await _get_version_and_draft(
+        version_id=version_id,
+        current_user=current_user,
+        db=db,
+    )
+
+    publication_service = PromptPackPublicationService(db)
+    try:
+        publication = await publication_service.publish_shared(
+            version=version,
+            draft=draft,
+            actor_user_id=current_user.id,
+            actor_is_admin=_is_admin_user(current_user),
+        )
+        await db.commit()
+    except PromptPackPublicationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+    return _build_publication_response(
+        publication=publication,
         version=version,
         draft=draft,
         current_user_id=current_user.id,
@@ -511,6 +718,26 @@ async def deactivate_prompt_pack_version(
     return _build_activation_response(result)
 
 
+async def _get_version_and_draft(
+    *,
+    version_id: UUID,
+    current_user: Any,
+    db: DatabaseSession,
+) -> tuple[Any, Any]:
+    version_service = PromptPackVersionService(db)
+    version = await version_service.get_version(version_id)
+    if version is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    draft_service = PromptPackDraftService(db)
+    draft = await draft_service.get_draft(version.draft_id)
+    if draft is None:
+        raise HTTPException(status_code=404, detail="Parent draft not found")
+
+    _assert_draft_access(draft=draft, current_user=current_user)
+    return version, draft
+
+
 def _assert_draft_access(*, draft: Any, current_user: Any) -> None:
     assert_can_write_user_owned(
         user=current_user,
@@ -555,6 +782,7 @@ def _build_version_response(
     *,
     version: Any,
     draft: Any,
+    publication: Optional[Any],
     current_user_id: Optional[int],
     current_username: Optional[str],
 ) -> PromptPackVersionResponse:
@@ -585,6 +813,50 @@ def _build_version_response(
         compiled_blocks_json=blocks,
         checksum=version.checksum,
         created_at=version.created_at,
+        publication=(
+            _build_publication_response(
+                publication=publication,
+                version=version,
+                draft=draft,
+                current_user_id=current_user_id,
+                current_username=current_username,
+            )
+            if publication is not None
+            else None
+        ),
+    )
+
+
+def _build_publication_response(
+    *,
+    publication: Any,
+    version: Any,
+    draft: Any,
+    current_user_id: Optional[int],
+    current_username: Optional[str],
+) -> PromptPackPublicationResponse:
+    created_by = None
+    owner_user_id = getattr(draft, "owner_user_id", None)
+    if current_user_id is not None and owner_user_id == current_user_id:
+        created_by = current_username
+    owner_fields = resolve_user_owner(
+        model_owner_user_id=owner_user_id,
+        created_by=created_by,
+    )
+    return PromptPackPublicationResponse(
+        id=publication.id,
+        version_id=version.id,
+        draft_id=draft.id,
+        owner_user_id=owner_user_id,
+        owner_ref=owner_fields.get("owner_ref"),
+        owner_username=owner_fields.get("owner_username"),
+        visibility=str(getattr(publication, "visibility", "private")),
+        review_status=str(getattr(publication, "review_status", "draft")),
+        reviewed_by_user_id=getattr(publication, "reviewed_by_user_id", None),
+        reviewed_at=getattr(publication, "reviewed_at", None),
+        review_notes=getattr(publication, "review_notes", None),
+        created_at=publication.created_at,
+        updated_at=publication.updated_at,
     )
 
 
@@ -605,3 +877,10 @@ def _build_activation_response(result: Any) -> PromptPackActivationResponse:
         blocks_updated=int(getattr(result, "blocks_updated", 0) or 0),
         blocks_pruned=int(getattr(result, "blocks_pruned", 0) or 0),
     )
+
+
+def _is_admin_user(user: Any) -> bool:
+    admin_attr = getattr(user, "is_admin", None)
+    if callable(admin_attr):
+        return bool(admin_attr())
+    return bool(admin_attr)

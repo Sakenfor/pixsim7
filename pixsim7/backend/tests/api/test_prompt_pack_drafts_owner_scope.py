@@ -10,9 +10,14 @@ from fastapi import HTTPException
 
 import pixsim7.backend.main.api.v1.prompt_packs as prompt_packs_module
 from pixsim7.backend.main.api.v1.prompt_packs import (
+    approve_prompt_pack_version,
     activate_prompt_pack_version,
     deactivate_prompt_pack_version,
     list_prompt_pack_catalog,
+    publish_prompt_pack_version_private,
+    publish_prompt_pack_version_shared,
+    reject_prompt_pack_version,
+    PromptPackPublicationReject,
     PromptPackDraftSourceUpdate,
     PromptPackDraftCreate,
     PromptPackDraftUpdate,
@@ -24,6 +29,7 @@ from pixsim7.backend.main.api.v1.prompt_packs import (
     list_prompt_pack_drafts,
     list_prompt_pack_versions,
     replace_prompt_pack_draft_source,
+    submit_prompt_pack_version,
     update_prompt_pack_draft,
     validate_prompt_pack_draft,
 )
@@ -66,6 +72,27 @@ def _version(*, draft_id=None, version: int = 1) -> SimpleNamespace:
         compiled_blocks_json=[{"id": "pose"}],
         checksum="a" * 64,
         created_at=now,
+    )
+
+
+def _publication(
+    *,
+    version_id=None,
+    visibility: str = "private",
+    review_status: str = "draft",
+    review_notes: str | None = None,
+) -> SimpleNamespace:
+    now = datetime.now(timezone.utc)
+    return SimpleNamespace(
+        id=uuid4(),
+        version_id=version_id or uuid4(),
+        visibility=visibility,
+        review_status=review_status,
+        reviewed_by_user_id=None,
+        reviewed_at=None,
+        review_notes=review_notes,
+        created_at=now,
+        updated_at=now,
     )
 
 
@@ -248,6 +275,82 @@ class _RuntimeServiceCapture:
             blocks_updated=0,
             blocks_pruned=0,
         )
+
+
+class _PublicationServiceCapture:
+    def __init__(
+        self,
+        *,
+        publication: SimpleNamespace | None = None,
+        raise_on: Exception | None = None,
+    ) -> None:
+        self.publication = publication or _publication()
+        self.raise_on = raise_on
+        self.list_calls: list[dict] = []
+        self.get_calls: list[dict] = []
+        self.submit_calls: list[dict] = []
+        self.approve_calls: list[dict] = []
+        self.reject_calls: list[dict] = []
+        self.publish_private_calls: list[dict] = []
+        self.publish_shared_calls: list[dict] = []
+
+    async def list_publications_for_versions(self, *, version_ids):
+        self.list_calls.append({"version_ids": list(version_ids)})
+        return {str(value): self.publication for value in version_ids}
+
+    async def get_publication(self, *, version_id):
+        self.get_calls.append({"version_id": version_id})
+        self.publication.version_id = version_id
+        return self.publication
+
+    async def submit_version(self, **kwargs):
+        self.submit_calls.append(dict(kwargs))
+        if self.raise_on is not None:
+            raise self.raise_on
+        self.publication.version_id = kwargs["version"].id
+        self.publication.review_status = "submitted"
+        self.publication.visibility = "private"
+        return self.publication
+
+    async def approve_version(self, **kwargs):
+        self.approve_calls.append(dict(kwargs))
+        if self.raise_on is not None:
+            raise self.raise_on
+        self.publication.version_id = kwargs["version"].id
+        self.publication.review_status = "approved"
+        self.publication.visibility = "approved"
+        self.publication.reviewed_by_user_id = kwargs.get("admin_user_id")
+        self.publication.reviewed_at = datetime.now(timezone.utc)
+        return self.publication
+
+    async def reject_version(self, **kwargs):
+        self.reject_calls.append(dict(kwargs))
+        if self.raise_on is not None:
+            raise self.raise_on
+        self.publication.version_id = kwargs["version"].id
+        self.publication.review_status = "rejected"
+        self.publication.visibility = "private"
+        self.publication.reviewed_by_user_id = kwargs.get("admin_user_id")
+        self.publication.reviewed_at = datetime.now(timezone.utc)
+        self.publication.review_notes = kwargs.get("review_notes")
+        return self.publication
+
+    async def publish_private(self, **kwargs):
+        self.publish_private_calls.append(dict(kwargs))
+        if self.raise_on is not None:
+            raise self.raise_on
+        self.publication.version_id = kwargs["version"].id
+        self.publication.visibility = "private"
+        return self.publication
+
+    async def publish_shared(self, **kwargs):
+        self.publish_shared_calls.append(dict(kwargs))
+        if self.raise_on is not None:
+            raise self.raise_on
+        self.publication.version_id = kwargs["version"].id
+        self.publication.visibility = "shared"
+        self.publication.review_status = "approved"
+        return self.publication
 
 
 @pytest.mark.asyncio
@@ -544,9 +647,11 @@ async def test_list_versions_for_draft(monkeypatch: pytest.MonkeyPatch) -> None:
     draft_obj = _draft()
     draft_capture = _ServiceCapture(draft=draft_obj)
     version_capture = _VersionServiceCapture(version=_version(draft_id=draft_obj.id, version=2))
+    publication_capture = _PublicationServiceCapture()
 
     monkeypatch.setattr(prompt_packs_module, "PromptPackDraftService", lambda _db: draft_capture)
     monkeypatch.setattr(prompt_packs_module, "PromptPackVersionService", lambda _db: version_capture)
+    monkeypatch.setattr(prompt_packs_module, "PromptPackPublicationService", lambda _db: publication_capture)
 
     result = await list_prompt_pack_versions(
         draft_id=uuid4(),
@@ -567,9 +672,11 @@ async def test_get_version_blocks_non_owner(monkeypatch: pytest.MonkeyPatch) -> 
     draft_obj = _draft(owner_user_id=8, namespace="user.8")
     draft_capture = _ServiceCapture(draft=draft_obj)
     version_capture = _VersionServiceCapture(version=_version(draft_id=draft_obj.id, version=1))
+    publication_capture = _PublicationServiceCapture()
 
     monkeypatch.setattr(prompt_packs_module, "PromptPackDraftService", lambda _db: draft_capture)
     monkeypatch.setattr(prompt_packs_module, "PromptPackVersionService", lambda _db: version_capture)
+    monkeypatch.setattr(prompt_packs_module, "PromptPackPublicationService", lambda _db: publication_capture)
 
     with pytest.raises(HTTPException) as exc:
         await get_prompt_pack_version(
@@ -642,3 +749,131 @@ async def test_deactivate_catalog_version_commits_and_clears_activation(
     assert db.commit_calls == 1
     assert response.version_id == version_id
     assert response.active_version_ids == []
+
+
+@pytest.mark.asyncio
+async def test_submit_version_for_review_commits(monkeypatch: pytest.MonkeyPatch) -> None:
+    draft_obj = _draft(owner_user_id=7, namespace="user.7")
+    version_obj = _version(draft_id=draft_obj.id, version=1)
+    draft_capture = _ServiceCapture(draft=draft_obj)
+    version_capture = _VersionServiceCapture(version=version_obj)
+    publication_capture = _PublicationServiceCapture()
+    db = _DummyDB()
+
+    monkeypatch.setattr(prompt_packs_module, "PromptPackDraftService", lambda _db: draft_capture)
+    monkeypatch.setattr(prompt_packs_module, "PromptPackVersionService", lambda _db: version_capture)
+    monkeypatch.setattr(prompt_packs_module, "PromptPackPublicationService", lambda _db: publication_capture)
+
+    response = await submit_prompt_pack_version(
+        version_id=version_obj.id,
+        current_user=_user(user_id=7, username="alice"),
+        db=db,
+    )
+
+    assert db.commit_calls == 1
+    assert publication_capture.submit_calls[0]["owner_user_id"] == 7
+    assert response.review_status == "submitted"
+    assert response.visibility == "private"
+
+
+@pytest.mark.asyncio
+async def test_approve_version_requires_admin_and_commits(monkeypatch: pytest.MonkeyPatch) -> None:
+    draft_obj = _draft(owner_user_id=9, namespace="user.9")
+    version_obj = _version(draft_id=draft_obj.id, version=2)
+    draft_capture = _ServiceCapture(draft=draft_obj)
+    version_capture = _VersionServiceCapture(version=version_obj)
+    publication_capture = _PublicationServiceCapture()
+    db = _DummyDB()
+
+    monkeypatch.setattr(prompt_packs_module, "PromptPackDraftService", lambda _db: draft_capture)
+    monkeypatch.setattr(prompt_packs_module, "PromptPackVersionService", lambda _db: version_capture)
+    monkeypatch.setattr(prompt_packs_module, "PromptPackPublicationService", lambda _db: publication_capture)
+
+    response = await approve_prompt_pack_version(
+        version_id=version_obj.id,
+        current_user=_user(user_id=1, username="admin", is_admin=True),
+        db=db,
+    )
+
+    assert db.commit_calls == 1
+    assert publication_capture.approve_calls[0]["admin_user_id"] == 1
+    assert response.review_status == "approved"
+    assert response.visibility == "approved"
+
+
+@pytest.mark.asyncio
+async def test_reject_version_passes_review_notes(monkeypatch: pytest.MonkeyPatch) -> None:
+    draft_obj = _draft(owner_user_id=9, namespace="user.9")
+    version_obj = _version(draft_id=draft_obj.id, version=2)
+    draft_capture = _ServiceCapture(draft=draft_obj)
+    version_capture = _VersionServiceCapture(version=version_obj)
+    publication_capture = _PublicationServiceCapture()
+    db = _DummyDB()
+
+    monkeypatch.setattr(prompt_packs_module, "PromptPackDraftService", lambda _db: draft_capture)
+    monkeypatch.setattr(prompt_packs_module, "PromptPackVersionService", lambda _db: version_capture)
+    monkeypatch.setattr(prompt_packs_module, "PromptPackPublicationService", lambda _db: publication_capture)
+
+    response = await reject_prompt_pack_version(
+        version_id=version_obj.id,
+        request=PromptPackPublicationReject(review_notes="Needs clearer taxonomy"),
+        current_user=_user(user_id=1, username="admin", is_admin=True),
+        db=db,
+    )
+
+    assert db.commit_calls == 1
+    assert publication_capture.reject_calls[0]["review_notes"] == "Needs clearer taxonomy"
+    assert response.review_status == "rejected"
+    assert response.review_notes == "Needs clearer taxonomy"
+
+
+@pytest.mark.asyncio
+async def test_publish_private_sets_actor_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    draft_obj = _draft(owner_user_id=7, namespace="user.7")
+    version_obj = _version(draft_id=draft_obj.id, version=4)
+    draft_capture = _ServiceCapture(draft=draft_obj)
+    version_capture = _VersionServiceCapture(version=version_obj)
+    publication_capture = _PublicationServiceCapture()
+    db = _DummyDB()
+
+    monkeypatch.setattr(prompt_packs_module, "PromptPackDraftService", lambda _db: draft_capture)
+    monkeypatch.setattr(prompt_packs_module, "PromptPackVersionService", lambda _db: version_capture)
+    monkeypatch.setattr(prompt_packs_module, "PromptPackPublicationService", lambda _db: publication_capture)
+
+    response = await publish_prompt_pack_version_private(
+        version_id=version_obj.id,
+        current_user=_user(user_id=7, username="alice", is_admin=False),
+        db=db,
+    )
+
+    assert db.commit_calls == 1
+    assert publication_capture.publish_private_calls[0]["actor_user_id"] == 7
+    assert publication_capture.publish_private_calls[0]["actor_is_admin"] is False
+    assert response.visibility == "private"
+
+
+@pytest.mark.asyncio
+async def test_publish_shared_surfaces_workflow_conflicts(monkeypatch: pytest.MonkeyPatch) -> None:
+    draft_obj = _draft(owner_user_id=7, namespace="user.7")
+    version_obj = _version(draft_id=draft_obj.id, version=4)
+    draft_capture = _ServiceCapture(draft=draft_obj)
+    version_capture = _VersionServiceCapture(version=version_obj)
+    publication_capture = _PublicationServiceCapture(
+        raise_on=prompt_packs_module.PromptPackPublicationError(
+            "Version must be approved before publishing to shared catalog",
+            status_code=409,
+        )
+    )
+
+    monkeypatch.setattr(prompt_packs_module, "PromptPackDraftService", lambda _db: draft_capture)
+    monkeypatch.setattr(prompt_packs_module, "PromptPackVersionService", lambda _db: version_capture)
+    monkeypatch.setattr(prompt_packs_module, "PromptPackPublicationService", lambda _db: publication_capture)
+
+    with pytest.raises(HTTPException) as exc:
+        await publish_prompt_pack_version_shared(
+            version_id=version_obj.id,
+            current_user=_user(user_id=7, username="alice"),
+            db=_DummyDB(),
+        )
+
+    assert exc.value.status_code == 409

@@ -32,8 +32,9 @@ import {
 } from '../block-matrix/presets';
 
 import { PromptInteractionsWorkbench } from './PromptInteractionsWorkbench';
+import { PromptPackAuthoringWorkbench } from './PromptPackAuthoringWorkbench';
 
-type TabId = 'packages' | 'templates' | 'blocks' | 'matrix' | 'interactions';
+type TabId = 'packages' | 'templates' | 'blocks' | 'matrix' | 'interactions' | 'authoring';
 
 interface PromptLibraryInspectorPanelProps {
   tab?: TabId;
@@ -93,7 +94,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
   const { roles: compositionRoles, packages: compositionPackages } = useCompositionPackages();
   const contextTab = ((): TabId | undefined => {
     const raw = props.context?.tab;
-    return raw === 'packages' || raw === 'templates' || raw === 'blocks' || raw === 'matrix' || raw === 'interactions'
+    return raw === 'packages' || raw === 'templates' || raw === 'blocks' || raw === 'matrix' || raw === 'interactions' || raw === 'authoring'
       ? raw
       : undefined;
   })();
@@ -350,6 +351,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
             ['blocks', 'Blocks', 'grid'],
             ['matrix', 'Matrix', 'grid'],
             ['interactions', 'Interactions', 'sparkles'],
+            ['authoring', 'Authoring', 'pencil'],
           ] as Array<[TabId, string, string]>).map(([id, label, icon]) => (
             <button
               key={id}
@@ -841,6 +843,12 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
       {tab === 'interactions' && (
         <div className="flex-1 min-h-0">
           <PromptInteractionsWorkbench />
+        </div>
+      )}
+
+      {tab === 'authoring' && (
+        <div className="flex-1 min-h-0">
+          <PromptPackAuthoringWorkbench />
         </div>
       )}
     </div>

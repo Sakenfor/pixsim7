@@ -10,7 +10,12 @@ import yaml
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain import PromptPackDraft, PromptPackVersion, User
+from pixsim7.backend.main.domain import (
+    PromptPackDraft,
+    PromptPackPublication,
+    PromptPackVersion,
+    User,
+)
 from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
@@ -75,12 +80,17 @@ class PromptPackRuntimeService:
                 )
             )
 
+        if normalized_scope in {"shared", "all"}:
+            rows.extend(
+                await self._list_shared_catalog_rows(
+                    user_id=user_id,
+                    active_version_ids=active_version_ids,
+                    include_owned=(normalized_scope == "shared"),
+                )
+            )
+
         if normalized_scope in {"system", "all"}:
             rows.extend(await self._list_system_catalog_rows())
-
-        # Shared catalog is intentionally empty until publication workflow is added.
-        if normalized_scope == "shared":
-            return []
 
         rows.sort(
             key=lambda row: (
@@ -207,6 +217,8 @@ class PromptPackRuntimeService:
         )
         result = await self.session.execute(stmt)
         rows = result.all()
+        version_ids = [version.id for version, _draft in rows]
+        publications = await self._list_publications_by_version_ids(version_ids=version_ids)
 
         catalog: List[Dict[str, Any]] = []
         for version, draft in rows:
@@ -216,6 +228,7 @@ class PromptPackRuntimeService:
                 if isinstance(getattr(version, "compiled_blocks_json", None), list)
                 else []
             )
+            publication = publications.get(str(version.id))
             catalog.append(
                 {
                     "catalog_source": "self",
@@ -227,9 +240,72 @@ class PromptPackRuntimeService:
                     "version": version.version,
                     "checksum": version.checksum,
                     "status": draft.status,
+                    "review_status": (
+                        str(getattr(publication, "review_status"))
+                        if publication is not None
+                        else "draft"
+                    ),
+                    "publication_visibility": (
+                        str(getattr(publication, "visibility"))
+                        if publication is not None
+                        else "private"
+                    ),
                     "created_at": version.created_at,
                     "owner_user_id": draft.owner_user_id,
                     "is_active": str(version.id) in active_version_ids,
+                    "block_count": len(blocks_json),
+                }
+            )
+        return catalog
+
+    async def _list_shared_catalog_rows(
+        self,
+        *,
+        user_id: int,
+        active_version_ids: set[str],
+        include_owned: bool,
+    ) -> List[Dict[str, Any]]:
+        stmt = (
+            select(PromptPackVersion, PromptPackDraft, PromptPackPublication)
+            .join(PromptPackDraft, PromptPackVersion.draft_id == PromptPackDraft.id)
+            .join(PromptPackPublication, PromptPackPublication.version_id == PromptPackVersion.id)
+            .where(PromptPackPublication.visibility == "shared")
+            .where(PromptPackPublication.review_status == "approved")
+            .order_by(PromptPackVersion.created_at.desc())
+        )
+        if not include_owned:
+            stmt = stmt.where(PromptPackDraft.owner_user_id != user_id)
+
+        result = await self.session.execute(stmt)
+        rows = result.all()
+
+        catalog: List[Dict[str, Any]] = []
+        for version, draft, publication in rows:
+            source_pack = self._resolve_source_pack(version=version, draft=draft)
+            blocks_json = (
+                version.compiled_blocks_json
+                if isinstance(getattr(version, "compiled_blocks_json", None), list)
+                else []
+            )
+            catalog.append(
+                {
+                    "catalog_source": "shared",
+                    "source_pack": source_pack,
+                    "version_id": version.id,
+                    "draft_id": draft.id,
+                    "namespace": draft.namespace,
+                    "pack_slug": draft.pack_slug,
+                    "version": version.version,
+                    "checksum": version.checksum,
+                    "status": draft.status,
+                    "review_status": str(publication.review_status),
+                    "publication_visibility": str(publication.visibility),
+                    "created_at": version.created_at,
+                    "owner_user_id": draft.owner_user_id,
+                    "is_active": (
+                        draft.owner_user_id == user_id
+                        and str(version.id) in active_version_ids
+                    ),
                     "block_count": len(blocks_json),
                 }
             )
@@ -256,6 +332,8 @@ class PromptPackRuntimeService:
                     "version": None,
                     "checksum": None,
                     "status": "system",
+                    "review_status": None,
+                    "publication_visibility": None,
                     "created_at": None,
                     "owner_user_id": None,
                     "is_active": False,
@@ -526,6 +604,18 @@ class PromptPackRuntimeService:
             select(PromptPackVersion.id).where(PromptPackVersion.draft_id == draft_id)
         )
         return {str(value) for (value,) in result.all() if value is not None}
+
+    async def _list_publications_by_version_ids(
+        self,
+        *,
+        version_ids: list[UUID],
+    ) -> Dict[str, PromptPackPublication]:
+        if not version_ids:
+            return {}
+        stmt = select(PromptPackPublication).where(PromptPackPublication.version_id.in_(version_ids))
+        result = await self.session.execute(stmt)
+        rows = result.scalars().all()
+        return {str(row.version_id): row for row in rows}
 
     def _resolve_source_pack(
         self,

@@ -37,7 +37,7 @@ from .models import (
     PromptBlock,
     BlockTemplate,
 )
-from .packs import PromptPackDraft, PromptPackVersion
+from .packs import PromptPackDraft, PromptPackPublication, PromptPackVersion
 
 # Relations
 from .relations import PromptVersionBlock
@@ -61,6 +61,7 @@ __all__ = [
     "PromptBlock",
     "BlockTemplate",
     "PromptPackDraft",
+    "PromptPackPublication",
     "PromptPackVersion",
     # Relations
     "PromptVersionBlock",

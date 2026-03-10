@@ -120,3 +120,60 @@ class PromptPackVersion(SQLModel, table=True):
     )
 
     created_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class PromptPackPublication(SQLModel, table=True):
+    """Publication and review workflow state for an immutable pack version."""
+
+    __tablename__ = "prompt_pack_publications"
+    __table_args__ = (
+        UniqueConstraint(
+            "version_id",
+            name="uq_prompt_pack_publication_version",
+        ),
+        Index(
+            "idx_prompt_pack_publication_visibility_review",
+            "visibility",
+            "review_status",
+        ),
+        Index(
+            "idx_prompt_pack_publication_reviewed_by",
+            "reviewed_by_user_id",
+            "reviewed_at",
+        ),
+    )
+
+    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
+
+    version_id: UUID = Field(
+        foreign_key="prompt_pack_versions.id",
+        index=True,
+        description="Immutable version this publication entry references",
+    )
+    visibility: str = Field(
+        default="private",
+        max_length=32,
+        index=True,
+        description="Catalog visibility: private, approved, shared",
+    )
+    review_status: str = Field(
+        default="draft",
+        max_length=32,
+        index=True,
+        description="Review lifecycle: draft, submitted, approved, rejected",
+    )
+    reviewed_by_user_id: Optional[int] = Field(
+        default=None,
+        foreign_key="users.id",
+        index=True,
+        description="Admin reviewer user id",
+    )
+    reviewed_at: Optional[datetime] = Field(default=None)
+    review_notes: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="Optional reviewer notes, especially for rejection context",
+    )
+
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
