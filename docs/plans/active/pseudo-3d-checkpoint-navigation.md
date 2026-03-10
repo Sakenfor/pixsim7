@@ -163,13 +163,13 @@ Acceptance:
 
 ## Phase 5: Scene Plan Integration
 
-- [ ] Expose checkpoints/hotspots as anchor candidates for scene planning.
-- [ ] Map movement edges to camera/motion op hints in plan derivation.
-- [ ] Add optional "plan from current checkpoint" entrypoint.
+- [x] Expose checkpoints/hotspots as anchor candidates for scene planning.
+- [x] Map movement edges to camera/motion op hints in plan derivation.
+- [x] Add optional "plan from current checkpoint" entrypoint.
 
 Acceptance:
 
-- [ ] Scene plan can consume room navigation context without custom one-off logic.
+- [x] Scene plan can consume room navigation context without custom one-off logic.
 
 ## Phase 6: Testing + Devtools
 
@@ -238,3 +238,7 @@ Acceptance:
    - cache-first resolution using `meta.room_navigation_transition_cache`
    - generation enqueue/poll via existing generations API on cache miss
    - persisted clip references (`asset:<id>`) for reuse and crossfade fallback on timeout/failure.
+10. Added Phase 5 Scene Plan integration in `ScenePlanPanel`:
+    - scene-plan preview can include room checkpoint/hotspot anchors as candidate anchors
+    - beat derivation maps room edges to path intent and camera motion hints
+    - optional "plan from current checkpoint" entrypoint with room-nav status + checkpoint controls.
