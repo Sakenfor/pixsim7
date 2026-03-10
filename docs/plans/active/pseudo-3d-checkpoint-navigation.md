@@ -173,14 +173,14 @@ Acceptance:
 
 ## Phase 6: Testing + Devtools
 
-- [ ] Unit tests for schema validation and cache key generation.
-- [ ] UI tests for checkpoint editor basic CRUD.
-- [ ] Runtime tests for traversal + cache hit/miss behavior.
-- [ ] Devtools panel section for current checkpoint, edge selected, transition cache state.
+- [x] Unit tests for schema validation and cache key generation.
+- [x] UI tests for checkpoint editor basic CRUD.
+- [x] Runtime tests for traversal + cache hit/miss behavior.
+- [x] Devtools panel section for current checkpoint, edge selected, transition cache state.
 
 Acceptance:
 
-- [ ] Traversal correctness and cache behavior are test-covered.
+- [x] Traversal correctness and cache behavior are test-covered.
 
 ## Rollout Strategy
 
@@ -242,3 +242,7 @@ Acceptance:
     - scene-plan preview can include room checkpoint/hotspot anchors as candidate anchors
     - beat derivation maps room edges to path intent and camera motion hints
     - optional "plan from current checkpoint" entrypoint with room-nav status + checkpoint controls.
+11. Added Phase 6 tests + devtools slice:
+    - added room-navigation editor model helpers + CRUD tests (`roomNavigationEditorModel.test.ts`)
+    - added transition resolver tests for cache key generation and cache hit/miss/timeout behavior (`roomNavigationTransitions.test.ts`)
+    - added a Room Navigation devtools snapshot section in `RoomNavigationEditor` for current checkpoint, last selected edge/hotspot, and transition cache summary.

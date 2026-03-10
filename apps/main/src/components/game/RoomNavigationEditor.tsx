@@ -24,19 +24,27 @@ import {
   setRoomNavigation,
 } from '@lib/api/game';
 import {
+  ROOM_NAVIGATION_TRANSITION_CACHE_META_KEY,
   resolveRoomNavigationTransition,
   type ResolveRoomNavigationTransitionResult,
 } from '@lib/game/runtime/roomNavigationTransitions';
+
+import {
+  addRoomCheckpoint,
+  addRoomEdge,
+  addRoomHotspot,
+  createDefaultRoomNavigation,
+  removeRoomCheckpoint,
+  removeRoomEdge,
+  removeRoomHotspot,
+  renameRoomCheckpointId,
+  type RoomNavigationData,
+} from './roomNavigationEditorModel';
 
 interface RoomNavigationEditorProps {
   location: GameLocationDetail;
   onLocationUpdate: (location: GameLocationDetail) => void;
 }
-
-type RoomNavigationData = Extract<
-  ReturnType<typeof validateRoomNavigation>,
-  { ok: true }
->['data'];
 
 type DirectionKey = 'north' | 'east' | 'south' | 'west';
 
@@ -44,21 +52,8 @@ const VIEW_KINDS: RoomCheckpointViewKind[] = ['cylindrical_pano', 'quad_directio
 const MOVE_KINDS: RoomEdgeMoveKind[] = ['forward', 'turn_left', 'turn_right', 'door', 'custom'];
 const HOTSPOT_ACTIONS: RoomHotspotAction[] = ['move', 'inspect', 'interact'];
 const DIRECTIONS: DirectionKey[] = ['north', 'east', 'south', 'west'];
-
-const createDefaultRoomNavigation = (locationId: number): RoomNavigationData => ({
-  version: 1,
-  room_id: `location_${locationId}`,
-  checkpoints: [],
-  edges: [],
-});
-
-const createNextId = (prefix: string, existingIds: Set<string>): string => {
-  let index = 1;
-  while (existingIds.has(`${prefix}_${index}`)) {
-    index += 1;
-  }
-  return `${prefix}_${index}`;
-};
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
 
 const parseOptionalNumber = (value: string): number | undefined => {
   const trimmed = value.trim();
@@ -141,6 +136,15 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
   const [isResolvingTransition, setIsResolvingTransition] = useState(false);
   const [lastTransitionResult, setLastTransitionResult] =
     useState<ResolveRoomNavigationTransitionResult | null>(null);
+  const [lastTraversalSelection, setLastTraversalSelection] = useState<{
+    source: string;
+    fromCheckpointId: string;
+    toCheckpointId: string;
+    edgeId?: string;
+    hotspotId?: string;
+    moveKind?: RoomEdgeMoveKind;
+    transitionProfile?: string;
+  } | null>(null);
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -157,6 +161,7 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
       setActiveCheckpointId(nextNavigation.start_checkpoint_id ?? null);
       setTraversalLog([]);
       setLastTransitionResult(null);
+      setLastTraversalSelection(null);
       setIsResolvingTransition(false);
       setValidationIssues([]);
       setError(null);
@@ -171,6 +176,7 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
       setActiveCheckpointId(initialCheckpointId);
       setTraversalLog([]);
       setLastTransitionResult(null);
+      setLastTraversalSelection(null);
       setIsResolvingTransition(false);
       setValidationIssues([]);
       setError(null);
@@ -183,6 +189,7 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
     setActiveCheckpointId(null);
     setTraversalLog([]);
     setLastTransitionResult(null);
+    setLastTraversalSelection(null);
     setIsResolvingTransition(false);
     setValidationIssues(parsed.issues);
     setError(`Loaded invalid room_navigation data (${parsed.issues.length} issue(s)).`);
@@ -278,68 +285,27 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
   };
 
   const renameCheckpointId = (checkpointId: string, rawNextId: string) => {
-    const nextId = rawNextId.trim();
-    if (!nextId || nextId === checkpointId) {
-      return;
-    }
+    let renamedId: string | null = null;
+    setNavigation((prev) => {
+      const result = renameRoomCheckpointId(prev, checkpointId, rawNextId);
+      renamedId = result.renamed ? result.nextId : null;
+      return result.navigation;
+    });
 
-    setNavigation((prev) => ({
-      ...prev,
-      checkpoints: prev.checkpoints.map((checkpoint) => {
-        const withRewrittenHotspots = checkpoint.hotspots.map((hotspot) =>
-          hotspot.target_checkpoint_id === checkpointId
-            ? { ...hotspot, target_checkpoint_id: nextId }
-            : hotspot,
-        );
-        if (checkpoint.id !== checkpointId) {
-          return { ...checkpoint, hotspots: withRewrittenHotspots };
-        }
-        return {
-          ...checkpoint,
-          id: nextId,
-          hotspots: withRewrittenHotspots,
-        };
-      }),
-      edges: prev.edges.map((edge) => ({
-        ...edge,
-        from_checkpoint_id:
-          edge.from_checkpoint_id === checkpointId ? nextId : edge.from_checkpoint_id,
-        to_checkpoint_id:
-          edge.to_checkpoint_id === checkpointId ? nextId : edge.to_checkpoint_id,
-      })),
-      start_checkpoint_id:
-        prev.start_checkpoint_id === checkpointId ? nextId : prev.start_checkpoint_id,
-    }));
-
-    if (selectedCheckpointId === checkpointId) {
-      setSelectedCheckpointId(nextId);
+    if (renamedId && selectedCheckpointId === checkpointId) {
+      setSelectedCheckpointId(renamedId);
     }
-    if (activeCheckpointId === checkpointId) {
-      setActiveCheckpointId(nextId);
+    if (renamedId && activeCheckpointId === checkpointId) {
+      setActiveCheckpointId(renamedId);
     }
   };
 
   const addCheckpoint = () => {
-    let createdId = '';
+    let createdId: string | null = null;
     setNavigation((prev) => {
-      const checkpointId = createNextId(
-        'cp',
-        new Set(prev.checkpoints.map((checkpoint) => checkpoint.id)),
-      );
-      createdId = checkpointId;
-      return {
-        ...prev,
-        checkpoints: [
-          ...prev.checkpoints,
-          {
-            id: checkpointId,
-            label: `Checkpoint ${prev.checkpoints.length + 1}`,
-            view: { kind: 'cylindrical_pano' },
-            hotspots: [],
-          },
-        ],
-        start_checkpoint_id: prev.start_checkpoint_id ?? checkpointId,
-      };
+      const result = addRoomCheckpoint(prev);
+      createdId = result.checkpointId;
+      return result.navigation;
     });
     if (createdId) {
       setSelectedCheckpointId(createdId);
@@ -348,53 +314,14 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
   };
 
   const removeCheckpoint = (checkpointId: string) => {
-    setNavigation((prev) => {
-      const checkpoints = prev.checkpoints
-        .filter((checkpoint) => checkpoint.id !== checkpointId)
-        .map((checkpoint) => ({
-          ...checkpoint,
-          hotspots: checkpoint.hotspots.map((hotspot) =>
-            hotspot.target_checkpoint_id === checkpointId
-              ? { ...hotspot, target_checkpoint_id: undefined }
-              : hotspot,
-          ),
-        }));
-      return {
-        ...prev,
-        checkpoints,
-        edges: prev.edges.filter(
-          (edge) =>
-            edge.from_checkpoint_id !== checkpointId &&
-            edge.to_checkpoint_id !== checkpointId,
-        ),
-        start_checkpoint_id:
-          prev.start_checkpoint_id === checkpointId
-            ? checkpoints[0]?.id
-            : prev.start_checkpoint_id,
-      };
-    });
+    setNavigation((prev) => removeRoomCheckpoint(prev, checkpointId));
   };
 
   const addHotspot = () => {
     if (!selectedCheckpoint) {
       return;
     }
-    updateCheckpoint(selectedCheckpoint.id, (checkpoint) => {
-      const hotspotId = createNextId(
-        'hotspot',
-        new Set(checkpoint.hotspots.map((hotspot) => hotspot.id)),
-      );
-      return {
-        ...checkpoint,
-        hotspots: [
-          ...checkpoint.hotspots,
-          {
-            id: hotspotId,
-            action: 'move',
-          },
-        ],
-      };
-    });
+    setNavigation((prev) => addRoomHotspot(prev, selectedCheckpoint.id).navigation);
   };
 
   const updateHotspot = (
@@ -418,39 +345,13 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
     if (!selectedCheckpoint) {
       return;
     }
-    updateCheckpoint(selectedCheckpoint.id, (checkpoint) => ({
-      ...checkpoint,
-      hotspots: checkpoint.hotspots.filter((_, index) => index !== hotspotIndex),
-    }));
+    setNavigation((prev) =>
+      removeRoomHotspot(prev, selectedCheckpoint.id, hotspotIndex),
+    );
   };
 
   const addEdge = () => {
-    setNavigation((prev) => {
-      if (prev.checkpoints.length === 0) {
-        return prev;
-      }
-      const edgeId = createNextId('edge', new Set(prev.edges.map((edge) => edge.id)));
-      const fromCheckpointId =
-        selectedCheckpointId &&
-        prev.checkpoints.some((checkpoint) => checkpoint.id === selectedCheckpointId)
-          ? selectedCheckpointId
-          : prev.checkpoints[0].id;
-      const toCheckpointId =
-        prev.checkpoints.find((checkpoint) => checkpoint.id !== fromCheckpointId)?.id ??
-        fromCheckpointId;
-      return {
-        ...prev,
-        edges: [
-          ...prev.edges,
-          {
-            id: edgeId,
-            from_checkpoint_id: fromCheckpointId,
-            to_checkpoint_id: toCheckpointId,
-            move_kind: 'forward',
-          },
-        ],
-      };
-    });
+    setNavigation((prev) => addRoomEdge(prev, selectedCheckpointId).navigation);
   };
 
   const updateEdge = (
@@ -466,10 +367,7 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
   };
 
   const removeEdge = (edgeIndex: number) => {
-    setNavigation((prev) => ({
-      ...prev,
-      edges: prev.edges.filter((_, index) => index !== edgeIndex),
-    }));
+    setNavigation((prev) => removeRoomEdge(prev, edgeIndex));
   };
 
   const moveToCheckpoint = async (
@@ -478,6 +376,8 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
     options?: {
       moveKind: RoomEdgeMoveKind;
       transitionProfile?: string;
+      edgeId?: string;
+      hotspotId?: string;
     },
   ) => {
     if (!activeCheckpoint) {
@@ -524,6 +424,15 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
     }
 
     setActiveCheckpointId(targetCheckpointId);
+    setLastTraversalSelection({
+      source,
+      fromCheckpointId: sourceCheckpoint.id,
+      toCheckpointId: targetCheckpointId,
+      edgeId: options?.edgeId,
+      hotspotId: options?.hotspotId,
+      moveKind: options?.moveKind,
+      transitionProfile: options?.transitionProfile,
+    });
     setTraversalLog((prev) => [
       `${source}: ${sourceCheckpoint.id} -> ${targetCheckpointId}${transitionStatusLabel}`,
       ...prev,
@@ -621,6 +530,60 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
       ? `${key}: ${directionalAssetId}`
       : `Missing ${key}`;
   }, [activeCheckpoint, viewerDirection]);
+
+  const transitionCacheSnapshot = useMemo(() => {
+    const cachePayload = (location.meta as Record<string, unknown> | null | undefined)?.[
+      ROOM_NAVIGATION_TRANSITION_CACHE_META_KEY
+    ];
+    if (!isRecord(cachePayload)) {
+      return {
+        totalEntries: 0,
+        completedEntries: 0,
+        pendingEntries: 0,
+        failedEntries: 0,
+        activeCacheEntry: null as Record<string, unknown> | null,
+      };
+    }
+
+    const entriesRaw = cachePayload.entries;
+    if (!isRecord(entriesRaw)) {
+      return {
+        totalEntries: 0,
+        completedEntries: 0,
+        pendingEntries: 0,
+        failedEntries: 0,
+        activeCacheEntry: null as Record<string, unknown> | null,
+      };
+    }
+
+    const entryValues = Object.values(entriesRaw).filter(isRecord);
+    let completedEntries = 0;
+    let pendingEntries = 0;
+    let failedEntries = 0;
+    entryValues.forEach((entry) => {
+      if (entry.status === 'completed') {
+        completedEntries += 1;
+      } else if (entry.status === 'pending') {
+        pendingEntries += 1;
+      } else if (entry.status === 'failed') {
+        failedEntries += 1;
+      }
+    });
+
+    const activeCacheEntry =
+      lastTransitionResult?.cacheKey &&
+      isRecord(entriesRaw[lastTransitionResult.cacheKey])
+        ? (entriesRaw[lastTransitionResult.cacheKey] as Record<string, unknown>)
+        : null;
+
+    return {
+      totalEntries: entryValues.length,
+      completedEntries,
+      pendingEntries,
+      failedEntries,
+      activeCacheEntry,
+    };
+  }, [location.meta, lastTransitionResult?.cacheKey]);
 
   return (
     <div className="space-y-4">
@@ -837,6 +800,8 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
                             {
                               moveKind: matchedEdge?.move_kind ?? 'forward',
                               transitionProfile: matchedEdge?.transition_profile,
+                              edgeId: matchedEdge?.id,
+                              hotspotId: hotspot.id,
                             },
                           );
                         }}
@@ -864,6 +829,7 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
                           {
                             moveKind: edge.move_kind,
                             transitionProfile: edge.transition_profile,
+                            edgeId: edge.id,
                           },
                         );
                       }}
@@ -896,6 +862,73 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
                   ))}
                 </ul>
               )}
+            </Panel>
+
+            <Panel className="space-y-2">
+              <h4 className="text-xs font-semibold">Devtools Snapshot (Phase 6)</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                <div className="rounded border border-neutral-300 dark:border-neutral-700 p-2">
+                  <div className="text-neutral-500 dark:text-neutral-400">
+                    Current checkpoint
+                  </div>
+                  <div className="font-mono mt-1">
+                    {activeCheckpoint
+                      ? `${activeCheckpoint.label || activeCheckpoint.id} (${activeCheckpoint.id})`
+                      : '(none)'}
+                  </div>
+                </div>
+                <div className="rounded border border-neutral-300 dark:border-neutral-700 p-2">
+                  <div className="text-neutral-500 dark:text-neutral-400">
+                    Last selected edge/hotspot
+                  </div>
+                  {lastTraversalSelection ? (
+                    <div className="space-y-1 mt-1 font-mono">
+                      <div>{lastTraversalSelection.source}</div>
+                      <div>
+                        {lastTraversalSelection.fromCheckpointId}
+                        {' -> '}
+                        {lastTraversalSelection.toCheckpointId}
+                      </div>
+                      {lastTraversalSelection.edgeId && (
+                        <div>edge: {lastTraversalSelection.edgeId}</div>
+                      )}
+                      {lastTraversalSelection.hotspotId && (
+                        <div>hotspot: {lastTraversalSelection.hotspotId}</div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-neutral-500">(none)</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded border border-neutral-300 dark:border-neutral-700 p-2 text-xs">
+                <div className="text-neutral-500 dark:text-neutral-400">
+                  Transition cache state ({ROOM_NAVIGATION_TRANSITION_CACHE_META_KEY})
+                </div>
+                <div className="font-mono mt-1">
+                  entries: {transitionCacheSnapshot.totalEntries} | completed:{' '}
+                  {transitionCacheSnapshot.completedEntries} | pending:{' '}
+                  {transitionCacheSnapshot.pendingEntries} | failed:{' '}
+                  {transitionCacheSnapshot.failedEntries}
+                </div>
+                {lastTransitionResult?.cacheKey && (
+                  <div className="mt-1 font-mono">
+                    last cache key: {lastTransitionResult.cacheKey}
+                  </div>
+                )}
+                {transitionCacheSnapshot.activeCacheEntry && (
+                  <div className="mt-1 font-mono">
+                    cached status:{' '}
+                    {String(
+                      transitionCacheSnapshot.activeCacheEntry.status ?? 'unknown',
+                    )}
+                    {transitionCacheSnapshot.activeCacheEntry.asset_ref
+                      ? ` | clip: ${String(transitionCacheSnapshot.activeCacheEntry.asset_ref)}`
+                      : ''}
+                  </div>
+                )}
+              </div>
             </Panel>
           </>
         )}
