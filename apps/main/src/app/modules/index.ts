@@ -85,7 +85,7 @@ export {
 } from './autoDiscover';
 
 // Export page category constants and types
-export { PAGE_CATEGORIES, type PageCategory } from './contracts';
+export { PAGE_CATEGORIES, defineModule, type PageCategory } from './contracts';
 
 // Export core module instances for direct access
 export { pluginBootstrapModule } from './core/pluginBootstrapModule';

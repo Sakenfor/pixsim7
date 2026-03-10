@@ -118,3 +118,16 @@ export interface DevToolDefinition extends PluginMeta {
    */
   settings?: DevToolSetting[];
 }
+
+export interface DefineDevToolOptions extends DevToolDefinition {
+  updatedAt: string;
+  changeNote: string;
+}
+
+/**
+ * Strict helper for defining dev tools.
+ * Requires latest-update metadata so tooling can surface recent changes.
+ */
+export function defineDevTool(options: DefineDevToolOptions): DevToolDefinition {
+  return options;
+}

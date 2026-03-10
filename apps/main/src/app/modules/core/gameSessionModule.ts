@@ -3,7 +3,7 @@ import { createModuleInitializer, MODULE_PRIORITIES } from '@pixsim7/shared.modu
 import { registerCustomHelpers } from '@lib/game/customHelpers';
 import { registerBuiltinHelpers } from '@lib/registries';
 
-import type { Module } from '../types';
+import { defineModule } from '../types';
 
 /**
  * Game Session Module
@@ -17,9 +17,12 @@ import type { Module } from '../types';
  * exactly once, even under hot-reload conditions.
  */
 
-export const gameSessionModule: Module = {
+export const gameSessionModule = defineModule({
   id: 'game-session',
   name: 'Game Session Module',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Established module metadata contract baseline for core session wiring.',
+  featureHighlights: ['Session helper registration is now tracked in module metadata.'],
   priority: MODULE_PRIORITIES.CORE_SYSTEM,
 
   // Use lifecycle helper for automatic hot-reload safety
@@ -28,4 +31,4 @@ export const gameSessionModule: Module = {
     registerBuiltinHelpers();
     registerCustomHelpers();
   }),
-};
+});

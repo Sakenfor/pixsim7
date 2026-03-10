@@ -8,14 +8,75 @@
 
 import { useState, useMemo, useEffect } from 'react';
 
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
+
 import { getAllPanelMetadata } from '@features/panels/lib/panelMetadataRegistry';
+import type { PanelMetadata } from '@features/panels/lib/types';
 
 import { usePanelSettingsUiStore } from '../stores/panelSettingsUiStore';
 
 import { PanelDetailView } from './PanelDetailView';
 
+interface PanelSettingsListItem {
+  id: string;
+  title: string;
+  category?: string;
+  description?: string;
+  tags?: string[];
+  updatedAt?: string;
+  changeNote?: string;
+  featureHighlights?: string[];
+  metadata: PanelMetadata;
+}
+
+function parseUpdatedAt(value?: string): number {
+  if (!value) return 0;
+  const ts = Date.parse(value);
+  return Number.isNaN(ts) ? 0 : ts;
+}
+
+function formatUpdatedAt(value?: string): string | null {
+  const ts = parseUpdatedAt(value);
+  if (!ts) return null;
+  return new Date(ts).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 export function PanelCentricSettings() {
-  const allPanels = useMemo(() => getAllPanelMetadata(), []);
+  const allPanels = useMemo<PanelSettingsListItem[]>(() => {
+    const orchestrationById = new Map(
+      getAllPanelMetadata().map((metadata) => [metadata.id, metadata]),
+    );
+
+    return panelSelectors.getPublicPanels()
+      .map((panel) => {
+        const metadata: PanelMetadata =
+          orchestrationById.get(panel.id) ??
+          (panel.orchestration
+            ? { id: panel.id, title: panel.title, ...panel.orchestration }
+            : { id: panel.id, title: panel.title, type: 'zone-panel' });
+
+        return {
+          id: panel.id,
+          title: panel.title,
+          category: panel.category,
+          description: panel.description,
+          tags: panel.tags,
+          updatedAt: panel.updatedAt,
+          changeNote: panel.changeNote,
+          featureHighlights: panel.featureHighlights,
+          metadata,
+        };
+      })
+      .sort((a, b) => {
+        const tsDiff = parseUpdatedAt(b.updatedAt) - parseUpdatedAt(a.updatedAt);
+        if (tsDiff !== 0) return tsDiff;
+        return a.title.localeCompare(b.title);
+      });
+  }, []);
   const selectedPanelId = usePanelSettingsUiStore((state) => state.selectedPanelId);
   const selectedInstanceId = usePanelSettingsUiStore((state) => state.selectedInstanceId);
   const setSelection = usePanelSettingsUiStore((state) => state.setSelection);
@@ -34,7 +95,13 @@ export function PanelCentricSettings() {
 
     const query = searchQuery.toLowerCase();
     return allPanels.filter((p) =>
-      p.title.toLowerCase().includes(query)
+      p.title.toLowerCase().includes(query) ||
+      p.id.toLowerCase().includes(query) ||
+      p.description?.toLowerCase().includes(query) ||
+      p.category?.toLowerCase().includes(query) ||
+      p.changeNote?.toLowerCase().includes(query) ||
+      p.tags?.some((tag) => tag.toLowerCase().includes(query)) ||
+      p.featureHighlights?.some((item) => item.toLowerCase().includes(query))
     );
   }, [allPanels, searchQuery]);
 
@@ -78,7 +145,8 @@ export function PanelCentricSettings() {
                 >
                   <div className="font-medium text-sm">{panel.title}</div>
                   <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                    {panel.type === 'dockview-container' ? 'Container' : 'Panel'}
+                    {panel.category ?? 'custom'}
+                    {formatUpdatedAt(panel.updatedAt) ? ` | Updated ${formatUpdatedAt(panel.updatedAt)}` : ''}
                   </div>
                 </button>
               ))}
@@ -96,7 +164,7 @@ export function PanelCentricSettings() {
       <div className="flex-1 bg-white dark:bg-neutral-900">
         {selectedPanel ? (
           <PanelDetailView
-            metadata={selectedPanel}
+            metadata={selectedPanel.metadata}
             selectedInstanceId={selectedInstanceId}
             onClearInstance={clearInstanceSelection}
           />

@@ -10,3 +10,16 @@ export type { PageCategory } from '@pixsim7/shared.modules.core';
 type CapabilityCategory = FeatureCapability['category'];
 
 export type Module = ModuleDefinition<BasePanelDefinition, DevToolCategory, CapabilityCategory>;
+
+export interface DefineModuleOptions extends Module {
+  updatedAt: string;
+  changeNote: string;
+}
+
+/**
+ * Strict helper for defining modules.
+ * Requires latest-update metadata to keep module changes discoverable.
+ */
+export function defineModule(options: DefineModuleOptions): Module {
+  return options;
+}

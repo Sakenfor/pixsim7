@@ -48,6 +48,11 @@ export interface DefinePanelOptions<TSettings = any> {
   title: string;
   component: ComponentType<any>;
 
+  // Latest update metadata (recommended, required by definePanelWithMeta)
+  updatedAt?: string;
+  changeNote?: string;
+  featureHighlights?: string[];
+
   // Categorization (with defaults)
   category?: PanelCategory;
   tags?: string[];
@@ -123,6 +128,12 @@ export interface PanelModule {
   Component?: ComponentType<any>;
 }
 
+export interface DefinePanelOptionsWithMeta<TSettings = any>
+  extends DefinePanelOptions<TSettings> {
+  updatedAt: string;
+  changeNote: string;
+}
+
 /**
  * Define a panel with simplified options.
  * Returns a full PanelDefinition compatible with the registry.
@@ -134,6 +145,9 @@ export function definePanel<TSettings = any>(
     id,
     title,
     component,
+    updatedAt,
+    changeNote,
+    featureHighlights,
     category = 'tools',
     tags = [],
     icon,
@@ -210,6 +224,9 @@ export function definePanel<TSettings = any>(
   return {
     id,
     title,
+    updatedAt,
+    changeNote,
+    featureHighlights,
     component,
     category,
     tags: derivedTags,
@@ -254,6 +271,16 @@ export function definePanel<TSettings = any>(
       contexts: resolvedContexts,
     },
   } as PanelDefinition<TSettings>;
+}
+
+/**
+ * Strict panel definition helper.
+ * Requires latest-update metadata for better changelog hygiene.
+ */
+export function definePanelWithMeta<TSettings = any>(
+  options: DefinePanelOptionsWithMeta<TSettings>
+): PanelDefinition<TSettings> {
+  return definePanel(options);
 }
 
 /**

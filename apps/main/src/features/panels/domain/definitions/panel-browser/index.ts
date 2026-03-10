@@ -1,10 +1,17 @@
-import { definePanel } from '../../../lib/definePanel';
-import { PanelLauncherModule } from '@features/controlCenter/components/PanelLauncherModule';
+import { PanelBrowserPanel } from '@features/panels/components/tools/PanelBrowserPanel';
 
-export default definePanel({
+import { definePanelWithMeta } from '../../../lib/definePanel';
+
+export default definePanelWithMeta({
   id: 'panel-browser',
   title: 'Panel Browser',
-  component: PanelLauncherModule,
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Replaced legacy launcher with searchable panel browser metadata surfaced in UI.',
+  featureHighlights: [
+    'Search and category-grouping for all registered panels.',
+    'Dock and floating launch actions from a single browser panel.',
+  ],
+  component: PanelBrowserPanel,
   category: 'utilities',
   tags: ['panels', 'launcher', 'browser', 'utilities'],
   icon: 'layoutGrid',

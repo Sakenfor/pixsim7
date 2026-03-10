@@ -12,9 +12,9 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { componentRegistry } from '@features/componentSettings';
 import { ScopeModeSelect } from '@features/panels/components/shared/ScopeModeSelect';
 import { useResolvePanelSettings } from '@features/panels/lib/instanceSettingsResolver';
-import { getAllPanelMetadata, type PanelMetadata } from '@features/panels/lib/panelMetadataRegistry';
 import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpers';
 import { panelSettingsScopeRegistry, getScopeMode } from '@features/panels/lib/panelSettingsScopes';
+import type { PanelMetadata } from '@features/panels/lib/types';
 import { usePanelConfigStore } from '@features/panels/stores/panelConfigStore';
 import { usePanelInstanceSettingsStore } from '@features/panels/stores/panelInstanceSettingsStore';
 
@@ -34,7 +34,10 @@ export interface PanelDetailViewProps {
 }
 
 export function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: PanelDetailViewProps) {
-  const allPanels = useMemo(() => getAllPanelMetadata(), []);
+  const allPanels = useMemo(
+    () => panelSelectors.getAll().map((panel) => ({ id: panel.id, title: panel.title })),
+    [],
+  );
   const panelId = metadata.id;
   // Get panel definition from registry (for panel-specific settings)
   const panelDefinition = useMemo(

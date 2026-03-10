@@ -22,12 +22,14 @@ const CATEGORY_LABELS: Record<DevToolCategory, string> = {
   generation: "Content Generation",
   world: "World Tools",
   debug: "Debug & Diagnostics",
+  prompts: "Prompts & Packs",
   misc: "Miscellaneous",
 };
 
 const CATEGORY_ORDER: DevToolCategory[] = [
   "session",
   "generation",
+  "prompts",
   "plugins",
   "graph",
   "debug",
@@ -35,13 +37,37 @@ const CATEGORY_ORDER: DevToolCategory[] = [
   "misc",
 ];
 
+function parseUpdatedAt(value?: string): number {
+  if (!value) return 0;
+  const ts = Date.parse(value);
+  return Number.isNaN(ts) ? 0 : ts;
+}
+
+function formatUpdatedAt(value?: string): string | null {
+  const ts = parseUpdatedAt(value);
+  if (!ts) return null;
+  return new Date(ts).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function sortToolsByRecency(tools: DevToolDefinition[]): DevToolDefinition[] {
+  return [...tools].sort((a, b) => {
+    const tsDiff = parseUpdatedAt(b.updatedAt) - parseUpdatedAt(a.updatedAt);
+    if (tsDiff !== 0) return tsDiff;
+    return a.label.localeCompare(b.label);
+  });
+}
+
 export function DevToolsPanel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showExperimental, setShowExperimental] = useState(false);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const { addRecentTool, recentTools, clearRecentTools } = useDevToolContext();
 
-  const allTools = useMemo(() => devToolSelectors.getAll(), []);
+  const allTools = useMemo(() => sortToolsByRecency(devToolSelectors.getAll()), []);
 
   const filteredTools = useMemo(() => {
     let tools = allTools;
@@ -56,7 +82,7 @@ export function DevToolsPanel() {
       tools = tools.filter((tool) => tool.safeForNonDev !== false);
     }
 
-    return tools;
+    return sortToolsByRecency(tools);
   }, [allTools, searchQuery, showExperimental]);
 
   // Group tools by category
@@ -181,28 +207,6 @@ export function DevToolsPanel() {
           );
         })}
 
-        {/* Misc category (if any) */}
-        {(() => {
-          const miscTools = toolsByCategory.get("misc");
-          if (!miscTools || miscTools.length === 0) return null;
-          return (
-            <div key="misc" className="space-y-2">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                {CATEGORY_LABELS.misc}
-              </h3>
-              <div className="space-y-2">
-                {miscTools.map((tool) => (
-                  <DevToolCard
-                    key={tool.id}
-                    tool={tool}
-                    onOpen={handleOpenTool}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-
         {/* Empty state */}
         {filteredTools.length === 0 && (
           <div className="text-center py-8 text-gray-500">
@@ -242,6 +246,8 @@ const CATEGORY_VARIANTS: Record<
 function DevToolCard({ tool, onOpen }: DevToolCardProps) {
   const hasAction = !!(tool.routePath || tool.panelComponent);
   const variant = CATEGORY_VARIANTS[tool.category ?? "misc"] ?? "primary";
+  const updatedAtLabel = formatUpdatedAt(tool.updatedAt);
+  const highlights = tool.featureHighlights ?? [];
 
   return (
     <button
@@ -273,10 +279,34 @@ function DevToolCard({ tool, onOpen }: DevToolCardProps) {
             </div>
           )}
 
-          {/* Tags */}
-          {tool.tags && tool.tags.length > 0 && (
+          {tool.changeNote && (
+            <div className="text-[11px] text-blue-300/90 mt-2 line-clamp-1">
+              {tool.changeNote}
+            </div>
+          )}
+
+          {(updatedAtLabel || highlights.length > 0 || (tool.tags && tool.tags.length > 0)) && (
             <div className="flex flex-wrap gap-1 mt-2">
-              {tool.tags.slice(0, 3).map((tag) => (
+              {updatedAtLabel && (
+                <span className="px-1.5 py-0.5 bg-blue-500/15 text-blue-300 rounded text-[10px]">
+                  Updated {updatedAtLabel}
+                </span>
+              )}
+              {highlights.slice(0, 2).map((item) => (
+                <span
+                  key={item}
+                  className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-300 rounded text-[10px]"
+                  title={item}
+                >
+                  {item}
+                </span>
+              ))}
+              {highlights.length > 2 && (
+                <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-300 rounded text-[10px]">
+                  +{highlights.length - 2} more
+                </span>
+              )}
+              {(tool.tags ?? []).slice(0, 3).map((tag) => (
                 <span
                   key={tag}
                   className="px-1.5 py-0.5 bg-gray-700/50 text-gray-400 rounded text-[10px]"
