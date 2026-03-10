@@ -7,7 +7,7 @@ import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
 import { getAllAssetSources, registerAssetSources } from '@features/gallery';
 
 import { moduleRegistry } from '@app/modules';
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
 // === Assets Actions ===
 
@@ -76,9 +76,12 @@ function registerAssetsState() {
  * Note: Context menu data for assets is registered at the component level
  * using useRegisterContextData() - no module-level resolver needed.
  */
-export const assetsModule: Module = {
+export const assetsModule = defineModule({
   id: 'assets',
   name: 'Gallery',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for assets/gallery feature wiring.',
+  featureHighlights: ['Assets module now participates in shared latest-update metadata.'],
 
   async initialize() {
     // Register assets state capabilities
@@ -117,4 +120,4 @@ export const assetsModule: Module = {
       ],
     },
   },
-};
+});

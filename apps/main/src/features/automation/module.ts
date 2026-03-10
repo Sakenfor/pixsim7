@@ -4,7 +4,7 @@ import { Navigate } from 'react-router-dom';
 
 import { navigateTo } from '@lib/capabilities/routeConstants';
 
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
 /**
  * Automation Module
@@ -32,9 +32,12 @@ function AutomationRedirect() {
   return createElement(Navigate, { to: '/workspace?openPanel=automation', replace: true });
 }
 
-export const automationModule: Module = {
+export const automationModule = defineModule({
   id: 'automation',
   name: 'Automation',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for automation feature module.',
+  featureHighlights: ['Automation module now participates in shared latest-update metadata.'],
 
   page: {
     route: '/automation',
@@ -55,4 +58,4 @@ export const automationModule: Module = {
       ],
     },
   },
-};
+});

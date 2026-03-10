@@ -5,15 +5,20 @@
  * Independent of control center - can be used anywhere.
  */
 
-import type { Module } from '@app/modules/types';
-import { initializeCubesIntegration, registerCubeExpansions } from './index';
+import { defineModule } from '@app/modules/types';
+
 import { registerCubeSettings } from './settings/registerCubeSettings';
+
+import { initializeCubesIntegration, registerCubeExpansions } from './index';
 
 let unregisterCubeSettings: (() => void) | null = null;
 
-export const cubesModule: Module = {
+export const cubesModule = defineModule({
   id: 'cubes',
   name: 'Cubes Module',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for cubes feature module.',
+  featureHighlights: ['Cubes module now participates in shared latest-update metadata.'],
   priority: 60, // After core, before UI features
 
   async initialize() {
@@ -33,4 +38,4 @@ export const cubesModule: Module = {
     unregisterCubeSettings?.();
     unregisterCubeSettings = null;
   },
-};
+});

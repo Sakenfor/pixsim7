@@ -1,8 +1,8 @@
+import type { ActionDefinition } from '@pixsim7/shared.types';
 import { lazy } from 'react';
 
-import type { ActionDefinition } from '@pixsim7/shared.types';
 
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
 const CodegenDevPage = lazy(() => import('./pages/CodegenDevPage').then(m => ({ default: m.CodegenDevPage })));
 const DevPromptImporterPage = lazy(() => import('./pages/DevPromptImporterPage').then(m => ({ default: m.DevPromptImporterPage })));
@@ -19,9 +19,12 @@ const openCodegenAction: ActionDefinition = {
   category: 'quick-add',
 };
 
-export const healthModule: Module = {
+export const healthModule = defineModule({
   id: 'health',
   name: 'Health Monitor',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for health monitor route module.',
+  featureHighlights: ['Health route module now participates in shared latest-update metadata.'],
   page: {
     route: '/health',
     icon: 'heart',
@@ -31,11 +34,14 @@ export const healthModule: Module = {
     featureId: 'health',
     hidden: true,
   },
-};
+});
 
-export const codegenPageModule: Module = {
+export const codegenPageModule = defineModule({
   id: 'codegen-page',
   name: 'Developer Tasks',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for developer tasks route module.',
+  featureHighlights: ['Codegen route module now participates in shared latest-update metadata.'],
   page: {
     route: '/dev/developer-tasks',
     icon: 'code',
@@ -47,11 +53,14 @@ export const codegenPageModule: Module = {
     component: CodegenDevPage,
     actions: [openCodegenAction],
   },
-};
+});
 
-export const promptImporterPageModule: Module = {
+export const promptImporterPageModule = defineModule({
   id: 'prompt-importer-page',
   name: 'Prompt Importer',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for prompt importer route module.',
+  featureHighlights: ['Prompt importer route module now participates in shared latest-update metadata.'],
   page: {
     route: '/dev/prompt-importer',
     icon: 'upload',
@@ -61,11 +70,14 @@ export const promptImporterPageModule: Module = {
     hidden: true,
     component: DevPromptImporterPage,
   },
-};
+});
 
-export const blockFitPageModule: Module = {
+export const blockFitPageModule = defineModule({
   id: 'block-fit-page',
   name: 'Block Fit Inspector',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for block-fit route module.',
+  featureHighlights: ['Block-fit route module now participates in shared latest-update metadata.'],
   page: {
     route: '/dev/block-fit',
     icon: 'target',
@@ -75,4 +87,4 @@ export const blockFitPageModule: Module = {
     hidden: true,
     component: BlockFitDevPage,
   },
-};
+});

@@ -7,7 +7,7 @@ import { ROUTES, navigateTo } from "@lib/capabilities/routeConstants";
 import { WorkspaceModule as WorkspaceModuleComponent } from "@features/controlCenter/components/modules/WorkspaceModule";
 import { initializePanels } from "@features/panels";
 
-import type { Module } from "@app/modules/types";
+import { defineModule } from "@app/modules/types";
 
 import { useWorkspaceStore } from "./stores/workspaceStore";
 
@@ -84,9 +84,12 @@ function registerWorkspaceState() {
  * Manages scene building and timeline editing capabilities.
  * Actions are registered automatically via page.actions.
  */
-export const workspaceModule: Module = {
+export const workspaceModule = defineModule({
   id: "workspace",
   name: "Scene Builder",
+  updatedAt: "2026-03-10T00:00:00Z",
+  changeNote: "Added module metadata baseline for workspace feature module.",
+  featureHighlights: ["Workspace module now participates in shared latest-update metadata."],
 
   async initialize() {
     // Register workspace state capabilities
@@ -132,4 +135,4 @@ export const workspaceModule: Module = {
       ],
     },
   },
-};
+});

@@ -6,7 +6,7 @@ import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
 
 import { registerWorldTools } from '@features/worldTools/lib/registerWorldTools';
 
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
 // === Game Actions ===
 
@@ -48,9 +48,12 @@ function GameWorldRedirect() {
  * Manages interactive game world and NPC capabilities.
  * Actions are registered automatically via page.actions.
  */
-export const gameModule: Module = {
+export const gameModule = defineModule({
   id: 'game',
   name: 'Game World',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for game world feature module.',
+  featureHighlights: ['Game world module now participates in shared latest-update metadata.'],
 
   async initialize() {
     await registerWorldTools();
@@ -75,4 +78,4 @@ export const gameModule: Module = {
       ],
     },
   },
-};
+});

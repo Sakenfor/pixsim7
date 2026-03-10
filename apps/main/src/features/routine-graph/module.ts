@@ -5,14 +5,19 @@
  * Registers the graph editor and initializes the store.
  */
 
-import type { Module } from '@lib/core/Module';
-
 import { debugFlags } from '@lib/utils/debugFlags';
+
+import { defineModule } from '@app/modules/types';
+
 
 import { registerRoutineGraphEditor } from './lib/registerRoutineGraphEditor';
 
-export const routineGraphModule: Module = {
+export const routineGraphModule = defineModule({
   id: 'routine-graph',
+  name: 'Routine Graph Module',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for routine graph feature module.',
+  featureHighlights: ['Routine graph module now participates in shared latest-update metadata.'],
   priority: 70, // After graph-system (75) but before UI
   dependsOn: ['graph-system', 'plugin-bootstrap'],
 
@@ -29,6 +34,6 @@ export const routineGraphModule: Module = {
     debugFlags.log('registry', '[Routine Graph Module] Cleanup');
     // Store cleanup handled by Zustand persist
   },
-};
+});
 
 export default routineGraphModule;

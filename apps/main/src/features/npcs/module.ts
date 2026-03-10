@@ -7,15 +7,18 @@
 import { createElement } from 'react';
 import { Navigate } from 'react-router-dom';
 
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
 function NpcPortraitsRedirect() {
   return createElement(Navigate, { to: '/workspace?openPanel=npc-portraits', replace: true });
 }
 
-export const npcsModule: Module = {
+export const npcsModule = defineModule({
   id: 'npcs',
   name: 'NPCs',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for NPC feature module.',
+  featureHighlights: ['NPC module now participates in shared latest-update metadata.'],
 
   page: {
     route: '/npc-portraits',
@@ -26,4 +29,4 @@ export const npcsModule: Module = {
     showInNav: false,
     component: NpcPortraitsRedirect,
   },
-};
+});

@@ -1,10 +1,13 @@
 import { lazy } from 'react';
 
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
-export const game2DModule: Module = {
+export const game2DModule = defineModule({
   id: 'game-2d',
   name: '2D Game',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for 2D game route module.',
+  featureHighlights: ['2D game route module now participates in shared latest-update metadata.'],
   page: {
     route: '/game-2d',
     icon: 'play',
@@ -13,11 +16,14 @@ export const game2DModule: Module = {
     featureId: 'game',
     component: lazy(() => import('../../../routes/Game2D').then(m => ({ default: m.Game2D }))),
   },
-};
+});
 
-export const simulationModule: Module = {
+export const simulationModule = defineModule({
   id: 'simulation',
   name: 'Simulation Playground',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for simulation playground route module.',
+  featureHighlights: ['Simulation route module now participates in shared latest-update metadata.'],
   page: {
     route: '/simulation',
     icon: 'play',
@@ -31,4 +37,4 @@ export const simulationModule: Module = {
       backend: ['pixsim7.backend.main.services.simulation'],
     },
   },
-};
+});

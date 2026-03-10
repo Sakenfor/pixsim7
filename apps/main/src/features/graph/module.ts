@@ -3,10 +3,10 @@ import { registerRenderersFromNodeTypes } from '@features/graph/lib/editor/autoR
 import { registerBuiltinRenderers } from '@features/graph/lib/editor/builtinRenderers';
 import { registerPluginRenderers } from '@features/graph/lib/editor/pluginRenderers';
 import { preloadHighPriorityRenderers } from '@features/graph/lib/editor/rendererBootstrap';
-import { registerBuiltinNodeTypes } from '@features/graph/lib/nodeTypes/builtin';
 import { registerArcNodeTypes } from '@features/graph/lib/nodeTypes/arc';
+import { registerBuiltinNodeTypes } from '@features/graph/lib/nodeTypes/builtin';
 
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
 /**
  * Graph System Module
@@ -21,9 +21,12 @@ import type { Module } from '@app/modules/types';
  * Note: Graph actions are registered via arcGraphModule.page.actions
  * in routes/index.ts (Phase 1 action consolidation).
  */
-export const graphSystemModule: Module = {
+export const graphSystemModule = defineModule({
   id: 'graph-system',
   name: 'Graph System Module',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for graph system module.',
+  featureHighlights: ['Graph system module now participates in shared latest-update metadata.'],
   priority: 75, // Core system
   dependsOn: ['plugin-bootstrap'], // Needs plugins loaded first
 
@@ -52,4 +55,4 @@ export const graphSystemModule: Module = {
       strict: false, // Don't fail if a renderer is missing
     });
   },
-};
+});

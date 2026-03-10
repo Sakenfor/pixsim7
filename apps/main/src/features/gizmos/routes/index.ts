@@ -4,7 +4,7 @@ import { Navigate } from 'react-router-dom';
 
 import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
 
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
 // === Gizmos Actions ===
 
@@ -26,9 +26,12 @@ function GizmoLabRedirect() {
   return createElement(Navigate, { to: '/workspace?openPanel=gizmo-lab', replace: true });
 }
 
-export const gizmoLabModule: Module = {
+export const gizmoLabModule = defineModule({
   id: 'gizmo-lab',
   name: 'Gizmo Lab',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for gizmo lab route module.',
+  featureHighlights: ['Gizmo lab route module now participates in shared latest-update metadata.'],
   page: {
     route: '/gizmo-lab',
     icon: 'sparkles',
@@ -49,4 +52,4 @@ export const gizmoLabModule: Module = {
       ],
     },
   },
-};
+});

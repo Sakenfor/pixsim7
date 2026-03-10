@@ -7,15 +7,18 @@
 import { createElement } from 'react';
 import { Navigate } from 'react-router-dom';
 
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
 function RoutineGraphRedirect() {
   return createElement(Navigate, { to: '/workspace?openPanel=routine-graph', replace: true });
 }
 
-export const routineGraphPageModule: Module = {
+export const routineGraphPageModule = defineModule({
   id: 'routine-graph-page',
   name: 'Routine Graph Editor',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for routine graph page route module.',
+  featureHighlights: ['Routine graph page module now participates in shared latest-update metadata.'],
   page: {
     route: '/routine-graph',
     icon: 'clock',
@@ -36,4 +39,4 @@ export const routineGraphPageModule: Module = {
       ],
     },
   },
-};
+});

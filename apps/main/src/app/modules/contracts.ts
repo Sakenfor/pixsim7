@@ -11,15 +11,17 @@ type CapabilityCategory = FeatureCapability['category'];
 
 export type Module = ModuleDefinition<BasePanelDefinition, DevToolCategory, CapabilityCategory>;
 
-export interface DefineModuleOptions extends Module {
+export type DefineModuleOptions<TModule extends Module = Module> = TModule & {
   updatedAt: string;
   changeNote: string;
-}
+};
 
 /**
  * Strict helper for defining modules.
  * Requires latest-update metadata to keep module changes discoverable.
  */
-export function defineModule(options: DefineModuleOptions): Module {
+export function defineModule<TModule extends Module>(
+  options: DefineModuleOptions<TModule>
+): TModule {
   return options;
 }

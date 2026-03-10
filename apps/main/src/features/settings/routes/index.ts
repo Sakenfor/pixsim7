@@ -1,10 +1,13 @@
 import { lazy } from 'react';
 
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
-export const settingsPageModule: Module = {
+export const settingsPageModule = defineModule({
   id: 'settings-page',
   name: 'Settings',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for settings route module.',
+  featureHighlights: ['Settings route module now participates in shared latest-update metadata.'],
   page: {
     route: '/settings',
     icon: 'settings',
@@ -23,4 +26,4 @@ export const settingsPageModule: Module = {
       { id: 'appearance', label: 'Appearance', icon: 'palette', route: '/settings?section=appearance' },
     ],
   },
-};
+});

@@ -14,7 +14,7 @@ import { contextMenuRegistry } from '@pixsim7/shared.ui.context-menu';
 
 import { registerContextSettings } from '@features/settings/lib/schemas/context.settings';
 
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
 
 import { useContextHubSettingsStore } from './stores/contextHubSettingsStore';
@@ -31,9 +31,12 @@ let settingsUnsubscribe: (() => void) | null = null;
  * Core infrastructure for capability-based context awareness.
  * Should initialize early as other modules may depend on capabilities.
  */
-export const contextHubModule: Module = {
+export const contextHubModule = defineModule({
   id: 'context-hub',
   name: 'Context Hub',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for context hub capability infrastructure.',
+  featureHighlights: ['Context Hub module now participates in shared latest-update metadata.'],
   priority: 80, // High priority - capabilities are infrastructure
 
   async initialize() {
@@ -67,4 +70,4 @@ export const contextHubModule: Module = {
   },
 
   isReady: () => true,
-};
+});

@@ -4,7 +4,7 @@ import { Navigate } from 'react-router-dom';
 
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
 // === Generation Actions ===
 
@@ -55,9 +55,12 @@ function GenerationRedirect() {
   return createElement(Navigate, { to: '/workspace?openPanel=quickgen-asset', replace: true });
 }
 
-export const generationPageModule: Module = {
+export const generationPageModule = defineModule({
   id: 'generation-page',
   name: 'Generation',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for generation route module.',
+  featureHighlights: ['Generation route module now participates in shared latest-update metadata.'],
   page: {
     route: '/generate',
     icon: 'sparkles',
@@ -81,4 +84,4 @@ export const generationPageModule: Module = {
       ],
     },
   },
-};
+});

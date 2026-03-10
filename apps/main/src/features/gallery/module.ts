@@ -1,7 +1,11 @@
-import type { Module } from '@app/modules/types';
-import type { Asset } from '../../types';
 import { logEvent } from '@lib/utils';
+
 import { GalleryModule as GalleryModuleComponent } from '@features/controlCenter/components/modules/GalleryModule';
+
+import { defineModule } from '@app/modules/types';
+import type { Module } from '@app/modules/types';
+
+import type { Asset } from '../../types';
 
 /**
  * Gallery Module
@@ -19,9 +23,12 @@ export interface GalleryModule extends Module {
   uploadAsset?: (file: File) => Promise<Asset>;
 }
 
-export const galleryModule: GalleryModule = {
+export const galleryModule: GalleryModule = defineModule({
   id: 'gallery',
   name: 'Gallery Module',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for gallery feature module.',
+  featureHighlights: ['Gallery module now participates in shared latest-update metadata.'],
 
   initialize: async () => {
     logEvent('INFO', 'gallery_module_ready', { status: 'not_implemented' });
@@ -56,4 +63,4 @@ export const galleryModule: GalleryModule = {
   uploadAsset: async () => {
     throw new Error('Gallery module not yet implemented');
   },
-};
+});

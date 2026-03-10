@@ -1,6 +1,6 @@
 import { registerState } from '@lib/capabilities';
 
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
 import { GenerationActivityBarWidget } from './components/GenerationActivityBarWidget';
 import { getGenerationSessionStore } from './stores/generationScopeStores';
@@ -27,9 +27,12 @@ function registerGenerationState() {
  * Actions are registered via generationPageModule.page.actions
  * in routes/index.ts (Phase 1 action consolidation).
  */
-export const generationModule: Module = {
+export const generationModule = defineModule({
   id: 'generation',
   name: 'Generation Module',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for generation feature module.',
+  featureHighlights: ['Generation module now participates in shared latest-update metadata.'],
 
   activityBarWidgets: [
     {
@@ -46,4 +49,4 @@ export const generationModule: Module = {
     registerGenerationState();
     // Future: Register generation UI plugins / provider hooks if needed
   },
-};
+});

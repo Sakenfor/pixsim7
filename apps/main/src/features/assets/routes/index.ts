@@ -1,10 +1,13 @@
 import { lazy } from 'react';
 
-import type { Module } from '@app/modules/types';
+import { defineModule } from '@app/modules/types';
 
-export const assetDetailModule: Module = {
+export const assetDetailModule = defineModule({
   id: 'asset-detail',
   name: 'Asset Detail',
+  updatedAt: '2026-03-10T00:00:00Z',
+  changeNote: 'Added module metadata baseline for asset detail route module.',
+  featureHighlights: ['Asset detail route module now participates in shared latest-update metadata.'],
   page: {
     route: '/assets/:id',
     icon: 'image',
@@ -17,4 +20,4 @@ export const assetDetailModule: Module = {
     showInNav: false,
     component: lazy(() => import('../../../routes/AssetDetail').then(m => ({ default: m.AssetDetailRoute }))),
   },
-};
+});
