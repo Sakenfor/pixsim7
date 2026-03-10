@@ -6,6 +6,25 @@ import {
 const FNV_OFFSET_BASIS = 2166136261;
 const FNV_PRIME = 16777619;
 
+function hashToken(token: string): number {
+  let hash = FNV_OFFSET_BASIS;
+  for (let i = 0; i < token.length; i++) {
+    hash ^= token.charCodeAt(i);
+    hash = Math.imul(hash, FNV_PRIME);
+  }
+  return hash >>> 0;
+}
+
+function mix32(value: number): number {
+  let h = value >>> 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
 export type LocalHashAssetLike = {
   key: string;
   size?: number | null;
@@ -16,17 +35,23 @@ export type LocalHashAssetLike = {
 };
 
 export function computeStableSignature(tokens: string[]): string {
-  const sorted = [...tokens].sort();
-  let hash = FNV_OFFSET_BASIS;
+  // Order-independent linear-time signature. Keeps multiset sensitivity
+  // without O(n log n) sorting for large folder scopes.
+  let sum = 0;
+  let xor = 0;
+  let weighted = 0;
 
-  for (const token of sorted) {
-    for (let i = 0; i < token.length; i++) {
-      hash ^= token.charCodeAt(i);
-      hash = Math.imul(hash, FNV_PRIME);
-    }
+  for (const token of tokens) {
+    const tokenHash = hashToken(token);
+    sum = (sum + tokenHash) >>> 0;
+    xor = (xor ^ tokenHash) >>> 0;
+    weighted = (weighted + Math.imul(tokenHash ^ 0x9e3779b9, 0x85ebca6b)) >>> 0;
   }
 
-  return `${sorted.length}:${hash >>> 0}`;
+  const len = tokens.length >>> 0;
+  const sigA = mix32(sum ^ Math.imul(len, 0x27d4eb2d));
+  const sigB = mix32((xor + weighted + Math.imul(len, 0x165667b1)) >>> 0);
+  return `${len}:${sigA}:${sigB}`;
 }
 
 export function computeLocalAssetScopeSignature<T extends Pick<LocalHashAssetLike, 'key' | 'size' | 'lastModified'>>(
