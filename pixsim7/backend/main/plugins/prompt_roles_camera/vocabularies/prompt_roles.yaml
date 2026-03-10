@@ -36,4 +36,14 @@ roles:
       - dolly
       - tracking
       - steadicam
+      - tilt
+      - tilts
+      - orbit
+      - orbits
+      - pedestal
+      - pedestals
+      - push in
+      - pull back
+      - pull out
+      - reveal shot
     aliases: []

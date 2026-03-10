@@ -89,6 +89,59 @@ _LOW_SIGNAL_OVERLAP_TOKENS = {
     "axis",
     "move",
 }
+_CAMERA_MOTION_SIGNAL_TOKENS = {
+    "dolly",
+    "zoom",
+    "pan",
+    "tilt",
+    "truck",
+    "orbit",
+    "pedestal",
+    "track",
+    "tracking",
+    "push",
+    "pull",
+}
+_CAMERA_FRAMING_SIGNAL_TOKENS = {
+    "shot",
+    "close",
+    "wide",
+    "focus",
+    "rack",
+    "angle",
+    "pov",
+    "perspective",
+    "bird",
+    "worm",
+    "dutch",
+    "bokeh",
+}
+_SUBJECT_MOTION_SIGNAL_TOKENS = {
+    "walk",
+    "walking",
+    "run",
+    "running",
+    "step",
+    "steps",
+    "turn",
+    "turning",
+    "drift",
+    "crouch",
+    "crouching",
+}
+_CAMERA_CONTEXT_CUE_TOKENS = {
+    "camera",
+    "shot",
+    "frame",
+    "framing",
+    "angle",
+    "lens",
+    "focus",
+    "pov",
+    "viewpoint",
+    "cinematic",
+    "steadicam",
+}
 _ROLE_STOP_TOKEN_OVERRIDES: dict[str, set[str]] = {
     "camera": {"camera"},
 }
@@ -183,26 +236,15 @@ def _iter_op_tokens(op_payload: Mapping[str, Any]) -> Iterable[str]:
         for token in _tokenize(signature_id):
             yield token
 
-    default_args = op_payload.get("default_args")
-    if isinstance(default_args, dict):
-        for key, value in default_args.items():
+    # Variant-level args are discriminative; full param enum vocab is too broad
+    # and creates cross-domain noise (e.g. every motion variant gets every direction token).
+    args = op_payload.get("args")
+    if isinstance(args, dict):
+        for key, value in args.items():
             for token in _tokenize(key):
                 yield token
             for token in _tokenize(value):
                 yield token
-
-    params = op_payload.get("params")
-    if isinstance(params, list):
-        for item in params:
-            if not isinstance(item, dict):
-                continue
-            for token in _tokenize(item.get("key")):
-                yield token
-            enum_values = item.get("enum")
-            if isinstance(enum_values, list):
-                for enum_value in enum_values:
-                    for token in _tokenize(enum_value):
-                        yield token
 
 
 def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str, Any] | None:
@@ -428,6 +470,69 @@ def _score_entry(
         + cross_bonus,
     )
 
+    # Domain gating: prefer semantic family matches over generic directional overlap.
+    op_id = _as_text(entry.get("op_id")) or ""
+    probe_token_set = set(probe_tokens)
+    overlap_token_set = set(overlap_all)
+    has_camera_motion_signal = bool(probe_token_set & _CAMERA_MOTION_SIGNAL_TOKENS)
+    has_camera_framing_signal = bool(probe_token_set & _CAMERA_FRAMING_SIGNAL_TOKENS)
+    has_subject_motion_signal = bool(probe_token_set & _SUBJECT_MOTION_SIGNAL_TOKENS)
+    is_direction_axis = op_id.startswith("direction.axis.")
+    is_camera_motion = op_id.startswith("camera.motion.")
+    is_camera_framing = (
+        op_id.startswith("camera.shot.")
+        or op_id.startswith("camera.focus.")
+        or op_id.startswith("camera.angle.")
+        or op_id.startswith("camera.pov.")
+    )
+    is_subject_motion = op_id.startswith("subject.move.")
+
+    domain_multiplier = 1.0
+    if has_camera_motion_signal:
+        if is_camera_motion:
+            domain_multiplier *= 1.25
+        elif is_direction_axis:
+            domain_multiplier *= 0.55
+    if has_camera_framing_signal:
+        if is_camera_framing:
+            domain_multiplier *= 1.15
+        elif is_direction_axis:
+            domain_multiplier *= 0.75
+    if has_subject_motion_signal and not has_camera_motion_signal:
+        if is_subject_motion:
+            domain_multiplier *= 1.15
+        elif is_direction_axis:
+            domain_multiplier *= 0.8
+
+    camera_motion_overlap = probe_token_set & _CAMERA_MOTION_SIGNAL_TOKENS
+    has_directional_tokens = bool(probe_token_set & _DIRECTIONAL_TOKENS)
+    if is_camera_motion and has_directional_tokens:
+        domain_multiplier *= 1.1
+    if is_camera_motion and (keyword_tokens & _CAMERA_MOTION_SIGNAL_TOKENS):
+        domain_multiplier *= 1.1
+
+    # False-friend guard for "truck" as a vehicle in non-camera prose.
+    if (
+        is_camera_motion
+        and role != "camera"
+        and camera_motion_overlap
+        and camera_motion_overlap.issubset({"truck"})
+        and not has_directional_tokens
+        and not (probe_token_set & _CAMERA_CONTEXT_CUE_TOKENS)
+    ):
+        domain_multiplier *= 0.5
+
+    if is_direction_axis:
+        non_direction_probe = {
+            token
+            for token in probe_token_set
+            if token not in _DIRECTIONAL_TOKENS and token not in _LOW_SIGNAL_OVERLAP_TOKENS
+        }
+        if non_direction_probe and overlap_token_set and overlap_token_set.issubset(_DIRECTIONAL_TOKENS):
+            domain_multiplier *= 0.7
+
+    score *= max(0.35, min(1.35, domain_multiplier))
+
     entry_distinguishing = set(entry.get("distinguishing_tokens") or set())
     category_distinguishing = set(entry.get("category_distinguishing_tokens") or set())
     overlap_distinguishing = sorted(probe_tokens & entry_distinguishing)
@@ -443,10 +548,13 @@ def _score_entry(
 
     has_specific_evidence = (
         len(overlap_all) >= 2
-        or len(overlap_keywords) > 0
         or any(
             token not in _LOW_SIGNAL_OVERLAP_TOKENS and token not in _DIRECTIONAL_TOKENS
             for token in overlap_all
+        )
+        or any(
+            token not in _LOW_SIGNAL_OVERLAP_TOKENS and token not in _DIRECTIONAL_TOKENS
+            for token in overlap_keywords
         )
         or bool(overlap_distinguishing)
     )

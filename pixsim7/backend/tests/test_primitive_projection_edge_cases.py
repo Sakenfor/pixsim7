@@ -1,4 +1,4 @@
-"""
+﻿"""
 Edge-case tests for primitive_projection shadow mode.
 
 Covers:
@@ -151,7 +151,7 @@ class TestRoleOnlyPhrases:
     """Phrases that contain only role/category words and stop tokens."""
 
     def test_camera_shot_no_match(self):
-        """'Camera shot' has both words in stop tokens — should not match."""
+        """'Camera shot' has both words in stop tokens â€” should not match."""
         candidate = {
             "text": "Camera shot.",
             "role": "camera",
@@ -168,6 +168,18 @@ class TestRoleOnlyPhrases:
             "text": "Camera scene.",
             "role": "camera",
             "matched_keywords": [],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(
+            candidate, primitive_index=_synthetic_index()
+        )
+        assert match is None
+
+    def test_camera_shot_keyword_only_no_match(self):
+        candidate = {
+            "text": "Camera shot.",
+            "role": "camera",
+            "matched_keywords": ["camera"],
             "metadata": {},
         }
         match = match_candidate_to_primitive(
@@ -200,7 +212,7 @@ class TestRoleOnlyPhrases:
         assert match is None
 
     def test_motion_alone_no_match(self):
-        """'motion' is a low-signal token — single-token should not match."""
+        """'motion' is a low-signal token â€” single-token should not match."""
         candidate = {
             "text": "Motion.",
             "role": None,
@@ -303,7 +315,7 @@ class TestMultiSentenceMixed:
     still pick the most relevant primitive or return None if ambiguous."""
 
     def test_camera_motion_with_character_action(self):
-        """Dolly + character walking — should still match dolly."""
+        """Dolly + character walking â€” should still match dolly."""
         candidate = {
             "text": "Slow dolly forward as the man walks through the market.",
             "role": "camera",
@@ -316,8 +328,43 @@ class TestMultiSentenceMixed:
         assert match is not None
         assert match["block_id"] == "core.camera.motion.dolly"
 
+    def test_camera_motion_verb_prefers_camera_over_direction_axis(self):
+        candidate = {
+            "text": "Slow dolly forward toward the subject.",
+            "role": "camera",
+            "matched_keywords": ["dolly"],
+            "metadata": {},
+        }
+        competing_index = (
+            {
+                "block_id": "core.camera.motion.dolly",
+                "package_name": "core_camera",
+                "role": "camera",
+                "category": "camera",
+                "tokens": frozenset({"dolly", "forward", "camera", "slow", "subject"}),
+                "block_tokens": frozenset({"core", "camera", "motion", "dolly"}),
+                "op_id": "camera.motion.dolly",
+                "signature_id": "camera.motion.v1",
+                "op_modalities": ("video",),
+            },
+            {
+                "block_id": "core.direction.forward",
+                "package_name": "core_direction",
+                "role": None,
+                "category": "direction",
+                "tokens": frozenset({"forward", "toward", "move", "direction"}),
+                "block_tokens": frozenset({"core", "direction", "forward"}),
+                "op_id": "direction.axis.forward",
+                "signature_id": "direction.axis.v1",
+                "op_modalities": ("both",),
+            },
+        )
+        match = match_candidate_to_primitive(candidate, primitive_index=competing_index)
+        assert match is not None
+        assert match["block_id"] == "core.camera.motion.dolly"
+
     def test_lighting_with_placement(self):
-        """Soft warm light + left placement — should pick light if role matches."""
+        """Soft warm light + left placement â€” should pick light if role matches."""
         candidate = {
             "text": "Soft warm light from the left side.",
             "role": None,
@@ -327,7 +374,7 @@ class TestMultiSentenceMixed:
         match = match_candidate_to_primitive(
             candidate, primitive_index=_synthetic_index()
         )
-        # Should match something — either light or placement
+        # Should match something â€” either light or placement
         # The key test is it doesn't crash or return nonsense
         if match is not None:
             assert match["block_id"] in (
@@ -336,7 +383,7 @@ class TestMultiSentenceMixed:
             )
 
     def test_zoom_meeting_false_friend(self):
-        """'zoom meeting' — zoom in non-camera context.
+        """'zoom meeting' â€” zoom in non-camera context.
         Should ideally not match camera.motion.zoom but may due to token overlap."""
         candidate = {
             "text": "The zoom meeting starts at three o'clock.",
@@ -347,7 +394,7 @@ class TestMultiSentenceMixed:
         match = match_candidate_to_primitive(
             candidate, primitive_index=_synthetic_index()
         )
-        # This is a known weakness — document behavior
+        # This is a known weakness â€” document behavior
         # If it matches, score should be low
         if match is not None:
             assert match["score"] < 0.7, (
@@ -449,7 +496,7 @@ class TestFalseFriends:
         match = match_candidate_to_primitive(
             candidate, primitive_index=_synthetic_index()
         )
-        # If matched, should have low confidence — gold/river add no signal
+        # If matched, should have low confidence â€” gold/river add no signal
         if match is not None:
             assert match["score"] < 0.6, f"Gold panning should score low, got {match['score']}"
 
@@ -465,8 +512,7 @@ class TestFalseFriends:
             candidate, primitive_index=_synthetic_index()
         )
         if match is not None:
-            # Slow + truck could match — document this
-            assert match["score"] < 0.7, f"Vehicle truck should score low, got {match['score']}"
+            assert match["score"] < 0.6
 
     def test_orbit_as_astronomy(self):
         """'orbit' in planetary context."""
@@ -493,7 +539,7 @@ class TestFalseFriends:
         match = match_candidate_to_primitive(
             candidate, primitive_index=_synthetic_index()
         )
-        # Single token 'tilt' — needs specific evidence to match
+        # Single token 'tilt' â€” needs specific evidence to match
         if match is not None:
             assert match["score"] < 0.6
 
@@ -508,7 +554,7 @@ class TestFalseFriends:
         match = match_candidate_to_primitive(
             candidate, primitive_index=_synthetic_index()
         )
-        # Should not match — no camera/focus context
+        # Should not match â€” no camera/focus context
         # (shallow alone is one token, needs specific evidence)
 
 
@@ -523,7 +569,7 @@ class TestFalseFriends:
         match = match_candidate_to_primitive(
             candidate, primitive_index=_synthetic_index()
         )
-        # Could match hard_cool or left_of — document behavior
+        # Could match hard_cool or left_of â€” document behavior
         if match is not None:
             # At minimum, it shouldn't be high confidence
             assert match["score"] < 0.8
@@ -714,7 +760,7 @@ class TestScoringEdgeCases:
             "category": "camera",
         }
         scored = _score_entry(evidence=evidence, entry=entry)
-        # Single overlap on "motion" (low-signal) — should be rejected
+        # Single overlap on "motion" (low-signal) â€” should be rejected
         # because has_specific_evidence requires either 2+ tokens,
         # keyword match, or a non-low-signal token
         assert scored is None
@@ -846,7 +892,7 @@ class TestEnrichIdempotency:
 # ---------------------------------------------------------------------------
 
 class TestIntegrationParsePipeline:
-    """Tests that go through the full parse → enrich pipeline."""
+    """Tests that go through the full parse â†’ enrich pipeline."""
 
     def test_dolly_prompt_matches_via_pipeline(self):
         result = asyncio.run(

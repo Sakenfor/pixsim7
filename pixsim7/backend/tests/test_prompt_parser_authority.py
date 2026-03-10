@@ -11,6 +11,8 @@ def test_prompt_role_registry_uses_vocab_role_keywords():
     assert "camera" in keywords
     assert "point of view" in keywords["camera"]
     assert "close up" in keywords["camera"]
+    assert "tilt" in keywords["camera"]
+    assert "orbit" in keywords["camera"]
 
 
 def test_simple_parser_resolves_camera_ids_from_normalized_keywords():
@@ -24,6 +26,16 @@ def test_simple_parser_resolves_camera_ids_from_normalized_keywords():
     ontology_ids = set(metadata.get("ontology_ids") or [])
     assert "camera:angle_pov" in ontology_ids
     assert "camera:framing_closeup" in ontology_ids
+
+
+def test_simple_parser_classifies_camera_motion_verbs_as_camera():
+    from pixsim7.backend.main.services.prompt.parser.simple import SimplePromptParser
+
+    parser = SimplePromptParser()
+    result = asyncio.run(parser.parse("Tilt up and orbit around the subject."))
+
+    assert len(result.segments) == 1
+    assert result.segments[0].role == "camera"
 
 
 def test_prompt_role_registry_loads_action_verbs_from_vocab():
