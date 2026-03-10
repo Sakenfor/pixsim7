@@ -22,6 +22,7 @@ pack: #PromptBlockPackV1 & {
 				}
 				op: {
 					op_id: "camera.angle.set"
+					signature_id: "camera.angle.v1"
 					modalities: ["both"]
 					refs: [
 						{

@@ -22,6 +22,7 @@ pack: #PromptBlockPackV1 & {
 				}
 				op: {
 					op_id: "camera.focus.set"
+					signature_id: "camera.focus.v1"
 					modalities: ["both"]
 					refs: [
 						{
@@ -103,6 +104,19 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							focus_target:   "target"
 							depth_of_field: "shallow"
+							rack:           false
+						}
+					},
+					{
+						key: "target_deep"
+						tags: {
+							focus_target:   "target"
+							depth_of_field: "deep"
+							rack_focus:     "false"
+						}
+						op_args: {
+							focus_target:   "target"
+							depth_of_field: "deep"
 							rack:           false
 						}
 					},

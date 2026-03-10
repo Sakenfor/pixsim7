@@ -22,6 +22,7 @@ pack: #PromptBlockPackV1 & {
 				}
 				op: {
 					op_id: "camera.shot.set"
+					signature_id: "camera.shot.v1"
 					modalities: ["both"]
 					refs: [
 						{
@@ -103,6 +104,39 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							shot_size:     "close_up"
 							subject_count: "single"
+						}
+					},
+					{
+						key: "medium_pair"
+						tags: {
+							shot_size:     "medium"
+							subject_count: "pair"
+						}
+						op_args: {
+							shot_size:     "medium"
+							subject_count: "pair"
+						}
+					},
+					{
+						key: "close_up_pair"
+						tags: {
+							shot_size:     "close_up"
+							subject_count: "pair"
+						}
+						op_args: {
+							shot_size:     "close_up"
+							subject_count: "pair"
+						}
+					},
+					{
+						key: "wide_group"
+						tags: {
+							shot_size:     "wide"
+							subject_count: "group"
+						}
+						op_args: {
+							shot_size:     "wide"
+							subject_count: "group"
 						}
 					},
 					{

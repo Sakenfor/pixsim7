@@ -59,6 +59,16 @@ blocks:
             - video
           op_args:
             direction: in
+        - key: zoom_out
+          tags:
+            camera_motion: zoom
+            modality_support: both
+            image_surface: zoomed-out framing
+            video_surface: camera zooms out
+          op_modalities:
+            - video
+          op_args:
+            direction: out
         - key: pan
           tags:
             camera_motion: pan
@@ -67,6 +77,14 @@ blocks:
             video_surface: camera pans
           op_args:
             direction: left
+        - key: pan_right
+          tags:
+            camera_motion: pan
+            modality_support: video
+            image_surface: reverse lateral framing emphasis
+            video_surface: camera pans right
+          op_args:
+            direction: right
         - key: tilt
           tags:
             camera_motion: tilt
@@ -75,6 +93,14 @@ blocks:
             video_surface: camera tilts
           op_args:
             direction: up
+        - key: tilt_down
+          tags:
+            camera_motion: tilt
+            modality_support: video
+            image_surface: downward framing emphasis
+            video_surface: camera tilts down
+          op_args:
+            direction: down
         - key: dolly
           tags:
             camera_motion: dolly
@@ -83,6 +109,14 @@ blocks:
             video_surface: camera dollies
           op_args:
             direction: forward
+        - key: dolly_back
+          tags:
+            camera_motion: dolly
+            modality_support: video
+            image_surface: pull-back depth framing
+            video_surface: camera dollies backward
+          op_args:
+            direction: backward
         - key: truck
           tags:
             camera_motion: truck
@@ -91,6 +125,14 @@ blocks:
             video_surface: camera trucks
           op_args:
             direction: left
+        - key: truck_right
+          tags:
+            camera_motion: truck
+            modality_support: video
+            image_surface: reverse lateral depth framing
+            video_surface: camera trucks right
+          op_args:
+            direction: right
         - key: orbit
           tags:
             camera_motion: orbit
@@ -99,3 +141,35 @@ blocks:
             video_surface: camera orbits
           op_args:
             direction: around
+        - key: orbit_left
+          tags:
+            camera_motion: orbit
+            modality_support: video
+            image_surface: counterclockwise composition emphasis
+            video_surface: camera orbits left
+          op_args:
+            direction: left
+        - key: orbit_right
+          tags:
+            camera_motion: orbit
+            modality_support: video
+            image_surface: clockwise composition emphasis
+            video_surface: camera orbits right
+          op_args:
+            direction: right
+        - key: pedestal_up
+          tags:
+            camera_motion: pedestal
+            modality_support: video
+            image_surface: raised camera height framing
+            video_surface: camera rises vertically
+          op_args:
+            direction: up
+        - key: pedestal_down
+          tags:
+            camera_motion: pedestal
+            modality_support: video
+            image_surface: lowered camera height framing
+            video_surface: camera drops vertically
+          op_args:
+            direction: down

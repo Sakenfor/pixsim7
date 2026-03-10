@@ -22,6 +22,7 @@ pack: #PromptBlockPackV1 & {
 				}
 				op: {
 					op_id: "subject.move.apply"
+					signature_id: "subject.motion.v1"
 					modalities: ["video"]
 					refs: [
 						{
@@ -113,6 +114,102 @@ pack: #PromptBlockPackV1 & {
 						op_args: {
 							direction: "around"
 							speed:     "normal"
+							gait:      "turn"
+						}
+					},
+					{
+						key: "move_backward"
+						tags: {
+							motion_direction: "backward"
+							motion_speed:     "normal"
+						}
+						op_args: {
+							direction: "backward"
+							speed:     "normal"
+							gait:      "walk"
+						}
+					},
+					{
+						key: "move_in"
+						tags: {
+							motion_direction: "in"
+							motion_speed:     "slow"
+						}
+						op_args: {
+							direction: "in"
+							speed:     "slow"
+							gait:      "step"
+						}
+					},
+					{
+						key: "move_out"
+						tags: {
+							motion_direction: "out"
+							motion_speed:     "slow"
+						}
+						op_args: {
+							direction: "out"
+							speed:     "slow"
+							gait:      "step"
+						}
+					},
+					{
+						key: "run_forward"
+						tags: {
+							motion_direction: "forward"
+							motion_speed:     "fast"
+						}
+						op_args: {
+							direction: "forward"
+							speed:     "fast"
+							gait:      "run"
+						}
+					},
+					{
+						key: "drift_left"
+						tags: {
+							motion_direction: "left"
+							motion_speed:     "slow"
+						}
+						op_args: {
+							direction: "left"
+							speed:     "slow"
+							gait:      "drift"
+						}
+					},
+					{
+						key: "drift_right"
+						tags: {
+							motion_direction: "right"
+							motion_speed:     "slow"
+						}
+						op_args: {
+							direction: "right"
+							speed:     "slow"
+							gait:      "drift"
+						}
+					},
+					{
+						key: "turn_left"
+						tags: {
+							motion_direction: "left"
+							motion_speed:     "slow"
+						}
+						op_args: {
+							direction: "left"
+							speed:     "slow"
+							gait:      "turn"
+						}
+					},
+					{
+						key: "turn_right"
+						tags: {
+							motion_direction: "right"
+							motion_speed:     "slow"
+						}
+						op_args: {
+							direction: "right"
+							speed:     "slow"
 							gait:      "turn"
 						}
 					},

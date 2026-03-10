@@ -28,8 +28,13 @@ blocks:
           - looking
           - positioned
           - placed
+          - rotate
+          - rotating
+          - spin
+          - orbit
       op:
         op_id_template: direction.axis.{variant}
+        signature_id: direction.axis.v1
         modalities:
           - both
         refs:
@@ -109,3 +114,12 @@ blocks:
               - rearward
               - retreat
               - step back
+        - key: around
+          tags:
+            direction: around
+            direction_synonyms:
+              - circle
+              - encircle
+              - around
+              - spin around
+              - rotate around

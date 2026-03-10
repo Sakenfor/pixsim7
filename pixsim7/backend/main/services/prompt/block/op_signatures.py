@@ -28,6 +28,70 @@ _OP_SIGNATURES: Dict[str, OpSignature] = {
         required_refs=(),
         allowed_modalities=("image", "video"),
     ),
+    "camera.angle.v1": OpSignature(
+        id="camera.angle.v1",
+        op_id_prefix="camera.angle.",
+        requires_variant_template=False,
+        required_params=("vertical_angle", "roll"),
+        required_refs=(),
+        allowed_modalities=("image", "video"),
+    ),
+    "camera.shot.v1": OpSignature(
+        id="camera.shot.v1",
+        op_id_prefix="camera.shot.",
+        requires_variant_template=False,
+        required_params=("shot_size", "subject_count"),
+        required_refs=(),
+        allowed_modalities=("image", "video"),
+    ),
+    "camera.focus.v1": OpSignature(
+        id="camera.focus.v1",
+        op_id_prefix="camera.focus.",
+        requires_variant_template=False,
+        required_params=("focus_target", "depth_of_field", "rack"),
+        required_refs=(),
+        allowed_modalities=("image", "video"),
+    ),
+    "camera.pov.v1": OpSignature(
+        id="camera.pov.v1",
+        op_id_prefix="camera.pov.",
+        requires_variant_template=False,
+        required_params=("perspective", "camera_height"),
+        required_refs=(),
+        allowed_modalities=("image", "video"),
+    ),
+    "scene.anchor.v1": OpSignature(
+        id="scene.anchor.v1",
+        op_id_prefix="scene.anchor.",
+        requires_variant_template=False,
+        required_params=("relation", "distance", "orientation"),
+        required_refs=(),
+        allowed_modalities=("image", "video"),
+    ),
+    "direction.axis.v1": OpSignature(
+        id="direction.axis.v1",
+        op_id_prefix="direction.axis.",
+        requires_variant_template=True,
+        required_params=(),
+        required_refs=(),
+        allowed_modalities=("image", "video"),
+    ),
+    "subject.motion.v1": OpSignature(
+        id="subject.motion.v1",
+        op_id_prefix="subject.move.",
+        requires_variant_template=False,
+        required_params=("direction", "speed", "gait"),
+        required_refs=(),
+        allowed_modalities=("video",),
+    ),
+    "subject.pose.v1": OpSignature(
+        id="subject.pose.v1",
+        op_id_prefix="subject.pose.",
+        requires_variant_template=False,
+        required_params=("pose", "hands", "gaze"),
+        required_refs=(),
+        allowed_modalities=("image", "video"),
+    ),
 }
 
 
@@ -89,4 +153,3 @@ def validate_signature_contract(
         )
 
     return errors
-

@@ -16,6 +16,7 @@ pack: #PromptBlockPackV1 & {
 				capabilities: ["direction.axis"]
 				op: {
 					op_id_template: "direction.axis.{variant}"
+					signature_id:   "direction.axis.v1"
 					modalities: ["both"]
 					refs: [
 						{
@@ -43,6 +44,10 @@ pack: #PromptBlockPackV1 & {
 						"looking",
 						"positioned",
 						"placed",
+						"rotate",
+						"rotating",
+						"spin",
+						"orbit",
 					]
 				}
 				variants: [
@@ -148,10 +153,23 @@ pack: #PromptBlockPackV1 & {
 								"retreat",
 								"step back",
 							]
+						},
+					},
+					{
+						key: "around"
+						tags: {
+							direction: "around"
+							direction_synonyms: [
+								"circle",
+								"encircle",
+								"around",
+								"spin around",
+								"rotate around",
+							]
 						}
 					},
 				]
-			}
+			},
 		},
 	]
 }

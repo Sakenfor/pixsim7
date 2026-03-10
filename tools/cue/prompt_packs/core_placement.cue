@@ -30,6 +30,7 @@ pack: #PromptBlockPackV1 & {
 				}
 				op: {
 					op_id: "scene.anchor.place"
+					signature_id: "scene.anchor.v1"
 					modalities: ["both"]
 					refs: [
 						{

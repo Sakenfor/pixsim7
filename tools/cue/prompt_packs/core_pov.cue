@@ -22,6 +22,7 @@ pack: #PromptBlockPackV1 & {
 				}
 				op: {
 					op_id: "camera.pov.set"
+					signature_id: "camera.pov.v1"
 					modalities: ["both"]
 					refs: [
 						{
