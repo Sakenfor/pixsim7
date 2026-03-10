@@ -18,6 +18,7 @@ import { useMemo, useState, useCallback } from 'react';
 
 import { getPromptRoleBadgeClass, getPromptRoleInlineClasses, getPromptRoleLabel } from '@/lib/promptRoleUi';
 
+import { buildCandidateSpans } from '../lib/buildCandidateSpans';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptBlockCandidate } from '../types';
 
@@ -45,76 +46,8 @@ export interface PromptInlineViewerProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Role Styling
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-interface TextSpan {
-  text: string;
-  start: number;
-  end: number;
-  candidate?: PromptCandidateDisplay;
-}
-
-/**
- * Build text spans from candidates with position data.
- * Fills gaps with unstyled spans for complete coverage.
- */
-function buildSpans(prompt: string, candidates: PromptCandidateDisplay[]): TextSpan[] {
-  // Filter to candidates with valid positions
-  const positioned = candidates.filter(
-    (s) => typeof s.start_pos === 'number' && typeof s.end_pos === 'number'
-  );
-
-  if (positioned.length === 0) {
-    // No position data - return entire prompt as single span
-    return [{ text: prompt, start: 0, end: prompt.length }];
-  }
-
-  // Sort by start position
-  const sorted = [...positioned].sort((a, b) => a.start_pos! - b.start_pos!);
-
-  const spans: TextSpan[] = [];
-  let cursor = 0;
-
-  for (const seg of sorted) {
-    const start = seg.start_pos!;
-    const end = seg.end_pos!;
-
-    // Add gap span if there's unmatched text before this segment
-    if (start > cursor) {
-      spans.push({
-        text: prompt.slice(cursor, start),
-        start: cursor,
-        end: start,
-      });
-    }
-
-    // Add candidate span
-    spans.push({
-      text: prompt.slice(start, end),
-      start,
-      end,
-      candidate: seg,
-    });
-
-    cursor = end;
-  }
-
-  // Add trailing gap if any
-  if (cursor < prompt.length) {
-    spans.push({
-      text: prompt.slice(cursor),
-      start: cursor,
-      end: prompt.length,
-    });
-  }
-
-  return spans;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
@@ -131,7 +64,7 @@ export function PromptInlineViewer({
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
   const promptRoleColors = usePromptSettingsStore((state) => state.promptRoleColors);
 
-  const spans = useMemo(() => buildSpans(prompt, candidates), [prompt, candidates]);
+  const spans = useMemo(() => buildCandidateSpans(prompt, candidates), [prompt, candidates]);
 
   // Get unique roles present in candidates
   const presentRoles = useMemo(() => {

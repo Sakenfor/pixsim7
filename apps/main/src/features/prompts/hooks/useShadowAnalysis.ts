@@ -3,11 +3,17 @@
  *
  * Debounced background prompt analysis for the shadow overlay in text mode.
  * Calls `/prompts/analyze` and surfaces primitive match metadata from candidates.
+ * Reads/writes the shared promptAnalysisCache so blocks mode can reuse results.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useApi } from '@/hooks/useApi';
 
+import {
+  getCachedAnalysis,
+  setCachedAnalysis,
+  type AnalysisResult,
+} from '../lib/promptAnalysisCache';
 import type { PromptBlockCandidate } from '../types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -18,22 +24,18 @@ interface AnalyzePromptResponse {
   analysis?: {
     prompt?: string;
     candidates?: PromptBlockCandidate[];
+    tags?: AnalysisResult['tags'];
   };
 }
 
 export interface ShadowAnalysisResult {
-  /** The prompt text that was analyzed */
   analyzedPrompt: string;
-  /** Parsed candidates (may include position data + metadata.primitive_match) */
   candidates: PromptBlockCandidate[];
 }
 
 export interface ShadowAnalysisState {
-  /** Latest analysis result (null before first successful analysis) */
   result: ShadowAnalysisResult | null;
-  /** Whether an analysis request is in-flight */
   loading: boolean;
-  /** Force immediate re-analysis */
   refresh: () => void;
 }
 
@@ -64,7 +66,7 @@ export function useShadowAnalysis(
 
   const requestIdRef = useRef(0);
 
-  // Stable refs — prevent callback identity churn from useApi / analyzerId
+  // Stable refs
   const apiRef = useRef(api);
   apiRef.current = api;
   const analyzerIdRef = useRef(analyzerId);
@@ -73,12 +75,25 @@ export function useShadowAnalysis(
   textRef.current = text;
 
   const runAnalysis = useCallback(
-    async (promptText: string) => {
+    async (promptText: string, skipCache = false) => {
       const normalized = promptText.trim();
       if (!normalized || normalized.length < MIN_CHARS) {
         setResult(null);
         setLoading(false);
         return;
+      }
+
+      // Check cache first
+      if (!skipCache) {
+        const cached = getCachedAnalysis(normalized, analyzerIdRef.current);
+        if (cached) {
+          setResult({
+            analyzedPrompt: normalized,
+            candidates: cached.candidates,
+          });
+          setLoading(false);
+          return;
+        }
       }
 
       const requestId = ++requestIdRef.current;
@@ -98,12 +113,21 @@ export function useShadowAnalysis(
         if (requestId !== requestIdRef.current) return; // stale
 
         const candidates = response?.analysis?.candidates ?? [];
+        const tags = response?.analysis?.tags ?? [];
+
+        // Write to shared cache
+        setCachedAnalysis(normalized, analyzerIdRef.current, {
+          prompt: response?.analysis?.prompt || normalized,
+          candidates,
+          tags,
+        });
+
         setResult({
           analyzedPrompt: normalized,
           candidates,
         });
       } catch {
-        // Fail silently — no hard error UI for background analysis
+        // Fail silently
       } finally {
         if (requestId === requestIdRef.current) {
           setLoading(false);
@@ -134,7 +158,7 @@ export function useShadowAnalysis(
 
   const refresh = useCallback(() => {
     setRefreshToken((prev) => prev + 1);
-    void runAnalysis(textRef.current);
+    void runAnalysis(textRef.current, true); // skip cache on manual refresh
   }, [runAnalysis]);
 
   return { result, loading, refresh };

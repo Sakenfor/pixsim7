@@ -19,19 +19,9 @@ import {
 
 import { getPromptRoleInlineClasses } from '@/lib/promptRoleUi';
 
+import { buildCandidateSpans } from '../lib/buildCandidateSpans';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptBlockCandidate } from '../types';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface TextSpan {
-  text: string;
-  start: number;
-  end: number;
-  role?: string;
-}
 
 export interface ShadowTextareaProps {
   value: string;
@@ -44,51 +34,6 @@ export interface ShadowTextareaProps {
   showCounter?: boolean;
   resizable?: boolean;
   minHeight?: number;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Span builder
-// ─────────────────────────────────────────────────────────────────────────────
-
-function buildHighlightSpans(
-  text: string,
-  candidates: PromptBlockCandidate[],
-): TextSpan[] {
-  const positioned = candidates.filter(
-    (c) => typeof c.start_pos === 'number' && typeof c.end_pos === 'number',
-  );
-
-  if (positioned.length === 0) {
-    return [{ text, start: 0, end: text.length }];
-  }
-
-  const sorted = [...positioned].sort((a, b) => a.start_pos! - b.start_pos!);
-  const spans: TextSpan[] = [];
-  let cursor = 0;
-
-  for (const seg of sorted) {
-    const start = seg.start_pos!;
-    const end = seg.end_pos!;
-
-    if (start > cursor) {
-      spans.push({ text: text.slice(cursor, start), start, end: start });
-    }
-
-    spans.push({
-      text: text.slice(start, end),
-      start,
-      end,
-      role: seg.role ?? undefined,
-    });
-
-    cursor = end;
-  }
-
-  if (cursor < text.length) {
-    spans.push({ text: text.slice(cursor), start: cursor, end: text.length });
-  }
-
-  return spans;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -127,7 +72,7 @@ export function ShadowTextarea({
   const effectiveMinHeight = minHeight ?? defaultMinHeight;
 
   const spans = useMemo(
-    () => buildHighlightSpans(value, candidates),
+    () => buildCandidateSpans(value, candidates),
     [value, candidates],
   );
 
@@ -216,7 +161,7 @@ export function ShadowTextarea({
               }}
             >
               {spans.map((span, idx) => {
-                if (!span.role) {
+                if (!span.candidate) {
                   return (
                     <span key={idx} className="text-transparent">
                       {span.text}
@@ -224,7 +169,7 @@ export function ShadowTextarea({
                   );
                 }
 
-                const { bg } = getPromptRoleInlineClasses(span.role, promptRoleColors);
+                const { bg } = getPromptRoleInlineClasses(span.candidate.role, promptRoleColors);
                 return (
                   <span
                     key={idx}

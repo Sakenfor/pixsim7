@@ -30,6 +30,7 @@ import {
 import { usePromptHistory } from '../hooks/usePromptHistory';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
+import { getCachedAnalysis, setCachedAnalysis, type AnalysisResult } from '../lib/promptAnalysisCache';
 import { useBlockTemplateStore } from '../stores/blockTemplateStore';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptTag } from '../types';
@@ -312,6 +313,24 @@ export function PromptComposer({
         return;
       }
 
+      // Check shared analysis cache (may have been populated by shadow analysis)
+      const cached = getCachedAnalysis(normalized);
+      if (cached && !force) {
+        const derivedBlocks = deriveBlocksFromCandidates(cached.candidates, {
+          defaultRole: DEFAULT_PROMPT_ROLE,
+          fallbackText: normalized,
+        });
+        const ensured = ensurePromptBlocks(derivedBlocks, normalized, DEFAULT_PROMPT_ROLE);
+        const nextBlocks = ensured.map((candidate, index) => ({
+          id: `block-${Date.now()}-${index}`,
+          role: candidate.role,
+          text: candidate.text,
+        }));
+        lastParsedRef.current = normalized;
+        updateBlocks(nextBlocks);
+        return;
+      }
+
       const requestId = ++parseRequestIdRef.current;
       setIsParsing(true);
       setParseError(null);
@@ -323,6 +342,13 @@ export function PromptComposer({
         if (requestId !== parseRequestIdRef.current) return;
 
         const candidates = response?.analysis?.candidates ?? [];
+
+        // Write to shared cache so shadow analysis can reuse
+        setCachedAnalysis(normalized, undefined, {
+          prompt: response?.analysis?.prompt || normalized,
+          candidates,
+          tags: (response?.analysis?.tags ?? []) as AnalysisResult['tags'],
+        });
 
         const derivedBlocks = deriveBlocksFromCandidates(candidates, {
           defaultRole: DEFAULT_PROMPT_ROLE,
@@ -427,6 +453,18 @@ export function PromptComposer({
       return;
     }
 
+    // Check shared cache first
+    const cached = getCachedAnalysis(normalized);
+    if (cached) {
+      setBlockAnalysis({
+        prompt: cached.prompt,
+        candidates: cached.candidates,
+        tags: cached.tags as PromptTag[],
+      });
+      setShowBlockBreakdown(true);
+      return;
+    }
+
     setAnalyzingBlocks(true);
     setAssistantError(null);
 
@@ -440,6 +478,14 @@ export function PromptComposer({
         candidates: analysis?.candidates || [],
         tags: analysis?.tags || [],
       };
+
+      // Write to shared cache
+      setCachedAnalysis(normalized, undefined, {
+        prompt: next.prompt,
+        candidates: next.candidates,
+        tags: next.tags as AnalysisResult['tags'],
+      });
+
       setBlockAnalysis(next);
       setShowBlockBreakdown(true);
     } catch (err: unknown) {
