@@ -62,6 +62,9 @@ const LOCAL_SOURCE: SourceIdentity & SourceInfo = {
 };
 
 const PREVIEW_LOAD_CONCURRENCY = 4;
+const PREVIEW_STATE_FLUSH_DELAY_MS = 24;
+const GLOBAL_PREVIEW_CACHE_MAX_ENTRIES = 1200;
+const GLOBAL_PREVIEW_CACHE_MAX_ORIGINALS = 80;
 
 /**
  * Module-level blob URL cache that survives panel mount/unmount cycles.
@@ -162,6 +165,8 @@ export function useLocalFoldersController(): LocalFoldersController {
     },
   );
   const loadingPreviewsRef = useRef<Set<string>>(new Set());
+  const pendingPreviewStateRef = useRef<Record<string, string | null>>({});
+  const previewStateFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Track blob URLs for cleanup when they're no longer needed
   const blobUrlsRef = useRef<Map<string, string>>(new Map());
@@ -628,6 +633,92 @@ export function useLocalFoldersController(): LocalFoldersController {
     if (next) next();
   }, []);
 
+  const touchGlobalBlobCacheEntry = useCallback((assetKey: string) => {
+    const entry = globalBlobUrlCache.get(assetKey);
+    if (!entry) return;
+    globalBlobUrlCache.delete(assetKey);
+    globalBlobUrlCache.set(assetKey, entry);
+  }, []);
+
+  const evictGlobalBlobCache = useCallback((protectedKeys?: Set<string>) => {
+    if (globalBlobUrlCache.size === 0) return;
+
+    const protectedSet = protectedKeys ?? new Set<string>();
+    let originalCount = 0;
+    for (const entry of globalBlobUrlCache.values()) {
+      if (entry.original) originalCount += 1;
+    }
+
+    const evictOldest = (match: (entry: { url: string; original: boolean }) => boolean): boolean => {
+      for (const [key, entry] of globalBlobUrlCache) {
+        if (protectedSet.has(key)) continue;
+        if (!match(entry)) continue;
+
+        globalBlobUrlCache.delete(key);
+        URL.revokeObjectURL(entry.url);
+        return true;
+      }
+      return false;
+    };
+
+    while (originalCount > GLOBAL_PREVIEW_CACHE_MAX_ORIGINALS) {
+      const evicted = evictOldest((entry) => entry.original);
+      if (!evicted) break;
+      originalCount -= 1;
+    }
+
+    while (globalBlobUrlCache.size > GLOBAL_PREVIEW_CACHE_MAX_ENTRIES) {
+      const evicted = evictOldest(() => true);
+      if (!evicted) break;
+    }
+  }, []);
+
+  const flushPreviewStatePatch = useCallback(() => {
+    const pendingPatch = pendingPreviewStateRef.current;
+    const keys = Object.keys(pendingPatch);
+    if (keys.length === 0) return;
+
+    pendingPreviewStateRef.current = {};
+
+    setPreviews((prev) => {
+      let changed = false;
+      let next = prev;
+
+      for (const key of keys) {
+        const value = pendingPatch[key];
+        if (typeof value === 'string') {
+          if (next[key] === value) continue;
+          if (!changed) {
+            next = { ...next };
+            changed = true;
+          }
+          next[key] = value;
+          continue;
+        }
+
+        if (!(key in next)) continue;
+        if (!changed) {
+          next = { ...next };
+          changed = true;
+        }
+        delete next[key];
+      }
+
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const queuePreviewStatePatch = useCallback((assetKey: string, url: string | null) => {
+    pendingPreviewStateRef.current[assetKey] = url;
+
+    if (previewStateFlushTimerRef.current !== null) return;
+
+    previewStateFlushTimerRef.current = setTimeout(() => {
+      previewStateFlushTimerRef.current = null;
+      flushPreviewStatePatch();
+    }, PREVIEW_STATE_FLUSH_DELAY_MS);
+  }, [flushPreviewStatePatch]);
+
   // Ref-based lookup for assets so loadPreview doesn't depend on assetsRecord state
   const assetsRecordRef = useRef(assetsRecord);
   assetsRecordRef.current = assetsRecord;
@@ -664,7 +755,10 @@ export function useLocalFoldersController(): LocalFoldersController {
     if (loadingPreviewsRef.current.has(asset.key) || globalLoadingKeys.has(asset.key)) return;
 
     const globalEntry = globalBlobUrlCache.get(asset.key);
-    if (globalEntry && globalEntry.original === wantOriginal) return;
+    if (globalEntry && globalEntry.original === wantOriginal) {
+      touchGlobalBlobCacheEntry(asset.key);
+      return;
+    }
 
     // Evict stale entry from a different mode if present
     const staleUrl = blobUrlsRef.current.get(asset.key);
@@ -730,7 +824,10 @@ export function useLocalFoldersController(): LocalFoldersController {
         // switches are handled correctly.  Originals are large but we still
         // tag them so the mode-mismatch check works on remount.
         globalBlobUrlCache.set(asset.key, { url, original: isOriginal });
-        setPreviews(p => ({ ...p, [asset.key]: url }));
+        const protectedKeys = new Set(blobUrlsRef.current.keys());
+        protectedKeys.add(asset.key);
+        evictGlobalBlobCache(protectedKeys);
+        queuePreviewStatePatch(asset.key, url);
       }
     } finally {
       if (acquiredSlot) {
@@ -739,7 +836,15 @@ export function useLocalFoldersController(): LocalFoldersController {
       loadingPreviewsRef.current.delete(asset.key);
       globalLoadingKeys.delete(asset.key);
     }
-  }, [acquirePreviewSlot, getFileForAsset, releasePreviewSlot, shouldUseOriginal]);
+  }, [
+    acquirePreviewSlot,
+    evictGlobalBlobCache,
+    getFileForAsset,
+    queuePreviewStatePatch,
+    releasePreviewSlot,
+    shouldUseOriginal,
+    touchGlobalBlobCacheEntry,
+  ]);
 
   // Revoke blob URLs for assets that are no longer visible (called by UI)
   const revokePreview = useCallback((assetKey: string) => {
@@ -748,12 +853,18 @@ export function useLocalFoldersController(): LocalFoldersController {
       URL.revokeObjectURL(url);
       blobUrlsRef.current.delete(assetKey);
       globalBlobUrlCache.delete(assetKey);
-      setPreviews(p => {
-        const next = { ...p };
-        delete next[assetKey];
-        return next;
-      });
+      queuePreviewStatePatch(assetKey, null);
     }
+  }, [queuePreviewStatePatch]);
+
+  useEffect(() => {
+    return () => {
+      if (previewStateFlushTimerRef.current !== null) {
+        clearTimeout(previewStateFlushTimerRef.current);
+        previewStateFlushTimerRef.current = null;
+      }
+      pendingPreviewStateRef.current = {};
+    };
   }, []);
 
   // On unmount, clear local ref but keep thumbnail blob URLs alive in the
@@ -771,8 +882,9 @@ export function useLocalFoldersController(): LocalFoldersController {
         }
       });
       blobUrls.clear();
+      evictGlobalBlobCache();
     };
-  }, []);
+  }, [evictGlobalBlobCache]);
 
   // Viewer state with navigation
   const {

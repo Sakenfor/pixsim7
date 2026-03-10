@@ -100,6 +100,8 @@ type LocalFoldersState = {
 const STORAGE_KEY_PREFIX = 'ps7_local_folders';
 
 const idbStore = createIdbKvStore('ps7_local_folders', 2);
+const BACKGROUND_REFRESH_MIN_INTERVAL_MS = 1000 * 60 * 30; // 30 minutes
+const BACKGROUND_REFRESH_START_DELAY_MS = 1500;
 
 function getAnonymousNamespace(): string {
   return 'anonymous';
@@ -161,6 +163,10 @@ function getFoldersKey(): string {
 
 function getAssetsKey(folderId: string): string {
   return `${STORAGE_KEY_PREFIX}_assets_${getUserNamespace()}_${folderId}`;
+}
+
+function getAssetsMetaKey(folderId: string): string {
+  return `${STORAGE_KEY_PREFIX}_assets_meta_${getUserNamespace()}_${folderId}`;
 }
 
 function getThumbnailKey(asset: LocalAsset): string {
@@ -323,6 +329,11 @@ type UploadRecord = {
   provider_id?: string;
   asset_id?: number;
   uploaded_at?: number;
+};
+
+type FolderAssetCacheMeta = {
+  cachedAt: number;
+  assetCount: number;
 };
 
 async function getUploadRecords(): Promise<Record<string, UploadRecord>> {
@@ -543,7 +554,14 @@ async function cacheAssets(id: string, assets: LocalAsset[]): Promise<void> {
       lastUploadNote: a.last_upload_note,
       lastUploadAt: a.last_upload_at,
     }));
-    await idbSet(getAssetsKey(id), meta);
+    const now = Date.now();
+    await Promise.all([
+      idbSet(getAssetsKey(id), meta),
+      idbSet<FolderAssetCacheMeta>(getAssetsMetaKey(id), {
+        cachedAt: now,
+        assetCount: meta.length,
+      }),
+    ]);
   } catch (e) {
     console.warn('cacheAssets error', e);
   }
@@ -681,15 +699,28 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
         const ok = permResults.filter((r) => r.granted).map((r) => r.folder);
         // Load all folder caches in parallel, then batch-set assets in one update
         // so the UI doesn't stagger folder-by-folder.
+        const now = Date.now();
         const cacheResults = await Promise.all(
-          ok.map(async (f) => ({ folder: f, items: await loadCachedAssets(f.id) })),
+          ok.map(async (f) => {
+            const [items, cacheMeta] = await Promise.all([
+              loadCachedAssets(f.id),
+              idbGet<FolderAssetCacheMeta>(getAssetsMetaKey(f.id)),
+            ]);
+            return { folder: f, items, cacheMeta };
+          }),
         );
 
         const allCachedAssets: Record<string, LocalAsset> = {};
         const foldersNeedingScan: FolderEntry[] = [];
-        for (const { folder, items } of cacheResults) {
+        const staleCachedFolderIds: string[] = [];
+        for (const { folder, items, cacheMeta } of cacheResults) {
           if (items.length > 0) {
             for (const a of items) allCachedAssets[a.key] = a;
+            const cachedAt = cacheMeta?.cachedAt ?? 0;
+            const isStale = !cachedAt || (now - cachedAt) >= BACKGROUND_REFRESH_MIN_INTERVAL_MS;
+            if (isStale) {
+              staleCachedFolderIds.push(folder.id);
+            }
           } else {
             foldersNeedingScan.push(folder);
           }
@@ -700,11 +731,21 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
           set(s => ({ assets: { ...s.assets, ...allCachedAssets } }));
         }
 
-        // Folders that had a cache get a silent background refresh
-        for (const { folder, items } of cacheResults) {
-          if (items.length > 0) {
-            void get().refreshFolder(folder.id, true);
-          }
+        // Refresh stale cached folders in the background, sequentially.
+        // Avoid kicking a full disk walk for every cached folder on startup.
+        if (staleCachedFolderIds.length > 0) {
+          window.setTimeout(() => {
+            void (async () => {
+              for (const folderId of staleCachedFolderIds) {
+                try {
+                  await get().refreshFolder(folderId, true);
+                } catch (e) {
+                  console.warn('Background local folder refresh failed', folderId, e);
+                }
+                await yieldToMain();
+              }
+            })();
+          }, BACKGROUND_REFRESH_START_DELAY_MS);
         }
 
         // Folders without cache need a full scan (parallel, then single merge)
@@ -806,7 +847,10 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     }
     // Remove cached assets for this folder
     try {
-      await idbStore.remove(getAssetsKey(id));
+      await Promise.all([
+        idbStore.remove(getAssetsKey(id)),
+        idbStore.remove(getAssetsMetaKey(id)),
+      ]);
     } catch (e) {
       console.warn('Failed to remove cached assets', e);
     }
