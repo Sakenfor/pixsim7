@@ -16,8 +16,16 @@ This repository uses a unified test runner at `scripts/tests/run.py` to route ba
   - project runtime metadata canonicalization and domain contracts
 - `pixsim7/backend/tests/`
   - canonical backend suite root (api/services/domain/integration)
+- `pixsim7/backend/tests/test_prompt_primitive_projection.py`
+  - prompt parser shadow-mode primitive projection behavior
+- `pixsim7/backend/tests/test_primitive_projection_edge_cases.py`
+  - primitive projection false-positive resistance and edge-case regression coverage
+- `pixsim7/backend/tests/test_block_fit_scoring_controlled_schema.py`
+  - controlled-schema scoring behavior for prompt block fit ranking
 - `scripts/seeds/game/bananza/tests/`
   - Bananza CLI/watch/sync/runtime preference behavior
+- `pixsim7/backend/scripts/eval_primitive_projection.py`
+  - corpus-level shadow-mode evaluation script (precision/coverage diagnostics)
 - `apps/main/src/lib/game/projectBundle/__tests__/`
   - frontend project bundle runtime/lifecycle/migration behavior
 - `pixsim7/backend/tests/api/test_codegen_admin_endpoints.py`
