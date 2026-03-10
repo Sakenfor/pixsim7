@@ -38,6 +38,25 @@ export const GESTURE_ACTIONS = [
   { id: 'reject', label: 'Reject', actionKey: 'onReject' },
 ] as const satisfies readonly GestureActionDef[];
 
+// ─── Viewer-specific gesture actions ─────────────────────────────────────────
+
+export interface ViewerGestureActionDef {
+  readonly id: string;
+  readonly label: string;
+}
+
+export const VIEWER_GESTURE_ACTIONS = [
+  { id: 'navigatePrev', label: 'Previous Asset' },
+  { id: 'navigateNext', label: 'Next Asset' },
+  { id: 'closeViewer', label: 'Close Viewer' },
+  { id: 'toggleFitMode', label: 'Toggle Fit' },
+] as const satisfies readonly ViewerGestureActionDef[];
+
+export type ViewerGestureActionId = (typeof VIEWER_GESTURE_ACTIONS)[number]['id'];
+
+/** All actions available in viewer context (shared + viewer-specific). */
+export const ALL_VIEWER_ACTIONS = [...GESTURE_ACTIONS, ...VIEWER_GESTURE_ACTIONS] as const;
+
 export type GestureActionId = (typeof GESTURE_ACTIONS)[number]['id'];
 
 /**

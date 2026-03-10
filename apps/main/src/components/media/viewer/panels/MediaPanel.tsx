@@ -8,14 +8,16 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
+import { useViewerGestures, GestureOverlay, GestureCancelOverlay, type ViewerGestureContext } from '@lib/gestures';
 import { OverlayContainer } from '@lib/ui/overlay';
 
 import { useAssetViewerStore } from '@features/assets';
+import { toggleFavoriteTag } from '@features/assets/lib/favoriteTag';
 import { useAssetRegionStore, useCaptureRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
 
 import { useOverlayWidgetsForAsset } from '../../hooks/useOverlayWidgetsForAsset';
 import { useProvideRegionAnnotations } from '../capabilities';
-import { useMediaOverlayHost, DefaultLayerSidebar } from '../overlays';
+import { useMediaOverlayHost, useMediaOverlayRegistry, DefaultLayerSidebar } from '../overlays';
 import { useMaskOverlayStore } from '../overlays/builtins/maskOverlayStore';
 import type { ViewerPanelContext } from '../types';
 
@@ -109,7 +111,6 @@ export function MediaPanel({ context }: MediaPanelProps) {
   const hasViewerOverlay = !!assetModel;
 
   const {
-    overlays: availableOverlays,
     activeOverlay,
     effectiveOverlayMode,
     toggleOverlay,
@@ -120,12 +121,32 @@ export function MediaPanel({ context }: MediaPanelProps) {
     setOverlayMode,
     toggleOverlayMode,
   });
+  const { overlays: registeredOverlays } = useMediaOverlayRegistry();
 
   const annotationMode = activeOverlay?.id === 'annotate';
   const ActiveToolbar = activeOverlay?.Toolbar;
   const ActiveSidebar = activeOverlay?.Sidebar;
   const ActiveMain = activeOverlay?.Main;
   const activeOverlayId = activeOverlay?.id ?? null;
+  const toolStripOverlays = useMemo(
+    () =>
+      registeredOverlays.map((overlay) => {
+        const available = asset
+          ? (overlay.isAvailable ? overlay.isAvailable(asset) : true)
+          : false;
+
+        return {
+          ...overlay,
+          disabled: !available,
+          disabledReason: available
+            ? undefined
+            : overlay.id === 'mask'
+              ? 'Image assets only'
+              : 'Unavailable for this asset',
+        };
+      }),
+    [registeredOverlays, asset],
+  );
 
   // Frame capture hook
   const { isCapturing, captureFrame } = useFrameCapture({
@@ -212,6 +233,28 @@ export function MediaPanel({ context }: MediaPanelProps) {
     selectRegion(null);
   }, [asset?.id, selectRegion]);
 
+  // ─── Viewer gestures (viewing mode only) ────────────────────────────────────
+
+  const toggleFitModeCb = useCallback(() => {
+    setFitMode((prev) => (prev === 'contain' ? 'actual' : 'contain'));
+  }, []);
+
+  const toggleFavoriteCb = useCallback(() => {
+    const model = asset?._assetModel;
+    if (model) toggleFavoriteTag(model);
+  }, [asset?._assetModel]);
+
+  const viewerGestureCtx = useMemo<ViewerGestureContext>(() => ({
+    navigatePrev,
+    navigateNext,
+    closeViewer: resolvedContext.closeViewer,
+    toggleFitMode: toggleFitModeCb,
+    toggleFavorite: toggleFavoriteCb,
+  }), [navigatePrev, navigateNext, resolvedContext.closeViewer, toggleFitModeCb, toggleFavoriteCb]);
+
+  const viewerGesture = useViewerGestures(viewerGestureCtx);
+  const gesturesActive = viewerGesture.enabled && effectiveOverlayMode === 'none';
+
   if (!asset) {
     return (
       <div className="h-full flex items-center justify-center text-neutral-500">
@@ -236,63 +279,84 @@ export function MediaPanel({ context }: MediaPanelProps) {
       <div className="flex-1 min-h-0 flex">
         {/* Tool strip */}
         <ViewerToolStrip
-          overlayTools={availableOverlays}
+          overlayTools={toolStripOverlays}
           overlayMode={effectiveOverlayMode}
           onToggleOverlay={handleToggleOverlay}
           onMoveMode={handleMoveMode}
           isMoveActive={isMoveActive}
         />
 
-        {/* Media/overlay display */}
-        {hasViewerOverlay ? (
-          <OverlayContainer
-            configuration={viewerOverlay.overlayConfig}
-            data={viewerOverlay.overlayData}
-            className="flex-1 min-w-0 relative flex flex-col"
-          >
-            {ActiveMain && (
-              <div className="absolute inset-0 z-10">
-                <ActiveMain
-                  asset={asset}
-                  settings={settings}
-                  onCaptureFrame={captureFrame}
-                  captureDisabled={isCapturing}
-                  mediaDimensions={mediaDimensions}
-                />
-              </div>
-            )}
-            <MediaDisplay
-              asset={asset}
-              settings={settings}
-              fitMode={fitMode}
-              zoom={zoom}
-              videoRef={videoRef}
-              imageRef={imageRef}
+        {/* Media/overlay display with gesture support */}
+        <div
+          className="flex-1 min-w-0 relative flex flex-col"
+          {...(gesturesActive ? viewerGesture.gestureHandlers : {})}
+        >
+          {hasViewerOverlay ? (
+            <OverlayContainer
+              configuration={viewerOverlay.overlayConfig}
+              data={viewerOverlay.overlayData}
+              className="flex-1 min-h-0 relative flex flex-col"
+            >
+              {ActiveMain && (
+                <div className="absolute inset-0 z-10">
+                  <ActiveMain
+                    asset={asset}
+                    settings={settings}
+                    onCaptureFrame={captureFrame}
+                    captureDisabled={isCapturing}
+                    mediaDimensions={mediaDimensions}
+                  />
+                </div>
+              )}
+              <MediaDisplay
+                asset={asset}
+                settings={settings}
+                fitMode={fitMode}
+                zoom={zoom}
+                videoRef={videoRef}
+                imageRef={imageRef}
+              />
+            </OverlayContainer>
+          ) : (
+            <>
+              {ActiveMain && (
+                <div className="absolute inset-0 z-10">
+                  <ActiveMain
+                    asset={asset}
+                    settings={settings}
+                    onCaptureFrame={captureFrame}
+                    captureDisabled={isCapturing}
+                    mediaDimensions={mediaDimensions}
+                  />
+                </div>
+              )}
+              <MediaDisplay
+                asset={asset}
+                settings={settings}
+                fitMode={fitMode}
+                zoom={zoom}
+                videoRef={videoRef}
+                imageRef={imageRef}
+              />
+            </>
+          )}
+          {/* Gesture feedback overlays */}
+          {gesturesActive && viewerGesture.isCommitted && viewerGesture.actionId && viewerGesture.direction && (
+            <GestureOverlay
+              direction={viewerGesture.direction}
+              actionId={viewerGesture.actionId}
+              count={viewerGesture.count}
+              duration={viewerGesture.duration}
+              durationUnit={viewerGesture.durationUnit}
+              tierIndex={viewerGesture.tierIndex}
+              totalTiers={viewerGesture.totalTiers}
+              isCascade={viewerGesture.isCascade}
             />
-          </OverlayContainer>
-        ) : (
-          <div className="flex-1 min-w-0 relative flex flex-col">
-            {ActiveMain && (
-              <div className="absolute inset-0 z-10">
-                <ActiveMain
-                  asset={asset}
-                  settings={settings}
-                  onCaptureFrame={captureFrame}
-                  captureDisabled={isCapturing}
-                  mediaDimensions={mediaDimensions}
-                />
-              </div>
-            )}
-            <MediaDisplay
-              asset={asset}
-              settings={settings}
-              fitMode={fitMode}
-              zoom={zoom}
-              videoRef={videoRef}
-              imageRef={imageRef}
-            />
-          </div>
-        )}
+          )}
+          {gesturesActive && viewerGesture.isReturning && viewerGesture.returningActionLabel && (
+            <GestureCancelOverlay actionLabel={viewerGesture.returningActionLabel} />
+          )}
+        </div>
 
         {ActiveSidebar ? (
           <ActiveSidebar

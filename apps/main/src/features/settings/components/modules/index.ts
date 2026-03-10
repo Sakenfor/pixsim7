@@ -81,6 +81,7 @@
 import './ContextSettings';
 import './GenerationSettings';
 import './GesturesSettings';
+import './ViewerGesturesSettings';
 import './IconSettings';
 import './ThemeSettings';
 import './LibrarySettings';

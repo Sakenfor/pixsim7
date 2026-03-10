@@ -108,6 +108,7 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef, imageRe
           alt={asset.name}
           className={`${getFitClass()} rounded-lg`}
           style={{ transform: `scale(${zoom / 100})` }}
+          draggable={false}
         />
       )}
     </div>
