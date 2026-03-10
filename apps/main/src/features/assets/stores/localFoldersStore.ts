@@ -346,6 +346,7 @@ async function setUploadRecords(records: Record<string, UploadRecord>): Promise<
 
 // Chunked folder scanning - yields to main thread every N files for responsiveness
 const SCAN_CHUNK_SIZE = 50;  // Process this many files before yielding
+const SCAN_REUSE_METADATA_VERIFY_EVERY = 250; // sample reused entries for drift detection
 
 // Helper to yield to main thread
 function yieldToMain(): Promise<void> {
@@ -358,15 +359,28 @@ type ScanProgress = {
   currentPath: string;
 };
 
+type ScanMetadataMode = 'full' | 'reuse';
+
+type ScanOptions = {
+  /**
+   * - full: read each media file to collect fresh size/mtime metadata
+   * - reuse: reuse cached metadata for known keys; read from disk only for new keys
+   */
+  metadataMode?: ScanMetadataMode;
+  existingMetadataByKey?: Map<string, { size?: number; lastModified?: number }>;
+};
+
 async function scanFolderChunked(
   id: string,
   handle: DirHandle,
   onProgress?: (progress: ScanProgress) => void,
   depth = 5,
   prefix = '',
-  stats = { scanned: 0, found: 0 }
+  stats = { scanned: 0, found: 0 },
+  options?: ScanOptions,
 ): Promise<LocalAsset[]> {
   const out: LocalAsset[] = [];
+  const metadataMode = options?.metadataMode ?? 'full';
   try {
     // @ts-expect-error: for-await supported in handles
     for await (const [name, entry] of handle.entries()) {
@@ -375,25 +389,52 @@ async function scanFolderChunked(
 
       if (entry.kind === 'directory' && depth > 0) {
         // Recursively scan subdirectory
-        const subAssets = await scanFolderChunked(id, entry as DirHandle, onProgress, depth - 1, rel, stats);
+        const subAssets = await scanFolderChunked(
+          id,
+          entry as DirHandle,
+          onProgress,
+          depth - 1,
+          rel,
+          stats,
+          options,
+        );
         out.push(...subAssets);
       } else if (entry.kind === 'file') {
         const fh = entry as FileHandle;
         const kind = extKind(name);
         if (kind === 'other') continue; // filter to media only
 
+        const candidateId = `${id}:${rel}`;
         let size: number | undefined;
         let lastModified: number | undefined;
-        try {
-          const f = await fh.getFile();
-          size = f.size;
-          lastModified = f.lastModified;
-        } catch (error) {
-          console.warn('scanFolderChunked: unable to read file metadata', error);
+
+        // Reuse metadata for known keys during silent/background refreshes to
+        // avoid opening every file. New files still get metadata from disk.
+        const existingMeta = options?.existingMetadataByKey?.get(candidateId);
+        const canReuseExistingMeta = (
+          metadataMode === 'reuse' &&
+          typeof existingMeta?.size === 'number' &&
+          typeof existingMeta?.lastModified === 'number'
+        );
+        const shouldVerifyReusedMetadata = (
+          canReuseExistingMeta &&
+          stats.scanned % SCAN_REUSE_METADATA_VERIFY_EVERY === 0
+        );
+
+        if (canReuseExistingMeta && !shouldVerifyReusedMetadata) {
+          size = existingMeta?.size;
+          lastModified = existingMeta?.lastModified;
+        } else {
+          try {
+            const f = await fh.getFile();
+            size = f.size;
+            lastModified = f.lastModified;
+          } catch (error) {
+            console.warn('scanFolderChunked: unable to read file metadata', error);
+          }
         }
 
         // Create FolderCandidate (with legacy LocalAsset compatibility)
-        const candidateId = `${id}:${rel}`;
         const candidate: LocalAsset = {
           // AssetCandidate fields
           id: candidateId,
@@ -862,19 +903,47 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     const f = get().folders.find(x => x.id === id);
     if (!f) return;
 
+    const currentAssets = get().assets;
+    let existingMetadataByKey: Map<string, { size?: number; lastModified?: number }> | undefined;
+    if (silent) {
+      // Silent refresh runs on startup/background. Reuse cached metadata for
+      // unchanged keys to avoid costly getFile() per file.
+      existingMetadataByKey = new Map();
+      const folderPrefix = `${id}:`;
+      for (const [key, asset] of Object.entries(currentAssets)) {
+        if (!key.startsWith(folderPrefix)) continue;
+        existingMetadataByKey.set(key, {
+          size: asset.size,
+          lastModified: asset.lastModified,
+        });
+      }
+    }
+
     // Use chunked scanner - only show progress if not silent (background refresh)
     if (!silent) {
       set({ scanning: { folderId: id, scanned: 0, found: 0, currentPath: '' } });
     }
-    const items = await scanFolderChunked(f.id, f.handle, silent ? undefined : (progress) => {
-      set({ scanning: { folderId: id, ...progress } });
-    }, 5);
+    const items = await scanFolderChunked(
+      f.id,
+      f.handle,
+      silent
+        ? undefined
+        : (progress) => {
+            set({ scanning: { folderId: id, ...progress } });
+          },
+      5,
+      '',
+      { scanned: 0, found: 0 },
+      {
+        metadataMode: silent ? 'reuse' : 'full',
+        existingMetadataByKey,
+      },
+    );
     if (!silent) {
       set({ scanning: null });
     }
 
     // Preserve upload history for any assets that already exist in state
-    const currentAssets = get().assets;
     const merged = items.map((item) => {
       const existing = currentAssets[item.key];
       if (!existing) return item;
