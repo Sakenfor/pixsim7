@@ -3,7 +3,7 @@
 Last updated: 2026-03-10
 Owner: prompt-tool module lane
 Status: in progress
-Stage: phase_2_complete_phase_3_pending
+Stage: phase_3_complete_phase_4_pending
 
 ## Goal
 
@@ -227,10 +227,11 @@ Exit criteria:
 - User can run and apply tool output in text mode and block mode.
 
 ### Phase 3: User-owned preset CRUD
+Status: completed (2026-03-10)
 
-- [ ] Add DB model/service for prompt tool presets.
-- [ ] Add user-owned CRUD endpoints.
-- [ ] Add scope filters (`mine`, `owner_user_id`, `include_public`) reusing existing patterns.
+- [x] Add DB model/service for prompt tool presets.
+- [x] Add user-owned CRUD endpoints.
+- [x] Add scope filters (`mine`, `owner_user_id`, `include_public`) reusing existing patterns.
 
 Exit criteria:
 
@@ -302,3 +303,4 @@ Keep this set minimal for first implementation; add more after telemetry.
 - 2026-03-10 (`uncommitted`): Added to `docs/plans/registry.yaml`; enabled `docs:plans:check` lint + CI integration.
 - 2026-03-10 (`uncommitted`): Aligned section naming/checklist style with `docs/plans/TEMPLATE.md`; marked Phase 0/1 complete.
 - 2026-03-10 (`uncommitted`): Completed Phase 2 PromptComposer integration (tools rail, execute preview, apply modes with undo-safe snapshots).
+- 2026-03-10 (`uncommitted`): Completed Phase 3 backend lane (DB model + migration, CRUD/list/execute ownership wiring, and prompt-tools API/service tests).

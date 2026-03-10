@@ -115,16 +115,19 @@ plans:
   - id: prompt-tool-module
     path: docs/plans/active/prompt-tool-module-plan.md
     status: active
-    stage: phase_2_complete_phase_3_pending
+    stage: phase_3_complete_phase_4_pending
     owner: prompt-tool module lane
     last_updated: 2026-03-10
     code_paths:
       - apps/main/src/features/prompts/components/PromptComposer.tsx
       - apps/main/src/lib/api/promptTools.ts
       - pixsim7/backend/main/api/v1/prompt_tools.py
+      - pixsim7/backend/main/domain/prompt/tools.py
+      - pixsim7/backend/main/infrastructure/database/migrations/versions/20260310_0004_add_prompt_tool_presets.py
       - pixsim7/backend/main/routes/prompt_tools
       - pixsim7/backend/main/services/prompt/tools
       - pixsim7/backend/tests/api/test_prompt_tools_api.py
+      - pixsim7/backend/tests/services/prompt/test_prompt_tools_service.py
 
   - id: pseudo-3d-checkpoint-navigation
     path: docs/plans/active/pseudo-3d-checkpoint-navigation.md
