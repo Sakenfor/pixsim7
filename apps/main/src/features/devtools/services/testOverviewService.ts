@@ -63,8 +63,11 @@ const DAY_IN_MS = 86_400_000;
 
 const TEST_DOCS = [
   'docs/testing/TEST_OVERVIEW.md',
+  'docs/plans/prompt-primitive-projection-eval.md',
   'scripts/tests/README.md',
   'scripts/tests/run.py',
+  'pixsim7/backend/scripts/eval_primitive_projection.py',
+  'pixsim7/backend/scripts/eval_corpus.json',
   'pytest.ini',
 ];
 
