@@ -2,10 +2,10 @@
 
 Last updated: 2026-03-10
 Owner: prompt-tool module lane
-Status: active
-Stage: phase_0_phase_1
+Status: in progress
+Stage: phase_1_complete_phase_2_pending
 
-## 1) Goal
+## Goal
 
 Create a first-class "Prompt Tool" module that lets users run tool-like prompt operations (rewrite, blend, edit, transform) from raw text mode and block mode, while keeping outputs compatible with:
 
@@ -16,7 +16,7 @@ Create a first-class "Prompt Tool" module that lets users run tool-like prompt o
 
 This is a module-level architecture lane, not a one-off feature.
 
-## 2) Scope
+## Scope
 
 - In scope:
   - Prompt tool preset contract (catalog + execution I/O).
@@ -30,7 +30,21 @@ This is a module-level architecture lane, not a one-off feature.
   - Hard dependency on block mode for all users.
   - Generic plugin execution of arbitrary user code on backend.
 
-## 3) Decisions Already Settled
+## Current Baseline
+
+- Relevant files/endpoints/services:
+  - `apps/main/src/features/prompts/components/PromptComposer.tsx` (existing prompt editing entry)
+  - `apps/main/src/features/prompts/hooks/useShadowAnalysis.ts` (existing analyzer loop)
+  - `apps/main/src/features/prompts/lib/promptAnalysisCache.ts` (shared cache for prompt analysis)
+  - `apps/main/src/features/panels/domain/definitions/prompt-library-inspector/PromptLibraryInspectorPanel.tsx` (authoring/inspection surface)
+  - `apps/main/src/components/media/viewer/tools/viewerToolPresets.ts` (existing preset abstraction)
+  - `pixsim7/backend/main/api/v1/prompt_packs.py` (non-admin authoring baseline)
+  - `pixsim7/backend/main/api/v1/prompts/operations.py` (existing prompt operation surface)
+  - `pixsim7/backend/main/shared/schemas/guidance_plan.py` (guidance payload contract)
+  - `pixsim7/backend/main/services/ownership/user_owned.py` (owner/scope enforcement helpers)
+  - `pixsim7/backend/main/api/v1/analyzers.py` (review/workflow patterns)
+
+## Decisions Already Settled
 
 - Prompt tools should live as a reusable module, not hidden inside a single panel.
 - Non-admin users should be able to author/use their own prompt tool presets.
@@ -38,22 +52,7 @@ This is a module-level architecture lane, not a one-off feature.
 - Raw text prompt remains valid and first-class; block primitives are additive.
 - Tool runs should return normalized structured output, not provider-specific ad hoc blobs.
 
-## 4) Current Baseline (Code Anchors)
-
-| Area | File | Why it matters |
-| --- | --- | --- |
-| Prompt composer + text/blocks mode | `apps/main/src/features/prompts/components/PromptComposer.tsx` | Existing entry point for prompt editing and analysis |
-| Shadow analysis | `apps/main/src/features/prompts/hooks/useShadowAnalysis.ts` | Existing background analyzer loop |
-| Prompt analysis cache | `apps/main/src/features/prompts/lib/promptAnalysisCache.ts` | Shared cache path across text and blocks |
-| Prompt library panel | `apps/main/src/features/panels/domain/definitions/prompt-library-inspector/PromptLibraryInspectorPanel.tsx` | Existing authoring/inspection home |
-| Viewer tool preset contract | `apps/main/src/components/media/viewer/tools/viewerToolPresets.ts` | Existing preset abstraction to mirror, not reinvent |
-| Prompt pack authoring API | `pixsim7/backend/main/api/v1/prompt_packs.py` | Existing non-admin CUE draft/compile baseline |
-| Prompt analyze + prompt ops API | `pixsim7/backend/main/api/v1/prompts/operations.py` | Existing prompt operation surface |
-| Guidance plan schema | `pixsim7/backend/main/shared/schemas/guidance_plan.py` | Canonical provider-agnostic guidance payload |
-| Ownership helpers | `pixsim7/backend/main/services/ownership/user_owned.py` | Canonical list/write access resolution |
-| Ownership patterns in APIs | `pixsim7/backend/main/api/v1/analyzers.py` | Existing submit/approve/reject flow and scoped listing |
-
-## 5) Mandatory Pre-Implementation Audit
+## Mandatory Pre-Implementation Audit
 
 Before adding new prompt tool APIs or models, do a targeted reuse audit and include findings in the implementation PR:
 
@@ -71,7 +70,7 @@ Rule:
 - Do not introduce new owner/scope helper patterns until this audit confirms a gap.
 - Prefer extending shared helpers over endpoint-local owner logic.
 
-### Audit findings (March 10, 2026)
+### Audit findings (2026-03-10)
 
 - `apps/main/src/features/panels/domain/definitions/prompt-library-inspector/PromptLibraryInspectorPanel.tsx`
   - Current tabs are package/template/block/matrix/interactions inspection; there is no prompt tool execution lane yet.
@@ -86,9 +85,9 @@ Rule:
 - `pixsim7/backend/main/api/v1/analyzers.py`
   - Reused the scoped-list pattern (scope resolution first, then mapping to endpoint behavior) as the API baseline.
 
-## 6) Domain Contract (Proposed)
+## Domain Contract
 
-### 6.1 PromptToolPreset
+### PromptToolPreset
 
 ```ts
 interface PromptToolPreset {
@@ -103,7 +102,7 @@ interface PromptToolPreset {
 }
 ```
 
-### 6.2 PromptToolExecution
+### PromptToolExecution
 
 ```ts
 interface PromptToolExecutionRequest {
@@ -129,7 +128,7 @@ interface PromptToolExecutionResult {
 
 Key rule: `prompt_text` is always emitted so raw mode can consume results without requiring block mode.
 
-## 7) API Plan
+## API Plan
 
 Use `/api/v1/prompt-tools` as a focused module surface.
 
@@ -154,7 +153,7 @@ Policy notes:
 - Non-admin users can create/update their own presets.
 - Public/shared visibility only through workflow transitions.
 
-## 8) UI Plan
+## UI Plan
 
 Primary integration surfaces:
 
@@ -170,13 +169,9 @@ Apply flow:
    - raw prompt diff
    - optional block overlay preview
    - optional guidance patch preview
-4. User chooses apply mode:
-   - `replace_text`
-   - `append_text`
-   - `apply_overlay_only`
-   - `apply_all`
+4. User chooses apply mode: `replace_text`, `append_text`, `apply_overlay_only`, `apply_all`.
 
-## 9) Integration Map
+## Integration Map
 
 ```text
 [Viewer Tool Presets] --(masks/regions/assets)----+
@@ -195,36 +190,36 @@ Apply flow:
                                         [guidance_plan + composition_assets]
 ```
 
-## 10) Delivery Phases
+## Delivery Phases
 
 ### Phase 0: Contract and audit
-Status: [x] Completed (March 10, 2026)
+Status: completed (2026-03-10)
 
-- Complete pre-implementation audit and document reuse decisions.
-- Finalize `PromptToolPreset` and execution result contract.
-- Add API schema models only (no endpoint behavior change yet).
+- [x] Complete pre-implementation audit and document reuse decisions.
+- [x] Finalize `PromptToolPreset` and execution result contract.
+- [x] Add API schema models only (no endpoint behavior change yet).
 
 Exit criteria:
 
 - Contract is documented and used by both frontend and backend types.
 
 ### Phase 1: Builtin catalog + execute endpoint
-Status: [x] Completed (March 10, 2026)
+Status: completed (2026-03-10)
 
-- Implement builtin prompt tool registry with a small starter set.
-- Add `GET /prompt-tools/catalog`.
-- Add `POST /prompt-tools/execute` for builtin presets only.
-- Return normalized execution result shape.
+- [x] Implement builtin prompt tool registry with a small starter set.
+- [x] Add `GET /prompt-tools/catalog`.
+- [x] Add `POST /prompt-tools/execute` for builtin presets only.
+- [x] Return normalized execution result shape.
 
 Exit criteria:
 
-- PromptComposer can execute at least one builtin tool and preview output.
+- Backend routes and tests validate catalog + execute contract for builtin presets.
 
 ### Phase 2: PromptComposer integration
 
-- Add tools rail to PromptComposer.
-- Add result preview + apply modes.
-- Preserve current undo/redo behavior and history snapshots after apply.
+- [ ] Add tools rail to PromptComposer.
+- [ ] Add result preview + apply modes.
+- [ ] Preserve current undo/redo behavior and history snapshots after apply.
 
 Exit criteria:
 
@@ -232,9 +227,9 @@ Exit criteria:
 
 ### Phase 3: User-owned preset CRUD
 
-- Add DB model/service for prompt tool presets.
-- Add user-owned CRUD endpoints.
-- Add scope filters (`mine`, `owner_user_id`, `include_public`) reusing existing patterns.
+- [ ] Add DB model/service for prompt tool presets.
+- [ ] Add user-owned CRUD endpoints.
+- [ ] Add scope filters (`mine`, `owner_user_id`, `include_public`) reusing existing patterns.
 
 Exit criteria:
 
@@ -242,9 +237,9 @@ Exit criteria:
 
 ### Phase 4: Submit/approve/share workflow
 
-- Add review status transitions (`DRAFT -> SUBMITTED -> APPROVED/REJECTED`).
-- Add moderator/admin actions and audit trail.
-- Expose shared presets in catalog with badges.
+- [ ] Add review status transitions (`DRAFT -> SUBMITTED -> APPROVED/REJECTED`).
+- [ ] Add moderator/admin actions and audit trail.
+- [ ] Expose shared presets in catalog with badges.
 
 Exit criteria:
 
@@ -252,15 +247,15 @@ Exit criteria:
 
 ### Phase 5: Cross-surface runtime wiring
 
-- Wire prompt tools to viewer-origin context (`mask_asset`, regions, composition assets).
-- Ensure `guidance_patch` and `composition_assets_patch` merge cleanly into generation run_context.
-- Add one real "tool-style" flow (for example masked edit transform) end to end.
+- [ ] Wire prompt tools to viewer-origin context (`mask_asset`, regions, composition assets).
+- [ ] Ensure `guidance_patch` and `composition_assets_patch` merge cleanly into generation run_context.
+- [ ] Add one real "tool-style" flow (for example masked edit transform) end to end.
 
 Exit criteria:
 
 - Same preset can run from prompt panel and viewer-linked flow with consistent output contract.
 
-## 11) Suggested Builtin Presets (Starter)
+## Suggested Builtin Presets
 
 - `rewrite/style-shift`: tone/style transform on raw prompt text.
 - `compose/reference-merge`: merge prompt text with up to N composition assets.
@@ -269,7 +264,7 @@ Exit criteria:
 
 Keep this set minimal for first implementation; add more after telemetry.
 
-## 12) Testing and Observability
+## Testing and Observability
 
 - Backend unit tests:
   - catalog scope filtering
@@ -284,7 +279,7 @@ Keep this set minimal for first implementation; add more after telemetry.
   - emit `prompt_tool_executed` events with preset id, duration, apply mode
   - track error classes (`validation_error`, `execution_error`, `permission_denied`)
 
-## 13) Risks and Mitigations
+## Risks
 
 - Risk: duplicated abstractions with viewer tools and analyzer presets.
   - Mitigation: keep prompt tools focused on prompt transformation outputs and reuse owner/workflow helpers.
@@ -293,7 +288,7 @@ Keep this set minimal for first implementation; add more after telemetry.
 - Risk: UI overload in PromptComposer.
   - Mitigation: default collapsed tools rail and progressive disclosure.
 
-## 14) First Sprint Backlog (Suggested)
+## First Sprint Backlog
 
 1. Audit and contract finalization PR.
 2. Backend catalog + execute (builtin-only) PR.
@@ -304,3 +299,4 @@ Keep this set minimal for first implementation; add more after telemetry.
 
 - 2026-03-10 (`uncommitted`): Normalized metadata fields to template contract (`Last updated`, `Owner`, `Status`, `Stage`).
 - 2026-03-10 (`uncommitted`): Added to `docs/plans/registry.yaml`; enabled `docs:plans:check` lint + CI integration.
+- 2026-03-10 (`uncommitted`): Aligned section naming/checklist style with `docs/plans/TEMPLATE.md`; marked Phase 0/1 complete.

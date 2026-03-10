@@ -115,12 +115,12 @@ plans:
   - id: prompt-tool-module
     path: docs/plans/active/prompt-tool-module-plan.md
     status: active
-    stage: phase_0_phase_1
+    stage: phase_1_complete_phase_2_pending
     owner: prompt-tool module lane
     last_updated: 2026-03-10
     code_paths:
-      - apps/main/src/features/prompts
       - pixsim7/backend/main/api/v1/prompt_tools.py
+      - pixsim7/backend/main/routes/prompt_tools
       - pixsim7/backend/main/services/prompt/tools
       - pixsim7/backend/tests/api/test_prompt_tools_api.py
 
