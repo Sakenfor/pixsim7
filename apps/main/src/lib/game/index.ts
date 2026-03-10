@@ -96,6 +96,9 @@ export {
   useRelationshipTiers,
   useIntimacyLevels,
   usePluginConfig,
+  ROOM_NAVIGATION_TRANSITION_CACHE_META_KEY,
+  buildRoomNavigationTransitionCacheKey,
+  resolveRoomNavigationTransition,
 } from './runtime';
 export type {
   UseGameRuntimeReturn,
@@ -122,6 +125,11 @@ export type {
   BeforeTickHook,
   OnTickHook,
   AfterTickHook,
+  ResolveRoomNavigationTransitionRequest,
+  ResolveRoomNavigationTransitionResult,
+  RoomNavigationTransitionCache,
+  RoomNavigationTransitionCacheEntry,
+  RoomNavigationTransitionResolveStatus,
 } from './runtime';
 
 // Project bundles

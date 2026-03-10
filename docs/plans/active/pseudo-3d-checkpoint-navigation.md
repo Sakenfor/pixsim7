@@ -141,25 +141,25 @@ Acceptance:
 
 ## Phase 3: Pseudo-3D Viewer
 
-- [ ] Build checkpoint viewer surface (cylindrical pano and quad direction mode).
-- [ ] Add yaw/pitch look controls and hotspot selection.
-- [ ] Add directional movement UI fallback if hotspots absent.
-- [ ] Add lightweight loading/fallback states.
+- [x] Build checkpoint viewer surface (cylindrical pano and quad direction mode).
+- [x] Add yaw/pitch look controls and hotspot selection.
+- [x] Add directional movement UI fallback if hotspots absent.
+- [x] Add lightweight loading/fallback states.
 
 Acceptance:
 
-- [ ] User can traverse authored checkpoint graph locally without generation.
+- [x] User can traverse authored checkpoint graph locally without generation.
 
 ## Phase 4: Transition Generation + Cache
 
-- [ ] Add transition resolver service (cache lookup, enqueue, poll).
-- [ ] Define generation payload template from edge/checkpoint context.
-- [ ] Persist generated transition clip references against cache key.
-- [ ] Add timeout/degraded mode fallback (crossfade if job fails).
+- [x] Add transition resolver service (cache lookup, enqueue, poll).
+- [x] Define generation payload template from edge/checkpoint context.
+- [x] Persist generated transition clip references against cache key.
+- [x] Add timeout/degraded mode fallback (crossfade if job fails).
 
 Acceptance:
 
-- [ ] First traversal can generate; repeated traversal reuses cached clip.
+- [x] First traversal can generate; repeated traversal reuses cached clip.
 
 ## Phase 5: Scene Plan Integration
 
@@ -228,3 +228,13 @@ Acceptance:
    - new `Room Nav (Beta)` tab and `RoomNavigationEditor` with checkpoint CRUD, view config editing, and edge CRUD
    - location metadata save path reuses `PATCH /game/locations/{id}` via `saveGameLocationMeta`
    - existing `2D Layout` tab and `NpcSlotEditor` flow remain unchanged.
+8. Added Phase 3 local traversal preview in `RoomNavigationEditor`:
+   - checkpoint preview surface for `cylindrical_pano` and `quad_directions` modes
+   - yaw/pitch controls and quad turn-left/turn-right controls
+   - movement buttons from authored move hotspots and outgoing edges
+   - traversal log and checkpoint picker for local, generation-free traversal testing.
+9. Added Phase 4 transition resolver wiring:
+   - reusable `roomNavigationTransitions` runtime helper with deterministic cache keys
+   - cache-first resolution using `meta.room_navigation_transition_cache`
+   - generation enqueue/poll via existing generations API on cache miss
+   - persisted clip references (`asset:<id>`) for reuse and crossfade fallback on timeout/failure.

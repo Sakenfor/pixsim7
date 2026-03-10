@@ -104,3 +104,17 @@ export {
   useIntimacyLevels,
   usePluginConfig,
 } from '@/hooks/useWorldConfig';
+
+// Room navigation transition resolver (Phase 4)
+export {
+  ROOM_NAVIGATION_TRANSITION_CACHE_META_KEY,
+  buildRoomNavigationTransitionCacheKey,
+  resolveRoomNavigationTransition,
+} from './roomNavigationTransitions';
+export type {
+  ResolveRoomNavigationTransitionRequest,
+  ResolveRoomNavigationTransitionResult,
+  RoomNavigationTransitionCache,
+  RoomNavigationTransitionCacheEntry,
+  RoomNavigationTransitionResolveStatus,
+} from './roomNavigationTransitions';
