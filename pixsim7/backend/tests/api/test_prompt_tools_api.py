@@ -13,12 +13,18 @@ from pixsim7.backend.main.api.v1.prompt_tools import (
     PromptToolCatalogScope,
     PromptToolExecuteRequest,
     PromptToolPresetCreateRequest,
+    PromptToolPresetRejectRequest,
+    approve_prompt_tool_preset_route,
     create_prompt_tool_preset_route,
     delete_prompt_tool_preset_route,
     execute_prompt_tool,
     get_prompt_tool_preset_route,
     list_prompt_tool_catalog_route,
+    list_prompt_tool_presets_route,
+    reject_prompt_tool_preset_route,
+    submit_prompt_tool_preset_route,
 )
+from pixsim7.backend.main.domain.enums import ReviewStatus
 from pixsim7.backend.main.domain.prompt import PromptToolPreset
 from pixsim7.backend.main.services.prompt.tools import PromptToolPresetRecord
 
@@ -49,6 +55,7 @@ def _preset_row(
     category: str = "rewrite",
     enabled: bool = True,
     is_public: bool = False,
+    status: ReviewStatus = ReviewStatus.DRAFT,
 ) -> PromptToolPreset:
     now = datetime.now(timezone.utc)
     return PromptToolPreset(
@@ -60,6 +67,11 @@ def _preset_row(
         category=category,
         enabled=enabled,
         is_public=is_public,
+        status=status,
+        approved_by_user_id=None,
+        approved_at=None,
+        rejected_at=None,
+        rejection_reason=None,
         requires=["text"],
         defaults={"mode": "append"},
         owner_payload={"username": "alice" if owner_user_id == 7 else "owner"},
@@ -272,7 +284,6 @@ async def test_create_preset_route_commits_and_returns_payload(
             enabled=True,
             requires=["text"],
             defaults={"mode": "append"},
-            is_public=False,
         ),
         current_user=_user(user_id=7, username="alice"),
         db=db,
@@ -283,6 +294,7 @@ async def test_create_preset_route_commits_and_returns_payload(
     assert response.id == row.preset_id
     assert response.owner_user_id == 7
     assert response.owner_username == "alice"
+    assert response.status == "draft"
 
 
 @pytest.mark.asyncio
@@ -339,3 +351,93 @@ async def test_delete_preset_route_not_found_returns_404(
         )
     assert exc.value.status_code == 404
     assert db.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_submit_preset_route_commits_and_sets_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _preset_row(status=ReviewStatus.PENDING)
+
+    async def _submit_stub(**kwargs):
+        return row
+
+    monkeypatch.setattr(prompt_tools_module, "submit_prompt_tool_preset", _submit_stub)
+    db = _DummyDB()
+
+    response = await submit_prompt_tool_preset_route(
+        entry_id=row.id,
+        current_user=_user(user_id=7, username="alice"),
+        db=db,
+    )
+
+    assert db.commits == 1
+    assert response.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_approve_preset_route_commits_and_sets_approved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _preset_row(status=ReviewStatus.APPROVED, is_public=True)
+    row.approved_by_user_id = 1
+    row.approved_at = datetime.now(timezone.utc)
+
+    async def _approve_stub(**kwargs):
+        return row
+
+    monkeypatch.setattr(prompt_tools_module, "approve_prompt_tool_preset", _approve_stub)
+    db = _DummyDB()
+
+    response = await approve_prompt_tool_preset_route(
+        entry_id=row.id,
+        current_admin=_user(user_id=1, username="admin", is_admin=True),
+        db=db,
+    )
+
+    assert db.commits == 1
+    assert response.status == "approved"
+    assert response.is_public is True
+    assert response.approved_by_user_id == 1
+
+
+@pytest.mark.asyncio
+async def test_reject_preset_route_commits_and_sets_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _preset_row(status=ReviewStatus.REJECTED, is_public=False)
+    row.rejected_at = datetime.now(timezone.utc)
+    row.rejection_reason = "Missing validation"
+
+    async def _reject_stub(**kwargs):
+        return row
+
+    monkeypatch.setattr(prompt_tools_module, "reject_prompt_tool_preset", _reject_stub)
+    db = _DummyDB()
+
+    response = await reject_prompt_tool_preset_route(
+        entry_id=row.id,
+        request=PromptToolPresetRejectRequest(reason="Missing validation"),
+        current_admin=_user(user_id=1, username="admin", is_admin=True),
+        db=db,
+    )
+
+    assert db.commits == 1
+    assert response.status == "rejected"
+    assert response.rejection_reason == "Missing validation"
+
+
+@pytest.mark.asyncio
+async def test_list_presets_route_rejects_invalid_status() -> None:
+    with pytest.raises(HTTPException) as exc:
+        await list_prompt_tool_presets_route(
+            current_user=_user(user_id=7, username="alice"),
+            db=_DummyDB(),
+            owner_user_id=None,
+            mine=True,
+            is_public=None,
+            status="bad-status",
+            limit=50,
+            offset=0,
+        )
+    assert exc.value.status_code == 400

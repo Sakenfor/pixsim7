@@ -9,10 +9,12 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, DatabaseSession
+from pixsim7.backend.main.domain.enums import ReviewStatus
 from pixsim7.backend.main.domain.prompt import PromptToolPreset
 from pixsim7.backend.main.services.ownership.user_owned import resolve_user_owner
 from pixsim7.backend.main.services.prompt.tools import (
+    approve_prompt_tool_preset,
     assert_can_execute_prompt_tool,
     create_prompt_tool_preset,
     delete_prompt_tool_preset,
@@ -21,7 +23,9 @@ from pixsim7.backend.main.services.prompt.tools import (
     list_prompt_tool_catalog,
     list_prompt_tool_presets,
     normalize_prompt_tool_execution_result,
+    reject_prompt_tool_preset,
     resolve_prompt_tool_preset,
+    submit_prompt_tool_preset,
     update_prompt_tool_preset,
 )
 from pixsim7.backend.main.services.prompt.tools.types import PromptToolPresetRecord
@@ -85,7 +89,6 @@ class PromptToolPresetCreateRequest(BaseModel):
     enabled: bool = Field(default=True)
     requires: List[str] = Field(default_factory=list)
     defaults: Dict[str, Any] = Field(default_factory=dict)
-    is_public: bool = Field(default=False)
 
 
 class PromptToolPresetUpdateRequest(BaseModel):
@@ -96,12 +99,20 @@ class PromptToolPresetUpdateRequest(BaseModel):
     enabled: Optional[bool] = Field(default=None)
     requires: Optional[List[str]] = Field(default=None)
     defaults: Optional[Dict[str, Any]] = Field(default=None)
-    is_public: Optional[bool] = Field(default=None)
+
+
+class PromptToolPresetRejectRequest(BaseModel):
+    reason: Optional[str] = Field(default=None)
 
 
 class PromptToolPresetCrudResponse(PromptToolPresetResponse):
     entry_id: UUID
+    status: str
     is_public: bool
+    approved_by_user_id: Optional[int] = None
+    approved_at: Optional[datetime] = None
+    rejected_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -134,16 +145,25 @@ async def list_prompt_tool_presets_route(
     owner_user_id: Optional[int] = Query(None),
     mine: bool = Query(True, description="Return current user's presets"),
     is_public: Optional[bool] = Query(None),
+    status: Optional[str] = Query(None, description="Filter review status"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> List[PromptToolPresetCrudResponse]:
     """List DB-backed prompt tool presets with owner/public scope filters."""
+    status_enum: Optional[ReviewStatus] = None
+    if status:
+        try:
+            status_enum = ReviewStatus(status.strip().lower())
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status '{status}'")
+
     rows = await list_prompt_tool_presets(
         current_user=current_user,
         db=db,
         owner_user_id=owner_user_id,
         mine=mine,
         is_public=is_public,
+        status=status_enum,
         limit=limit,
         offset=offset,
     )
@@ -167,7 +187,6 @@ async def create_prompt_tool_preset_route(
         enabled=request.enabled,
         requires=request.requires,
         defaults=request.defaults,
-        is_public=request.is_public,
     )
     await db.commit()
     return _build_preset_crud_response(row, current_user=current_user)
@@ -212,7 +231,6 @@ async def update_prompt_tool_preset_route(
         enabled=request.enabled,
         requires=request.requires,
         defaults=request.defaults,
-        is_public=request.is_public,
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Prompt tool preset not found")
@@ -241,6 +259,62 @@ async def delete_prompt_tool_preset_route(
         raise HTTPException(status_code=404, detail="Prompt tool preset not found")
     await db.commit()
     return Response(status_code=204)
+
+
+@router.post("/presets/{entry_id}/submit", response_model=PromptToolPresetCrudResponse)
+async def submit_prompt_tool_preset_route(
+    entry_id: UUID,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+) -> PromptToolPresetCrudResponse:
+    """Submit a prompt tool preset for admin review."""
+    row = await submit_prompt_tool_preset(
+        current_user=current_user,
+        db=db,
+        entry_id=entry_id,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Prompt tool preset not found")
+    await db.commit()
+    return _build_preset_crud_response(row, current_user=current_user)
+
+
+@router.post("/presets/{entry_id}/approve", response_model=PromptToolPresetCrudResponse)
+async def approve_prompt_tool_preset_route(
+    entry_id: UUID,
+    current_admin: CurrentAdminUser,
+    db: DatabaseSession,
+) -> PromptToolPresetCrudResponse:
+    """Approve a prompt tool preset (admin only)."""
+    row = await approve_prompt_tool_preset(
+        current_user=current_admin,
+        db=db,
+        entry_id=entry_id,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Prompt tool preset not found")
+    await db.commit()
+    return _build_preset_crud_response(row, current_user=current_admin)
+
+
+@router.post("/presets/{entry_id}/reject", response_model=PromptToolPresetCrudResponse)
+async def reject_prompt_tool_preset_route(
+    entry_id: UUID,
+    request: PromptToolPresetRejectRequest,
+    current_admin: CurrentAdminUser,
+    db: DatabaseSession,
+) -> PromptToolPresetCrudResponse:
+    """Reject a prompt tool preset (admin only)."""
+    row = await reject_prompt_tool_preset(
+        current_user=current_admin,
+        db=db,
+        entry_id=entry_id,
+        reason=request.reason,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Prompt tool preset not found")
+    await db.commit()
+    return _build_preset_crud_response(row, current_user=current_admin)
 
 
 @router.post(
@@ -319,6 +393,7 @@ def _build_preset_crud_response(
         created_by=created_by,
     )
     source = "shared" if row.is_public and row.owner_user_id != getattr(current_user, "id", None) else "user"
+    row_status = row.status.value if isinstance(row.status, ReviewStatus) else str(row.status or "")
     return PromptToolPresetCrudResponse(
         entry_id=row.id,
         id=row.preset_id,
@@ -332,7 +407,12 @@ def _build_preset_crud_response(
         owner_user_id=owner.get("owner_user_id"),
         owner_ref=owner.get("owner_ref"),
         owner_username=owner.get("owner_username"),
+        status=row_status,
         is_public=bool(row.is_public),
+        approved_by_user_id=row.approved_by_user_id,
+        approved_at=row.approved_at,
+        rejected_at=row.rejected_at,
+        rejection_reason=row.rejection_reason,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )

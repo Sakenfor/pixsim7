@@ -7,7 +7,9 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pixsim7.backend.main.domain.enums import ReviewStatus
 from pixsim7.backend.main.domain.prompt import PromptToolPreset
+from pixsim7.backend.main.shared.presets.review import PresetReviewError, ReviewWorkflow
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 from .builtins import get_builtin_prompt_tool
@@ -16,13 +18,11 @@ _ALLOWED_CATEGORIES = {"rewrite", "compose", "edit", "extract", "analysis"}
 _ALLOWED_REQUIRES = {"text", "composition_assets", "mask_asset", "regions"}
 
 
-class PromptToolPresetError(Exception):
+class PromptToolPresetError(PresetReviewError):
     """Error raised for prompt tool preset CRUD validation failures."""
 
-    def __init__(self, message: str, status_code: int = 400):
-        super().__init__(message)
-        self.message = message
-        self.status_code = status_code
+
+review_workflow = ReviewWorkflow(error_cls=PromptToolPresetError)
 
 
 class PromptToolPresetService:
@@ -37,6 +37,7 @@ class PromptToolPresetService:
         owner_user_id: Optional[int],
         is_public: Optional[bool],
         include_public_for_owner: bool,
+        status: Optional[ReviewStatus],
         limit: int,
         offset: int,
     ) -> list[PromptToolPreset]:
@@ -54,6 +55,8 @@ class PromptToolPresetService:
 
         if is_public is not None:
             stmt = stmt.where(PromptToolPreset.is_public.is_(is_public))
+        if status is not None:
+            stmt = stmt.where(PromptToolPreset.status == status)
 
         stmt = stmt.order_by(PromptToolPreset.updated_at.desc()).limit(limit).offset(offset)
         result = await self.session.execute(stmt)
@@ -92,7 +95,7 @@ class PromptToolPresetService:
 
         shared_stmt = select(PromptToolPreset).where(
             PromptToolPreset.preset_id == normalized_id,
-            PromptToolPreset.is_public.is_(True),
+            PromptToolPreset.status == ReviewStatus.APPROVED,
         ).order_by(PromptToolPreset.updated_at.desc())
         shared_result = await self.session.execute(shared_stmt)
         return shared_result.scalar_one_or_none()
@@ -109,8 +112,6 @@ class PromptToolPresetService:
         requires: list[str],
         defaults: dict[str, Any],
         owner_payload: Optional[dict[str, Any]] = None,
-        is_public: bool = False,
-        actor_is_admin: bool = False,
     ) -> PromptToolPreset:
         normalized_id = self._normalize_preset_id(preset_id)
         self._assert_not_builtin(normalized_id)
@@ -119,12 +120,6 @@ class PromptToolPresetService:
         normalized_requires = self._normalize_requires(requires)
         normalized_defaults = self._normalize_defaults(defaults)
         normalized_payload = self._normalize_owner_payload(owner_payload)
-
-        if is_public and not actor_is_admin:
-            raise PromptToolPresetError(
-                "Only admins can create public/shared presets",
-                status_code=403,
-            )
 
         existing = await self.get_owner_preset(
             owner_user_id=owner_user_id,
@@ -144,7 +139,12 @@ class PromptToolPresetService:
             description=(description or "").strip(),
             category=normalized_category,
             enabled=bool(enabled),
-            is_public=bool(is_public),
+            is_public=False,
+            status=ReviewStatus.DRAFT,
+            approved_by_user_id=None,
+            approved_at=None,
+            rejected_at=None,
+            rejection_reason=None,
             requires=normalized_requires,
             defaults=normalized_defaults,
             owner_payload=normalized_payload,
@@ -167,12 +167,11 @@ class PromptToolPresetService:
         requires: Optional[list[str]] = None,
         defaults: Optional[dict[str, Any]] = None,
         owner_payload: Optional[dict[str, Any]] = None,
-        is_public: Optional[bool] = None,
-        actor_is_admin: bool = False,
     ) -> Optional[PromptToolPreset]:
         row = await self.get_preset(entry_id)
         if row is None:
             return None
+        review_workflow.ensure_editable(row.status)
 
         if preset_id is not None:
             normalized_id = self._normalize_preset_id(preset_id)
@@ -203,13 +202,6 @@ class PromptToolPresetService:
             row.defaults = self._normalize_defaults(defaults)
         if owner_payload is not None:
             row.owner_payload = self._normalize_owner_payload(owner_payload)
-        if is_public is not None:
-            if is_public and not actor_is_admin:
-                raise PromptToolPresetError(
-                    "Only admins can publish shared presets",
-                    status_code=403,
-                )
-            row.is_public = bool(is_public)
 
         row.updated_at = utcnow()
         await self.session.flush()
@@ -219,9 +211,74 @@ class PromptToolPresetService:
         row = await self.get_preset(entry_id)
         if row is None:
             return False
+        review_workflow.ensure_deletable(row.status)
         await self.session.delete(row)
         await self.session.flush()
         return True
+
+    async def submit_preset(
+        self,
+        *,
+        entry_id: UUID,
+        owner_user_id: int,
+    ) -> PromptToolPreset:
+        row = await self.get_preset(entry_id)
+        if row is None:
+            raise PromptToolPresetError("Preset not found", status_code=404)
+        if row.owner_user_id != owner_user_id:
+            raise PromptToolPresetError("Not allowed", status_code=403)
+
+        review_workflow.submit(row)
+        row.is_public = False
+        await self.session.flush()
+        return row
+
+    async def approve_preset(
+        self,
+        *,
+        entry_id: UUID,
+        admin_user_id: int,
+    ) -> PromptToolPreset:
+        row = await self.get_preset(entry_id)
+        if row is None:
+            raise PromptToolPresetError("Preset not found", status_code=404)
+
+        conflict_stmt = select(PromptToolPreset).where(
+            PromptToolPreset.preset_id == row.preset_id,
+            PromptToolPreset.status == ReviewStatus.APPROVED,
+        )
+        conflict_result = await self.session.execute(conflict_stmt)
+        conflict = conflict_result.scalar_one_or_none()
+        if conflict is not None and conflict.id != row.id:
+            raise PromptToolPresetError(
+                f"Preset '{row.preset_id}' is already approved",
+                status_code=409,
+            )
+
+        review_workflow.approve(row, admin_user_id=admin_user_id)
+        row.is_public = True
+        await self.session.flush()
+        return row
+
+    async def reject_preset(
+        self,
+        *,
+        entry_id: UUID,
+        admin_user_id: int,
+        reason: Optional[str],
+    ) -> PromptToolPreset:
+        row = await self.get_preset(entry_id)
+        if row is None:
+            raise PromptToolPresetError("Preset not found", status_code=404)
+
+        review_workflow.reject(
+            row,
+            admin_user_id=admin_user_id,
+            reason=reason,
+        )
+        row.is_public = False
+        await self.session.flush()
+        return row
 
     @staticmethod
     def _normalize_label(label: str) -> str:

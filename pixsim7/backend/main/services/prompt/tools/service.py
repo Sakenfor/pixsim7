@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pixsim7.backend.main.domain.enums import ReviewStatus
 from pixsim7.backend.main.domain.prompt import PromptToolPreset
 from pixsim7.backend.main.services.ownership.user_owned import (
     assert_can_write_user_owned,
@@ -180,6 +181,7 @@ async def list_prompt_tool_catalog(
             owner_user_id=owner_user_id,
             is_public=self_scope.is_public,
             include_public_for_owner=self_scope.include_public_for_owner,
+            status=None,
             limit=200,
             offset=0,
         )
@@ -191,6 +193,7 @@ async def list_prompt_tool_catalog(
             owner_user_id=shared_scope.owner_user_id,
             is_public=True,
             include_public_for_owner=shared_scope.include_public_for_owner,
+            status=ReviewStatus.APPROVED,
             limit=200,
             offset=0,
         )
@@ -206,6 +209,7 @@ async def list_prompt_tool_catalog(
             owner_user_id=owner_user_id,
             is_public=self_scope.is_public,
             include_public_for_owner=self_scope.include_public_for_owner,
+            status=None,
             limit=200,
             offset=0,
         )
@@ -213,6 +217,7 @@ async def list_prompt_tool_catalog(
             owner_user_id=shared_scope.owner_user_id,
             is_public=True,
             include_public_for_owner=shared_scope.include_public_for_owner,
+            status=ReviewStatus.APPROVED,
             limit=200,
             offset=0,
         )
@@ -246,6 +251,7 @@ async def list_prompt_tool_presets(
     owner_user_id: Optional[int],
     mine: bool,
     is_public: Optional[bool],
+    status: Optional[ReviewStatus],
     limit: int,
     offset: int,
 ) -> list[PromptToolPreset]:
@@ -265,6 +271,7 @@ async def list_prompt_tool_presets(
         owner_user_id=effective_owner,
         is_public=scope.is_public,
         include_public_for_owner=scope.include_public_for_owner,
+        status=status,
         limit=limit,
         offset=offset,
     )
@@ -302,7 +309,6 @@ async def create_prompt_tool_preset(
     enabled: bool,
     requires: list[str],
     defaults: dict[str, Any],
-    is_public: bool = False,
 ) -> PromptToolPreset:
     preset_service = PromptToolPresetService(db)
     try:
@@ -316,8 +322,6 @@ async def create_prompt_tool_preset(
             requires=requires,
             defaults=defaults,
             owner_payload={"username": getattr(current_user, "username", None)},
-            is_public=is_public,
-            actor_is_admin=_is_admin_user(current_user),
         )
     except PromptToolPresetError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
@@ -336,7 +340,6 @@ async def update_prompt_tool_preset(
     enabled: Optional[bool] = None,
     requires: Optional[list[str]] = None,
     defaults: Optional[dict[str, Any]] = None,
-    is_public: Optional[bool] = None,
 ) -> Optional[PromptToolPreset]:
     preset_service = PromptToolPresetService(db)
     existing = await preset_service.get_preset(entry_id)
@@ -361,8 +364,6 @@ async def update_prompt_tool_preset(
             requires=requires,
             defaults=defaults,
             owner_payload={"username": getattr(current_user, "username", None)},
-            is_public=is_public,
-            actor_is_admin=_is_admin_user(current_user),
         )
     except PromptToolPresetError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
@@ -388,6 +389,84 @@ async def delete_prompt_tool_preset(
     )
 
     return await preset_service.delete_preset(entry_id)
+
+
+async def submit_prompt_tool_preset(
+    *,
+    current_user: Any,
+    db: AsyncSession,
+    entry_id: UUID,
+) -> Optional[PromptToolPreset]:
+    preset_service = PromptToolPresetService(db)
+    existing = await preset_service.get_preset(entry_id)
+    if existing is None:
+        return None
+
+    assert_can_write_user_owned(
+        user=current_user,
+        owner_user_id=existing.owner_user_id,
+        created_by=_created_by_from_row(existing),
+        denied_detail="Not allowed to submit this preset",
+    )
+
+    try:
+        submitted = await preset_service.submit_preset(
+            entry_id=entry_id,
+            owner_user_id=getattr(current_user, "id"),
+        )
+    except PromptToolPresetError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    return submitted
+
+
+async def approve_prompt_tool_preset(
+    *,
+    current_user: Any,
+    db: AsyncSession,
+    entry_id: UUID,
+) -> Optional[PromptToolPreset]:
+    if not _is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    preset_service = PromptToolPresetService(db)
+    existing = await preset_service.get_preset(entry_id)
+    if existing is None:
+        return None
+
+    try:
+        approved = await preset_service.approve_preset(
+            entry_id=entry_id,
+            admin_user_id=getattr(current_user, "id"),
+        )
+    except PromptToolPresetError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    return approved
+
+
+async def reject_prompt_tool_preset(
+    *,
+    current_user: Any,
+    db: AsyncSession,
+    entry_id: UUID,
+    reason: Optional[str],
+) -> Optional[PromptToolPreset]:
+    if not _is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    preset_service = PromptToolPresetService(db)
+    existing = await preset_service.get_preset(entry_id)
+    if existing is None:
+        return None
+
+    try:
+        rejected = await preset_service.reject_preset(
+            entry_id=entry_id,
+            admin_user_id=getattr(current_user, "id"),
+            reason=reason,
+        )
+    except PromptToolPresetError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    return rejected
 
 
 async def resolve_prompt_tool_preset(

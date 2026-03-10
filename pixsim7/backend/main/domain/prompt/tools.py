@@ -9,6 +9,7 @@ from sqlalchemy import Boolean, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Column, Field, Index, SQLModel
 
+from pixsim7.backend.main.domain.enums import ReviewStatus, enum_column
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 
@@ -61,6 +62,24 @@ class PromptToolPreset(SQLModel, table=True):
         default=False,
         sa_column=Column(Boolean, nullable=False, server_default="false"),
     )
+    status: ReviewStatus = Field(
+        default=ReviewStatus.DRAFT,
+        sa_column=enum_column(
+            ReviewStatus,
+            "prompt_tool_review_status",
+            index=True,
+        ),
+        description="Preset review status",
+    )
+    approved_by_user_id: Optional[int] = Field(
+        default=None,
+        foreign_key="users.id",
+        index=True,
+        description="Admin approver",
+    )
+    approved_at: Optional[datetime] = Field(default=None)
+    rejected_at: Optional[datetime] = Field(default=None)
+    rejection_reason: Optional[str] = Field(default=None)
     requires: List[str] = Field(
         default_factory=list,
         sa_column=Column(JSONB, nullable=False),

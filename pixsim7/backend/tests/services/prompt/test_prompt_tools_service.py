@@ -4,12 +4,17 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
 
 import pixsim7.backend.main.services.prompt.tools.service as prompt_tool_service_module
-from pixsim7.backend.main.services.prompt.tools.service import list_prompt_tool_catalog
+from pixsim7.backend.main.services.prompt.tools.service import (
+    approve_prompt_tool_preset,
+    list_prompt_tool_catalog,
+    reject_prompt_tool_preset,
+)
 
 
 def _user(*, user_id: int, username: str = "user", is_admin: bool = False) -> SimpleNamespace:
@@ -88,6 +93,7 @@ async def test_catalog_scope_self_uses_owner_scope(monkeypatch: pytest.MonkeyPat
     assert capture.calls[0]["owner_user_id"] == 7
     assert capture.calls[0]["is_public"] is None
     assert capture.calls[0]["include_public_for_owner"] is False
+    assert capture.calls[0]["status"] is None
     assert result[0].id == "user/self-only"
     assert result[0].source == "user"
 
@@ -110,6 +116,7 @@ async def test_catalog_scope_shared_uses_public_scope(monkeypatch: pytest.Monkey
     assert len(capture.calls) == 1
     assert capture.calls[0]["owner_user_id"] is None
     assert capture.calls[0]["is_public"] is True
+    assert capture.calls[0]["status"].value == "approved"
     assert result[0].id == "user/shared-only"
     assert result[0].source == "shared"
 
@@ -132,7 +139,9 @@ async def test_catalog_scope_all_dedupes_self_and_shared_overlap(
 
     assert len(capture.calls) == 2
     assert capture.calls[0]["owner_user_id"] == 7
+    assert capture.calls[0]["status"] is None
     assert capture.calls[1]["owner_user_id"] is None
+    assert capture.calls[1]["status"].value == "approved"
     ids = [preset.id for preset in result]
     assert ids.count("user/overlap") == 1
     assert "user/shared-extra" in ids
@@ -149,3 +158,26 @@ async def test_catalog_scope_self_requires_authentication() -> None:
             db=object(),
         )
     assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_approve_requires_admin_user() -> None:
+    with pytest.raises(HTTPException) as exc:
+        await approve_prompt_tool_preset(
+            current_user=_user(user_id=7, is_admin=False),
+            db=object(),
+            entry_id=uuid4(),
+        )
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_reject_requires_admin_user() -> None:
+    with pytest.raises(HTTPException) as exc:
+        await reject_prompt_tool_preset(
+            current_user=_user(user_id=7, is_admin=False),
+            db=object(),
+            entry_id=uuid4(),
+            reason="nope",
+        )
+    assert exc.value.status_code == 403
