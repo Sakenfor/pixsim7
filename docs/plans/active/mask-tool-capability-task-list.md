@@ -1,7 +1,9 @@
 # Mask Tool Capability Task List
 
-Last updated: March 8, 2026
-Owner: delegated agent lane (Claude or similar)
+Last updated: 2026-03-10
+Owner: viewer-mask-tools lane
+Status: active
+Stage: phase_4_complete_phase_5_pending
 
 ## Purpose
 
@@ -194,3 +196,7 @@ If only one focused slice is taken first, it should be:
 - do not refactor ownership systems
 - do not redesign the whole media viewer
 - do not force provider-specific edit UX directly into the mask overlay component
+
+## Update Log
+
+- 2026-03-10: Normalized plan metadata to template contract and added update-log governance section.

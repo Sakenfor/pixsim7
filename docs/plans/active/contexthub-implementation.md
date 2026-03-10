@@ -1,7 +1,9 @@
 # ContextHub Authoring Context Plan
 
-Status: in progress (Packet A complete)
-Last updated: 2026-03-04
+Last updated: 2026-03-10
+Owner: contexthub lane
+Status: active
+Stage: packet_a_complete
 
 ## Goal
 Create one canonical authoring context pipeline so panels that are project/world-aware automatically inherit the currently active project/world, with explicit opt-out overrides when needed.
@@ -276,3 +278,7 @@ Mitigation: strict parse + fallback defaults for missing `behavior`/`routines`.
 2. Merge Packet B behind a feature flag or guarded panel setting if needed.
 3. Validate Bananza workflow.
 4. Merge Packet C and then fan out to additional panels.
+
+## Update Log
+
+- 2026-03-10: Normalized plan metadata to template contract and added update-log governance section.

@@ -1,7 +1,9 @@
 # Ongoing Work Status
 
-Last updated: March 3, 2026
+Last updated: 2026-03-10
 Owner: active dev loop (chat + agents)
+Status: active
+Stage: rolling
 
 ## Purpose
 
@@ -38,3 +40,7 @@ This file is operational status, not architecture spec.
 - Project availability/debug package: repeatable diagnostics output for any selected world/project.
 - Block primitives cutover: no runtime dependency on legacy PromptBlock/ActionEngine paths.
 - Bananza validation loop: reproducible setup path with minimal manual steps.
+
+## Update Log
+
+- 2026-03-10: Normalized plan metadata to template contract and added update-log governance section.

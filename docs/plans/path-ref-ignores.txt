@@ -1,0 +1,5 @@
+# Regex patterns for docs:plans:check path-reference lint ignores.
+# One regex per line. Blank lines and lines starting with "#" are ignored.
+# Patterns are matched against both:
+# - the raw markdown candidate (inline code / link target)
+# - the normalized resolved project-relative path

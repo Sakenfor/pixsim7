@@ -1,5 +1,10 @@
 # Prompt Resolver Workbench Roadmap (Multi-Iteration Handoff)
 
+Last updated: 2026-03-10
+Owner: prompt-resolver lane
+Status: active
+Stage: multi_iteration
+
 ## Purpose
 
 This document is the **longer-term implementation roadmap** for the new prompt resolver architecture work (`next_v1`) and the `Prompt Resolver Workbench`.
@@ -72,7 +77,7 @@ Test:
 
 In:
 
-- `pixsim7/backend/main/api/v1/block_templates.py`
+- `pixsim7/backend/main/api/v1/block_templates/routes_templates.py`
 
 Implemented endpoints:
 
@@ -89,13 +94,13 @@ Implemented endpoints:
   - emits a `ResolutionRequest` JSON for workbench experimentation
 
 Note: this currently behaves as an implicit **`compiler_v1`**, but it is still implemented
-as endpoint-local functions inside `block_templates.py` rather than a first-class compiler module/protocol.
+as endpoint-local functions inside `routes_templates.py` rather than a first-class compiler module/protocol.
 
 ### Frontend: Prompt Resolver Workbench panel (implemented)
 
 In:
 
-- `apps/main/src/features/promptResolverWorkbench/*`
+- `apps/main/src/features/promptResolverWorkbench`
 - `apps/main/src/features/panels/domain/definitions/prompt-resolver-workbench/index.ts`
 
 Current features:
@@ -203,8 +208,8 @@ Examples:
 
 Files (future target):
 
-- `pixsim7/backend/main/services/prompt/block/compiler_core/*` (or colocated equivalent)
-- `pixsim7/backend/main/api/v1/block_templates.py`
+- `pixsim7/backend/main/services/prompt/block/compiler_core` (or colocated equivalent)
+- `pixsim7/backend/main/api/v1/block_templates/routes_templates.py`
 
 Note:
 - This is **not** required before all compiler enrichment work, but the roadmap should treat it
@@ -226,7 +231,7 @@ Examples:
 
 Files:
 
-- `pixsim7/backend/main/api/v1/block_templates.py` (`_compile_template_to_resolution_request`)
+- `pixsim7/backend/main/api/v1/block_templates/routes_templates.py` (`_compile_template_to_resolution_request`)
 - `pixsim7/backend/tests/api/test_resolver_workbench_endpoints.py`
 
 ### Track 2: `next_v1` Relational Scoring (FIRST REAL DIFFERENTIATOR)
@@ -266,7 +271,7 @@ Done:
 
 Files:
 
-- `apps/main/src/features/promptResolverWorkbench/*`
+- `apps/main/src/features/promptResolverWorkbench`
 
 ### Track 4: Dev Endpoint Tests + Validation
 
@@ -296,8 +301,8 @@ Examples:
 
 Files:
 
-- `pixsim7/backend/main/api/v1/block_templates.py`
-- `apps/main/src/features/promptResolverWorkbench/*`
+- `pixsim7/backend/main/api/v1/block_templates/routes_templates.py`
+- `apps/main/src/features/promptResolverWorkbench`
 
 ## Iteration Plan (Small PRs)
 
@@ -397,7 +402,7 @@ When handing off, provide:
 Minimal handoff snippet:
 
 ```txt
-Continue Prompt Resolver Workbench work using `docs/architecture/prompt-resolver-workbench-roadmap.md`.
+Continue Prompt Resolver Workbench work using `docs/plans/active/prompt-resolver-roadmap.md`.
 
 Target iteration:
 - Iteration N: <name>
@@ -408,7 +413,7 @@ Constraints:
 
 Validation:
 - pnpm -C apps/main exec tsc --noEmit
-- python -m py_compile pixsim7/backend/main/api/v1/block_templates.py
+- python -m py_compile pixsim7/backend/main/api/v1/block_templates/routes_templates.py
 - targeted pytest for touched tests
 ```
 
@@ -416,8 +421,8 @@ Validation:
 
 ### Backend (hot)
 
-- `pixsim7/backend/main/api/v1/block_templates.py`
-- future compiler formalization target: `pixsim7/backend/main/services/prompt/block/compiler_core/*`
+- `pixsim7/backend/main/api/v1/block_templates/routes_templates.py`
+- future compiler formalization target: `pixsim7/backend/main/services/prompt/block/compiler_core`
 - `pixsim7/backend/main/services/prompt/block/resolution_core/types.py`
 - `pixsim7/backend/main/services/prompt/block/resolution_core/next_v1_resolver.py`
 - `pixsim7/backend/main/services/prompt/block/resolution_core/registry.py`
@@ -466,6 +471,10 @@ Revisit `prompt-resolver-next-v1.md` and potentially refine core interfaces if:
 
 - visual diff of two `ResolutionResult` traces
 - import template + immediate compile/run in one click
-- save/share snapshot files under `docs/fixtures/` or `test_artifacts`
+- save/share snapshot files under `docs/examples/`
 - compare multiple seeds
 - trace search by block id / target / event kind
+
+## Update Log
+
+- 2026-03-10: Normalized plan metadata to template contract, corrected stale path references, and added update-log governance section.

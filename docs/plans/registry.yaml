@@ -1,0 +1,138 @@
+version: 1
+
+plans:
+  - id: app-map-graph
+    path: docs/plans/active/app-map-graph.md
+    status: active
+    stage: execution
+    owner: frontend/backend app-map lane
+    last_updated: 2026-03-10
+    code_paths:
+      - apps/main/src/features/panels/components/dev/appMap
+      - packages/shared/app-map
+      - pixsim7/backend/main/api/v1/dev_flows.py
+      - pixsim7/backend/main/api/v1/dev_flows_templates.py
+
+  - id: bananza-project-first-hardening
+    path: docs/plans/active/bananza-project-first-hardening.md
+    status: active
+    stage: rollout
+    owner: bananza seed/runtime lane
+    last_updated: 2026-03-10
+    code_paths:
+      - scripts/seeds/game/bananza
+      - pixsim7/backend/main/services/game
+      - pixsim7/backend/main/api/v1/game_worlds.py
+      - pixsim7/backend/main/api/v1/game_locations.py
+
+  - id: contexthub-implementation
+    path: docs/plans/active/contexthub-implementation.md
+    status: active
+    stage: packet_a_complete
+    owner: contexthub lane
+    last_updated: 2026-03-10
+    code_paths:
+      - apps/main/src/features/contextHub
+      - apps/main/src/features/routine-graph
+      - apps/main/src/features/worldTools
+
+  - id: game-journey-flow-mapping
+    path: docs/plans/active/game-journey-flow-mapping.md
+    status: active
+    stage: phase_7_complete
+    owner: journey-map lane
+    last_updated: 2026-03-10
+    code_paths:
+      - apps/main/src/features/panels/components/dev/appMap
+      - packages/shared/types/src/flowMap.ts
+      - pixsim7/backend/main/api/v1/dev_flows.py
+      - pixsim7/backend/main/api/v1/dev_flows_contract.py
+      - pixsim7/backend/main/api/v1/dev_flows_templates.py
+
+  - id: mask-tool-capability-task-list
+    path: docs/plans/active/mask-tool-capability-task-list.md
+    status: active
+    stage: phase_4_complete_phase_5_pending
+    owner: viewer-mask-tools lane
+    last_updated: 2026-03-10
+    code_paths:
+      - apps/main/src/components/media/viewer/overlays/builtins/maskOverlay.tsx
+      - apps/main/src/components/media/viewer/tools
+      - apps/main/src/features/generation/components/generationSettingsPanel
+
+  - id: mixed-legacy-areas-cleanup
+    path: docs/plans/active/mixed-legacy-areas-cleanup.md
+    status: active
+    stage: proposed
+    owner: architecture-cleanup lane
+    last_updated: 2026-03-10
+    code_paths: []
+
+  - id: non-admin-cue-pack-authoring
+    path: docs/plans/active/non-admin-cue-pack-authoring.md
+    status: active
+    stage: implementation
+    owner: prompt-pack authoring lane
+    last_updated: 2026-03-10
+    code_paths:
+      - tools/cue/prompt_packs
+      - pixsim7/backend/main/api/v1/prompt_packs.py
+      - pixsim7/backend/main/services/prompt/packs
+      - apps/main/src/features/panels/domain/definitions/prompt-library-inspector
+
+  - id: ongoing-work-status
+    path: docs/plans/active/ongoing-work-status.md
+    status: active
+    stage: rolling
+    owner: active dev loop
+    last_updated: 2026-03-10
+    code_paths: []
+
+  - id: prompt-resolver-roadmap
+    path: docs/plans/active/prompt-resolver-roadmap.md
+    status: active
+    stage: multi_iteration
+    owner: prompt-resolver lane
+    last_updated: 2026-03-10
+    code_paths:
+      - apps/main/src/features/prompts
+      - apps/main/src/features/promptResolverWorkbench
+      - pixsim7/backend/main/services/prompt/parser
+      - pixsim7/backend/main/services/prompt/llm_resolution.py
+      - pixsim7/backend/main/api/v1/prompts
+
+  - id: prompt-template-controls
+    path: docs/plans/active/prompt-template-controls.md
+    status: active
+    stage: backlog
+    owner: template-controls lane
+    last_updated: 2026-03-10
+    code_paths:
+      - apps/main/src/features/prompts/components/templates
+      - pixsim7/backend/main/services/prompt/block/template_service.py
+      - docs/prompts
+
+  - id: prompt-tool-module
+    path: docs/plans/active/prompt-tool-module-plan.md
+    status: active
+    stage: phase_0_phase_1
+    owner: prompt-tool module lane
+    last_updated: 2026-03-10
+    code_paths:
+      - apps/main/src/features/prompts
+      - pixsim7/backend/main/api/v1/prompt_tools.py
+      - pixsim7/backend/main/services/prompt/tools
+      - pixsim7/backend/tests/api/test_prompt_tools_api.py
+
+  - id: pseudo-3d-checkpoint-navigation
+    path: docs/plans/active/pseudo-3d-checkpoint-navigation.md
+    status: active
+    stage: proposed
+    owner: pseudo-3d navigation lane
+    last_updated: 2026-03-10
+    code_paths:
+      - apps/main/src/features/scene3d
+      - apps/main/src/features/scenePreview3d
+      - apps/main/src/lib/game
+      - pixsim7/backend/main/domain/game
+      - pixsim7/backend/main/api/v1/game_locations.py

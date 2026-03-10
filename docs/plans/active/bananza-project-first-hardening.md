@@ -1,8 +1,10 @@
 # Bananza Project-First Hardening
 
-**Status:** In Progress (core hardening complete, rollout/ops cleanup ongoing)  
-**Dates:** 2026-03-05 to 2026-03-07  
-**Scope:** Bananza seed/runtime hardening only (no analyzer or block-language work).
+Last updated: 2026-03-10
+Owner: bananza seed/runtime lane
+Status: active
+Stage: rollout
+Scope: Bananza seed/runtime hardening only (no analyzer or block-language work).
 
 ## Baseline Reviewed
 
@@ -109,3 +111,7 @@ Checked local DB rows by querying `game_project_snapshots` for `%bananza%`: curr
 1. `two_way` sync is still timestamp/hash based and not a structural merge strategy.
 2. Watch loop is polling-based; long-running shared usage may need adaptive/backoff behavior.
 3. Runtime preference metadata currently writes only generic keys but still reads legacy Bananza keys; a future cleanup pass can remove legacy read fallback once old snapshots are migrated.
+
+## Update Log
+
+- 2026-03-10: Normalized plan metadata to template contract and added update-log governance section.

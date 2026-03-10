@@ -1,8 +1,10 @@
 # App Map Unified Architecture Graph Plan
 
-**Status:** Execution Plan (Locked)  
-**Date:** March 4, 2026  
-**Owner domains:** Frontend modules/registries, backend dev-architecture introspection, launcher consumers
+Last updated: 2026-03-10
+Owner: frontend/backend app-map lane
+Status: active
+Stage: execution
+Owner domains: frontend modules/registries, backend dev-architecture introspection, launcher consumers
 
 ## Context
 
@@ -240,3 +242,7 @@ All must pass:
 1. Frontend runtime registry push/overlay into backend.
 2. Reflection-based auto-discovery beyond manifest-first.
 3. Long-term removal timing for `/map` and `/frontend`.
+
+## Update Log
+
+- 2026-03-10: Normalized plan metadata to template contract and added update-log governance section.

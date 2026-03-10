@@ -1,8 +1,10 @@
 # Pseudo-3D Checkpoint Navigation Plan
 
-**Status:** Proposed (ready to start)  
-**Last updated:** March 10, 2026  
-**Scope:** Room/environment traversal using 2D images as pseudo-3D views, with AI-generated transition video.
+Last updated: 2026-03-10
+Owner: pseudo-3d navigation lane
+Status: active
+Stage: proposed
+Scope: Room/environment traversal using 2D images as pseudo-3D views, with AI-generated transition video.
 
 ## Goal
 
@@ -246,3 +248,7 @@ Acceptance:
     - added room-navigation editor model helpers + CRUD tests (`roomNavigationEditorModel.test.ts`)
     - added transition resolver tests for cache key generation and cache hit/miss/timeout behavior (`roomNavigationTransitions.test.ts`)
     - added a Room Navigation devtools snapshot section in `RoomNavigationEditor` for current checkpoint, last selected edge/hotspot, and transition cache summary.
+
+## Update Log
+
+- 2026-03-10: Normalized plan metadata to template contract and added update-log governance section.

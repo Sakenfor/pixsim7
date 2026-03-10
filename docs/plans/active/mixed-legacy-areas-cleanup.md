@@ -1,8 +1,10 @@
 # Mixed Legacy Areas Cleanup Plan
 
-**Status:** Proposed  
-**Date:** 2026-03-05  
-**Scope:** Clarify and reduce mixed legacy boundaries identified during analyzer and architecture review.
+Last updated: 2026-03-10
+Owner: architecture-cleanup lane
+Status: active
+Stage: proposed
+Scope: Clarify and reduce mixed legacy boundaries identified during analyzer and architecture review.
 
 ## Findings
 
@@ -81,3 +83,7 @@ Suggestion:
 1. New feature UI lands only under `features/*`.
 2. App-map metadata has one write-path and no implicit fallback drift.
 3. Backend endpoint ownership model is explicit and consistently applied.
+
+## Update Log
+
+- 2026-03-10: Normalized plan metadata to template contract and added update-log governance section.

@@ -1,5 +1,10 @@
 # Prompt Template Controls Backlog
 
+Last updated: 2026-03-10
+Owner: template-controls lane
+Status: active
+Stage: backlog
+
 ## TODO: Migrate Sliders From `slotLabel` to `slotKey`
 
 ### Why
@@ -46,3 +51,6 @@ Allow shifting an existing theme (e.g. tribal_handcrafted) toward a sub-style li
   - (optional) modifier blocks with minimal neutral text, if you want a slot-based toggle
   - otherwise only tags + slider effects are needed (no additional blocks)
 
+## Update Log
+
+- 2026-03-10: Normalized plan metadata to template contract and added update-log governance section.
