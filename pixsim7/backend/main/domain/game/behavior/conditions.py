@@ -118,6 +118,16 @@ def evaluate_condition(condition: Dict[str, Any], context: Dict[str, Any]) -> bo
             from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
             metadata = behavior_registry.get_condition(cond_type)
             if metadata:
+                # If a world-level allowlist is present, enforce plugin scoping.
+                world_enabled_plugins = context.get("world_enabled_plugins")
+                if isinstance(world_enabled_plugins, list):
+                    if metadata.plugin_id not in world_enabled_plugins:
+                        logger.debug(
+                            "Plugin condition skipped - plugin not enabled for world",
+                            condition_id=cond_type,
+                            plugin_id=metadata.plugin_id,
+                        )
+                        return False
                 # Plugin conditions expect just the context, not (condition, context)
                 return metadata.evaluator(context)
             else:

@@ -14,6 +14,7 @@ See: claude-tasks/16-backend-plugin-capabilities-and-sandboxing.md Phase 16.4
 
 from typing import Callable, Any, Optional, Dict, List
 from dataclasses import dataclass
+import inspect
 import structlog
 
 from pixsim7.backend.main.lib.registry.group import RegistryGroup
@@ -59,7 +60,7 @@ class EffectMetadata:
     """Plugin that registered this effect"""
 
     handler: Callable
-    """Effect handler function: (context, params) -> effect_result"""
+    """Effect handler function. Canonical: (context, params). Legacy (params, context) supported."""
 
     description: Optional[str] = None
     """Human-readable description"""
@@ -1466,6 +1467,50 @@ RegistryBase.register_plugin_aware(behavior_registry)
 
 # ===== HELPER FUNCTIONS FOR BEHAVIOR SYSTEM =====
 
+def _normalize_param_name(name: str) -> str:
+    """Normalize handler parameter names for legacy signature detection."""
+    return name.lstrip("_").lower()
+
+
+def invoke_effect_handler(
+    handler: Callable,
+    context: Dict[str, Any],
+    params: Optional[Dict[str, Any]] = None,
+) -> Any:
+    """
+    Invoke effect handlers with compatibility for both parameter orders.
+
+    Canonical signature is `(context, params)`, but legacy handlers may use
+    `(params, context)`. We detect legacy ordering heuristically from parameter
+    names to preserve old handlers while converging on one standard.
+    """
+    merged_params = params or {}
+
+    try:
+        sig = inspect.signature(handler)
+        positional = [
+            p for p in sig.parameters.values()
+            if p.kind in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+        ]
+    except (TypeError, ValueError):
+        positional = []
+
+    if len(positional) >= 2:
+        first = _normalize_param_name(positional[0].name)
+        second = _normalize_param_name(positional[1].name)
+
+        if first in {"params", "parameters", "options"} or second in {"context", "ctx"}:
+            return handler(merged_params, context)
+        if first in {"context", "ctx"} or second in {"params", "parameters", "options"}:
+            return handler(context, merged_params)
+
+    # Default to canonical call order.
+    return handler(context, merged_params)
+
+
 async def evaluate_condition(
     condition_id: str,
     context: Dict[str, Any],
@@ -1601,7 +1646,7 @@ async def apply_effect(
     import time
     start_time = time.perf_counter()
     try:
-        result = metadata.handler(context, merged_params)
+        result = invoke_effect_handler(metadata.handler, context, merged_params)
 
         # Warn about slow callbacks (> 100ms)
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -1646,12 +1691,15 @@ async def apply_effect(
 
 def build_simulation_config(
     base_config: Optional[Dict[str, Any]] = None,
+    world_enabled_plugins: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Build simulation config by merging plugin providers.
 
     Args:
         base_config: Base config (from world.meta or defaults)
+        world_enabled_plugins: Optional world-level plugin allowlist.
+            If provided, non-core providers not in the list are skipped.
 
     Returns:
         Merged simulation config
@@ -1659,11 +1707,14 @@ def build_simulation_config(
     Note: Providers are applied in priority order (lower priority first).
           Later providers can override earlier ones.
     """
-    config = base_config or {}
+    config = dict(base_config or {})
 
     providers = behavior_registry.get_simulation_config_providers()
 
     for provider in providers:
+        if world_enabled_plugins is not None:
+            if provider.plugin_id not in world_enabled_plugins and provider.plugin_id != "core":
+                continue
         try:
             provider_config = provider.config_fn()
             if isinstance(provider_config, dict):

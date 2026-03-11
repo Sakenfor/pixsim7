@@ -169,10 +169,16 @@ def calculate_activity_score(
     from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
 
     scoring_factors = behavior_registry.list_scoring_factors()
+    world_enabled_plugins = context.get("world_enabled_plugins")
 
     for factor_metadata in scoring_factors:
         factor_id = factor_metadata.factor_id
         factor_func = factor_metadata.evaluator
+
+        # Respect world-level plugin allowlists (core remains always available).
+        if isinstance(world_enabled_plugins, list):
+            if factor_metadata.plugin_id not in world_enabled_plugins and factor_metadata.plugin_id != "core":
+                continue
 
         # Get weight for this factor (default to 1.0 if not specified)
         factor_weight = weights.get(factor_id, 1.0)

@@ -37,6 +37,7 @@ from .routine_resolver import (
     find_active_routine_node,
     collect_candidate_activities,
     choose_npc_activity,
+    preview_npc_activity_selection,
     apply_activity_to_npc,
     finish_activity,
 )
@@ -66,6 +67,7 @@ __all__ = [
     "find_active_routine_node",
     "collect_candidate_activities",
     "choose_npc_activity",
+    "preview_npc_activity_selection",
     "apply_activity_to_npc",
     "finish_activity",
 ]

@@ -247,6 +247,7 @@ def _build_simulation_context(npc: Any, world: Any, session: Any) -> Dict[str, A
         "relationships": getattr(session, "relationships", {}),
         "world_time": getattr(world, "world_time", 0),
         "npc_state": npc_state,
+        "world_enabled_plugins": _get_world_enabled_plugins(world),
     }
 
 
@@ -288,6 +289,18 @@ def _set_npc_state(session: Any, npc: Any, state: Dict[str, Any]) -> None:
         flags["npcs"][npc_id] = {}
 
     flags["npcs"][npc_id]["state"] = state
+
+
+def _get_world_enabled_plugins(world: Any) -> Optional[List[str]]:
+    """Resolve optional world-level plugin allowlist from world.meta."""
+    from pixsim7.backend.main.infrastructure.plugins.world_scoping import (
+        get_enabled_plugins_for_world,
+    )
+
+    world_meta = getattr(world, "meta", None)
+    if not isinstance(world_meta, dict):
+        return None
+    return get_enabled_plugins_for_world(world_meta)
 
 
 # ==================

@@ -17,7 +17,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# Type alias for effect handler functions
+# Type alias for effect handler functions.
+# Canonical order is (context, params). Legacy handlers using
+# (params, context) are still supported by runtime invocation helpers.
 EffectHandler = Callable[[Dict[str, Any], Dict[str, Any]], None]
 
 
@@ -36,7 +38,8 @@ def register_effect_handler(
 
     Args:
         effect_type: Effect type ID (e.g., "effect:give_item")
-        handler: Function that takes (params, context) and applies the effect
+        handler: Effect handler callable. Preferred signature is
+            (context, params); legacy (params, context) remains supported.
         description: Human-readable description
         default_params: Default parameters for this effect
         params_schema: JSON Schema (Draft 7) for effect parameters
@@ -119,10 +122,22 @@ def apply_custom_effect(effect: Dict[str, Any], context: Dict[str, Any]) -> None
         logger.warning(f"Custom effect handler not found: {effect_type}")
         return
 
-    handler = effect_metadata.handler
+    # If a world-level allowlist is present, enforce plugin scoping.
+    world_enabled_plugins = context.get("world_enabled_plugins")
+    if isinstance(world_enabled_plugins, list):
+        if effect_metadata.plugin_id not in world_enabled_plugins:
+            logger.debug(
+                "Custom effect skipped - plugin not enabled for world",
+                effect_type=effect_type,
+                plugin_id=effect_metadata.plugin_id,
+            )
+            return
 
     try:
-        handler(params, context)
+        from pixsim7.backend.main.infrastructure.plugins.behavior_registry import (
+            invoke_effect_handler,
+        )
+        invoke_effect_handler(effect_metadata.handler, context, params)
     except Exception as e:
         logger.error(f"Error applying custom effect {effect_type}: {e}", exc_info=True)
 
@@ -272,7 +287,7 @@ def _apply_flags(effects: Dict[str, Any], context: Dict[str, Any]) -> None:
 # ==================
 
 
-def _example_give_item_effect(params: Dict[str, Any], context: Dict[str, Any]) -> None:
+def _example_give_item_effect(context: Dict[str, Any], params: Dict[str, Any]) -> None:
     """Example custom effect: give an item to the player."""
     item_id = params.get("itemId", "")
     quantity = params.get("quantity", 1)
@@ -287,7 +302,7 @@ def _example_give_item_effect(params: Dict[str, Any], context: Dict[str, Any]) -
     logger.info(f"Gave {quantity}x {item_id} to player")
 
 
-def _example_grant_xp_effect(params: Dict[str, Any], context: Dict[str, Any]) -> None:
+def _example_grant_xp_effect(context: Dict[str, Any], params: Dict[str, Any]) -> None:
     """Example custom effect: grant XP to a skill."""
     skill = params.get("skill", "")
     amount = params.get("amount", 0)
@@ -302,7 +317,7 @@ def _example_grant_xp_effect(params: Dict[str, Any], context: Dict[str, Any]) ->
     logger.info(f"Granted {amount} XP to {skill}")
 
 
-def _example_consume_ingredient_effect(params: Dict[str, Any], context: Dict[str, Any]) -> None:
+def _example_consume_ingredient_effect(context: Dict[str, Any], params: Dict[str, Any]) -> None:
     """Example custom effect: consume an ingredient from inventory."""
     item_id = params.get("itemId", "")
     quantity = params.get("quantity", 1)
@@ -319,7 +334,7 @@ def _example_consume_ingredient_effect(params: Dict[str, Any], context: Dict[str
         logger.warning(f"Not enough {item_id} to consume (have {current_qty}, need {quantity})")
 
 
-def _example_spawn_event_effect(params: Dict[str, Any], context: Dict[str, Any]) -> None:
+def _example_spawn_event_effect(context: Dict[str, Any], params: Dict[str, Any]) -> None:
     """Example custom effect: spawn a world event."""
     event_id = params.get("eventId", "")
     event_data = params.get("eventData", {})

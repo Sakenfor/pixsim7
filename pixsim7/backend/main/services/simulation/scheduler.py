@@ -39,6 +39,12 @@ from pixsim7.backend.main.domain.game.behavior import (
     apply_activity_to_npc,
     finish_activity,
 )
+from pixsim7.backend.main.infrastructure.plugins.behavior_registry import (
+    build_simulation_config,
+)
+from pixsim7.backend.main.infrastructure.plugins.world_scoping import (
+    get_enabled_plugins_for_world,
+)
 from pixsim7.backend.main.services.simulation.context import WorldSimulationContext
 
 logger = logging.getLogger(__name__)
@@ -94,6 +100,13 @@ class WorldScheduler:
         simulation_config = None
         if world.meta and "simulation" in world.meta:
             simulation_config = world.meta["simulation"]
+
+        # Apply plugin-provided simulation config hooks (filtered by world plugin allowlist).
+        world_enabled_plugins = get_enabled_plugins_for_world(world.meta or {})
+        simulation_config = build_simulation_config(
+            simulation_config,
+            world_enabled_plugins=world_enabled_plugins,
+        )
 
         # Create context
         context = WorldSimulationContext.from_world_state(

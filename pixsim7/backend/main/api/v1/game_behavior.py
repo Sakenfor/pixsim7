@@ -16,19 +16,20 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ValidationError
 
-from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, GameWorldSvc
+from pixsim7.backend.main.api.dependencies import (
+    CurrentGamePrincipal,
+    DatabaseSession,
+    GameWorldSvc,
+)
+from pixsim7.backend.main.domain.game.core.models import GameNPC, GameSession
 from pixsim7.backend.main.domain.game.schemas import (
     BehaviorConfigSchema,
     ActivitySchema,
     RoutineGraphSchema,
-    NpcPreferencesSchema,
     auto_migrate_behavior_config,
 )
 from pixsim7.backend.main.domain.game.behavior import (
-    calculate_activity_score,
-    score_and_filter_activities,
-    choose_activity,
-    merge_preferences,
+    preview_npc_activity_selection,
 )
 
 
@@ -505,6 +506,7 @@ async def preview_activity_selection(
     world_id: int,
     req: ActivityPreviewRequest,
     game_world_service: GameWorldSvc,
+    db: DatabaseSession,
     user: CurrentGamePrincipal,
 ) -> ActivityPreviewResponse:
     """
@@ -514,18 +516,50 @@ async def preview_activity_selection(
     """
     world = await _get_owned_world(world_id, user, game_world_service)
 
-    # TODO: Get NPC, session, and state from services
-    # For now, return mock response
+    session = await db.get(GameSession, req.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session {req.session_id} not found")
+    if session.world_id != world_id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {req.session_id} does not belong to world {world_id}",
+        )
+
+    npc = await db.get(GameNPC, req.npc_id)
+    if not npc:
+        raise HTTPException(status_code=404, detail=f"NPC {req.npc_id} not found")
+    if npc.world_id is not None and npc.world_id != world_id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"NPC {req.npc_id} does not belong to world {world_id}",
+        )
+
+    behavior_config = _get_behavior_config(world)
+    activities = behavior_config.get("activities", {}) if isinstance(behavior_config, dict) else {}
+    if not isinstance(activities, dict):
+        activities = {}
+
+    if req.candidate_activity_ids is not None:
+        missing_ids = [activity_id for activity_id in req.candidate_activity_ids if activity_id not in activities]
+        if missing_ids:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "unknown_candidate_activities",
+                    "missing_activity_ids": missing_ids,
+                },
+            )
+
+    selected_activity, scores, npc_state = preview_npc_activity_selection(
+        npc=npc,
+        world=world,
+        session=session,
+        world_time=session.world_time,
+        candidate_activity_ids=req.candidate_activity_ids,
+    )
 
     return ActivityPreviewResponse(
-        selected_activity_id="activity:work_office",
-        scores={
-            "activity:work_office": 0.8,
-            "activity:socialize": 0.5,
-            "activity:rest": 0.3,
-        },
-        npc_state={
-            "energy": 50,
-            "moodState": {"valence": 0, "arousal": 0, "tags": ["neutral"]},
-        },
+        selected_activity_id=selected_activity.get("id") if selected_activity else None,
+        scores=scores,
+        npc_state=npc_state,
     )

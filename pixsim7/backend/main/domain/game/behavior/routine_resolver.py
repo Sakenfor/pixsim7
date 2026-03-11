@@ -206,10 +206,15 @@ def choose_npc_activity(
     npc_personality = _resolve_npc_personality(npc, npc_behavior)
     archetype = _resolve_npc_archetype(npc_personality, behavior_config)
     world_feature_flags = _get_world_feature_flags(behavior_config)
+    world_enabled_plugins = _get_world_enabled_plugins(world)
 
     # Phase 3: Resolve active behavior profiles
     # Profiles are precomputed once per activity selection, not per scoring call
-    active_profiles = _get_active_behavior_profiles(npc_state, world_feature_flags)
+    active_profiles = _get_active_behavior_profiles(
+        npc_state,
+        world_feature_flags,
+        world_enabled_plugins=world_enabled_plugins,
+    )
 
     # Phase 4: Derive trait effects from archetype traits
     derived_trait_effects = _derive_trait_effects(archetype, behavior_config)
@@ -262,6 +267,130 @@ def choose_npc_activity(
     selected_activity = choose_activity(feasible, npc_state)
 
     return selected_activity
+
+
+def preview_npc_activity_selection(
+    npc: Any,
+    world: Any,
+    session: Any,
+    world_time: float,
+    candidate_activity_ids: Optional[List[str]] = None,
+) -> Tuple[Optional[Dict[str, Any]], Dict[str, float], Dict[str, Any]]:
+    """
+    Preview activity selection and expose per-activity scores for debugging.
+
+    This reuses the same behavior resolution pipeline as choose_npc_activity(),
+    but allows explicit candidate filtering and returns the scored candidates.
+
+    Args:
+        npc: The NPC.
+        world: The world.
+        session: The game session.
+        world_time: Current world time.
+        candidate_activity_ids: Optional explicit candidate IDs. If omitted,
+            all activities in the world behavior catalog are scored.
+
+    Returns:
+        Tuple of (selected_activity, scores, npc_state).
+    """
+    behavior_config = _get_behavior_config(world)
+    all_activities = behavior_config.get("activities", {})
+    if not isinstance(all_activities, dict) or not all_activities:
+        npc_state = _get_npc_state(session, npc)
+        npc_state["world_time"] = world_time
+        return None, {}, npc_state
+
+    # Resolve and merge behavior/preferences using the same precedence as runtime.
+    npc_behavior = _resolve_npc_behavior(session, npc)
+    routine_id = npc_behavior.get("routineId")
+
+    routine_default_prefs: Dict[str, Any] = {}
+    if routine_id:
+        routines = behavior_config.get("routines", {})
+        routine = routines.get(routine_id) if isinstance(routines, dict) else None
+        if isinstance(routine, dict):
+            routine_default_prefs = routine.get("defaultPreferences", {}) or {}
+
+    npc_state = _get_npc_state(session, npc)
+    npc_state["world_time"] = world_time
+
+    session_prefs = _get_session_npc_preferences(session, npc)
+    merged_prefs = merge_preferences(
+        routine_default_prefs,
+        npc_behavior.get("preferences", {}),
+        session_prefs,
+    )
+
+    # Match runtime context build (archetype/profiles/trait effects included).
+    npc_personality = _resolve_npc_personality(npc, npc_behavior)
+    archetype = _resolve_npc_archetype(npc_personality, behavior_config)
+    world_feature_flags = _get_world_feature_flags(behavior_config)
+    world_enabled_plugins = _get_world_enabled_plugins(world)
+    active_profiles = _get_active_behavior_profiles(
+        npc_state,
+        world_feature_flags,
+        world_enabled_plugins=world_enabled_plugins,
+    )
+    derived_trait_effects = _derive_trait_effects(archetype, behavior_config)
+    context = _build_context(
+        npc,
+        world,
+        session,
+        npc_state,
+        archetype=archetype,
+        npc_personality=npc_personality,
+        world_feature_flags=world_feature_flags,
+        active_profiles=active_profiles,
+        derived_trait_effects=derived_trait_effects,
+    )
+
+    if candidate_activity_ids is None:
+        activities = [a for a in all_activities.values() if isinstance(a, dict)]
+    else:
+        activities = [
+            all_activities[activity_id]
+            for activity_id in candidate_activity_ids
+            if activity_id in all_activities and isinstance(all_activities[activity_id], dict)
+        ]
+
+    if not activities:
+        return None, {}, npc_state
+
+    # Pull base weights from the active routine node when available.
+    base_weights: Dict[str, float] = {}
+    if routine_id:
+        routines = behavior_config.get("routines", {})
+        routine = routines.get(routine_id) if isinstance(routines, dict) else None
+        if isinstance(routine, dict):
+            active_node = find_active_routine_node(routine, world_time, npc_state, context)
+            if active_node:
+                node_candidates = collect_candidate_activities(active_node, world, context)
+                base_weights = {
+                    activity.get("id", ""): weight
+                    for activity, weight in node_candidates
+                    if isinstance(activity, dict) and activity.get("id")
+                }
+
+    scoring_config = behavior_config.get("scoringConfig", {})
+    scoring_weights = scoring_config.get("weights") if isinstance(scoring_config, dict) else None
+
+    feasible = score_and_filter_activities(
+        activities,
+        merged_prefs,
+        npc_state,
+        context,
+        scoring_weights,
+        base_weights,
+    )
+
+    scores = {
+        activity.get("id", ""): score
+        for activity, score in feasible
+        if isinstance(activity, dict) and activity.get("id")
+    }
+
+    selected_activity = choose_activity(feasible, npc_state)
+    return selected_activity, scores, npc_state
 
 
 def apply_activity_to_npc(
@@ -599,6 +728,7 @@ def _get_builtin_trait_effects(traits: Dict[str, str]) -> List[Dict[str, Any]]:
 def _get_active_behavior_profiles(
     npc_state: Dict[str, Any],
     world_feature_flags: Dict[str, bool],
+    world_enabled_plugins: Optional[List[str]] = None,
 ) -> List[Any]:
     """
     Get active behavior profiles for the current context.
@@ -633,7 +763,10 @@ def _get_active_behavior_profiles(
     }
 
     # Get active profiles (registry handles condition evaluation and exclusivity)
-    active_profiles = behavior_registry.get_active_profiles(context)
+    active_profiles = behavior_registry.get_active_profiles(
+        context,
+        enabled_plugins=world_enabled_plugins,
+    )
 
     return active_profiles
 
@@ -684,11 +817,24 @@ def _build_context(
         "archetype": archetype,
         "npc_personality": npc_personality,
         "world_feature_flags": world_feature_flags or {},
+        "world_enabled_plugins": _get_world_enabled_plugins(world),
         # Phase 3: Behavior profile support
         "active_profiles": active_profiles or [],
         # Phase 4: Trait effect support
         "derived_trait_effects": derived_trait_effects or [],
     }
+
+
+def _get_world_enabled_plugins(world: Any) -> Optional[List[str]]:
+    """Resolve optional world-level plugin allowlist from world.meta."""
+    from pixsim7.backend.main.infrastructure.plugins.world_scoping import (
+        get_enabled_plugins_for_world,
+    )
+
+    world_meta = getattr(world, "meta", None)
+    if not isinstance(world_meta, dict):
+        return None
+    return get_enabled_plugins_for_world(world_meta)
 
 
 def _build_effect_context(
