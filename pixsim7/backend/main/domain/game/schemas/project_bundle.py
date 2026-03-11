@@ -208,6 +208,7 @@ class GameProjectImportRequest(BaseModel):
     bundle: GameProjectBundle
     mode: ProjectImportMode = ProjectImportMode.CREATE_NEW_WORLD
     world_name_override: Optional[str] = None
+    project_behavior_enabled_plugins: Optional[List[str]] = None
 
 
 class ProjectImportCounts(BaseModel):

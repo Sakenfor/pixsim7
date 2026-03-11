@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -45,6 +46,9 @@ from pixsim7.backend.main.services.game.derived_projections import (
     sync_location_hotspot_projection,
     sync_npc_expression_projection,
     sync_scene_graph_projection,
+)
+from pixsim7.backend.main.infrastructure.plugins.world_scoping import (
+    set_enabled_plugins_for_world,
 )
 
 
@@ -270,10 +274,13 @@ class GameProjectBundleService:
         pending_scene_entry: List[Tuple[GameScene, Optional[int], int]] = []
 
         bundle_core = request.bundle.core
+        world_meta = deepcopy(bundle_core.world.meta or {})
+        if request.project_behavior_enabled_plugins is not None:
+            set_enabled_plugins_for_world(world_meta, request.project_behavior_enabled_plugins)
         world = GameWorld(
             owner_user_id=owner_user_id,
             name=world_name,
-            meta=bundle_core.world.meta or {},
+            meta=world_meta,
         )
 
         async with self.db.begin():

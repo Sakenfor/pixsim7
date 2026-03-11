@@ -743,6 +743,154 @@ class TestBundleImportSync:
             mock_sched.assert_awaited()
             mock_expr.assert_awaited()
 
+    @pytest.mark.asyncio
+    async def test_import_bundle_applies_project_plugin_defaults_to_world_meta(self) -> None:
+        from pixsim7.backend.main.services.game.project_bundle import GameProjectBundleService
+        from pixsim7.backend.main.domain.game.schemas.project_bundle import (
+            GameProjectImportRequest,
+        )
+
+        bundle_payload = {
+            "schema_version": 1,
+            "core": {
+                "world": {"name": "PluginDefaults", "meta": {}, "world_time": 0.0},
+                "locations": [],
+                "npcs": [],
+                "scenes": [],
+                "items": [],
+            },
+            "extensions": {},
+        }
+
+        db = AsyncMock()
+        _flush_id = 0
+
+        def _add_side_effect(entity):
+            nonlocal _flush_id
+            _flush_id += 1
+            try:
+                if hasattr(entity, "id") and entity.id is None:
+                    entity.id = _flush_id
+            except (ValueError, AttributeError):
+                pass
+
+        db.add = MagicMock(side_effect=_add_side_effect)
+        db.flush = AsyncMock()
+        db.commit = AsyncMock()
+        db.refresh = AsyncMock()
+
+        _begin_cm = AsyncMock()
+        _begin_cm.__aenter__ = AsyncMock(return_value=None)
+        _begin_cm.__aexit__ = AsyncMock(return_value=False)
+        db.begin = MagicMock(return_value=_begin_cm)
+
+        with patch(
+            "pixsim7.backend.main.services.game.project_bundle.sync_npc_schedule_projection",
+            new=AsyncMock(),
+        ), patch(
+            "pixsim7.backend.main.services.game.project_bundle.sync_npc_expression_projection",
+            new=AsyncMock(),
+        ), patch(
+            "pixsim7.backend.main.services.game.project_bundle.sync_location_hotspot_projection",
+            new=AsyncMock(),
+        ), patch(
+            "pixsim7.backend.main.services.game.project_bundle.sync_scene_graph_projection",
+            new=AsyncMock(),
+        ):
+            service = GameProjectBundleService(db)
+            req = GameProjectImportRequest(
+                mode="create_new_world",
+                bundle=bundle_payload,
+                project_behavior_enabled_plugins=["game-stealth", "game-romance"],
+            )
+            await service.import_bundle(req, owner_user_id=1)
+
+        added_worlds = [
+            call.args[0]
+            for call in db.add.call_args_list
+            if call.args and call.args[0].__class__.__name__ == "GameWorld"
+        ]
+        assert len(added_worlds) == 1
+        world = added_worlds[0]
+        assert world.meta.get("behavior", {}).get("enabledPlugins") == [
+            "game-stealth",
+            "game-romance",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_import_bundle_preserves_bundle_plugin_config_when_defaults_omitted(self) -> None:
+        from pixsim7.backend.main.services.game.project_bundle import GameProjectBundleService
+        from pixsim7.backend.main.domain.game.schemas.project_bundle import (
+            GameProjectImportRequest,
+        )
+
+        bundle_payload = {
+            "schema_version": 1,
+            "core": {
+                "world": {
+                    "name": "BundlePlugins",
+                    "meta": {"behavior": {"enabledPlugins": ["bundle-plugin"]}},
+                    "world_time": 0.0,
+                },
+                "locations": [],
+                "npcs": [],
+                "scenes": [],
+                "items": [],
+            },
+            "extensions": {},
+        }
+
+        db = AsyncMock()
+        _flush_id = 0
+
+        def _add_side_effect(entity):
+            nonlocal _flush_id
+            _flush_id += 1
+            try:
+                if hasattr(entity, "id") and entity.id is None:
+                    entity.id = _flush_id
+            except (ValueError, AttributeError):
+                pass
+
+        db.add = MagicMock(side_effect=_add_side_effect)
+        db.flush = AsyncMock()
+        db.commit = AsyncMock()
+        db.refresh = AsyncMock()
+
+        _begin_cm = AsyncMock()
+        _begin_cm.__aenter__ = AsyncMock(return_value=None)
+        _begin_cm.__aexit__ = AsyncMock(return_value=False)
+        db.begin = MagicMock(return_value=_begin_cm)
+
+        with patch(
+            "pixsim7.backend.main.services.game.project_bundle.sync_npc_schedule_projection",
+            new=AsyncMock(),
+        ), patch(
+            "pixsim7.backend.main.services.game.project_bundle.sync_npc_expression_projection",
+            new=AsyncMock(),
+        ), patch(
+            "pixsim7.backend.main.services.game.project_bundle.sync_location_hotspot_projection",
+            new=AsyncMock(),
+        ), patch(
+            "pixsim7.backend.main.services.game.project_bundle.sync_scene_graph_projection",
+            new=AsyncMock(),
+        ):
+            service = GameProjectBundleService(db)
+            req = GameProjectImportRequest(
+                mode="create_new_world",
+                bundle=bundle_payload,
+            )
+            await service.import_bundle(req, owner_user_id=1)
+
+        added_worlds = [
+            call.args[0]
+            for call in db.add.call_args_list
+            if call.args and call.args[0].__class__.__name__ == "GameWorld"
+        ]
+        assert len(added_worlds) == 1
+        world = added_worlds[0]
+        assert world.meta.get("behavior", {}).get("enabledPlugins") == ["bundle-plugin"]
+
 
 # ---------------------------------------------------------------------------
 # API endpoint test for resync
