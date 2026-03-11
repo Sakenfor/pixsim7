@@ -13,6 +13,10 @@ from pixsim7.backend.main.domain.game.schemas.project_bundle import (
     ProjectOriginKind,
     ProjectProvenance,
 )
+from pixsim7.backend.main.domain.game.project_runtime_meta import (
+    read_project_behavior_enabled_plugins,
+    with_project_behavior_enabled_plugins,
+)
 
 
 class GameProjectStorageService:
@@ -124,6 +128,7 @@ class GameProjectStorageService:
         source_world_id: Optional[int] = None,
         overwrite_project_id: Optional[int] = None,
         provenance: Optional[ProjectProvenance] = None,
+        project_behavior_enabled_plugins: Optional[List[str]] = None,
     ) -> GameProjectSnapshot:
         normalized_name = self._normalize_project_name(name)
 
@@ -155,6 +160,11 @@ class GameProjectStorageService:
             self._apply_provenance(
                 project,
                 ProjectProvenance(kind=ProjectOriginKind.USER),
+            )
+        if project_behavior_enabled_plugins is not None:
+            project.origin_meta = with_project_behavior_enabled_plugins(
+                project.origin_meta,
+                project_behavior_enabled_plugins,
             )
 
         self.db.add(project)
@@ -240,6 +250,7 @@ class GameProjectStorageService:
         bundle: GameProjectBundle,
         source_world_id: Optional[int] = None,
         draft_source_project_id: Optional[int] = None,
+        project_behavior_enabled_plugins: Optional[List[str]] = None,
     ) -> GameProjectSnapshot:
         bundle_json = bundle.model_dump(mode="json")
         schema_version = int(bundle.schema_version)
@@ -250,10 +261,23 @@ class GameProjectStorageService:
         )
 
         if existing:
+            existing_project_plugin_defaults = read_project_behavior_enabled_plugins(
+                getattr(existing, "origin_meta", None),
+            )
             existing.bundle = bundle_json
             existing.schema_version = schema_version
             existing.source_world_id = source_world_id
             self._apply_provenance(existing, self._draft_provenance(draft_source_project_id))
+            resolved_project_plugin_defaults = (
+                project_behavior_enabled_plugins
+                if project_behavior_enabled_plugins is not None
+                else existing_project_plugin_defaults
+            )
+            if resolved_project_plugin_defaults is not None:
+                existing.origin_meta = with_project_behavior_enabled_plugins(
+                    existing.origin_meta,
+                    resolved_project_plugin_defaults,
+                )
             self.db.add(existing)
             await self.db.commit()
             await self.db.refresh(existing)
@@ -269,6 +293,11 @@ class GameProjectStorageService:
             draft_source_project_id=draft_source_project_id,
         )
         self._apply_provenance(draft, self._draft_provenance(draft_source_project_id))
+        if project_behavior_enabled_plugins is not None:
+            draft.origin_meta = with_project_behavior_enabled_plugins(
+                draft.origin_meta,
+                project_behavior_enabled_plugins,
+            )
         self.db.add(draft)
         try:
             await self.db.commit()
@@ -288,7 +317,20 @@ class GameProjectStorageService:
             existing.bundle = bundle_json
             existing.schema_version = schema_version
             existing.source_world_id = source_world_id
+            existing_project_plugin_defaults = read_project_behavior_enabled_plugins(
+                getattr(existing, "origin_meta", None),
+            )
             self._apply_provenance(existing, self._draft_provenance(draft_source_project_id))
+            resolved_project_plugin_defaults = (
+                project_behavior_enabled_plugins
+                if project_behavior_enabled_plugins is not None
+                else existing_project_plugin_defaults
+            )
+            if resolved_project_plugin_defaults is not None:
+                existing.origin_meta = with_project_behavior_enabled_plugins(
+                    existing.origin_meta,
+                    resolved_project_plugin_defaults,
+                )
             self.db.add(existing)
             await self.db.commit()
             await self.db.refresh(existing)
@@ -334,4 +376,3 @@ class GameProjectStorageService:
         await self.db.delete(draft)
         await self.db.commit()
         return True
-

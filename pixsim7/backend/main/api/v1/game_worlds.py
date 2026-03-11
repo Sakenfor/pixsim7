@@ -29,6 +29,7 @@ from pixsim7.backend.main.domain.game.schemas.project_bundle import (
 )
 from pixsim7.backend.main.domain.game.project_runtime_meta import (
     canonicalize_project_runtime_meta,
+    read_project_behavior_enabled_plugins,
 )
 from pixsim7.backend.main.services.game.project_bundle import GameProjectBundleService
 from pixsim7.backend.main.services.game.project_storage import GameProjectStorageService
@@ -94,12 +95,16 @@ async def _build_world_detail(
 
 def _to_saved_project_summary(project) -> SavedGameProjectSummary:
     provenance = _to_project_provenance(project)
+    project_behavior_enabled_plugins = read_project_behavior_enabled_plugins(
+        getattr(project, "origin_meta", None),
+    )
     return SavedGameProjectSummary(
         id=project.id,
         name=project.name,
         source_world_id=project.source_world_id,
         schema_version=project.schema_version,
         provenance=provenance,
+        project_behavior_enabled_plugins=project_behavior_enabled_plugins,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
@@ -107,12 +112,16 @@ def _to_saved_project_summary(project) -> SavedGameProjectSummary:
 
 def _to_saved_project_detail(project) -> SavedGameProjectDetail:
     provenance = _to_project_provenance(project)
+    project_behavior_enabled_plugins = read_project_behavior_enabled_plugins(
+        getattr(project, "origin_meta", None),
+    )
     return SavedGameProjectDetail(
         id=project.id,
         name=project.name,
         source_world_id=project.source_world_id,
         schema_version=project.schema_version,
         provenance=provenance,
+        project_behavior_enabled_plugins=project_behavior_enabled_plugins,
         created_at=project.created_at,
         updated_at=project.updated_at,
         bundle=GameProjectBundle.model_validate(project.bundle),
@@ -428,6 +437,7 @@ async def save_project_snapshot(
             source_world_id=req.source_world_id,
             overwrite_project_id=req.overwrite_project_id,
             provenance=req.provenance,
+            project_behavior_enabled_plugins=req.project_behavior_enabled_plugins,
         )
     except ValueError as e:
         msg = str(e)
@@ -505,11 +515,15 @@ async def delete_saved_project(
 
 
 def _to_draft_summary(draft) -> DraftSummary:
+    project_behavior_enabled_plugins = read_project_behavior_enabled_plugins(
+        getattr(draft, "origin_meta", None),
+    )
     return DraftSummary(
         id=draft.id,
         draft_source_project_id=draft.draft_source_project_id,
         source_world_id=draft.source_world_id,
         schema_version=draft.schema_version,
+        project_behavior_enabled_plugins=project_behavior_enabled_plugins,
         created_at=draft.created_at,
         updated_at=draft.updated_at,
     )
@@ -527,6 +541,7 @@ async def upsert_project_draft(
         bundle=req.bundle,
         source_world_id=req.source_world_id,
         draft_source_project_id=req.draft_source_project_id,
+        project_behavior_enabled_plugins=req.project_behavior_enabled_plugins,
     )
     return _to_draft_summary(draft)
 

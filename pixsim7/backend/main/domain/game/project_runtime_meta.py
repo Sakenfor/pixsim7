@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 PROJECT_RUNTIME_META_KEY = "project_runtime"
 PROJECT_META_RUNTIME_MODE = "project_runtime_mode"
 PROJECT_META_SYNC_MODE = "project_sync_mode"
 PROJECT_META_WATCH_ENABLED = "project_watch_enabled"
+PROJECT_META_BEHAVIOR_ENABLED_PLUGINS = "project_behavior_enabled_plugins"
 
 LEGACY_BANANZA_RUNTIME_META_KEY = "bananza_runtime"
 LEGACY_BANANZA_META_SEEDER_MODE = "bananza_seeder_mode"
@@ -43,6 +44,23 @@ def _normalize_bool(value: Any) -> Optional[bool]:
     return None
 
 
+def _normalize_plugin_ids(value: Any) -> Optional[List[str]]:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        return None
+
+    normalized: List[str] = []
+    seen: set[str] = set()
+    for raw in value:
+        plugin_id = str(raw or "").strip()
+        if not plugin_id or plugin_id in seen:
+            continue
+        normalized.append(plugin_id)
+        seen.add(plugin_id)
+    return normalized
+
+
 def read_project_runtime_preferences(meta_value: Any) -> Dict[str, Any]:
     meta = canonicalize_project_runtime_meta(meta_value)
     runtime = (
@@ -62,6 +80,32 @@ def read_project_runtime_preferences(meta_value: Any) -> Dict[str, Any]:
         watch = _normalize_bool(meta.get(PROJECT_META_WATCH_ENABLED))
 
     return {"mode": mode, "sync_mode": sync_mode, "watch": watch}
+
+
+def read_project_behavior_enabled_plugins(meta_value: Any) -> Optional[List[str]]:
+    meta = canonicalize_project_runtime_meta(meta_value)
+    value = meta.get(PROJECT_META_BEHAVIOR_ENABLED_PLUGINS)
+    if isinstance(value, list):
+        return list(value)
+    return None
+
+
+def with_project_behavior_enabled_plugins(
+    meta_value: Any,
+    plugin_ids: Optional[List[str]],
+) -> Dict[str, Any]:
+    """
+    Return canonicalized project meta with behavior plugin defaults applied.
+
+    `plugin_ids=None` keeps current value unchanged.
+    """
+    meta = canonicalize_project_runtime_meta(meta_value)
+    if plugin_ids is None:
+        return meta
+
+    normalized = _normalize_plugin_ids(plugin_ids)
+    meta[PROJECT_META_BEHAVIOR_ENABLED_PLUGINS] = normalized if normalized is not None else []
+    return canonicalize_project_runtime_meta(meta)
 
 
 def canonicalize_project_runtime_meta(meta_value: Any) -> Dict[str, Any]:
@@ -110,5 +154,13 @@ def canonicalize_project_runtime_meta(meta_value: Any) -> Dict[str, Any]:
         meta[PROJECT_RUNTIME_META_KEY] = canonical_runtime
     else:
         meta.pop(PROJECT_RUNTIME_META_KEY, None)
+
+    behavior_enabled_plugins = _normalize_plugin_ids(
+        meta.get(PROJECT_META_BEHAVIOR_ENABLED_PLUGINS)
+    )
+    if behavior_enabled_plugins is not None:
+        meta[PROJECT_META_BEHAVIOR_ENABLED_PLUGINS] = behavior_enabled_plugins
+    else:
+        meta.pop(PROJECT_META_BEHAVIOR_ENABLED_PLUGINS, None)
 
     return meta

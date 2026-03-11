@@ -245,6 +245,7 @@ class SaveGameProjectRequest(BaseModel):
     source_world_id: Optional[int] = None
     overwrite_project_id: Optional[int] = None
     provenance: Optional[ProjectProvenance] = None
+    project_behavior_enabled_plugins: Optional[List[str]] = None
 
 
 class RenameSavedGameProjectRequest(BaseModel):
@@ -261,6 +262,7 @@ class SavedGameProjectSummary(BaseModel):
     source_world_id: Optional[int] = None
     schema_version: int = PROJECT_BUNDLE_SCHEMA_VERSION
     provenance: ProjectProvenance = Field(default_factory=ProjectProvenance)
+    project_behavior_enabled_plugins: Optional[List[str]] = None
     created_at: datetime
     updated_at: datetime
 
@@ -273,6 +275,7 @@ class UpsertDraftRequest(BaseModel):
     bundle: GameProjectBundle
     source_world_id: Optional[int] = None
     draft_source_project_id: Optional[int] = None
+    project_behavior_enabled_plugins: Optional[List[str]] = None
 
 
 class DraftSummary(BaseModel):
@@ -280,5 +283,6 @@ class DraftSummary(BaseModel):
     draft_source_project_id: Optional[int] = None
     source_world_id: Optional[int] = None
     schema_version: int = PROJECT_BUNDLE_SCHEMA_VERSION
+    project_behavior_enabled_plugins: Optional[List[str]] = None
     created_at: datetime
     updated_at: datetime
