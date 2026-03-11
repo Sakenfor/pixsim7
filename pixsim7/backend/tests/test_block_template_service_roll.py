@@ -449,6 +449,362 @@ async def test_roll_template_diverse_penalizes_repeated_values_across_slots(
 
 
 @pytest.mark.asyncio
+async def test_roll_template_layered_honors_explicit_assembly_layers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.prompt.block.template_service.derive_analysis_from_blocks",
+        lambda *_args, **_kwargs: None,
+    )
+
+    template = BlockTemplate(
+        name="Layered explicit",
+        slug="layered-explicit",
+        composition_strategy="layered",
+        slots=[
+            {"label": "Mood", "role": "mood"},
+            {"label": "Camera", "role": "camera"},
+            {"label": "Character", "role": "character"},
+            {"label": "Safety", "role": "other"},
+        ],
+        template_metadata={"slot_schema_version": 2},
+    )
+    blocks = [
+        PromptBlock(
+            block_id="mood_overlay",
+            text="Warm cinematic haze",
+            role="mood",
+            category="style",
+            kind="single_state",
+            package_name="shared",
+            tags={},
+            block_metadata={"assembly_layer": "L4"},
+            is_public=True,
+            avg_rating=4.0,
+        ),
+        PromptBlock(
+            block_id="camera_core",
+            text="Low angle tracking shot",
+            role="camera",
+            category="angle",
+            kind="single_state",
+            package_name="shared",
+            tags={},
+            block_metadata={},
+            is_public=True,
+            avg_rating=4.0,
+        ),
+        PromptBlock(
+            block_id="character_anchor",
+            text="Main character stands near doorway",
+            role="character",
+            category="subject",
+            kind="single_state",
+            package_name="shared",
+            tags={},
+            block_metadata={"assembly_layer": "L1"},
+            is_public=True,
+            avg_rating=4.0,
+        ),
+        PromptBlock(
+            block_id="safety_guard",
+            text="Avoid explicit nudity",
+            role="other",
+            category="constraint",
+            kind="single_state",
+            package_name="shared",
+            tags={},
+            block_metadata={"assembly_layer": "L0"},
+            is_public=True,
+            avg_rating=4.0,
+        ),
+    ]
+
+    service = _InMemoryBlockTemplateService(template, blocks)
+    result = await service.roll_template(template.id, seed=99)
+
+    assert result["success"] is True
+    assert result["assembled_prompt"] == (
+        "Avoid explicit nudity.\n"
+        "Main character stands near doorway.\n"
+        "Low angle tracking shot.\n"
+        "Warm cinematic haze."
+    )
+
+
+@pytest.mark.asyncio
+async def test_roll_template_layered_keeps_legacy_role_order_without_explicit_layers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.prompt.block.template_service.derive_analysis_from_blocks",
+        lambda *_args, **_kwargs: None,
+    )
+
+    template = BlockTemplate(
+        name="Layered fallback",
+        slug="layered-fallback",
+        composition_strategy="layered",
+        slots=[
+            {"label": "Mood", "role": "mood"},
+            {"label": "Action", "role": "action"},
+            {"label": "Camera", "role": "camera"},
+            {"label": "Character", "role": "character"},
+            {"label": "Setting", "role": "setting"},
+            {"label": "Other", "role": "other"},
+        ],
+        template_metadata={"slot_schema_version": 2},
+    )
+    blocks = [
+        _block(block_id="mood", text="moody haze", role="mood", tags={}),
+        _block(block_id="action", text="she steps forward", role="action", tags={}),
+        _block(block_id="camera", text="camera dolly in", role="camera", tags={}),
+        _block(block_id="character", text="the heroine waits", role="character", tags={}),
+        _block(block_id="setting", text="abandoned station at dusk", role="setting", tags={}),
+        _block(block_id="other", text="grain texture overlay", role="other", tags={}),
+    ]
+
+    service = _InMemoryBlockTemplateService(template, blocks)
+    result = await service.roll_template(template.id, seed=1234)
+
+    assert result["success"] is True
+    assert result["assembled_prompt"] == (
+        "abandoned station at dusk.\n"
+        "the heroine waits.\n"
+        "she steps forward.\n"
+        "camera dolly in.\n"
+        "moody haze.\n"
+        "grain texture overlay."
+    )
+
+
+@pytest.mark.asyncio
+async def test_roll_template_layered_supports_template_defined_layer_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.prompt.block.template_service.derive_analysis_from_blocks",
+        lambda *_args, **_kwargs: None,
+    )
+
+    template = BlockTemplate(
+        name="Layered custom registry",
+        slug="layered-custom-registry",
+        composition_strategy="layered",
+        slots=[
+            {"label": "Core", "role": "action"},
+            {"label": "Policy", "role": "other"},
+            {"label": "Mood", "role": "mood"},
+        ],
+        template_metadata={
+            "slot_schema_version": 2,
+            "assembly_layers": [
+                {
+                    "id": "L2_5",
+                    "priority": 25,
+                    "aliases": ["npc_policy"],
+                }
+            ],
+        },
+    )
+    blocks = [
+        PromptBlock(
+            block_id="core_action",
+            text="Core choreography baseline",
+            role="action",
+            category="action",
+            kind="single_state",
+            package_name="shared",
+            tags={},
+            block_metadata={},
+            is_public=True,
+            avg_rating=4.0,
+        ),
+        PromptBlock(
+            block_id="npc_policy",
+            text="NPC mood policy guardrail",
+            role="other",
+            category="policy",
+            kind="single_state",
+            package_name="shared",
+            tags={},
+            block_metadata={"assembly_layer": "npc_policy"},
+            is_public=True,
+            avg_rating=4.0,
+        ),
+        PromptBlock(
+            block_id="mood_overlay",
+            text="Warm emotional texture",
+            role="mood",
+            category="style",
+            kind="single_state",
+            package_name="shared",
+            tags={},
+            block_metadata={},
+            is_public=True,
+            avg_rating=4.0,
+        ),
+    ]
+
+    service = _InMemoryBlockTemplateService(template, blocks)
+    result = await service.roll_template(template.id, seed=77)
+
+    assert result["success"] is True
+    assert result["assembled_prompt"] == (
+        "Core choreography baseline.\n"
+        "NPC mood policy guardrail.\n"
+        "Warm emotional texture."
+    )
+
+
+@pytest.mark.asyncio
+async def test_roll_template_layered_budget_drops_low_priority_layers_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.prompt.block.template_service.derive_analysis_from_blocks",
+        lambda *_args, **_kwargs: None,
+    )
+
+    template = BlockTemplate(
+        name="Layered budget drop",
+        slug="layered-budget-drop",
+        composition_strategy="layered",
+        slots=[
+            {"label": "Style", "role": "mood"},
+            {"label": "Core", "role": "camera"},
+            {"label": "Anchor", "role": "character"},
+            {"label": "Safety", "role": "other"},
+        ],
+        template_metadata={
+            "slot_schema_version": 2,
+            "assembly_budget": {"max_chars": 90},
+        },
+    )
+    blocks = [
+        PromptBlock(
+            block_id="style_overlay",
+            text="romantic cinematic haze grain bloom color wash",
+            role="mood",
+            category="style",
+            kind="single_state",
+            package_name="shared",
+            tags={},
+            block_metadata={"assembly_layer": "L4"},
+            is_public=True,
+            avg_rating=4.0,
+        ),
+        PromptBlock(
+            block_id="core_camera",
+            text="Camera dolly in slowly",
+            role="camera",
+            category="angle",
+            kind="single_state",
+            package_name="shared",
+            tags={},
+            block_metadata={},
+            is_public=True,
+            avg_rating=4.0,
+        ),
+        PromptBlock(
+            block_id="anchor_character",
+            text="Main character at the station",
+            role="character",
+            category="subject",
+            kind="single_state",
+            package_name="shared",
+            tags={},
+            block_metadata={"assembly_layer": "L1"},
+            is_public=True,
+            avg_rating=4.0,
+        ),
+        PromptBlock(
+            block_id="safety_guard",
+            text="Avoid explicit nudity",
+            role="other",
+            category="constraint",
+            kind="single_state",
+            package_name="shared",
+            tags={},
+            block_metadata={"assembly_layer": "L0"},
+            is_public=True,
+            avg_rating=4.0,
+        ),
+    ]
+
+    service = _InMemoryBlockTemplateService(template, blocks)
+    result = await service.roll_template(template.id, seed=201)
+
+    assert result["success"] is True
+    assert "romantic cinematic haze grain bloom color wash" not in result["assembled_prompt"]
+    budget = result["metadata"]["assembly_budget"]
+    assert isinstance(budget, dict)
+    assert budget["status"] == "fit_after_budget"
+    assert "style_overlay" in budget["dropped_block_ids"]
+
+
+@pytest.mark.asyncio
+async def test_roll_template_layered_budget_preserves_hard_layers_when_over_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "pixsim7.backend.main.services.prompt.block.template_service.derive_analysis_from_blocks",
+        lambda *_args, **_kwargs: None,
+    )
+
+    template = BlockTemplate(
+        name="Layered budget hard layers",
+        slug="layered-budget-hard-layers",
+        composition_strategy="layered",
+        slots=[
+            {"label": "Anchor", "role": "character"},
+            {"label": "Safety", "role": "other"},
+        ],
+        template_metadata={
+            "slot_schema_version": 2,
+            "assembly_budget": {"max_chars": 20},
+        },
+    )
+    blocks = [
+        PromptBlock(
+            block_id="anchor_character",
+            text="Main character at the station",
+            role="character",
+            category="subject",
+            kind="single_state",
+            package_name="shared",
+            tags={},
+            block_metadata={"assembly_layer": "L1"},
+            is_public=True,
+            avg_rating=4.0,
+        ),
+        PromptBlock(
+            block_id="safety_guard",
+            text="Avoid explicit nudity",
+            role="other",
+            category="constraint",
+            kind="single_state",
+            package_name="shared",
+            tags={},
+            block_metadata={"assembly_layer": "L0"},
+            is_public=True,
+            avg_rating=4.0,
+        ),
+    ]
+
+    service = _InMemoryBlockTemplateService(template, blocks)
+    result = await service.roll_template(template.id, seed=202)
+
+    assert result["success"] is True
+    assert "Avoid explicit nudity." in result["assembled_prompt"]
+    assert "Main character at the station." in result["assembled_prompt"]
+    budget = result["metadata"]["assembly_budget"]
+    assert isinstance(budget, dict)
+    assert budget["status"] == "over_budget_hard_layers"
+    assert any("protected layers likely exceed max_chars" in warning for warning in result["warnings"])
+
+
+@pytest.mark.asyncio
 async def test_roll_template_propagates_bound_op_refs_into_selected_block_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

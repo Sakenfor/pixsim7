@@ -66,6 +66,13 @@ def primitive_block_to_candidate(block: Any) -> CandidateBlock:
         else {}
     )
     op_metadata = block_metadata.get("op") if isinstance(block_metadata, dict) else None
+    assembly_layer = block_metadata.get("assembly_layer") if isinstance(block_metadata, dict) else None
+    fallback_layer = block_metadata.get("layer") if isinstance(block_metadata, dict) else None
+    layer_value: Optional[str] = None
+    if isinstance(assembly_layer, str) and assembly_layer.strip():
+        layer_value = assembly_layer.strip()
+    elif isinstance(fallback_layer, str) and fallback_layer.strip():
+        layer_value = fallback_layer.strip()
     package_name = None
     source_pack = tags.get("source_pack") if isinstance(tags, dict) else None
     if isinstance(source_pack, str) and source_pack.strip():
@@ -87,6 +94,7 @@ def primitive_block_to_candidate(block: Any) -> CandidateBlock:
         metadata={
             "db_id": str(getattr(block, "id", "")) if getattr(block, "id", None) is not None else None,
             **({"op": dict(op_metadata)} if isinstance(op_metadata, dict) else {}),
+            **({"assembly_layer": layer_value} if layer_value else {}),
         },
     )
 

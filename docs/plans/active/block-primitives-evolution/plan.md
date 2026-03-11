@@ -167,3 +167,6 @@ Exit criteria:
 - 2026-03-10 (`uncommitted`): Promoted block-primitives evolution to canonical active plan; snapshot moved to supporting architecture review doc.
 - 2026-03-10 (`uncommitted`): Hardened op-signature contract enforcement (`requires_variant_template`) and added prompt-service + content-pack loader tests for signature template/prefix/modality guards.
 - 2026-03-10 (`uncommitted`): Added explicit layered assembly canon (L0-L4), budget/priority overflow policy, and NPC/stat policy-packet direction to avoid future hardcoded drift.
+- 2026-03-11 (`uncommitted`): Implemented layer-aware `layered` composition ordering in template roll (`assembly_layer` with L0-L4 aliases + backward-compatible role/category fallback) and added coverage for explicit-layer + legacy-order behavior.
+- 2026-03-11 (`uncommitted`): Extended layered composition to accept template-defined layer registries (`template_metadata.assembly_layers` with `id/priority/aliases`) so new layers can be added without core code edits.
+- 2026-03-11 (`uncommitted`): Extracted layer/composition helpers from `template_service.py` into dedicated `composition_layers.py` and implemented layer-aware budget handling (`assembly_budget.max_chars`) with deterministic drop/trim order and metadata reporting.

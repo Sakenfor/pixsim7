@@ -9,7 +9,7 @@ import random
 import math
 from contextlib import contextmanager
 from typing import Iterator, List, Optional, Dict, Any, Tuple
-from uuid import UUID
+from uuid import UUID, uuid4
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,16 @@ from pixsim7.backend.main.services.prompt.block.compiler_core import (
 )
 from pixsim7.backend.main.services.prompt.block.composition_engine import (
     derive_analysis_from_blocks,
+)
+from pixsim7.backend.main.services.prompt.block.composition_layers import (
+    apply_layered_budget,
+    build_layer_registry as _build_layer_registry,
+    compose_layered as _compose_layered,
+    compose_merged as _compose_merged,
+    compose_sequential as _compose_sequential,
+    join_blocks as _join_blocks,
+    order_layered_blocks as _order_layered_blocks,
+    resolve_layer_budget_settings,
 )
 from pixsim7.backend.main.services.prompt.block.block_query import (
     normalize_tag_query,
@@ -1327,7 +1337,120 @@ class BlockTemplateService:
         template = await self.get_template(template_id)
         if not template:
             return {"success": False, "error": "Template not found"}
+        return await self._roll_template_object(
+            template=template,
+            seed=seed,
+            exclude_block_ids=exclude_block_ids,
+            character_bindings=character_bindings,
+            control_values=control_values,
+            current_user_id=current_user_id,
+            persist_roll_count=True,
+        )
 
+    async def roll_template_inline(
+        self,
+        *,
+        template_payload: Dict[str, Any],
+        seed: Optional[int] = None,
+        exclude_block_ids: Optional[List[UUID]] = None,
+        character_bindings: Optional[Dict[str, Any]] = None,
+        control_values: Optional[Dict[str, Any]] = None,
+        current_user_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Roll a template payload without persisting it."""
+        try:
+            template = self._build_inline_template(template_payload)
+        except ValueError as exc:
+            return {"success": False, "error": str(exc)}
+
+        return await self._roll_template_object(
+            template=template,
+            seed=seed,
+            exclude_block_ids=exclude_block_ids,
+            character_bindings=character_bindings,
+            control_values=control_values,
+            current_user_id=current_user_id,
+            persist_roll_count=False,
+        )
+
+    @staticmethod
+    def _build_inline_template(template_payload: Dict[str, Any]) -> BlockTemplate:
+        if not isinstance(template_payload, dict):
+            raise ValueError("Inline template payload must be an object")
+
+        raw_slots = template_payload.get("slots")
+        if not isinstance(raw_slots, list):
+            raise ValueError("Inline template payload must include slots as a list")
+
+        name = str(template_payload.get("name") or "Inline Template").strip() or "Inline Template"
+        raw_slug = template_payload.get("slug")
+        slug = str(raw_slug).strip() if isinstance(raw_slug, str) else ""
+        if not slug:
+            slug = f"inline-{uuid4().hex[:12]}"
+
+        package_name = template_payload.get("package_name")
+        if isinstance(package_name, str):
+            package_name = package_name.strip() or None
+        else:
+            package_name = None
+
+        description = template_payload.get("description")
+        if description is not None:
+            description = str(description)
+
+        tags_raw = template_payload.get("tags")
+        tags = [str(v) for v in tags_raw if isinstance(v, (str, int, float))] if isinstance(tags_raw, list) else []
+
+        template_metadata = template_payload.get("template_metadata")
+        if not isinstance(template_metadata, dict):
+            template_metadata = {}
+
+        template_bindings = template_payload.get("character_bindings")
+        if not isinstance(template_bindings, dict):
+            template_bindings = {}
+
+        owner_user_id = None
+        raw_owner_user_id = template_payload.get("owner_user_id")
+        if raw_owner_user_id is not None:
+            try:
+                owner_user_id = int(raw_owner_user_id)
+            except (TypeError, ValueError):
+                owner_user_id = None
+
+        created_by = template_payload.get("created_by")
+        if isinstance(created_by, str):
+            created_by = created_by.strip() or None
+        else:
+            created_by = None
+
+        return BlockTemplate(
+            id=uuid4(),
+            name=name,
+            slug=slug,
+            description=description,
+            slots=list(raw_slots),
+            composition_strategy=str(template_payload.get("composition_strategy") or "sequential"),
+            package_name=package_name,
+            tags=tags,
+            is_public=bool(template_payload.get("is_public", True)),
+            created_by=created_by,
+            owner_user_id=owner_user_id,
+            roll_count=0,
+            template_metadata=template_metadata,
+            character_bindings=template_bindings,
+        )
+
+    async def _roll_template_object(
+        self,
+        *,
+        template: BlockTemplate,
+        seed: Optional[int],
+        exclude_block_ids: Optional[List[UUID]],
+        character_bindings: Optional[Dict[str, Any]],
+        control_values: Optional[Dict[str, Any]],
+        current_user_id: Optional[int],
+        persist_roll_count: bool,
+    ) -> Dict[str, Any]:
         rng = random.Random(seed)
         try:
             slots = normalize_template_slots(
@@ -1501,6 +1624,7 @@ class BlockTemplateService:
             chosen_package_name: Optional[str] = None
             chosen_role: Optional[str] = None
             chosen_op: Optional[Dict[str, Any]] = None
+            chosen_layer: Optional[str] = None
 
             if chosen is not None:
                 chosen_text = chosen.text or chosen_text
@@ -1515,6 +1639,9 @@ class BlockTemplateService:
                     op_payload = chosen.metadata.get("op")
                     if isinstance(op_payload, dict):
                         chosen_op = dict(op_payload)
+                    layer_payload = chosen.metadata.get("assembly_layer")
+                    if isinstance(layer_payload, str) and layer_payload.strip():
+                        chosen_layer = layer_payload.strip()
             else:
                 warnings.append(
                     f"Target '{target_key}' selected '{selected.block_id}' missing in compiled candidate set"
@@ -1544,6 +1671,7 @@ class BlockTemplateService:
                     "role": chosen_role,
                     "category": chosen_category,
                     **({"op": chosen_op} if chosen_op else {}),
+                    **({"assembly_layer": chosen_layer} if chosen_layer else {}),
                 },
                 "kind": "single_state",
             }
@@ -1603,8 +1731,14 @@ class BlockTemplateService:
             )
             composition_strategy_applied = False
 
+        layer_rank_map, layer_alias_map, layer_registry_warnings = _build_layer_registry(
+            metadata.get("assembly_layers")
+        )
+        warnings.extend(layer_registry_warnings)
+
         assembled_prompt = ""
         derived_analysis = None
+        assembly_budget_report: Optional[Dict[str, Any]] = None
 
         characters_resolved: Dict[str, str] = {}
 
@@ -1664,14 +1798,38 @@ class BlockTemplateService:
             if prompt_parts:
                 assembled_prompt = _join_blocks(prompt_parts)
         elif strategy == "layered":
-            assembled_prompt = _compose_layered(selected_blocks)
+            assembled_prompt = _compose_layered(
+                selected_blocks,
+                layer_rank=layer_rank_map,
+                layer_alias_map=layer_alias_map,
+            )
         else:
             assembled_prompt = _compose_merged(selected_blocks)
 
         if selected_blocks:
             analysis_blocks: List[Any] = selected_blocks
             if strategy == "layered" and composition_strategy_applied:
-                analysis_blocks = _order_layered_blocks(selected_blocks)
+                analysis_blocks = _order_layered_blocks(
+                    selected_blocks,
+                    layer_rank=layer_rank_map,
+                    layer_alias_map=layer_alias_map,
+                )
+                max_chars, protected_layers, budget_warnings = resolve_layer_budget_settings(
+                    metadata.get("assembly_budget"),
+                    raw_max_chars=metadata.get("assembly_max_chars"),
+                    layer_alias_map=layer_alias_map,
+                )
+                warnings.extend(budget_warnings)
+                if max_chars is not None:
+                    analysis_blocks, assembly_budget_report, budget_apply_warnings = apply_layered_budget(
+                        ordered_blocks=analysis_blocks,
+                        max_chars=max_chars,
+                        layer_rank=layer_rank_map,
+                        layer_alias_map=layer_alias_map,
+                        protected_layers=protected_layers,
+                    )
+                    warnings.extend(budget_apply_warnings)
+                    assembled_prompt = _compose_sequential(analysis_blocks)
             derived_analysis = derive_analysis_from_blocks(analysis_blocks, assembled_prompt)
 
         # Final character binding expansion for block text (no intensity).
@@ -1682,12 +1840,15 @@ class BlockTemplateService:
             for err in expansion.get("expansion_errors", []):
                 warnings.append(f"Character expansion: {err}")
 
-        # Increment roll count.
-        template.roll_count = (template.roll_count or 0) + 1
-        await self.db.commit()
+        roll_count = int(template.roll_count or 0)
+        if persist_roll_count:
+            template.roll_count = roll_count + 1
+            await self.db.commit()
+            roll_count = int(template.roll_count or 0)
 
         selected_block_ids = [str(b.get("id")) for b in selected_blocks if b.get("id") is not None]
         selected_block_string_ids = [str(b.get("block_id")) for b in selected_blocks if b.get("block_id")]
+        template_id = str(template.id) if getattr(template, "id", None) is not None else None
 
         return {
             "success": True,
@@ -1696,7 +1857,7 @@ class BlockTemplateService:
             "slot_results": slot_results,
             "warnings": warnings,
             "metadata": {
-                "template_id": str(template.id),
+                "template_id": template_id,
                 "template_name": template.name,
                 "slots_total": len(slots),
                 "slots_filled": sum(1 for sr in slot_results if sr["status"] == "selected"),
@@ -1706,7 +1867,8 @@ class BlockTemplateService:
                 "composition_strategy": template.composition_strategy,
                 "composition_strategy_applied": composition_strategy_applied,
                 "seed": seed,
-                "roll_count": template.roll_count,
+                "roll_count": roll_count,
+                "inline_template": not persist_roll_count,
                 "resolver_id": resolver_result.resolver_id,
                 "ref_binding": (
                     dict(compiled_request.context.get("ref_binding") or {})
@@ -1718,83 +1880,9 @@ class BlockTemplateService:
                 "selected_block_string_ids": selected_block_string_ids,
                 "character_bindings": effective_bindings if effective_bindings else None,
                 "characters_resolved": characters_resolved if characters_resolved else None,
+                "assembly_budget": assembly_budget_report,
             },
         }
-# -- Composition helpers (stateless) -----------------------------------------
-
-_SENTENCE_ENDINGS = frozenset(".!?")
-
-
-def _ensure_period(text: str) -> str:
-    """Ensure text ends with sentence-ending punctuation."""
-    stripped = text.rstrip()
-    if not stripped:
-        return stripped
-    if stripped[-1] not in _SENTENCE_ENDINGS:
-        return stripped + "."
-    return stripped
-
-
-def _join_blocks(parts: List[str]) -> str:
-    """Join block parts with newlines, ensuring each ends with a period."""
-    cleaned = [_ensure_period(p.strip()) for p in parts if p.strip()]
-    return "\n".join(cleaned)
-
-
-def _block_text(block: Any) -> str:
-    if isinstance(block, dict):
-        return str(block.get("text") or "")
-    return str(getattr(block, "text", "") or "")
-
-
-def _block_role(block: Any) -> Optional[str]:
-    if isinstance(block, dict):
-        value = block.get("role")
-    else:
-        value = getattr(block, "role", None)
-    if isinstance(value, str):
-        value = value.strip()
-    return value or None
-
-
-def _compose_sequential(blocks: List[Any]) -> str:
-    if not blocks:
-        return ""
-    return _join_blocks([_block_text(block) for block in blocks if _block_text(block)])
-
-
-def _compose_layered(blocks: List[Any]) -> str:
-    """Layer blocks by inferred role category."""
-    return _join_blocks([_block_text(block) for block in _order_layered_blocks(blocks) if _block_text(block)])
-
-
-def _order_layered_blocks(blocks: List[Any]) -> List[Any]:
-    """Return blocks ordered by role categories for layered composition."""
-    categories: Dict[str, List[Any]] = {
-        "character": [], "setting": [], "camera": [],
-        "action": [], "mood": [], "other": [],
-    }
-
-    for block in blocks:
-        role = _block_role(block) or "other"
-        if role in categories:
-            categories[role].append(block)
-        else:
-            categories["other"].append(block)
-
-    order = ["setting", "character", "action", "camera", "mood", "other"]
-    ordered_blocks: List[Any] = []
-    for cat in order:
-        ordered_blocks.extend(categories.get(cat, []))
-
-    return ordered_blocks
-
-
-def _compose_merged(blocks: List[Any]) -> str:
-    """Placeholder merged strategy; currently mirrors sequential composition."""
-    return _compose_sequential(blocks)
-
-
 def _merge_tag_maps(
     existing: Optional[Dict[str, Any]],
     incoming: Optional[Dict[str, Any]],
