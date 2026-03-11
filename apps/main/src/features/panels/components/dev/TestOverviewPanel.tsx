@@ -1,3 +1,4 @@
+import { PanelShell } from '@pixsim7/shared.ui';
 import { useMemo, useState } from 'react';
 
 import { canRunCodegen } from '@lib/auth';
@@ -450,23 +451,26 @@ export function TestOverviewPanel() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100">
-      <header className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
-        <div className="flex items-center gap-2">
-          <Icon name="flask" size={18} className="text-emerald-500" />
-          <h2 className="text-lg font-semibold">Test Overview</h2>
-        </div>
-        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-          User-facing test profile overview aligned with the unified runner.
-        </p>
-        {!canExecute && (
-          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
-            Read-only mode. The <code>devtools.codegen</code> permission is required to execute profiles.
+    <PanelShell
+      className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
+      header={
+        <header className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
+          <div className="flex items-center gap-2">
+            <Icon name="flask" size={18} className="text-emerald-500" />
+            <h2 className="text-lg font-semibold">Test Overview</h2>
+          </div>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+            User-facing test profile overview aligned with the unified runner.
           </p>
-        )}
-      </header>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {!canExecute && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+              Read-only mode. The <code>devtools.codegen</code> permission is required to execute profiles.
+            </p>
+          )}
+        </header>
+      }
+      bodyClassName="p-4 space-y-4"
+    >
         <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
             <div className="text-xs text-neutral-500 dark:text-neutral-400">Profiles</div>
@@ -691,7 +695,6 @@ export function TestOverviewPanel() {
             )}
           </section>
         )}
-      </div>
-    </div>
+    </PanelShell>
   );
 }

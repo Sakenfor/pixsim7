@@ -9,7 +9,7 @@
  */
 
 import { buildMaskFilename, buildMaskUploadContext } from '@pixsim7/shared.media.core';
-import { useToast } from '@pixsim7/shared.ui';
+import { PanelShell, useToast } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { API_BASE_URL, deleteAsset } from '@lib/api';
@@ -1002,28 +1002,33 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     : 'grab';
 
   return (
-    <div className="absolute inset-0 flex bg-surface-inset">
-      <MaskToolsPanel />
-      <div className="flex-1 min-w-0 relative">
-        <InteractiveImageSurface
-          media={media}
-          state={state}
-          handlers={handlers}
-          cursor={cursor}
-          className="w-full h-full"
-          onMediaLoad={handleMediaLoad}
+    <PanelShell
+      className="absolute inset-0 bg-surface-inset"
+      sidebar={<MaskToolsPanel />}
+      sidebarWidth="w-32"
+      sidebarRight={
+        <MaskLayersPanel
+          sourceAssetId={sourceAssetId}
+          masks={sourceMaskAssets}
+          anyMasks={anyMaskAssetsQuery.items}
+          loadingMasks={maskAssetsQuery.loading || isImportingSavedMask}
+          loadingAnyMasks={anyMaskAssetsQuery.loading || isImportingSavedMask}
+          currentMaskUrl={currentMaskUrl}
+          onDeleteMaskAsset={handleDeleteMaskAsset}
         />
-      </div>
-      <MaskLayersPanel
-        sourceAssetId={sourceAssetId}
-        masks={sourceMaskAssets}
-        anyMasks={anyMaskAssetsQuery.items}
-        loadingMasks={maskAssetsQuery.loading || isImportingSavedMask}
-        loadingAnyMasks={anyMaskAssetsQuery.loading || isImportingSavedMask}
-        currentMaskUrl={currentMaskUrl}
-        onDeleteMaskAsset={handleDeleteMaskAsset}
+      }
+      sidebarRightWidth="w-40"
+      bodyScroll={false}
+    >
+      <InteractiveImageSurface
+        media={media}
+        state={state}
+        handlers={handlers}
+        cursor={cursor}
+        className="w-full h-full"
+        onMediaLoad={handleMediaLoad}
       />
-    </div>
+    </PanelShell>
   );
 }
 
@@ -1067,7 +1072,7 @@ function MaskToolsPanel() {
   const isManualPreset = activePresetId.startsWith('manual-');
 
   return (
-    <OverlaySidePanel className="w-32">
+    <OverlaySidePanel>
       {/* Preset source selector — only shown when non-manual presets exist */}
       {automatic.length > 0 && (
         <>
@@ -1298,7 +1303,7 @@ function MaskLayersPanel({
   }, [importSavedMask, onDeleteMaskAsset]);
 
   return (
-    <OverlaySidePanel className="w-40" side="right">
+    <OverlaySidePanel side="right">
       <SideSection label="Layers">
         <LayerPanel
           layers={layers}

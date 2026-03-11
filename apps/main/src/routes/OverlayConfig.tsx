@@ -7,6 +7,7 @@
  */
 
 import { Button, Select, Panel } from '@pixsim7/shared.ui';
+import clsx from 'clsx';
 import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -136,11 +137,26 @@ const COMPONENT_CONFIGS: Record<ComponentType, ComponentConfig> = {
   },
 };
 
-export function OverlayConfig() {
-  const [searchParams, setSearchParams] = useSearchParams();
+export interface OverlayConfigProps {
+  embedded?: boolean;
+  defaultComponentType?: ComponentType;
+  className?: string;
+}
 
-  // Get component type from URL or default to mediaCard
-  const componentType = (searchParams.get('component') as ComponentType) || 'mediaCard';
+export function OverlayConfig({
+  embedded = false,
+  defaultComponentType = 'mediaCard',
+  className,
+}: OverlayConfigProps = {}) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [embeddedComponentType, setEmbeddedComponentType] = useState<ComponentType>(defaultComponentType);
+
+  // Route mode reads from URL; embedded mode keeps a local selector state.
+  const componentType = (
+    embedded
+      ? embeddedComponentType
+      : (searchParams.get('component') as ComponentType)
+  ) || defaultComponentType;
   const componentConfig = COMPONENT_CONFIGS[componentType];
   const presetStorageKey = `${componentConfig.storageKey}:presets`;
 
@@ -201,7 +217,11 @@ export function OverlayConfig() {
 
   // Handle component type change
   const handleComponentTypeChange = (newType: ComponentType) => {
-    setSearchParams({ component: newType });
+    if (embedded) {
+      setEmbeddedComponentType(newType);
+    } else {
+      setSearchParams({ component: newType });
+    }
     // Load saved config for new component type
     const newConfig = COMPONENT_CONFIGS[newType];
     const saved = localStorage.getItem(newConfig.storageKey);
@@ -307,8 +327,128 @@ export function OverlayConfig() {
     input.click();
   };
 
+  const editorContent = componentConfig.presets.length > 0 ? (
+    <OverlayEditor
+      configuration={configuration}
+      onChange={handleConfigChange}
+      preview={componentConfig.samplePreview}
+      presets={componentConfig.presets.map((p) => ({
+        id: p.id,
+        name: p.name,
+        icon: p.icon,
+        description: p.configuration.description,
+        metadata: getOverlayPresetMetadata(p).chips,
+        configuration: p.configuration,
+      }))}
+      onPresetSelect={handlePresetSelect}
+      availableWidgetTypes={componentConfig.availableWidgets}
+      onImportRuntimeWidgets={
+        componentType === 'mediaCard'
+          ? () => buildSampleMediaCardRuntimeWidgets(configuration.id)
+          : undefined
+      }
+    />
+  ) : (
+    <Panel className="h-full flex items-center justify-center">
+      <div className="text-center">
+        <div className="mb-4"><Icon name={componentConfig.icon} size={48} /></div>
+        <h2 className="text-xl font-bold mb-2">{componentConfig.name} - Coming Soon</h2>
+        <p className="text-neutral-600 dark:text-neutral-400">
+          Presets and configuration for this component are not yet available.
+        </p>
+      </div>
+    </Panel>
+  );
+
+  // ── Embedded mode: compact toolbar, no footer ─────────────────────────
+  if (embedded) {
+    return (
+      <div className={clsx('h-full flex flex-col bg-neutral-50 dark:bg-neutral-900', className)}>
+        {/* Compact toolbar */}
+        <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-950/60">
+          {/* Component type tabs */}
+          <div className="flex items-center gap-1">
+            {Object.values(COMPONENT_CONFIGS).map((config) => (
+              <button
+                key={config.id}
+                onClick={() => handleComponentTypeChange(config.id)}
+                className={clsx(
+                  'px-2 py-1 rounded text-[11px] font-medium transition-colors',
+                  componentType === config.id
+                    ? 'bg-accent text-accent-text'
+                    : 'text-th-secondary hover:bg-th/10',
+                )}
+              >
+                {config.name}
+              </button>
+            ))}
+          </div>
+
+          <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-700" />
+
+          {/* Storage selector */}
+          <Select
+            value={storageType}
+            onChange={(e) => handleStorageTypeChange(e.target.value as StorageType)}
+            className="h-6 text-[11px] w-28"
+          >
+            <option value="localStorage">Local</option>
+            <option value="indexedDB">IndexedDB</option>
+            <option value="api">API</option>
+          </Select>
+
+          {storageType === 'api' && (
+            <>
+              <input
+                type="text"
+                value={apiConfig.baseUrl}
+                onChange={(e) => handleApiConfigChange(e.target.value, apiConfig.authToken)}
+                placeholder="API URL"
+                className="h-6 px-1.5 text-[11px] border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 w-40"
+              />
+              <input
+                type="password"
+                value={apiConfig.authToken}
+                onChange={(e) => handleApiConfigChange(apiConfig.baseUrl, e.target.value)}
+                placeholder="Token"
+                className="h-6 px-1.5 text-[11px] border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 w-24"
+              />
+            </>
+          )}
+
+          {/* Actions — pushed right */}
+          <div className="ml-auto flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={handleImport} className="h-6 text-[11px] px-2">
+              Import
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleExport} className="h-6 text-[11px] px-2">
+              Export
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleSaveAsPreset} className="h-6 text-[11px] px-2">
+              Save Preset
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleReset} className="h-6 text-[11px] px-2">
+              Reset
+            </Button>
+          </div>
+        </div>
+
+        {/* Editor fills remaining space */}
+        <div className="flex-1 min-h-0 overflow-hidden p-3">
+          {editorContent}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Standalone page mode: full header + footer ────────────────────────
   return (
-    <div className="h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
+    <div
+      className={clsx(
+        'h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900',
+        className,
+      )}
+    >
       {/* Header */}
       <div className="border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-6 py-4">
         <div className="flex items-center justify-between mb-4">
@@ -418,53 +558,22 @@ export function OverlayConfig() {
 
           {/* Storage info */}
           <div className="ml-auto text-xs text-neutral-500 dark:text-neutral-400">
-            {storageType === 'localStorage' && '💾 Browser storage (5MB limit)'}
-            {storageType === 'indexedDB' && '📦 IndexedDB (50MB+ capacity, offline-first)'}
-            {storageType === 'api' && '☁️ Remote API (sync across devices)'}
+            {storageType === 'localStorage' && 'Browser storage (5MB limit)'}
+            {storageType === 'indexedDB' && 'IndexedDB (50MB+ capacity, offline-first)'}
+            {storageType === 'api' && 'Remote API (sync across devices)'}
           </div>
         </div>
       </div>
 
       {/* Editor or Coming Soon message */}
       <div className="flex-1 overflow-hidden p-6">
-        {componentConfig.presets.length > 0 ? (
-          <OverlayEditor
-            configuration={configuration}
-            onChange={handleConfigChange}
-            preview={componentConfig.samplePreview}
-            presets={componentConfig.presets.map((p) => ({
-              id: p.id,
-              name: p.name,
-              icon: p.icon,
-              description: p.configuration.description,
-              metadata: getOverlayPresetMetadata(p).chips,
-              configuration: p.configuration,
-            }))}
-            onPresetSelect={handlePresetSelect}
-            availableWidgetTypes={componentConfig.availableWidgets}
-            onImportRuntimeWidgets={
-              componentType === 'mediaCard'
-                ? () => buildSampleMediaCardRuntimeWidgets(configuration.id)
-                : undefined
-            }
-          />
-        ) : (
-          <Panel className="h-full flex items-center justify-center">
-            <div className="text-center">
-              <div className="mb-4"><Icon name={componentConfig.icon} size={48} /></div>
-              <h2 className="text-xl font-bold mb-2">{componentConfig.name} - Coming Soon</h2>
-              <p className="text-neutral-600 dark:text-neutral-400">
-                Presets and configuration for this component are not yet available.
-              </p>
-            </div>
-          </Panel>
-        )}
+        {editorContent}
       </div>
 
       {/* Footer info */}
       <div className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-6 py-3">
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
-          💡 Tip: Changes are auto-saved. Use presets for quick switching or export your configuration to share with others.
+          Changes are auto-saved. Use presets for quick switching or export your configuration to share with others.
         </p>
       </div>
     </div>

@@ -7,6 +7,8 @@
  * Wrapper around HudLayoutBuilder with world selection.
  */
 
+import { PanelShell } from "@pixsim7/shared.ui";
+
 import { HudLayoutBuilder } from "@features/hud";
 
 import { useSharedWorldSelection } from "@/hooks";
@@ -53,34 +55,34 @@ export function HudDesignerPanel() {
   }
 
   return (
-    <div className="h-full w-full flex flex-col bg-neutral-50 dark:bg-neutral-950">
-      {/* World Selector */}
-      {worlds.length > 1 && (
-        <div className="flex-shrink-0 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-              World:
-            </label>
-            <select
-              value={selectedWorldId ?? ""}
-              onChange={(e) => setSelectedWorldId(e.target.value ? Number(e.target.value) : null)}
-              className="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded text-sm text-neutral-900 dark:text-neutral-100"
-            >
-              <option value="">Select world...</option>
-              {worlds.map((world) => (
-                <option key={world.id} value={world.id}>
-                  {world.name}
-                </option>
-              ))}
-            </select>
+    <PanelShell
+      className="bg-neutral-50 dark:bg-neutral-950"
+      header={
+        worlds.length > 1 ? (
+          <div className="border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                World:
+              </label>
+              <select
+                value={selectedWorldId ?? ""}
+                onChange={(e) => setSelectedWorldId(e.target.value ? Number(e.target.value) : null)}
+                className="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded text-sm text-neutral-900 dark:text-neutral-100"
+              >
+                <option value="">Select world...</option>
+                {worlds.map((world) => (
+                  <option key={world.id} value={world.id}>
+                    {world.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* HUD Builder */}
-      <div className="flex-1 min-h-0">
-        <HudLayoutBuilder worldId={selectedWorldId} />
-      </div>
-    </div>
+        ) : undefined
+      }
+      bodyScroll={false}
+    >
+      <HudLayoutBuilder worldId={selectedWorldId} />
+    </PanelShell>
   );
 }

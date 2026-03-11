@@ -91,7 +91,7 @@ function CaptureToolsPanel({
   );
 
   return (
-    <OverlaySidePanel>
+    <OverlaySidePanel className="w-36">
       <SideSection label="Region">
         <SideToolButton
           icon="square"

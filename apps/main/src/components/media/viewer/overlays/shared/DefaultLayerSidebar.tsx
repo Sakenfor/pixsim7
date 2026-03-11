@@ -47,7 +47,7 @@ export function DefaultLayerSidebar({ renderLayerExtra }: DefaultLayerSidebarPro
       </button>
 
       {!collapsed && (
-        <div className="px-1.5 pb-2 w-36">
+        <div className="px-1.5 pb-2 w-36 overflow-y-auto min-h-0">
           <LayerPanel
             layers={layers}
             activeLayerId={activeLayerId}

@@ -197,7 +197,7 @@ export function GameToolsPanel() {
         </select>
       </div>
 
-      <div className="flex-1 overflow-auto px-3 py-2 space-y-4 text-xs">
+      <div className="flex-1 min-h-0 overflow-auto px-3 py-2 space-y-4 text-xs">
         {orderedSections.map((section) => {
           if (!shouldShowSection(section)) return null;
 

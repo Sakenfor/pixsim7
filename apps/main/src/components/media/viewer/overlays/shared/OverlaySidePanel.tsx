@@ -24,7 +24,7 @@ export function OverlaySidePanel({ children, className, side = 'left' }: Overlay
 
   return (
     <div
-      className={`${className ?? 'w-36'} flex-shrink-0 flex flex-col gap-2 py-2 bg-surface-secondary/95 ${sideClass} text-xs select-none`}
+      className={`${className ?? ''} h-full flex-shrink-0 flex flex-col gap-2 py-2 bg-surface-secondary/95 ${sideClass} text-xs select-none overflow-y-auto`}
     >
       {children}
     </div>
