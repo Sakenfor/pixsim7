@@ -100,6 +100,8 @@ class _ProcessingGenerationSnapshot:
         if generation_id is None:
             return None
         started_ts: datetime | None = started_at if isinstance(started_at, datetime) else None
+        if started_ts is not None and started_ts.tzinfo is None:
+            started_ts = started_ts.replace(tzinfo=timezone.utc)
         parsed_attempt_id = 0
         try:
             parsed_attempt_id = int(attempt_id or 0)
@@ -440,20 +442,27 @@ def _map_submit_error_to_generation_error_code(submission: ProviderSubmission) -
     return None
 
 
+def _ensure_aware(dt: datetime | None) -> datetime | None:
+    """Normalize a datetime to UTC-aware; return None if input is None."""
+    if dt is None:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
 def _is_stale_unsubmitted_error_submission(
     generation: Generation,
     submission: ProviderSubmission,
 ) -> bool:
     """Return True when this no-job-id error submission predates current processing attempt."""
-    generation_started_at = getattr(generation, "started_at", None)
+    generation_started_at = _ensure_aware(getattr(generation, "started_at", None))
     if generation_started_at is None:
         return False
 
-    submission_responded_at = getattr(submission, "responded_at", None)
+    submission_responded_at = _ensure_aware(getattr(submission, "responded_at", None))
     if submission_responded_at is not None and generation_started_at > submission_responded_at:
         return True
 
-    submission_submitted_at = getattr(submission, "submitted_at", None)
+    submission_submitted_at = _ensure_aware(getattr(submission, "submitted_at", None))
     if submission_submitted_at is not None and generation_started_at > submission_submitted_at:
         return True
 
@@ -562,6 +571,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
             asset_service = AssetService(db, user_service)
 
             processing_generations = await _load_processing_generation_snapshots(db)
+            logger.info("poll_loaded", count=len(processing_generations))
 
             if processing_generations:
                 logger.info("poll_found_generations", count=len(processing_generations))
@@ -667,16 +677,13 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                     if not submission.provider_job_id:
                         missing_provider_job_generation_ids.append(generation.id)
-                        submission_age_seconds = None
-                        if submission.submitted_at:
-                            submission_age_seconds = (
-                                datetime.now(timezone.utc) - submission.submitted_at
-                            ).total_seconds()
-                        generation_started_age_seconds = None
-                        if generation.started_at:
-                            generation_started_age_seconds = (
-                                datetime.now(timezone.utc) - generation.started_at
-                            ).total_seconds()
+                        now = datetime.now(timezone.utc)
+                        submission_age_seconds = _snapshot_age_seconds(
+                            submission.submitted_at, now=now
+                        )
+                        generation_started_age_seconds = _snapshot_age_seconds(
+                            generation.started_at, now=now
+                        )
 
                         submission_count_query = select(func.count(ProviderSubmission.id)).where(
                             ProviderSubmission.generation_id == generation.id
@@ -1223,12 +1230,31 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             still_processing_ids.append(generation.id)
 
                     except ProviderError as e:
-                        # Expected provider errors (content filter, quota, etc.) → WARNING
-                        _poll_log = logger.warning if getattr(e, 'error_code', None) else logger.error
-                        _poll_log("provider_check_error", generation_id=generation.id, error=str(e))
-                        # Don't fail the generation yet - might be temporary
-                        # Let it retry on next poll
-                        still_processing += 1
+                        # Provider error during status check (auth, session, API).
+                        # Fail the generation so the auto-retry handler can re-queue
+                        # it with a fresh session.  Leaving it in PROCESSING forever
+                        # blocks the account's capacity counter.
+                        logger.warning(
+                            "provider_check_error_failing",
+                            generation_id=generation.id,
+                            error=str(e),
+                            error_type=e.__class__.__name__,
+                        )
+                        try:
+                            await generation_service.mark_failed(
+                                generation.id,
+                                f"Status check failed: {e}",
+                                error_code=getattr(e, 'error_code', None) or "poll_provider_error",
+                            )
+                            account = await account_service.release_account(account.id)
+                            failed += 1
+                        except Exception as mark_err:
+                            logger.error(
+                                "provider_check_error_mark_failed_error",
+                                generation_id=generation.id,
+                                error=str(mark_err),
+                            )
+                            still_processing += 1
 
                 except Exception as e:
                     logger.error("poll_generation_error", generation_id=generation.id, error=str(e), exc_info=True)
@@ -1417,6 +1443,72 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
         finally:
             await db.close()
+
+
+async def recover_stale_processing_generations(ctx: dict) -> dict:
+    """
+    Fail PROCESSING generations that are clearly stale after worker restart/sleep.
+
+    On startup (or after PC sleep), PROCESSING generations whose provider jobs
+    are lost will never complete.  They permanently occupy capacity slots,
+    blocking all pending work.
+
+    This runs BEFORE reconcile_account_counters so the counter reset sees the
+    corrected state.
+
+    Threshold: 5 minutes with no update.  The normal poller uses 15 min for
+    unsubmitted and 2 hr for general timeout, but on startup after sleep/crash
+    we can be more aggressive — if a PROCESSING generation hasn't been updated
+    in 5 min and the worker just started, the provider job is almost certainly
+    lost.
+    """
+    STALE_MINUTES = 5
+
+    async for db in get_db():
+        try:
+            now = datetime.now(timezone.utc)
+            threshold = now - timedelta(minutes=STALE_MINUTES)
+
+            # Bulk-update: fail all stale PROCESSING generations in one shot.
+            # Using a direct UPDATE avoids ORM lifecycle hooks but is reliable
+            # even when the worker is in a partially-initialized state.
+            result = await db.execute(
+                update(Generation)
+                .where(
+                    Generation.status == GenerationStatus.PROCESSING,
+                    Generation.updated_at < threshold,
+                )
+                .values(
+                    status=GenerationStatus.FAILED,
+                    error_message=f"Stale after worker restart — no update for {STALE_MINUTES}+ minutes",
+                    error_code="worker_restart_stale",
+                    completed_at=now,
+                    updated_at=now,
+                )
+                .returning(Generation.id)
+            )
+            failed_ids = [int(row[0]) for row in result.all()]
+            await db.commit()
+
+            if failed_ids:
+                logger.info(
+                    "stale_recovery_complete",
+                    failed=len(failed_ids),
+                    generation_ids=failed_ids,
+                )
+            else:
+                logger.debug("stale_recovery_idle", msg="No stale processing generations")
+
+            return {"failed": len(failed_ids), "errors": 0}
+
+        except Exception as e:
+            logger.error("stale_recovery_error", error=str(e), exc_info=True)
+            return {"failed": 0, "errors": 1}
+
+        finally:
+            await db.close()
+
+    return {"failed": 0, "errors": 0}
 
 
 async def reconcile_account_counters(ctx: dict) -> dict:

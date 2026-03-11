@@ -25,7 +25,7 @@ from arq import cron
 from arq.connections import RedisSettings
 from pixsim7.backend.main.workers.job_processor import process_generation
 from pixsim7.backend.main.workers.automation import process_automation, run_automation_loops, queue_pending_executions
-from pixsim7.backend.main.workers.status_poller import poll_job_statuses, requeue_pending_generations, reconcile_account_counters
+from pixsim7.backend.main.workers.status_poller import poll_job_statuses, requeue_pending_generations, reconcile_account_counters, recover_stale_processing_generations
 from pixsim7.backend.main.workers.analysis_processor import process_analysis, requeue_pending_analyses
 from pixsim7.backend.main.workers.analysis_backfill import run_analysis_backfill_batch
 from pixsim7.backend.main.services.automation.device_sync_service import poll_device_ads
@@ -50,6 +50,7 @@ from pixsim7.backend.main.infrastructure.events.redis_bridge import (
     start_event_bus_bridge,
     stop_event_bus_bridge,
 )
+from pixsim7.backend.main.infrastructure.sleep_inhibit import inhibit_sleep, allow_sleep
 
 # Configure structured logging and optional ingestion via env
 logger = configure_logging("worker").bind(channel="system", domain="system")
@@ -148,6 +149,18 @@ async def startup(ctx: dict) -> None:
         arq_max_jobs=settings.arq_max_jobs,
     )
 
+    # Recover stale PROCESSING generations (from crash/sleep — must run before counter reconcile)
+    try:
+        stale_result = await recover_stale_processing_generations(ctx)
+        if stale_result.get("failed", 0) > 0:
+            logger.info(
+                "startup_stale_recovery_complete",
+                failed=stale_result["failed"],
+                errors=stale_result.get("errors", 0),
+            )
+    except Exception as e:
+        logger.warning("startup_stale_recovery_failed", error=str(e))
+
     # Reconcile account counters on startup (fixes counter drift from crashes)
     try:
         reconcile_result = await reconcile_account_counters(ctx)
@@ -166,6 +179,9 @@ async def startup(ctx: dict) -> None:
     # Send initial heartbeat
     await update_main_heartbeat(ctx)
 
+    # Prevent Windows from sleeping while the worker is active
+    inhibit_sleep()
+
 
 async def shutdown(ctx: dict) -> None:
     """
@@ -176,6 +192,7 @@ async def shutdown(ctx: dict) -> None:
     """
     global _event_bridge
     logger.info("worker_shutdown", msg="PixSim7 ARQ Worker Shutting Down")
+    allow_sleep()
     AccountEventService.shutdown()
     if _event_bridge:
         await stop_event_bus_bridge()
