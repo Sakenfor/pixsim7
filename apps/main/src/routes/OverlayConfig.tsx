@@ -17,6 +17,7 @@ import { LocalStoragePresetStorage } from '@lib/ui/overlay';
 import { APIPresetStorage, IndexedDBPresetStorage } from '@lib/ui/overlay';
 
 import { MediaCard } from '@/components/media/MediaCard';
+import { createDefaultMediaCardWidgets } from '@/components/media/mediaCardWidgets';
 import { OverlayEditor } from '@/components/overlay-editor';
 
 // Component type configurations
@@ -59,6 +60,18 @@ const SAMPLE_MEDIA = {
     onImageToVideo: (id: number) => console.log('Image to video', id),
   },
 };
+
+function buildSampleMediaCardRuntimeWidgets(presetId?: string) {
+  return createDefaultMediaCardWidgets({
+    ...SAMPLE_MEDIA,
+    overlayPresetId: presetId || 'media-card-default',
+    hashStatus: 'unique',
+    uploadState: 'idle',
+    uploadProgress: 0,
+    generationStatus: 'completed',
+    contextMenuAsset: SAMPLE_MEDIA as any,
+  } as any);
+}
 
 // Component configurations
 const COMPONENT_CONFIGS: Record<ComponentType, ComponentConfig> = {
@@ -429,6 +442,11 @@ export function OverlayConfig() {
             }))}
             onPresetSelect={handlePresetSelect}
             availableWidgetTypes={componentConfig.availableWidgets}
+            onImportRuntimeWidgets={
+              componentType === 'mediaCard'
+                ? () => buildSampleMediaCardRuntimeWidgets(configuration.id)
+                : undefined
+            }
           />
         ) : (
           <Panel className="h-full flex items-center justify-center">

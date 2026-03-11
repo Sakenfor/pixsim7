@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+
 import type { WidgetPosition, OverlayAnchor } from '@lib/ui/overlay';
 import { isOverlayPosition } from '@lib/ui/overlay';
 
@@ -52,6 +53,13 @@ export function PositionControls({ position, onChange }: PositionControlsProps) 
         ...overlayPos.offset,
         [axis]: value,
       },
+    });
+  };
+
+  const handleAlignmentChange = (value: '' | 'start' | 'center' | 'end') => {
+    onChange({
+      ...overlayPos,
+      alignment: value === '' ? undefined : value,
     });
   };
 
@@ -116,6 +124,22 @@ export function PositionControls({ position, onChange }: PositionControlsProps) 
           onChange={(e) => handleOffsetChange('y', parseInt(e.target.value, 10))}
           className="w-full"
         />
+      </div>
+
+      <div>
+        <label className="block text-xs text-neutral-600 dark:text-neutral-400 mb-1">
+          Stack Alignment
+        </label>
+        <select
+          value={overlayPos.alignment ?? ''}
+          onChange={(e) => handleAlignmentChange(e.target.value as '' | 'start' | 'center' | 'end')}
+          className="block w-full px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800"
+        >
+          <option value="">Auto (from anchor)</option>
+          <option value="start">Start</option>
+          <option value="center">Center</option>
+          <option value="end">End</option>
+        </select>
       </div>
     </div>
   );

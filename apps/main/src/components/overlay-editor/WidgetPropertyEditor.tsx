@@ -4,13 +4,15 @@
  * Edits properties of a selected overlay widget
  */
 
-import React from 'react';
-import type { OverlayWidget } from '@lib/ui/overlay';
 import { Panel } from '@pixsim7/shared.ui';
+import React from 'react';
+
+import type { OverlayWidget } from '@lib/ui/overlay';
+
 import { PositionControls } from './PositionControls';
-import { VisibilityControls } from './VisibilityControls';
 import { StyleControls } from './StyleControls';
 import { TypeSpecificProperties } from './TypeSpecificProperties';
+import { VisibilityControls } from './VisibilityControls';
 
 export interface WidgetPropertyEditorProps {
   widget: OverlayWidget;
@@ -111,6 +113,17 @@ export function WidgetPropertyEditor({ widget, onUpdate }: WidgetPropertyEditorP
             </label>
           </div>
         )}
+
+        <label className="block text-sm">
+          <span className="text-neutral-600 dark:text-neutral-400 text-xs">Stack Group</span>
+          <input
+            type="text"
+            value={widget.stackGroup ?? ''}
+            onChange={(e) => onUpdate({ stackGroup: e.target.value.trim() || undefined })}
+            className="mt-1 block w-full px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800"
+            placeholder="e.g. badges-tr"
+          />
+        </label>
 
         <label className="block text-sm">
           <span className="text-neutral-600 dark:text-neutral-400 text-xs">Priority (z-index order)</span>

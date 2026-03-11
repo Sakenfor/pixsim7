@@ -6,7 +6,7 @@
  * in a flex container, eliminating hard-coded position offsets.
  */
 
-import type { OverlayWidget, OverlayAnchor } from '../types';
+import type { OverlayWidget, OverlayAnchor, OverlayPosition } from '../types';
 import { isOverlayPosition } from '../types';
 
 export interface StackGroupInfo {
@@ -54,6 +54,15 @@ function getAlignItems(anchor: OverlayAnchor): 'flex-start' | 'flex-end' | 'cent
   return 'center';
 }
 
+function alignmentToFlexAlign(
+  alignment?: OverlayPosition['alignment'],
+): 'flex-start' | 'flex-end' | 'center' | undefined {
+  if (alignment === 'start') return 'flex-start';
+  if (alignment === 'end') return 'flex-end';
+  if (alignment === 'center') return 'center';
+  return undefined;
+}
+
 /**
  * Partition widgets into stack groups and ungrouped widgets.
  *
@@ -97,13 +106,17 @@ export function partitionByStackGroup(widgets: OverlayWidget[]): PartitionResult
 
     const maxPriority = Math.max(...group.widgets.map((w) => w.priority ?? 0));
 
+    const leaderAlignment = isOverlayPosition(leader.position)
+      ? alignmentToFlexAlign(leader.position.alignment)
+      : undefined;
+
     stackGroups.push({
       key,
       stackGroup: group.stackGroup,
       anchor: group.anchor,
       offset,
       flexDirection: getFlexDirection(group.anchor),
-      alignItems: getAlignItems(group.anchor),
+      alignItems: leaderAlignment ?? getAlignItems(group.anchor),
       widgets: group.widgets,
       maxPriority,
     });

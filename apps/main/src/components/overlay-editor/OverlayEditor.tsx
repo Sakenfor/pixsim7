@@ -51,6 +51,13 @@ export interface OverlayEditorProps {
     icon?: string;
     defaultConfig?: Partial<OverlayWidget>;
   }>;
+
+  /**
+   * Optional runtime widget importer.
+   * Useful when widgets are primarily code-generated at runtime and you want
+   * to pull them into the editable configuration for rearranging/overrides.
+   */
+  onImportRuntimeWidgets?: () => OverlayWidget[];
 }
 
 /**
@@ -63,6 +70,7 @@ export function OverlayEditor({
   presets = [],
   onPresetSelect,
   availableWidgetTypes = [],
+  onImportRuntimeWidgets,
 }: OverlayEditorProps) {
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null);
 
@@ -201,6 +209,25 @@ export function OverlayEditor({
     setSelectedWidgetId(duplicatedWidget.id);
   };
 
+  const handleImportRuntimeWidgets = () => {
+    if (!onImportRuntimeWidgets) return;
+
+    const runtimeWidgets = onImportRuntimeWidgets();
+    if (!runtimeWidgets.length) return;
+
+    const merged = new Map<string, OverlayWidget>();
+    runtimeWidgets.forEach((widget) => merged.set(widget.id, widget));
+    configuration.widgets.forEach((widget) => {
+      const runtime = merged.get(widget.id);
+      merged.set(widget.id, runtime ? { ...runtime, ...widget } : widget);
+    });
+
+    onChange({
+      ...configuration,
+      widgets: Array.from(merged.values()),
+    });
+  };
+
   const sidebarContent = (
     <div className="flex flex-col gap-4">
       {presets.length > 0 && (
@@ -209,6 +236,26 @@ export function OverlayEditor({
           currentConfigId={configuration.id}
           onSelect={onPresetSelect}
         />
+      )}
+
+      {onImportRuntimeWidgets && (
+        <Panel className="p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h4 className="text-sm font-semibold">Runtime Widgets</h4>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                Import code-defined widgets so they can be reordered and tuned.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleImportRuntimeWidgets}
+              className="px-2 py-1 rounded text-xs border border-neutral-300 dark:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              Import
+            </button>
+          </div>
+        </Panel>
       )}
 
       <WidgetList
