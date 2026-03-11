@@ -1,5 +1,10 @@
 # Capability-Driven QuickGen Architecture
 
+Last updated: 2026-03-11
+Owner: contexthub lane
+Type: architecture (canonical)
+Related plan: `docs/plans/active/contexthub-implementation/plan.md`
+
 ## Vision
 
 Panels are fully portable and discover context via capabilities. No panel knows "which widget" it's in. Scoping provides locality preference.

@@ -12,7 +12,7 @@ This folder uses a manifest-driven bundle model so implementation plans, compani
 <!-- BEGIN:GENERATED_PLAN_INDEX -->
 | Plan | Stage | Owner | Priority | Summary |
 | ---- | ----- | ----- | -------- | ------- |
-| [Markdown Governance and Rulebook](active/md-governance-rulebook/plan.md) | phase_0_bootstrap | docs-governance lane | high | Unified markdown plan + rulebook for AI/human doc authoring, ownership, and drift control. |
+| [Markdown Governance and Rulebook](active/md-governance-rulebook/plan.md) | phase_2_tooling | docs-governance lane | high | Unified markdown plan + rulebook for AI/human doc authoring, ownership, and drift control. |
 | [Ongoing Work Status](active/ongoing-work-status/plan.md) | rolling | active dev loop | high | Live status board tracking all active implementation lanes and next steps. |
 | [App Map Graph](active/app-map-graph/plan.md) | execution | frontend/backend app-map lane |  | Dev-only AppMap panel with architecture dependency graph visualization. |
 | [Bananza Project First Hardening](active/bananza-project-first-hardening/plan.md) | rollout | bananza seed/runtime lane |  | Seed data robustness and game runtime hardening for Bananza project. |
@@ -136,12 +136,15 @@ Checks:
 4. Plan metadata markers (`Last updated`, `Owner`, `Status`, `Stage`, `Update Log`).
 5. Plan doc path references.
 6. Code-to-plan drift (when `PLAN_BASE_SHA` and `PLAN_HEAD_SHA` are provided).
+7. Architecture doc metadata (`Last updated`, `Owner`) — rulebook lint.
+8. Companion/handoff link integrity — validates markdown links in manifest-declared files.
 
 ## Strict modes
 
-- `STRICT_PLAN_DOCS=1`: strict metadata + path-reference checks together.
+- `STRICT_PLAN_DOCS=1`: strict metadata + path-reference + rulebook checks together.
 - `STRICT_PLAN_METADATA=1`: metadata warnings become errors.
 - `STRICT_PLAN_PATH_REFS=1`: path-reference warnings become errors.
+- `STRICT_PLAN_RULEBOOK=1`: rulebook warnings become errors (architecture doc metadata, companion/handoff link checks).
 
 Example:
 

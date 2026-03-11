@@ -1,6 +1,9 @@
 ﻿# Backend Game Extraction Plan (v3)
 
-## Status: Draft — Checkpoint at Phase 0–4 (dual-DB monolith), defer Phase 5–6
+Last updated: 2026-03-11
+Owner: backend architecture lane
+Type: architecture (design)
+Status: Draft — Checkpoint at Phase 0–4 (dual-DB monolith), defer Phase 5–6
 
 ---
 

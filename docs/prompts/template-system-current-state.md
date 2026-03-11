@@ -10,6 +10,9 @@
 > - Legacy ActionEngine selector stack is no longer used by runtime/game dialogue flows.
 > - Legacy prompt-block service modules were removed.
 > - Runtime block selection now resolves through planner/compiler/resolver over primitives.
+>
+> **Current execution plan:** [`docs/plans/active/block-primitives-evolution/plan.md`](../plans/active/block-primitives-evolution/plan.md)
+> **Current snapshot:** [`docs/architecture/reviews/block-primitives-snapshot-2026-03-10.md`](../architecture/reviews/block-primitives-snapshot-2026-03-10.md)
 ---
 
 ## 1. Executive Summary

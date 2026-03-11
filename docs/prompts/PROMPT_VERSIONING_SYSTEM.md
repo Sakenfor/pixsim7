@@ -3,6 +3,7 @@
 **Status**: Phase 3 Complete ✅
 **Implementation Date**: Phase 1: 2025-11-17, Phase 2: 2025-11-17, Phase 3: 2025-11-17
 **Migration**: `20251117_0550_7ed0db0fe547_add_prompt_versioning_tables`
+**Canonical map**: [`versioning-systems-map.md`](../architecture/versioning-systems-map.md) — see this doc for how prompt versioning fits into the shared core.
 
 ## Overview
 

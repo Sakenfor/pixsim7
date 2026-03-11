@@ -84,7 +84,7 @@ plans:
   - id: md-governance-rulebook
     path: docs/plans/active/md-governance-rulebook/plan.md
     status: active
-    stage: phase_0_bootstrap
+    stage: phase_2_tooling
     owner: docs-governance lane
     last_updated: 2026-03-11
     code_paths:

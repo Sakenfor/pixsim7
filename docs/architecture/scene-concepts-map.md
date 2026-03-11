@@ -1,5 +1,9 @@
 # Scene Concepts Map (Scene Prep vs Scene Systems)
 
+Last updated: 2026-03-11
+Owner: scene architecture lane
+Type: architecture (reference)
+
 This repo currently contains multiple different "scene" concepts.
 
 This document maps them so we do not accidentally merge unrelated domains when building features (especially around `Scene Prep`, generation workflows, and game scene authoring).

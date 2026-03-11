@@ -1,5 +1,9 @@
 # Analyzer + AI Hub LLM Resolution Policy
 
+Last updated: 2026-03-11
+Owner: analyzer lane
+Type: architecture (contract)
+
 ## Goal
 
 Prevent runtime drift between AI Hub and analyzer-backed LLM execution by enforcing one provider/model fallback policy in `AiHubService`.

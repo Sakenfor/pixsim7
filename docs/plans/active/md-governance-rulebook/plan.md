@@ -3,7 +3,7 @@
 Last updated: 2026-03-11
 Owner: docs-governance lane
 Status: active
-Stage: phase_0_bootstrap
+Stage: phase_2_tooling
 
 ## Goal
 
@@ -45,7 +45,7 @@ Create one practical, enforceable markdown governance system so humans and AI ag
 
 - [x] Create an active plan bundle for markdown governance.
 - [x] Add a companion rulebook with explicit authoring rules for AI/humans.
-- [ ] Link the rulebook from primary docs navigation.
+- [x] Link the rulebook from primary docs navigation.
 
 Exit criteria:
 
@@ -54,8 +54,8 @@ Exit criteria:
 
 ### Phase 1: Classification and Ownership Pass
 
-- [ ] Classify top-priority docs into: canonical, companion, reference, archive.
-- [ ] Add or correct ownership and "last updated" metadata on high-churn docs.
+- [x] Classify top-priority docs into: canonical, companion, reference, archive.
+- [x] Add or correct ownership and "last updated" metadata on high-churn docs.
 - [ ] Open migration tasks for stale/duplicated canonical docs.
 
 Exit criteria:
@@ -65,9 +65,9 @@ Exit criteria:
 
 ### Phase 2: Tooling and Guardrails
 
-- [ ] Extend `docs:plans:check` with optional rulebook validation mode.
-- [ ] Add lint checks for broken companion/handoff links.
-- [ ] Add warning checks for missing minimal metadata on canonical docs.
+- [x] Extend `docs:plans:check` with optional rulebook validation mode.
+- [x] Add lint checks for broken companion/handoff links.
+- [x] Add warning checks for missing minimal metadata on canonical docs.
 
 Exit criteria:
 
@@ -96,4 +96,7 @@ Exit criteria:
 
 ## Update Log
 
-- 2026-03-11 (`uncommitted`): Created markdown governance plan and companion rulebook skeleton.
+- 2026-03-11: Created markdown governance plan and companion rulebook skeleton.
+- 2026-03-11: Phase 0 complete — rulebook linked from docs/README.md and plans README.
+- 2026-03-11: Phase 1 classification pass — added metadata (Last updated, Owner, Type) to 11 architecture docs. Added canonical forward pointers to superseded template-system and prompt-pipeline docs. Classified docs as canonical/companion/reference/archive. Unified versioning docs with cross-links (versioning-systems-map.md as canonical entry point).
+- 2026-03-11: Phase 2 tooling — added `STRICT_PLAN_RULEBOOK=1` mode to `check_plan_registry.ts`. Architecture doc metadata lint (Last updated, Owner). Companion/handoff markdown link integrity check. Documented new strict mode and checks in plans README.

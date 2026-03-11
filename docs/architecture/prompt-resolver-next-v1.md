@@ -1,5 +1,10 @@
 # Prompt Resolver Architecture
 
+Last updated: 2026-03-11
+Owner: prompt-resolver lane
+Type: architecture (design)
+Related plan: `docs/plans/active/prompt-resolver-roadmap/plan.md`
+
 ## Core Idea
 
 Same block library. Same template source (initially). Same high-level intent inputs.

@@ -1,7 +1,18 @@
 # Versioning Systems Map
 
+Last updated: 2026-03-11
+Owner: versioning lane
+Type: architecture (canonical)
+
 ## Purpose
 Clarify how the shared git-like versioning core and prompt-specific git workflows relate, and where each responsibility belongs.
+
+## Related Docs
+
+- [Prompt Versioning System](../prompts/PROMPT_VERSIONING_SYSTEM.md) — domain-specific implementation details for prompt families, branches, and merge.
+- [Asset Versioning System Design](./ASSET_VERSIONING_SYSTEM.md) — draft design for asset version families and iteration tracking.
+
+This map is the canonical entry point for understanding how the shared versioning core connects to each domain adapter.
 
 ## Layered Architecture
 

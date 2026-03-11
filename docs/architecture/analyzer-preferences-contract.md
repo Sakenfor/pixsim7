@@ -1,5 +1,9 @@
 # Analyzer Preferences Contract
 
+Last updated: 2026-03-11
+Owner: analyzer lane
+Type: architecture (contract)
+
 ## Scope
 
 This document defines the canonical analyzer preference shape used by frontend and backend.

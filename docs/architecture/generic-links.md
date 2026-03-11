@@ -1,5 +1,9 @@
 # Generic Template↔Runtime Link Pattern
 
+Last updated: 2026-03-11
+Owner: game architecture lane
+Type: architecture (design)
+
 ## Overview
 
 The generic link pattern provides a reusable infrastructure for connecting any template entity (Character, ItemTemplate, PropTemplate) to any runtime entity (NPC, Item, Prop) with:

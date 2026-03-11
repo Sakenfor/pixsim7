@@ -2,6 +2,8 @@
 
 **Date**: 2025-12-29
 **Status**: Draft/Design Phase (v2 - addressing review feedback)
+**Owner**: versioning lane
+**Canonical map**: [`versioning-systems-map.md`](./versioning-systems-map.md) — see this doc for how asset versioning fits into the shared core.
 
 ---
 

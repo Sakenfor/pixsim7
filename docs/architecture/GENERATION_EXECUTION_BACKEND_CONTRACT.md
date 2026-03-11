@@ -1,5 +1,8 @@
 # Generation Execution Backend Contract (V1)
 
+Last updated: 2026-03-11
+Owner: generation lane
+Type: architecture (contract)
 Status: Draft (intended to stabilize backend semantics before more orchestration features)
 
 ## Purpose

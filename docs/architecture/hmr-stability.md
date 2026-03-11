@@ -1,5 +1,9 @@
 # HMR Stability - Architecture Plan
 
+Last updated: 2026-03-11
+Owner: frontend architecture lane
+Type: architecture (plan companion)
+
 ## Goal
 
 Eliminate visible Hot Module Replacement instability in the main app:

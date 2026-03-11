@@ -1,5 +1,9 @@
 # Generation Tracking Facade
 
+Last updated: 2026-03-11
+Owner: generation lane
+Type: architecture (contract)
+
 Unified read-only API for generation provenance across three source models.
 
 ## Source-of-Truth Matrix

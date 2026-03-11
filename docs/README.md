@@ -43,6 +43,8 @@
 - [Guides](./guides/registry-patterns.md) - Registry patterns
 - [Walkthroughs](./walkthroughs/README.md) - Step-by-step guides
 - [Agent Guidelines](./AGENTS.md) - AI agent conventions
+- [Docs Rulebook](./plans/active/md-governance-rulebook/companions/MD_RULEBOOK.md) - Markdown authoring rules for AI and humans
+- [Plans Registry](./plans/README.md) - Plan governance, active plan index
 
 ## Archive
 - [Archive](./archive/README.md) - Historical docs, completed plans, legacy tasks

@@ -7,6 +7,7 @@
  * - Registry is in sync with active plan manifests.
  * - Registered plan paths and code_paths exist.
  * - Registered plan docs include key metadata markers.
+ * - Architecture doc metadata (Last updated, Owner) — rulebook checks.
  * - If mapped code paths changed, at least one impacted plan doc (or registry)
  *   is updated in the same diff.
  *
@@ -47,6 +48,8 @@ const REGISTRY_PATH = path.join(PROJECT_ROOT, 'docs', 'plans', 'registry.yaml');
 const STRICT_PLAN_DOCS = process.env.STRICT_PLAN_DOCS === '1';
 const STRICT_PLAN_METADATA = STRICT_PLAN_DOCS || process.env.STRICT_PLAN_METADATA === '1';
 const STRICT_PLAN_PATH_REFS = STRICT_PLAN_DOCS || process.env.STRICT_PLAN_PATH_REFS === '1';
+const STRICT_PLAN_RULEBOOK = STRICT_PLAN_DOCS || process.env.STRICT_PLAN_RULEBOOK === '1';
+const ARCH_DOCS_DIR = path.join(PROJECT_ROOT, 'docs', 'architecture');
 const DEFAULT_PATH_REF_IGNORE_FILE = path.join(PROJECT_ROOT, 'docs', 'plans', 'path-ref-ignores.txt');
 const PATH_REF_IGNORE_FILE = process.env.PLAN_PATH_REF_IGNORE_FILE?.trim()
   ? path.resolve(PROJECT_ROOT, process.env.PLAN_PATH_REF_IGNORE_FILE.trim())
@@ -500,6 +503,81 @@ function checkManifestRegistryParity(registry: RegistryFile, state: ValidationSt
   }
 }
 
+function checkArchitectureDocMetadata(state: ValidationState): void {
+  if (!fs.existsSync(ARCH_DOCS_DIR)) return;
+
+  const archFiles = fs.readdirSync(ARCH_DOCS_DIR, { withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith('.md'))
+    .map((e) => e.name);
+
+  for (const fileName of archFiles) {
+    const filePath = path.join(ARCH_DOCS_DIR, fileName);
+    const content = fs.readFileSync(filePath, 'utf8');
+    // Only check the first 500 chars for metadata (header area)
+    const header = content.slice(0, 500);
+
+    const hasDate = /(^|\n)\s*\*{0,2}(Last updated|Date)\*{0,2}\s*:/im.test(header);
+    const hasOwner = /(^|\n)\s*\*{0,2}Owner\*{0,2}\s*:/im.test(header);
+
+    const missing: string[] = [];
+    if (!hasDate) missing.push('Last updated/Date');
+    if (!hasOwner) missing.push('Owner');
+
+    if (missing.length > 0) {
+      const relPath = toPosix(path.relative(PROJECT_ROOT, filePath));
+      const msg = `[rulebook] ${relPath} missing metadata: ${missing.join(', ')}`;
+      if (STRICT_PLAN_RULEBOOK) {
+        addError(state, msg);
+      } else {
+        addWarning(state, msg);
+      }
+    }
+  }
+}
+
+function checkManifestCompanionHandoffLinks(state: ValidationState): void {
+  const manifestResult = loadPlanManifests(PROJECT_ROOT, ['active']);
+  // Errors from manifest loading are already reported in checkManifestRegistryParity;
+  // here we only check the resolved companion/handoff paths for broken markdown links.
+  for (const manifest of manifestResult.manifests) {
+    const allDocPaths = [...manifest.companions, ...manifest.handoffs];
+    for (const docRel of allDocPaths) {
+      const docAbs = path.join(PROJECT_ROOT, docRel);
+      if (!fs.existsSync(docAbs)) {
+        // Already caught by manifest loader, but belt-and-suspenders
+        addError(state, `[${manifest.id}] missing companion/handoff file: ${docRel}`);
+        continue;
+      }
+
+      const content = fs.readFileSync(docAbs, 'utf8');
+      const linkTargets = extractMarkdownLinkTargets(content);
+      const missing: string[] = [];
+      const checked = new Set<string>();
+
+      for (const target of linkTargets) {
+        const resolved = resolveDocPath(target, docRel);
+        if (!resolved) continue;
+        if (checked.has(resolved)) continue;
+        checked.add(resolved);
+
+        const targetAbs = path.join(PROJECT_ROOT, resolved);
+        if (!fs.existsSync(targetAbs)) {
+          missing.push(resolved);
+        }
+      }
+
+      if (missing.length > 0) {
+        const msg = `[${manifest.id}] broken links in ${docRel}: ${missing.sort().join(', ')}`;
+        if (STRICT_PLAN_RULEBOOK) {
+          addError(state, msg);
+        } else {
+          addWarning(state, msg);
+        }
+      }
+    }
+  }
+}
+
 function main(): number {
   const state: ValidationState = { errors: [], warnings: [] };
 
@@ -510,6 +588,7 @@ function main(): number {
   console.log(`Strict docs: ${STRICT_PLAN_DOCS ? 'on' : 'off'}`);
   console.log(`Strict metadata: ${STRICT_PLAN_METADATA ? 'on' : 'off'}`);
   console.log(`Strict path refs: ${STRICT_PLAN_PATH_REFS ? 'on' : 'off'}`);
+  console.log(`Strict rulebook: ${STRICT_PLAN_RULEBOOK ? 'on' : 'off'}`);
   if (fs.existsSync(PATH_REF_IGNORE_FILE)) {
     console.log(`Path-ref ignore file: ${toPosix(path.relative(PROJECT_ROOT, PATH_REF_IGNORE_FILE))}`);
   }
@@ -536,6 +615,9 @@ function main(): number {
   }
 
   runCodeToPlanTouchCheck(entries, state);
+
+  checkArchitectureDocMetadata(state);
+  checkManifestCompanionHandoffLinks(state);
 
   if (state.warnings.length > 0) {
     console.log('Warnings:');
