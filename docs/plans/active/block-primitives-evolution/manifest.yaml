@@ -8,15 +8,18 @@ summary: "BlockPrimitive model, PromptBlock retirement, composition and migratio
 plan_path: ./plan.md
 code_paths:
   - tools/cue/prompt_packs
+  - tools/codegen/generate-prompt-pack-schemas.ts
   - pixsim7/backend/main/content_packs/prompt
   - pixsim7/backend/main/services/prompt/block
   - pixsim7/backend/main/services/prompt/parser
   - pixsim7/backend/main/api/v1/block_templates
+  - pixsim7/backend/main/plugins/starter_pack/vocabularies/prompt_block_tags.yaml
   - apps/main/src/features/prompts
   - docs/prompts/BLOCK_PRIMITIVES_API_AGENT_QUICKSTART.md
   - docs/architecture/block-primitives-evolution.md
 companions:
   - docs/architecture/block-primitives-evolution.md
+  - docs/architecture/prompt-pack-tag-authority.md
   - docs/architecture/reviews/block-primitives-snapshot-2026-03-10.md
   - docs/prompts/BLOCK_PRIMITIVES_API_AGENT_QUICKSTART.md
 handoffs: []

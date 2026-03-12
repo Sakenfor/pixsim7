@@ -34,10 +34,12 @@ plans:
     last_updated: 2026-03-10
     code_paths:
       - tools/cue/prompt_packs
+      - tools/codegen/generate-prompt-pack-schemas.ts
       - pixsim7/backend/main/content_packs/prompt
       - pixsim7/backend/main/services/prompt/block
       - pixsim7/backend/main/services/prompt/parser
       - pixsim7/backend/main/api/v1/block_templates
+      - pixsim7/backend/main/plugins/starter_pack/vocabularies/prompt_block_tags.yaml
       - apps/main/src/features/prompts
       - docs/prompts/BLOCK_PRIMITIVES_API_AGENT_QUICKSTART.md
       - docs/architecture/block-primitives-evolution.md

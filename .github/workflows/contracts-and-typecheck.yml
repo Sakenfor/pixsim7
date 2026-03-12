@@ -11,6 +11,8 @@ on:
       - 'tools/codegen/**'
       - 'tools/cue/**'
       - 'scripts/tests/**'
+      - 'docs/plans/**'
+      - 'scripts/check_plan_registry.ts'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/contracts-and-typecheck.yml'
@@ -24,6 +26,8 @@ on:
       - 'tools/codegen/**'
       - 'tools/cue/**'
       - 'scripts/tests/**'
+      - 'docs/plans/**'
+      - 'scripts/check_plan_registry.ts'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/contracts-and-typecheck.yml'
@@ -94,6 +98,12 @@ jobs:
 
       - name: App-map artifact freshness check
         run: pnpm docs:app-map:check
+
+      - name: Plan registry and drift check
+        env:
+          PLAN_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          PLAN_HEAD_SHA: ${{ github.sha }}
+        run: pnpm docs:plans:check
 
       - name: Test catalog metadata check
         run: pnpm test:catalog:check

@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "generatedAt": "2026-03-04T20:36:27.611Z",
+  "generatedAt": "2026-03-11T03:46:30.320Z",
   "entries": [
     {
       "id": "assets",
@@ -266,6 +266,23 @@
     }
   ],
   "panels": [
+    {
+      "id": "community-hub",
+      "title": "Community",
+      "category": "community",
+      "icon": "globe",
+      "description": "Browse shared content, chat, and discover packages",
+      "tags": [
+        "community",
+        "social",
+        "chat",
+        "browse",
+        "packages"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/community-hub/index.ts"
+    },
     {
       "id": "console",
       "title": "Console",
@@ -1409,6 +1426,20 @@
       "source": "apps/main/src/features/graph/module.ts"
     },
     {
+      "id": "routine-graph",
+      "name": "Routine Graph Module",
+      "priority": 70,
+      "dependsOn": [
+        "graph-system",
+        "plugin-bootstrap"
+      ],
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": false,
+      "source": "apps/main/src/features/routine-graph/module.ts"
+    },
+    {
       "id": "cubes",
       "name": "Cubes Module",
       "priority": 60,
@@ -1819,11 +1850,6 @@
       "name": "useContextMenuHistoryStore",
       "feature": "workspace",
       "source": "apps/main/src/features/workspace/stores/contextMenuHistoryStore.ts"
-    },
-    {
-      "name": "useWorkspaceStore",
-      "feature": "workspace",
-      "source": "apps/main/src/features/workspace/stores/workspaceStore.ts"
     }
   ],
   "hooks": [
@@ -2393,6 +2419,11 @@
       "source": "apps/main/src/features/panels/components/tools/useProjectAvailability.ts"
     },
     {
+      "name": "useProjectInventory",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/components/tools/useProjectInventory.ts"
+    },
+    {
       "name": "useResolveAllComponentSettings",
       "feature": "panels",
       "source": "apps/main/src/features/panels/lib/instanceSettingsResolver.ts"
@@ -2453,6 +2484,11 @@
       "source": "apps/main/src/features/prompts/hooks/usePromptAiEdit.ts"
     },
     {
+      "name": "usePromptHistory",
+      "feature": "prompts",
+      "source": "apps/main/src/features/prompts/hooks/usePromptHistory.ts"
+    },
+    {
       "name": "usePromptInspection",
       "feature": "prompts",
       "source": "apps/main/src/features/prompts/hooks/usePromptInspection.ts"
@@ -2466,6 +2502,11 @@
       "name": "useSemanticActionBlocks",
       "feature": "prompts",
       "source": "apps/main/src/features/prompts/hooks/useSemanticActionBlocks.ts"
+    },
+    {
+      "name": "useShadowAnalysis",
+      "feature": "prompts",
+      "source": "apps/main/src/features/prompts/hooks/useShadowAnalysis.ts"
     },
     {
       "name": "useAiProviders",

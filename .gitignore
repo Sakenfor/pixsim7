@@ -125,6 +125,7 @@ launcher/gui/launcher.json
 
 # Local data (thumbs, assets)
 data/
+.pixsim7/
 
 # Android
 apps/pixsim7-android/.gradle/

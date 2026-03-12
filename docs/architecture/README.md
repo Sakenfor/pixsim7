@@ -11,6 +11,7 @@ This directory contains architectural documentation for PixSim7 — specs, desig
 
 **Block & Prompt System**
 - [Block Primitives Evolution](./block-primitives-evolution.md) - **Canonical doc** for block systems. Covers BlockPrimitive model, PromptBlock retirement, composition paths, and migration status.
+- [Prompt Pack Tag Authority Contract](./prompt-pack-tag-authority.md) - Canonical authority split for `prompt_block_tags` vs pack `op` contracts, plus CI lint rules for `tag_key` mapping.
 - [Prompt Resolver `next_v1` Spec](./prompt-resolver-next-v1.md) - Parallel resolver architecture, interfaces, and migration strategy.
 - [Prompt Resolver Workbench Roadmap](../plans/active/prompt-resolver-roadmap/plan.md) - Multi-iteration implementation plan and handoff guide.
 - [Prompt Template Controls Backlog](../plans/active/prompt-template-controls/plan.md) - SlotKey migration, theme modifier packs.
