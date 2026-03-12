@@ -413,42 +413,160 @@ export function selectProjectInventorySource(
   return { kind: 'none' };
 }
 
+/**
+ * Known nested sub-entities within core array entries.
+ * key = core field, nestedKey = array field inside each row,
+ * label/idFields describe how to display them.
+ */
+const CORE_NESTED_ENTITIES: Array<{
+  parentKey: string;
+  nestedKey: string;
+  label: string;
+  parentLabelFields?: string[];
+  idFields?: string[];
+  labelFields?: string[];
+  /** When true, label is formatted as "parentLabel / nestedLabel" */
+  qualifyWithParent?: boolean;
+}> = [
+  {
+    parentKey: 'locations',
+    nestedKey: 'hotspots',
+    label: 'Hotspots',
+    parentLabelFields: ['name', 'title', 'id', 'source_id'],
+    idFields: ['hotspot_id', 'id'],
+    labelFields: ['hotspot_id', 'id', 'label', 'title'],
+    qualifyWithParent: true,
+  },
+  {
+    parentKey: 'npcs',
+    nestedKey: 'schedules',
+    label: 'Character Schedules',
+  },
+  {
+    parentKey: 'npcs',
+    nestedKey: 'expressions',
+    label: 'Character Expressions',
+  },
+  {
+    parentKey: 'scenes',
+    nestedKey: 'nodes',
+    label: 'Scene Nodes',
+  },
+  {
+    parentKey: 'scenes',
+    nestedKey: 'edges',
+    label: 'Scene Edges',
+  },
+];
+
+/** Label override for known core keys (npcs → Characters, etc.) */
+const CORE_KEY_LABELS: Record<string, string> = {
+  npcs: 'Characters',
+};
+
+function extractNestedEntries(
+  parentRows: Record<string, unknown>[],
+  def: (typeof CORE_NESTED_ENTITIES)[number],
+): InventoryEntityEntry[] {
+  if (def.qualifyWithParent) {
+    return parentRows.flatMap((parent) => {
+      const parentLabel =
+        getStringField(parent, def.parentLabelFields ?? ['name', 'title', 'id', 'source_id']) ?? def.parentKey;
+      const nested = toRows(parent[def.nestedKey]);
+      return nested.map((row, index) => {
+        const nestedLabel =
+          getStringField(row, def.labelFields ?? ['id', 'label', 'title']) ?? `${def.nestedKey}-${index + 1}`;
+        return {
+          id: getStringField(row, def.idFields ?? ['id']) ?? `${parentLabel}-${index + 1}`,
+          label: `${parentLabel} / ${nestedLabel}`,
+        };
+      });
+    });
+  }
+  return parentRows.flatMap((parent) => {
+    const nested = toRows(parent[def.nestedKey]);
+    return toEntriesFromRows(nested, def.nestedKey, {
+      idFields: def.idFields,
+      labelFields: def.labelFields,
+    });
+  });
+}
+
 export function buildProjectInventory(
   bundle: GameProjectBundle,
   options?: BuildProjectInventoryOptions,
 ): ProjectInventorySummary {
   const coreRecord = isRecord(bundle.core) ? bundle.core : {};
-  const locations = toRows(coreRecord.locations);
-  const npcs = toRows(coreRecord.npcs);
-  const scenes = toRows(coreRecord.scenes);
-  const items = toRows(coreRecord.items);
-  const hotspots = locations.flatMap((location) => {
-    const locationName =
-      getStringField(location, ['name', 'title', 'id', 'source_id']) ?? 'location';
-    const nested = toRows(location.hotspots);
-    return nested.map((hotspot, index) => {
-      const hotspotLabel =
-        getStringField(hotspot, ['hotspot_id', 'id', 'label', 'title']) ?? `hotspot-${index + 1}`;
-      return {
-        id: getStringField(hotspot, ['hotspot_id', 'id']) ?? `${locationName}-${index + 1}`,
-        label: `${locationName} / ${hotspotLabel}`,
-      };
-    });
-  });
 
-  const core: ProjectInventoryRow[] = [
-    { key: 'world', label: 'World', count: isRecord(coreRecord.world) ? 1 : 0 },
-    { key: 'locations', label: 'Locations', count: locations.length },
-    { key: 'hotspots', label: 'Hotspots', count: countNestedRows(locations, 'hotspots') },
-    { key: 'characters', label: 'Characters', count: npcs.length },
-    { key: 'schedules', label: 'Character Schedules', count: countNestedRows(npcs, 'schedules') },
-    { key: 'expressions', label: 'Character Expressions', count: countNestedRows(npcs, 'expressions') },
-    { key: 'scenes', label: 'Scenes', count: scenes.length },
-    { key: 'nodes', label: 'Scene Nodes', count: countNestedRows(scenes, 'nodes') },
-    { key: 'edges', label: 'Scene Edges', count: countNestedRows(scenes, 'edges') },
-    { key: 'items', label: 'Items', count: items.length },
-  ];
+  // ── Dynamically discover all core keys ────────────────────────────────
+  const coreKeys = Object.keys(coreRecord).sort((a, b) => a.localeCompare(b));
 
+  // Build a lookup of parent rows for nested entity extraction
+  const coreRowCache = new Map<string, Record<string, unknown>[]>();
+  function getCoreRows(key: string): Record<string, unknown>[] {
+    let rows = coreRowCache.get(key);
+    if (rows === undefined) {
+      rows = toRows(coreRecord[key]);
+      coreRowCache.set(key, rows);
+    }
+    return rows;
+  }
+
+  // Build nested entity defs indexed by parent key
+  const nestedByParent = new Map<string, (typeof CORE_NESTED_ENTITIES)[number][]>();
+  for (const def of CORE_NESTED_ENTITIES) {
+    const existing = nestedByParent.get(def.parentKey);
+    if (existing) {
+      existing.push(def);
+    } else {
+      nestedByParent.set(def.parentKey, [def]);
+    }
+  }
+
+  const core: ProjectInventoryRow[] = [];
+  const entityCategories: ProjectInventoryEntityCategory[] = [];
+
+  for (const key of coreKeys) {
+    const value = coreRecord[key];
+
+    if (isRecord(value) && !Array.isArray(value)) {
+      // Singular object (like "world") — count as 1
+      core.push({ key, label: CORE_KEY_LABELS[key] ?? titleCase(key), count: 1 });
+      continue;
+    }
+
+    const rows = getCoreRows(key);
+    const label = CORE_KEY_LABELS[key] ?? titleCase(key);
+
+    // Primary row
+    core.push({ key, label, count: rows.length });
+
+    // Entity category for this core key
+    if (rows.length > 0) {
+      entityCategories.push(
+        toCategory(key, 'core', toEntriesFromRows(rows, key)),
+      );
+    }
+
+    // Known nested sub-entities (hotspots in locations, nodes in scenes, etc.)
+    const nestedDefs = nestedByParent.get(key);
+    if (nestedDefs) {
+      for (const def of nestedDefs) {
+        const nestedCount = countNestedRows(rows, def.nestedKey);
+        core.push({ key: def.nestedKey, label: def.label, count: nestedCount });
+
+        if (nestedCount > 0) {
+          entityCategories.push(
+            toCategory(def.nestedKey, 'core', extractNestedEntries(rows, def)),
+          );
+        }
+      }
+    }
+  }
+
+  const seenCategoryKeys = new Set(entityCategories.map((category) => category.key));
+
+  // ── Extensions (unchanged — already dynamic) ─────────────────────────
   const extensionsRecord = isRecord(bundle.extensions) ? bundle.extensions : {};
   const extensionKeys = Object.keys(extensionsRecord).sort((a, b) => a.localeCompare(b));
   const extensions = extensionKeys.map((key) => {
@@ -461,15 +579,6 @@ export function buildProjectInventory(
       detail: summary.detail,
     };
   });
-
-  const entityCategories: ProjectInventoryEntityCategory[] = [
-    toCategory('characters', 'core', toEntriesFromRows(npcs, 'character')),
-    toCategory('locations', 'core', toEntriesFromRows(locations, 'location')),
-    toCategory('scenes', 'core', toEntriesFromRows(scenes, 'scene')),
-    toCategory('items', 'core', toEntriesFromRows(items, 'item')),
-    toCategory('hotspots', 'core', hotspots),
-  ];
-  const seenCategoryKeys = new Set(entityCategories.map((category) => category.key));
 
   for (const extensionKey of extensionKeys) {
     const payload = extensionsRecord[extensionKey];
