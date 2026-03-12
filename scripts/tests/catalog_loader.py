@@ -7,7 +7,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CATALOG_JSON_PATH = ROOT / "scripts" / "tests" / "test-catalog.json"
+DEFAULT_CATALOG_JSON_PATH = ROOT / "scripts" / "tests" / "test-registry.json"
 
 
 @dataclass(frozen=True)
@@ -93,7 +93,7 @@ def load_catalog(
         if require:
             raise FileNotFoundError(
                 f"Missing generated catalog: {catalog_path}. "
-                "Run `pnpm test:catalog:gen`."
+                "Run `pnpm test:registry:gen`."
             )
         return tuple(), tuple()
 

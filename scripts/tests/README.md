@@ -16,14 +16,14 @@ Entry point: `python scripts/tests/run.py <profile> [flags]`
 
 ## Catalog Artifact
 
-The canonical machine-readable catalog is generated to:
+The canonical machine-readable registry is generated to:
 
-- `scripts/tests/test-catalog.json`
+- `scripts/tests/test-registry.json`
 
 Generate/update it with:
 
 ```bash
-pnpm test:catalog:gen
+pnpm test:registry:gen
 ```
 
 ## Flags
@@ -52,7 +52,7 @@ python scripts/tests/run.py changed --list --json
 python scripts/tests/run.py fast --backend-only
 python scripts/tests/run.py project-bundle
 python scripts/tests/run.py full
-pnpm test:catalog:gen
+pnpm test:registry:gen
 python scripts/tests/validate_catalog.py
 ```
 
@@ -65,7 +65,7 @@ python scripts/tests/validate_catalog.py
 - required suite fields: `category`, `subcategory`, `kind`, `covers`
 - valid `layer` / `kind` values
 - existing `path` / `covers` filesystem targets
-- generated catalog artifact exists (`scripts/tests/test-catalog.json`)
+- generated registry artifact exists (`scripts/tests/test-registry.json`)
 
 ## Maintenance
 

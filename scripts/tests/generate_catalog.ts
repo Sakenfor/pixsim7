@@ -131,7 +131,7 @@ function main(): void {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
   const root = path.resolve(__dirname, '../..');
-  const outPath = path.resolve(root, outArg ?? 'scripts/tests/test-catalog.json');
+  const outPath = path.resolve(root, outArg ?? 'scripts/tests/test-registry.json');
 
   const payload = buildCatalogPayload();
   const serialized = `${JSON.stringify(payload, null, 2)}\n`;
@@ -145,17 +145,17 @@ function main(): void {
 
   if (checkMode) {
     if (existing !== serialized) {
-      console.error(`[test-catalog] Drift detected for ${path.relative(root, outPath)}`);
-      console.error('[test-catalog] Run: pnpm test:catalog:gen');
+      console.error(`[test-registry] Drift detected for ${path.relative(root, outPath)}`);
+      console.error('[test-registry] Run: pnpm test:registry:gen');
       process.exit(1);
     }
-    console.log(`[test-catalog] Up to date: ${path.relative(root, outPath)}`);
+    console.log(`[test-registry] Up to date: ${path.relative(root, outPath)}`);
     return;
   }
 
   mkdirSync(path.dirname(outPath), { recursive: true });
   writeFileSync(outPath, serialized, 'utf8');
-  console.log(`[test-catalog] Generated ${path.relative(root, outPath)}`);
+  console.log(`[test-registry] Generated ${path.relative(root, outPath)}`);
 }
 
 main();

@@ -353,18 +353,32 @@ const BUILTIN_SUITES: TestSuiteDefinition[] = [
     order: 53,
   },
   {
-    id: 'prompt-primitive-projection-eval-script',
-    label: 'Primitive Projection Eval Script',
-    path: 'pixsim7/backend/scripts/eval_primitive_projection.py',
+    id: 'block-ops-primitive-projection-eval',
+    label: 'Block Ops Primitive Projection Eval',
+    path: 'scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py',
     layer: 'scripts',
     kind: 'smoke',
-    category: 'scripts/prompt-analysis',
+    category: 'scripts/block-ops',
     subcategory: 'primitive-projection-eval',
     covers: [
-      'pixsim7/backend/scripts/eval_primitive_projection.py',
-      'pixsim7/backend/scripts/eval_corpus.json',
+      'scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py',
+      'scripts/tests/block_ops/primitive_projection/eval_corpus.json',
     ],
     order: 54,
+  },
+  {
+    id: 'block-ops-primitive-projection-eval-medium',
+    label: 'Block Ops Primitive Projection Eval (Medium)',
+    path: 'scripts/tests/block_ops/primitive_projection/eval_corpus_medium.json',
+    layer: 'scripts',
+    kind: 'smoke',
+    category: 'scripts/block-ops',
+    subcategory: 'primitive-projection-eval-medium',
+    covers: [
+      'scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py',
+      'scripts/tests/block_ops/primitive_projection/eval_corpus_medium.json',
+    ],
+    order: 55,
   },
 ];
 

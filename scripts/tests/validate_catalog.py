@@ -134,13 +134,13 @@ def main() -> int:
     else:
         if ok:
             print(
-                "[test-catalog] OK "
+                "[test-registry] OK "
                 f"profiles={summary['profile_count']} suites={summary['suite_count']}"
             )
         else:
-            print("[test-catalog] FAIL")
+            print("[test-registry] FAIL")
             for error in errors:
-                print(f"[test-catalog] {error}")
+                print(f"[test-registry] {error}")
 
     return 0 if ok else 1
 
