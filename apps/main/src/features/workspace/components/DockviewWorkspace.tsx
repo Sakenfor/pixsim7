@@ -5,7 +5,7 @@ import { SmartDockview, getDockviewGroups } from "@lib/dockview";
 import { SiblingPanelsDropdown } from "@lib/dockview/SiblingPanelsDropdown";
 // Note: widgets auto-register on import via @lib/widgets/register
 
-import { initializePanels } from "@features/panels";
+import { registerAllPanels } from "@features/panels";
 
 import { useAppDockviewIntegration } from "../hooks/useAppDockviewIntegration";
 import { applyPreset } from "../lib/layoutRecipes";
@@ -36,9 +36,9 @@ export function DockviewWorkspace() {
     [floatingPanelIds]
   );
 
-  // Initialize panels on mount
+  // Initialize full workspace panel metadata on mount.
   useEffect(() => {
-    initializePanels().catch((error) => {
+    registerAllPanels().catch((error) => {
       console.error("Failed to initialize panels:", error);
     });
   }, []);

@@ -43,6 +43,7 @@ export interface OperationCategory {
 
 class OpsRegistry {
   private categories = new Map<string, OperationCategory>();
+  private warnedDuplicateKeys = new Set<string>();
 
   /**
    * Register an operation category
@@ -68,8 +69,22 @@ class OpsRegistry {
       // Auto-create category
       category = this.registerCategory(categoryId, categoryId, `Operations for ${categoryId}`);
     }
-    if (category.operations.has(operation.id)) {
-      console.warn(`[OpsRegistry] Operation "${categoryId}.${operation.id}" already registered, overwriting`);
+    const existing = category.operations.get(operation.id);
+    if (existing) {
+      const duplicateKey = `${categoryId}.${operation.id}`;
+      const sameMetadata =
+        existing.name === operation.name &&
+        existing.description === operation.description &&
+        JSON.stringify(existing.params ?? []) === JSON.stringify(operation.params ?? []);
+
+      // During HMR, operation modules are re-evaluated and re-register identical
+      // entries. Overwrite silently in that case to avoid noisy console spam.
+      if (!sameMetadata && !this.warnedDuplicateKeys.has(duplicateKey)) {
+        console.warn(
+          `[OpsRegistry] Operation "${duplicateKey}" already registered with different metadata, overwriting`,
+        );
+        this.warnedDuplicateKeys.add(duplicateKey);
+      }
     }
     category.operations.set(operation.id, operation);
   }

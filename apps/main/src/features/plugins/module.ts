@@ -1,6 +1,10 @@
-import { PluginsModule as PluginsModuleComponent } from '@features/controlCenter/components/modules/PluginsModule';
-
+import { createLazyPanelComponent } from '@app/modules/lazyPanelComponent';
 import { defineModule } from '@app/modules/types';
+
+const pluginsControlCenterPanel = createLazyPanelComponent('cc-plugins', async () => {
+  const moduleValue = await import('@features/controlCenter/components/modules/PluginsModule');
+  return moduleValue.PluginsModule;
+});
 
 /**
  * Plugins Module
@@ -26,7 +30,7 @@ export const pluginsModule = defineModule({
       id: 'cc-plugins',
       title: 'Plugins',
       icon: '🔌',
-      component: PluginsModuleComponent,
+      component: pluginsControlCenterPanel,
       category: 'system',
       order: 70,
       enabledByDefault: true,

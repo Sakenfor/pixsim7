@@ -300,6 +300,68 @@ export function getStatusLabel(status: GenerationStatus): string {
 }
 
 // ============================================================================
+// Granular Status
+// ============================================================================
+
+/** Fine-grained status derived from base status + submission/wait metadata. */
+export type GranularStatus =
+  | 'starting' | 'submitting' | 'polling'           // from processing
+  | 'yielding' | 'cooldown' | 'retrying'            // from pending/queued
+  | 'accepted' | 'submitted' | 'queued'             // from pending/queued
+  | 'completed' | 'failed' | 'cancelled';           // terminal
+
+/**
+ * Resolve a generation's fine-grained status from its base status and metadata.
+ * Mirrors the activity-badge logic but as a pure function for reuse in filters.
+ */
+export function resolveGranularStatus(g: Pick<
+  GenerationModel,
+  'status' | 'retryCount' | 'attemptCount' | 'latestSubmissionPayload' | 'latestSubmissionProviderJobId' | 'waitReason'
+>): GranularStatus {
+  const hasSubmitEvidence =
+    (g.attemptCount != null && g.attemptCount > 0) ||
+    g.latestSubmissionPayload != null;
+  const hasProviderAcceptance = Boolean(g.latestSubmissionProviderJobId);
+
+  if (g.status === 'processing') {
+    if (!hasSubmitEvidence) return 'starting';
+    if (!hasProviderAcceptance) return 'submitting';
+    return 'polling';
+  }
+
+  if (g.status === 'pending' || g.status === 'queued') {
+    if (g.waitReason && /yield/i.test(g.waitReason)) return 'yielding';
+    if (g.waitReason && /concurrent|capacity|adaptive|cooldown/i.test(g.waitReason)) return 'cooldown';
+    if (g.retryCount > 0) return 'retrying';
+    if (hasProviderAcceptance) return 'accepted';
+    if (hasSubmitEvidence) return 'submitted';
+    return 'queued';
+  }
+
+  // Terminal statuses pass through
+  return g.status as GranularStatus;
+}
+
+const GRANULAR_STATUS_LABELS: Record<GranularStatus, string> = {
+  starting: 'Starting',
+  submitting: 'Submitting',
+  polling: 'Polling',
+  yielding: 'Yielding',
+  cooldown: 'Cooldown',
+  retrying: 'Retrying',
+  accepted: 'Accepted',
+  submitted: 'Submitted',
+  queued: 'Queued',
+  completed: 'Completed',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+};
+
+export function getGranularStatusLabel(status: GranularStatus): string {
+  return GRANULAR_STATUS_LABELS[status] ?? status;
+}
+
+// ============================================================================
 // Factory Helpers
 // ============================================================================
 

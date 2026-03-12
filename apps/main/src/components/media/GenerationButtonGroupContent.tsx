@@ -239,11 +239,12 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const hasLocalUpload = !!cardProps.onUploadClick;
   const hasProviderUpload = uploadCapableProviders.length > 0;
   const canRouteUploadTarget = typeof cardProps.onUploadToProvider === 'function';
+  const supportsLibraryTarget = hasLocalUpload || canRouteUploadTarget;
   const showUploadButton = hasLocalUpload || hasProviderUpload;
 
   const uploadTargetOptions = useMemo<UploadTargetOption[]>(() => {
     const options: UploadTargetOption[] = [];
-    if (hasLocalUpload) {
+    if (supportsLibraryTarget) {
       options.push({ id: 'library', label: 'Library' });
     }
     if (!hasLocalUpload || canRouteUploadTarget) {
@@ -252,31 +253,43 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       }
     }
     return options;
-  }, [hasLocalUpload, canRouteUploadTarget, uploadCapableProviders]);
+  }, [supportsLibraryTarget, hasLocalUpload, canRouteUploadTarget, uploadCapableProviders]);
 
   const resolveDefaultUploadTargetId = useCallback((): string | null => {
-    if (hasLocalUpload) {
+    if (supportsLibraryTarget) {
+      if (defaultUploadProviderId === 'library') {
+        return 'library';
+      }
       if (
         defaultUploadProviderId &&
         uploadTargetOptions.some((option) => option.id === defaultUploadProviderId)
       ) {
         return defaultUploadProviderId;
       }
-      return 'library';
+      if (hasLocalUpload) {
+        return 'library';
+      }
     }
     const target = resolveUploadTarget(defaultUploadProviderId);
     return target?.providerId ?? null;
-  }, [hasLocalUpload, defaultUploadProviderId, uploadTargetOptions]);
+  }, [supportsLibraryTarget, hasLocalUpload, defaultUploadProviderId, uploadTargetOptions]);
 
   const handleUploadToTarget = useCallback(async (targetId: string) => {
     setIsUploading(true);
     try {
-      if (canRouteUploadTarget && cardProps.onUploadToProvider) {
-        // Delegate handles its own toast — don't double-notify
+      if (targetId === 'library') {
+        if (canRouteUploadTarget && cardProps.onUploadToProvider) {
+          // Delegate handles its own toast - don't double-notify
+          await cardProps.onUploadToProvider(id, targetId);
+        } else if (hasLocalUpload) {
+          await cardProps.onUploadClick?.(id);
+          toast.success('Uploaded to library');
+        } else {
+          toast.info('Asset is already in library.');
+        }
+      } else if (canRouteUploadTarget && cardProps.onUploadToProvider) {
+        // Delegate handles its own toast - don't double-notify
         await cardProps.onUploadToProvider(id, targetId);
-      } else if (hasLocalUpload && targetId === 'library') {
-        await cardProps.onUploadClick?.(id);
-        toast.success('Uploaded to library');
       } else {
         await uploadAssetToProvider(id, targetId);
         const targetLabel = uploadTargetOptions.find((o) => o.id === targetId)?.label ?? targetId;
@@ -422,7 +435,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
           boxShadow: `inset 0 0 0 1px ${providerAccentColor}88`,
         } satisfies React.CSSProperties
       : undefined;
-    const uploadTitle = hasLocalUpload
+    const uploadTitle = supportsLibraryTarget
       ? defaultTarget
         ? `Upload to ${defaultTarget.label} (right-click to set default target)`
         : 'Upload (right-click to set default target)'

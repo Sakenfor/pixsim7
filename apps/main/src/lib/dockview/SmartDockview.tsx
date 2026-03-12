@@ -268,6 +268,18 @@ function shouldShowPanelInDock(
   }
 }
 
+function isDockviewCompatibleComponent(
+  component: unknown,
+): component is React.ComponentType<any> {
+  if (typeof component === 'function') {
+    return true;
+  }
+  if (!component || typeof component !== 'object') {
+    return false;
+  }
+  return typeof (component as Record<string, unknown>).$$typeof === 'symbol';
+}
+
 /**
  * Provides the panel context as a capability when context is defined.
  * This allows panels to consume context via `useCapability(CAP_PANEL_CONTEXT)`
@@ -449,6 +461,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // During HMR, only implRef.current is updated — wrapper identity never changes.
   const panelImplRefs = useRef<Record<string, { current: React.ComponentType<any> }>>({});
   const panelWrappedCache = useRef<Record<string, React.ComponentType<IDockviewPanelProps>>>({});
+  const resolvedComponentIdsRef = useRef<string[]>([]);
 
   const hasNoPanels =
     resolvedPanelDefs.length === 0 &&
@@ -509,13 +522,6 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     }, RECOVERY_POLL_INTERVAL_MS);
     return () => clearInterval(timer);
   }, [hasNoPanels, scope, panelManagerId]);
-
-  const layoutController = useSmartDockview({
-    storageKey,
-    minPanelsForTabs,
-    onLayoutChange,
-    deprecatedPanels,
-  });
 
   // Use ref for defaultLayout to avoid resetDockviewLayout changing when parent recreates it
   const defaultLayoutRef = useRef(defaultLayout);
@@ -676,9 +682,11 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     const isStable = keys.length === Object.keys(prev).length && keys.every(k => prev[k] === map[k]);
 
     if (isStable) {
+      resolvedComponentIdsRef.current = Object.keys(prev);
       return prev;
     }
     prevComponentsRef.current = map;
+    resolvedComponentIdsRef.current = keys;
     return map;
   }, [
     registry,
@@ -686,6 +694,38 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     directComponents,
     baseWrapOptions,
   ]);
+
+  const fallbackAvailableComponentIds = useMemo((): readonly string[] => {
+    if (directComponents) {
+      return Object.entries(directComponents)
+        .filter(([, component]) => isDockviewCompatibleComponent(component))
+        .map(([id]) => id);
+    }
+    if (registry) {
+      return registry
+        .getAll()
+        .filter((definition) => isDockviewCompatibleComponent(definition.component))
+        .map((definition) => definition.id);
+    }
+    return availablePanelDefs
+      .filter((definition) => !definition.isInternal && isDockviewCompatibleComponent(definition.component))
+      .map((definition) => definition.id);
+  }, [availablePanelDefs, directComponents, registry]);
+
+  const getAvailableComponentIds = useCallback((): readonly string[] => {
+    if (resolvedComponentIdsRef.current.length > 0) {
+      return resolvedComponentIdsRef.current;
+    }
+    return fallbackAvailableComponentIds;
+  }, [fallbackAvailableComponentIds]);
+
+  const layoutController = useSmartDockview({
+    storageKey,
+    minPanelsForTabs,
+    onLayoutChange,
+    deprecatedPanels,
+    getAvailableComponentIds,
+  });
 
   // Handle dockview ready - uses refs for props to stabilize callback
   const handleReady = useCallback(

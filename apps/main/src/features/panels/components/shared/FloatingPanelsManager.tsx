@@ -83,7 +83,7 @@ async function attemptMissingPanelRecovery(definitionId: string): Promise<void> 
       import("@features/panels/lib/autoDiscovery"),
       import("@lib/plugins/catalogSelectors"),
     ]);
-    await autoRegisterPanels();
+    await autoRegisterPanels({ panelIds: [definitionId] });
 
     if (!refreshedSelectors.has(definitionId)) {
       console.warn(

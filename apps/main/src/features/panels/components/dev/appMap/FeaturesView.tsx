@@ -21,6 +21,17 @@ const getDocLabel = (docPath: string) => {
   return parts[parts.length - 1] || docPath;
 };
 
+function formatUpdatedAt(value?: string): string | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  }).format(new Date(ms));
+}
+
 interface FeaturesViewProps {
   features: FeatureCapability[];
   selectedFeature?: FeatureCapability;
@@ -53,8 +64,23 @@ export function FeaturesView({
   }, [features]);
 
   const categories = Object.keys(featuresByCategory).sort();
+  const featureMeta = selectedFeature?.metadata as {
+    appMap?: AppMapMetadata;
+    updatedAt?: string;
+    changeNote?: string;
+    featureHighlights?: string[];
+  } | undefined;
+  const featureUpdatedAt = formatUpdatedAt(
+    (selectedFeature as { updatedAt?: string } | undefined)?.updatedAt ?? featureMeta?.updatedAt
+  );
+  const featureChangeNote =
+    (selectedFeature as { changeNote?: string } | undefined)?.changeNote ?? featureMeta?.changeNote;
+  const featureHighlights =
+    (selectedFeature as { featureHighlights?: string[] } | undefined)?.featureHighlights ??
+    featureMeta?.featureHighlights ??
+    [];
   // Prefer top-level appMap, fall back to metadata.appMap for compatibility
-  const appMapMeta = (selectedFeature?.appMap ?? selectedFeature?.metadata?.appMap) as AppMapMetadata | undefined;
+  const appMapMeta = (selectedFeature?.appMap ?? featureMeta?.appMap) as AppMapMetadata | undefined;
   const docItems = appMapMeta?.docs ?? [];
   const appMapSections = [
     { label: 'Frontend', items: appMapMeta?.frontend },
@@ -130,6 +156,31 @@ export function FeaturesView({
                 <p className="text-neutral-700 dark:text-neutral-300">
                   {selectedFeature.description}
                 </p>
+              )}
+              {(featureUpdatedAt || featureChangeNote || featureHighlights.length > 0) && (
+                <div className="mt-3 space-y-2">
+                  {featureChangeNote && (
+                    <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                      {featureChangeNote}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    {featureUpdatedAt && (
+                      <span className="rounded bg-neutral-100 px-2 py-0.5 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                        Updated {featureUpdatedAt}
+                      </span>
+                    )}
+                  </div>
+                  {featureHighlights.length > 0 && (
+                    <ul className="space-y-1">
+                      {featureHighlights.map((highlight) => (
+                        <li key={highlight} className="text-sm text-neutral-700 dark:text-neutral-300">
+                          - {highlight}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </div>
 

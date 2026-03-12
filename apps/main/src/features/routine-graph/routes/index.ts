@@ -19,6 +19,7 @@ export const routineGraphPageModule = defineModule({
   updatedAt: '2026-03-10T00:00:00Z',
   changeNote: 'Added module metadata baseline for routine graph page route module.',
   featureHighlights: ['Routine graph page module now participates in shared latest-update metadata.'],
+  dependsOn: ['workspace', 'routine-graph'],
   page: {
     route: '/routine-graph',
     icon: 'clock',

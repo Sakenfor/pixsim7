@@ -19,6 +19,7 @@ export const npcsModule = defineModule({
   updatedAt: '2026-03-10T00:00:00Z',
   changeNote: 'Added module metadata baseline for NPC feature module.',
   featureHighlights: ['NPC module now participates in shared latest-update metadata.'],
+  dependsOn: ['workspace'],
 
   page: {
     route: '/npc-portraits',

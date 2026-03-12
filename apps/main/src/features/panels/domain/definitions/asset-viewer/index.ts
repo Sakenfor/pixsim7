@@ -1,3 +1,4 @@
+import { DOCK_IDS, PANEL_IDS } from '@features/panels/lib/panelIds';
 import { createPanelSchemaSettingsSection } from '@features/settings';
 
 import { AssetViewerPanel } from '@/components/media/AssetViewerPanel';
@@ -5,7 +6,7 @@ import { AssetViewerPanel } from '@/components/media/AssetViewerPanel';
 import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
-  id: 'assetViewer',
+  id: PANEL_IDS.assetViewer,
   title: 'Asset Viewer',
   component: AssetViewerPanel,
   category: 'workspace',
@@ -20,7 +21,7 @@ export default definePanel({
       id: 'ui-settings',
       title: 'UI Settings',
       description: 'Viewer defaults and playback behavior.',
-      component: createPanelSchemaSettingsSection('workspace', 'asset-viewer'),
+      component: createPanelSchemaSettingsSection('workspace', DOCK_IDS.assetViewer),
     },
   ],
   orchestration: {

@@ -5,6 +5,7 @@ import {
   addRoomEdge,
   addRoomHotspot,
   createDefaultRoomNavigation,
+  lintRoomNavigationGraph,
   removeRoomCheckpoint,
   removeRoomEdge,
   removeRoomHotspot,
@@ -118,5 +119,68 @@ describe('roomNavigationEditorModel', () => {
     const removed = removeRoomEdge(added.navigation, 1);
     expect(removed.edges).toHaveLength(1);
     expect(removed.edges[0].id).toBe('edge_1');
+  });
+
+  it('lints unreachable checkpoints and missing start checkpoint', () => {
+    const lintIssues = lintRoomNavigationGraph({
+      version: 1,
+      room_id: 'room_lint',
+      checkpoints: [
+        {
+          id: 'cp_1',
+          label: 'Checkpoint 1',
+          view: { kind: 'cylindrical_pano', pano_asset_id: 'asset:cp1' },
+          hotspots: [],
+        },
+        {
+          id: 'cp_2',
+          label: 'Checkpoint 2',
+          view: { kind: 'cylindrical_pano', pano_asset_id: 'asset:cp2' },
+          hotspots: [],
+        },
+      ],
+      edges: [],
+    });
+
+    expect(
+      lintIssues.some((issue) => issue.path === 'room_navigation.start_checkpoint_id'),
+    ).toBe(true);
+    expect(
+      lintIssues.some((issue) => issue.message.includes('unreachable')),
+    ).toBe(true);
+  });
+
+  it('lints reachable checkpoints with no outgoing move path', () => {
+    const lintIssues = lintRoomNavigationGraph({
+      version: 1,
+      room_id: 'room_dead_end',
+      start_checkpoint_id: 'cp_1',
+      checkpoints: [
+        {
+          id: 'cp_1',
+          label: 'Checkpoint 1',
+          view: { kind: 'cylindrical_pano', pano_asset_id: 'asset:cp1' },
+          hotspots: [],
+        },
+        {
+          id: 'cp_2',
+          label: 'Checkpoint 2',
+          view: { kind: 'cylindrical_pano', pano_asset_id: 'asset:cp2' },
+          hotspots: [],
+        },
+      ],
+      edges: [
+        {
+          id: 'edge_1',
+          from_checkpoint_id: 'cp_1',
+          to_checkpoint_id: 'cp_2',
+          move_kind: 'forward',
+        },
+      ],
+    });
+
+    expect(
+      lintIssues.some((issue) => issue.message.includes('"cp_2" has no outgoing move path')),
+    ).toBe(true);
   });
 });

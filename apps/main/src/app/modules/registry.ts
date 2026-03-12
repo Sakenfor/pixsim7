@@ -95,6 +95,54 @@ class ModuleRegistry {
   private initialized = false;
   private initializedModules = new Set<string>();
   private capabilitiesRegistered = new Set<string>();
+  private initializationPromises = new Map<string, Promise<void>>();
+
+  private async initializeModules(modulesToInit: Module[]): Promise<void> {
+    const initialized = new Set<string>(this.initializedModules);
+
+    for (const module of modulesToInit) {
+      if (module.dependsOn && module.dependsOn.length > 0) {
+        const missingDeps = module.dependsOn.filter(dep => !initialized.has(dep));
+        if (missingDeps.length > 0) {
+          console.warn(
+            `[ModuleRegistry] Module "${module.name}" has uninitialized dependencies: ${missingDeps.join(', ')}`
+          );
+          logEvent('WARNING', 'module_missing_dependencies', {
+            moduleId: module.id,
+            moduleName: module.name,
+            missingDeps,
+          });
+        }
+      }
+
+      if (!this.initializedModules.has(module.id) && module.initialize) {
+        try {
+          await module.initialize();
+          logEvent('INFO', 'module_initialized', {
+            moduleId: module.id,
+            moduleName: module.name,
+            priority: module.priority ?? 50,
+          });
+        } catch (error) {
+          console.error(`[ModuleRegistry] Failed to initialize ${module.name}:`, error);
+          logEvent('ERROR', 'module_init_failed', {
+            moduleId: module.id,
+            moduleName: module.name,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          continue;
+        }
+      }
+
+      this.initializedModules.add(module.id);
+      initialized.add(module.id);
+
+      if (!this.capabilitiesRegistered.has(module.id)) {
+        registerModuleCapabilities(module);
+        this.capabilitiesRegistered.add(module.id);
+      }
+    }
+  }
 
   /**
    * Subscribe to module registry changes
@@ -177,6 +225,14 @@ class ModuleRegistry {
         });
       });
     }
+
+    // Modules without initialize hooks still expose capabilities immediately.
+    if (!module.initialize) {
+      if (!this.capabilitiesRegistered.has(module.id)) {
+        registerModuleCapabilities(module);
+        this.capabilitiesRegistered.add(module.id);
+      }
+    }
   }
 
   /**
@@ -191,6 +247,80 @@ class ModuleRegistry {
     return this.modules.get(id) as T | undefined;
   }
 
+  isModuleInitialized(moduleId: string): boolean {
+    return this.initializedModules.has(moduleId);
+  }
+
+  private async initializeModuleInternal(moduleId: string, stack: Set<string>): Promise<void> {
+    if (this.initializedModules.has(moduleId)) {
+      return;
+    }
+
+    if (stack.has(moduleId)) {
+      console.warn(`[ModuleRegistry] Circular initialization dependency detected at "${moduleId}"`);
+      return;
+    }
+
+    const existingPromise = this.initializationPromises.get(moduleId);
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const module = this.modules.get(moduleId);
+    if (!module) {
+      if (import.meta.env?.DEV) {
+        console.warn(`[ModuleRegistry] Attempted to initialize unknown module "${moduleId}"`);
+      }
+      return;
+    }
+
+    const initPromise = (async () => {
+      const nextStack = new Set(stack);
+      nextStack.add(moduleId);
+
+      if (module.dependsOn && module.dependsOn.length > 0) {
+        for (const dependencyId of module.dependsOn) {
+          await this.initializeModuleInternal(dependencyId, nextStack);
+        }
+      }
+
+      await this.initializeModules([module]);
+    })()
+      .finally(() => {
+        this.initializationPromises.delete(moduleId);
+      });
+
+    this.initializationPromises.set(moduleId, initPromise);
+    return initPromise;
+  }
+
+  async initializeModule(moduleId: string): Promise<void> {
+    return this.initializeModuleInternal(moduleId, new Set<string>());
+  }
+
+  async initializeByPriority(minPriority: number = 75) {
+    const modulesToInit = this
+      .getSortedModules()
+      .filter((module) => (module.priority ?? 50) >= minPriority)
+      .filter((module) => !this.initializedModules.has(module.id));
+
+    if (modulesToInit.length === 0) {
+      return;
+    }
+
+    logEvent('INFO', 'modules_initializing_priority', {
+      minPriority,
+      count: modulesToInit.length,
+    });
+
+    await this.initializeModules(modulesToInit);
+
+    logEvent('INFO', 'modules_initialized_priority', {
+      minPriority,
+      count: modulesToInit.length,
+    });
+  }
+
   async initializeAll() {
     if (this.initialized) {
       if (import.meta.env?.DEV) {
@@ -203,64 +333,13 @@ class ModuleRegistry {
     }
     this.initialized = true;
 
-    logEvent('INFO', 'modules_initializing', { count: this.modules.size });
+    const modulesToInit = this
+      .getSortedModules()
+      .filter((module) => !this.initializedModules.has(module.id));
 
-    // Sort modules by priority (higher priority first) and handle dependencies
-    const modulesToInit = this.getSortedModules();
-    const initialized = new Set<string>();
-
-    for (const module of modulesToInit) {
-      // Check if dependencies are satisfied
-      if (module.dependsOn && module.dependsOn.length > 0) {
-        const missingDeps = module.dependsOn.filter(dep => !initialized.has(dep));
-        if (missingDeps.length > 0) {
-          console.warn(
-            `⚠ Module "${module.name}" has uninitialized dependencies: ${missingDeps.join(', ')}`
-          );
-          logEvent('WARNING', 'module_missing_dependencies', {
-            moduleId: module.id,
-            moduleName: module.name,
-            missingDeps,
-          });
-        }
-      }
-
-      if (module.initialize) {
-        if (this.initializedModules.has(module.id)) {
-          if (!initialized.has(module.id)) {
-            initialized.add(module.id);
-          }
-          continue;
-        }
-        try {
-          await module.initialize();
-          initialized.add(module.id);
-          this.initializedModules.add(module.id);
-          logEvent('INFO', 'module_initialized', {
-            moduleId: module.id,
-            moduleName: module.name,
-            priority: module.priority ?? 50,
-          });
-        } catch (error) {
-          console.error(`✗ Failed to initialize ${module.name}:`, error);
-          logEvent('ERROR', 'module_init_failed', {
-            moduleId: module.id,
-            moduleName: module.name,
-            error: error instanceof Error ? error.message : String(error)
-          });
-        }
-      } else {
-        // Module has no initialize function, mark as initialized anyway
-        initialized.add(module.id);
-      }
-
-      if (initialized.has(module.id) && !this.capabilitiesRegistered.has(module.id)) {
-        registerModuleCapabilities(module);
-        this.capabilitiesRegistered.add(module.id);
-      }
-    }
-
-    logEvent('INFO', 'modules_initialized', { count: this.modules.size });
+    logEvent('INFO', 'modules_initializing', { count: modulesToInit.length });
+    await this.initializeModules(modulesToInit);
+    logEvent('INFO', 'modules_initialized', { count: modulesToInit.length });
   }
 
   /**
@@ -278,7 +357,7 @@ class ModuleRegistry {
     const visit = (module: Module) => {
       if (visited.has(module.id)) return;
       if (visiting.has(module.id)) {
-        console.warn(`⚠ Circular dependency detected involving module "${module.name}"`);
+        console.warn(`[ModuleRegistry] Circular dependency detected involving module "${module.name}"`);
         return;
       }
 
@@ -400,3 +479,4 @@ class ModuleRegistry {
 }
 
 export const moduleRegistry = new ModuleRegistry();
+

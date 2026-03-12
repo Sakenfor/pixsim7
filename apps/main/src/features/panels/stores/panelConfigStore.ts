@@ -161,8 +161,8 @@ const defaultPanelConfigs: Partial<Record<string, PanelConfig>> = {
     enabled: true,
     settings: {},
     category: "scene",
-    tags: ["scene", "builder"],
-    description: "Build and edit scenes",
+    tags: ["scene", "builder", "legacy"],
+    description: "Legacy scene entrypoint (opens Scene Management builder tab)",
     icon: "🎬",
   },
   graph: {

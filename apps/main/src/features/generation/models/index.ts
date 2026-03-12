@@ -1,6 +1,7 @@
 export type {
   OperationType,
   GenerationStatus,
+  GranularStatus,
   EmbeddedRef,
   GenerationModel,
   CreatePendingGenerationOptions,
@@ -13,5 +14,7 @@ export {
   isTerminalStatus,
   isActiveStatus,
   getStatusLabel,
+  resolveGranularStatus,
+  getGranularStatusLabel,
   createPendingGeneration,
 } from './generation';

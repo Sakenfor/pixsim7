@@ -28,12 +28,21 @@ import {
   resolveRoomNavigationTransition,
   type ResolveRoomNavigationTransitionResult,
 } from '@lib/game/runtime/roomNavigationTransitions';
+import {
+  buildRoomNavigationGizmoConfig,
+  createRoomNavigationTraversalOptions,
+  resolveRoomNavigationOptionFromGizmoResult,
+  type RoomNavigationTraversalOption,
+} from '@lib/game/runtime/roomNavigationTraversal';
+
+import { SceneGizmoMiniGame } from '@/components/minigames/SceneGizmoMiniGame';
 
 import {
   addRoomCheckpoint,
   addRoomEdge,
   addRoomHotspot,
   createDefaultRoomNavigation,
+  lintRoomNavigationGraph,
   removeRoomCheckpoint,
   removeRoomEdge,
   removeRoomHotspot,
@@ -145,6 +154,9 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
     moveKind?: RoomEdgeMoveKind;
     transitionProfile?: string;
   } | null>(null);
+  const [traversalControlMode, setTraversalControlMode] =
+    useState<'buttons' | 'gizmo'>('buttons');
+  const [lastGizmoSegmentId, setLastGizmoSegmentId] = useState<string | null>(null);
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -162,6 +174,7 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
       setTraversalLog([]);
       setLastTransitionResult(null);
       setLastTraversalSelection(null);
+      setLastGizmoSegmentId(null);
       setIsResolvingTransition(false);
       setValidationIssues([]);
       setError(null);
@@ -177,6 +190,7 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
       setTraversalLog([]);
       setLastTransitionResult(null);
       setLastTraversalSelection(null);
+      setLastGizmoSegmentId(null);
       setIsResolvingTransition(false);
       setValidationIssues([]);
       setError(null);
@@ -190,6 +204,7 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
     setTraversalLog([]);
     setLastTransitionResult(null);
     setLastTraversalSelection(null);
+    setLastGizmoSegmentId(null);
     setIsResolvingTransition(false);
     setValidationIssues(parsed.issues);
     setError(`Loaded invalid room_navigation data (${parsed.issues.length} issue(s)).`);
@@ -252,23 +267,45 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
     setViewerDirection(directionFromYaw(yaw));
   }, [activeCheckpoint]);
 
-  const activeEdges = useMemo(
+  useEffect(() => {
+    setLastGizmoSegmentId(null);
+  }, [activeCheckpointId]);
+
+  const activeTraversalOptions = useMemo(
     () =>
-      activeCheckpoint
-        ? navigation.edges.filter((edge) => edge.from_checkpoint_id === activeCheckpoint.id)
-        : [],
-    [navigation.edges, activeCheckpoint],
+      createRoomNavigationTraversalOptions({
+        navigation,
+        activeCheckpointId: activeCheckpoint?.id,
+      }),
+    [navigation, activeCheckpoint?.id],
   );
 
   const activeMoveHotspots = useMemo(
     () =>
-      activeCheckpoint
-        ? activeCheckpoint.hotspots.filter(
-            (hotspot) => hotspot.action === 'move' && !!hotspot.target_checkpoint_id,
-          )
-        : [],
-    [activeCheckpoint],
+      activeTraversalOptions.filter((option) => option.sourceType === 'hotspot'),
+    [activeTraversalOptions],
   );
+
+  const activeEdges = useMemo(
+    () => activeTraversalOptions.filter((option) => option.sourceType === 'edge'),
+    [activeTraversalOptions],
+  );
+
+  const traversalGizmoConfig = useMemo(
+    () =>
+      buildRoomNavigationGizmoConfig(activeTraversalOptions, {
+        style: 'orb',
+      }),
+    [activeTraversalOptions],
+  );
+
+  const authoringWarnings = useMemo(() => {
+    const parsed = validateRoomNavigation(navigation);
+    if (!parsed.ok) {
+      return [];
+    }
+    return lintRoomNavigationGraph(parsed.data);
+  }, [navigation]);
 
   const updateCheckpoint = (
     checkpointId: string,
@@ -437,6 +474,30 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
       `${source}: ${sourceCheckpoint.id} -> ${targetCheckpointId}${transitionStatusLabel}`,
       ...prev,
     ].slice(0, 8));
+  };
+
+  const moveByTraversalOption = (option: RoomNavigationTraversalOption) => {
+    void moveToCheckpoint(option.toCheckpointId, option.source, {
+      moveKind: option.moveKind,
+      transitionProfile: option.transitionProfile,
+      edgeId: option.edgeId,
+      hotspotId: option.hotspotId,
+    });
+  };
+
+  const onTraversalGizmoResult = (segmentId: string | null | undefined) => {
+    if (!segmentId || segmentId === lastGizmoSegmentId || isResolvingTransition) {
+      return;
+    }
+    const selectedOption = resolveRoomNavigationOptionFromGizmoResult(
+      { segmentId },
+      activeTraversalOptions,
+    );
+    if (!selectedOption) {
+      return;
+    }
+    setLastGizmoSegmentId(segmentId);
+    moveByTraversalOption(selectedOption);
   };
 
   const onYawChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -626,6 +687,26 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
         </Panel>
       )}
 
+      {authoringWarnings.length > 0 && (
+        <Panel className="space-y-2 border-amber-300 dark:border-amber-800">
+          <h3 className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+            Authoring warnings ({authoringWarnings.length})
+          </h3>
+          <ul className="space-y-1 text-xs text-amber-700 dark:text-amber-300">
+            {authoringWarnings.slice(0, 8).map((issue, index) => (
+              <li key={`${issue.path}-authoring-${index}`}>
+                <code>{issue.path}</code>: {issue.message}
+              </li>
+            ))}
+          </ul>
+          {authoringWarnings.length > 8 && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400">
+              Showing first 8 warnings. Save still allowed.
+            </p>
+          )}
+        </Panel>
+      )}
+
       <Panel className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold">Traversal Preview (Phase 3/4)</h3>
@@ -750,7 +831,26 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
               </Panel>
 
               <Panel className="space-y-2">
-                <h4 className="text-xs font-semibold">Traversal</h4>
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-xs font-semibold">Traversal</h4>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="xs"
+                      variant={traversalControlMode === 'buttons' ? 'primary' : 'secondary'}
+                      onClick={() => setTraversalControlMode('buttons')}
+                    >
+                      Buttons
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant={traversalControlMode === 'gizmo' ? 'primary' : 'secondary'}
+                      onClick={() => setTraversalControlMode('gizmo')}
+                      disabled={activeTraversalOptions.length === 0}
+                    >
+                      Gizmo
+                    </Button>
+                  </div>
+                </div>
                 <p className="text-xs text-neutral-500">
                   Cache-first transition resolver. Cache misses enqueue a
                   <code> video_transition</code> generation; timeout/failure falls back to crossfade.
@@ -775,77 +875,71 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
                     )}
                   </div>
                 )}
-                <div className="space-y-2">
-                  {activeMoveHotspots.map((hotspot) => {
-                    const matchedEdge = hotspot.target_checkpoint_id
-                      ? navigation.edges.find(
-                          (edge) =>
-                            edge.from_checkpoint_id === activeCheckpoint.id &&
-                            edge.to_checkpoint_id === hotspot.target_checkpoint_id,
-                        )
-                      : undefined;
-                    return (
+                {traversalControlMode === 'buttons' ? (
+                  <div className="space-y-2">
+                    {activeMoveHotspots.map((option) => (
                       <Button
-                        key={hotspot.id}
+                        key={option.id}
                         size="sm"
                         variant="secondary"
-                        disabled={isResolvingTransition || !hotspot.target_checkpoint_id}
-                        onClick={() => {
-                          if (!hotspot.target_checkpoint_id) {
-                            return;
-                          }
-                          void moveToCheckpoint(
-                            hotspot.target_checkpoint_id,
-                            `hotspot:${hotspot.id}`,
-                            {
-                              moveKind: matchedEdge?.move_kind ?? 'forward',
-                              transitionProfile: matchedEdge?.transition_profile,
-                              edgeId: matchedEdge?.id,
-                              hotspotId: hotspot.id,
-                            },
-                          );
-                        }}
+                        disabled={isResolvingTransition}
+                        onClick={() => moveByTraversalOption(option)}
                         className="w-full justify-start"
                       >
-                        Hotspot: {hotspot.label || hotspot.id}
+                        Hotspot: {option.label}
                         {' -> '}
-                        {hotspot.target_checkpoint_id
-                          ? checkpointNameById.get(hotspot.target_checkpoint_id) ??
-                            hotspot.target_checkpoint_id
-                          : '(missing target)'}
+                        {checkpointNameById.get(option.toCheckpointId) ?? option.toCheckpointId}
                       </Button>
-                    );
-                  })}
-                  {activeEdges.map((edge) => (
-                    <Button
-                      key={edge.id}
-                      size="sm"
-                      variant="secondary"
-                      disabled={isResolvingTransition}
-                      onClick={() => {
-                        void moveToCheckpoint(
-                          edge.to_checkpoint_id,
-                          `edge:${edge.id}`,
-                          {
-                            moveKind: edge.move_kind,
-                            transitionProfile: edge.transition_profile,
-                            edgeId: edge.id,
-                          },
-                        );
-                      }}
-                      className="w-full justify-start"
-                    >
-                      Edge: {edge.move_kind} ({edge.id})
-                      {' -> '}
-                      {checkpointNameById.get(edge.to_checkpoint_id) ?? edge.to_checkpoint_id}
-                    </Button>
-                  ))}
-                  {activeMoveHotspots.length === 0 && activeEdges.length === 0 && (
-                    <p className="text-xs text-neutral-500">
-                      No move hotspots or outgoing edges from this checkpoint.
-                    </p>
-                  )}
-                </div>
+                    ))}
+                    {activeEdges.map((option) => (
+                      <Button
+                        key={option.id}
+                        size="sm"
+                        variant="secondary"
+                        disabled={isResolvingTransition}
+                        onClick={() => moveByTraversalOption(option)}
+                        className="w-full justify-start"
+                      >
+                        Edge: {option.moveKind} ({option.sourceId})
+                        {' -> '}
+                        {checkpointNameById.get(option.toCheckpointId) ?? option.toCheckpointId}
+                      </Button>
+                    ))}
+                    {activeTraversalOptions.length === 0 && (
+                      <p className="text-xs text-neutral-500">
+                        No move hotspots or outgoing edges from this checkpoint.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {activeTraversalOptions.length === 0 ? (
+                      <p className="text-xs text-neutral-500">
+                        No move hotspots or outgoing edges from this checkpoint.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="h-72 rounded border border-neutral-300 dark:border-neutral-700 overflow-hidden">
+                          <SceneGizmoMiniGame
+                            config={traversalGizmoConfig}
+                            onResult={(result) =>
+                              onTraversalGizmoResult(result.segmentId)
+                            }
+                          />
+                        </div>
+                        <div className="p-2 rounded border border-neutral-300 dark:border-neutral-700 space-y-1">
+                          {activeTraversalOptions.map((option) => (
+                            <p key={option.id} className="text-xs text-neutral-600 dark:text-neutral-300">
+                              {option.source}
+                              {' -> '}
+                              {checkpointNameById.get(option.toCheckpointId) ?? option.toCheckpointId}
+                            </p>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </Panel>
             </div>
 
@@ -853,7 +947,7 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
               <h4 className="text-xs font-semibold">Traversal Log</h4>
               {traversalLog.length === 0 ? (
                 <p className="text-xs text-neutral-500">
-                  No movement yet. Use hotspot or edge buttons above.
+                  No movement yet. Use traversal buttons or gizmo above.
                 </p>
               ) : (
                 <ul className="space-y-1 text-xs text-neutral-600 dark:text-neutral-300">

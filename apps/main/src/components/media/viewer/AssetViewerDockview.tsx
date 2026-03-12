@@ -27,7 +27,12 @@ import {
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import type { ViewerAsset } from '@features/assets';
-import { PanelHostDockview, type PanelHostDockviewRef } from '@features/panels';
+import {
+  PanelHostDockview,
+  usePanelCatalogBootstrap,
+  type PanelHostDockviewRef,
+} from '@features/panels';
+import { DOCK_IDS } from '@features/panels/lib/panelIds';
 import { useAppDockviewIntegration } from '@features/workspace';
 
 import type { ViewerSettings } from './types';
@@ -67,13 +72,25 @@ const DEFAULT_VIEWER_PANEL_IDS = [
   'interactive-surface',
 ] as const;
 
+function arePanelDefinitionsRegistered(panelIds: readonly string[]): boolean {
+  return panelIds.every((panelId) => panelSelectors.has(panelId));
+}
+
 /**
  * Create the default panel layout for asset viewer.
  * Media preview takes top 75%, generate/metadata tabs below.
  */
-function createDefaultLayout(api: DockviewApi, options?: { excludePanelIds?: ReadonlySet<string> }) {
+function createDefaultLayout(
+  api: DockviewApi,
+  options?: {
+    excludePanelIds?: ReadonlySet<string>;
+    availablePanelIds?: ReadonlySet<string>;
+  }
+) {
   const excludePanelIds = options?.excludePanelIds;
-  const shouldInclude = (panelId: string) => !excludePanelIds?.has(panelId);
+  const availablePanelIds = options?.availablePanelIds;
+  const shouldInclude = (panelId: string) =>
+    !excludePanelIds?.has(panelId) && (!availablePanelIds || availablePanelIds.has(panelId));
   const hasMediaPreview = shouldInclude('media-preview');
   const hasQuickGenerate = shouldInclude('quickGenerate');
   const willAddQuickGenerate = hasQuickGenerate && hasMediaPreview;
@@ -167,31 +184,49 @@ export function AssetViewerDockview({
   className,
   panelManagerId,
 }: AssetViewerDockviewProps) {
-  const [scopedPanelIds, setScopedPanelIds] = useState<string[]>(() =>
-    panelSelectors.getIdsForScope('asset-viewer')
+  const { catalogVersion, initializationComplete } = usePanelCatalogBootstrap({
+    contexts: [DOCK_IDS.assetViewer],
+    onInitializeError: (error) => {
+      console.error('[AssetViewerDockview] Failed to initialize asset-viewer panels:', error);
+    },
+  });
+  const scopedPanelIds = useMemo(
+    () => panelSelectors.getIdsForScope(DOCK_IDS.assetViewer),
+    [catalogVersion],
   );
+  const defaultPanelsRegistered = arePanelDefinitionsRegistered(DEFAULT_VIEWER_PANEL_IDS);
+  const panelsReady = defaultPanelsRegistered;
+  const showLoadingPlaceholder = !initializationComplete && !defaultPanelsRegistered;
 
   const viewerPanelIds = useMemo(
-    () => (scopedPanelIds.length > 0 ? scopedPanelIds : [...DEFAULT_VIEWER_PANEL_IDS]),
-    [scopedPanelIds]
+    () => {
+      if (!panelsReady) {
+        return [];
+      }
+      const merged = new Set<string>(DEFAULT_VIEWER_PANEL_IDS);
+      for (const panelId of scopedPanelIds) {
+        merged.add(panelId);
+      }
+      return Array.from(merged).filter((panelId) => panelSelectors.has(panelId));
+    },
+    [panelsReady, scopedPanelIds]
   );
-  const resolvedDockviewId = panelManagerId ?? "asset-viewer";
+  const viewerPanelIdSet = useMemo(() => new Set(viewerPanelIds), [viewerPanelIds]);
+  const resolvedDockviewId = panelManagerId ?? DOCK_IDS.assetViewer;
   const {
     capabilities: dockCapabilities,
     floatingPanelDefinitionIdSet: floatingPanelDefinitionIds,
     placementExclusions: floatingViewerPanelIds,
   } = useAppDockviewIntegration(resolvedDockviewId, viewerPanelIds);
+  const useDockId = initializationComplete && scopedPanelIds.length > 0;
   const viewerDefaultLayout = useCallback(
-    (api: DockviewApi) => createDefaultLayout(api, { excludePanelIds: floatingPanelDefinitionIds }),
-    [floatingPanelDefinitionIds]
+    (api: DockviewApi) =>
+      createDefaultLayout(api, {
+        excludePanelIds: floatingPanelDefinitionIds,
+        availablePanelIds: viewerPanelIdSet,
+      }),
+    [floatingPanelDefinitionIds, viewerPanelIdSet]
   );
-  const useDockId = scopedPanelIds.length > 0;
-
-  useEffect(() => {
-    return panelSelectors.subscribe(() => {
-      setScopedPanelIds(panelSelectors.getIdsForScope('asset-viewer'));
-    });
-  }, []);
 
   // Use ref for dockviewApi to avoid context recreation when API is set
   // Components can access it via context.dockviewApiRef.current
@@ -279,11 +314,15 @@ export function AssetViewerDockview({
     };
   }, [dockviewApiVersion, viewerPanelIds, floatingViewerPanelIds]);
 
+  if (showLoadingPlaceholder) {
+    return <div className={className ?? "h-full w-full"} />;
+  }
+
   return (
     <PanelHostDockview
       ref={panelHostRef}
       panels={useDockId ? undefined : viewerPanelIds}
-      dockId={useDockId ? 'asset-viewer' : undefined}
+      dockId={useDockId ? DOCK_IDS.assetViewer : undefined}
       excludePanels={useDockId ? floatingViewerPanelIds : undefined}
       storageKey="dockview:asset-viewer:v5"
       excludeFromLayout={floatingViewerPanelIds}

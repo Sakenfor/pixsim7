@@ -1,10 +1,3 @@
-import { MODULE_PRIORITIES } from '@pixsim7/shared.modules.core';
-
-import { initializePluginKernel } from '@lib/plugins/pluginKernel';
-
-import { useAuthStore } from '@/stores/authStore';
-import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
-
 import { defineModule } from '../types';
 
 /**
@@ -24,9 +17,17 @@ export const pluginBootstrapModule = defineModule({
   updatedAt: '2026-03-10T00:00:00Z',
   changeNote: 'Established module metadata contract baseline for plugin bootstrap flow.',
   featureHighlights: ['Plugin bootstrap lifecycle now carries explicit update metadata.'],
-  priority: MODULE_PRIORITIES.INFRASTRUCTURE,
+  // Keep plugin bootstrap deferred from critical startup.
+  // It will initialize when dependent modules request it.
+  priority: 70,
 
   async initialize() {
+    const [{ initializePluginKernel }, { useAuthStore }, { usePluginCatalogStore }] = await Promise.all([
+      import('@lib/plugins/pluginKernel'),
+      import('@/stores/authStore'),
+      import('@/stores/pluginCatalogStore'),
+    ]);
+
     const authState = useAuthStore.getState();
     if (!authState.isAuthenticated) {
       await authState.initialize();

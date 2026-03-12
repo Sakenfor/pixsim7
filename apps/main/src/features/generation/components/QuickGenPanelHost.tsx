@@ -21,9 +21,11 @@ import type { DockviewApi } from 'dockview-core';
 import { useCallback, forwardRef } from 'react';
 
 import { createSafeApi } from '@lib/dockview';
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import {
   PanelHostDockview,
+  usePanelCatalogBootstrap,
   type PanelHostDockviewRef,
 } from '@features/panels';
 import quickgenGroup, {
@@ -66,6 +68,10 @@ export interface QuickGenPanelHostProps {
 }
 
 export type QuickGenPanelHostRef = PanelHostDockviewRef;
+
+function arePanelsRegistered(panelIds: readonly string[]): boolean {
+  return panelIds.every((panelId) => panelSelectors.has(panelId));
+}
 
 /**
  * Shared quickgen panel host with common dockview configuration.
@@ -112,6 +118,14 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
     },
     ref
   ) => {
+    const { initializationComplete } = usePanelCatalogBootstrap({
+      panelIds: panels,
+      onInitializeError: (error) => {
+        console.error('[QuickGenPanelHost] Failed to initialize quickgen panels:', error);
+      },
+    });
+    const panelsReady = arePanelsRegistered(panels);
+    const showLoadingPlaceholder = !initializationComplete && !panelsReady;
     const {
       capabilities: dockCapabilities,
       floatingPanelDefinitionIdSet: floatingPanelDefinitionIds,
@@ -216,6 +230,10 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
       },
       [customResolvePanelPosition],
     );
+
+    if (showLoadingPlaceholder) {
+      return <div className={className ?? 'h-full w-full'} />;
+    }
 
     return (
       <PanelHostDockview

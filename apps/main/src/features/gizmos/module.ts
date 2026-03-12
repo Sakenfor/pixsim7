@@ -13,4 +13,9 @@ export const gizmosModule = defineModule({
   changeNote: 'Added module metadata baseline for gizmos feature module.',
   featureHighlights: ['Gizmos module now participates in shared latest-update metadata.'],
   priority: 60,
+
+  async initialize() {
+    const { registerGizmoSurfaces } = await import('./lib/core/registerGizmoSurfaces');
+    await registerGizmoSurfaces();
+  },
 });

@@ -8,7 +8,7 @@
 import type { PanelSettingsProps } from '@features/panels/lib/panelRegistry';
 
 export interface GraphPanelSettings {
-  graphEditorId?: 'scene-graph-v2' | 'arc-graph';
+  graphEditorId?: 'scene-graph-v2' | 'arc-graph-editor' | 'arc-graph';
 }
 
 /**
@@ -18,7 +18,10 @@ export function GraphPanelSettingsComponent({
   settings,
   helpers,
 }: PanelSettingsProps<GraphPanelSettings>) {
-  const activeEditor = settings.graphEditorId || 'scene-graph-v2';
+  const activeEditor =
+    settings.graphEditorId === 'arc-graph'
+      ? 'arc-graph-editor'
+      : (settings.graphEditorId || 'scene-graph-v2');
 
   return (
     <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-lg p-4">
@@ -44,9 +47,9 @@ export function GraphPanelSettingsComponent({
           </button>
           <button
             type="button"
-            onClick={() => helpers.set('graphEditorId', 'arc-graph')}
+            onClick={() => helpers.set('graphEditorId', 'arc-graph-editor')}
             className={`px-4 py-3 rounded-lg text-sm border-2 font-medium transition-all ${
-              activeEditor === 'arc-graph'
+              activeEditor === 'arc-graph-editor'
                 ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
                 : 'bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-600 hover:border-blue-400'
             }`}

@@ -59,6 +59,7 @@ import type { WorldToolContext } from '@features/worldTools';
 import { getEffectiveViewMode } from '@features/worldTools/lib/playerHudPreferences';
 
 import { UserPreferencesPanel } from '@/components/game/panels/UserPreferencesPanel';
+import { SceneGizmoMiniGame } from '@/components/minigames/SceneGizmoMiniGame';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import { SimpleDialogue } from '../components/game/DialogueUI';
@@ -73,6 +74,7 @@ import {
   updateGameSession,
   createGameWorld,
   getNpcSlots,
+  getRoomNavigation,
   getWorldNpcRoles,
   attemptPickpocket,
   attemptSensualTouch,
@@ -89,6 +91,12 @@ import {
   useGameRuntime,
   useActorPresence,
   isTurnBasedMode,
+  createRoomNavigationTraversalOptions,
+  buildRoomNavigationGizmoConfig,
+  resolveRoomNavigationTransition,
+  resolveRoomNavigationOptionFromGizmoResult,
+  type ResolveRoomNavigationTransitionResult,
+  type RoomNavigationTraversalOption,
   getTurnDelta,
   worldTimeToSeconds,
   registerBuiltinGamePlugins,
@@ -103,6 +111,43 @@ import { useWorldTheme, useViewMode, filterToolsByViewMode } from '../lib/themin
 interface WorldTime {
   day: number;
   hour: number;
+}
+
+type RoomNavigationData = NonNullable<ReturnType<typeof getRoomNavigation>>;
+
+function getCheckpointPrimaryAssetRef(
+  checkpoint: RoomNavigationData['checkpoints'][number],
+): string | undefined {
+  if (checkpoint.view.kind === 'cylindrical_pano') {
+    return checkpoint.view.pano_asset_id;
+  }
+  return (
+    checkpoint.view.north_asset_id ||
+    checkpoint.view.east_asset_id ||
+    checkpoint.view.south_asset_id ||
+    checkpoint.view.west_asset_id
+  );
+}
+
+function parseCheckpointAssetRef(
+  value: string | undefined,
+): { assetId?: number; url?: string } | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^\d+$/.test(trimmed)) {
+    return { assetId: Number(trimmed) };
+  }
+  if (/^asset:\d+$/i.test(trimmed)) {
+    const parsed = Number(trimmed.split(':')[1]);
+    if (Number.isFinite(parsed)) {
+      return { assetId: parsed };
+    }
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return { url: trimmed };
+  }
+  return null;
 }
 
 function readNpcExpressionSurfaceType(expression: NpcExpressionDTO): string | null {
@@ -227,19 +272,44 @@ export function Game2D() {
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [isLoadingScene, setIsLoadingScene] = useState(false);
   const [backgroundAsset, setBackgroundAsset] = useState<AssetModel | null>(null);
+  const [roomNavigation, setRoomNavigation] = useState<RoomNavigationData | null>(null);
+  const [activeRoomCheckpointId, setActiveRoomCheckpointId] = useState<string | null>(null);
+  const [roomNavBackgroundAsset, setRoomNavBackgroundAsset] = useState<AssetModel | null>(null);
+  const [roomNavBackgroundUrl, setRoomNavBackgroundUrl] = useState<string | null>(null);
+  const [isLoadingRoomNavAsset, setIsLoadingRoomNavAsset] = useState(false);
+  const [roomNavMoveLog, setRoomNavMoveLog] = useState<string[]>([]);
+  const [roomNavControlMode, setRoomNavControlMode] =
+    useState<'buttons' | 'gizmo'>('buttons');
+  const [lastRoomNavGizmoSegmentId, setLastRoomNavGizmoSegmentId] =
+    useState<string | null>(null);
+  const [isResolvingRoomNavTransition, setIsResolvingRoomNavTransition] = useState(false);
+  const [lastRoomNavTransitionResult, setLastRoomNavTransitionResult] =
+    useState<ResolveRoomNavigationTransitionResult | null>(null);
   const [activeNpcId, setActiveNpcId] = useState<number | null>(null);
   const [npcExpressions, setNpcExpressions] = useState<NpcExpressionDTO[]>([]);
   const [npcPortraitAsset, setNpcPortraitAsset] = useState<AssetModel | null>(null);
   const [npcPortraitAssetId, setNpcPortraitAssetId] = useState<number | null>(null);
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
+  const effectiveBackgroundAsset = roomNavBackgroundAsset ?? backgroundAsset;
   const backgroundUrls = useMemo(
-    () => (backgroundAsset ? getAssetDisplayUrls(backgroundAsset) : null),
-    [backgroundAsset],
+    () => (effectiveBackgroundAsset ? getAssetDisplayUrls(effectiveBackgroundAsset) : null),
+    [effectiveBackgroundAsset],
   );
-  const backgroundCandidate = backgroundUrls?.previewUrl || backgroundUrls?.mainUrl;
+  const backgroundCandidate =
+    roomNavBackgroundUrl || backgroundUrls?.previewUrl || backgroundUrls?.mainUrl;
   const { mediaSrc: resolvedBackgroundSrc } = useResolvedAssetMedia({
     mediaUrl: backgroundCandidate,
   });
+  const activeBackgroundSrc = resolvedBackgroundSrc || backgroundCandidate || null;
+  const isBackgroundVideo = useMemo(() => {
+    if (effectiveBackgroundAsset) {
+      return effectiveBackgroundAsset.mediaType === 'video';
+    }
+    if (!backgroundCandidate) {
+      return false;
+    }
+    return /\.(mp4|webm|mov|m4v)(?:\?.*)?$/i.test(backgroundCandidate);
+  }, [effectiveBackgroundAsset, backgroundCandidate]);
 
   const npcPortraitUrls = useMemo(
     () => (npcPortraitAsset ? getAssetDisplayUrls(npcPortraitAsset) : null),
@@ -249,6 +319,46 @@ export function Game2D() {
   const { mediaSrc: resolvedNpcPortraitSrc } = useResolvedAssetMedia({
     mediaUrl: npcPortraitCandidate,
   });
+  const roomCheckpointNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!roomNavigation) {
+      return map;
+    }
+    roomNavigation.checkpoints.forEach((checkpoint) => {
+      map.set(checkpoint.id, checkpoint.label || checkpoint.id);
+    });
+    return map;
+  }, [roomNavigation]);
+  const activeRoomCheckpoint = useMemo(() => {
+    if (!roomNavigation || !activeRoomCheckpointId) {
+      return null;
+    }
+    return (
+      roomNavigation.checkpoints.find(
+        (checkpoint) => checkpoint.id === activeRoomCheckpointId,
+      ) ?? null
+    );
+  }, [roomNavigation, activeRoomCheckpointId]);
+  const roomTraversalOptions = useMemo(() => {
+    if (!roomNavigation) {
+      return [];
+    }
+    return createRoomNavigationTraversalOptions({
+      navigation: roomNavigation,
+      activeCheckpointId: activeRoomCheckpointId,
+    });
+  }, [roomNavigation, activeRoomCheckpointId]);
+  const roomTraversalGizmoConfig = useMemo(
+    () =>
+      buildRoomNavigationGizmoConfig(roomTraversalOptions, {
+        style: 'orb',
+      }),
+    [roomTraversalOptions],
+  );
+
+  useEffect(() => {
+    setLastRoomNavGizmoSegmentId(null);
+  }, [activeRoomCheckpointId]);
 
   // Actor presence via unified hook (NPCs, players, agents at location)
   const { npcPresenceDTOs: locationNpcs } = useActorPresence({
@@ -449,6 +559,15 @@ export function Game2D() {
     if (!selectedLocationId) {
       setLocationDetail(null);
       setBackgroundAsset(null);
+      setRoomNavigation(null);
+      setActiveRoomCheckpointId(null);
+      setRoomNavBackgroundAsset(null);
+      setRoomNavBackgroundUrl(null);
+      setRoomNavMoveLog([]);
+      setRoomNavControlMode('buttons');
+      setLastRoomNavGizmoSegmentId(null);
+      setIsResolvingRoomNavTransition(false);
+      setLastRoomNavTransitionResult(null);
       return;
     }
     setIsLoadingLocation(true);
@@ -457,6 +576,20 @@ export function Game2D() {
       try {
         const detail = await getGameLocation(toLocationId(selectedLocationId));
         setLocationDetail(detail);
+        const nextRoomNavigation = getRoomNavigation(detail);
+        setRoomNavigation(nextRoomNavigation);
+        const initialCheckpointId =
+          nextRoomNavigation?.start_checkpoint_id ??
+          nextRoomNavigation?.checkpoints[0]?.id ??
+          null;
+        setActiveRoomCheckpointId(initialCheckpointId);
+        setRoomNavBackgroundAsset(null);
+        setRoomNavBackgroundUrl(null);
+        setRoomNavMoveLog([]);
+        setRoomNavControlMode('buttons');
+        setLastRoomNavGizmoSegmentId(null);
+        setIsResolvingRoomNavTransition(false);
+        setLastRoomNavTransitionResult(null);
 
         // Try to load a background asset for 2D rendering:
         // prefer meta.background_asset_id, else fall back to asset_id if it is image/video.
@@ -484,6 +617,78 @@ export function Game2D() {
       }
     })();
   }, [selectedLocationId]);
+
+  useEffect(() => {
+    if (!roomNavigation || !activeRoomCheckpointId) {
+      setRoomNavBackgroundAsset(null);
+      setRoomNavBackgroundUrl(null);
+      setIsLoadingRoomNavAsset(false);
+      return;
+    }
+
+    const checkpoint = roomNavigation.checkpoints.find(
+      (row) => row.id === activeRoomCheckpointId,
+    );
+    if (!checkpoint) {
+      setRoomNavBackgroundAsset(null);
+      setRoomNavBackgroundUrl(null);
+      setIsLoadingRoomNavAsset(false);
+      return;
+    }
+
+    const source = parseCheckpointAssetRef(getCheckpointPrimaryAssetRef(checkpoint));
+    if (!source) {
+      setRoomNavBackgroundAsset(null);
+      setRoomNavBackgroundUrl(null);
+      setIsLoadingRoomNavAsset(false);
+      return;
+    }
+
+    if (source.url) {
+      setRoomNavBackgroundUrl(source.url);
+      setRoomNavBackgroundAsset(null);
+      setIsLoadingRoomNavAsset(false);
+      return;
+    }
+
+    if (typeof source.assetId !== 'number') {
+      setRoomNavBackgroundAsset(null);
+      setRoomNavBackgroundUrl(null);
+      setIsLoadingRoomNavAsset(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingRoomNavAsset(true);
+    setRoomNavBackgroundUrl(null);
+    setRoomNavBackgroundAsset(null);
+    (async () => {
+      try {
+        const response = await getAsset(source.assetId);
+        if (cancelled) {
+          return;
+        }
+        const asset = fromAssetResponse(response);
+        if (asset.mediaType === 'image' || asset.mediaType === 'video') {
+          setRoomNavBackgroundAsset(asset);
+        } else {
+          setRoomNavBackgroundAsset(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setRoomNavBackgroundAsset(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingRoomNavAsset(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [roomNavigation, activeRoomCheckpointId]);
 
   // Fetch expressions for the active NPC (once per location / NPC change).
   useEffect(() => {
@@ -674,6 +879,82 @@ export function Game2D() {
         addNotification(type, title, message);
       },
     });
+  };
+
+  const handleRoomTraversalMove = async (option: RoomNavigationTraversalOption) => {
+    if (!locationDetail || !roomNavigation || !activeRoomCheckpointId) {
+      return;
+    }
+
+    const fromCheckpointId = activeRoomCheckpointId;
+    let transitionStatusLabel = '';
+    setIsResolvingRoomNavTransition(true);
+    try {
+      const transitionResult = await resolveRoomNavigationTransition({
+        location: locationDetail,
+        navigation: roomNavigation,
+        fromCheckpointId,
+        toCheckpointId: option.toCheckpointId,
+        moveKind: option.moveKind,
+        transitionProfile: option.transitionProfile,
+        providerId: 'pixverse',
+        onLocationUpdate: (updatedLocation) => {
+          setLocationDetail((current) =>
+            current && current.id === updatedLocation.id ? updatedLocation : current,
+          );
+          const updatedNavigation = getRoomNavigation(updatedLocation);
+          if (updatedNavigation) {
+            setRoomNavigation(updatedNavigation);
+          }
+        },
+      });
+      setLastRoomNavTransitionResult(transitionResult);
+      transitionStatusLabel = ` [${transitionResult.status}]`;
+    } catch (transitionError: unknown) {
+      const message =
+        transitionError instanceof Error
+          ? transitionError.message
+          : String(transitionError);
+      setLastRoomNavTransitionResult({
+        status: 'degraded_failed',
+        cacheKey: '',
+        message: `runtime transition resolver failed: ${message}`,
+      });
+      transitionStatusLabel = ' [degraded_failed]';
+    } finally {
+      setIsResolvingRoomNavTransition(false);
+    }
+
+    setActiveRoomCheckpointId(option.toCheckpointId);
+    setRoomNavMoveLog((prev) => [
+      `${option.source}: ${fromCheckpointId} -> ${option.toCheckpointId}${transitionStatusLabel}`,
+      ...prev,
+    ].slice(0, 6));
+  };
+
+  const handleRoomTraversalGizmoResult = (
+    segmentId: string | null | undefined,
+  ) => {
+    if (
+      !segmentId ||
+      segmentId === lastRoomNavGizmoSegmentId ||
+      isResolvingRoomNavTransition ||
+      isLoadingScene ||
+      isLoadingRoomNavAsset
+    ) {
+      return;
+    }
+
+    const selectedOption = resolveRoomNavigationOptionFromGizmoResult(
+      { segmentId },
+      roomTraversalOptions,
+    );
+    if (!selectedOption) {
+      return;
+    }
+
+    setLastRoomNavGizmoSegmentId(segmentId);
+    void handleRoomTraversalMove(selectedOption);
   };
 
   const handlePlayHotspot = async (hotspot: GameHotspotDTO) => {
@@ -949,18 +1230,134 @@ export function Game2D() {
                   </Badge>
                 )}
               </div>
+              {roomNavigation && activeRoomCheckpoint && (
+                <Panel className="space-y-2 border-neutral-300 dark:border-neutral-700">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                        Room Navigation Runtime (Beta)
+                      </h3>
+                      <Badge color="blue" className="text-[10px]">
+                        {activeRoomCheckpoint.label || activeRoomCheckpoint.id}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="xs"
+                        variant={roomNavControlMode === 'buttons' ? 'primary' : 'secondary'}
+                        onClick={() => setRoomNavControlMode('buttons')}
+                      >
+                        Buttons
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant={roomNavControlMode === 'gizmo' ? 'primary' : 'secondary'}
+                        onClick={() => setRoomNavControlMode('gizmo')}
+                        disabled={roomTraversalOptions.length === 0}
+                      >
+                        Gizmo
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                    room_id: {roomNavigation.room_id} | checkpoint: {activeRoomCheckpoint.id}
+                    {isLoadingRoomNavAsset ? ' | loading checkpoint asset...' : ''}
+                  </p>
+                  {isResolvingRoomNavTransition && (
+                    <p className="text-[11px] text-blue-600 dark:text-blue-300">
+                      Resolving movement transition...
+                    </p>
+                  )}
+                  {lastRoomNavTransitionResult && (
+                    <div className="p-2 rounded border border-neutral-300 dark:border-neutral-700 space-y-1">
+                      <p className="text-[11px]">
+                        transition: <code>{lastRoomNavTransitionResult.status}</code>
+                      </p>
+                      <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                        {lastRoomNavTransitionResult.message}
+                      </p>
+                      {lastRoomNavTransitionResult.clipAssetRef && (
+                        <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                          clip: <code>{lastRoomNavTransitionResult.clipAssetRef}</code>
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {roomNavControlMode === 'buttons' ? (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        {roomTraversalOptions.map((option) => (
+                          <Button
+                            key={option.id}
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => void handleRoomTraversalMove(option)}
+                            disabled={
+                              isLoadingScene ||
+                              isLoadingRoomNavAsset ||
+                              isResolvingRoomNavTransition
+                            }
+                          >
+                            {option.sourceType === 'hotspot' ? 'Hotspot' : 'Edge'}: {option.label}
+                            {' -> '}
+                            {roomCheckpointNameById.get(option.toCheckpointId) ?? option.toCheckpointId}
+                          </Button>
+                        ))}
+                      </div>
+                      {roomTraversalOptions.length === 0 && (
+                        <p className="text-xs text-neutral-500">
+                          No outgoing traversal options from this checkpoint.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {roomTraversalOptions.length === 0 ? (
+                        <p className="text-xs text-neutral-500">
+                          No outgoing traversal options from this checkpoint.
+                        </p>
+                      ) : (
+                        <>
+                          <div className="h-72 rounded border border-neutral-300 dark:border-neutral-700 overflow-hidden">
+                            <SceneGizmoMiniGame
+                              config={roomTraversalGizmoConfig}
+                              onResult={(result) =>
+                                handleRoomTraversalGizmoResult(result.segmentId)
+                              }
+                            />
+                          </div>
+                          <div className="p-2 rounded border border-neutral-300 dark:border-neutral-700 space-y-1">
+                            {roomTraversalOptions.map((option) => (
+                              <p key={option.id} className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                                {option.source}
+                                {' -> '}
+                                {roomCheckpointNameById.get(option.toCheckpointId) ?? option.toCheckpointId}
+                              </p>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {roomNavMoveLog.length > 0 && (
+                    <div className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                      last move: {roomNavMoveLog[0]}
+                    </div>
+                  )}
+                </Panel>
+              )}
               {/* Background + clickable overlays */}
-              {backgroundAsset && resolvedBackgroundSrc && (
+              {activeBackgroundSrc && (
                 <div className="relative w-full max-w-xl aspect-video bg-black/80 rounded overflow-hidden">
-              {backgroundAsset.mediaType === 'image' ? (
+              {!isBackgroundVideo ? (
                 <img
-                  src={resolvedBackgroundSrc || undefined}
+                  src={activeBackgroundSrc}
                   alt="location background"
                   className="w-full h-full object-cover"
                 />
               ) : (
                 <video
-                  src={resolvedBackgroundSrc || undefined}
+                  src={activeBackgroundSrc}
                   className="w-full h-full object-cover"
                   muted
                   loop

@@ -5,7 +5,7 @@
  * Integrates with the catalog-backed panel settings system.
  */
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
@@ -142,9 +142,17 @@ export function DynamicPanelSettings() {
   const [expandedPanels, setExpandedPanels] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [panelCatalogVersion, setPanelCatalogVersion] = useState(0);
+
+  useEffect(() => {
+    return panelSelectors.subscribe(() => setPanelCatalogVersion((version) => version + 1));
+  }, []);
 
   // Get all registered panels
-  const allPanels = useMemo(() => panelSelectors.getAll(), []);
+  const allPanels = useMemo(
+    () => panelSelectors.getAll(),
+    [panelCatalogVersion],
+  );
 
   // Get unique categories
   const categories = useMemo(() => {

@@ -14,8 +14,17 @@ import { NavIcon } from './ActivityBar';
 export function PanelShortcuts() {
   const pinnedIds = useWorkspaceStore((s) => s.pinnedQuickAddPanels);
 
+  // Ensure pinned workspace panels are registered even when user never opens "More panels".
+  useEffect(() => {
+    void import('@features/panels/lib/initializePanels')
+      .then(({ initializePanels }) => initializePanels({ contexts: ['workspace'] }))
+      .catch((error) => {
+        console.warn('[PanelShortcuts] Failed to initialize workspace panels:', error);
+      });
+  }, []);
+
   // Re-render when plugin catalog changes (panels registered/unregistered)
-  const [, setVersion] = useState(0);
+  const [version, setVersion] = useState(0);
   useEffect(() => {
     return panelSelectors.subscribe(() => setVersion((v) => v + 1));
   }, []);
@@ -25,7 +34,7 @@ export function PanelShortcuts() {
       pinnedIds
         .map((id) => panelSelectors.get(id))
         .filter((p): p is NonNullable<typeof p> => p != null),
-    [pinnedIds],
+    [pinnedIds, version],
   );
 
   if (panels.length === 0) return null;

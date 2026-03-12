@@ -11,10 +11,11 @@
 import { settingsRegistry } from '../../lib/core/registry';
 import { PanelCentricSettings } from '../PanelCentricSettings';
 
+import { PanelGroupsSettings } from './PanelGroupsSettings';
 import { WidgetPresetsSettings } from './WidgetPresetsSettings';
 import { WidgetsSettings } from './WidgetsSettings';
 
-function PanelsSettings() {
+export function PanelsSettings() {
   return (
     <div className="h-full">
       <PanelCentricSettings />
@@ -41,6 +42,12 @@ settingsRegistry.register({
       label: 'Widgets',
       icon: '🧩',
       component: WidgetsSettings,
+    },
+    {
+      id: 'panel-groups',
+      label: 'Panel Groups',
+      icon: '📦',
+      component: PanelGroupsSettings,
     },
     {
       id: 'layout-presets',

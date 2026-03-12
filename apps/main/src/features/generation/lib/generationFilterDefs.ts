@@ -9,26 +9,61 @@ import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
 import {
   getGenerationModelName,
-  isActiveStatus,
+  resolveGranularStatus,
   type GenerationModel,
-  type GenerationStatus,
+  type GranularStatus,
 } from '../models';
 
-/** Composite status values used in the filter UI */
-type StatusFilterValue = GenerationStatus | 'active';
+/** Aggregate shortcut values that expand to multiple granular statuses. */
+const ALL_ACTIVE = '__all_active__';
+const ALL_TERMINAL = '__all_terminal__';
 
-const STATUS_OPTIONS: Array<{ value: StatusFilterValue; label: string }> = [
-  { value: 'active', label: 'Active' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'failed', label: 'Failed' },
-  { value: 'cancelled', label: 'Cancelled' },
+const ACTIVE_STATUSES: GranularStatus[] = [
+  'starting', 'submitting', 'polling',
+  'queued', 'submitted', 'accepted', 'cooldown', 'yielding', 'retrying',
 ];
-const NO_MODEL_VALUE = '__no_model__';
+const TERMINAL_STATUSES: GranularStatus[] = ['completed', 'failed', 'cancelled'];
 
-function matchesStatus(g: GenerationModel, selected: string): boolean {
-  if (selected === 'active') return isActiveStatus(g.status);
-  return g.status === selected;
+interface StatusOption {
+  value: string;
+  label: string;
+  group: string;
+  groupLabel: string;
 }
+
+const GRANULAR_STATUS_OPTIONS: StatusOption[] = [
+  // Shortcuts
+  { value: ALL_ACTIVE, label: 'All Active', group: '_shortcuts', groupLabel: 'Shortcuts' },
+  { value: ALL_TERMINAL, label: 'All Terminal', group: '_shortcuts', groupLabel: 'Shortcuts' },
+  // Active — processing
+  { value: 'starting', label: 'Starting', group: 'active', groupLabel: 'Active' },
+  { value: 'submitting', label: 'Submitting', group: 'active', groupLabel: 'Active' },
+  { value: 'polling', label: 'Polling', group: 'active', groupLabel: 'Active' },
+  // Active — waiting
+  { value: 'queued', label: 'Queued', group: 'active', groupLabel: 'Active' },
+  { value: 'submitted', label: 'Submitted', group: 'active', groupLabel: 'Active' },
+  { value: 'accepted', label: 'Accepted', group: 'active', groupLabel: 'Active' },
+  { value: 'cooldown', label: 'Cooldown', group: 'active', groupLabel: 'Active' },
+  { value: 'yielding', label: 'Yielding', group: 'active', groupLabel: 'Active' },
+  { value: 'retrying', label: 'Retrying', group: 'active', groupLabel: 'Active' },
+  // Terminal
+  { value: 'completed', label: 'Completed', group: 'terminal', groupLabel: 'Terminal' },
+  { value: 'failed', label: 'Failed', group: 'terminal', groupLabel: 'Terminal' },
+  { value: 'cancelled', label: 'Cancelled', group: 'terminal', groupLabel: 'Terminal' },
+];
+
+/** Expand aggregate shortcut values into their constituent granular statuses. */
+function expandStatusSelection(selected: string[]): Set<string> {
+  const expanded = new Set<string>();
+  for (const s of selected) {
+    if (s === ALL_ACTIVE) ACTIVE_STATUSES.forEach(v => expanded.add(v));
+    else if (s === ALL_TERMINAL) TERMINAL_STATUSES.forEach(v => expanded.add(v));
+    else expanded.add(s);
+  }
+  return expanded;
+}
+
+const NO_MODEL_VALUE = '__no_model__';
 
 function toTitleCase(value: string): string {
   if (!value) return value;
@@ -64,7 +99,7 @@ export const GENERATION_FILTER_DEFS: ClientFilterDef<GenerationModel>[] = [
     },
   },
 
-  // ── Status ────────────────────────────────────────────────────────────────
+  // ── Status (granular) ────────────────────────────────────────────────────
   {
     key: 'status',
     label: 'Status',
@@ -74,21 +109,33 @@ export const GENERATION_FILTER_DEFS: ClientFilterDef<GenerationModel>[] = [
     order: 1,
     deriveOptionsWithCounts: (items) => {
       const counts: Record<string, number> = {};
-      for (const opt of STATUS_OPTIONS) counts[opt.value] = 0;
       for (const g of items) {
-        if (isActiveStatus(g.status)) counts['active'] = (counts['active'] ?? 0) + 1;
-        if (counts[g.status] !== undefined) counts[g.status] = (counts[g.status] ?? 0) + 1;
+        const gs = resolveGranularStatus(g);
+        counts[gs] = (counts[gs] ?? 0) + 1;
       }
-      return STATUS_OPTIONS.map(opt => ({
-        value: opt.value,
-        label: opt.label,
-        count: counts[opt.value] ?? 0,
-      }));
+      // Aggregate counts for shortcuts
+      let activeTotal = 0;
+      for (const s of ACTIVE_STATUSES) activeTotal += counts[s] ?? 0;
+      let terminalTotal = 0;
+      for (const s of TERMINAL_STATUSES) terminalTotal += counts[s] ?? 0;
+      counts[ALL_ACTIVE] = activeTotal;
+      counts[ALL_TERMINAL] = terminalTotal;
+
+      return GRANULAR_STATUS_OPTIONS
+        .filter(opt => (counts[opt.value] ?? 0) > 0)
+        .map(opt => ({
+          value: opt.value,
+          label: opt.label,
+          count: counts[opt.value],
+          groupKey: opt.group,
+          groupLabel: opt.groupLabel,
+        }));
     },
     predicate: (item, value) => {
       const selected = value as string[] | undefined;
       if (!selected || selected.length === 0) return true;
-      return selected.some(s => matchesStatus(item, s));
+      const expanded = expandStatusSelection(selected);
+      return expanded.has(resolveGranularStatus(item));
     },
   },
 
@@ -123,7 +170,6 @@ export const GENERATION_FILTER_DEFS: ClientFilterDef<GenerationModel>[] = [
     type: 'enum',
     selectionMode: 'multi',
     order: 3,
-    overflow: true,
     deriveOptionsWithCounts: (items) => {
       const counts = new Map<string, number>();
       for (const g of items) {
@@ -191,7 +237,6 @@ export const GENERATION_FILTER_DEFS: ClientFilterDef<GenerationModel>[] = [
     type: 'enum',
     selectionMode: 'multi',
     order: 5,
-    overflow: true,
     deriveOptionsWithCounts: (items) => {
       const counts = new Map<string, { count: number; providers: Set<string> }>();
       for (const g of items) {

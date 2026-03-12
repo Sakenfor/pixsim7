@@ -24,6 +24,7 @@ export { PanelManager, panelManager } from './lib/PanelManager';
 export {
   getAllPanelMetadata,
   getPanelMetadataById,
+  ensurePanelMetadataRegistered,
   registerAllPanels,
   reloadPanelsWithSettings,
 } from './lib/panelMetadataRegistry';
@@ -89,6 +90,11 @@ export {
   usePanelSettingsHelpers,
   validateAndMigrateSettings,
 } from "./lib/panelSettingsHelpers";
+export {
+  usePanelCatalogBootstrap,
+  type UsePanelCatalogBootstrapOptions,
+  type UsePanelCatalogBootstrapResult,
+} from "./hooks/usePanelCatalogBootstrap";
 
 export {
   dockWidgetRegistry,
@@ -108,6 +114,12 @@ export {
   CATEGORY_ORDER,
   type PanelCategory,
 } from "./lib/panelConstants";
+export {
+  PANEL_IDS,
+  DOCK_IDS,
+  type PanelId,
+  type DockId,
+} from "./lib/panelIds";
 export {
   panelSettingsScopeRegistry,
   GENERATION_SCOPE_ID,

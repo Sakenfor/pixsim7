@@ -1,11 +1,17 @@
 import { logEvent } from '@lib/utils';
 
-import { GalleryModule as GalleryModuleComponent } from '@features/controlCenter/components/modules/GalleryModule';
-
+import { createLazyPanelComponent } from '@app/modules/lazyPanelComponent';
 import { defineModule } from '@app/modules/types';
 import type { Module } from '@app/modules/types';
 
 import type { Asset } from '../../types';
+
+const galleryControlCenterPanel = createLazyPanelComponent('cc-gallery', async () => {
+  const moduleValue = await import('@features/controlCenter/components/modules/GalleryModule');
+  return moduleValue.GalleryModule;
+}, {
+  initializeModuleId: 'assets',
+});
 
 /**
  * Gallery Module
@@ -42,7 +48,7 @@ export const galleryModule: GalleryModule = defineModule({
       id: 'cc-gallery',
       title: 'Gallery',
       icon: '🖼️',
-      component: GalleryModuleComponent,
+      component: galleryControlCenterPanel,
       category: 'tools',
       order: 50,
       enabledByDefault: true,

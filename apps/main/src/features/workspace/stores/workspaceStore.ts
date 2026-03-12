@@ -3,7 +3,8 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { addDockviewPanel, focusPanel, getDockviewApi, getDockviewGroups } from "@lib/dockview";
-import { panelSelectors } from "@lib/plugins/catalogSelectors";
+import { readFloatingOriginMeta } from "@lib/dockview/floatingPanelInterop";
+import { dockWidgetSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 import { hmrSingleton } from "@lib/utils/hmrSafe";
 
 import { createBackendStorage } from "../../../lib/backendStorage";
@@ -172,6 +173,42 @@ function pruneNewEmptyGroups(api: DockviewApi, baselineGroupIds: Set<string>): v
       // best effort cleanup
     }
   }
+}
+
+function normalizeDockviewId(value: string | null | undefined): string {
+  return (value ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+}
+
+function getScopedDockPanelIds(dockviewId: string): string[] {
+  const normalizedDockviewId = normalizeDockviewId(dockviewId);
+  const zone = dockWidgetSelectors.getAll().find((item) => {
+    return (
+      normalizeDockviewId(item.dockviewId) === normalizedDockviewId ||
+      normalizeDockviewId(item.id) === normalizedDockviewId
+    );
+  });
+  if (!zone) return [];
+  if (Array.isArray(zone.allowedPanels) && zone.allowedPanels.length > 0) {
+    return zone.allowedPanels;
+  }
+  if (typeof zone.panelScope === "string" && zone.panelScope.length > 0) {
+    return panelSelectors.getIdsForScope(zone.panelScope);
+  }
+  return [];
+}
+
+function sanitizeDockPosition(
+  position: {
+    direction: "left" | "right" | "above" | "below" | "within";
+    referencePanel?: string;
+  }
+): {
+  direction: "left" | "right" | "above" | "below" | "within";
+  referencePanel?: string;
+} {
+  return position.referencePanel
+    ? { direction: position.direction, referencePanel: position.referencePanel }
+    : { direction: position.direction };
 }
 
 const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
@@ -528,10 +565,12 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
 
         // Resolve definition ID (strips ::N suffix for multi-instance panels)
         const defId = getFloatingDefinitionId(panelId);
+        const originMeta = readFloatingOriginMeta(floatingPanel.context);
 
         // Get target dockview API (defaults to "workspace" for backward compat)
-        const targetDockviewId = position.targetDockviewId ?? "workspace";
-        const api = getDockviewApi(targetDockviewId);
+        const requestedDockviewId = position.targetDockviewId ?? "workspace";
+        let targetDockviewId = requestedDockviewId;
+        let api = getDockviewApi(targetDockviewId);
         if (!api) {
           console.warn("[dockFloatingPanel] Dockview not available:", targetDockviewId);
           return;
@@ -541,6 +580,31 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         const actualPanelId = defId.startsWith("dev-tool:")
           ? defId.slice("dev-tool:".length)
           : defId;
+        const isDevToolPanel = defId.startsWith("dev-tool:");
+
+        let dockPosition = sanitizeDockPosition(position);
+
+        // For scoped dockviews, avoid forcing unsupported panel definitions into
+        // the outer host. If the panel came from an origin dockview, return it there.
+        if (!isDevToolPanel) {
+          const scopedPanelIds = getScopedDockPanelIds(targetDockviewId);
+          const isSupportedByTargetScope =
+            scopedPanelIds.length === 0 || scopedPanelIds.includes(actualPanelId);
+
+          if (!isSupportedByTargetScope) {
+            const sourceDockviewId =
+              typeof originMeta?.sourceDockviewId === "string" &&
+              originMeta.sourceDockviewId.length > 0
+                ? originMeta.sourceDockviewId
+                : null;
+            const sourceApi = sourceDockviewId ? getDockviewApi(sourceDockviewId) : null;
+            if (sourceDockviewId && sourceApi) {
+              targetDockviewId = sourceDockviewId;
+              api = sourceApi;
+              dockPosition = { direction: "within" };
+            }
+          }
+        }
 
         const baselineGroupIds = new Set(
           getDockviewGroups(api)
@@ -553,7 +617,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         try {
           addDockviewPanel(api, actualPanelId, {
             allowMultiple: false,
-            position,
+            position: dockPosition,
             params: floatingPanel.context,
           });
         } catch (error) {
@@ -561,6 +625,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
           console.warn("[dockFloatingPanel] Failed to dock panel:", {
             panelId,
             defId,
+            requestedDockviewId,
             targetDockviewId,
             error,
           });
@@ -573,6 +638,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
           console.warn("[dockFloatingPanel] Dock request produced no panel. Keeping floating panel.", {
             panelId,
             defId,
+            requestedDockviewId,
             targetDockviewId,
           });
           return;

@@ -7,10 +7,6 @@
 
 import { defineModule } from '@app/modules/types';
 
-import { registerCubeSettings } from './settings/registerCubeSettings';
-
-import { initializeCubesIntegration, registerCubeExpansions } from './index';
-
 let unregisterCubeSettings: (() => void) | null = null;
 
 export const cubesModule = defineModule({
@@ -22,6 +18,12 @@ export const cubesModule = defineModule({
   priority: 60, // After core, before UI features
 
   async initialize() {
+    const [{ registerCubeSettings }, { initializeCubesIntegration, registerCubeExpansions }] =
+      await Promise.all([
+        import('./settings/registerCubeSettings'),
+        import('./index'),
+      ]);
+
     // Initialize cubes integration (capabilities, widget, context hub)
     initializeCubesIntegration();
 

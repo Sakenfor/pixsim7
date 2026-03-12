@@ -1,11 +1,3 @@
-import { registerArcRenderers } from '@features/graph/lib/editor/arcRenderers';
-import { registerRenderersFromNodeTypes } from '@features/graph/lib/editor/autoRegisterRenderers';
-import { registerBuiltinRenderers } from '@features/graph/lib/editor/builtinRenderers';
-import { registerPluginRenderers } from '@features/graph/lib/editor/pluginRenderers';
-import { preloadHighPriorityRenderers } from '@features/graph/lib/editor/rendererBootstrap';
-import { registerArcNodeTypes } from '@features/graph/lib/nodeTypes/arc';
-import { registerBuiltinNodeTypes } from '@features/graph/lib/nodeTypes/builtin';
-
 import { defineModule } from '@app/modules/types';
 
 /**
@@ -27,10 +19,28 @@ export const graphSystemModule = defineModule({
   updatedAt: '2026-03-10T00:00:00Z',
   changeNote: 'Added module metadata baseline for graph system module.',
   featureHighlights: ['Graph system module now participates in shared latest-update metadata.'],
-  priority: 75, // Core system
+  priority: 70, // Initialize on workspace/graph demand, not global startup
   dependsOn: ['plugin-bootstrap'], // Needs plugins loaded first
 
   async initialize() {
+    const [
+      { registerArcRenderers },
+      { registerRenderersFromNodeTypes },
+      { registerBuiltinRenderers },
+      { registerPluginRenderers },
+      { preloadHighPriorityRenderers },
+      { registerArcNodeTypes },
+      { registerBuiltinNodeTypes },
+    ] = await Promise.all([
+      import('@features/graph/lib/editor/arcRenderers'),
+      import('@features/graph/lib/editor/autoRegisterRenderers'),
+      import('@features/graph/lib/editor/builtinRenderers'),
+      import('@features/graph/lib/editor/pluginRenderers'),
+      import('@features/graph/lib/editor/rendererBootstrap'),
+      import('@features/graph/lib/nodeTypes/arc'),
+      import('@features/graph/lib/nodeTypes/builtin'),
+    ]);
+
     // Register builtin node types
     registerBuiltinNodeTypes();
     registerArcNodeTypes();

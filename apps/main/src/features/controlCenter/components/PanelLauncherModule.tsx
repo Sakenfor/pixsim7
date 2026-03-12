@@ -14,9 +14,26 @@ import {
 
 export function PanelLauncherModule() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
+  const [panelCatalogVersion, setPanelCatalogVersion] = useState(0);
+
+  useEffect(() => {
+    // Ensure panel registry is hydrated when launcher is opened.
+    void import('@features/panels/lib/initializePanels')
+      .then(({ initializePanels }) => initializePanels({ contexts: ['workspace', 'control-center'] }))
+      .catch((error) => {
+        console.warn('[PanelLauncherModule] Failed to initialize panels:', error);
+      });
+  }, []);
+
+  useEffect(() => {
+    return panelSelectors.subscribe(() => setPanelCatalogVersion((version) => version + 1));
+  }, []);
 
   // Get all panels from catalog
-  const allPanels = useMemo(() => panelSelectors.getPublicPanels(), []);
+  const allPanels = useMemo(
+    () => panelSelectors.getPublicPanels(),
+    [panelCatalogVersion],
+  );
 
   // Get list of currently open panels (docked) from dockview API
   const [openPanels, setOpenPanels] = useState<Set<string>>(new Set());

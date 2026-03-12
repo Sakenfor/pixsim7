@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@lib/icons';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
-import { CATEGORY_LABELS, CATEGORY_ORDER } from '@features/panels';
+import { CATEGORY_LABELS, CATEGORY_ORDER } from '@features/panels/lib/panelConstants';
 import { openWorkspacePanel, useWorkspaceStore } from '@features/workspace';
 
 import { NavIcon } from './ActivityBar';
@@ -75,13 +75,22 @@ function FlyoutContent() {
   const pinnedIds = useWorkspaceStore((s) => s.pinnedQuickAddPanels);
   const [search, setSearch] = useState('');
 
+  // Ensure workspace panel definitions are available when flyout is opened.
+  useEffect(() => {
+    void import('@features/panels/lib/initializePanels')
+      .then(({ initializePanels }) => initializePanels({ contexts: ['workspace'] }))
+      .catch((error) => {
+        console.warn('[MorePanelsFlyout] Failed to initialize workspace panels:', error);
+      });
+  }, []);
+
   // Re-render when plugin catalog changes
-  const [, setVersion] = useState(0);
+  const [version, setVersion] = useState(0);
   useEffect(() => {
     return panelSelectors.subscribe(() => setVersion((v) => v + 1));
   }, []);
 
-  const allPanels = useMemo(() => panelSelectors.getPublicPanels(), []);
+  const allPanels = useMemo(() => panelSelectors.getPublicPanels(), [version]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return allPanels;
@@ -149,10 +158,10 @@ function FlyoutContent() {
           <div className="text-xs text-neutral-500 px-2 py-3 text-center">No panels found</div>
         )}
         {grouped.map(({ category, panels }) => (
-            <div key={category} className="mb-2 last:mb-0">
-              <div className="text-[10px] uppercase font-semibold text-neutral-500 px-2 py-1">
-                {formatCategoryLabel(category)}
-              </div>
+          <div key={category} className="mb-2 last:mb-0">
+            <div className="text-[10px] uppercase font-semibold text-neutral-500 px-2 py-1">
+              {formatCategoryLabel(category)}
+            </div>
             {panels.map((panel) => {
               const isPinned = pinnedIds.includes(panel.id);
               return (

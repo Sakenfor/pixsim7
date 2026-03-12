@@ -1,6 +1,6 @@
 
 import { ToastContainer } from '@pixsim7/shared.ui';
-import { useEffect, Suspense } from 'react';
+import { useEffect, useState, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 
@@ -14,21 +14,16 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 
 import { useApplyAppearance } from '@features/appearance';
-import { ContextHubHost } from '@features/contextHub';
+import { ContextHubHost } from '@features/contextHub/components/ContextHubHost';
 import { ContextHubRootProviders } from '@features/contextHub/components/ContextHubRootProviders';
-import { ControlCenterManager } from '@features/controlCenter';
-import { CubeWidgetOverlay } from '@features/cubes';
-import { FloatingPanelsManager } from '@features/panels/components/shared/FloatingPanelsManager';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
-import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
+import { moduleRegistry } from '@app/modules';
 
 
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { DevToolQuickAccess } from './components/dev/DevToolQuickAccess';
 import { ExternalMediaViewer } from './components/ExternalMediaViewer';
 import { ActivityBar } from './components/navigation/ActivityBar';
-import { PluginOverlays } from './components/PluginOverlays';
 import { useActionShortcuts } from './hooks/useActionShortcuts';
 import { useDevToolShortcuts } from './hooks/useDevToolShortcuts';
 import { useModuleRoutes } from './hooks/useModuleRoutes';
@@ -47,11 +42,90 @@ function RouteLoadingFallback() {
   );
 }
 
+const LazyControlCenterManager = lazy(() =>
+  import('@features/controlCenter/components/ControlCenterManager').then((moduleValue) => ({
+    default: moduleValue.ControlCenterManager,
+  }))
+);
+
+const LazyFloatingPanelsManager = lazy(() =>
+  import('@features/panels/components/shared/FloatingPanelsManager').then((moduleValue) => ({
+    default: moduleValue.FloatingPanelsManager,
+  }))
+);
+
+const LazyCubeWidgetOverlay = lazy(() =>
+  import('@features/cubes/CubeWidgetOverlay').then((moduleValue) => ({
+    default: moduleValue.CubeWidgetOverlay,
+  }))
+);
+
+const LazyPluginOverlays = lazy(() =>
+  import('./components/PluginOverlays').then((moduleValue) => ({
+    default: moduleValue.PluginOverlays,
+  }))
+);
+
+const LazyDevToolQuickAccess = lazy(() =>
+  import('./components/dev/DevToolQuickAccess').then((moduleValue) => ({
+    default: moduleValue.DevToolQuickAccess,
+  }))
+);
+
+function ModuleInitializationBoundary({
+  moduleIds,
+  children,
+}: {
+  moduleIds: string[];
+  children: React.ReactNode;
+}) {
+  const moduleIdsKey = moduleIds.join('|');
+  const [ready, setReady] = useState(() =>
+    moduleIds.every((moduleId) => moduleRegistry.isModuleInitialized(moduleId))
+  );
+
+  useEffect(() => {
+    setReady(moduleIds.every((moduleId) => moduleRegistry.isModuleInitialized(moduleId)));
+  }, [moduleIdsKey]);
+
+  useEffect(() => {
+    if (ready) {
+      return;
+    }
+
+    let active = true;
+    const initializeModules = async () => {
+      for (const moduleId of moduleIds) {
+        await moduleRegistry.initializeModule(moduleId);
+      }
+    };
+
+    void initializeModules()
+      .catch((error) => {
+        console.warn(`[App] Failed to initialize route modules (${moduleIdsKey})`, error);
+      })
+      .finally(() => {
+        if (active) {
+          setReady(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [moduleIdsKey, ready]);
+
+  if (!ready) {
+    return <RouteLoadingFallback />;
+  }
+
+  return <>{children}</>;
+}
+
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const initializePlugins = usePluginCatalogStore((s) => s.initialize);
   const leftInset = useContentInset('left');
   const rightInset = useContentInset('right');
   const topInset = useContentInset('top');
@@ -79,11 +153,19 @@ function App() {
       return;
     }
 
-    initializePlugins()
+    let active = true;
+    void import('@/stores/pluginCatalogStore')
+      .then(({ usePluginCatalogStore }) => usePluginCatalogStore.getState().initialize())
       .catch((error) => {
-        console.warn('[Plugins] Failed to initialize plugin catalog:', error);
+        if (active) {
+          console.warn('[Plugins] Failed to initialize plugin catalog:', error);
+        }
       });
-  }, [isAuthenticated, initializePlugins]);
+
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated]);
 
   return (
     <BrowserRouter>
@@ -119,11 +201,25 @@ function App() {
                   {dynamicRoutes.map(page => {
                     if (!page.component) return null;
                     const Component = page.component;
+                    const moduleIds = Array.from(
+                      new Set(
+                        [page.id, page.featureId].filter(
+                          (value): value is string =>
+                            typeof value === 'string' && value.length > 0
+                        )
+                      )
+                    );
                     return (
                       <Route
                         key={page.id}
                         path={page.route}
-                        element={<ProtectedRoute><Component /></ProtectedRoute>}
+                        element={
+                          <ProtectedRoute>
+                            <ModuleInitializationBoundary moduleIds={moduleIds}>
+                              <Component />
+                            </ModuleInitializationBoundary>
+                          </ProtectedRoute>
+                        }
                       />
                     );
                   })}
@@ -137,19 +233,25 @@ function App() {
           {/* Control Center - plugin-based (only when authenticated) */}
           {isAuthenticated && (
             <ErrorBoundary>
-              <ControlCenterManager />
+              <Suspense fallback={null}>
+                <LazyControlCenterManager />
+              </Suspense>
             </ErrorBoundary>
           )}
           {/* Floating panels (only when authenticated) */}
           {isAuthenticated && (
             <ErrorBoundary>
-              <FloatingPanelsManager />
+              <Suspense fallback={null}>
+                <LazyFloatingPanelsManager />
+              </Suspense>
             </ErrorBoundary>
           )}
           {/* Cube widget overlay (only when authenticated) */}
           {isAuthenticated && (
             <ErrorBoundary>
-              <CubeWidgetOverlay />
+              <Suspense fallback={null}>
+                <LazyCubeWidgetOverlay />
+              </Suspense>
             </ErrorBoundary>
           )}
           {/* External media viewer (extension → frontend, no auth needed) */}
@@ -159,11 +261,17 @@ function App() {
           {/* Plugin overlays (only when authenticated) */}
           {isAuthenticated && (
             <ErrorBoundary>
-              <PluginOverlays />
+              <Suspense fallback={null}>
+                <LazyPluginOverlays />
+              </Suspense>
             </ErrorBoundary>
           )}
           {/* Dev tool quick access modal (Ctrl+Shift+D) */}
-          {isAuthenticated && <DevToolQuickAccess />}
+          {isAuthenticated && (
+            <Suspense fallback={null}>
+              <LazyDevToolQuickAccess />
+            </Suspense>
+          )}
           {/* Global context menu portal */}
           <ContextMenuPortal />
           <PanelPropertiesPopup />

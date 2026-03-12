@@ -61,6 +61,7 @@ export const generationPageModule = defineModule({
   updatedAt: '2026-03-10T00:00:00Z',
   changeNote: 'Added module metadata baseline for generation route module.',
   featureHighlights: ['Generation route module now participates in shared latest-update metadata.'],
+  dependsOn: ['workspace', 'generation'],
   page: {
     route: '/generate',
     icon: 'sparkles',

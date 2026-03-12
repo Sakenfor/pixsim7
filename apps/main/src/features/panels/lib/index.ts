@@ -88,6 +88,13 @@ export {
   usePanelRegistryActions,
 } from "./actions";
 
+export {
+  PANEL_IDS,
+  DOCK_IDS,
+  type PanelId,
+  type DockId,
+} from "./panelIds";
+
 // Action adapters for converting canonical ActionDefinition to PanelAction
 export { toPanelAction, toPanelActions, type ToPanelActionOptions } from "./actionAdapters";
 

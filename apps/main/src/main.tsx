@@ -5,8 +5,6 @@ import './index.css'
 import { registerContextMenuActions, configurePanelLookup } from '@lib/dockview'
 import { panelSelectors } from '@lib/plugins/catalogSelectors'
 
-import { initializePanels, registerAllPanels } from '@features/panels'
-
 import { registerModules, moduleRegistry } from '@app/modules'
 
 import App from './App.tsx'
@@ -15,11 +13,6 @@ import { DevToolProvider } from './lib/dev/devtools/devToolContext'
 import { initWebLogger, logEvent } from './lib/utils/logging'
 
 import '@lib/dockview' // Register auto-context menu presets
-
-import './lib/debugControlCenterPersistence' // Debug utility for persistence issues
-import './lib/utils/debugFlags' // Debug flags system for toggleable logging
-import './lib/dev/guardPerformanceMeasure'
-
 
 // Initialize web logging for frontend
 initWebLogger('frontend')
@@ -34,11 +27,22 @@ registerModules()
 registerContextMenuActions()
 configurePanelLookup(panelSelectors)
 
+async function initializeDevDiagnostics() {
+  if (!import.meta.env.DEV) {
+    return
+  }
+
+  await Promise.all([
+    import('./lib/debugControlCenterPersistence'), // Debug utility for persistence issues
+    import('./lib/dev/guardPerformanceMeasure'),
+  ])
+}
+
 async function bootstrapApp() {
-  // Initialize infrastructure before rendering.
-  await moduleRegistry.initializeAll()
-  await initializePanels()
-  await registerAllPanels()
+  await initializeDevDiagnostics()
+
+  // Initialize only critical infrastructure before first paint.
+  await moduleRegistry.initializeByPriority(75)
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

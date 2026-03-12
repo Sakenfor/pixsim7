@@ -23,6 +23,14 @@ export interface GraphEditorHostProps {
   editorId?: GraphEditorId;
 }
 
+function normalizeGraphEditorId(editorId: GraphEditorId | undefined): GraphEditorId | undefined {
+  // Backward compatibility for persisted presets/settings from older builds.
+  if (editorId === 'arc-graph') {
+    return 'arc-graph-editor';
+  }
+  return editorId;
+}
+
 /**
  * GraphEditorHost - Dynamically renders a graph editor surface from the registry
  */
@@ -37,9 +45,9 @@ export function GraphEditorHost({ editorId }: GraphEditorHostProps) {
     : undefined;
 
   const effectiveEditorId: GraphEditorId =
-    editorId ||
-    (presetGraphEditorId as GraphEditorId) ||
-    (panelConfig?.settings?.graphEditorId as GraphEditorId) ||
+    normalizeGraphEditorId(editorId) ||
+    normalizeGraphEditorId(presetGraphEditorId as GraphEditorId) ||
+    normalizeGraphEditorId(panelConfig?.settings?.graphEditorId as GraphEditorId) ||
     'scene-graph-v2';
 
   const editorDef = useMemo(

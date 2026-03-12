@@ -4,12 +4,15 @@ import { lazy } from "react";
 import { registerState } from "@lib/capabilities";
 import { ROUTES, navigateTo } from "@lib/capabilities/routeConstants";
 
-import { WorkspaceModule as WorkspaceModuleComponent } from "@features/controlCenter/components/modules/WorkspaceModule";
-import { initializePanels } from "@features/panels";
-
+import { createLazyPanelComponent } from "@app/modules/lazyPanelComponent";
 import { defineModule } from "@app/modules/types";
 
-import { useWorkspaceStore } from "./stores/workspaceStore";
+const workspaceControlCenterPanel = createLazyPanelComponent("cc-workspace", async () => {
+  const moduleValue = await import("@features/controlCenter/components/modules/WorkspaceModule");
+  return moduleValue.WorkspaceModule;
+}, {
+  initializeModuleId: "workspace",
+});
 
 // === Workspace Actions ===
 
@@ -21,8 +24,8 @@ const openWorkspaceAction: ActionDefinition = {
   icon: "palette",
   shortcut: "Ctrl+Shift+W",
   route: ROUTES.WORKSPACE,
-  contexts: ['background'],
-  category: 'quick-add',
+  contexts: ["background"],
+  category: "quick-add",
   execute: () => {
     navigateTo(ROUTES.WORKSPACE);
   },
@@ -48,10 +51,11 @@ const openPanelAction: ActionDefinition = {
   description: "Open a floating panel",
   icon: "layout",
   visibility: "hidden", // Programmatic-only action
-  execute: (ctx) => {
+  execute: async (ctx) => {
     const panelId =
       (typeof ctx === "string" ? ctx : ctx?.target) as string | undefined;
     if (panelId) {
+      const { useWorkspaceStore } = await import("./stores/workspaceStore");
       useWorkspaceStore.getState().openFloatingPanel(panelId);
     }
   },
@@ -61,7 +65,9 @@ const openPanelAction: ActionDefinition = {
  * Register workspace state capabilities.
  * States are not part of ActionDefinition and must be registered separately.
  */
-function registerWorkspaceState() {
+async function registerWorkspaceState() {
+  const { useWorkspaceStore } = await import("./stores/workspaceStore");
+
   registerState({
     id: "workspace.panels",
     name: "Open Panels",
@@ -90,10 +96,14 @@ export const workspaceModule = defineModule({
   updatedAt: "2026-03-10T00:00:00Z",
   changeNote: "Added module metadata baseline for workspace feature module.",
   featureHighlights: ["Workspace module now participates in shared latest-update metadata."],
+  dependsOn: ["graph-system"],
 
   async initialize() {
     // Register workspace state capabilities
-    registerWorkspaceState();
+    const [{ initializePanels }] = await Promise.all([
+      import("@features/panels/lib/initializePanels"),
+      registerWorkspaceState(),
+    ]);
 
     // Ensure core panels (panel registry + auto-discovery) are initialized
     // even if the workspace route hasn't been visited yet. This allows
@@ -108,7 +118,7 @@ export const workspaceModule = defineModule({
       id: "cc-workspace",
       title: "Workspace",
       icon: "🏗️",
-      component: WorkspaceModuleComponent,
+      component: workspaceControlCenterPanel,
       category: "tools",
       order: 60,
       enabledByDefault: true,
@@ -125,13 +135,13 @@ export const workspaceModule = defineModule({
     capabilityCategory: "editing",
     featureId: "workspace",
     featured: true,
-    component: lazy(() => import("./routes/Workspace").then(m => ({ default: m.WorkspaceRoute }))),
+    component: lazy(() => import("./routes/Workspace").then((m) => ({ default: m.WorkspaceRoute }))),
     actions: [openWorkspaceAction, saveSceneAction, openPanelAction],
     appMap: {
-      docs: ['docs/architecture/README.md'],
+      docs: ["docs/architecture/README.md"],
       frontend: [
-        'apps/main/src/features/workspace/',
-        'apps/main/src/lib/dockview/',
+        "apps/main/src/features/workspace/",
+        "apps/main/src/lib/dockview/",
       ],
     },
   },

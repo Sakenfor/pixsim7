@@ -31,7 +31,7 @@ import {
   type GenerationGroupBy,
   type GenerationGroup,
 } from '../lib/generationGrouping';
-import { fromGenerationResponse, getGenerationModelName, type GenerationModel } from '../models';
+import { fromGenerationResponse, getGenerationModelName, resolveGranularStatus, getGranularStatusLabel, type GenerationModel } from '../models';
 import { useGenerationsStore, isGenerationActive } from '../stores/generationsStore';
 
 export interface GenerationsPanelProps {
@@ -326,6 +326,19 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
     setPromptReplaceState({ items, defaultValue });
   }, []);
 
+  /** Click a status label → toggle that granular status in the filter. */
+  const handleStatusClick = useCallback((status: string) => {
+    const current = filterState.status as string[] | undefined;
+    if (current?.includes(status)) {
+      // Already filtering by this status — remove it
+      const next = current.filter(s => s !== status);
+      setFilter('status', next.length > 0 ? next : undefined);
+    } else {
+      // Add this status to the filter (or start a new selection)
+      setFilter('status', [...(current ?? []), status]);
+    }
+  }, [filterState.status, setFilter]);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
@@ -424,6 +437,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
                 onReplacePrompt={handleReplacePrompt}
                 onRequestConfirm={requestConfirm}
                 onRequestPromptReplace={handleRequestPromptReplace}
+                onStatusClick={handleStatusClick}
                 isBatchCancelling={isBatchCancelling}
               />
             ))}
@@ -439,6 +453,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
                 onDelete={handleDelete}
                 onOpenAsset={handleOpenAsset}
                 onLoadToQuickGen={handleLoadToQuickGen}
+                onStatusClick={handleStatusClick}
               />
             ))}
           </div>
@@ -496,6 +511,7 @@ interface GenerationGroupSectionProps {
   onReplacePrompt: (generations: GenerationModel[], newPrompt: string) => void;
   onRequestConfirm: (message: string, onConfirm: () => void, variant?: 'danger' | 'primary') => void;
   onRequestPromptReplace: (items: GenerationModel[], defaultValue: string) => void;
+  onStatusClick?: (status: string) => void;
   isBatchCancelling: boolean;
 }
 
@@ -589,54 +605,79 @@ function GenerationAssetGridCard({ assetId, onClick }: { assetId: number; onClic
   );
 }
 
-/** Grid content for a leaf group — shows completed items as media cards, with a status summary for the rest. */
+/** Compact grid card for a generation in any status (non-completed or without asset). */
+function GenerationStatusGridCard({
+  generation,
+  onStatusClick,
+}: {
+  generation: GenerationModel;
+  onStatusClick?: (status: string) => void;
+}) {
+  const statusDisplay = getGenerationStatusDisplay(generation.status);
+  const isActive = isGenerationActive(generation.status);
+  const granularStatus = resolveGranularStatus(generation);
+  const granularLabel = getGranularStatusLabel(granularStatus);
+  const modelName = getGenerationModelName(generation);
+  const promptSnippet = generation.finalPrompt
+    ? generation.finalPrompt.length > 40
+      ? generation.finalPrompt.substring(0, 40) + '...'
+      : generation.finalPrompt
+    : generation.name || 'Untitled';
+
+  return (
+    <div className="aspect-square rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 flex flex-col items-center justify-center gap-1.5 p-2 text-center">
+      <div className={`${statusDisplay.color}`}>
+        <Icon name={statusDisplay.icon} size={20} className={isActive ? 'animate-pulse-subtle' : ''} />
+      </div>
+      <button
+        type="button"
+        onClick={onStatusClick ? (e) => { e.stopPropagation(); onStatusClick(granularStatus); } : undefined}
+        className={`text-[10px] font-semibold uppercase tracking-wide ${
+          onStatusClick
+            ? 'text-accent hover:underline cursor-pointer'
+            : 'text-neutral-500 dark:text-neutral-400 cursor-default'
+        }`}
+        title={onStatusClick ? `Filter by "${granularLabel}"` : undefined}
+      >
+        {granularLabel}
+      </button>
+      <p className="text-[10px] text-neutral-600 dark:text-neutral-400 line-clamp-2 leading-tight">
+        {promptSnippet}
+      </p>
+      {modelName && (
+        <span className="text-[9px] font-mono text-neutral-400 dark:text-neutral-500 truncate max-w-full">
+          {modelName}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Grid content for a leaf group — shows all items as cards in a grid. */
 function GenerationGroupGridContent({
   items,
   dimension,
   onOpenAsset,
+  onStatusClick,
 }: {
   items: GenerationModel[];
   dimension?: GenerationGroupBy;
   onOpenAsset: (assetId: number) => void;
+  onStatusClick?: (status: string) => void;
 }) {
-  const completedWithAsset = items.filter(g => g.status === 'completed' && (g.asset?.id ?? g.assetId));
-  const others = items.filter(g => !(g.status === 'completed' && (g.asset?.id ?? g.assetId)));
-
-  // Summarise non-completed items by status
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const g of others) {
-      counts[g.status] = (counts[g.status] || 0) + 1;
-    }
-    return Object.entries(counts);
-  }, [others]);
-
   const isAssetGroup = dimension === 'asset';
 
   return (
-    <div className="space-y-2">
-      {completedWithAsset.length > 0 && (
-        <AssetGrid preset={isAssetGroup ? 'review' : 'compact'} gap={isAssetGroup ? 4 : 2}>
-          {completedWithAsset.map(g => (
-            <GenerationAssetGridCard
-              key={g.id}
-              assetId={(g.asset?.id ?? g.assetId)!}
-              onClick={onOpenAsset}
-            />
-          ))}
-        </AssetGrid>
-      )}
-      {statusCounts.length > 0 && !isAssetGroup && (
-        <div className="text-xs text-neutral-500 dark:text-neutral-500 px-1">
-          {statusCounts.map(([status, count], i) => (
-            <span key={status}>
-              {i > 0 && ', '}
-              {count} {status}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
+    <AssetGrid preset={isAssetGroup ? 'review' : 'compact'} gap={isAssetGroup ? 4 : 2}>
+      {items.map(g => {
+        const assetId = g.status === 'completed' ? (g.asset?.id ?? g.assetId) : null;
+        return assetId ? (
+          <GenerationAssetGridCard key={g.id} assetId={assetId} onClick={onOpenAsset} />
+        ) : (
+          <GenerationStatusGridCard key={g.id} generation={g} onStatusClick={onStatusClick} />
+        );
+      })}
+    </AssetGrid>
   );
 }
 
@@ -653,6 +694,7 @@ function GenerationGroupSection({
   onReplacePrompt,
   onRequestConfirm,
   onRequestPromptReplace,
+  onStatusClick,
   isBatchCancelling,
 }: GenerationGroupSectionProps) {
   const activeIds = useMemo(() => collectActiveIds(group), [group]);
@@ -760,7 +802,7 @@ function GenerationGroupSection({
   const groupActions = (
     <span className="flex items-center gap-1">
       {batchCancelAction}
-      <span className="relative">
+      <span className="relative" onMouseLeave={() => setMenuOpen(false)}>
         <button
           ref={menuTriggerRef}
           onClick={(e) => {
@@ -854,11 +896,12 @@ function GenerationGroupSection({
               onReplacePrompt={onReplacePrompt}
               onRequestConfirm={onRequestConfirm}
               onRequestPromptReplace={onRequestPromptReplace}
+              onStatusClick={onStatusClick}
               isBatchCancelling={isBatchCancelling}
             />
           ))
-        ) : viewMode === 'grid' || group.dimension === 'asset' ? (
-          <GenerationGroupGridContent items={group.items} dimension={group.dimension} onOpenAsset={onOpenAsset} />
+        ) : viewMode === 'grid' ? (
+          <GenerationGroupGridContent items={group.items} dimension={group.dimension} onOpenAsset={onOpenAsset} onStatusClick={onStatusClick} />
         ) : (
           group.items.map(generation => (
             <GenerationItem
@@ -869,6 +912,7 @@ function GenerationGroupSection({
               onDelete={onDelete}
               onOpenAsset={onOpenAsset}
               onLoadToQuickGen={onLoadToQuickGen}
+              onStatusClick={onStatusClick}
             />
           ))
         )}
@@ -888,11 +932,12 @@ interface GenerationItemProps {
   onDelete: (id: number) => void;
   onOpenAsset: (assetId: number) => void;
   onLoadToQuickGen: (generation: GenerationModel) => void;
+  onStatusClick?: (status: string) => void;
 }
 
 type ParamTab = 'raw' | 'canonical' | 'submitted';
 
-function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, onLoadToQuickGen }: GenerationItemProps) {
+function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, onLoadToQuickGen, onStatusClick }: GenerationItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -901,6 +946,7 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
   const [paramTab, setParamTab] = useState<ParamTab>('canonical');
   const statusDisplay = getGenerationStatusDisplay(generation.status);
   const isActive = isGenerationActive(generation.status);
+  const granularStatus = resolveGranularStatus(generation);
   const isTerminal = generation.status === 'completed' || generation.status === 'failed' || generation.status === 'cancelled';
   const canRetry = generation.status === 'failed' || generation.status === 'cancelled';
   const canCancel = isActive;
@@ -1063,9 +1109,14 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
       {/* Main row */}
       <div className="flex items-start gap-3 p-3">
         {/* Status icon */}
-        <div className={`flex-shrink-0 mt-0.5 ${statusDisplay.color}`}>
+        <button
+          type="button"
+          onClick={onStatusClick ? () => onStatusClick(granularStatus) : undefined}
+          className={`flex-shrink-0 mt-0.5 ${statusDisplay.color} ${onStatusClick ? 'hover:opacity-70 cursor-pointer' : 'cursor-default'}`}
+          title={onStatusClick ? `Filter by "${getGranularStatusLabel(granularStatus)}"` : statusDisplay.label}
+        >
           <Icon name={statusDisplay.icon} size={18} />
-        </div>
+        </button>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
@@ -1075,12 +1126,14 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
               {promptPreview}
             </p>
             {activityBadge && (
-              <span
-                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide ${activityBadge.className}`}
-                title={activityBadge.title}
+              <button
+                type="button"
+                onClick={onStatusClick ? () => onStatusClick(granularStatus) : undefined}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide ${activityBadge.className} ${onStatusClick ? 'hover:opacity-80 cursor-pointer' : 'cursor-default'}`}
+                title={onStatusClick ? `Filter by "${activityBadge.label}"` : activityBadge.title}
               >
                 {activityBadge.label}
-              </span>
+              </button>
             )}
           </div>
 

@@ -12,15 +12,7 @@
 
 import { contextMenuRegistry } from '@pixsim7/shared.ui.context-menu';
 
-import { registerContextSettings } from '@features/settings/lib/schemas/context.settings';
-
 import { defineModule } from '@app/modules/types';
-
-
-import { useContextHubSettingsStore } from './stores/contextHubSettingsStore';
-
-// Import to ensure capability descriptors are registered
-import './domain/capabilities';
 
 let settingsUnregister: (() => void) | null = null;
 let settingsUnsubscribe: (() => void) | null = null;
@@ -40,6 +32,12 @@ export const contextHubModule = defineModule({
   priority: 80, // High priority - capabilities are infrastructure
 
   async initialize() {
+    const [{ registerContextSettings }, { useContextHubSettingsStore }] = await Promise.all([
+      import('@features/settings/lib/schemas/context.settings'),
+      import('./stores/contextHubSettingsStore'),
+      import('./domain/capabilities'),
+    ]);
+
     // Register context hub settings
     settingsUnregister = registerContextSettings();
 

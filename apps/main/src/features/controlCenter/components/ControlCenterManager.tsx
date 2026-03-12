@@ -13,8 +13,13 @@ import { controlCenterRegistry } from '@lib/plugins/controlCenterPlugin';
 
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 
+import { moduleRegistry } from '@app/modules';
+
 export function ControlCenterManager() {
   const [activePlugin, setActivePlugin] = useState(() => controlCenterRegistry.getActive());
+  const [bootstrapReady, setBootstrapReady] = useState(() =>
+    moduleRegistry.isModuleInitialized('plugin-bootstrap')
+  );
   const [showSelector, setShowSelector] = useState(false);
   const [availableControlCenters, setAvailableControlCenters] = useState(() =>
     controlCenterRegistry.getAll()
@@ -29,6 +34,30 @@ export function ControlCenterManager() {
     controlCenterRegistry.loadPreference();
     setActivePlugin(controlCenterRegistry.getActive());
     setAvailableControlCenters(controlCenterRegistry.getAll());
+  }, []);
+
+  // Ensure plugin bootstrap runs before declaring "no active control center".
+  useEffect(() => {
+    if (moduleRegistry.isModuleInitialized('plugin-bootstrap')) {
+      setBootstrapReady(true);
+      return;
+    }
+
+    let active = true;
+    void moduleRegistry
+      .initializeModule('plugin-bootstrap')
+      .catch((error) => {
+        console.warn('[ControlCenterManager] Failed to initialize plugin bootstrap:', error);
+      })
+      .finally(() => {
+        if (active) {
+          setBootstrapReady(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Listen for registry changes (when plugins are installed/uninstalled or active changes)
@@ -68,6 +97,10 @@ export function ControlCenterManager() {
   };
 
   // If no control center is available, show installation prompt
+  if (!activePlugin && !bootstrapReady) {
+    return null;
+  }
+
   if (!activePlugin) {
     return (
       <div className="fixed bottom-4 right-4 z-40 bg-black/80 backdrop-blur-md rounded-lg p-4 text-white max-w-sm">

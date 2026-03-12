@@ -16,6 +16,9 @@ import {
   resolvePanelDefinitionId,
 } from "@lib/dockview";
 import type { DockviewHost } from "@lib/dockview";
+import { panelSelectors } from "@lib/plugins/catalogSelectors";
+
+import { resolveScopedOutOfLayoutPanelIds } from "./panelHostDockScope";
 
 type DockviewPanelPosition = Parameters<DockviewApi["addPanel"]>[0]["position"];
 
@@ -102,9 +105,18 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
     const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
     const [resetKey, setResetKey] = useState(0);
     const [dockviewHost, setDockviewHost] = useState<DockviewHost | null>(null);
+    const scopedOutOfLayoutPanelIds = useMemo(() => {
+      return resolveScopedOutOfLayoutPanelIds(panelSelectors, {
+        dockId,
+        panels,
+        excludePanels,
+        allowedPanels,
+        allowedCategories,
+      });
+    }, [dockId, panels, excludePanels, allowedPanels, allowedCategories]);
     const excludedFromLayoutSet = useMemo(
-      () => new Set(excludeFromLayout ?? []),
-      [excludeFromLayout]
+      () => new Set([...(excludeFromLayout ?? []), ...scopedOutOfLayoutPanelIds]),
+      [excludeFromLayout, scopedOutOfLayoutPanelIds]
     );
 
     const reconcileDockviewPanels = useCallback(

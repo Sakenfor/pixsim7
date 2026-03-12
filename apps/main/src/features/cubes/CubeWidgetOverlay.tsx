@@ -13,6 +13,8 @@ import { useEffect, useCallback } from 'react';
 
 import { useWorkspaceStore } from '@features/workspace';
 
+import { moduleRegistry } from '@app/modules';
+
 import { getCubeFaceContent, getMinimizedPanelFaceContent } from './components/CubeFaceContent';
 import { DraggableCube } from './components/DraggableCube';
 import { useCubeSettingsStore } from './stores/cubeSettingsStore';
@@ -27,6 +29,12 @@ export function CubeWidgetOverlay() {
   const cubes = useCubeStore((s) => s.cubes);
   const restorePanelFromCube = useCubeStore((s) => s.restorePanelFromCube);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+
+  useEffect(() => {
+    void moduleRegistry.initializeModule('cubes').catch((error) => {
+      console.warn('[CubeWidgetOverlay] Failed to initialize cubes module:', error);
+    });
+  }, []);
 
   const handleCubeClick = useCallback(
     (cubeId: string) => {

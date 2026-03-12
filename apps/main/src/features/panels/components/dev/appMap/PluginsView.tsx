@@ -32,6 +32,17 @@ const PLUGIN_ORIGINS: Array<UnifiedPluginOrigin | 'all'> = [
   'dev-project',
 ];
 
+function formatUpdatedAt(value?: string): string | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  }).format(new Date(ms));
+}
+
 export function PluginsView({
   allPlugins,
   filteredPlugins,
@@ -120,6 +131,7 @@ export function PluginsView({
 
 function PluginCard({ plugin }: { plugin: UnifiedPluginDescriptor }) {
   const [expanded, setExpanded] = useState(false);
+  const updatedAtLabel = formatUpdatedAt(plugin.updatedAt);
 
   return (
     <div className="border border-neutral-200 dark:border-neutral-700 rounded-md overflow-hidden">
@@ -159,6 +171,11 @@ function PluginCard({ plugin }: { plugin: UnifiedPluginDescriptor }) {
                 {plugin.description}
               </p>
             )}
+            {plugin.changeNote && (
+              <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
+                {plugin.changeNote}
+              </p>
+            )}
           </div>
           <span className="text-neutral-400">{expanded ? '▼' : '▶'}</span>
         </div>
@@ -185,6 +202,16 @@ function PluginCard({ plugin }: { plugin: UnifiedPluginDescriptor }) {
                 </span>
                 <span className="ml-2 text-neutral-900 dark:text-neutral-100">
                   {plugin.version}
+                </span>
+              </div>
+            )}
+            {updatedAtLabel && (
+              <div>
+                <span className="text-neutral-500 dark:text-neutral-400">
+                  Updated:
+                </span>
+                <span className="ml-2 text-neutral-900 dark:text-neutral-100">
+                  {updatedAtLabel}
                 </span>
               </div>
             )}
@@ -227,6 +254,21 @@ function PluginCard({ plugin }: { plugin: UnifiedPluginDescriptor }) {
               </div>
             )}
           </div>
+
+          {plugin.featureHighlights && plugin.featureHighlights.length > 0 && (
+            <div>
+              <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
+                Recent Highlights:
+              </div>
+              <ul className="space-y-1">
+                {plugin.featureHighlights.map((highlight) => (
+                  <li key={highlight} className="text-sm text-neutral-700 dark:text-neutral-300">
+                    - {highlight}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Tags */}
           {plugin.tags && plugin.tags.length > 0 && (

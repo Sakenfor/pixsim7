@@ -10,6 +10,7 @@ import {
   CAP_GENERATION_WIDGET,
   type GenerationWidgetContext,
   useCapability,
+  useCapabilityAll,
 } from '@features/contextHub';
 
 import type { OperationType } from '@/types/operations';
@@ -49,10 +50,32 @@ export function useMediaGenerationActions() {
   const selectAsset = useAssetSelectionStore((s) => s.selectAsset);
 
   const { provider: widgetProvider } = useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
+  const widgetProviders = useCapabilityAll<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
   const getWidgetContext = useCallback((): GenerationWidgetContext | null => {
     const value = widgetProvider?.getValue?.();
     return value ? (value as GenerationWidgetContext) : null;
   }, [widgetProvider]);
+  const getCandidateWidgets = useCallback((): GenerationWidgetContext[] => {
+    const candidates: GenerationWidgetContext[] = [];
+    const seen = new Set<string>();
+
+    const primary = getWidgetContext();
+    if (primary) {
+      candidates.push(primary);
+      seen.add(primary.widgetId);
+    }
+
+    for (const entry of widgetProviders) {
+      const widget = entry.value;
+      if (!widget) continue;
+      const key = widget.widgetId || entry.provider.id || '';
+      if (key && seen.has(key)) continue;
+      if (key) seen.add(key);
+      candidates.push(widget);
+    }
+
+    return candidates;
+  }, [getWidgetContext, widgetProviders]);
   const getCurrentOperationType = useCallback(
     (): OperationType => getWidgetContext()?.operationType ?? sessionOperationType,
     [getWidgetContext, sessionOperationType],
@@ -69,6 +92,43 @@ export function useMediaGenerationActions() {
       return true;
     },
     [getWidgetContext],
+  );
+
+  const resolveWidgetForQuickGenerate = useCallback(
+    async (): Promise<GenerationWidgetContext | null> => {
+      const waitForResolvedGenerator = async (): Promise<GenerationWidgetContext | null> => {
+        for (let i = 0; i < 6; i += 1) {
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 16);
+          });
+          const resolved = getWidgetContext();
+          if (resolved?.generateWithAsset) return resolved;
+        }
+        return null;
+      };
+
+      const initial = getWidgetContext();
+      if (initial?.generateWithAsset) return initial;
+
+      const candidates = getCandidateWidgets();
+      const direct = candidates.find((candidate) => !!candidate.generateWithAsset);
+      if (direct?.generateWithAsset) return direct;
+
+      // Open whichever generation widget is currently resolved first (nearest/targeted),
+      // then fall back to other discovered widget providers.
+      const opened = new Set<string>();
+      for (const candidate of candidates) {
+        const key = candidate.widgetId || '';
+        if (key && opened.has(key)) continue;
+        if (key) opened.add(key);
+        candidate.setOpen(true);
+        const resolved = await waitForResolvedGenerator();
+        if (resolved?.generateWithAsset) return resolved;
+      }
+
+      return getWidgetContext();
+    },
+    [getWidgetContext, getCandidateWidgets],
   );
 
   const setOperationType = useCallback(
@@ -167,12 +227,16 @@ export function useMediaGenerationActions() {
   // Optional duration override from gesture secondary axis.
   const quickGenerate = useCallback(
     async (asset: AssetModel, options?: { addToQueue?: boolean; count?: number; duration?: number }) => {
-      const widget = getWidgetContext();
+      let widget = getWidgetContext();
       const currentOperationType = widget?.operationType ?? sessionOperationType;
       // Optionally add to inputs (default: no)
       if (options?.addToQueue) {
         addInputs({ assets: [asset], operationType: currentOperationType });
         selectAssetFromSummary(asset);
+      }
+
+      if (!widget?.generateWithAsset) {
+        widget = await resolveWidgetForQuickGenerate();
       }
 
       if (!widget?.generateWithAsset) {
@@ -194,7 +258,7 @@ export function useMediaGenerationActions() {
         });
       }
     },
-    [addInputs, getWidgetContext, sessionOperationType, selectAssetFromSummary],
+    [addInputs, getWidgetContext, sessionOperationType, selectAssetFromSummary, resolveWidgetForQuickGenerate],
   );
 
   // Upgrade model — re-queue generation with one model tier up.

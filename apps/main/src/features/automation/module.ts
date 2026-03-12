@@ -38,6 +38,7 @@ export const automationModule = defineModule({
   updatedAt: '2026-03-10T00:00:00Z',
   changeNote: 'Added module metadata baseline for automation feature module.',
   featureHighlights: ['Automation module now participates in shared latest-update metadata.'],
+  dependsOn: ['workspace'],
 
   page: {
     route: '/automation',

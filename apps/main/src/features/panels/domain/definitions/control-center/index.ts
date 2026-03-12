@@ -1,10 +1,11 @@
 import { ControlCenterManager } from '@features/controlCenter';
+import { DOCK_IDS, PANEL_IDS } from '@features/panels/lib/panelIds';
 import { createPanelSchemaSettingsSection } from '@features/settings';
 
 import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
-  id: 'controlCenter',
+  id: PANEL_IDS.controlCenter,
   title: 'Control Center',
   component: ControlCenterManager,
   category: 'system',
@@ -19,7 +20,7 @@ export default definePanel({
       id: 'ui-settings',
       title: 'UI Settings',
       description: 'Dock layout and interaction preferences.',
-      component: createPanelSchemaSettingsSection('workspace', 'control-center'),
+      component: createPanelSchemaSettingsSection('workspace', DOCK_IDS.controlCenter),
     },
   ],
   orchestration: {
@@ -40,11 +41,11 @@ export default definePanel({
     priority: 40,
     interactionRules: {
       whenOpens: {
-        assetViewer: 'retract',
+        [PANEL_IDS.assetViewer]: 'retract',
         gallery: 'nothing',
       },
       whenCloses: {
-        assetViewer: 'expand',
+        [PANEL_IDS.assetViewer]: 'expand',
       },
     },
   },

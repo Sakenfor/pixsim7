@@ -169,6 +169,12 @@ export interface UnifiedPluginDescriptor {
   tags?: string[];
   /** Category for grouping/filtering (legacy catalog) */
   category?: string;
+  /** ISO timestamp for latest plugin update */
+  updatedAt?: string;
+  /** Short latest-change summary */
+  changeNote?: string;
+  /** Optional highlights of latest changes */
+  featureHighlights?: string[];
 
   // ===== FEATURE METADATA (legacy catalog) =====
   /** Capability hints for feature plugins */

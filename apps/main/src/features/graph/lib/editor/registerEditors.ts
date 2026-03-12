@@ -60,15 +60,16 @@ export async function registerGraphEditors(): Promise<void> {
   }
 
   // Register Arc Graph Editor (Modern)
-  if (!graphEditorSelectors.has('arc-graph')) {
+  // Uses a dedicated plugin ID to avoid colliding with the workspace panel ID "arc-graph".
+  if (!graphEditorSelectors.has('arc-graph-editor')) {
     await registerPluginDefinition({
-      id: 'arc-graph',
+      id: 'arc-graph-editor',
       family: 'graph-editor',
       origin: 'builtin',
       source: 'source',
       canDisable: false,
       plugin: {
-        id: 'arc-graph',
+        id: 'arc-graph-editor',
         label: 'Arc Graph Editor',
         description: 'Arc/quest progression editor',
         icon: 'dY-??,?',

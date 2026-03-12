@@ -32,6 +32,7 @@ export const arcGraphModule = defineModule({
   updatedAt: '2026-03-10T00:00:00Z',
   changeNote: 'Added module metadata baseline for arc graph route module.',
   featureHighlights: ['Arc graph route module now participates in shared latest-update metadata.'],
+  dependsOn: ['workspace'],
   page: {
     route: '/arc-graph',
     icon: 'fileText',
@@ -60,6 +61,7 @@ export const graphModule = defineModule({
   updatedAt: '2026-03-10T00:00:00Z',
   changeNote: 'Added module metadata baseline for graph view route module.',
   featureHighlights: ['Graph view route module now participates in shared latest-update metadata.'],
+  dependsOn: ['graph-system'],
   page: {
     route: '/graph/:id',
     icon: 'graph',

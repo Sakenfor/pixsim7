@@ -20,6 +20,12 @@ import type { LocalFoldersController } from '@/types/localSources';
 import { useViewerScopeSync } from '../../hooks/useAssetViewer';
 import { useLocalAssetPreview } from '../../hooks/useLocalAssetPreview';
 import {
+  canUploadToLibraryFromState,
+  isFailedUploadState,
+  isPendingUploadState,
+  resolveLocalUploadState,
+} from '../../lib/localAssetState';
+import {
   buildFavoriteGroupKey,
   bucketLocalAssets,
   getLocalGroupLabel,
@@ -403,9 +409,9 @@ export function LocalFoldersContent({
     let pending = 0;
     let failed = 0;
     for (const a of visibleItems) {
-      const st = controller.uploadStatus[a.key] || a.last_upload_status;
-      if (!st || st === 'idle') pending++;
-      else if (st === 'error') failed++;
+      const state = resolveLocalUploadState(a, controller.uploadStatus);
+      if (isPendingUploadState(state)) pending++;
+      else if (isFailedUploadState(state)) failed++;
     }
     return { pendingUploadCount: pending, failedUploadCount: failed };
   }, [visibleItems, controller.uploadStatus]);
@@ -434,9 +440,18 @@ export function LocalFoldersContent({
     batchUploadingRef.current = true;
     setToolsOpen(false);
 
-    const pending = visibleItems.filter((a) => {
-      const st = controller.uploadStatus[a.key] || a.last_upload_status;
-      return !st || st === 'idle' || st === 'error';
+    const pending = visibleItems.filter((asset) => {
+      const status = resolveLocalUploadState(asset, controller.uploadStatus);
+      if (status === 'uploading') return false;
+
+      if (target === 'library') {
+        return canUploadToLibraryFromState(status);
+      }
+
+      const normalizedTarget = target.trim().toLowerCase();
+      const lastProviderId = String(asset.last_upload_provider_id || '').trim().toLowerCase();
+      const uploadedToSelectedProvider = status === 'success' && lastProviderId === normalizedTarget;
+      return !uploadedToSelectedProvider;
     });
 
     const CONCURRENCY = 3;

@@ -1,15 +1,30 @@
+import { createElement, lazy, Suspense } from 'react';
+
 import { registerState } from '@lib/capabilities';
 
 import { defineModule } from '@app/modules/types';
 
-import { GenerationActivityBarWidget } from './components/GenerationActivityBarWidget';
-import { getGenerationSessionStore } from './stores/generationScopeStores';
+const LazyGenerationActivityBarWidget = lazy(() =>
+  import('./components/GenerationActivityBarWidget').then((moduleValue) => ({
+    default: moduleValue.GenerationActivityBarWidget,
+  }))
+);
+
+function GenerationActivityBarWidgetShell() {
+  return createElement(
+    Suspense,
+    { fallback: null },
+    createElement(LazyGenerationActivityBarWidget),
+  );
+}
 
 /**
  * Register generation state capabilities.
  * States are not part of ActionDefinition and must be registered separately.
  */
-function registerGenerationState() {
+async function registerGenerationState() {
+  const { getGenerationSessionStore } = await import('./stores/generationScopeStores');
+
   registerState({
     id: 'generation.active',
     name: 'Generation Active',
@@ -40,13 +55,26 @@ export const generationModule = defineModule({
       order: 0,
       label: 'Generations',
       icon: 'sparkles',
-      component: GenerationActivityBarWidget,
+      component: GenerationActivityBarWidgetShell,
     },
   ],
 
   async initialize() {
+    const [
+      { registerGenerationScopes },
+      { registerQuickGenerateComponentSettings },
+      { registerPreviewScopes },
+    ] = await Promise.all([
+      import('./lib/registerGenerationScopes'),
+      import('./lib/registerQuickGenerateComponentSettings'),
+      import('@features/preview/lib/registerPreviewScopes'),
+    ]);
+
+    registerGenerationScopes();
+    registerQuickGenerateComponentSettings();
+    registerPreviewScopes();
+
     // Register generation state capabilities
-    registerGenerationState();
-    // Future: Register generation UI plugins / provider hooks if needed
+    await registerGenerationState();
   },
 });

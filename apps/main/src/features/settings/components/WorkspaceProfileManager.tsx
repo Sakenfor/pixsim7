@@ -149,6 +149,9 @@ function ProfileCard({
   onDelete: () => void;
   onSetGraphEditorId: (graphEditorId: string) => void;
 }) {
+  const normalizedGraphEditorId =
+    preset.graphEditorId === 'arc-graph' ? 'arc-graph-editor' : preset.graphEditorId;
+
   return (
     <div className="p-4 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 hover:border-accent transition-all">
       {/* Header */}
@@ -190,7 +193,7 @@ function ProfileCard({
         <div className="flex items-center justify-between">
           <span className="font-semibold">Graph editor</span>
           <span className="font-mono">
-            {preset.graphEditorId || 'inherit (scene-graph-v2)'}
+            {normalizedGraphEditorId || 'inherit (scene-graph-v2)'}
           </span>
         </div>
         <div className="flex gap-1 mt-1">
@@ -198,7 +201,7 @@ function ProfileCard({
             type="button"
             onClick={() => onSetGraphEditorId('scene-graph-v2')}
             className={`flex-1 px-2 py-1 rounded border ${
-              (preset.graphEditorId || 'scene-graph-v2') === 'scene-graph-v2'
+              (normalizedGraphEditorId || 'scene-graph-v2') === 'scene-graph-v2'
                 ? 'bg-blue-500 text-white border-blue-500'
                 : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-600'
             }`}
@@ -207,9 +210,9 @@ function ProfileCard({
           </button>
           <button
             type="button"
-            onClick={() => onSetGraphEditorId('arc-graph')}
+            onClick={() => onSetGraphEditorId('arc-graph-editor')}
             className={`flex-1 px-2 py-1 rounded border ${
-              preset.graphEditorId === 'arc-graph'
+              normalizedGraphEditorId === 'arc-graph-editor'
                 ? 'bg-blue-500 text-white border-blue-500'
                 : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-600'
             }`}

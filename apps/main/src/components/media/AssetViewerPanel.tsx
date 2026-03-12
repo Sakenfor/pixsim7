@@ -6,10 +6,11 @@
  * Fullscreen mode uses a fixed overlay layout.
  */
 
-import { Icon } from '@lib/icons';
 import { Ref } from '@pixsim7/shared.ref.core';
 import type { AssetRef } from '@pixsim7/shared.types';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+import { Icon } from '@lib/icons';
 
 import {
   useAssetViewerStore,
@@ -21,7 +22,8 @@ import {
   useProvideCapability,
   type AssetSelection,
 } from '@features/contextHub';
-import { usePanel } from '@features/panels';
+import { ensurePanelMetadataRegistered, panelManager, usePanel } from '@features/panels';
+import { PANEL_IDS } from '@features/panels/lib/panelIds';
 
 import { AssetViewerDockview } from './viewer';
 
@@ -29,7 +31,10 @@ import { AssetViewerDockview } from './viewer';
 
 export function AssetViewerPanel() {
   // Panel orchestration hook
-  const { open: panelOpen, close: panelClose } = usePanel('assetViewer');
+  const { open: panelOpen, close: panelClose } = usePanel(PANEL_IDS.assetViewer);
+  const [isAssetViewerPanelRegistered, setIsAssetViewerPanelRegistered] = useState<boolean>(
+    () => panelManager.getPanelMetadata(PANEL_IDS.assetViewer) != null,
+  );
 
   const currentAsset = useAssetViewerStore((s) => s.currentAsset);
   const mode = useAssetViewerStore((s) => s.mode);
@@ -68,7 +73,7 @@ export function AssetViewerPanel() {
       return {
         asset: currentAsset,
         assets: assetList,
-        source: 'assetViewer',
+        source: PANEL_IDS.assetViewer,
         ref: currentRef ?? refs[0] ?? null,
         refs,
       };
@@ -78,7 +83,7 @@ export function AssetViewerPanel() {
 
   const assetSelectionProvider = useMemo(
     () => ({
-      id: 'assetViewer',
+      id: PANEL_IDS.assetViewer,
       label: 'Asset Viewer',
       priority: 50,
       exposeToContextMenu: true,
@@ -93,14 +98,49 @@ export function AssetViewerPanel() {
     assetList,
   ], { scope: 'root' });
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (panelManager.getPanelMetadata(PANEL_IDS.assetViewer) != null) {
+      setIsAssetViewerPanelRegistered(true);
+      return;
+    }
+
+    void ensurePanelMetadataRegistered(PANEL_IDS.assetViewer)
+      .catch((error) => {
+        console.error('[AssetViewerPanel] Failed to register panel metadata:', error);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsAssetViewerPanelRegistered(
+          panelManager.getPanelMetadata(PANEL_IDS.assetViewer) != null,
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return panelManager.subscribe(() => {
+      setIsAssetViewerPanelRegistered(
+        panelManager.getPanelMetadata(PANEL_IDS.assetViewer) != null,
+      );
+    });
+  }, []);
+
   // Sync viewer state with panel manager
   useEffect(() => {
+    if (!isAssetViewerPanelRegistered) {
+      return;
+    }
     if (mode !== 'closed') {
       panelOpen();
     } else {
       panelClose();
     }
-  }, [mode, panelOpen, panelClose]);
+  }, [isAssetViewerPanelRegistered, mode, panelOpen, panelClose]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -190,7 +230,7 @@ export function AssetViewerPanel() {
             navigateNext={navigateNext}
             closeViewer={closeViewer}
             toggleFullscreen={toggleFullscreen}
-            panelManagerId="assetViewer"
+            panelManagerId={PANEL_IDS.assetViewer}
           />
         </div>
       </div>

@@ -13,7 +13,7 @@ import type { DockviewApi } from 'dockview-core';
 import { useCallback, useEffect, useMemo } from 'react';
 
 import { useGizmoLabStore } from '@features/gizmos/stores/gizmoLabStore';
-import { PanelHostDockview } from '@features/panels';
+import { PanelHostDockview } from '@features/panels/components/host/PanelHostDockview';
 import gizmoLabGroup from '@features/panels/domain/groups/gizmo-lab';
 
 export interface GizmoLabProps {

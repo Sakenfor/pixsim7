@@ -7,6 +7,9 @@ import {
   getMigrationStatus,
   getMigrationHead,
   runMigration,
+  getMigrationHealth,
+  snapshotMigrationHealth,
+  reapplyDirtyMigration,
   type CodegenRunResponse,
   type CodegenTask,
   type MigrationRunResponse,
@@ -14,6 +17,10 @@ import {
   type MigrationScopeDetail,
   type MigrationStatusResponse,
   type MigrationHeadResponse,
+  type MigrationHealthResponse,
+  type MigrationChainHealth,
+  type MigrationReapplyResponse,
+  type MigrationSnapshotResponse,
 } from '@devtools/mainApp/codegenApi';
 import { Icon } from '@devtools/mainApp/lib/icons';
 import { canRunCodegen } from '@devtools/mainApp/userRoles';
@@ -72,6 +79,38 @@ function formatMigrationOutput(response: MigrationRunResponse): string {
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+function formatReapplyOutput(response: MigrationReapplyResponse): string {
+  const status = response.ok ? 'OK' : 'FAILED';
+  const summary = [
+    `Scope: ${response.scope}`,
+    `Revision: ${response.revision}`,
+    `Downgrade target: ${response.downgrade_target}`,
+    `Status: ${status}`,
+    response.exit_code !== null ? `Exit code: ${response.exit_code}` : 'Exit code: -',
+    `Duration: ${(response.duration_ms / 1000).toFixed(1)}s`,
+  ].join('\n');
+
+  const stdout = response.stdout?.trim();
+  const stderr = response.stderr?.trim();
+
+  return [
+    summary,
+    stdout ? `\n--- stdout ---\n${stdout}` : '',
+    stderr ? `\n--- stderr ---\n${stderr}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function formatSnapshotOutput(response: MigrationSnapshotResponse): string {
+  return [
+    `Scope: ${response.scope}`,
+    `Status: ${response.ok ? 'OK' : 'FAILED'}`,
+    `Updated revisions: ${response.updated_revisions}`,
+    `Sidecar: ${response.sidecar_path}`,
+  ].join('\n');
 }
 
 function getRequestedTaskIdFromQuery(): string {
@@ -352,23 +391,50 @@ function ConfigRow({ label, value }: { label: string; value: string }) {
 
 function ScopeCard({
   detail,
+  chainHealth,
   head,
   headLoading,
   busy,
+  reapplyBusy,
   onCheckHead,
   onRun,
+  onReapplyDirty,
 }: {
   detail: MigrationScopeDetail;
+  chainHealth: MigrationChainHealth | null;
   head: MigrationHeadResponse | null;
   headLoading: boolean;
   busy: boolean;
+  reapplyBusy: boolean;
   onCheckHead: () => void;
   onRun: () => void;
+  onReapplyDirty: (revision: string) => void;
 }) {
+  const reapplyCandidate = chainHealth?.migrations.find(
+    (migration) =>
+      migration.is_dirty &&
+      migration.is_current_head &&
+      !migration.is_merge &&
+      migration.down_revisions.length === 1 &&
+      chainHealth.current_heads.length === 1,
+  );
+
   return (
     <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
       <div className="px-4 py-2.5 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 flex items-center justify-between">
-        <div className="font-medium text-sm">{detail.scope}</div>
+        <div className="flex items-center gap-2">
+          <div className="font-medium text-sm">{detail.scope}</div>
+          {chainHealth && chainHealth.dirty_count > 0 && (
+            <span className="px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 text-[10px] font-semibold">
+              {chainHealth.dirty_count} dirty
+            </span>
+          )}
+          {chainHealth && chainHealth.pending_count > 0 && (
+            <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[10px] font-semibold">
+              {chainHealth.pending_count} pending
+            </span>
+          )}
+        </div>
         <div className="text-[11px] text-neutral-500">
           {detail.migration_count} migration{detail.migration_count !== 1 ? 's' : ''}
         </div>
@@ -380,6 +446,12 @@ function ScopeCard({
           <ConfigRow label="Database" value={detail.database_url} />
           <ConfigRow label="Version tbl" value={detail.version_table} />
         </div>
+
+        {chainHealth?.db_error && (
+          <div className="px-2.5 py-1.5 rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-[11px] text-red-700 dark:text-red-300">
+            DB status error: {chainHealth.db_error}
+          </div>
+        )}
 
         <div className="flex items-center gap-2 pt-1">
           {head ? (
@@ -417,6 +489,15 @@ function ScopeCard({
           >
             Migrate
           </button>
+          {reapplyCandidate && (
+            <button
+              onClick={() => onReapplyDirty(reapplyCandidate.revision)}
+              disabled={busy || reapplyBusy}
+              className="px-2.5 py-1 text-xs bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-medium rounded transition-colors"
+            >
+              {reapplyBusy ? 'Re-applying...' : 'Re-apply Dirty'}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -427,6 +508,9 @@ function MigrationsSection() {
   const [status, setStatus] = useState<MigrationStatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusError, setStatusError] = useState('');
+  const [health, setHealth] = useState<MigrationHealthResponse | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState('');
 
   const [heads, setHeads] = useState<Record<string, MigrationHeadResponse>>({});
   const [headLoadingScopes, setHeadLoadingScopes] = useState<Set<string>>(new Set());
@@ -434,7 +518,7 @@ function MigrationsSection() {
   const [runState, setRunState] = useState<RunState>('idle');
   const [runError, setRunError] = useState('');
   const [output, setOutput] = useState('');
-  const [runningScope, setRunningScope] = useState<string | null>(null);
+  const [actionKey, setActionKey] = useState<string | null>(null);
 
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -449,9 +533,22 @@ function MigrationsSection() {
     }
   }, []);
 
+  const loadHealth = useCallback(async () => {
+    setHealthLoading(true);
+    setHealthError('');
+    try {
+      const response = await getMigrationHealth();
+      setHealth(response);
+    } catch (error) {
+      setHealthError(extractErrorMessage(error) || 'Failed to load migration health');
+    } finally {
+      setHealthLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    void loadStatus();
-  }, [loadStatus]);
+    void Promise.all([loadStatus(), loadHealth()]);
+  }, [loadStatus, loadHealth]);
 
   const checkHead = useCallback(async (scope: string) => {
     setHeadLoadingScopes((prev) => new Set(prev).add(scope));
@@ -481,23 +578,89 @@ function MigrationsSection() {
     setRunState('loading');
     setRunError('');
     setOutput('');
-    setRunningScope(scope);
+    setActionKey(`migrate:${scope}`);
     try {
       const response = await runMigration({ scope });
       setOutput(formatMigrationOutput(response));
       setRunState(response.ok ? 'idle' : 'error');
+      await Promise.all([loadStatus(), loadHealth()]);
     } catch (error) {
       setRunError(extractErrorMessage(error) || 'Failed to run migration');
       setRunState('error');
     } finally {
-      setRunningScope(null);
+      setActionKey(null);
     }
-  }, []);
+  }, [loadHealth, loadStatus]);
+
+  const handleSnapshot = useCallback(async (scope: MigrationScope = 'all') => {
+    setRunState('loading');
+    setRunError('');
+    setOutput('');
+    setActionKey(`snapshot:${scope}`);
+    try {
+      const response = await snapshotMigrationHealth({ scope });
+      setOutput(formatSnapshotOutput(response));
+      setRunState(response.ok ? 'idle' : 'error');
+      await loadHealth();
+    } catch (error) {
+      setRunError(extractErrorMessage(error) || 'Failed to snapshot migration hashes');
+      setRunState('error');
+    } finally {
+      setActionKey(null);
+    }
+  }, [loadHealth]);
+
+  const handleReapplyDirty = useCallback(async (scope: string, revision: string) => {
+    setRunState('loading');
+    setRunError('');
+    setOutput('');
+    setActionKey(`reapply:${scope}:${revision}`);
+    try {
+      const response = await reapplyDirtyMigration({
+        scope: scope as Exclude<MigrationScope, 'all'>,
+        revision,
+      });
+      setOutput(formatReapplyOutput(response));
+      setRunState(response.ok ? 'idle' : 'error');
+      await Promise.all([loadStatus(), loadHealth(), checkHead(scope)]);
+    } catch (error) {
+      setRunError(extractErrorMessage(error) || 'Failed to re-apply dirty migration');
+      setRunState('error');
+    } finally {
+      setActionKey(null);
+    }
+  }, [checkHead, loadHealth, loadStatus]);
 
   const busy = runState === 'loading';
+  const healthByScope = useMemo(() => {
+    const map = new Map<string, MigrationChainHealth>();
+    for (const chain of health?.chains ?? []) {
+      map.set(chain.scope, chain);
+    }
+    return map;
+  }, [health]);
+  const dirtyTotal = health?.summary.dirty_migrations ?? 0;
+  const pendingTotal = health?.summary.pending_migrations ?? 0;
+  const allClean = dirtyTotal === 0 && pendingTotal === 0;
+  const hasIssues = dirtyTotal > 0;
 
   return (
     <div className="space-y-4">
+      {health && (
+        <div
+          className={`px-4 py-2.5 border rounded-md text-sm ${
+            allClean
+              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200'
+              : hasIssues
+                ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'
+                : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+          }`}
+        >
+          {allClean ? 'Migration health: all clean.' : `Migration health: ${dirtyTotal} dirty, ${pendingTotal} pending.`}
+          <span className="ml-2 opacity-80">Sidecar: {health.sidecar_path}</span>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <p className="text-sm text-neutral-500 dark:text-neutral-400">
           Run Alembic database migrations via <code>scripts/migrate_all.py</code>.
@@ -515,11 +678,18 @@ function MigrationsSection() {
             disabled={busy}
             className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium rounded-md transition-colors"
           >
-            {runningScope === 'all' ? 'Running All...' : 'Migrate All'}
+            {actionKey === 'migrate:all' ? 'Running All...' : 'Migrate All'}
           </button>
           <button
-            onClick={() => void loadStatus()}
-            disabled={statusLoading || busy}
+            onClick={() => void handleSnapshot('all')}
+            disabled={busy || healthLoading}
+            className="px-3 py-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-medium rounded-md transition-colors"
+          >
+            {actionKey === 'snapshot:all' ? 'Snapshotting...' : 'Snapshot Hashes'}
+          </button>
+          <button
+            onClick={() => void Promise.all([loadStatus(), loadHealth()])}
+            disabled={statusLoading || healthLoading || busy}
             className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"
           >
             Refresh
@@ -530,6 +700,12 @@ function MigrationsSection() {
       {statusError && (
         <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-800 dark:text-red-200">
           {statusError}
+        </div>
+      )}
+
+      {healthError && (
+        <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-800 dark:text-red-200">
+          {healthError}
         </div>
       )}
 
@@ -545,11 +721,14 @@ function MigrationsSection() {
             <ScopeCard
               key={detail.scope}
               detail={detail}
+              chainHealth={healthByScope.get(detail.scope) ?? null}
               head={heads[detail.scope] ?? null}
               headLoading={headLoadingScopes.has(detail.scope)}
               busy={busy}
+              reapplyBusy={Boolean(actionKey?.startsWith(`reapply:${detail.scope}:`))}
               onCheckHead={() => void checkHead(detail.scope)}
               onRun={() => void handleRunMigration(detail.scope as MigrationScope)}
+              onReapplyDirty={(revision) => void handleReapplyDirty(detail.scope, revision)}
             />
           ))}
         </div>

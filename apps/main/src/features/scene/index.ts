@@ -21,6 +21,7 @@ export { SceneManagementPanel } from './components/panels/SceneManagementPanel';
 export { SceneLibraryPanel } from './components/panels/SceneLibraryPanel';
 export { SceneCollectionPanel } from './components/panels/SceneCollectionPanel';
 export { SceneBuilderPanel } from './components/panels/SceneBuilderPanel';
+export { LegacyScenePanel } from './components/panels/LegacyScenePanel';
 export { ScenePlaybackPanel, type ScenePlaybackPanelProps } from './components/panels/ScenePlaybackPanel';
 
 // ============================================================================

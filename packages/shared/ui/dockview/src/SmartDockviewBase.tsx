@@ -78,16 +78,33 @@ export function SmartDockviewBase<TContext = any>({
   minPanelsForTabs,
   onLayoutChange,
   deprecatedPanels,
+  getAvailableComponentIds: getAvailableComponentIdsProp,
   disableFloatingGroups,
 }: SmartDockviewBaseProps<TContext>) {
   const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
   const [isReady, setIsReady] = useState(false);
   const contextRef = useRef<TContext | undefined>(context);
+  // Keep a ref to the latest components map so both stable wrappers and
+  // layout compatibility checks can read current panel IDs.
+  const componentsRef = useRef(components);
+  componentsRef.current = components;
+  const getAvailableComponentIds = useCallback((): readonly string[] => {
+    const localIds = Object.keys(componentsRef.current);
+    if (!getAvailableComponentIdsProp) {
+      return localIds;
+    }
+    const externalIds = getAvailableComponentIdsProp();
+    if (!externalIds || externalIds.length === 0) {
+      return localIds;
+    }
+    return Array.from(new Set([...localIds, ...externalIds]));
+  }, [getAvailableComponentIdsProp]);
   const internalLayout = useSmartDockview({
     storageKey,
     minPanelsForTabs,
     onLayoutChange,
     deprecatedPanels,
+    getAvailableComponentIds,
   });
   const layoutController = layout ?? internalLayout;
   const onReadyRef = useRef(onReady);
@@ -106,11 +123,6 @@ export function SmartDockviewBase<TContext = any>({
       panel.api.updateParameters({});
     });
   }, [context, isReady]);
-
-  // Keep a ref to the latest components map so stable wrappers can look up
-  // the current implementation without changing their own identity.
-  const componentsRef = useRef(components);
-  componentsRef.current = components;
 
   // Cache of stable wrapper components keyed by panel ID.
   // Each wrapper has a fixed identity (React won't unmount/remount it)

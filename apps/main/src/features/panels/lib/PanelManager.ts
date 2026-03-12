@@ -31,6 +31,7 @@ export class PanelManager {
   private zones = new Map<WorkspaceZone, ZoneState>();
   private eventListeners = new Set<PanelManagerListener>();
   private stateListeners = new Set<PanelManagerStateListener>();
+  private pendingOpenQueues = new Map<string, OpenPanelOptions[]>();
 
   constructor() {
     // Initialize default zones
@@ -123,6 +124,41 @@ export class PanelManager {
     this.notifyStateListeners();
   }
 
+  private scheduleUnknownPanelOpen(panelId: string, options: OpenPanelOptions): void {
+    const existingQueue = this.pendingOpenQueues.get(panelId);
+    if (existingQueue) {
+      existingQueue.push(options);
+      return;
+    }
+
+    this.pendingOpenQueues.set(panelId, [options]);
+
+    import('./panelMetadataRegistry')
+      .then(({ ensurePanelMetadataRegistered }) => ensurePanelMetadataRegistered(panelId))
+      .then((registered) => {
+        const queuedOptions = this.pendingOpenQueues.get(panelId) ?? [];
+        this.pendingOpenQueues.delete(panelId);
+
+        if (!registered) {
+          console.warn(
+            `[PanelManager] Cannot open panel "${panelId}" after lazy registration (missing metadata).`,
+          );
+          return;
+        }
+
+        for (const queuedOption of queuedOptions) {
+          this.openPanel(panelId, queuedOption);
+        }
+      })
+      .catch((error) => {
+        this.pendingOpenQueues.delete(panelId);
+        console.warn(
+          `[PanelManager] Failed to lazily register panel "${panelId}" before open:`,
+          error,
+        );
+      });
+  }
+
   // ==================== Panel Operations ====================
 
   /**
@@ -137,7 +173,8 @@ export class PanelManager {
     const panel = this.panels.get(panelId);
     const meta = this.metadata.get(panelId);
     if (!panel || !meta) {
-      console.warn(`[PanelManager] Cannot open unknown panel "${panelId}"`);
+      this.scheduleUnknownPanelOpen(panelId, options);
+      console.warn(`[PanelManager] Cannot open unknown panel "${panelId}" (queued lazy registration).`);
       return;
     }
 

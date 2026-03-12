@@ -9,9 +9,6 @@ import { debugFlags } from '@lib/utils/debugFlags';
 
 import { defineModule } from '@app/modules/types';
 
-
-import { registerRoutineGraphEditor } from './lib/registerRoutineGraphEditor';
-
 export const routineGraphModule = defineModule({
   id: 'routine-graph',
   name: 'Routine Graph Module',
@@ -23,6 +20,8 @@ export const routineGraphModule = defineModule({
 
   async initialize() {
     debugFlags.log('registry', '[Routine Graph Module] Initializing...');
+
+    const { registerRoutineGraphEditor } = await import('./lib/registerRoutineGraphEditor');
 
     // Register the routine graph editor
     await registerRoutineGraphEditor();

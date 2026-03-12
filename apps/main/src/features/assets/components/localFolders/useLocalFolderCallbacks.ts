@@ -8,6 +8,7 @@ import type { AssetUploadState } from '@/components/media/AssetGallery';
 import type { MediaCardActions } from '@/components/media/MediaCard';
 import type { LocalFoldersController } from '@/types/localSources';
 
+import { resolveLocalUploadState } from '../../lib/localAssetState';
 import { extractUploadError, notifyGalleryOfUpdatedAsset, resolveProviderLabel } from '../../lib/uploadActions';
 import type { AssetModel } from '../../models/asset';
 import type { LocalAsset } from '../../stores/localFoldersStore';
@@ -128,7 +129,7 @@ export function useLocalFolderCallbacks({
 
   const getUploadState = useCallback(
     (asset: LocalAsset): AssetUploadState =>
-      controller.uploadStatus[asset.key] || asset.last_upload_status || 'idle',
+      resolveLocalUploadState(asset, controller.uploadStatus),
     [controller.uploadStatus]
   );
 
@@ -150,7 +151,7 @@ export function useLocalFolderCallbacks({
 
   const getHashStatus = useCallback(
     (asset: LocalAsset): 'unique' | 'duplicate' | 'hashing' | undefined => {
-      if (controller.uploadStatus[asset.key] === 'success') return undefined;
+      if (resolveLocalUploadState(asset, controller.uploadStatus) === 'success') return undefined;
       if (!asset.sha256) {
         return controller.hashingProgress ? 'hashing' : undefined;
       }

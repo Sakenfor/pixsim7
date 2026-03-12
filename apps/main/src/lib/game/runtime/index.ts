@@ -118,3 +118,16 @@ export type {
   RoomNavigationTransitionCacheEntry,
   RoomNavigationTransitionResolveStatus,
 } from './roomNavigationTransitions';
+
+// Room navigation traversal helpers (Phase 7)
+export {
+  createRoomNavigationTraversalSegmentId,
+  parseRoomNavigationTraversalSegmentId,
+  createRoomNavigationTraversalOptions,
+  buildRoomNavigationGizmoConfig,
+  resolveRoomNavigationOptionFromGizmoResult,
+} from './roomNavigationTraversal';
+export type {
+  RoomNavigationTraversalOption,
+  RoomNavigationTraversalSourceType,
+} from './roomNavigationTraversal';

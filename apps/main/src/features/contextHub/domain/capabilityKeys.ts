@@ -16,3 +16,5 @@ export const CAP_SCENE_VIEW = "sceneView" as const;
 export const CAP_CHARACTER_CONTEXT = "characterContext" as const;
 export const CAP_CHARACTER_INGEST_ACTION = "characterIngestAction" as const;
 export const CAP_CHARACTER_SCENE_PREP_PREFILL = "characterScenePrepPrefill" as const;
+export const CAP_UI_STUDIO_TARGET = "uiStudioTarget" as const;
+export const CAP_UI_STUDIO_ACTIONS = "uiStudioActions" as const;

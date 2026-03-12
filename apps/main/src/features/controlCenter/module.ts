@@ -1,9 +1,26 @@
-
-import { PanelLauncherModule } from '@features/controlCenter/components/PanelLauncherModule';
-import { QuickGenerateModule } from '@features/controlCenter/components/QuickGenerateModule';
-import { ProviderOverviewModule } from '@features/providers';
-
+import { createLazyPanelComponent } from '@app/modules/lazyPanelComponent';
 import { defineModule } from '@app/modules/types';
+
+const quickGeneratePanel = createLazyPanelComponent('cc-generate', async () => {
+  const moduleValue = await import('@features/controlCenter/components/QuickGenerateModule');
+  return moduleValue.QuickGenerateModule;
+}, {
+  initializeModuleId: 'generation',
+});
+
+const providersPanel = createLazyPanelComponent('cc-providers', async () => {
+  const moduleValue = await import('@features/providers/components/ProviderOverviewModule');
+  return moduleValue.ProviderOverviewModule;
+}, {
+  initializeModuleId: 'workspace',
+});
+
+const panelsLauncherPanel = createLazyPanelComponent('cc-panels', async () => {
+  const moduleValue = await import('@features/controlCenter/components/PanelLauncherModule');
+  return moduleValue.PanelLauncherModule;
+}, {
+  initializeModuleId: 'workspace',
+});
 
 /**
  * Control Center Module
@@ -32,7 +49,7 @@ export const controlCenterModule = defineModule({
       id: 'cc-generate',
       title: 'Generate',
       icon: '⚡',
-      component: QuickGenerateModule,
+      component: quickGeneratePanel,
       category: 'core',
       order: 10,
       enabledByDefault: true,
@@ -45,7 +62,7 @@ export const controlCenterModule = defineModule({
       id: 'cc-providers',
       title: 'Providers',
       icon: '🌐',
-      component: ProviderOverviewModule,
+      component: providersPanel,
       category: 'system',
       order: 30,
       enabledByDefault: true,
@@ -56,7 +73,7 @@ export const controlCenterModule = defineModule({
       id: 'cc-panels',
       title: 'Panels',
       icon: '🪟',
-      component: PanelLauncherModule,
+      component: panelsLauncherPanel,
       category: 'system',
       order: 40,
       enabledByDefault: true,

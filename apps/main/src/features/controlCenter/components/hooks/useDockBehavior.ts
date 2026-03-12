@@ -148,8 +148,9 @@ export function useDockBehavior({
   useEffect(() => {
     if (dockPosition === 'floating') return;
 
-    // Peek mode shows the full toolbar row, so the reveal zone must be wider
-    const threshold = retractedMode === 'peek' ? TOOLBAR_HEIGHT : REVEAL_STRIP_THRESHOLD;
+    // Keep reveal activation on a thin edge strip even in peek mode so
+    // toolbar controls remain clickable while retracted.
+    const threshold = REVEAL_STRIP_THRESHOLD;
 
     const onMove = throttle((e: MouseEvent) => {
       // Check ref to avoid re-creating listener

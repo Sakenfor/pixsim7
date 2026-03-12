@@ -4,8 +4,6 @@ import { Navigate } from 'react-router-dom';
 
 import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
 
-import { registerWorldTools } from '@features/worldTools/lib/registerWorldTools';
-
 import { defineModule } from '@app/modules/types';
 
 // === Game Actions ===
@@ -54,8 +52,10 @@ export const gameModule = defineModule({
   updatedAt: '2026-03-10T00:00:00Z',
   changeNote: 'Added module metadata baseline for game world feature module.',
   featureHighlights: ['Game world module now participates in shared latest-update metadata.'],
+  dependsOn: ['workspace'],
 
   async initialize() {
+    const { registerWorldTools } = await import('@features/worldTools/lib/registerWorldTools');
     await registerWorldTools();
   },
 

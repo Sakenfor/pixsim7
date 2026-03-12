@@ -44,6 +44,7 @@ export type MissingFolder = {
 };
 
 type HashingProgressState = NonNullable<LocalFoldersController['hashingProgress']>;
+type LocalUploadState = 'idle' | 'uploading' | 'success' | 'error';
 
 /**
  * Source identity for local folders
@@ -187,9 +188,26 @@ export function useLocalFoldersController(): LocalFoldersController {
   const [hashingPaused, setHashingPaused] = useState(false);
 
   // Upload state
-  const [uploadStatus, setUploadStatus] = useState<Record<string, 'idle' | 'uploading' | 'success' | 'error'>>({});
+  const [uploadStatus, setUploadStatus] = useState<Record<string, LocalUploadState>>({});
   const [uploadNotes, setUploadNotes] = useState<Record<string, string | undefined>>({});
   const [favoriteStatus, setFavoriteStatus] = useState<Record<string, boolean>>({});
+  const setInMemoryUploadState = useCallback((
+    assetKey: string,
+    status: LocalUploadState,
+    options?: { syncNote?: boolean; note?: string },
+  ) => {
+    setUploadStatus((prev) => {
+      if (prev[assetKey] === status) return prev;
+      return { ...prev, [assetKey]: status };
+    });
+
+    if (!options?.syncNote) return;
+
+    setUploadNotes((prev) => {
+      if (prev[assetKey] === options.note) return prev;
+      return { ...prev, [assetKey]: options.note };
+    });
+  }, []);
 
   // Load persisted folders on mount (only after auth is ready)
   useEffect(() => {
@@ -202,7 +220,7 @@ export function useLocalFoldersController(): LocalFoldersController {
 
   // Task 104: Initialize upload status from cached assets
   useEffect(() => {
-    const initialStatus: Record<string, 'idle' | 'uploading' | 'success' | 'error'> = {};
+    const initialStatus: Record<string, LocalUploadState> = {};
     const initialNotes: Record<string, string | undefined> = {};
 
     for (const asset of Object.values(assetsRecord)) {
@@ -542,8 +560,7 @@ export function useLocalFoldersController(): LocalFoldersController {
         if (!backendExistingHashesRef.current.has(sha256)) continue;
         for (const assetKey of assetKeys) {
           await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
-          setUploadStatus(s => ({ ...s, [assetKey]: 'success' }));
-          setUploadNotes(n => ({ ...n, [assetKey]: 'Already in library' }));
+          setInMemoryUploadState(assetKey, 'success', { syncNote: true, note: 'Already in library' });
         }
       }
     };
@@ -578,8 +595,7 @@ export function useLocalFoldersController(): LocalFoldersController {
             if (!assetKeys) continue;
             for (const assetKey of assetKeys) {
               await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
-              setUploadStatus(s => ({ ...s, [assetKey]: 'success' }));
-              setUploadNotes(n => ({ ...n, [assetKey]: 'Already in library' }));
+              setInMemoryUploadState(assetKey, 'success', { syncNote: true, note: 'Already in library' });
             }
           }
         }
@@ -596,7 +612,7 @@ export function useLocalFoldersController(): LocalFoldersController {
       await syncKnownExisting();
       await checkRemaining();
     })();
-  }, [assetsRecord, updateAssetUploadStatus, autoCheckBackend, hashingProgress]);
+  }, [assetsRecord, updateAssetUploadStatus, autoCheckBackend, hashingProgress, setInMemoryUploadState]);
 
   const pauseHashing = useCallback(() => {
     bgHashPausedRef.current = true;
@@ -923,7 +939,7 @@ export function useLocalFoldersController(): LocalFoldersController {
       ? (effectiveProviderId || 'local')
       : 'local';
 
-    setUploadStatus(s => ({ ...s, [asset.key]: 'uploading' }));
+    setInMemoryUploadState(asset.key, 'uploading');
 
     try {
       const file = await getFileForAsset(asset);
@@ -955,10 +971,28 @@ export function useLocalFoldersController(): LocalFoldersController {
 
       const note = data?.note;
       const uploadedAssetId = typeof data?.asset_id === 'number' ? data.asset_id : undefined;
+      if (saveTarget === 'provider') {
+        const expectedProviderId = String(effectiveProviderId || '').trim().toLowerCase();
+        const returnedProviderId = String(data?.provider_id || '').trim().toLowerCase();
+        const lowerNote = String(note || '').toLowerCase();
+
+        const providerFallbackDetected = (
+          lowerNote.includes('provider upload failed') ||
+          returnedProviderId === 'local' ||
+          (!!expectedProviderId && !!returnedProviderId && returnedProviderId !== expectedProviderId)
+        );
+
+        if (providerFallbackDetected) {
+          throw new Error(
+            note && lowerNote.includes('provider upload failed')
+              ? note
+              : `Upload to ${effectiveProviderId || 'provider'} did not complete.`,
+          );
+        }
+      }
 
       // Mark success immediately — the server has the file
-      setUploadNotes(n => ({ ...n, [asset.key]: note }));
-      setUploadStatus(s => ({ ...s, [asset.key]: 'success' }));
+      setInMemoryUploadState(asset.key, 'success', { syncNote: true, note });
 
       // Best-effort bookkeeping — failures logged but don't revert status
       try {
@@ -984,8 +1018,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     } catch (e: unknown) {
       const errorMsg = extractUploadError(e);
 
-      setUploadStatus(s => ({ ...s, [asset.key]: 'error' }));
-      setUploadNotes(n => ({ ...n, [asset.key]: errorMsg }));
+      setInMemoryUploadState(asset.key, 'error', { syncNote: true, note: errorMsg });
 
       // Task 104: Persist upload failure to cache
       await updateAssetUploadStatus(asset.key, 'error', errorMsg);
@@ -998,6 +1031,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     updateAssetHash,
     rawFolders,
     setUploadRecordByHash,
+    setInMemoryUploadState,
     updateAssetUploadStatus,
   ]);
 

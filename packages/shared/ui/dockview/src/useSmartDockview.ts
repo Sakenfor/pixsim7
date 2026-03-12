@@ -24,6 +24,12 @@ export interface UseSmartDockviewOptions {
    * Useful when removing panels to prevent deserialization errors.
    */
   deprecatedPanels?: string[];
+  /**
+   * Optional provider for currently-registered dockview component IDs.
+   * When provided, saved layouts referencing missing component IDs are
+   * discarded before attempting fromJSON().
+   */
+  getAvailableComponentIds?: () => readonly string[];
 }
 
 export interface UseSmartDockviewReturn {
@@ -39,10 +45,147 @@ export interface UseSmartDockviewReturn {
   loadLayout: () => boolean;
 }
 
+interface LayoutInspection {
+  hasInvalidComponentEntry: boolean;
+  hasMissingPanelComponent: boolean;
+}
+
+function removeStoredLayout(storageKey?: string): void {
+  if (!storageKey) {
+    return;
+  }
+
+  try {
+    localStorage.removeItem(storageKey);
+  } catch {
+    // Ignore storage failures; caller will fall back to default layout.
+  }
+}
+
+function addComponentId(entry: unknown, out: Set<string>): boolean {
+  if (typeof entry !== "string") {
+    return false;
+  }
+  const id = entry.trim();
+  if (id.length === 0) {
+    return false;
+  }
+  out.add(id);
+  return true;
+}
+
+function isPanelLikeRecord(record: Record<string, unknown>): boolean {
+  if (typeof record.id !== "string" || record.id.trim().length === 0) {
+    return false;
+  }
+  return (
+    "title" in record ||
+    "params" in record ||
+    "renderer" in record ||
+    "minimumWidth" in record ||
+    "minimumHeight" in record ||
+    "maximumWidth" in record ||
+    "maximumHeight" in record ||
+    "tabComponent" in record ||
+    "contentComponent" in record ||
+    "view" in record
+  );
+}
+
+function inspectLayoutComponents(value: unknown, out: Set<string>, depth = 0): LayoutInspection {
+  if (value == null || depth > 48) {
+    return { hasInvalidComponentEntry: false, hasMissingPanelComponent: false };
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const nested = inspectLayoutComponents(entry, out, depth + 1);
+      if (nested.hasInvalidComponentEntry || nested.hasMissingPanelComponent) {
+        return nested;
+      }
+    }
+    return { hasInvalidComponentEntry: false, hasMissingPanelComponent: false };
+  }
+
+  if (typeof value !== "object") {
+    return { hasInvalidComponentEntry: false, hasMissingPanelComponent: false };
+  }
+
+  const record = value as Record<string, unknown>;
+  let hasPanelComponent = false;
+
+  if ("component" in record) {
+    hasPanelComponent = true;
+    if (!addComponentId(record.component, out)) {
+      return { hasInvalidComponentEntry: true, hasMissingPanelComponent: false };
+    }
+  }
+
+  if ("contentComponent" in record) {
+    hasPanelComponent = true;
+    if (!addComponentId(record.contentComponent, out)) {
+      return { hasInvalidComponentEntry: true, hasMissingPanelComponent: false };
+    }
+  }
+
+  if ("view" in record) {
+    const viewValue = record.view;
+    if (viewValue != null && typeof viewValue !== "object") {
+      return { hasInvalidComponentEntry: true, hasMissingPanelComponent: false };
+    }
+    if (viewValue && typeof viewValue === "object") {
+      const viewRecord = viewValue as Record<string, unknown>;
+
+      if ("contentComponent" in viewRecord) {
+        hasPanelComponent = true;
+        if (!addComponentId(viewRecord.contentComponent, out)) {
+          return { hasInvalidComponentEntry: true, hasMissingPanelComponent: false };
+        }
+      }
+
+      if ("content" in viewRecord) {
+        hasPanelComponent = true;
+        const contentValue = viewRecord.content;
+        if (typeof contentValue === "string") {
+          if (!addComponentId(contentValue, out)) {
+            return { hasInvalidComponentEntry: true, hasMissingPanelComponent: false };
+          }
+        } else if (contentValue && typeof contentValue === "object") {
+          const contentRecord = contentValue as Record<string, unknown>;
+          if (!("id" in contentRecord) || !addComponentId(contentRecord.id, out)) {
+            return { hasInvalidComponentEntry: true, hasMissingPanelComponent: false };
+          }
+        } else {
+          return { hasInvalidComponentEntry: true, hasMissingPanelComponent: false };
+        }
+      }
+    }
+  }
+
+  if (isPanelLikeRecord(record) && !hasPanelComponent) {
+    return { hasInvalidComponentEntry: false, hasMissingPanelComponent: true };
+  }
+
+  for (const entry of Object.values(record)) {
+    const nested = inspectLayoutComponents(entry, out, depth + 1);
+    if (nested.hasInvalidComponentEntry || nested.hasMissingPanelComponent) {
+      return nested;
+    }
+  }
+
+  return { hasInvalidComponentEntry: false, hasMissingPanelComponent: false };
+}
+
 export function useSmartDockview(
   options: UseSmartDockviewOptions = {},
 ): UseSmartDockviewReturn {
-  const { storageKey, minPanelsForTabs = 2, onLayoutChange, deprecatedPanels = [] } = options;
+  const {
+    storageKey,
+    minPanelsForTabs = 2,
+    onLayoutChange,
+    deprecatedPanels = [],
+    getAvailableComponentIds,
+  } = options;
   const apiRef = useRef<DockviewApi | null>(null);
   const disposablesRef = useRef<Array<{ dispose: () => void }>>([]);
 
@@ -213,14 +356,52 @@ export function useSmartDockview(
         }
 
         const layout = JSON.parse(saved);
+        const layoutComponentIds = new Set<string>();
+        const inspection = inspectLayoutComponents(layout, layoutComponentIds);
+        if (inspection.hasInvalidComponentEntry || inspection.hasMissingPanelComponent) {
+          console.warn(
+            "[SmartDockview] Layout contains invalid or missing panel components. Clearing layout.",
+          );
+          localStorage.removeItem(storageKey);
+          return false;
+        }
+        if (getAvailableComponentIds) {
+          const availableIds = new Set(
+            getAvailableComponentIds()
+              .map((id) => id.trim())
+              .filter((id) => id.length > 0),
+          );
+          if (layoutComponentIds.size > 0 && availableIds.size === 0) {
+            console.warn(
+              "[SmartDockview] Layout restore skipped because components are not registered yet.",
+            );
+            return false;
+          }
+          if (availableIds.size > 0) {
+            const missing = Array.from(layoutComponentIds).filter(
+              (componentId) => !availableIds.has(componentId),
+            );
+            if (missing.length > 0) {
+              console.warn(
+                `[SmartDockview] Layout references unavailable components [${missing.join(", ")}]. Clearing layout.`,
+              );
+              removeStoredLayout(storageKey);
+              return false;
+            }
+          }
+        }
         apiRef.current.fromJSON(layout);
         return true;
       }
     } catch (error) {
       console.error("[SmartDockview] Failed to load layout:", error);
+      // Self-heal invalid/corrupted layouts (e.g. stale panel IDs or
+      // unsupported component payloads). Keeping a broken snapshot causes
+      // the same deserialize error to repeat on every mount.
+      removeStoredLayout(storageKey);
     }
     return false;
-  }, [storageKey]);
+  }, [storageKey, getAvailableComponentIds]);
 
   /**
    * Reset layout by clearing saved state

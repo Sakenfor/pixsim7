@@ -43,6 +43,7 @@ import { useAuthStore } from '@/stores/authStore';
 
 // Split views
 import { FeaturesView } from './appMap/FeaturesView';
+import { JourneysView } from './appMap/JourneysView';
 import { loadArchitectureGraph, type GraphLoadSource } from './appMap/loadArchitectureGraph';
 import { PluginsView } from './appMap/PluginsView';
 import { RegistriesView } from './appMap/RegistriesView';
@@ -116,7 +117,7 @@ class AppMapErrorBoundary extends Component<
 // Tab Types
 // =============================================================================
 
-type TabId = 'features' | 'plugins' | 'registries' | 'graph' | 'testing' | 'stats' | 'backend';
+type TabId = 'features' | 'plugins' | 'registries' | 'graph' | 'journeys' | 'testing' | 'stats' | 'backend';
 
 interface TabConfig {
   id: TabId;
@@ -128,6 +129,7 @@ const TABS: TabConfig[] = [
   { id: 'plugins', label: 'Plugin Ecosystem' },
   { id: 'registries', label: 'Registries' },
   { id: 'graph', label: 'Dependency Graph' },
+  { id: 'journeys', label: 'Journeys' },
   { id: 'testing', label: 'Capability Testing' },
   { id: 'stats', label: 'Statistics' },
   { id: 'backend', label: 'Backend Architecture' },
@@ -313,6 +315,12 @@ export function AppMapPanel() {
         const featureRoutes = useGraphFeatures
           ? (f.routes ?? [])
           : allRoutes.filter((r) => r.featureId === f.id);
+        const featureMeta = f.metadata as {
+          appMap?: AppMapMetadata;
+          updatedAt?: string;
+          changeNote?: string;
+          featureHighlights?: string[];
+        } | undefined;
         return {
           id: f.id,
           name: f.name,
@@ -320,7 +328,12 @@ export function AppMapPanel() {
           category: f.category,
           icon: f.icon,
           priority: f.priority,
-          appMap: f.appMap ?? (f.metadata as { appMap?: AppMapMetadata } | undefined)?.appMap,
+          appMap: f.appMap ?? featureMeta?.appMap,
+          updatedAt: (f as { updatedAt?: string }).updatedAt ?? featureMeta?.updatedAt,
+          changeNote: (f as { changeNote?: string }).changeNote ?? featureMeta?.changeNote,
+          featureHighlights:
+            (f as { featureHighlights?: string[] }).featureHighlights ??
+            featureMeta?.featureHighlights,
           routes: featureRoutes.map((r) => ({
             path: r.path,
             name: r.name,
@@ -357,6 +370,9 @@ export function AppMapPanel() {
         consumesState: p.consumesState,
         experimental: p.experimental,
         deprecated: p.deprecated,
+        updatedAt: p.updatedAt,
+        changeNote: p.changeNote,
+        featureHighlights: p.featureHighlights,
         isActive: p.isActive,
         canDisable: p.canDisable,
         isBuiltin: p.isBuiltin,
@@ -509,6 +525,8 @@ export function AppMapPanel() {
           {activeTab === 'graph' && (
             <DependencyGraphPanel features={displayedFeatures} plugins={displayedPlugins} />
           )}
+
+          {activeTab === 'journeys' && <JourneysView />}
 
           {activeTab === 'testing' && (
             <CapabilityTestingPanel

@@ -4,7 +4,7 @@ import { lazy } from 'react';
 import { registerState } from '@lib/capabilities';
 import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
 
-import { getAllAssetSources, registerAssetSources } from '@features/gallery';
+import { getAllAssetSources } from '@features/gallery/lib/core/assetSources';
 
 import { moduleRegistry } from '@app/modules';
 import { defineModule } from '@app/modules/types';
@@ -84,11 +84,22 @@ export const assetsModule = defineModule({
   featureHighlights: ['Assets module now participates in shared latest-update metadata.'],
 
   async initialize() {
+    const [{ registerAssetSources }, { registerGallerySurfaces }, { registerGalleryTools }] =
+      await Promise.all([
+        import('@features/gallery/lib/core/registerAssetSources'),
+        import('@features/gallery/lib/core/registerGallerySurfaces'),
+        import('@features/gallery/lib/core/registerGalleryTools'),
+      ]);
+
     // Register assets state capabilities
     registerAssetsState();
 
-    // Register asset sources at startup so the sidebar subNav works immediately
-    await registerAssetSources();
+    // Register gallery surfaces/tools and asset sources so gallery UI is ready on demand.
+    await Promise.all([
+      registerGallerySurfaces(),
+      registerGalleryTools(),
+      registerAssetSources(),
+    ]);
     moduleRegistry.invalidate();
   },
 

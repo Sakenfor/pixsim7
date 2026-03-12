@@ -48,6 +48,8 @@ export interface DiscoveredPanel {
 export interface AutoDiscoveryOptions {
   /** Only register panels for specific contexts */
   filterContexts?: string[];
+  /** Register only a specific set of panel IDs */
+  panelIds?: string[];
   /** Log discovery process */
   verbose?: boolean;
 }
@@ -70,25 +72,159 @@ export interface DiscoveryResult {
  */
 const panelModules = import.meta.glob<PanelModule>(
   ['../domain/definitions/*/index.ts', '../domain/definitions/*/index.tsx'],
-  { eager: true }
 );
+
+type PanelModuleLoader = () => Promise<PanelModule>;
+const inFlightPanelRegistrations = new Set<string>();
+
+/**
+ * Scope hints for path-level prefiltering.
+ *
+ * Panels without explicit context metadata are treated as workspace-first,
+ * so non-workspace contexts can narrow imports to known folders.
+ */
+const CONTEXT_MODULE_HINTS: Record<string, string[]> = {
+  'asset-viewer': [
+    'asset-viewer',
+    'asset-tags',
+    'info',
+    'interactive-surface',
+    'media-preview',
+    'quick-generate',
+  ],
+  'control-center': [
+    'panel-browser',
+    'shortcuts',
+  ],
+  'gizmo-lab': [
+    'gizmo-browser',
+    'gizmo-playground',
+    'tool-browser',
+    'tool-playground',
+  ],
+};
+
+function normalizeValues(values?: string[]): string[] {
+  if (!values) return [];
+  return values
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function extractModuleFolder(path: string): string | null {
+  const match = path.match(/\/definitions\/([^/]+)\/index\.tsx?$/);
+  return match?.[1] ?? null;
+}
+
+function toKebabCase(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/_/g, '-')
+    .toLowerCase();
+}
+
+function createModuleFolderSet(panelIds: string[]): Set<string> {
+  const folders = new Set<string>();
+  for (const panelId of panelIds) {
+    folders.add(panelId);
+    folders.add(toKebabCase(panelId));
+  }
+  return folders;
+}
+
+function createHintedModuleFolderSet(filterContexts: string[]): Set<string> | null {
+  if (filterContexts.length === 0 || filterContexts.includes('workspace')) {
+    return null;
+  }
+
+  const hinted = new Set<string>();
+  let hasUnknownContext = false;
+
+  for (const context of filterContexts) {
+    const contextHints = CONTEXT_MODULE_HINTS[context];
+    if (!contextHints) {
+      hasUnknownContext = true;
+      continue;
+    }
+
+    for (const folder of contextHints) {
+      hinted.add(folder);
+    }
+  }
+
+  if (hasUnknownContext || hinted.size === 0) {
+    return null;
+  }
+
+  return hinted;
+}
+
+function panelMatchesContexts(panelContexts: string[], filterContexts: string[]): boolean {
+  if (filterContexts.length === 0) return true;
+
+  // No contexts = available everywhere.
+  if (panelContexts.length === 0) return true;
+
+  return panelContexts.some((context) => filterContexts.includes(context));
+}
+
+function createCandidateModules(
+  filterContexts: string[],
+  panelIds: string[],
+): Array<[string, PanelModuleLoader]> {
+  const entries = Object.entries(panelModules) as Array<[string, PanelModuleLoader]>;
+  const panelFolderSet = panelIds.length > 0 ? createModuleFolderSet(panelIds) : null;
+  const hintedFolderSet = panelFolderSet ?? createHintedModuleFolderSet(filterContexts);
+
+  if (!hintedFolderSet) {
+    return entries;
+  }
+
+  return entries.filter(([path]) => {
+    const folder = extractModuleFolder(path);
+    return folder ? hintedFolderSet.has(folder) : false;
+  });
+}
+
+async function loadDiscoveredPanel(
+  path: string,
+  loadModule: PanelModuleLoader,
+): Promise<DiscoveredPanel | null> {
+  const module = await loadModule();
+  if (!module.default) {
+    return null;
+  }
+
+  return {
+    definition: module.default,
+    sourcePath: path,
+    contexts: getPanelContexts(module.default),
+  };
+}
 
 /**
  * Discover all panels from the definitions directory.
  * Does not register them - returns the discovered panels for inspection.
  */
-export function discoverPanels(): DiscoveredPanel[] {
+export async function discoverPanels(
+  options: AutoDiscoveryOptions = {}
+): Promise<DiscoveredPanel[]> {
+  const filterContexts = normalizeValues(options.filterContexts);
+  const panelIds = normalizeValues(options.panelIds);
+  const candidateModules = createCandidateModules(filterContexts, panelIds);
   const discovered: DiscoveredPanel[] = [];
 
-  // Process main definitions directory
-  for (const [path, module] of Object.entries(panelModules)) {
-    if (module.default) {
-      discovered.push({
-        definition: module.default,
-        sourcePath: path,
-        contexts: getPanelContexts(module.default),
-      });
+  for (const [path, loadModule] of candidateModules) {
+    const panel = await loadDiscoveredPanel(path, loadModule);
+    if (!panel) {
+      continue;
     }
+
+    if (!panelMatchesContexts(panel.contexts, filterContexts)) {
+      continue;
+    }
+
+    discovered.push(panel);
   }
 
   return discovered;
@@ -101,71 +237,89 @@ export function discoverPanels(): DiscoveredPanel[] {
 export async function autoRegisterPanels(
   options: AutoDiscoveryOptions = {}
 ): Promise<DiscoveryResult> {
-  const { filterContexts, verbose = false } = options;
+  const { verbose = false } = options;
+  const filterContexts = normalizeValues(options.filterContexts);
+  const panelIds = normalizeValues(options.panelIds);
   const startTime = performance.now();
 
   const registered: DiscoveredPanel[] = [];
   const failed: Array<{ path: string; error: Error }> = [];
-
-  const discovered = discoverPanels();
+  const candidateModules = createCandidateModules(filterContexts, panelIds);
 
   if (verbose) {
-    console.log(`[PanelAutoDiscovery] Found ${discovered.length} panel definitions`);
+    console.log(
+      `[PanelAutoDiscovery] Scanning ${candidateModules.length} panel definition module(s)`
+    );
   }
 
-  for (const panel of discovered) {
+  for (const [path, loadModule] of candidateModules) {
     try {
-      // Filter by context if specified
-      if (filterContexts && filterContexts.length > 0) {
-        const panelContexts = panel.contexts;
-        const hasMatchingContext =
-          panelContexts.length === 0 || // No contexts = available everywhere
-          panelContexts.some((ctx) => filterContexts.includes(ctx));
-
-        if (!hasMatchingContext) {
-          if (verbose) {
-            console.log(
-              `[PanelAutoDiscovery] Skipping ${panel.definition.id} (context mismatch)`
-            );
-          }
-          continue;
+      const panel = await loadDiscoveredPanel(path, loadModule);
+      if (!panel) {
+        if (verbose) {
+          console.log(`[PanelAutoDiscovery] Skipping ${path} (no default panel export)`);
         }
+        continue;
       }
 
-      // Check if already registered
-      if (panelSelectors.has(panel.definition.id as any)) {
+      // Filter by context if specified
+      if (!panelMatchesContexts(panel.contexts, filterContexts)) {
         if (verbose) {
           console.log(
-            `[PanelAutoDiscovery] Skipping ${panel.definition.id} (already registered)`
+            `[PanelAutoDiscovery] Skipping ${panel.definition.id} (context mismatch)`
           );
         }
         continue;
       }
 
-      // Register the panel via the plugin runtime
-      await registerPluginDefinition({
-        id: panel.definition.id,
-        family: 'workspace-panel',
-        origin: 'builtin',
-        source: 'source',
-        plugin: panel.definition,
-        canDisable: false,
-      });
-      registered.push(panel);
+      if (inFlightPanelRegistrations.has(panel.definition.id)) {
+        if (verbose) {
+          console.log(
+            `[PanelAutoDiscovery] Skipping ${panel.definition.id} (registration in progress)`,
+          );
+        }
+        continue;
+      }
 
-      if (verbose) {
-        console.log(
-          `[PanelAutoDiscovery] Registered ${panel.definition.id} from ${panel.sourcePath}`
-        );
+      inFlightPanelRegistrations.add(panel.definition.id);
+      try {
+        // Check if already registered
+        if (panelSelectors.has(panel.definition.id as any)) {
+          if (verbose) {
+            console.log(
+              `[PanelAutoDiscovery] Skipping ${panel.definition.id} (already registered)`
+            );
+          }
+          continue;
+        }
+
+        // Register the panel via the plugin runtime
+        await registerPluginDefinition({
+          id: panel.definition.id,
+          family: 'workspace-panel',
+          origin: 'builtin',
+          source: 'source',
+          plugin: panel.definition,
+          canDisable: false,
+        });
+        registered.push(panel);
+
+        if (verbose) {
+          console.log(
+            `[PanelAutoDiscovery] Registered ${panel.definition.id} from ${panel.sourcePath}`
+          );
+        }
+      } finally {
+        inFlightPanelRegistrations.delete(panel.definition.id);
       }
     } catch (error) {
       failed.push({
-        path: panel.sourcePath,
+        path,
         error: error instanceof Error ? error : new Error(String(error)),
       });
 
       console.error(
-        `[PanelAutoDiscovery] Failed to register panel from ${panel.sourcePath}:`,
+        `[PanelAutoDiscovery] Failed to register panel from ${path}:`,
         error
       );
     }

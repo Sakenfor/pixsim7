@@ -12,8 +12,11 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { PanelHostDockview } from '@features/panels';
-import type { PanelDefinition, PanelHostDockviewRef } from '@features/panels';
+import { usePanelCatalogBootstrap } from '@features/panels';
+import { PanelHostDockview } from '@features/panels/components/host/PanelHostDockview';
+import type { PanelHostDockviewRef } from '@features/panels/components/host/PanelHostDockview';
+import { DOCK_IDS, PANEL_IDS } from '@features/panels/lib/panelIds';
+import type { PanelDefinition } from '@features/panels/lib/panelRegistry';
 
 import { FLOATING_DEFAULTS, TOOLBAR_HEIGHT, Z_INDEX } from './constants';
 import { DockToolbar } from './DockToolbar';
@@ -21,10 +24,10 @@ import { useDockBehavior } from './hooks/useDockBehavior';
 
 /**
  * Get enabled control center panels based on user preferences.
- * Filters panels that have availableIn: ['control-center'].
+ * Filters panels that have availableIn: [DOCK_IDS.controlCenter].
  */
 function getEnabledCCPanels(enabledPrefs?: Record<string, boolean>): PanelDefinition[] {
-  const all = panelSelectors.getPanelsForScope('control-center');
+  const all = panelSelectors.getPanelsForScope(DOCK_IDS.controlCenter);
 
   if (!enabledPrefs || Object.keys(enabledPrefs).length === 0) {
     return all.filter((p) => p.enabledByDefault !== false);
@@ -68,14 +71,22 @@ export function ControlCenterDock() {
   const dockRef = useRef<HTMLDivElement>(null);
   const dockviewApiRef = useRef<DockviewApi | null>(null);
   const panelHostRef = useRef<PanelHostDockviewRef>(null);
+  const { catalogVersion: panelCatalogVersion, initializationComplete } = usePanelCatalogBootstrap({
+    contexts: [DOCK_IDS.controlCenter],
+    enabled: open,
+    onInitializeError: (error) => {
+      console.error('[ControlCenterDock] Failed to initialize control-center panels:', error);
+    },
+  });
 
   // Get enabled panels based on user preferences
   const panels = useMemo(() => {
     return getEnabledCCPanels(enabledModules);
-  }, [enabledModules]);
+  }, [enabledModules, panelCatalogVersion, open]);
 
   // Get panel IDs for dockview allowlist
   const allowedPanelIds = useMemo(() => panels.map(p => p.id), [panels]);
+  const showPanelLoadingPlaceholder = open && !initializationComplete;
 
   // Use extracted hook for dock behavior (reveal/hide, resize, keyboard)
   const { dragging, startResize } = useDockBehavior({
@@ -109,7 +120,7 @@ export function ControlCenterDock() {
   // When retracted in peek mode, always push (toolbar is visible and would overlap content)
   const peekRetracted = !open && retractedMode === 'peek';
   useEdgeInset(
-    'controlCenter',
+    PANEL_IDS.controlCenter,
     isFloating ? 'bottom' : (dockPosition as Edge),
     peekRetracted ? TOOLBAR_HEIGHT : height,
     !isFloating && (open || peekRetracted),
@@ -118,8 +129,8 @@ export function ControlCenterDock() {
   );
 
   // Read insets from other widgets to offset our positioning
-  const leftInset = useInsetOn('left', 'controlCenter');
-  const rightInset = useInsetOn('right', 'controlCenter');
+  const leftInset = useInsetOn('left', PANEL_IDS.controlCenter);
+  const rightInset = useInsetOn('right', PANEL_IDS.controlCenter);
 
   // Calculate layout adjustments when conforming to other panels
   const layoutAdjustment = useMemo(() => {
@@ -241,13 +252,15 @@ export function ControlCenterDock() {
           isVertical || isFloating ? 'text-sm' : ''
         )}
       >
-        {allowedPanelIds.length > 0 ? (
+        {showPanelLoadingPlaceholder ? (
+          <div className="h-full w-full" />
+        ) : allowedPanelIds.length > 0 ? (
           <PanelHostDockview
             ref={panelHostRef}
-            dockId="control-center"
+            dockId={DOCK_IDS.controlCenter}
             allowedPanels={allowedPanelIds}
             storageKey="dockview:control-center:v6"
-            panelManagerId="controlCenter"
+            panelManagerId={PANEL_IDS.controlCenter}
             minPanelsForTabs={2}
             onReady={handleReady}
             className="h-full"

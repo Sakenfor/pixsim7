@@ -30,6 +30,8 @@ export {
   CAP_CHARACTER_CONTEXT,
   CAP_CHARACTER_INGEST_ACTION,
   CAP_CHARACTER_SCENE_PREP_PREFILL,
+  CAP_UI_STUDIO_TARGET,
+  CAP_UI_STUDIO_ACTIONS,
 } from "./domain/capabilities";
 export {
   APP_ACTION_KEY_PREFIX,
@@ -54,6 +56,9 @@ export type {
   CharacterContextSummary,
   CharacterIngestActionContext,
   CharacterScenePrepPrefillContext,
+  UiStudioTabId,
+  UiStudioTargetContext,
+  UiStudioActionsContext,
 } from "./domain/capabilities";
 export type {
   SceneViewOffer as SceneViewCapabilityOffer,

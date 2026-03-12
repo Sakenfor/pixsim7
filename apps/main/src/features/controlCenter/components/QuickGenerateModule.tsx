@@ -19,7 +19,7 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
   // Connect to WebSocket for real-time updates
   useGenerationWebSocket();
 
-  const ccIsOpen = useControlCenterStore(s => s.isOpen);
+  const ccIsOpen = useControlCenterStore(s => s.open);
   const ccSetOpen = useControlCenterStore(s => s.setOpen);
 
   const resolvedPanelId = props.panelId ?? props.api?.id ?? 'cc-generate';

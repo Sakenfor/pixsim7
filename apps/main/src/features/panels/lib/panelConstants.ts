@@ -26,6 +26,7 @@ export const PANEL_CATEGORIES = [
   "tools", // Gizmo Lab, NPC Brain Lab, HUD Designer
   "utilities", // Export/Import, Validation, Settings
   "system", // Health, Provider Settings
+  "community", // Community hub, chat, shared content
   "custom", // Custom panels from plugins
 ] as const;
 
@@ -55,6 +56,7 @@ export const CATEGORY_LABELS: Record<PanelCategory, string> = {
   tools: "Tools",
   utilities: "Utilities",
   system: "System",
+  community: "Community",
   custom: "Custom",
 };
 
@@ -75,6 +77,7 @@ export const CATEGORY_ORDER: readonly PanelCategory[] = [
   "tools",
   "utilities",
   "system",
+  "community",
   "custom",
 ];
 
@@ -86,6 +89,19 @@ export const CATEGORY_ORDER: readonly PanelCategory[] = [
  * Color identifiers for each category.
  * Used for visual distinction in panel headers and badges.
  */
+export const CATEGORY_ICONS: Record<PanelCategory, string> = {
+  workspace: "layout",
+  scene: "layers",
+  game: "gamepad",
+  generation: "sparkles",
+  dev: "code",
+  tools: "wrench",
+  utilities: "settings",
+  system: "cpu",
+  community: "globe",
+  custom: "plug",
+};
+
 export const CATEGORY_COLORS: Record<PanelCategory, string> = {
   workspace: "blue",
   scene: "purple",
@@ -95,6 +111,7 @@ export const CATEGORY_COLORS: Record<PanelCategory, string> = {
   tools: "cyan",
   utilities: "gray",
   system: "red",
+  community: "indigo",
   custom: "pink",
 };
 
@@ -116,6 +133,8 @@ export function getCategoryColorClasses(category: PanelCategory): string {
     utilities:
       "bg-gray-100 text-gray-700 dark:bg-gray-700/30 dark:text-gray-300",
     system: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+    community:
+      "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
     custom: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300",
   };
   return colorMap[category] || colorMap.custom;

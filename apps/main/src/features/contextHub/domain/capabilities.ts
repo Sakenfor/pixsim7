@@ -8,6 +8,7 @@ import type { OperationType } from "@/types/operations";
 
 import type { EntityScopedCapability } from "../types";
 
+import type { AuthoringContextSource } from "./authoringContextResolution";
 import {
   CAP_ASSET,
   CAP_ASSET_LIST,
@@ -27,6 +28,8 @@ import {
   CAP_CHARACTER_CONTEXT,
   CAP_CHARACTER_INGEST_ACTION,
   CAP_CHARACTER_SCENE_PREP_PREFILL,
+  CAP_UI_STUDIO_TARGET,
+  CAP_UI_STUDIO_ACTIONS,
 } from "./capabilityKeys";
 import { assetInputContract } from "./contracts/assetInput";
 import { sceneViewContract } from "./contracts/sceneView";
@@ -50,6 +53,8 @@ export {
   CAP_CHARACTER_CONTEXT,
   CAP_CHARACTER_INGEST_ACTION,
   CAP_CHARACTER_SCENE_PREP_PREFILL,
+  CAP_UI_STUDIO_TARGET,
+  CAP_UI_STUDIO_ACTIONS,
 };
 
 registerCapabilityDescriptor({
@@ -178,6 +183,20 @@ registerCapabilityDescriptor({
   label: "Character Scene Prep Prefill",
   description: "Provides scene-prep cast/guidance defaults from the active character and curated slots.",
   kind: "context",
+  source: "contextHub",
+});
+registerCapabilityDescriptor({
+  key: CAP_UI_STUDIO_TARGET,
+  label: "UI Studio Target",
+  description: "Current UI Studio tab and authoring-context snapshot.",
+  kind: "context",
+  source: "contextHub",
+});
+registerCapabilityDescriptor({
+  key: CAP_UI_STUDIO_ACTIONS,
+  label: "UI Studio Actions",
+  description: "Actions for changing UI Studio tab focus.",
+  kind: "action",
   source: "contextHub",
 });
 
@@ -397,4 +416,21 @@ export interface CharacterScenePrepPrefillContext {
   }>;
   matrixQuery?: string;
   discoveryNotes?: string;
+}
+
+export type UiStudioTabId = "surfaces" | "hud" | "panel-groups" | "overlay";
+
+export interface UiStudioTargetContext {
+  tab: UiStudioTabId;
+  tabs: UiStudioTabId[];
+  worldId: number | null;
+  projectId: number | null;
+  projectSourceWorldId: number | null;
+  source: AuthoringContextSource;
+  followActive: boolean;
+  isReady: boolean;
+}
+
+export interface UiStudioActionsContext {
+  setTab: (tab: UiStudioTabId) => void;
 }

@@ -13,6 +13,8 @@ import type { PluginMeta } from "@pixsim7/shared.plugins";
  */
 export type GraphEditorId =
   | "scene-graph-v2"
+  | "arc-graph-editor"
+  // Legacy persisted value retained for compatibility migration paths.
   | "arc-graph"
   | string;
 
@@ -43,7 +45,7 @@ export interface GraphEditorDefinition extends PluginMeta {
   component: GraphEditorComponent;
 
   /** Backing store ID, for diagnostics and binding */
-  storeId: "scene-graph-v2" | "arc-graph" | string;
+  storeId: "scene-graph-v2" | "arc-graph" | "arc-graph-editor" | string;
 
   /** Supported modes / features */
   supportsMultiScene?: boolean;
