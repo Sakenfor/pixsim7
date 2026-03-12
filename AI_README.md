@@ -1,12 +1,26 @@
-# PixSim7 - AI Assistant Guide
+﻿# PixSim7 - AI Assistant Guide
 
-**⚠️ READ THIS FIRST BEFORE MAKING ANY CODE CHANGES**
+**âš ï¸ READ THIS FIRST BEFORE MAKING ANY CODE CHANGES**
 
 This guide helps AI assistants understand what's already implemented, where things are, and what NOT to reinvent.
 
 ---
 
-## 🎯 Project Overview
+## Machine-Readable Meta Contracts (Agent Discovery)
+
+Use these first when an agent needs canonical request/response contracts or analyzer resolution behavior:
+
+- Index endpoint: `/api/v1/meta/contracts`
+  - Source: `pixsim7/backend/main/api/v1/meta_contracts.py`
+- Prompt analysis contract: `/api/v1/prompts/meta/analysis-contract`
+  - Source: `pixsim7/backend/main/api/v1/prompts/meta.py`
+
+Why this exists:
+- Single discovery surface for tools/agents (instead of scanning many files)
+- Versioned contract payloads suitable for programmatic use
+
+---
+## ðŸŽ¯ Project Overview
 
 **What this is:** Video generation platform with cross-provider support (Pixverse, Sora, etc.), asset management, branching narratives for games, and structured logging.
 
@@ -20,7 +34,7 @@ This guide helps AI assistants understand what's already implemented, where thin
 
 ---
 
-## 🔍 Quick Topic Lookup
+## ðŸ” Quick Topic Lookup
 
 **Find docs fast by topic:**
 
@@ -45,116 +59,116 @@ This guide helps AI assistants understand what's already implemented, where thin
 | **Full doc index** | `docs/README.md` | `docs/INDEX.md` |
 
 ---
-
-## 📁 Repository Structure
+## ðŸ“ Repository Structure
 
 ```
 pixsim7/
-├── pixsim7/backend/main/          # FastAPI backend (PORT 8001 ⚠️ NOT 8000!)
-│   ├── api/v1/               # REST API endpoints
-│   ├── domain/               # SQLAlchemy models (Asset, Job, User, etc.)
-│   ├── services/             # Business logic layer
-│   │   ├── asset/            # Asset management & cross-provider uploads
-│   │   ├── provider/         # Provider adapters (Pixverse, Sora)
-│   │   ├── submission/       # Job submission pipeline
-│   │   ├── upload/           # User upload service
-│   │   ├── user/             # User & auth service
-│   │   └── account/          # Provider account management
-│   ├── infrastructure/       # Database, logging, queue
-│   ├── shared/               # Shared utilities, config, schemas
-│   └── workers/              # ARQ background workers
-│
-├── frontend/                 # Main React frontend (PORT 5173)
-│   └── src/
-│       ├── components/       # UI components
-│       │   ├── control/      # Control Center dock (generation UI)
-│       │   ├── layout/       # DockLayout, PanelChrome, ResizableSplit
-│       │   ├── media/        # MediaCard (asset display)
-│       │   ├── nodes/        # Scene graph nodes
-│       │   └── inspector/    # Node property editors
-│       ├── modules/          # Feature modules (modular service layer)
-│       ├── routes/           # Page components
-│       ├── stores/           # Zustand state management
-│       └── lib/              # API client, auth, utilities
-│
-├── admin/                    # SvelteKit admin panel (PORT 8002)
-│   └── src/                  # Log viewer, service management
-│
-├── apps/game/                # Game player (React app)
-│   └── src/components/
-│       ├── ScenePlayer.tsx   # Video playback engine
-│       └── minigames/        # Mini-game components
-│
-├── packages/                 # Shared packages (monorepo)
-│   ├── types/                # TypeScript types (@pixsim7/types)
-│   ├── ui/                   # Shared UI components (@pixsim7/ui)
-│   └── config-tailwind/      # Tailwind preset
-│
-├── pixsim_logging/           # Structured logging package
-├── chrome-extension/         # Browser extension for media capture
-├── scripts/                  # Utility scripts, launcher GUI
-├── tests/                    # Test files
-├── docs/                     # Documentation
-└── data/                     # Runtime data (logs, uploads, cache)
+â”œâ”€â”€ pixsim7/backend/main/          # FastAPI backend (PORT 8001 âš ï¸ NOT 8000!)
+â”‚   â”œâ”€â”€ api/v1/               # REST API endpoints
+â”‚   â”œâ”€â”€ domain/               # SQLAlchemy models (Asset, Job, User, etc.)
+â”‚   â”œâ”€â”€ services/             # Business logic layer
+â”‚   â”‚   â”œâ”€â”€ asset/            # Asset management & cross-provider uploads
+â”‚   â”‚   â”œâ”€â”€ provider/         # Provider adapters (Pixverse, Sora)
+â”‚   â”‚   â”œâ”€â”€ submission/       # Job submission pipeline
+â”‚   â”‚   â”œâ”€â”€ upload/           # User upload service
+â”‚   â”‚   â”œâ”€â”€ user/             # User & auth service
+â”‚   â”‚   â””â”€â”€ account/          # Provider account management
+â”‚   â”œâ”€â”€ infrastructure/       # Database, logging, queue
+â”‚   â”œâ”€â”€ shared/               # Shared utilities, config, schemas
+â”‚   â””â”€â”€ workers/              # ARQ background workers
+â”‚
+â”œâ”€â”€ frontend/                 # Main React frontend (PORT 5173)
+â”‚   â””â”€â”€ src/
+â”‚       â”œâ”€â”€ components/       # UI components
+â”‚       â”‚   â”œâ”€â”€ control/      # Control Center dock (generation UI)
+â”‚       â”‚   â”œâ”€â”€ layout/       # DockLayout, PanelChrome, ResizableSplit
+â”‚       â”‚   â”œâ”€â”€ media/        # MediaCard (asset display)
+â”‚       â”‚   â”œâ”€â”€ nodes/        # Scene graph nodes
+â”‚       â”‚   â””â”€â”€ inspector/    # Node property editors
+â”‚       â”œâ”€â”€ modules/          # Feature modules (modular service layer)
+â”‚       â”œâ”€â”€ routes/           # Page components
+â”‚       â”œâ”€â”€ stores/           # Zustand state management
+â”‚       â””â”€â”€ lib/              # API client, auth, utilities
+â”‚
+â”œâ”€â”€ admin/                    # SvelteKit admin panel (PORT 8002)
+â”‚   â””â”€â”€ src/                  # Log viewer, service management
+â”‚
+â”œâ”€â”€ apps/game/                # Game player (React app)
+â”‚   â””â”€â”€ src/components/
+â”‚       â”œâ”€â”€ ScenePlayer.tsx   # Video playback engine
+â”‚       â””â”€â”€ minigames/        # Mini-game components
+â”‚
+â”œâ”€â”€ packages/                 # Shared packages (monorepo)
+â”‚   â”œâ”€â”€ types/                # TypeScript types (@pixsim7/types)
+â”‚   â”œâ”€â”€ ui/                   # Shared UI components (@pixsim7/ui)
+â”‚   â””â”€â”€ config-tailwind/      # Tailwind preset
+â”‚
+â”œâ”€â”€ pixsim_logging/           # Structured logging package
+â”œâ”€â”€ chrome-extension/         # Browser extension for media capture
+â”œâ”€â”€ scripts/                  # Utility scripts, launcher GUI
+â”œâ”€â”€ tests/                    # Test files
+â”œâ”€â”€ docs/                     # Documentation
+â””â”€â”€ data/                     # Runtime data (logs, uploads, cache)
 ```
 
 ---
 
-## ✅ What's Already Implemented (DON'T RECREATE)
+
+## âœ… What's Already Implemented (DON'T RECREATE)
 
 ### Backend (100% Complete)
 
 #### Core Services
-- ✅ **AssetService** - Asset CRUD, cross-provider uploads, lineage tracking
+- âœ… **AssetService** - Asset CRUD, cross-provider uploads, lineage tracking
   - Location: `pixsim7/backend/main/services/asset/asset_service.py`
   - Features: `get_asset_for_provider()` - automatic upload/cache for cross-provider operations
   - Database: Asset, Asset3DMetadata, AssetAudioMetadata, AssetTemporalSegment, AssetAdultMetadata
   - Branching: AssetLineage, AssetBranch, AssetBranchVariant, AssetClip
 
-- ✅ **ProviderService** - Provider adapter system
+- âœ… **ProviderService** - Provider adapter system
   - Location: `pixsim7/backend/main/services/provider/`
   - Adapters: Pixverse (845 lines - `adapters/pixverse.py`)
   - Interface: `base.py` defines upload_asset(), execute(), check_status()
 
-- ✅ **SubmissionPipeline** - Job submission with structured logging
+- âœ… **SubmissionPipeline** - Job submission with structured logging
   - Location: `pixsim7/backend/main/services/submission/pipeline.py`
-  - Stages: pipeline:start → pipeline:artifact → provider:submit → provider:status → provider:complete
+  - Stages: pipeline:start â†’ pipeline:artifact â†’ provider:submit â†’ provider:status â†’ provider:complete
 
-- ✅ **UploadService** - User file uploads with provider acceptance checks
+- âœ… **UploadService** - User file uploads with provider acceptance checks
   - Location: `pixsim7/backend/main/services/upload/upload_service.py`
   - Features: Image validation, provider-specific preparation, metadata extraction
 
-- ✅ **UserService** - Auth, JWT, user management
+- âœ… **UserService** - Auth, JWT, user management
   - Location: `pixsim7/backend/main/services/user/`
 
-- ✅ **AccountService** - Provider account pooling, concurrency management
+- âœ… **AccountService** - Provider account pooling, concurrency management
   - Location: `pixsim7/backend/main/services/account/`
 
 #### Database Models (domain/)
-- ✅ User, UserProfile
-- ✅ Job, JobStatus enum
-- ✅ Asset + 4 metadata tables (3D, Audio, Temporal, Adult)
-- ✅ AssetLineage, AssetBranch, AssetBranchVariant, AssetClip
-- ✅ GenerationArtifact, ProviderSubmission
-- ✅ ProviderAccount
-- ✅ Scene, SceneAsset, SceneConnection (for game narratives)
+- âœ… User, UserProfile
+- âœ… Job, JobStatus enum
+- âœ… Asset + 4 metadata tables (3D, Audio, Temporal, Adult)
+- âœ… AssetLineage, AssetBranch, AssetBranchVariant, AssetClip
+- âœ… GenerationArtifact, ProviderSubmission
+- âœ… ProviderAccount
+- âœ… Scene, SceneAsset, SceneConnection (for game narratives)
 
 #### API Endpoints (api/v1/)
-- ✅ `/auth/register`, `/auth/login`
-- ✅ `/users/me`
-- ✅ `/jobs` - Create, list, get status
-- ✅ `/assets` - List, get, upload (POST with file)
-- ✅ `/providers` - List available providers
-- ✅ `/accounts` - Provider account management
-- ✅ `/logs` - Log ingestion endpoint
+- âœ… `/auth/register`, `/auth/login`
+- âœ… `/users/me`
+- âœ… `/jobs` - Create, list, get status
+- âœ… `/assets` - List, get, upload (POST with file)
+- âœ… `/providers` - List available providers
+- âœ… `/accounts` - Provider account management
+- âœ… `/logs` - Log ingestion endpoint
 
 #### Background Workers (workers/)
-- ✅ ARQ job processor - Processes jobs asynchronously
-- ✅ Status poller - Polls provider status
-- ✅ Structured logging with stages (pipeline:start, provider:submit, etc.)
+- âœ… ARQ job processor - Processes jobs asynchronously
+- âœ… Status poller - Polls provider status
+- âœ… Structured logging with stages (pipeline:start, provider:submit, etc.)
 
 #### Logging System
-- ✅ **pixsim_logging/** - Unified structured logging package
+- âœ… **pixsim_logging/** - Unified structured logging package
   - JSON output for production, human-readable for dev
   - Field catalog: timestamp, level, service, job_id, provider_id, stage, etc.
   - Stage taxonomy: pipeline:start, pipeline:artifact, provider:submit, provider:status, etc.
@@ -165,155 +179,158 @@ pixsim7/
 ### Frontend (Main App)
 
 #### Architecture
-- ✅ **Modular Service Layer** - Each feature is a self-contained module
+- âœ… **Modular Service Layer** - Each feature is a self-contained module
   - Location: `apps/main/src/modules/`
-  - Pattern: Module interface → Registry → Service API
+  - Pattern: Module interface â†’ Registry â†’ Service API
   - Modules: gallery (placeholder), scene-builder (active)
 
 #### Components (apps/main/src/components/)
-- ✅ **ControlCenterDock** - Bottom dock for generation controls
+- âœ… **ControlCenterDock** - Bottom dock for generation controls
   - Location: `control/ControlCenterDock.tsx`
   - Features: Prompt input, provider/preset selection, dynamic parameter forms, job status
-  - Status: ✅ Complete per recent commits (feat/control-center-dock branch)
+  - Status: âœ… Complete per recent commits (feat/control-center-dock branch)
 
-- ✅ **DockLayout** - Flexible panel layout system
+- âœ… **DockLayout** - Flexible panel layout system
   - Location: `layout/DockLayout.tsx`
   - Features: Resizable panels, presets (workspace, galleryLeft, etc.)
   - Components: PanelChrome, ResizableSplit
 
-- ✅ **MediaCard** - Asset display card
+- âœ… **MediaCard** - Asset display card
   - Location: `media/MediaCard.tsx`
   - Features: Hover scrub, status badge, metadata display
 
-- ✅ **FiltersBar** - Asset filtering (inline in Assets.tsx)
+- âœ… **FiltersBar** - Asset filtering (inline in Assets.tsx)
   - Features: Search, provider select, sort, URL sync, sessionStorage persistence
 
-- ✅ **Tabs** - Navigation tabs component
+- âœ… **Tabs** - Navigation tabs component
   - Location: `navigation/Tabs.tsx`
 
-- ✅ **MasonryGrid** - Responsive masonry layout
+- âœ… **MasonryGrid** - Responsive masonry layout
   - Location: `layout/MasonryGrid.tsx`
 
-- ✅ **Node Editor Components**
+- âœ… **Node Editor Components**
   - NodePalette - Node type palette
   - SceneNode - Graph node component
   - InspectorPanel - Property inspector
   - Type-specific editors: VideoNodeEditor, ChoiceNodeEditor, ConditionNodeEditor, MiniGameNodeEditor, EndNodeEditor
 
 #### Routes (apps/main/src/routes/)
-- ✅ Home, Login, Register, ProtectedRoute
-- ✅ Assets - Gallery with filters, tabs, masonry grid, local folders panel
-- ✅ Workspace - Layout presets, dock management
-- ✅ Graph - Scene graph editor (placeholder)
+- âœ… Home, Login, Register, ProtectedRoute
+- âœ… Assets - Gallery with filters, tabs, masonry grid, local folders panel
+- âœ… Workspace - Layout presets, dock management
+- âœ… Graph - Scene graph editor (placeholder)
 
 #### State Management
-- ✅ **authStore** - Zustand store for auth state
-- ✅ **layoutStore** - Panel layout state
-- ✅ **controlCenterStore** - Generation control state
-- ✅ **toastStore** - Toast notifications
+- âœ… **authStore** - Zustand store for auth state
+- âœ… **layoutStore** - Panel layout state
+- âœ… **controlCenterStore** - Generation control state
+- âœ… **toastStore** - Toast notifications
 
 ### Game Frontend (Separate App)
 
 #### Scene Player (game-apps/main/src/components/ScenePlayer.tsx)
-- ✅ Real `<video>` playback with loop segment support
-- ✅ Segment selection (ordered, random, pool with tag filtering)
-- ✅ Progression system (multi-step playback within a node)
-- ✅ Edge conditions evaluation (flag checks, comparisons)
-- ✅ Effects application (set flags, inc/dec counters, push to arrays)
-- ✅ Mini-game integration
-- ✅ Segment indicator UI with tags and step highlighting
-- ✅ Play/Pause controls, loading states, error handling
+- âœ… Real `<video>` playback with loop segment support
+- âœ… Segment selection (ordered, random, pool with tag filtering)
+- âœ… Progression system (multi-step playback within a node)
+- âœ… Edge conditions evaluation (flag checks, comparisons)
+- âœ… Effects application (set flags, inc/dec counters, push to arrays)
+- âœ… Mini-game integration
+- âœ… Segment indicator UI with tags and step highlighting
+- âœ… Play/Pause controls, loading states, error handling
 
 #### Mini-Games (game-apps/main/src/components/minigames/)
-- ✅ **ReflexMiniGame** - Reflex challenge with scoring
+- âœ… **ReflexMiniGame** - Reflex challenge with scoring
   - Centered layout, success/fail states, detailed scoring
   - onResult callback with success boolean and score
 
 ### Admin Panel (admin/)
-- ✅ Log viewer with filtering, search, pagination
-- ✅ Service management (start/stop services)
-- ✅ System metrics display
-- ✅ Port: 8002
+- âœ… Log viewer with filtering, search, pagination
+- âœ… Service management (start/stop services)
+- âœ… System metrics display
+- âœ… Port: 8002
 
 ### Chrome Extension (chrome-extension/)
-- ✅ Architecture and features documented
-- ✅ Sora support documented
+- âœ… Architecture and features documented
+- âœ… Sora support documented
 
 ---
 
-## ❌ What's NOT Implemented (OK to Build)
+
+## âŒ What's NOT Implemented (OK to Build)
 
 ### Frontend - Minor Missing Pieces
 
 1. **State Components** for Gallery
-   - ❌ GridSkeleton component (loading state)
-   - ❌ EmptyState component (no results)
-   - ❌ ErrorState component (error with retry)
+   - âŒ GridSkeleton component (loading state)
+   - âŒ EmptyState component (no results)
+   - âŒ ErrorState component (error with retry)
    - Location: Should be `apps/main/src/components/states/`
 
 2. **LineageGraph Component**
-   - ❌ Presentational graph component (use React Flow)
+   - âŒ Presentational graph component (use React Flow)
    - Location: Should be `apps/main/src/components/graph/LineageGraph.tsx`
 
 3. **Scene Builder Form in Workspace**
-   - ❌ Basic node editing form (Node ID, Label, Selection strategy, etc.)
-   - ❌ Save-to-Draft button
-   - ❌ Preview in Game button
+   - âŒ Basic node editing form (Node ID, Label, Selection strategy, etc.)
+   - âŒ Save-to-Draft button
+   - âŒ Preview in Game button
    - Location: Should enhance `apps/main/src/routes/Workspace.tsx`
 
 ### Backend - Future Work
 
 1. **Vision Model Integration**
-   - ❌ Auto-tagging for assets
-   - ❌ CLIP embeddings (populate Asset.embedding field)
-   - ❌ Temporal segment analysis
+   - âŒ Auto-tagging for assets
+   - âŒ CLIP embeddings (populate Asset.embedding field)
+   - âŒ Temporal segment analysis
 
 2. **LRU Cache Eviction**
-   - ❌ Background job to evict old downloaded assets
+   - âŒ Background job to evict old downloaded assets
    - Based on Asset.last_accessed_at
 
 3. **Additional Providers**
-   - ❌ Sora adapter (partial)
-   - ❌ Runway adapter
-   - ❌ Pika adapter
+   - âŒ Sora adapter (partial)
+   - âŒ Runway adapter
+   - âŒ Pika adapter
 
 ---
 
-## 🚫 Common Mistakes to Avoid
+
+## ðŸš« Common Mistakes to Avoid
 
 ### Port Numbers
-- ⚠️ **Backend is PORT 8001, NOT 8000!**
-- ⚠️ **Admin is PORT 8002**
-- ⚠️ **PostgreSQL is PORT 5434** (not default 5432)
-- ⚠️ **Redis is PORT 6380** (not default 6379)
+- âš ï¸ **Backend is PORT 8001, NOT 8000!**
+- âš ï¸ **Admin is PORT 8002**
+- âš ï¸ **PostgreSQL is PORT 5434** (not default 5432)
+- âš ï¸ **Redis is PORT 6380** (not default 6379)
 - See `docs/getting-started/PORT_CONFIGURATION.md` for details
 
 ### Don't Recreate These
-- ❌ Don't create a new asset upload system - use `UploadService.upload()` in `services/upload/upload_service.py`
-- ❌ Don't create a new cross-provider upload system - use `AssetService.get_asset_for_provider()`
-- ❌ Don't create a new logging system - use `pixsim_logging` package
-- ❌ Don't create a new module system - use existing pattern in `apps/main/src/modules/`
-- ❌ Don't create a new layout system - use `DockLayout` from `apps/main/src/components/layout/`
-- ❌ Don't create a new video player - use `ScenePlayer` from `game-apps/main/src/components/ScenePlayer.tsx`
+- âŒ Don't create a new asset upload system - use `UploadService.upload()` in `services/upload/upload_service.py`
+- âŒ Don't create a new cross-provider upload system - use `AssetService.get_asset_for_provider()`
+- âŒ Don't create a new logging system - use `pixsim_logging` package
+- âŒ Don't create a new module system - use existing pattern in `apps/main/src/modules/`
+- âŒ Don't create a new layout system - use `DockLayout` from `apps/main/src/components/layout/`
+- âŒ Don't create a new video player - use `ScenePlayer` from `game-apps/main/src/components/ScenePlayer.tsx`
 
 ### Database
-- ❌ Don't add migrations without using Alembic
-- ❌ Don't modify domain models without generating migrations
-- ✅ Use: `PYTHONPATH=G:/code/pixsim7 alembic revision --autogenerate -m "description"`
+- âŒ Don't add migrations without using Alembic
+- âŒ Don't modify domain models without generating migrations
+- âœ… Use: `PYTHONPATH=G:/code/pixsim7 alembic revision --autogenerate -m "description"`
 
 ### API
-- ❌ Don't create endpoints that return port 8000 - use 8001
-- ❌ Don't skip authentication on protected endpoints
-- ✅ Use: `current_user: User = Depends(get_current_user)` in endpoint signatures
+- âŒ Don't create endpoints that return port 8000 - use 8001
+- âŒ Don't skip authentication on protected endpoints
+- âœ… Use: `current_user: User = Depends(get_current_user)` in endpoint signatures
 
 ### Frontend
-- ❌ Don't use global state for module-specific features - use module-internal state
-- ❌ Don't create duplicate components - check `apps/main/src/components/` and `packages/ui/` first
-- ✅ Use: Existing `MediaCard`, `Tabs`, `MasonryGrid`, etc.
+- âŒ Don't use global state for module-specific features - use module-internal state
+- âŒ Don't create duplicate components - check `apps/main/src/components/` and `packages/ui/` first
+- âœ… Use: Existing `MediaCard`, `Tabs`, `MasonryGrid`, etc.
 
 ---
 
-## 🔑 Key Files Reference
+
+## ðŸ”‘ Key Files Reference
 
 ### Must-Read Documentation
 1. **MASTER_STATUS.md** - Complete project status (100% backend complete)
@@ -338,7 +355,8 @@ pixsim7/
 
 ---
 
-## 🔄 Development Workflow
+
+## ðŸ”„ Development Workflow
 
 ### Adding a New Feature
 
@@ -364,16 +382,17 @@ pixsim7/
 2. **Structure:**
    ```
    your-module/
-   ├── index.ts              # Service API (implements Module interface)
-   ├── YourView.tsx          # Main UI component
-   └── useYourModule.ts      # State hook (optional)
+   â”œâ”€â”€ index.ts              # Service API (implements Module interface)
+   â”œâ”€â”€ YourView.tsx          # Main UI component
+   â””â”€â”€ useYourModule.ts      # State hook (optional)
    ```
 3. **Register:** Add to `apps/main/src/modules/index.ts`
 4. **Reference:** See `scene-builder` module
 
 ---
 
-## 🧪 Testing
+
+## ðŸ§ª Testing
 
 ### Backend Tests
 ```bash
@@ -390,7 +409,8 @@ npm test
 
 ---
 
-## 🚀 Running the System
+
+## ðŸš€ Running the System
 
 ### Quick Start
 ```bash
@@ -418,24 +438,26 @@ cd admin && npm run dev
 
 ---
 
-## 📊 Implementation Status Summary
+
+## ðŸ“Š Implementation Status Summary
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Backend API | ✅ 100% | All services complete |
-| Asset System | ✅ 100% | Cross-provider uploads, lineage, branching |
-| Logging | ✅ 100% | Structured logging fully implemented |
-| Job Pipeline | ✅ 100% | Submission, polling, completion |
-| Provider Adapters | 🟡 Partial | Pixverse complete, Sora partial |
-| Frontend Core | ✅ 90% | Layout, controls, assets gallery |
-| Scene Editor | 🟡 50% | Graph editor exists, inspector needs work |
-| Game Player | ✅ 95% | Video playback, progression, mini-games |
-| Admin Panel | ✅ 100% | Log viewer, service management |
-| Chrome Extension | ✅ 100% | Documented and functional |
+| Backend API | âœ… 100% | All services complete |
+| Asset System | âœ… 100% | Cross-provider uploads, lineage, branching |
+| Logging | âœ… 100% | Structured logging fully implemented |
+| Job Pipeline | âœ… 100% | Submission, polling, completion |
+| Provider Adapters | ðŸŸ¡ Partial | Pixverse complete, Sora partial |
+| Frontend Core | âœ… 90% | Layout, controls, assets gallery |
+| Scene Editor | ðŸŸ¡ 50% | Graph editor exists, inspector needs work |
+| Game Player | âœ… 95% | Video playback, progression, mini-games |
+| Admin Panel | âœ… 100% | Log viewer, service management |
+| Chrome Extension | âœ… 100% | Documented and functional |
 
 ---
 
-## 💡 Quick Tips for AI Assistants
+
+## ðŸ’¡ Quick Tips for AI Assistants
 
 1. **Always check this file first** before creating new components or services
 2. **Port 8001** - Mention this explicitly when writing API client code
@@ -447,7 +469,8 @@ cd admin && npm run dev
 
 ---
 
-## 📚 Documentation Taxonomy for AI Assistants
+
+## ðŸ“š Documentation Taxonomy for AI Assistants
 
 Understanding the documentation structure helps you find information quickly and update the right docs.
 
@@ -514,24 +537,24 @@ Located in `docs/archive/`:
 
 ```
 Is this a major architectural decision affecting extensibility?
-├─ YES → Create ADR in docs/decisions/
-└─ NO ↓
+â”œâ”€ YES â†’ Create ADR in docs/decisions/
+â””â”€ NO â†“
 
 Is this a new service, component, or API?
-├─ YES → Update reference docs (SERVICES.md, COMPONENTS.md, etc.)
-└─ NO ↓
+â”œâ”€ YES â†’ Update reference docs (SERVICES.md, COMPONENTS.md, etc.)
+â””â”€ NO â†“
 
 Is this a workflow or setup change?
-├─ YES → Update DEVELOPMENT_GUIDE.md
-└─ NO ↓
+â”œâ”€ YES â†’ Update DEVELOPMENT_GUIDE.md
+â””â”€ NO â†“
 
 Is this a system architecture change?
-├─ YES → Update docs/architecture/README.md
-└─ NO ↓
+â”œâ”€ YES â†’ Update docs/architecture/README.md
+â””â”€ NO â†“
 
 Is this a pattern AI assistants should know?
-├─ YES → Update AI_README.md
-└─ NO → Probably doesn't need doc update (code comments sufficient)
+â”œâ”€ YES â†’ Update AI_README.md
+â””â”€ NO â†’ Probably doesn't need doc update (code comments sufficient)
 ```
 
 ### Documentation Maintenance Rules for AI Assistants
@@ -543,12 +566,12 @@ Is this a pattern AI assistants should know?
 
 2. **Update Triggers You Should Watch For**
    ```
-   Major architectural change → Update docs/architecture/README.md + create ADR
-   New service/component      → Update reference docs
-   API endpoint change        → Update API docs + docs/architecture/README.md if significant
-   Workflow change            → Update DEVELOPMENT_GUIDE.md
-   New pattern/gotcha         → Update AI_README.md
-   Task completion            → Archive task doc, update DOCUMENTATION_CHANGELOG.md
+   Major architectural change â†’ Update docs/architecture/README.md + create ADR
+   New service/component      â†’ Update reference docs
+   API endpoint change        â†’ Update API docs + docs/architecture/README.md if significant
+   Workflow change            â†’ Update DEVELOPMENT_GUIDE.md
+   New pattern/gotcha         â†’ Update AI_README.md
+   Task completion            â†’ Archive task doc, update DOCUMENTATION_CHANGELOG.md
    ```
 
 3. **Archive, Don't Delete**
@@ -563,19 +586,20 @@ Is this a pattern AI assistants should know?
 
 ### Common Documentation Mistakes to Avoid
 
-❌ **Don't recreate documentation** - Check existing docs first
-❌ **Don't duplicate content** - Link to canonical source
-❌ **Don't modify accepted ADRs** - Create new ADR to supersede
-❌ **Don't ignore "Last Updated"** - Update the date when you modify docs
-❌ **Don't skip DOCUMENTATION_CHANGELOG.md** - Log significant changes
-✅ **Do check AI_README.md first** - Saves recreation of existing features
-✅ **Do create ADRs for major decisions** - Captures "why" for future
-✅ **Do update reference docs** - Keep SERVICES.md and COMPONENTS.md current
-✅ **Do archive completed tasks** - Move to archive, don't delete
+âŒ **Don't recreate documentation** - Check existing docs first
+âŒ **Don't duplicate content** - Link to canonical source
+âŒ **Don't modify accepted ADRs** - Create new ADR to supersede
+âŒ **Don't ignore "Last Updated"** - Update the date when you modify docs
+âŒ **Don't skip DOCUMENTATION_CHANGELOG.md** - Log significant changes
+âœ… **Do check AI_README.md first** - Saves recreation of existing features
+âœ… **Do create ADRs for major decisions** - Captures "why" for future
+âœ… **Do update reference docs** - Keep SERVICES.md and COMPONENTS.md current
+âœ… **Do archive completed tasks** - Move to archive, don't delete
 
 ---
 
-## 📞 Need Help?
+
+## ðŸ“ž Need Help?
 
 ### Primary Documentation
 - **Start Here:** `README.md` (project overview and quick start)
@@ -593,9 +617,11 @@ Is this a pattern AI assistants should know?
 ### Documentation About Documentation
 - **Lifecycle & Taxonomy:** `DOCUMENTATION_CHANGELOG.md` (top section)
 - **ADR Process:** `docs/decisions/README.md`
-- **Contribution Guide:** `DEVELOPMENT_GUIDE.md` → Contributing section
+- **Contribution Guide:** `DEVELOPMENT_GUIDE.md` â†’ Contributing section
 
 ---
 
 **Last Updated:** 2025-12-10
 **Version:** 1.2.0
+
+

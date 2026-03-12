@@ -4,6 +4,19 @@ This document provides guidance for AI agents and automated tools working on the
 
 ---
 
+## Meta Contract Discovery
+
+Before scanning the repo for API shapes, check the machine-readable contract endpoints:
+
+- `/api/v1/meta/contracts` (global contract index)
+- `/api/v1/prompts/meta/analysis-contract` (prompt analysis request/response and analyzer resolution contract)
+
+Source files:
+- `pixsim7/backend/main/api/v1/meta_contracts.py`
+- `pixsim7/backend/main/api/v1/prompts/meta.py`
+
+---
+
 ## Game / World / Scene Editor Work
 
 If you're working on game systems, world/location editing, scene graphs, 2D gameplay, or NPC behavior, **start here**.
