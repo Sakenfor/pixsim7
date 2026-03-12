@@ -3,13 +3,14 @@ import { useEffect, useRef, useCallback } from 'react';
 
 import { getDockviewPanels } from '@lib/dockview';
 
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { useDockState, useDockUiStore } from '@features/docks/stores';
 import {
   useGenerationWebSocket,
   QuickGenWidget,
   type QuickGenPanelHostRef,
   type QuickGenWidgetRenderContext,
 } from '@features/generation';
+import { DOCK_IDS } from '@features/panels/lib/panelIds';
 
 const CC_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings', 'quickgen-blocks'] as const;
 
@@ -19,8 +20,12 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
   // Connect to WebSocket for real-time updates
   useGenerationWebSocket();
 
-  const ccIsOpen = useControlCenterStore(s => s.open);
-  const ccSetOpen = useControlCenterStore(s => s.setOpen);
+  const ccIsOpen = useDockState(DOCK_IDS.controlCenter, (dock) => dock.open);
+  const setDockOpen = useDockUiStore((s) => s.setDockOpen);
+  const ccSetOpen = useCallback(
+    (open: boolean) => setDockOpen(DOCK_IDS.controlCenter, open),
+    [setDockOpen],
+  );
 
   const resolvedPanelId = props.panelId ?? props.api?.id ?? 'cc-generate';
 
@@ -29,7 +34,10 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
   const dockviewApiRef = useRef<DockviewApi | null>(null);
 
   // Listen to global panel layout reset trigger
-  const panelLayoutResetTrigger = useControlCenterStore(s => s.panelLayoutResetTrigger);
+  const panelLayoutResetTrigger = useDockState(
+    DOCK_IDS.controlCenter,
+    (dock) => dock.panelLayoutResetTrigger,
+  );
   useEffect(() => {
     if (panelLayoutResetTrigger > 0) {
       dockviewRef.current?.resetLayout();

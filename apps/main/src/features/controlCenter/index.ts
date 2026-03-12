@@ -27,9 +27,13 @@ export {
   useControlCenterStore,
   type ControlCenterState,
   type ControlModule,
-  type DockPosition,
-  type LayoutBehavior,
 } from './stores/controlCenterStore';
+
+export type {
+  DockPosition,
+  LayoutBehavior,
+  RetractedMode,
+} from '@features/docks/stores';
 
 // ============================================================================
 // Hooks - Feature Hooks

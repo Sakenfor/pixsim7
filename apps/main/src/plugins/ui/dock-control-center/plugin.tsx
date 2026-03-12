@@ -10,6 +10,8 @@ import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
 import { ControlCenterDock } from '@features/controlCenter/components/ControlCenterDock';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { useDockUiStore } from '@features/docks/stores';
+import { DOCK_IDS } from '@features/panels/lib/panelIds';
 
 export const manifest: ControlCenterPluginManifest = {
   id: 'dock-control-center',
@@ -50,15 +52,15 @@ export const plugin: ControlCenterPlugin = {
   },
 
   open() {
-    useControlCenterStore.getState().setOpen(true);
+    useDockUiStore.getState().setDockOpen(DOCK_IDS.controlCenter, true);
   },
 
   close() {
-    useControlCenterStore.getState().setOpen(false);
+    useDockUiStore.getState().setDockOpen(DOCK_IDS.controlCenter, false);
   },
 
   toggle() {
-    useControlCenterStore.getState().toggleOpen();
+    useDockUiStore.getState().toggleDockOpen(DOCK_IDS.controlCenter);
   },
 
   setModule(module: string) {

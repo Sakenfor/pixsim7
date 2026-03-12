@@ -5,6 +5,8 @@ import './index.css'
 import { registerContextMenuActions, configurePanelLookup } from '@lib/dockview'
 import { panelSelectors } from '@lib/plugins/catalogSelectors'
 
+import { configureKVStorage } from '@pixsim7/game.engine'
+
 import { registerModules, moduleRegistry } from '@app/modules'
 
 import App from './App.tsx'
@@ -26,6 +28,14 @@ registerModules()
 
 registerContextMenuActions()
 configurePanelLookup(panelSelectors)
+
+try {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    configureKVStorage(window.localStorage)
+  }
+} catch {
+  // Ignore storage access errors (e.g. restricted browser contexts).
+}
 
 async function initializeDevDiagnostics() {
   if (!import.meta.env.DEV) {

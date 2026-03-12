@@ -6,6 +6,7 @@
 
 import { useAssetSelectionStore } from '@features/assets';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { useDockUiStore } from '@features/docks/stores';
 import { useGenerationSettingsStore } from '@features/generation/stores/generationSettingsStore';
 import { useGenerationsStore } from '@features/generation/stores/generationsStore';
 import { useInteractionStatsStore } from '@features/gizmos/stores/interactionStatsStore';
@@ -82,9 +83,16 @@ export const coreManifest: ConsoleManifest = {
     {
       id: 'controlCenter',
       name: 'Control Center',
-      description: 'Control center dock state',
+      description: 'Dock state for control center and other dock containers',
+      store: useDockUiStore,
+      readableKeys: ['docks'],
+    },
+    {
+      id: 'controlCenterMeta',
+      name: 'Control Center Meta',
+      description: 'Control center specific state (module + orchestration flags)',
       store: useControlCenterStore,
-      readableKeys: ['isExpanded', 'activeTab'],
+      readableKeys: ['activeModule', 'conformToOtherPanels'],
     },
     {
       id: 'assetSelection',

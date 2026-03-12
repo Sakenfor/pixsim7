@@ -12,6 +12,8 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { useDockPanelPrefs, useDockState, useDockUiStore } from '@features/docks/stores';
+import type { DockPosition } from '@features/docks/stores';
 import { usePanelCatalogBootstrap } from '@features/panels';
 import { PanelHostDockview } from '@features/panels/components/host/PanelHostDockview';
 import type { PanelHostDockviewRef } from '@features/panels/components/host/PanelHostDockview';
@@ -43,29 +45,67 @@ function getEnabledCCPanels(enabledPrefs?: Record<string, boolean>): PanelDefini
 
 export function ControlCenterDock() {
   // Store selectors
-  const open = useControlCenterStore(s => s.open);
-  const pinned = useControlCenterStore(s => s.pinned);
-  const height = useControlCenterStore(s => s.height);
-  const enabledModules = useControlCenterStore(s => s.enabledModules);
-  const dockPosition = useControlCenterStore(s => s.dockPosition);
-  const retractedMode = useControlCenterStore(s => s.retractedMode);
+  const open = useDockState(DOCK_IDS.controlCenter, (dock) => dock.open);
+  const pinned = useDockState(DOCK_IDS.controlCenter, (dock) => dock.pinned);
+  const height = useDockState(DOCK_IDS.controlCenter, (dock) => dock.size);
+  const enabledModules = useDockPanelPrefs(DOCK_IDS.controlCenter, (prefs) => prefs);
+  const dockPosition = useDockState(DOCK_IDS.controlCenter, (dock) => dock.dockPosition);
+  const retractedMode = useDockState(DOCK_IDS.controlCenter, (dock) => dock.retractedMode);
+  const layoutBehavior = useDockState(
+    DOCK_IDS.controlCenter,
+    (dock) => dock.layoutBehavior,
+  );
+  const panelLayoutResetTrigger = useDockState(
+    DOCK_IDS.controlCenter,
+    (dock) => dock.panelLayoutResetTrigger,
+  );
   const conformToOtherPanels = useControlCenterStore(s => s.conformToOtherPanels);
-  const floatingPosition = useControlCenterStore(s => s.floatingPosition);
-  const floatingSize = useControlCenterStore(s => s.floatingSize);
-  const setOpen = useControlCenterStore(s => s.setOpen);
-  const setPinned = useControlCenterStore(s => s.setPinned);
-  const setHeight = useControlCenterStore(s => s.setHeight);
-  const setDockPosition = useControlCenterStore(s => s.setDockPosition);
-  const setFloatingPosition = useControlCenterStore(s => s.setFloatingPosition);
-  const setFloatingSize = useControlCenterStore(s => s.setFloatingSize);
+  const floatingPosition = useDockState(
+    DOCK_IDS.controlCenter,
+    (dock) => dock.floatingPosition,
+  );
+  const floatingSize = useDockState(
+    DOCK_IDS.controlCenter,
+    (dock) => dock.floatingSize,
+  );
+
+  const setDockOpen = useDockUiStore((s) => s.setDockOpen);
+  const toggleDockPinned = useDockUiStore((s) => s.setDockPinned);
+  const setDockSize = useDockUiStore((s) => s.setDockSize);
+  const setDockPositionRaw = useDockUiStore((s) => s.setDockPosition);
+  const setDockFloatingPosition = useDockUiStore((s) => s.setDockFloatingPosition);
+  const setDockFloatingSize = useDockUiStore((s) => s.setDockFloatingSize);
+
+  const setOpen = useCallback(
+    (value: boolean) => setDockOpen(DOCK_IDS.controlCenter, value),
+    [setDockOpen],
+  );
+  const setPinned = useCallback(
+    (value: boolean) => toggleDockPinned(DOCK_IDS.controlCenter, value),
+    [toggleDockPinned],
+  );
+  const setHeight = useCallback(
+    (value: number) => setDockSize(DOCK_IDS.controlCenter, value),
+    [setDockSize],
+  );
+  const setDockPosition = useCallback(
+    (position: DockPosition) => setDockPositionRaw(DOCK_IDS.controlCenter, position),
+    [setDockPositionRaw],
+  );
+  const setFloatingPosition = useCallback(
+    (x: number, y: number) => setDockFloatingPosition(DOCK_IDS.controlCenter, x, y),
+    [setDockFloatingPosition],
+  );
+  const setFloatingSize = useCallback(
+    (width: number, heightPx: number) =>
+      setDockFloatingSize(DOCK_IDS.controlCenter, width, heightPx),
+    [setDockFloatingSize],
+  );
 
   // Asset viewer state for conformToOtherPanels behavior
   const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
   const viewerMode = useAssetViewerStore((s) => s.mode);
   const viewerSettings = useAssetViewerStore((s) => s.settings);
-
-  // Panel layout reset trigger from dropdown menu
-  const panelLayoutResetTrigger = useControlCenterStore(s => s.panelLayoutResetTrigger);
 
   const navigate = useNavigate();
   const dockRef = useRef<HTMLDivElement>(null);
@@ -114,7 +154,6 @@ export function ControlCenterDock() {
 
   const isVertical = dockPosition === 'left' || dockPosition === 'right';
   const isFloating = dockPosition === 'floating';
-  const layoutBehavior = useControlCenterStore(s => s.layoutBehavior);
 
   // Register in edge insets so other widgets + content area can respond
   // When retracted in peek mode, always push (toolbar is visible and would overlap content)

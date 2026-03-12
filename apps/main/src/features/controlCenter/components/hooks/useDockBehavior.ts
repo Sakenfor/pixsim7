@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 
-import type { DockPosition, RetractedMode } from '@features/controlCenter/stores/controlCenterStore';
+import type { DockPosition, RetractedMode } from '@features/docks/stores';
 
 import {
   REVEAL_STRIP_THRESHOLD,

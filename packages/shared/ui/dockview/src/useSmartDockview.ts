@@ -50,6 +50,14 @@ interface LayoutInspection {
   hasMissingPanelComponent: boolean;
 }
 
+export interface LayoutComponentAvailability {
+  hasInvalidComponentEntry: boolean;
+  hasMissingPanelComponent: boolean;
+  layoutComponentIds: string[];
+  missingComponentIds: string[];
+  availableComponentCount: number | null;
+}
+
 function removeStoredLayout(storageKey?: string): void {
   if (!storageKey) {
     return;
@@ -176,6 +184,54 @@ function inspectLayoutComponents(value: unknown, out: Set<string>, depth = 0): L
   return { hasInvalidComponentEntry: false, hasMissingPanelComponent: false };
 }
 
+export function analyzeLayoutComponentAvailability(
+  layout: unknown,
+  availableComponentIds?: readonly string[],
+): LayoutComponentAvailability {
+  const layoutComponentIdSet = new Set<string>();
+  const inspection = inspectLayoutComponents(layout, layoutComponentIdSet);
+  const layoutComponentIds = Array.from(layoutComponentIdSet);
+
+  if (!availableComponentIds) {
+    return {
+      hasInvalidComponentEntry: inspection.hasInvalidComponentEntry,
+      hasMissingPanelComponent: inspection.hasMissingPanelComponent,
+      layoutComponentIds,
+      missingComponentIds: [],
+      availableComponentCount: null,
+    };
+  }
+
+  const availableIds = new Set(
+    availableComponentIds
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0),
+  );
+
+  if (layoutComponentIds.length > 0 && availableIds.size === 0) {
+    return {
+      hasInvalidComponentEntry: inspection.hasInvalidComponentEntry,
+      hasMissingPanelComponent: inspection.hasMissingPanelComponent,
+      layoutComponentIds,
+      missingComponentIds: [],
+      availableComponentCount: 0,
+    };
+  }
+
+  const missingComponentIds =
+    availableIds.size > 0
+      ? layoutComponentIds.filter((componentId) => !availableIds.has(componentId))
+      : [];
+
+  return {
+    hasInvalidComponentEntry: inspection.hasInvalidComponentEntry,
+    hasMissingPanelComponent: inspection.hasMissingPanelComponent,
+    layoutComponentIds,
+    missingComponentIds,
+    availableComponentCount: availableIds.size,
+  };
+}
+
 export function useSmartDockview(
   options: UseSmartDockviewOptions = {},
 ): UseSmartDockviewReturn {
@@ -222,7 +278,7 @@ export function useSmartDockview(
 
       const header = groupElement.querySelector(".dv-tabs-and-actions-container") as HTMLElement | null;
       if (header) {
-        delete (header as any).dataset.compactHiddenCount;
+        delete header.dataset.compactHiddenCount;
       }
 
       const tabElements = groupElement.querySelectorAll(".dv-tabs-container .dv-default-tab");
@@ -252,7 +308,10 @@ export function useSmartDockview(
       // We do NOT set header.hidden because that hides the entire header
       // including left/right action components (like drag handles).
       // Instead, the CSS class targets only the tabs container.
-      const groupElement = (group as any).element;
+      const groupElement =
+        (group as any).element instanceof HTMLElement
+          ? ((group as any).element as HTMLElement)
+          : null;
       if (groupElement && groupElement.classList) {
         groupElement.classList.toggle("dv-tabs-hidden", !shouldShowTabs);
       }
@@ -267,8 +326,8 @@ export function useSmartDockview(
 
       const header = groupElement.querySelector(".dv-tabs-and-actions-container") as HTMLElement | null;
       const tabElements = Array.from(
-        groupElement.querySelectorAll<HTMLElement>(".dv-tabs-container .dv-default-tab"),
-      );
+        groupElement.querySelectorAll(".dv-tabs-container .dv-default-tab"),
+      ) as HTMLElement[];
 
       const activePanelId =
         typeof (group as any)?.activePanel?.id === "string"
@@ -356,9 +415,14 @@ export function useSmartDockview(
         }
 
         const layout = JSON.parse(saved);
-        const layoutComponentIds = new Set<string>();
-        const inspection = inspectLayoutComponents(layout, layoutComponentIds);
-        if (inspection.hasInvalidComponentEntry || inspection.hasMissingPanelComponent) {
+        const availability = analyzeLayoutComponentAvailability(
+          layout,
+          getAvailableComponentIds?.(),
+        );
+        if (
+          availability.hasInvalidComponentEntry ||
+          availability.hasMissingPanelComponent
+        ) {
           console.warn(
             "[SmartDockview] Layout contains invalid or missing panel components. Clearing layout.",
           );
@@ -366,28 +430,21 @@ export function useSmartDockview(
           return false;
         }
         if (getAvailableComponentIds) {
-          const availableIds = new Set(
-            getAvailableComponentIds()
-              .map((id) => id.trim())
-              .filter((id) => id.length > 0),
-          );
-          if (layoutComponentIds.size > 0 && availableIds.size === 0) {
+          if (
+            availability.layoutComponentIds.length > 0 &&
+            availability.availableComponentCount === 0
+          ) {
             console.warn(
               "[SmartDockview] Layout restore skipped because components are not registered yet.",
             );
             return false;
           }
-          if (availableIds.size > 0) {
-            const missing = Array.from(layoutComponentIds).filter(
-              (componentId) => !availableIds.has(componentId),
+          if (availability.missingComponentIds.length > 0) {
+            console.warn(
+              `[SmartDockview] Layout references unavailable components [${availability.missingComponentIds.join(", ")}]. ` +
+              "Skipping restore until components register.",
             );
-            if (missing.length > 0) {
-              console.warn(
-                `[SmartDockview] Layout references unavailable components [${missing.join(", ")}]. Clearing layout.`,
-              );
-              removeStoredLayout(storageKey);
-              return false;
-            }
+            return false;
           }
         }
         apiRef.current.fromJSON(layout);

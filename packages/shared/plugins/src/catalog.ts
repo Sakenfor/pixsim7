@@ -12,6 +12,50 @@ import type {
   ExtendedPluginMetadata,
 } from './types';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
+function areValuesEquivalent(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+      return false;
+    }
+    for (let i = 0; i < a.length; i += 1) {
+      if (!areValuesEquivalent(a[i], b[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  if (!isRecord(a) || !isRecord(b)) {
+    return false;
+  }
+
+  const keysA = Object.keys(a).filter((key) => a[key] !== undefined).sort();
+  const keysB = Object.keys(b).filter((key) => b[key] !== undefined).sort();
+  if (keysA.length !== keysB.length) {
+    return false;
+  }
+
+  for (let i = 0; i < keysA.length; i += 1) {
+    const key = keysA[i];
+    if (key !== keysB[i]) {
+      return false;
+    }
+    if (!areValuesEquivalent(a[key], b[key])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 /**
  * Unified catalog of all plugins across all registries
  *
@@ -26,13 +70,12 @@ export class PluginCatalog {
   private pluginObjects = new Map<string, unknown>();
   private listeners = new Set<() => void>();
 
-  /**
-   * Register a plugin in the catalog
-   */
-  register(metadata: ExtendedPluginMetadata): void {
-    // Check for duplicate IDs
+  private upsertMetadata(metadata: ExtendedPluginMetadata): boolean {
     const existing = this.plugins.get(metadata.id);
     if (existing) {
+      if (areValuesEquivalent(existing, metadata)) {
+        return false;
+      }
       console.warn(
         `Plugin ID "${metadata.id}" is already registered (family: ${existing.family}, origin: ${existing.origin}). ` +
         `Overwriting with new plugin (family: ${metadata.family}, origin: ${metadata.origin}).`
@@ -40,7 +83,16 @@ export class PluginCatalog {
     }
 
     this.plugins.set(metadata.id, metadata);
-    this.notifyListeners();
+    return true;
+  }
+
+  /**
+   * Register a plugin in the catalog
+   */
+  register(metadata: ExtendedPluginMetadata): void {
+    if (this.upsertMetadata(metadata)) {
+      this.notifyListeners();
+    }
   }
 
   /**
@@ -50,15 +102,26 @@ export class PluginCatalog {
    * making the catalog the single source of truth for plugin data.
    */
   registerWithPlugin<T>(metadata: ExtendedPluginMetadata, plugin: T): void {
-    this.pluginObjects.set(metadata.id, plugin);
-    this.register(metadata);
+    const pluginChanged = this.pluginObjects.get(metadata.id) !== plugin;
+    if (pluginChanged) {
+      this.pluginObjects.set(metadata.id, plugin);
+    }
+
+    const metadataChanged = this.upsertMetadata(metadata);
+    if (pluginChanged || metadataChanged) {
+      this.notifyListeners();
+    }
   }
 
   /**
    * Store a plugin object (for use when metadata is registered separately)
    */
   setPlugin<T>(id: string, plugin: T): void {
+    if (this.pluginObjects.get(id) === plugin) {
+      return;
+    }
     this.pluginObjects.set(id, plugin);
+    this.notifyListeners();
   }
 
   /**
@@ -83,8 +146,8 @@ export class PluginCatalog {
    */
   unregister(id: string): boolean {
     const existed = this.plugins.delete(id);
-    this.pluginObjects.delete(id);
-    if (existed) {
+    const pluginExisted = this.pluginObjects.delete(id);
+    if (existed || pluginExisted) {
       this.notifyListeners();
     }
     return existed;
@@ -193,8 +256,12 @@ export class PluginCatalog {
    * Clear all plugins
    */
   clear(): void {
+    if (this.plugins.size === 0 && this.pluginObjects.size === 0) {
+      return;
+    }
     this.plugins.clear();
     this.pluginObjects.clear();
+    this.notifyListeners();
   }
 
   /**

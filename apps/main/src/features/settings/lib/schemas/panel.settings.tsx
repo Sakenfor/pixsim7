@@ -6,7 +6,14 @@
  */
 
 import { useAssetViewerStore } from '@features/assets';
-import { useControlCenterStore, type LayoutBehavior, type DockPosition } from '@features/controlCenter/stores/controlCenterStore';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import {
+  useDockState,
+  useDockUiStore,
+  type LayoutBehavior,
+  type DockPosition,
+} from '@features/docks/stores';
+import { DOCK_IDS } from '@features/panels/lib/panelIds';
 
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 
@@ -145,11 +152,17 @@ function usePanelSettingsStore(): SettingStoreAdapter {
   const viewerSettings = useAssetViewerStore((s) => s.settings);
   const updateViewerSettings = useAssetViewerStore((s) => s.updateSettings);
 
-  const dockPosition = useControlCenterStore((s) => s.dockPosition);
-  const layoutBehavior = useControlCenterStore((s) => s.layoutBehavior);
+  const dockPosition = useDockState(
+    DOCK_IDS.controlCenter,
+    (dock) => dock.dockPosition,
+  );
+  const layoutBehavior = useDockState(
+    DOCK_IDS.controlCenter,
+    (dock) => dock.layoutBehavior,
+  );
   const conformToOtherPanels = useControlCenterStore((s) => s.conformToOtherPanels);
-  const setDockPosition = useControlCenterStore((s) => s.setDockPosition);
-  const setLayoutBehavior = useControlCenterStore((s) => s.setLayoutBehavior);
+  const setDockPosition = useDockUiStore((s) => s.setDockPosition);
+  const setDockLayoutBehavior = useDockUiStore((s) => s.setDockLayoutBehavior);
   const setConformToOtherPanels = useControlCenterStore((s) => s.setConformToOtherPanels);
 
   return {
@@ -177,8 +190,12 @@ function usePanelSettingsStore(): SettingStoreAdapter {
       if (fieldId === 'showMetadata') updateViewerSettings({ showMetadata: value });
 
       // Control center settings
-      if (fieldId === 'dockPosition') setDockPosition(value as DockPosition);
-      if (fieldId === 'layoutBehavior') setLayoutBehavior(value as LayoutBehavior);
+      if (fieldId === 'dockPosition') {
+        setDockPosition(DOCK_IDS.controlCenter, value as DockPosition);
+      }
+      if (fieldId === 'layoutBehavior') {
+        setDockLayoutBehavior(DOCK_IDS.controlCenter, value as LayoutBehavior);
+      }
       if (fieldId === 'conformToOtherPanels') setConformToOtherPanels(value as boolean);
     },
     getAll: () => ({

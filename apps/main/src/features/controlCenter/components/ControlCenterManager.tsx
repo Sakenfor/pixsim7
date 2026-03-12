@@ -11,7 +11,8 @@ import { useEffect, useState } from 'react';
 
 import { controlCenterRegistry } from '@lib/plugins/controlCenterPlugin';
 
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { useDockState } from '@features/docks/stores';
+import { DOCK_IDS } from '@features/panels/lib/panelIds';
 
 import { moduleRegistry } from '@app/modules';
 
@@ -27,7 +28,7 @@ export function ControlCenterManager() {
   const toast = useToast();
 
   // Hide switcher button when control center is expanded
-  const controlCenterOpen = useControlCenterStore(s => s.open);
+  const controlCenterOpen = useDockState(DOCK_IDS.controlCenter, (dock) => dock.open);
 
   // Load user preference on mount
   useEffect(() => {

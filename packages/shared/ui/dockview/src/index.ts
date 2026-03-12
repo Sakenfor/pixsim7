@@ -15,7 +15,14 @@ export type {
 export { LocalPanelRegistry, createLocalPanelRegistry } from './LocalPanelRegistry';
 
 export { useSmartDockview } from './useSmartDockview';
-export type { UseSmartDockviewOptions, UseSmartDockviewReturn } from './useSmartDockview';
+export {
+  analyzeLayoutComponentAvailability,
+} from './useSmartDockview';
+export type {
+  UseSmartDockviewOptions,
+  UseSmartDockviewReturn,
+  LayoutComponentAvailability,
+} from './useSmartDockview';
 
 export { useDockviewIds } from './useDockviewIds';
 export type { DockviewIds } from './useDockviewIds';

@@ -9,7 +9,13 @@
 import { useMemo } from 'react';
 
 import { TOOLBAR_HEIGHT } from '@features/controlCenter/components/constants';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import {
+  useDockState,
+  type DockPosition,
+  type LayoutBehavior,
+  type RetractedMode,
+} from '@features/docks/stores';
+import { DOCK_IDS } from '@features/panels/lib/panelIds';
 
 export interface ControlCenterLayoutPadding {
   paddingTop: number;
@@ -26,7 +32,7 @@ export interface UseControlCenterLayoutResult {
   /** Whether push behavior is active */
   isPushActive: boolean;
   /** Current dock position */
-  dockPosition: string;
+  dockPosition: DockPosition;
   /** Whether dock is open */
   isOpen: boolean;
 }
@@ -43,11 +49,20 @@ export interface UseControlCenterLayoutResult {
  * ```
  */
 export function useControlCenterLayout(): UseControlCenterLayoutResult {
-  const open = useControlCenterStore((s) => s.open);
-  const dockPosition = useControlCenterStore((s) => s.dockPosition);
-  const layoutBehavior = useControlCenterStore((s) => s.layoutBehavior);
-  const retractedMode = useControlCenterStore((s) => s.retractedMode);
-  const height = useControlCenterStore((s) => s.height);
+  const open = useDockState(DOCK_IDS.controlCenter, (dock) => dock.open);
+  const dockPosition = useDockState(
+    DOCK_IDS.controlCenter,
+    (dock) => dock.dockPosition,
+  );
+  const layoutBehavior = useDockState(
+    DOCK_IDS.controlCenter,
+    (dock) => dock.layoutBehavior,
+  );
+  const retractedMode = useDockState(
+    DOCK_IDS.controlCenter,
+    (dock) => dock.retractedMode,
+  );
+  const height = useDockState(DOCK_IDS.controlCenter, (dock) => dock.size);
 
   const result = useMemo(() => {
     const isFloating = dockPosition === 'floating';
@@ -103,7 +118,12 @@ export function useControlCenterLayout(): UseControlCenterLayoutResult {
 /**
  * Selector to check if push layout is active (for conditional rendering)
  */
-export function selectIsPushLayoutActive(state: ReturnType<typeof useControlCenterStore.getState>) {
+export function selectIsPushLayoutActive(state: {
+  layoutBehavior: LayoutBehavior;
+  open: boolean;
+  dockPosition: DockPosition;
+  retractedMode?: RetractedMode;
+}) {
   return (
     state.layoutBehavior === 'push' &&
     state.open &&

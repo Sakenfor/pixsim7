@@ -4,6 +4,10 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { initializePanels } from '../lib/initializePanels';
 
+import {
+  buildPanelCatalogBootstrapInit,
+} from './panelCatalogBootstrapUtils';
+
 export interface UsePanelCatalogBootstrapOptions {
   contexts?: readonly string[];
   panelIds?: readonly string[];
@@ -14,19 +18,6 @@ export interface UsePanelCatalogBootstrapOptions {
 export interface UsePanelCatalogBootstrapResult {
   catalogVersion: number;
   initializationComplete: boolean;
-}
-
-function normalizeValues(values?: readonly string[]): string[] {
-  if (!values || values.length === 0) {
-    return [];
-  }
-  return Array.from(
-    new Set(
-      values
-        .map((value) => value.trim())
-        .filter((value) => value.length > 0),
-    ),
-  ).sort();
 }
 
 /**
@@ -43,9 +34,11 @@ export function usePanelCatalogBootstrap(
     enabled = true,
     onInitializeError,
   } = options;
-  const normalizedContexts = normalizeValues(contexts);
-  const normalizedPanelIds = normalizeValues(panelIds);
-  const initKey = `contexts:${normalizedContexts.join(',')}|panels:${normalizedPanelIds.join(',')}`;
+  const {
+    normalizedContexts,
+    normalizedPanelIds,
+    initKey,
+  } = buildPanelCatalogBootstrapInit(contexts, panelIds);
   const onInitializeErrorRef = useRef(onInitializeError);
   onInitializeErrorRef.current = onInitializeError;
   const [catalogVersion, setCatalogVersion] = useState(0);

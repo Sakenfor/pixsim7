@@ -9,13 +9,20 @@
 
 import { ExpandableButtonGroup, useOrientation } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 
 import { Icon } from '@lib/icons';
 
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import type { DockPosition } from '@features/controlCenter/stores/controlCenterStore';
+import {
+  useDockState,
+  useDockUiStore,
+  type DockPosition,
+  type LayoutBehavior,
+  type RetractedMode,
+} from '@features/docks/stores';
 import { NotificationTicker, ContentModerationWarning } from '@features/generation';
+import { DOCK_IDS } from '@features/panels/lib/panelIds';
 
 /** Quick navigation item configuration */
 export interface QuickNavItem {
@@ -88,11 +95,30 @@ export function DockToolbar({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Store actions for inline settings
-  const triggerPanelLayoutReset = useControlCenterStore(s => s.triggerPanelLayoutReset);
-  const retractedMode = useControlCenterStore(s => s.retractedMode);
-  const setRetractedMode = useControlCenterStore(s => s.setRetractedMode);
-  const layoutBehavior = useControlCenterStore(s => s.layoutBehavior);
-  const setLayoutBehavior = useControlCenterStore(s => s.setLayoutBehavior);
+  const triggerDockLayoutReset = useDockUiStore((s) => s.triggerDockLayoutReset);
+  const setDockRetractedMode = useDockUiStore((s) => s.setDockRetractedMode);
+  const setDockLayoutBehavior = useDockUiStore((s) => s.setDockLayoutBehavior);
+  const retractedMode = useDockState(
+    DOCK_IDS.controlCenter,
+    (dock) => dock.retractedMode,
+  );
+  const layoutBehavior = useDockState(
+    DOCK_IDS.controlCenter,
+    (dock) => dock.layoutBehavior,
+  );
+  const triggerPanelLayoutReset = useCallback(
+    () => triggerDockLayoutReset(DOCK_IDS.controlCenter),
+    [triggerDockLayoutReset],
+  );
+  const setRetractedMode = useCallback(
+    (mode: RetractedMode) => setDockRetractedMode(DOCK_IDS.controlCenter, mode),
+    [setDockRetractedMode],
+  );
+  const setLayoutBehavior = useCallback(
+    (behavior: LayoutBehavior) =>
+      setDockLayoutBehavior(DOCK_IDS.controlCenter, behavior),
+    [setDockLayoutBehavior],
+  );
   const conformToOtherPanels = useControlCenterStore(s => s.conformToOtherPanels);
   const setConformToOtherPanels = useControlCenterStore(s => s.setConformToOtherPanels);
 

@@ -5,6 +5,7 @@
  */
 
 import type { ControlCenterState } from '@features/controlCenter/stores/controlCenterStore';
+import type { DockUiState } from '@features/docks/stores';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Control Center Selectors
@@ -12,19 +13,23 @@ import type { ControlCenterState } from '@features/controlCenter/stores/controlC
 
 export const ccSelectors = {
   /** Dock open/pinned state */
-  dockState: (s: ControlCenterState) => ({
+  dockState: (s: DockUiState) => ({
     open: s.open,
     pinned: s.pinned,
-    height: s.height,
+    size: s.size,
   }),
 
   /** Active module in control center */
   activeModule: (s: ControlCenterState) => s.activeModule,
 
   /** Dock position and layout */
-  dockLayout: (s: ControlCenterState) => ({
+  dockLayout: (s: DockUiState) => ({
     dockPosition: s.dockPosition,
     layoutBehavior: s.layoutBehavior,
+  }),
+
+  /** CC-specific orchestration flag */
+  orchestration: (s: ControlCenterState) => ({
     conformToOtherPanels: s.conformToOtherPanels,
   }),
 };
