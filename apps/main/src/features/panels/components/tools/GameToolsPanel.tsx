@@ -1,15 +1,16 @@
 import { useMemo, useState, useEffect } from "react";
 
-import {
-  useEditorContext,
-  type EditorPrimaryView,
-  type EditorMode,
-} from "@lib/context";
 import { Icon } from "@lib/icons";
 import { panelSelectors, worldToolSelectors } from "@lib/plugins/catalogSelectors";
 import { pluginCatalog } from "@lib/plugins/pluginSystem";
 import { interactionRegistry } from "@lib/registries";
 import { widgetRegistry } from "@lib/ui/composer";
+
+import {
+  CAP_EDITOR_CONTEXT,
+  type EditorContextSnapshot,
+  useCapability,
+} from "@features/contextHub";
 
 import { ProjectContextBadge } from "../shared/ProjectContextBadge";
 
@@ -29,7 +30,7 @@ type CategoryFilter =
  * This helps highlight tools relevant to the current editing context.
  */
 function getDefaultFilterForView(
-  primaryView: EditorPrimaryView,
+  primaryView: string,
 ): CategoryFilter {
   switch (primaryView) {
     case "flow":
@@ -49,8 +50,8 @@ function getDefaultFilterForView(
  */
 function isSectionPinned(
   section: CategoryFilter,
-  mode: EditorMode,
-  primaryView: EditorPrimaryView,
+  mode: string,
+  primaryView: string,
 ): boolean {
   // In play mode, prioritize interactions and HUD
   if (mode === "play") {
@@ -75,8 +76,9 @@ function isSectionPinned(
 }
 
 export function GameToolsPanel() {
-  const ctx = useEditorContext();
-  const { primaryView, mode } = ctx.editor;
+  const { value: editorContext } = useCapability<EditorContextSnapshot>(CAP_EDITOR_CONTEXT);
+  const primaryView = editorContext?.editor?.primaryView ?? "none";
+  const mode = editorContext?.editor?.mode ?? "";
 
   // Suggest a default filter based on the current editor context,
   // but allow user override
@@ -114,21 +116,25 @@ export function GameToolsPanel() {
   };
 
   // Mode label for context indicator
-  const modeLabel = mode
-    ? {
-        play: "Play Mode",
-        "edit-flow": "Flow Edit",
-        layout: "Layout Mode",
-        debug: "Debug Mode",
-      }[mode]
-    : null;
+  const modeLabel =
+    mode === "play"
+      ? "Play Mode"
+      : mode === "edit-flow"
+        ? "Flow Edit"
+        : mode === "layout"
+          ? "Layout Mode"
+          : mode === "debug"
+            ? "Debug Mode"
+            : null;
 
-  const viewLabel = {
-    game: "Game View",
-    flow: "Flow View",
-    world: "World View",
-    none: null,
-  }[primaryView];
+  const viewLabel =
+    primaryView === "game"
+      ? "Game View"
+      : primaryView === "flow"
+        ? "Flow View"
+        : primaryView === "world"
+          ? "World View"
+          : null;
 
   const orderedSections: CategoryFilter[] = useMemo(() => {
     const baseOrder: CategoryFilter[] = [

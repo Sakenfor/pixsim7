@@ -24,7 +24,9 @@ manifest = PluginManifest(
     description="Generic CRUD endpoints for template entities (locations, items, etc.)",
     author="PixSim Team",
     kind="route",
-    prefix="/api/v1/game",
+    # Keep generic CRUD endpoints isolated from canonical runtime routes
+    # (/api/v1/game/locations, /api/v1/game/worlds, etc.).
+    prefix="/api/v1/game/templates",
     tags=["templates"],
     dependencies=["auth"],
     requires_db=True,

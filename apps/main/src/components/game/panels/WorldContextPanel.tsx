@@ -1,4 +1,9 @@
-import { useEditorContext } from '@lib/context';
+import {
+  CAP_EDITOR_CONTEXT,
+  type EditorContextSnapshot,
+  useAuthoringContext,
+  useCapability,
+} from '@features/contextHub';
 
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
 
@@ -6,13 +11,15 @@ import { WorldContextSelector } from '@/components/game/WorldContextSelector';
  * WorldContextPanel
  *
  * Dockable panel wrapper for the WorldContextSelector.
- * Uses EditorContext to show the currently bound world/location.
+ * Uses canonical authoring/editor capabilities to show world/location.
  */
 export function WorldContextPanel() {
-  const ctx = useEditorContext();
-  const worldLabel = ctx.world.id ? `World #${ctx.world.id}` : 'No world selected';
-  const locationLabel = ctx.world.locationId
-    ? `Location #${ctx.world.locationId}`
+  const { worldId } = useAuthoringContext();
+  const { value: editorContext } = useCapability<EditorContextSnapshot>(CAP_EDITOR_CONTEXT);
+  const locationId = editorContext?.world?.locationId ?? null;
+  const worldLabel = worldId ? `World #${worldId}` : 'No world selected';
+  const locationLabel = locationId
+    ? `Location #${locationId}`
     : 'No location selected';
 
   return (
@@ -31,4 +38,3 @@ export function WorldContextPanel() {
     </div>
   );
 }
-

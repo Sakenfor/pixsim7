@@ -7,13 +7,19 @@ import {
 } from '@lib/api';
 import { resolveGameLocations } from '@lib/resolvers';
 
+import {
+  CAP_EDITOR_CONTEXT,
+  type EditorContextSnapshot,
+  useCapability,
+} from '@features/contextHub';
 import { useWorldContextStore } from '@features/scene';
 
 import { useSharedWorldSelection } from '@/hooks';
 
 export function WorldContextSelector() {
   const toast = useToast();
-  const locationId = useWorldContextStore((s) => s.locationId);
+  const { value: editorContext } = useCapability<EditorContextSnapshot>(CAP_EDITOR_CONTEXT);
+  const locationId = editorContext?.world?.locationId ?? null;
   const setLocationId = useWorldContextStore((s) => s.setLocationId);
   const {
     worlds,

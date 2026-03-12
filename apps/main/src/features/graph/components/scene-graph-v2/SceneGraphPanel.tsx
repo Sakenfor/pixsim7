@@ -19,6 +19,7 @@ import { nodeTypeRegistry } from '@lib/registries';
 import { logEvent } from '@lib/utils/logging';
 
 import {
+  useAuthoringContext,
   useGraphStore,
   type GraphState,
   NodePalette,
@@ -31,7 +32,6 @@ import { useTemplateStore } from '@features/graph' // templatesStore';
 import { useTemplateAnalyticsStore } from '@features/graph' // templateAnalyticsStore';
 import { EdgeEffectsPanel } from '@features/panels/components/tools/EdgeEffectsPanel';
 import { ValidationPanel } from '@features/panels/components/tools/ValidationPanel';
-import { useWorldContextStore } from '@features/scene';
 
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
 import { Breadcrumbs } from '@/components/navigation/Breadcrumbs';
@@ -48,7 +48,7 @@ import { useSceneGraphPanelHandlers } from './useSceneGraphPanelHandlers';
 export function SceneGraphPanel() {
   const toast = useToast();
   const { selectedNodeId, selectedNodeIds, setSelectedNodeId, setSelectedNodeIds } = useSelectionStore();
-  const { worldId } = useWorldContextStore();
+  const { worldId } = useAuthoringContext();
   const currentSceneId = useGraphStore((s: GraphState) => s.currentSceneId);
   const getCurrentScene = useGraphStore((s: GraphState) => s.getCurrentScene);
   const createScene = useGraphStore((s: GraphState) => s.createScene);

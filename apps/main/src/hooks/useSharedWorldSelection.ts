@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { GameWorldSummary } from "@lib/api";
-import { useEditorContext } from "@lib/context";
 import { resolveGameWorlds } from "@lib/resolvers";
 
+import { useAuthoringContext } from "@features/contextHub";
 import { useWorldContextStore } from "@features/scene";
 
 interface UseSharedWorldSelectionOptions {
@@ -23,8 +23,7 @@ export function useSharedWorldSelection(
   options: UseSharedWorldSelectionOptions = {},
 ): UseSharedWorldSelectionResult {
   const { autoSelectFirst = false } = options;
-  const editorContext = useEditorContext();
-  const selectedWorldId = editorContext.world.id;
+  const { worldId: selectedWorldId } = useAuthoringContext();
   const setWorldId = useWorldContextStore((s) => s.setWorldId);
 
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);

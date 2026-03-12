@@ -20,8 +20,14 @@ import {
   type BuildActionSelectionRequestFromBehaviorResponse,
 } from '@lib/api';
 import { getRoomNavigation } from '@lib/api/game';
-import { useEditorContext } from '@lib/context';
 import { resolveGameNpcs } from '@lib/resolvers';
+
+import {
+  CAP_EDITOR_CONTEXT,
+  type EditorContextSnapshot,
+  useAuthoringContext,
+  useCapability,
+} from '@features/contextHub';
 
 type NpcChoice = {
   id: number;
@@ -610,7 +616,12 @@ function buildScenePlanPreview(args: {
 }
 
 export function ScenePlanPanel() {
-  const ctx = useEditorContext();
+  const authoringContext = useAuthoringContext();
+  const { value: editorContext } = useCapability<EditorContextSnapshot>(CAP_EDITOR_CONTEXT);
+  const defaultWorldId = authoringContext.worldId;
+  const defaultLocationId = editorContext?.world?.locationId ?? null;
+  const defaultSessionId = editorContext?.runtime?.sessionId ?? null;
+  const defaultWorldTimeSeconds = editorContext?.runtime?.worldTimeSeconds ?? null;
   const toast = useToast();
 
   const [busy, setBusy] = useState(false);
@@ -643,22 +654,22 @@ export function ScenePlanPanel() {
   const [scenePlan, setScenePlan] = useState<ScenePlan | null>(null);
 
   useEffect(() => {
-    if (!worldIdInput.trim() && ctx.world.id != null) {
-      setWorldIdInput(String(ctx.world.id));
+    if (!worldIdInput.trim() && defaultWorldId != null) {
+      setWorldIdInput(String(defaultWorldId));
     }
-  }, [ctx.world.id, worldIdInput]);
+  }, [defaultWorldId, worldIdInput]);
 
   useEffect(() => {
-    if (!sessionIdInput.trim() && ctx.runtime.sessionId != null) {
-      setSessionIdInput(String(ctx.runtime.sessionId));
+    if (!sessionIdInput.trim() && defaultSessionId != null) {
+      setSessionIdInput(String(defaultSessionId));
     }
-  }, [ctx.runtime.sessionId, sessionIdInput]);
+  }, [defaultSessionId, sessionIdInput]);
 
   useEffect(() => {
-    if (!worldTimeInput.trim() && ctx.runtime.worldTimeSeconds != null) {
-      setWorldTimeInput(String(ctx.runtime.worldTimeSeconds));
+    if (!worldTimeInput.trim() && defaultWorldTimeSeconds != null) {
+      setWorldTimeInput(String(defaultWorldTimeSeconds));
     }
-  }, [ctx.runtime.worldTimeSeconds, worldTimeInput]);
+  }, [defaultWorldTimeSeconds, worldTimeInput]);
 
   const syncRoomNavigationForLocation = useCallback(async (locationId: number) => {
     setRoomNavigationBusy(true);
@@ -694,7 +705,7 @@ export function ScenePlanPanel() {
   }, []);
 
   useEffect(() => {
-    const locationId = ctx.world.locationId;
+    const locationId = defaultLocationId;
     if (locationId == null || locationId <= 0) {
       setRoomNavigation(null);
       setRoomNavigationLocationId(null);
@@ -703,7 +714,7 @@ export function ScenePlanPanel() {
       return;
     }
     void syncRoomNavigationForLocation(locationId);
-  }, [ctx.world.locationId, syncRoomNavigationForLocation]);
+  }, [defaultLocationId, syncRoomNavigationForLocation]);
 
   useEffect(() => {
     if (!planFromCurrentCheckpoint) {
@@ -756,10 +767,10 @@ export function ScenePlanPanel() {
   }, []);
 
   const filteredNpcs = useMemo(() => {
-    const worldId = parseOptionalInt(worldIdInput) ?? ctx.world.id;
+    const worldId = parseOptionalInt(worldIdInput) ?? defaultWorldId;
     if (worldId == null) return npcs;
     return npcs.filter((npc) => npc.worldId == null || npc.worldId === worldId);
-  }, [ctx.world.id, npcs, worldIdInput]);
+  }, [defaultWorldId, npcs, worldIdInput]);
 
   const roomNavigationCheckpoints = roomNavigation?.checkpoints ?? [];
   const roomNavigationEdgeCount = roomNavigation?.edges.length ?? 0;
@@ -767,8 +778,8 @@ export function ScenePlanPanel() {
     roomNavigation?.start_checkpoint_id ?? roomNavigationCheckpoints[0]?.id ?? '';
 
   const buildRequest = (): BuildActionSelectionRequestFromBehaviorRequest | null => {
-    const worldId = parseOptionalInt(worldIdInput) ?? ctx.world.id;
-    const sessionId = parseOptionalInt(sessionIdInput) ?? ctx.runtime.sessionId;
+    const worldId = parseOptionalInt(worldIdInput) ?? defaultWorldId;
+    const sessionId = parseOptionalInt(sessionIdInput) ?? defaultSessionId;
     const leadNpcId = parseOptionalInt(leadNpcIdInput);
     if (worldId == null || worldId <= 0) {
       toast.warning('Scene Plan requires a world ID');
@@ -809,7 +820,7 @@ export function ScenePlanPanel() {
   };
 
   const handleRefreshRoomNavigation = async () => {
-    const locationId = ctx.world.locationId ?? roomNavigationLocationId;
+    const locationId = defaultLocationId ?? roomNavigationLocationId;
     if (locationId == null || locationId <= 0) {
       toast.warning('Room navigation refresh requires an active location');
       return;
@@ -878,7 +889,7 @@ export function ScenePlanPanel() {
         request,
         built,
         selection: selected,
-        fallbackWorldTime: ctx.runtime.worldTimeSeconds,
+        fallbackWorldTime: defaultWorldTimeSeconds,
         roomNavigation: roomNavigationForPlan,
         roomNavigationOptions: {
           includeAnchors: includeRoomNavigationAnchors,
@@ -903,7 +914,7 @@ export function ScenePlanPanel() {
           Build a context-aware scene plan preview from runtime behavior and primitive selection.
         </div>
         <div className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">
-          Context: world {ctx.world.id ?? 'N/A'} | location {ctx.world.locationId ?? 'N/A'} | session {ctx.runtime.sessionId ?? 'N/A'}
+          Context: world {defaultWorldId ?? 'N/A'} | location {defaultLocationId ?? 'N/A'} | session {defaultSessionId ?? 'N/A'}
         </div>
       </div>
 
@@ -914,7 +925,7 @@ export function ScenePlanPanel() {
             <input
               value={worldIdInput}
               onChange={(event) => setWorldIdInput(event.target.value)}
-              placeholder={ctx.world.id != null ? String(ctx.world.id) : 'Required'}
+              placeholder={defaultWorldId != null ? String(defaultWorldId) : 'Required'}
               className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
             />
           </label>
@@ -923,7 +934,7 @@ export function ScenePlanPanel() {
             <input
               value={sessionIdInput}
               onChange={(event) => setSessionIdInput(event.target.value)}
-              placeholder={ctx.runtime.sessionId != null ? String(ctx.runtime.sessionId) : 'Required'}
+              placeholder={defaultSessionId != null ? String(defaultSessionId) : 'Required'}
               className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
             />
           </label>
@@ -955,7 +966,7 @@ export function ScenePlanPanel() {
             <input
               value={worldTimeInput}
               onChange={(event) => setWorldTimeInput(event.target.value)}
-              placeholder={ctx.runtime.worldTimeSeconds != null ? String(ctx.runtime.worldTimeSeconds) : 'Optional'}
+              placeholder={defaultWorldTimeSeconds != null ? String(defaultWorldTimeSeconds) : 'Optional'}
               className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
             />
           </label>
@@ -1061,7 +1072,7 @@ export function ScenePlanPanel() {
               disabled={
                 busy ||
                 roomNavigationBusy ||
-                (ctx.world.locationId == null && roomNavigationLocationId == null)
+                (defaultLocationId == null && roomNavigationLocationId == null)
               }
             >
               Refresh

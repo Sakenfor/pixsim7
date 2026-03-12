@@ -4,9 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import { previewBridge } from '@lib/preview-bridge';
 import { logEvent } from '@lib/utils/logging';
 
+import {
+  CAP_EDITOR_CONTEXT,
+  type EditorContextSnapshot,
+  useAuthoringContext,
+  useCapability,
+} from '@features/contextHub';
 import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@features/graph';
-import { useWorldContextStore } from '@features/scene';
 
 
 import { InspectorPanel } from '@/components/inspector/InspectorPanel';
@@ -30,7 +35,10 @@ export function SceneBuilderPanel({ showInspector = true }: SceneBuilderPanelPro
   const toast = useToast();
   const navigate = useNavigate();
   const { selectedNodeId } = useSelectionStore();
-  const { worldId, locationId } = useWorldContextStore();
+  const authoringContext = useAuthoringContext();
+  const worldId = authoringContext.worldId;
+  const { value: editorContext } = useCapability<EditorContextSnapshot>(CAP_EDITOR_CONTEXT);
+  const locationId = editorContext?.world?.locationId ?? null;
   const currentSceneId = useGraphStore((s: GraphState) => s.currentSceneId);
   const getCurrentScene = useGraphStore((s: GraphState) => s.getCurrentScene);
   const toRuntimeScene = useGraphStore((s: GraphState) => s.toRuntimeScene);

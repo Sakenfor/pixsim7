@@ -1,9 +1,13 @@
 import clsx from "clsx";
 import { useMemo, useState } from "react";
 
-import { useEditorContext } from "@lib/context";
 import { gizmoSurfaceSelectors } from "@lib/plugins/catalogSelectors";
 
+import {
+  CAP_EDITOR_CONTEXT,
+  type EditorContextSnapshot,
+  useCapability,
+} from "@features/contextHub";
 import type {
   GizmoSurfaceContext,
   GizmoSurfaceDefinition,
@@ -40,8 +44,38 @@ const CATEGORY_LABELS: Record<string, string> = {
   custom: "Custom / Plugin",
 };
 
+const EMPTY_EDITOR_CONTEXT: EditorContextSnapshot = {
+  world: {
+    id: null,
+    locationId: null,
+    name: null,
+    locationName: null,
+    locationRef: null,
+  },
+  scene: {
+    id: null,
+    title: null,
+    editorId: null,
+    selection: [],
+    ref: null,
+  },
+  runtime: {
+    sessionId: null,
+    worldTimeSeconds: null,
+    mode: null,
+  },
+  workspace: {
+    activePresetId: null,
+    activePanels: [],
+  },
+  editor: {
+    primaryView: "none",
+    mode: "layout",
+  },
+};
+
 function deriveContext(
-  ctx: ReturnType<typeof useEditorContext>,
+  ctx: EditorContextSnapshot,
 ): GizmoSurfaceContext {
   const { primaryView, mode } = ctx.editor;
 
@@ -100,19 +134,15 @@ function getModesForSurface(surface: GizmoSurfaceDefinition): string[] {
 }
 
 export function SurfaceWorkbenchPanel() {
-  const editorContext = useEditorContext();
+  const { value: editorContextValue } =
+    useCapability<EditorContextSnapshot>(CAP_EDITOR_CONTEXT);
+  const editorContext = editorContextValue ?? EMPTY_EDITOR_CONTEXT;
   const [modeFilter, setModeFilter] = useState<SurfaceModeFilter>("panel");
   const [showAllContexts, setShowAllContexts] = useState(false);
 
   const derivedContext = useMemo(
     () => deriveContext(editorContext),
-    [
-      editorContext.editor.primaryView,
-      editorContext.editor.mode,
-      editorContext.runtime.mode,
-      editorContext.scene.id,
-      editorContext.workspace.activePresetId,
-    ],
+    [editorContext],
   );
 
   const contextLabel = CONTEXT_LABELS[derivedContext] ?? "Workspace";

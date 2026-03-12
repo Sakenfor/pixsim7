@@ -2,19 +2,52 @@ import clsx from "clsx";
 import type { CSSProperties, ReactNode } from "react";
 
 import {
-  useEditorContext,
   type EditorContext,
-  type EditorMode,
 } from "@lib/context";
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
-import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@features/contextHub";
+import {
+  CAP_EDITOR_CONTEXT,
+  CAP_PANEL_CONTEXT,
+  ContextHubHost,
+  type EditorContextSnapshot,
+  useCapability,
+  useProvideCapability,
+} from "@features/contextHub";
 
 import type { ContextLabelStrategy, CoreEditorRole } from "../../lib/panelRegistry";
 import { ScopeHost } from "../scope/ScopeHost";
 import { PanelHeader } from "../shared/PanelHeader";
 
 type PanelHostVariant = "standalone" | "embedded" | "dockview";
+
+const EMPTY_EDITOR_CONTEXT: EditorContext = {
+  world: {
+    id: null,
+    locationId: null,
+    name: null,
+    locationName: null,
+  },
+  scene: {
+    id: null,
+    title: null,
+    editorId: null,
+    selection: [],
+  },
+  runtime: {
+    sessionId: null,
+    worldTimeSeconds: null,
+    mode: null,
+  },
+  workspace: {
+    activePresetId: null,
+    activePanels: [],
+  },
+  editor: {
+    primaryView: "none",
+    mode: "layout",
+  },
+};
 
 export interface PanelHostLiteProps {
   panelId: string;
@@ -48,7 +81,7 @@ export interface PanelHostLiteProps {
   variant?: PanelHostVariant;
 }
 
-function getModeLabel(mode: EditorMode): string | null {
+function getModeLabel(mode: string): string | null {
   switch (mode) {
     case "play":
       return "Play";
@@ -145,7 +178,9 @@ export function PanelHostLite({
   variant = "standalone",
 }: PanelHostLiteProps) {
   const panelDef = panelSelectors.get(panelId);
-  const ctx = useEditorContext();
+  const { value: editorContext } =
+    useCapability<EditorContextSnapshot>(CAP_EDITOR_CONTEXT);
+  const ctx = (editorContext ?? EMPTY_EDITOR_CONTEXT) as EditorContext;
 
   if (!panelDef) {
     if (typeof fallback === "function") {

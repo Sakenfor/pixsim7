@@ -17,7 +17,6 @@ import {
   type SaveGameProjectRequest,
   type SavedGameProjectSummary,
 } from '@lib/api';
-import { useEditorContext } from '@lib/context/editorContext';
 import {
   DEFAULT_PROJECT_RUNTIME_PREFERENCES,
   canonicalizeProjectRuntimeMeta,
@@ -38,12 +37,19 @@ import {
 } from '@lib/game';
 import { resolveSavedGameProjects } from '@lib/resolvers';
 
+import {
+  CAP_EDITOR_CONTEXT,
+  type EditorContextSnapshot,
+  useAuthoringContext,
+  useCapability,
+} from '@features/contextHub';
 import { useProjectIndexStore, useProjectSessionStore, useWorldContextStore } from '@features/scene';
 import { openWorkspacePanel } from '@features/workspace';
 
 import { ActionSelectionDebugSection } from '@/components/game/ActionSelectionDebugSection';
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
 
+import type { ProjectInventoryEntityCategory } from './projectInventory';
 import { useProjectAvailability, type AvailabilityItem } from './useProjectAvailability';
 import { useProjectInventory } from './useProjectInventory';
 
@@ -164,6 +170,29 @@ function parseSettingsChildId(value: unknown): SettingsChildId {
   return value === 'load' ? 'load' : 'save';
 }
 
+function buildInventoryCategoryChildId(categoryKey: string): InventoryChildId {
+  return `category:${categoryKey}`;
+}
+
+function getInventoryCategoryKeyFromChildId(child: InventoryChildId): string | null {
+  if (!child.startsWith('category:')) {
+    return null;
+  }
+  const key = child.slice('category:'.length).trim();
+  return key.length > 0 ? key : null;
+}
+
+function parseInventoryChildId(value: unknown): InventoryChildId {
+  if (
+    typeof value === 'string' &&
+    value.startsWith('category:') &&
+    value.length > 'category:'.length
+  ) {
+    return value as InventoryChildId;
+  }
+  return 'overview';
+}
+
 function confirmDiscardUnsavedAuthoringChanges(): boolean {
   return window.confirm(
     'You have unsaved authoring changes. Loading a project may overwrite them. Continue?',
@@ -200,6 +229,7 @@ function formatEntityCategoryValue(item: { count: number; sample: string[] }): s
 }
 
 type SettingsChildId = 'save' | 'load';
+type InventoryChildId = 'overview' | `category:${string}`;
 type SectionId =
   | 'settings'
   | 'saved-projects'
@@ -226,6 +256,32 @@ const SECTION_NAV_ITEMS = [
   { id: 'debug', label: 'Debug' },
 ] as const;
 
+function filterInventoryCategories(
+  categories: ProjectInventoryEntityCategory[],
+  child: InventoryChildId,
+): ProjectInventoryEntityCategory[] {
+  if (child === 'overview') {
+    return categories;
+  }
+  const key = getInventoryCategoryKeyFromChildId(child);
+  if (!key) return categories;
+  return categories.filter((category) => category.key === key);
+}
+
+function getInventoryChildLabel(
+  child: InventoryChildId,
+  categories: ProjectInventoryEntityCategory[],
+): string {
+  if (child === 'overview') {
+    return 'Overview';
+  }
+  const key = getInventoryCategoryKeyFromChildId(child);
+  if (!key) {
+    return 'Category';
+  }
+  return categories.find((category) => category.key === key)?.label ?? key;
+}
+
 export function ProjectPanel() {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -243,9 +299,13 @@ export function ProjectPanel() {
   const [lastAction, setLastAction] = useState<LastProjectAction | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>('settings');
   const [activeSettingsChild, setActiveSettingsChild] = useState<SettingsChildId>('save');
+  const [activeInventoryChild, setActiveInventoryChild] =
+    useState<InventoryChildId>('overview');
 
-  const { worldId, setWorldId, setLocationId } = useWorldContextStore();
-  const editorContext = useEditorContext();
+  const { setWorldId, setLocationId } = useWorldContextStore();
+  const authoringContext = useAuthoringContext();
+  const worldId = authoringContext.worldId;
+  const { value: editorContext } = useCapability<EditorContextSnapshot>(CAP_EDITOR_CONTEXT);
   const savedProjects = useProjectIndexStore((state) => state.projects);
   const selectedProjectId = useProjectIndexStore((state) => state.selectedProjectId);
   const setSavedProjects = useProjectIndexStore((state) => state.setProjects);
@@ -301,10 +361,10 @@ export function ProjectPanel() {
     [currentBananzaPreferences],
   );
   const runtimeSessionId = useMemo(() => {
-    const value = editorContext.runtime.sessionId;
+    const value = editorContext?.runtime?.sessionId;
     const next = typeof value === 'number' ? value : Number(value ?? NaN);
     return Number.isFinite(next) ? next : null;
-  }, [editorContext.runtime.sessionId]);
+  }, [editorContext?.runtime?.sessionId]);
   const {
     source: inventorySource,
     summary: inventorySummary,
@@ -325,6 +385,40 @@ export function ProjectPanel() {
     lastRefreshedAtMs: availabilityLastRefreshedAtMs,
     refresh: refreshAvailability,
   } = useProjectAvailability(worldId ?? null);
+  const inventoryAllCategories = useMemo(
+    () => inventorySummary?.entityCategories ?? [],
+    [inventorySummary],
+  );
+  const inventoryChildNavItems = useMemo(
+    () => [
+      { id: 'overview', label: 'Overview' },
+      ...inventoryAllCategories.map((category) => ({
+        id: buildInventoryCategoryChildId(category.key),
+        label: category.label,
+      })),
+    ],
+    [inventoryAllCategories],
+  );
+  const sectionNavItems = useMemo(
+    () =>
+      SECTION_NAV_ITEMS.map((section) =>
+        section.id === 'inventory'
+          ? {
+              ...section,
+              children: inventoryChildNavItems,
+            }
+          : section,
+      ),
+    [inventoryChildNavItems],
+  );
+  const activeInventoryChildLabel = useMemo(
+    () => getInventoryChildLabel(activeInventoryChild, inventoryAllCategories),
+    [activeInventoryChild, inventoryAllCategories],
+  );
+  const inventoryEntityCategories = useMemo(
+    () => filterInventoryCategories(inventoryAllCategories, activeInventoryChild),
+    [activeInventoryChild, inventoryAllCategories],
+  );
 
   const loadSavedProjects = async (opts?: { silent?: boolean }) => {
     try {
@@ -379,6 +473,23 @@ export function ProjectPanel() {
     setBananzaSyncMode(preferences.syncMode);
     setBananzaWatchEnabled(preferences.watchEnabled);
   }, [selectedProject?.id, selectedProject?.updated_at]);
+
+  useEffect(() => {
+    if (activeInventoryChild === 'overview') {
+      return;
+    }
+    const selectedCategoryKey = getInventoryCategoryKeyFromChildId(activeInventoryChild);
+    if (!selectedCategoryKey) {
+      setActiveInventoryChild('overview');
+      return;
+    }
+    const hasCategory = inventoryAllCategories.some(
+      (category) => category.key === selectedCategoryKey,
+    );
+    if (!hasCategory) {
+      setActiveInventoryChild('overview');
+    }
+  }, [activeInventoryChild, inventoryAllCategories]);
 
   const selectProjectById = (nextId: number | null) => {
     selectSavedProject(nextId);
@@ -805,18 +916,29 @@ export function ProjectPanel() {
       </div>
 
       <SidebarContentLayout
-        sections={SECTION_NAV_ITEMS as unknown as { id: string; label: string }[]}
+        sections={sectionNavItems as unknown as { id: string; label: string }[]}
         activeSectionId={activeSection}
         onSelectSection={(id) => setActiveSection(id as SectionId)}
-        activeChildId={activeSection === 'settings' ? activeSettingsChild : undefined}
+        activeChildId={
+          activeSection === 'settings'
+            ? activeSettingsChild
+            : activeSection === 'inventory'
+              ? activeInventoryChild
+              : undefined
+        }
         onSelectChild={(parentId, childId) => {
-          if (parentId !== 'settings') {
+          if (parentId === 'settings') {
+            setActiveSection('settings');
+            setActiveSettingsChild(parseSettingsChildId(childId));
             return;
           }
-          setActiveSection('settings');
-          setActiveSettingsChild(parseSettingsChildId(childId));
+          if (parentId === 'inventory') {
+            setActiveSection('inventory');
+            setActiveInventoryChild(parseInventoryChildId(childId));
+            return;
+          }
         }}
-        expandedSectionIds={new Set(['settings'])}
+        expandedSectionIds={new Set(['settings', 'inventory'])}
         sidebarWidth="w-36"
         variant="light"
         contentClassName="p-3 text-xs space-y-3"
@@ -1114,44 +1236,48 @@ export function ProjectPanel() {
 
               {inventorySummary && (
                 <>
-                  <div className="space-y-1 pt-1">
-                    <div className="font-semibold">Core Bundle</div>
-                    {inventorySummary.core.map((item) => (
-                      <div key={item.key} className="flex items-start justify-between gap-3">
-                        <span className="text-neutral-600 dark:text-neutral-300">{item.label}</span>
-                        <span className="text-right text-neutral-700 dark:text-neutral-200">
-                          {formatInventoryValue(item)}
-                        </span>
+                  {activeInventoryChild === 'overview' && (
+                    <>
+                      <div className="space-y-1 pt-1">
+                        <div className="font-semibold">Core Bundle</div>
+                        {inventorySummary.core.map((item) => (
+                          <div key={item.key} className="flex items-start justify-between gap-3">
+                            <span className="text-neutral-600 dark:text-neutral-300">{item.label}</span>
+                            <span className="text-right text-neutral-700 dark:text-neutral-200">
+                              {formatInventoryValue(item)}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
 
-                  <div className="space-y-1 pt-2">
-                    <div className="font-semibold">
-                      Extensions ({inventorySummary.extensions.length})
-                    </div>
-                    {inventorySummary.extensions.length === 0 ? (
-                      <div className="text-neutral-500 dark:text-neutral-400">None</div>
-                    ) : (
-                      inventorySummary.extensions.map((item) => (
-                        <div key={item.key} className="flex items-start justify-between gap-3">
-                          <span className="text-neutral-600 dark:text-neutral-300">{item.label}</span>
-                          <span className="text-right text-neutral-700 dark:text-neutral-200">
-                            {formatInventoryValue(item)}
-                          </span>
+                      <div className="space-y-1 pt-2">
+                        <div className="font-semibold">
+                          Extensions ({inventorySummary.extensions.length})
                         </div>
-                      ))
-                    )}
-                  </div>
+                        {inventorySummary.extensions.length === 0 ? (
+                          <div className="text-neutral-500 dark:text-neutral-400">None</div>
+                        ) : (
+                          inventorySummary.extensions.map((item) => (
+                            <div key={item.key} className="flex items-start justify-between gap-3">
+                              <span className="text-neutral-600 dark:text-neutral-300">{item.label}</span>
+                              <span className="text-right text-neutral-700 dark:text-neutral-200">
+                                {formatInventoryValue(item)}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
 
                   <div className="space-y-1 pt-2">
                     <div className="font-semibold">
-                      Entity Categories ({inventorySummary.entityCategories.length})
+                      {activeInventoryChildLabel} ({inventoryEntityCategories.length})
                     </div>
-                    {inventorySummary.entityCategories.length === 0 ? (
+                    {inventoryEntityCategories.length === 0 ? (
                       <div className="text-neutral-500 dark:text-neutral-400">None</div>
                     ) : (
-                      inventorySummary.entityCategories.map((category) => (
+                      inventoryEntityCategories.map((category) => (
                         <div key={category.key} className="space-y-1 rounded border border-neutral-200 dark:border-neutral-800 p-2">
                           <div className="flex items-start justify-between gap-3">
                             <span className="text-neutral-600 dark:text-neutral-300">
