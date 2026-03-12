@@ -12,7 +12,8 @@ code_paths:
   - pixsim7/backend/main/services/prompt/parser
   - pixsim7/backend/main/services/prompt/llm_resolution.py
   - pixsim7/backend/main/api/v1/prompts
-companions: []
+companions:
+  - ./companions/prompt-analysis-contract.md
 handoffs: []
 tags: []
 depends_on: []

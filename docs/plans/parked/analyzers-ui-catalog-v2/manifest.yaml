@@ -1,0 +1,16 @@
+id: analyzers-ui-catalog-v2
+title: "Analyzer UI Catalog v2: Analysis-Point-Driven Architecture"
+status: parked
+stage: proposed
+owner: unassigned
+last_updated: 2026-03-10
+priority: normal
+summary: "Refactor analyzer settings store to analysis-point-keyed state with in-place migration and compat accessors."
+plan_path: ./plan.md
+code_paths:
+  - apps/main/src/lib/analyzers/settingsStore.ts
+  - apps/main/src/features/analyzers
+companions: []
+handoffs: []
+tags: []
+depends_on: []
