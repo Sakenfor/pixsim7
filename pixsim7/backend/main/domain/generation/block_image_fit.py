@@ -71,6 +71,13 @@ class BlockImageFit(SQLModel, table=True):
         sa_column=Column(JSON)
     )
 
+    # Parser context snapshot (op/primitive context at scoring time)
+    parser_context_snapshot: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON),
+        description="Snapshot of parser-provided primitive/op context used during scoring",
+    )
+
     notes: Optional[str] = Field(default=None, description="Optional free-form notes")
 
     created_at: datetime = Field(default_factory=utcnow, index=True)

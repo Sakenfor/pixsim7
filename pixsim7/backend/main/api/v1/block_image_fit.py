@@ -11,6 +11,8 @@ Design:
 - Dev-only endpoints (no production use yet)
 - Integrates with BlockPrimitive, Asset, and Generation models
 - Stores fit feedback in BlockImageFit table
+- Accepts optional parser context (op_id, signature_id, modality, primitive_match)
+  for context-aware scoring without duplicating parser matching logic
 """
 from fastapi import APIRouter, HTTPException
 from typing import Optional, Dict, Any
@@ -36,12 +38,42 @@ logger = get_logger()
 router = APIRouter(prefix="/dev/block-fit", tags=["dev", "block-fit"])
 
 
+# ===== Shared Context Schema =====
+
+class ParserContext(BaseModel):
+    """Optional parser-provided context for context-aware scoring.
+
+    Parser owns matching raw text -> primitive/op evidence.
+    Block-fit consumes this context to score outcome quality.
+    """
+    primitive_match: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Full primitive_match payload from primitive_projection parser",
+    )
+    op_id: Optional[str] = Field(
+        None,
+        description="Matched op_id from parser (e.g. 'camera.motion.pan')",
+    )
+    signature_id: Optional[str] = Field(
+        None,
+        description="Matched signature_id (e.g. 'camera.motion.v1')",
+    )
+    modality: Optional[str] = Field(
+        None,
+        description="Target modality context (e.g. 'image', 'video')",
+    )
+
+
 # ===== Request Models =====
 
 class ComputeFitRequest(BaseModel):
     """Request to compute fit score between a block and asset."""
     block_id: str = Field(..., description="BlockPrimitive.block_id to evaluate")
     asset_id: int = Field(..., description="Asset.id to evaluate against")
+    parser_context: Optional[ParserContext] = Field(
+        None,
+        description="Optional parser-provided context for context-aware scoring",
+    )
 
 
 class RateFitRequest(BaseModel):
@@ -58,6 +90,10 @@ class RateFitRequest(BaseModel):
     timestamp_sec: Optional[float] = Field(
         default=None,
         description="Optional timestamp in seconds for this rating"
+    )
+    parser_context: Optional[ParserContext] = Field(
+        None,
+        description="Optional parser-provided context for context-aware scoring",
     )
 
 
@@ -92,6 +128,27 @@ class FitRatingListResponse(BaseModel):
     ratings: list[FitRatingResponse]
 
 
+# ===== Helpers =====
+
+def _build_parser_context_dict(
+    ctx: Optional[ParserContext],
+) -> Optional[Dict[str, Any]]:
+    """Convert ParserContext model to dict for the scorer, or None if empty."""
+    if ctx is None:
+        return None
+    d = ctx.model_dump(exclude_none=True)
+    return d if d else None
+
+
+def _build_parser_context_snapshot(
+    ctx: Optional[ParserContext],
+) -> Dict[str, Any]:
+    """Build the full snapshot to persist (includes primitive_match)."""
+    if ctx is None:
+        return {}
+    return ctx.model_dump(exclude_none=True)
+
+
 # ===== Endpoints =====
 
 @router.post("/score", response_model=FitScoreResponse)
@@ -107,7 +164,8 @@ async def compute_fit_score(
     1. Loads the ActionBlock and Asset
     2. Derives ontology tags from the Asset (using generation prompt if available)
     3. Computes a heuristic fit score based on tag alignment
-    4. Returns score + detailed explanation
+    4. Optionally applies context-aware op/signature bonuses when parser_context is provided
+    5. Returns score + detailed explanation
 
     No data is persisted by this endpoint - use /rate to record feedback.
     """
@@ -146,8 +204,9 @@ async def compute_fit_score(
         generation=generation,
     )
 
-    # Compute fit
-    score, details = compute_block_asset_fit(block, asset_tags)
+    # Compute fit (with optional context)
+    parser_ctx = _build_parser_context_dict(request.parser_context)
+    score, details = compute_block_asset_fit(block, asset_tags, parser_context=parser_ctx)
 
     # Generate explanation
     explanation = explain_fit_score(details)
@@ -158,6 +217,7 @@ async def compute_fit_score(
             "block_id": block.block_id,
             "asset_id": asset.id,
             "score": score,
+            "context_provided": parser_ctx is not None,
         }
     )
 
@@ -178,11 +238,11 @@ async def rate_fit(
     Record a user rating for how well an ActionBlock fits an Asset.
 
     This endpoint:
-    1. Computes heuristic fit score (same as /score)
+    1. Computes heuristic fit score (same as /score), with optional context
     2. Creates a BlockImageFit record with:
        - User rating (1-5)
        - Heuristic score
-       - Snapshots of block and asset tags
+       - Snapshots of block tags, asset tags, and parser context
        - Sequence context and optional notes
     3. Persists to database
     4. Returns the created record
@@ -237,8 +297,9 @@ async def rate_fit(
         generation=generation,
     )
 
-    # Compute fit
-    score, details = compute_block_asset_fit(block, asset_tags)
+    # Compute fit (with optional context)
+    parser_ctx = _build_parser_context_dict(request.parser_context)
+    score, details = compute_block_asset_fit(block, asset_tags, parser_context=parser_ctx)
 
     # Create BlockImageFit record
     fit_record = BlockImageFit(
@@ -252,6 +313,7 @@ async def rate_fit(
         timestamp_sec=request.timestamp_sec,
         block_tags_snapshot=block.tags,
         asset_tags_snapshot=asset_tags,
+        parser_context_snapshot=_build_parser_context_snapshot(request.parser_context),
         notes=request.notes,
     )
 
@@ -267,6 +329,7 @@ async def rate_fit(
             "asset_id": request.asset_id,
             "rating": request.fit_rating,
             "heuristic_score": score,
+            "context_provided": parser_ctx is not None,
         }
     )
 

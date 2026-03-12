@@ -1,6 +1,6 @@
 # Block Primitives Evolution
 
-Last updated: 2026-03-10
+Last updated: 2026-03-12
 Owner: block-primitives lane
 Status: active
 Stage: phase_0_baseline
@@ -17,6 +17,7 @@ Own the canonical execution plan for the block-primitives system so CUE pack aut
   - Template/runtime resolution alignment (`compiler_v1 -> next_v1`).
   - Legacy surface retirement where action-block naming or paths still shadow primitive canon.
   - Parser projection quality and primitive-mode consumer convergence.
+  - Block-fit scoring convergence as a consumer of prompt primitive/op analysis context.
 - Out of scope:
   - Analyzer architecture work.
   - New generation UX modules that do not consume primitive contracts.
@@ -129,6 +130,18 @@ Exit criteria:
 - [ ] Remove duplicate prompt-analysis calls across shadow mode and block-seeding paths.
 - [ ] Keep a single adapter boundary for primitive refs and downstream resolvers.
 - [ ] Add/finish dev tooling surface for primitive interaction debugging.
+- [x] Add a block-fit v2 scoring context contract:
+  - Accept optional prompt-analysis context (`primitive_match`, `op_id`, `signature_id`, modality) in block-fit score/rate requests.
+  - Persist context snapshot with fit records for calibration history.
+- [x] Keep matcher ownership in parser:
+  - Do not duplicate raw text-to-primitive/op matching heuristics inside block-fit.
+  - Block-fit must consume parser output/context and score outcome quality.
+- [x] Extend block-fit scoring in layers:
+  - Keep ontology-alignment score as base.
+  - Apply additive op/signature alignment bonuses/penalties only when context is present.
+- [x] Add block-fit regression coverage:
+  - Unit tests for scorer branches (no-context vs context-aware).
+  - API tests for `/dev/block-fit/score` and `/dev/block-fit/rate` with context payloads.
 - [ ] Implement budget-aware layered assembly pass with deterministic drop/trim tracing.
 - [ ] Implement normalized NPC/state policy packet feeding resolver intent.
 
@@ -138,6 +151,8 @@ Exit criteria:
 - Text and blocks flows share analysis cache/results instead of repeated requests.
 - Budgeted assembly behavior is deterministic and traceable.
 - NPC/state signals influence resolver intent through one canonical mapping path.
+- Block-fit uses parser-provided primitive/op context without duplicating matcher logic.
+- Context-aware fit scoring remains backward-compatible with legacy clients that only send `block_id + asset_id`.
 
 ### Phase 3: Legacy Retirement
 
@@ -159,6 +174,8 @@ Exit criteria:
   - Mitigation: require explicit owner approval before any new legacy-path feature work.
 - Risk: parser projection stays too conservative for primitive vocabulary.
   - Mitigation: iterate with eval corpus + shadow guard metrics; tune stop-tokens and variant discrimination.
+- Risk: primitive/op matching logic gets duplicated in block-fit and drifts from parser behavior.
+  - Mitigation: enforce ownership boundary (parser matches, block-fit scores), and test contract-level integration.
 - Risk: naming drift slows onboarding and cleanup.
   - Mitigation: codify naming policy and migrate in targeted slices.
 
@@ -170,3 +187,9 @@ Exit criteria:
 - 2026-03-11 (`uncommitted`): Implemented layer-aware `layered` composition ordering in template roll (`assembly_layer` with L0-L4 aliases + backward-compatible role/category fallback) and added coverage for explicit-layer + legacy-order behavior.
 - 2026-03-11 (`uncommitted`): Extended layered composition to accept template-defined layer registries (`template_metadata.assembly_layers` with `id/priority/aliases`) so new layers can be added without core code edits.
 - 2026-03-11 (`uncommitted`): Extracted layer/composition helpers from `template_service.py` into dedicated `composition_layers.py` and implemented layer-aware budget handling (`assembly_budget.max_chars`) with deterministic drop/trim order and metadata reporting.
+- 2026-03-12 (`uncommitted`): Burned down prompt-pack `tag_key` exemptions to zero by mapping all remaining non-canonical op params to canonical vocabulary keys; expanded `prompt_block_tags` for new canonical axes (`rack_focus`, `light_contrast`, `placement_orientation`, `motion_gait`, `gaze`) and widened motion tag applicability for camera packs.
+- 2026-03-12 (`uncommitted`): Added missing op signatures (`subject.hands.v1`, `subject.look.v1`, `light.state.v1`) and wired corresponding core packs to declared signatures; regenerated CUE-derived schemas and passed `prompt-packs:check` + backend contract tests.
+- 2026-03-12 (`uncommitted`): Tuned shadow primitive-projection scoring for placement/direction recall (`scene.anchor.place` relation/context boost + targeted domain cap) and added regression tests for `in_front_of`/`above`/`below` disambiguation cases. Eval rerun improved direction coverage from `60.0%` to `80.0%` and reduced misses from `16` to `11` (overall FPR unchanged high, still shadow-only).
+- 2026-03-12 (`uncommitted`): Added camera-motion-vs-subject-look disambiguation for explicit motion tokens (e.g. `zoom`) plus adverb stop-token filtering (`slowly/quickly/gently/smoothly`). Eval rerun raised `camera_motion` coverage to `90.0%` and overall coverage to `74.6%` (`misses: 10`, FPR still unchanged/high so projection remains shadow-only).
+- 2026-03-12 (`uncommitted`): Expanded Phase 2 with block-fit convergence track (context-aware scoring contract, parser/block-fit ownership boundary, regression coverage, backward-compatibility criteria).
+- 2026-03-12 (`uncommitted`): Implemented block-fit op-aware scoring (Phase 2 convergence): extended `/dev/block-fit/score` and `/rate` with optional `parser_context` (op_id, signature_id, modality, primitive_match); layered scoring adds context delta to base ontology score; `parser_context_snapshot` persisted in fit records; 18 unit tests covering no-context backward-compat, exact op match, family match/mismatch, signature-only, modality alignment, determinism, and explanation output.

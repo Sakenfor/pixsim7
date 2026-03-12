@@ -22,10 +22,12 @@ This repository uses a unified test runner at `scripts/tests/run.py` to route ba
   - primitive projection false-positive resistance and edge-case regression coverage
 - `pixsim7/backend/tests/test_block_fit_scoring_controlled_schema.py`
   - controlled-schema scoring behavior for prompt block fit ranking
+  - context-aware op/signature scoring: exact op match, family match/mismatch, signature-only, modality alignment
+  - backward-compatibility: legacy callers without parser_context still produce valid scores
 - `scripts/seeds/game/bananza/tests/`
   - Bananza CLI/watch/sync/runtime preference behavior
-- `pixsim7/backend/scripts/eval_primitive_projection.py`
-  - corpus-level shadow-mode evaluation script (precision/coverage diagnostics)
+- `scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py`
+  - block-ops primitive projection evaluator (supports baseline + medium corpus diagnostics)
 - `apps/main/src/lib/game/projectBundle/__tests__/`
   - frontend project bundle runtime/lifecycle/migration behavior
 - `pixsim7/backend/tests/api/test_codegen_admin_endpoints.py`
@@ -65,8 +67,8 @@ pnpm test:project-bundle   # lifecycle/project-bundle focus
 pnpm test:full             # broad run
 pnpm test:backend          # changed profile backend only
 pnpm test:frontend         # changed profile frontend only
-pnpm test:catalog:gen      # regenerate scripts/tests/test-catalog.json from TS registry
-pnpm test:catalog:check    # validate suite metadata and covers paths
+pnpm test:registry:gen     # regenerate scripts/tests/test-registry.json from TS registry
+pnpm test:registry:check   # validate suite metadata and covers paths
 ```
 
 ## Canonical Registration (Devtools)
@@ -91,7 +93,7 @@ Recommended suite metadata fields (for agent-friendly categorization):
 Catalog metadata can be validated with:
 
 ```bash
-pnpm test:catalog:gen
+pnpm test:registry:gen
 python scripts/tests/validate_catalog.py
 python scripts/tests/validate_catalog.py --json
 ```
