@@ -69,6 +69,7 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "front"
 							enum:    #PlacementOrientationValues
+							tag_key: "placement_orientation"
 						},
 						{
 							key:            "anchor_ref"

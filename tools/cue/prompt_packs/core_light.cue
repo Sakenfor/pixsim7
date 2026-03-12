@@ -22,6 +22,7 @@ pack: #PromptBlockPackV1 & {
 				}
 				op: {
 					op_id: "light.state.set"
+					signature_id: "light.state.v1"
 					modalities: ["both"]
 					refs: [
 						{
@@ -57,6 +58,7 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "medium"
 							enum:    #LevelValues
+							tag_key: "light_contrast"
 						},
 					]
 					default_args: {

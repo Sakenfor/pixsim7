@@ -31,12 +31,14 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							enum:    #SpeedValues
 							default: "normal"
+							tag_key: "motion_speed"
 						},
 						{
 							key:     "direction"
 							type:    "enum"
 							enum:    #DirectionValues
 							default: "none"
+							tag_key: "motion_direction"
 						},
 					]
 					default_args: {

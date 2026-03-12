@@ -17,6 +17,7 @@ blocks:
         temporal: neutral
       op:
         op_id: light.state.set
+        signature_id: light.state.v1
         modalities:
           - both
         refs:
@@ -58,6 +59,7 @@ blocks:
               - medium
               - high
             default: medium
+            tag_key: light_contrast
         default_args:
           key_light: diffuse
           intensity: medium

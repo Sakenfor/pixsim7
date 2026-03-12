@@ -45,17 +45,7 @@ const PROMPT_BLOCK_TAGS_VOCAB_FILE = path.join(
 const CUE_BIN = resolveCueBinary();
 
 const EXCLUDED_FILES = new Set(['schema_v1.cue']);
-const NON_CANONICAL_OP_PARAM_TAG_KEY_EXEMPTIONS = new Set<string>([
-  // Intentional non-tag execution params (documented in docs/architecture/prompt-pack-tag-authority.md).
-  'core_camera:motion:speed',
-  'core_camera:motion:direction',
-  'core_focus:focus:rack',
-  'core_light:state:contrast',
-  'core_placement:anchor:orientation',
-  'core_subject_look:look:focus',
-  'core_subject_motion:motion:gait',
-  'core_subject_pose:pose:gaze',
-]);
+const NON_CANONICAL_OP_PARAM_TAG_KEY_EXEMPTIONS = new Set<string>([]);
 const CANONICAL_PROMPT_TAG_KEYS = loadCanonicalPromptTagKeys();
 
 type JsonObject = Record<string, unknown>;

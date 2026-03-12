@@ -1,7 +1,7 @@
 # Prompt Pack Tag Authority Contract
 
-> Last updated: 2026-03-12
-> Owner: block-primitives lane
+Last updated: 2026-03-12
+Owner: block-primitives lane
 
 ## Purpose
 
@@ -39,9 +39,11 @@ Runtime derives variant semantic tags from `op_args` (with `tag_key` mapping whe
 
 `pnpm prompt-packs:check` enforces this in `tools/codegen/generate-prompt-pack-schemas.ts`.
 
-Current intentional non-tag execution params are explicitly allowlisted in:
+Intentional non-tag execution params (if any) are explicitly allowlisted in:
 
 - `NON_CANONICAL_OP_PARAM_TAG_KEY_EXEMPTIONS` (`tools/codegen/generate-prompt-pack-schemas.ts`)
+
+Current state: allowlist is empty; new exemptions require explicit justification.
 
 If you add a new non-canonical non-ref param, choose one:
 

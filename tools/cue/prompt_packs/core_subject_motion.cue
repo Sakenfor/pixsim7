@@ -56,6 +56,7 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "walk"
 							enum:    #GaitValues
+							tag_key: "motion_gait"
 						},
 						{
 							key:            "target_ref"

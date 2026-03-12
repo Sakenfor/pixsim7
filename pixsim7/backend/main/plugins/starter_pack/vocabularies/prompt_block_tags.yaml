@@ -158,19 +158,21 @@ tags:
 
   motion_direction:
     label: "Motion Direction"
-    description: "Direction of subject motion relative to frame."
+    description: "Direction of motion relative to frame."
     data_type: string
-    allowed_values: [forward, backward, left, right, around, in, out]
+    allowed_values: [forward, backward, left, right, up, down, around, in, out, none]
     aliases: [direction]
     value_aliases: {}
     applies_to:
       - role: action
         category: motion_beat
+      - role: camera
+        category: composition
     status: active
 
   motion_speed:
     label: "Motion Speed"
-    description: "Relative speed tier for subject motion."
+    description: "Relative speed tier for motion."
     data_type: string
     allowed_values: [slow, normal, fast]
     aliases: [speed]
@@ -178,6 +180,8 @@ tags:
     applies_to:
       - role: action
         category: motion_beat
+      - role: camera
+        category: composition
     status: active
 
   placement_relation:
@@ -276,6 +280,18 @@ tags:
         category: expression_behavior
     status: active
 
+  rack_focus:
+    label: "Rack Focus"
+    description: "Whether the shot performs a rack-focus transition."
+    data_type: boolean
+    allowed_values: [true, false]
+    aliases: [rack]
+    value_aliases: {}
+    applies_to:
+      - role: camera
+        category: composition
+    status: active
+
   light_temperature:
     label: "Light Temperature"
     description: "Overall color temperature treatment of key lighting."
@@ -310,6 +326,56 @@ tags:
     applies_to:
       - role: lighting
         category: composition
+    status: active
+
+  light_contrast:
+    label: "Light Contrast"
+    description: "Overall contrast tier for the lighting setup."
+    data_type: string
+    allowed_values: [low, medium, high]
+    aliases: [contrast]
+    value_aliases: {}
+    applies_to:
+      - role: lighting
+        category: composition
+    status: active
+
+  placement_orientation:
+    label: "Placement Orientation"
+    description: "Subject orientation relative to camera/anchor."
+    data_type: string
+    allowed_values: [front, profile_left, profile_right, back]
+    aliases: [orientation]
+    value_aliases: {}
+    applies_to:
+      - role: placement
+        category: depth
+    status: active
+
+  motion_gait:
+    label: "Motion Gait"
+    description: "Movement gait style used by subject motion primitives."
+    data_type: string
+    allowed_values: [step, walk, run, drift, turn]
+    aliases: [gait]
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: motion_beat
+    status: active
+
+  gaze:
+    label: "Gaze"
+    description: "Subject gaze direction/state."
+    data_type: string
+    allowed_values: [forward, down, up, left, right, at_target, away]
+    aliases: []
+    value_aliases: {}
+    applies_to:
+      - role: subject
+        category: pose_lock
+      - role: subject
+        category: expression_behavior
     status: active
 
   proximity_stage:

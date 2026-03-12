@@ -53,6 +53,7 @@ pack: #PromptBlockPackV1 & {
 							key:     "rack"
 							type:    "boolean"
 							default: false
+							tag_key: "rack_focus"
 						},
 						{
 							key:            "target_ref"
@@ -70,9 +71,6 @@ pack: #PromptBlockPackV1 & {
 				variants: [
 					{
 						key: "subject_shallow"
-						tags: {
-							rack_focus:     "false"
-						}
 						op_args: {
 							focus_target:   "subject"
 							depth_of_field: "shallow"
@@ -81,9 +79,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "subject_deep"
-						tags: {
-							rack_focus:     "false"
-						}
 						op_args: {
 							focus_target:   "subject"
 							depth_of_field: "deep"
@@ -92,9 +87,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "target_shallow"
-						tags: {
-							rack_focus:     "false"
-						}
 						op_args: {
 							focus_target:   "target"
 							depth_of_field: "shallow"
@@ -103,9 +95,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "target_deep"
-						tags: {
-							rack_focus:     "false"
-						}
 						op_args: {
 							focus_target:   "target"
 							depth_of_field: "deep"
@@ -114,9 +103,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "background_deep"
-						tags: {
-							rack_focus:     "false"
-						}
 						op_args: {
 							focus_target:   "background"
 							depth_of_field: "deep"
@@ -125,9 +111,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "rack_subject_to_target"
-						tags: {
-							rack_focus:     "true"
-						}
 						op_args: {
 							focus_target:   "target"
 							depth_of_field: "shallow"

@@ -363,6 +363,41 @@ class TestMultiSentenceMixed:
         assert match is not None
         assert match["block_id"] == "core.camera.motion.dolly"
 
+    def test_camera_motion_beats_anchor_without_explicit_relation_phrase(self):
+        candidate = {
+            "text": "Pan right to keep the runner centered in frame.",
+            "role": "camera",
+            "matched_keywords": ["pan", "frame"],
+            "metadata": {},
+        }
+        competing_index = (
+            {
+                "block_id": "core.camera.motion.pan_right",
+                "package_name": "core_camera",
+                "role": "camera",
+                "category": "camera",
+                "tokens": frozenset({"pan", "right", "camera", "motion", "frame"}),
+                "block_tokens": frozenset({"core", "camera", "motion", "pan", "right"}),
+                "op_id": "camera.motion.pan_right",
+                "signature_id": "camera.motion.v1",
+                "op_modalities": ("video",),
+            },
+            {
+                "block_id": "core.placement.anchor.right_of",
+                "package_name": "core_placement",
+                "role": None,
+                "category": "location",
+                "tokens": frozenset({"right", "frame", "placement", "relation"}),
+                "block_tokens": frozenset({"core", "placement", "anchor", "right", "of"}),
+                "op_id": "scene.anchor.place",
+                "signature_id": "scene.anchor.v1",
+                "op_modalities": ("image", "video"),
+            },
+        )
+        match = match_candidate_to_primitive(candidate, primitive_index=competing_index)
+        assert match is not None
+        assert match["block_id"] == "core.camera.motion.pan_right"
+
     def test_lighting_with_placement(self):
         """Soft warm light + left placement â€” should pick light if role matches."""
         candidate = {
@@ -513,6 +548,29 @@ class TestFalseFriends:
         )
         if match is not None:
             assert match["score"] < 0.6
+
+    def test_third_person_narrative_does_not_force_camera_pov(self):
+        candidate = {
+            "text": "Third person narrative style.",
+            "role": "character",
+            "matched_keywords": ["third-person", "person"],
+            "metadata": {},
+        }
+        index = (
+            {
+                "block_id": "core.camera.pov.third_person_follow",
+                "package_name": "core_pov",
+                "role": "camera",
+                "category": "camera",
+                "tokens": frozenset({"third", "person", "follow", "pov", "camera"}),
+                "block_tokens": frozenset({"core", "camera", "pov", "third", "person", "follow"}),
+                "op_id": "camera.pov.set",
+                "signature_id": "camera.pov.v1",
+                "op_modalities": ("image", "video"),
+            },
+        )
+        match = match_candidate_to_primitive(candidate, primitive_index=index)
+        assert match is None
 
     def test_orbit_as_astronomy(self):
         """'orbit' in planetary context."""
@@ -834,9 +892,254 @@ class TestScoringEdgeCases:
         assert match is not None
         assert match["block_id"] == "core.camera.angle.worm_eye"
 
+    def test_family_variant_penalty_prefers_dutch_right_over_high_angle(self):
+        variant_index = (
+            {
+                "block_id": "core.camera.angle.high_angle",
+                "package_name": "core_angle",
+                "role": "camera",
+                "category": "camera",
+                "tokens": frozenset({"high", "angle", "tilt", "camera", "right", "dutch"}),
+                "block_tokens": frozenset({"core", "camera", "angle", "high"}),
+                "distinguishing_tokens": frozenset({"high"}),
+                "category_distinguishing_tokens": frozenset({"high", "dutch", "right"}),
+                "op_id": "camera.angle.high_angle",
+                "signature_id": "camera.angle.v1",
+                "op_modalities": ("image", "video"),
+                "op_family": "camera.angle",
+                "family_signal_tokens": frozenset({"high"}),
+                "family_distinguishing_tokens": frozenset({"high", "dutch", "right"}),
+            },
+            {
+                "block_id": "core.camera.angle.dutch_right",
+                "package_name": "core_angle",
+                "role": "camera",
+                "category": "camera",
+                "tokens": frozenset({"high", "angle", "tilt", "camera", "right", "dutch"}),
+                "block_tokens": frozenset({"core", "camera", "angle", "dutch", "right"}),
+                "distinguishing_tokens": frozenset({"dutch", "right"}),
+                "category_distinguishing_tokens": frozenset({"high", "dutch", "right"}),
+                "op_id": "camera.angle.dutch_right",
+                "signature_id": "camera.angle.v1",
+                "op_modalities": ("image", "video"),
+                "op_family": "camera.angle",
+                "family_signal_tokens": frozenset({"dutch", "right"}),
+                "family_distinguishing_tokens": frozenset({"high", "dutch", "right"}),
+            },
+        )
+        candidate = {
+            "text": "High angle dutch tilt right.",
+            "role": "camera",
+            "matched_keywords": ["angle", "dutch", "right"],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=variant_index)
+        assert match is not None
+        assert match["block_id"] == "core.camera.angle.dutch_right"
+
+    def test_zoom_signal_prefers_camera_motion_over_subject_look(self):
+        competing_index = (
+            {
+                "block_id": "core.camera.motion.zoom",
+                "package_name": "core_camera",
+                "role": "camera",
+                "category": "camera",
+                "tokens": frozenset({"zoom", "camera", "motion", "framing"}),
+                "block_tokens": frozenset({"core", "camera", "motion", "zoom"}),
+                "op_id": "camera.motion.zoom",
+                "signature_id": "camera.motion.v1",
+                "op_modalities": ("image", "video"),
+            },
+            {
+                "block_id": "core.subject.look.hold_eye_contact",
+                "package_name": "core_subject_look",
+                "role": None,
+                "category": "character_pose",
+                "tokens": frozenset({"character", "eyes", "look", "focus"}),
+                "block_tokens": frozenset({"core", "subject", "look", "hold", "eye", "contact"}),
+                "op_id": "subject.look_at",
+                "signature_id": "subject.look.v1",
+                "op_modalities": ("image", "video"),
+            },
+        )
+        candidate = {
+            "text": "Zoom slowly into the character's eyes.",
+            "role": "character",
+            "matched_keywords": ["zoom", "character"],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=competing_index)
+        assert match is not None
+        assert match["block_id"] == "core.camera.motion.zoom"
+
 
 # ---------------------------------------------------------------------------
-# EDGE CASE 8: Enrich idempotency
+# EDGE CASE 8: Placement recall and disambiguation
+# ---------------------------------------------------------------------------
+
+class TestPlacementRecallAndDisambiguation:
+    def test_in_front_of_beats_character_object_cross_domain(self):
+        index = (
+            {
+                "block_id": "core.placement.anchor.in_front_of",
+                "package_name": "core_placement",
+                "role": None,
+                "category": "location",
+                "tokens": frozenset({"front", "in", "placed", "placement", "relation"}),
+                "block_tokens": frozenset({"core", "placement", "anchor", "in", "front", "of"}),
+                "op_id": "scene.anchor.place",
+                "signature_id": "scene.anchor.v1",
+                "op_modalities": ("image", "video"),
+            },
+            {
+                "block_id": "core.subject.hands.hands_hold_object",
+                "package_name": "core_hands",
+                "role": None,
+                "category": "character_pose",
+                "tokens": frozenset({"hands", "hold", "object", "character"}),
+                "block_tokens": frozenset({"core", "subject", "hands", "hold", "object"}),
+                "op_id": "subject.hands.set",
+                "signature_id": "subject.hands.v1",
+                "op_modalities": ("image", "video"),
+            },
+        )
+        candidate = {
+            "text": "Object placed in front of the character.",
+            "role": "character",
+            "matched_keywords": ["character"],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=index)
+        assert match is not None
+        assert match["block_id"] == "core.placement.anchor.in_front_of"
+
+    def test_above_with_scene_context_reaches_placement_match(self):
+        index = (
+            {
+                "block_id": "core.placement.anchor.above",
+                "package_name": "core_placement",
+                "role": None,
+                "category": "location",
+                "tokens": frozenset({"above", "overhead", "placement", "relation"}),
+                "block_tokens": frozenset({"core", "placement", "anchor", "above"}),
+                "distinguishing_tokens": frozenset({"above"}),
+                "category_distinguishing_tokens": frozenset({"above", "below", "behind", "front"}),
+                "op_id": "scene.anchor.place",
+                "signature_id": "scene.anchor.v1",
+                "op_modalities": ("image", "video"),
+            },
+        )
+        candidate = {
+            "text": "Flying above the cityscape.",
+            "role": "other",
+            "matched_keywords": [],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=index)
+        assert match is not None
+        assert match["block_id"] == "core.placement.anchor.above"
+
+    def test_below_with_scene_context_reaches_placement_match(self):
+        index = (
+            {
+                "block_id": "core.placement.anchor.below",
+                "package_name": "core_placement",
+                "role": None,
+                "category": "location",
+                "tokens": frozenset({"below", "under", "placement", "relation"}),
+                "block_tokens": frozenset({"core", "placement", "anchor", "below"}),
+                "distinguishing_tokens": frozenset({"below"}),
+                "category_distinguishing_tokens": frozenset({"above", "below", "behind", "front"}),
+                "op_id": "scene.anchor.place",
+                "signature_id": "scene.anchor.v1",
+                "op_modalities": ("image", "video"),
+            },
+        )
+        candidate = {
+            "text": "Water flowing below the bridge.",
+            "role": "other",
+            "matched_keywords": [],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=index)
+        assert match is not None
+        assert match["block_id"] == "core.placement.anchor.below"
+
+    def test_below_relation_beats_run_false_friend_in_scene_prose(self):
+        index = (
+            {
+                "block_id": "core.placement.anchor.below",
+                "package_name": "core_placement",
+                "role": None,
+                "category": "location",
+                "tokens": frozenset({"below", "under", "placement", "relation", "bridge"}),
+                "block_tokens": frozenset({"core", "placement", "anchor", "below"}),
+                "distinguishing_tokens": frozenset({"below"}),
+                "category_distinguishing_tokens": frozenset({"above", "below", "behind", "front"}),
+                "op_id": "scene.anchor.place",
+                "signature_id": "scene.anchor.v1",
+                "op_modalities": ("image", "video"),
+            },
+            {
+                "block_id": "core.subject.motion.run_forward",
+                "package_name": "core_subject_motion",
+                "role": None,
+                "category": "character_pose",
+                "tokens": frozenset({"run", "running", "forward", "subject", "motion"}),
+                "block_tokens": frozenset({"core", "subject", "motion", "run", "forward"}),
+                "op_id": "subject.move.apply",
+                "signature_id": "subject.move.v1",
+                "op_modalities": ("image", "video"),
+            },
+        )
+        candidate = {
+            "text": "Water runs below the bridge.",
+            "role": "action",
+            "matched_keywords": ["runs", "run"],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=index)
+        assert match is not None
+        assert match["block_id"] == "core.placement.anchor.below"
+
+    def test_turns_around_phrase_boosts_turn_around_variant(self):
+        index = (
+            {
+                "block_id": "core.subject.motion.turn_around",
+                "package_name": "core_subject_motion",
+                "role": None,
+                "category": "character_pose",
+                "tokens": frozenset({"turn", "around", "subject", "motion"}),
+                "block_tokens": frozenset({"core", "subject", "motion", "turn", "around"}),
+                "op_id": "subject.move.apply",
+                "signature_id": "subject.move.v1",
+                "op_modalities": ("image", "video"),
+            },
+            {
+                "block_id": "core.direction.around",
+                "package_name": "core_direction",
+                "role": None,
+                "category": "direction",
+                "tokens": frozenset({"around", "direction", "axis"}),
+                "block_tokens": frozenset({"core", "direction", "around"}),
+                "op_id": "direction.axis.around",
+                "signature_id": "direction.axis.v1",
+                "op_modalities": ("image", "video"),
+            },
+        )
+        candidate = {
+            "text": "He turns around to face the doorway.",
+            "role": "other",
+            "matched_keywords": [],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=index)
+        assert match is not None
+        assert match["block_id"] == "core.subject.motion.turn_around"
+
+
+# ---------------------------------------------------------------------------
+# EDGE CASE 9: Enrich idempotency
 # ---------------------------------------------------------------------------
 
 class TestEnrichIdempotency:
@@ -888,7 +1191,7 @@ class TestEnrichIdempotency:
 
 
 # ---------------------------------------------------------------------------
-# EDGE CASE 9: Integration with parse_prompt_to_candidates
+# EDGE CASE 10: Integration with parse_prompt_to_candidates
 # ---------------------------------------------------------------------------
 
 class TestIntegrationParsePipeline:

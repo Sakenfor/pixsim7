@@ -37,94 +37,89 @@ Primitive Index Summary:
 
 ## Metrics Table
 
-| Category | Total | TP | FP | Miss | TN | P@1 | Coverage | FPR |
-|----------|------:|---:|---:|-----:|---:|----:|---------:|----:|
-| ambiguous | 53 | 0 | 35 | 0 | 18 | 0.0% | 100.0% | 66.0% |
-| camera_framing | 25 | 17 | 7 | 1 | 0 | 70.8% | 68.0% | 0.0% |
-| camera_motion | 30 | 26 | 3 | 1 | 0 | 89.7% | 86.7% | 0.0% |
-| direction | 25 | 15 | 6 | 4 | 0 | 71.4% | 60.0% | 0.0% |
-| lighting | 18 | 14 | 0 | 4 | 0 | 100.0% | 77.8% | 0.0% |
-| subject_action | 28 | 16 | 6 | 6 | 0 | 72.7% | 57.1% | 0.0% |
-| unrelated | 75 | 0 | 2 | 0 | 73 | 0.0% | 100.0% | 2.7% |
-| OVERALL | 254 | 88 | 59 | 16 | 91 | 59.9% | 69.8% | 46.1% |
+| Category | Total | TP | FP- | Wrong | Miss | TN | P@1 | Coverage | FPR |
+|----------|------:|---:|----:|------:|-----:|---:|----:|---------:|----:|
+| ambiguous | 53 | 0 | 34 | 0 | 0 | 19 | 0.0% | 100.0% | 64.2% |
+| camera_framing | 25 | 17 | 0 | 6 | 2 | 0 | 73.9% | 68.0% | 0.0% |
+| camera_motion | 30 | 27 | 0 | 3 | 0 | 0 | 90.0% | 90.0% | 0.0% |
+| direction | 25 | 20 | 0 | 3 | 2 | 0 | 87.0% | 80.0% | 0.0% |
+| lighting | 18 | 15 | 0 | 0 | 3 | 0 | 100.0% | 83.3% | 0.0% |
+| subject_action | 28 | 17 | 0 | 7 | 4 | 0 | 70.8% | 60.7% | 0.0% |
+| unrelated | 75 | 0 | 8 | 0 | 0 | 67 | 0.0% | 100.0% | 10.7% |
+| OVERALL | 254 | 96 | 42 | 19 | 11 | 86 | 61.1% | 76.2% | 32.8% |
 
 ## Threshold Sweep
 
 ```
 Threshold Sweep:
 --------------------------------------------------------------------------------
- Threshold  Matches    TP    FP     P@1     FPR
------------------------------------------------
-      0.30      147    88    59   59.9%   46.1%
-      0.35      147    88    59   59.9%   46.1%
-      0.40      147    88    59   59.9%   46.1%
-      0.45      147    88    59   59.9%   46.1%
-      0.50      134    85    49   63.4%   38.3%
-      0.55      120    76    44   63.3%   34.4%
-      0.60      112    73    39   65.2%   30.5%
-      0.65       96    62    34   64.6%   26.6%
-      0.70       93    62    31   66.7%   24.2%
+ Threshold  Matches    TP   FP-  Wrong     P@1     FPR
+------------------------------------------------------
+      0.30      157    96    42     19   61.1%   32.8%
+      0.35      157    96    42     19   61.1%   32.8%
+      0.40      157    96    42     19   61.1%   32.8%
+      0.45      157    96    42     19   61.1%   32.8%
+      0.50      148    94    36     18   63.5%   28.1%
+      0.55      138    89    31     18   64.5%   24.2%
+      0.60      121    82    26     13   67.8%   20.3%
+      0.65      114    80    26      8   70.2%   20.3%
+      0.70      102    71    23      8   69.6%   18.0%
 ```
 
 ## Top 20 False Positives
 
 | # | ID | Prompt | Got | Score | Overlap | Expected |
 |---|-----|--------|-----|------:|---------|----------|
-| 1 | cm18 | Orbit the campfire from a low angle. | core.camera.angle.low_angle | 1.150 | angle, low | core.camera.motion.orbit |
-| 2 | cf20 | High angle dutch tilt right. | core.camera.angle.high_angle | 1.150 | angle, high | core.camera.angle.dutch_right |
-| 3 | am27 | A massive low angle building dominates the skyline | core.camera.angle.low_angle | 1.150 | angle, low | _none_ |
-| 4 | am32 | Low angle dolly forward tracking the hero as she r | core.camera.angle.low_angle | 1.150 | angle, low | _none_ |
-| 5 | am33 | Medium close-up over-the-shoulder shot with rack f | core.camera.pov.over_shoulder | 1.150 | over, shoulder | _none_ |
-| 6 | cf15 | Rack focus from foreground to background. | core.camera.focus.background_deep | 1.081 | background, focus, rack | core.camera.focus.rack |
-| 7 | am09 | Eye level medium shot with soft warm lighting. | core.light.state.soft_warm | 1.000 | lighting, medium, soft, warm | _none_ |
-| 8 | am08 | Move forward then zoom out. | core.camera.motion.zoom_out | 0.999 | out, zoom | _none_ |
-| 9 | cf25 | Focus pull from front to back. | core.camera.motion.dolly_back | 0.972 | back, pull | core.camera.focus.rack |
-| 10 | am31 | The subject moves forward with purpose. Camera orb | core.light.state.soft_warm | 0.940 | light, soft, warm | _none_ |
-| 11 | am48 | Third person narrative style. | core.camera.pov.third_person_follow | 0.940 | person, third | _none_ |
-| 12 | am02 | The subject turns left while the camera pans right | core.camera.motion.pan | 0.878 | camera, left, pan, pans | _none_ |
-| 13 | am35 | Dolly. | core.camera.motion.dolly | 0.878 | dolly | _none_ |
-| 14 | am36 | Zoom. | core.camera.motion.zoom | 0.878 | zoom | _none_ |
-| 15 | am37 | Pan. | core.camera.motion.pan | 0.878 | pan | _none_ |
-| 16 | am38 | Tilt. | core.camera.motion.tilt | 0.878 | tilt, tilts | _none_ |
-| 17 | am52 | The truck tilts as it goes over the speed bump. | core.camera.motion.tilt | 0.878 | speed, tilt, tilts | _none_ |
-| 18 | sa08 | Moving to the right across the stage. | core.direction.right | 0.820 | move, moving, right | core.subject.motion.move_right |
-| 19 | am04 | Looking down from above. | core.direction.down | 0.820 | down, look, looking | _none_ |
-| 20 | cf08 | Dutch angle tilted to the left. | core.camera.motion.tilt | 0.807 | tilt, tilts | core.camera.angle.dutch_left |
+| 1 | cm18 | Orbit the campfire from a low angle. | core.camera.angle.low_angle | 1.000 | angle, low | core.camera.motion.orbit |
+| 2 | cf15 | Rack focus from foreground to background. | core.camera.focus.background_deep | 1.000 | background, focus, rack | core.camera.focus.rack |
+| 3 | cf20 | High angle dutch tilt right. | core.camera.angle.high_angle | 1.000 | angle, high | core.camera.angle.dutch_right |
+| 4 | am06 | Standing behind the subject near the wall. | core.placement.anchor.behind | 1.000 | behind, standing, subject | _none_ |
+| 5 | am08 | Move forward then zoom out. | core.camera.motion.zoom_out | 1.000 | out, zoom | _none_ |
+| 6 | am09 | Eye level medium shot with soft warm lighting. | core.light.state.soft_warm | 1.000 | lighting, medium, soft, warm | _none_ |
+| 7 | am27 | A massive low angle building dominates the skyline | core.camera.angle.low_angle | 1.000 | angle, low | _none_ |
+| 8 | am31 | The subject moves forward with purpose. Camera orb | core.light.state.soft_warm | 1.000 | light, soft, warm | _none_ |
+| 9 | am32 | Low angle dolly forward tracking the hero as she r | core.camera.angle.low_angle | 1.000 | angle, low | _none_ |
+| 10 | cf25 | Focus pull from front to back. | core.camera.motion.dolly_back | 1.000 | back, pull | core.camera.focus.rack |
+| 11 | am02 | The subject turns left while the camera pans right | core.camera.motion.pan_right | 0.978 | camera, pan, pans, right | _none_ |
+| 12 | am35 | Dolly. | core.camera.motion.dolly | 0.928 | dolly | _none_ |
+| 13 | am36 | Zoom. | core.camera.motion.zoom | 0.928 | zoom | _none_ |
+| 14 | am37 | Pan. | core.camera.motion.pan | 0.928 | pan | _none_ |
+| 15 | am38 | Tilt. | core.camera.motion.tilt | 0.928 | tilt, tilts | _none_ |
+| 16 | am52 | The truck tilts as it goes over the speed bump. | core.camera.motion.tilt | 0.928 | speed, tilt, tilts | _none_ |
+| 17 | sa08 | Moving to the right across the stage. | core.direction.right | 0.870 | move, moving, right | core.subject.motion.move_right |
+| 18 | am04 | Looking down from above. | core.direction.down | 0.870 | down, look, looking | _none_ |
+| 19 | cf08 | Dutch angle tilted to the left. | core.camera.motion.tilt | 0.857 | tilt, tilts | core.camera.angle.dutch_left |
+| 20 | am20 | The orbit of the planet takes 365 days. | core.camera.motion.orbit | 0.857 | orbit, orbits | _none_ |
 
 ## Top 20 Missed Matches
 
 | # | ID | Prompt | Expected | Category | Notes |
 |---|-----|--------|----------|----------|-------|
-| 1 | cm20 | Zoom slowly into the character's eyes. | core.camera.motion.zoom | camera_motion | Slow zoom in |
-| 2 | dr06 | Water flowing below the bridge. | core.placement.anchor.below | direction | Below |
-| 3 | lt10 | Strong backlighting creating a halo effect. | core.light.state.backlit_silhouette | lighting | Backlighting halo |
-| 4 | lt14 | Harsh specular highlights on the metal surface. | core.light.state.hard_cool | lighting | Specular highlights |
-| 5 | lt15 | Gentle diffused overcast light. | core.light.state.diffuse_neutral | lighting | Overcast diffused |
-| 6 | sa16 | Pointing toward the horizon. | core.subject.hands.hands_point | subject_action | Hands point |
-| 7 | sa20 | Crouching behind the wall. | core.subject.pose.crouched_ready | subject_action | Crouching behind |
-| 8 | cf24 | Shallow bokeh on the main character. | core.camera.focus.subject_shallow | camera_framing | Bokeh = shallow DOF |
-| 9 | sa21 | Seated with legs crossed casually. | core.subject.pose.seated_relaxed | subject_action | Seated variant |
+| 1 | cf05 | Bird's eye view looking straight down. | core.camera.angle.bird | camera_framing | Bird's eye angle |
+| 2 | dr04 | Hidden behind the curtain. | core.placement.anchor.behind | direction | Behind |
+| 3 | dr05 | The bird flies above the rooftops. | core.placement.anchor.above | direction | Above |
+| 4 | lt10 | Strong backlighting creating a halo effect. | core.light.state.backlit_silhouette | lighting | Backlighting halo |
+| 5 | lt14 | Harsh specular highlights on the metal surface. | core.light.state.hard_cool | lighting | Specular highlights |
+| 6 | lt15 | Gentle diffused overcast light. | core.light.state.diffuse_neutral | lighting | Overcast diffused |
+| 7 | sa15 | Hands hidden behind the back. | core.subject.hands.hands_hidden | subject_action | Hands hidden |
+| 8 | sa16 | Pointing toward the horizon. | core.subject.hands.hands_point | subject_action | Hands point |
+| 9 | cf24 | Shallow bokeh on the main character. | core.camera.focus.subject_shallow | camera_framing | Bokeh = shallow DOF |
 | 10 | sa23 | Hands making a fist. | core.subject.hands | subject_action | Fist is a hands gesture but not a specific variant |
-| 11 | dr21 | Object placed in front of the character. | core.placement.anchor.in_front_of | direction | In front placement |
-| 12 | dr22 | Flying above the cityscape. | core.placement.anchor.above | direction | Above city |
-| 13 | dr23 | Crouching below the table. | core.placement.anchor.below | direction | Below table |
-| 14 | lt16 | Backlit figure against the bright sky. | core.light.state.backlit_silhouette | lighting | Backlit figure |
-| 15 | sa26 | Hands pointing at the map. | core.subject.hands.hands_point | subject_action | Pointing hands |
-| 16 | sa27 | Walking slowly to the right. | core.subject.motion.move_right | subject_action | Slow walk right |
+| 11 | sa26 | Hands pointing at the map. | core.subject.hands.hands_point | subject_action | Pointing hands |
 
 ## Recommendation
 
 **Decision: `stay shadow`**
 
-**Rationale**: FPR (46.1%) too high for promotion. Tune scoring first.
+**Rationale**: FPR (32.8%) too high for promotion. Tune scoring first.
 
 ### Promotion Criteria
 
 | Criterion | Target | Current | Status |
 |-----------|--------|---------|--------|
-| Precision@1 | >= 85% | 59.9% | FAIL |
-| Coverage | >= 60% | 69.8% | PASS |
-| FPR | <= 5% | 46.1% | FAIL |
+| Precision@1 | >= 85% | 61.1% | FAIL |
+| Coverage | >= 60% | 76.2% | PASS |
+| FPR | <= 5% | 32.8% | FAIL |
 
 ### Suggested Scoring Tweaks (do NOT apply yet)
 
@@ -151,4 +146,4 @@ Threshold Sweep:
 ```
 
 ---
-_Generated by `pixsim7/backend/scripts/eval_primitive_projection.py`_
+_Generated by `scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py`_

@@ -45,6 +45,7 @@ blocks:
           - key: rack
             type: boolean
             default: false
+            tag_key: rack_focus
           - key: target_ref
             required: false
             type: ref
@@ -55,43 +56,31 @@ blocks:
           rack: false
       variants:
         - key: subject_shallow
-          tags:
-            rack_focus: "false"
           op_args:
             focus_target: subject
             depth_of_field: shallow
             rack: false
         - key: subject_deep
-          tags:
-            rack_focus: "false"
           op_args:
             focus_target: subject
             depth_of_field: deep
             rack: false
         - key: target_shallow
-          tags:
-            rack_focus: "false"
           op_args:
             focus_target: target
             depth_of_field: shallow
             rack: false
         - key: target_deep
-          tags:
-            rack_focus: "false"
           op_args:
             focus_target: target
             depth_of_field: deep
             rack: false
         - key: background_deep
-          tags:
-            rack_focus: "false"
           op_args:
             focus_target: background
             depth_of_field: deep
             rack: false
         - key: rack_subject_to_target
-          tags:
-            rack_focus: "true"
           op_args:
             focus_target: target
             depth_of_field: shallow

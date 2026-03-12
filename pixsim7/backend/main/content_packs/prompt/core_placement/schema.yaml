@@ -67,6 +67,7 @@ blocks:
               - profile_right
               - back
             default: front
+            tag_key: placement_orientation
           - key: anchor_ref
             required: false
             type: ref

@@ -65,6 +65,10 @@ _CANDIDATE_STOP_TOKENS = {
     "camera",
     "scene",
     "shot",
+    "slowly",
+    "quickly",
+    "gently",
+    "smoothly",
 }
 _DIRECTIONAL_TOKENS = {
     "left",
@@ -81,6 +85,37 @@ _DIRECTIONAL_TOKENS = {
     "across",
     "in",
     "out",
+}
+_PLACEMENT_RELATION_TOKENS = {
+    "left",
+    "right",
+    "front",
+    "behind",
+    "above",
+    "below",
+    "near",
+    "in",
+    "out",
+}
+_PLACEMENT_CONTEXT_CUE_TOKENS = {
+    "object",
+    "subject",
+    "character",
+    "table",
+    "bridge",
+    "door",
+    "doorway",
+    "wall",
+    "window",
+    "room",
+    "cityscape",
+    "crowd",
+    "ground",
+    "floor",
+    "ceiling",
+    "desk",
+    "balcony",
+    "center",
 }
 _LOW_SIGNAL_OVERLAP_TOKENS = {
     "camera",
@@ -120,10 +155,13 @@ _SUBJECT_MOTION_SIGNAL_TOKENS = {
     "walk",
     "walking",
     "run",
+    "runs",
     "running",
     "step",
     "steps",
     "turn",
+    "turns",
+    "turned",
     "turning",
     "drift",
     "crouch",
@@ -142,6 +180,81 @@ _CAMERA_CONTEXT_CUE_TOKENS = {
     "cinematic",
     "steadicam",
 }
+_CAMERA_STRONG_CONTEXT_CUE_TOKENS = {
+    "camera",
+    "shot",
+    "frame",
+    "angle",
+    "lens",
+    "pov",
+    "viewpoint",
+    "cinematic",
+    "steadicam",
+}
+_NARRATIVE_CUE_TOKENS = {
+    "narrative",
+    "novel",
+    "story",
+    "literary",
+    "prose",
+    "voice",
+    "style",
+    "writing",
+}
+_RUN_SIGNAL_TOKENS = {
+    "run",
+    "runs",
+    "running",
+}
+_NON_AGENT_RUN_CONTEXT_TOKENS = {
+    "water",
+    "river",
+    "stream",
+    "traffic",
+    "rain",
+    "snow",
+    "fog",
+    "smoke",
+    "cloud",
+    "wind",
+    "engine",
+    "machine",
+    "motor",
+    "vehicle",
+    "car",
+    "truck",
+    "road",
+    "bridge",
+}
+_HUMAN_AGENT_CUE_TOKENS = {
+    "he",
+    "she",
+    "they",
+    "person",
+    "people",
+    "character",
+    "subject",
+    "hero",
+    "heroine",
+    "man",
+    "woman",
+    "girl",
+    "boy",
+    "runner",
+    "hands",
+    "face",
+    "body",
+    "npc",
+}
+_ANCHOR_RELATION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("in_front_of", re.compile(r"\bin\s+front\s+of\b")),
+    ("left_of", re.compile(r"\b(?:to\s+the\s+)?left\s+of\b")),
+    ("right_of", re.compile(r"\b(?:to\s+the\s+)?right\s+of\b")),
+    ("behind", re.compile(r"\bbehind\b")),
+    ("near", re.compile(r"\b(?:near|next\s+to|beside)\b")),
+    ("above", re.compile(r"\babove\b")),
+    ("below", re.compile(r"\b(?:below|beneath|under|underneath)\b")),
+)
 _ROLE_STOP_TOKEN_OVERRIDES: dict[str, set[str]] = {
     "camera": {"camera"},
 }
@@ -247,6 +360,38 @@ def _iter_op_tokens(op_payload: Mapping[str, Any]) -> Iterable[str]:
                 yield token
 
 
+def _extract_anchor_relation_hints(text: str) -> tuple[set[str], str | None]:
+    """Extract explicit placement-relation cues and earliest relation mention."""
+    found: dict[str, int] = {}
+    for relation_key, pattern in _ANCHOR_RELATION_PATTERNS:
+        match = pattern.search(text)
+        if not match:
+            continue
+        found[relation_key] = match.start()
+    if not found:
+        return set(), None
+    primary_relation = min(found.items(), key=lambda item: item[1])[0]
+    return set(found.keys()), primary_relation
+
+
+def _entry_anchor_relation_key(entry_block_tokens: set[str]) -> str | None:
+    if {"front", "in"} & entry_block_tokens and "front" in entry_block_tokens:
+        return "in_front_of"
+    if "left" in entry_block_tokens:
+        return "left_of"
+    if "right" in entry_block_tokens:
+        return "right_of"
+    if "behind" in entry_block_tokens:
+        return "behind"
+    if "above" in entry_block_tokens:
+        return "above"
+    if "below" in entry_block_tokens:
+        return "below"
+    if "near" in entry_block_tokens:
+        return "near"
+    return None
+
+
 def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str, Any] | None:
     block_id = _as_text(block.get("block_id"))
     if not block_id:
@@ -344,6 +489,57 @@ def _annotate_category_distinguishing_tokens(entries: List[Dict[str, Any]]) -> N
             entry["category_distinguishing_tokens"] = category_distinguishing
 
 
+def _op_family(op_id: str | None) -> str | None:
+    if not op_id:
+        return None
+    parts = [part for part in op_id.split(".") if part]
+    if len(parts) >= 2:
+        return ".".join(parts[:2])
+    return op_id
+
+
+def _annotate_family_variant_tokens(entries: List[Dict[str, Any]]) -> None:
+    """Annotate per-op-family variant tokens to improve sibling discrimination."""
+    family_groups: Dict[str, List[Dict[str, Any]]] = {}
+    for entry in entries:
+        family = _op_family(_as_text(entry.get("op_id")))
+        if not family:
+            continue
+        family_groups.setdefault(family, []).append(entry)
+
+    for family, family_entries in family_groups.items():
+        token_counts: Dict[str, int] = {}
+        for entry in family_entries:
+            block_tokens = set(entry.get("block_tokens") or set())
+            for token in block_tokens:
+                if token in _INDEX_STOP_TOKENS or token in _LOW_SIGNAL_OVERLAP_TOKENS:
+                    continue
+                if len(token) < 3:
+                    continue
+                token_counts[token] = token_counts.get(token, 0) + 1
+
+        family_common = frozenset(
+            token
+            for token, count in token_counts.items()
+            if count == len(family_entries)
+        )
+        family_distinguishing = frozenset(
+            token
+            for token, count in token_counts.items()
+            if count < len(family_entries)
+        )
+        for entry in family_entries:
+            block_tokens = set(entry.get("block_tokens") or set())
+            family_signal_tokens = frozenset(
+                token
+                for token in block_tokens
+                if token in family_distinguishing and token not in family_common
+            )
+            entry["op_family"] = family
+            entry["family_signal_tokens"] = family_signal_tokens
+            entry["family_distinguishing_tokens"] = family_distinguishing
+
+
 @lru_cache(maxsize=1)
 def _get_primitive_index() -> Tuple[Dict[str, Any], ...]:
     """Build and cache primitive index from prompt content packs."""
@@ -371,12 +567,15 @@ def _get_primitive_index() -> Tuple[Dict[str, Any], ...]:
             if entry:
                 entries.append(entry)
     _annotate_category_distinguishing_tokens(entries)
+    _annotate_family_variant_tokens(entries)
     return tuple(entries)
 
 
 def _extract_candidate_evidence(candidate: Mapping[str, Any]) -> Dict[str, Any]:
     role = _as_text(candidate.get("role"))
     category = _as_text(candidate.get("category"))
+    text_value = _as_text(candidate.get("text")) or ""
+    text_lower = text_value.lower()
 
     metadata_raw = candidate.get("metadata")
     metadata = dict(metadata_raw) if isinstance(metadata_raw, dict) else {}
@@ -387,7 +586,7 @@ def _extract_candidate_evidence(candidate: Mapping[str, Any]) -> Dict[str, Any]:
 
     stop_tokens = _candidate_stop_tokens(role=role)
     text_tokens = _tokenize(
-        candidate.get("text"),
+        text_value,
         stop_tokens=stop_tokens,
     )
 
@@ -399,11 +598,20 @@ def _extract_candidate_evidence(candidate: Mapping[str, Any]) -> Dict[str, Any]:
                 _tokenize(keyword, stop_tokens=stop_tokens)
             )
 
+    relation_hints, primary_relation = _extract_anchor_relation_hints(text_lower)
+    phrase_hints = {f"placement_{relation}" for relation in relation_hints}
+    if re.search(r"\bturn(?:s|ed|ing)?\s+around\b", text_lower):
+        phrase_hints.add("subject_turn_around")
+        text_tokens.update({"turn", "around"})
+
     return {
         "text_tokens": text_tokens,
         "keyword_tokens": keyword_tokens,
         "role": role,
         "category": category,
+        "phrase_hints": phrase_hints,
+        "has_explicit_anchor_phrase": bool(relation_hints),
+        "primary_relation": primary_relation,
     }
 
 
@@ -474,11 +682,18 @@ def _score_entry(
     op_id = _as_text(entry.get("op_id")) or ""
     probe_token_set = set(probe_tokens)
     overlap_token_set = set(overlap_all)
+    phrase_hints = set(evidence.get("phrase_hints") or set())
+    has_explicit_anchor_phrase = bool(evidence.get("has_explicit_anchor_phrase"))
+    primary_relation = _as_text(evidence.get("primary_relation"))
     has_camera_motion_signal = bool(probe_token_set & _CAMERA_MOTION_SIGNAL_TOKENS)
     has_camera_framing_signal = bool(probe_token_set & _CAMERA_FRAMING_SIGNAL_TOKENS)
     has_subject_motion_signal = bool(probe_token_set & _SUBJECT_MOTION_SIGNAL_TOKENS)
+    has_narrative_cues = bool(probe_token_set & _NARRATIVE_CUE_TOKENS)
     is_direction_axis = op_id.startswith("direction.axis.")
     is_camera_motion = op_id.startswith("camera.motion.")
+    is_scene_anchor = op_id.startswith("scene.anchor.place")
+    is_subject_look = op_id.startswith("subject.look")
+    is_camera_pov = op_id.startswith("camera.pov.")
     is_camera_framing = (
         op_id.startswith("camera.shot.")
         or op_id.startswith("camera.focus.")
@@ -504,12 +719,25 @@ def _score_entry(
         elif is_direction_axis:
             domain_multiplier *= 0.8
 
+    if has_camera_motion_signal and is_subject_look:
+        domain_multiplier *= 0.85
+
+    placement_relation_overlap = probe_token_set & _PLACEMENT_RELATION_TOKENS
+    if is_scene_anchor and placement_relation_overlap:
+        domain_multiplier *= 1.25
+        if probe_token_set & _PLACEMENT_CONTEXT_CUE_TOKENS:
+            domain_multiplier *= 1.25
+    if is_scene_anchor and has_camera_motion_signal and not has_explicit_anchor_phrase:
+        domain_multiplier *= 0.55
+
     camera_motion_overlap = probe_token_set & _CAMERA_MOTION_SIGNAL_TOKENS
     has_directional_tokens = bool(probe_token_set & _DIRECTIONAL_TOKENS)
     if is_camera_motion and has_directional_tokens:
         domain_multiplier *= 1.1
     if is_camera_motion and (keyword_tokens & _CAMERA_MOTION_SIGNAL_TOKENS):
         domain_multiplier *= 1.1
+    if is_camera_motion and role == "camera":
+        domain_multiplier *= 1.15
 
     # False-friend guard for "truck" as a vehicle in non-camera prose.
     if (
@@ -522,6 +750,44 @@ def _score_entry(
     ):
         domain_multiplier *= 0.5
 
+    if (
+        is_camera_pov
+        and has_narrative_cues
+        and role != "camera"
+        and not (probe_token_set & _CAMERA_STRONG_CONTEXT_CUE_TOKENS)
+    ):
+        domain_multiplier *= 0.35
+
+    if (
+        is_subject_motion
+        and (probe_token_set & _RUN_SIGNAL_TOKENS)
+        and (probe_token_set & _NON_AGENT_RUN_CONTEXT_TOKENS)
+        and not (probe_token_set & _HUMAN_AGENT_CUE_TOKENS)
+    ):
+        domain_multiplier *= 0.55
+
+    if is_subject_motion and "subject_turn_around" in phrase_hints:
+        if {"turn", "around"}.issubset(entry_block_tokens):
+            domain_multiplier *= 1.6
+        else:
+            domain_multiplier *= 0.8
+
+    if is_scene_anchor:
+        entry_relation_key = _entry_anchor_relation_key(entry_block_tokens)
+        placement_hints = {
+            hint
+            for hint in phrase_hints
+            if hint.startswith("placement_")
+        }
+        if entry_relation_key:
+            expected_hint = f"placement_{entry_relation_key}"
+            if expected_hint in placement_hints:
+                domain_multiplier *= 1.45
+            elif placement_hints:
+                domain_multiplier *= 0.78
+            if primary_relation and primary_relation != entry_relation_key:
+                domain_multiplier *= 0.8
+
     if is_direction_axis:
         non_direction_probe = {
             token
@@ -531,7 +797,8 @@ def _score_entry(
         if non_direction_probe and overlap_token_set and overlap_token_set.issubset(_DIRECTIONAL_TOKENS):
             domain_multiplier *= 0.7
 
-    score *= max(0.35, min(1.35, domain_multiplier))
+    domain_cap = 1.5 if (is_scene_anchor and placement_relation_overlap) else 1.35
+    score *= max(0.35, min(domain_cap, domain_multiplier))
 
     entry_distinguishing = set(entry.get("distinguishing_tokens") or set())
     category_distinguishing = set(entry.get("category_distinguishing_tokens") or set())
@@ -545,6 +812,22 @@ def _score_entry(
     elif entry_distinguishing and not overlap_distinguishing:
         negative_penalty = 0.85
     score *= negative_penalty
+
+    family_variant_tokens = set(entry.get("family_signal_tokens") or set())
+    family_distinguishing_tokens = set(entry.get("family_distinguishing_tokens") or set())
+    overlap_family_variant = sorted(probe_tokens & family_variant_tokens)
+    competing_family_variant = sorted(
+        (probe_tokens & family_distinguishing_tokens) - set(overlap_family_variant)
+    )
+    family_penalty = 1.0
+    if competing_family_variant and not overlap_family_variant:
+        family_penalty = 0.78
+    elif competing_family_variant and overlap_family_variant and len(overlap_family_variant) < len(competing_family_variant):
+        family_penalty = 0.92
+    score *= family_penalty
+    family_bonus = min(0.15, 0.05 * len(overlap_family_variant))
+    if family_bonus:
+        score = min(1.0, score + family_bonus)
 
     has_specific_evidence = (
         len(overlap_all) >= 2
@@ -570,6 +853,9 @@ def _score_entry(
         "overlap_distinguishing": overlap_distinguishing,
         "competing_distinguishing": competing_distinguishing,
         "negative_penalty": negative_penalty,
+        "overlap_family_variant": overlap_family_variant,
+        "competing_family_variant": competing_family_variant,
+        "family_penalty": family_penalty,
     }
 
 

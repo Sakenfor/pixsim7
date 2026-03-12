@@ -1,0 +1,208 @@
+{
+  "_meta": {
+    "description": "Medium-difficulty corpus for block-ops primitive projection evaluation",
+    "version": "1.0.0",
+    "difficulty": "medium",
+    "total_entries": 24
+  },
+  "corpus": [
+    {
+      "id": "md_cm01",
+      "text": "As the hero enters, the camera slowly dollies forward between the pillars.",
+      "category": "camera_motion",
+      "expected_block_prefix": "core.camera.motion.dolly",
+      "expected_category": "camera",
+      "notes": "Camera motion in a longer sentence"
+    },
+    {
+      "id": "md_cm02",
+      "text": "After a beat, pan right to keep the runner centered in frame.",
+      "category": "camera_motion",
+      "expected_block_prefix": "core.camera.motion.pan",
+      "expected_category": "camera",
+      "notes": "Pan with framing context"
+    },
+    {
+      "id": "md_cm03",
+      "text": "The shot orbits around them while the firelight flickers behind.",
+      "category": "camera_motion",
+      "expected_block_prefix": "core.camera.motion.orbit",
+      "expected_category": "camera",
+      "notes": "Orbit with extra lighting noise"
+    },
+    {
+      "id": "md_cm04",
+      "text": "Tilt down from the skyline to reveal the crowd below.",
+      "category": "camera_motion",
+      "expected_block_prefix": "core.camera.motion.tilt",
+      "expected_category": "camera",
+      "notes": "Tilt with placement language"
+    },
+
+    {
+      "id": "md_cf01",
+      "text": "Start on a wide establishing shot before tightening later.",
+      "category": "camera_framing",
+      "expected_block_prefix": "core.camera.shot.wide",
+      "expected_category": "camera",
+      "notes": "Shot-size cue with narrative filler"
+    },
+    {
+      "id": "md_cf02",
+      "text": "Use a Dutch angle leaning left to make the hallway feel unstable.",
+      "category": "camera_framing",
+      "expected_block_prefix": "core.camera.angle.dutch_left",
+      "expected_category": "camera",
+      "notes": "Dutch-left phrasing variant"
+    },
+    {
+      "id": "md_cf03",
+      "text": "Rack focus from the foreground hand to the face in back.",
+      "category": "camera_framing",
+      "expected_block_prefix": "core.camera.focus.rack",
+      "expected_category": "camera",
+      "notes": "Rack-focus with multiple tokens"
+    },
+    {
+      "id": "md_cf04",
+      "text": "Keep this as an over-the-shoulder perspective through the dialogue.",
+      "category": "camera_framing",
+      "expected_block_prefix": "core.camera.pov.over_shoulder",
+      "expected_category": "camera",
+      "notes": "POV framing"
+    },
+
+    {
+      "id": "md_dr01",
+      "text": "Place the object in front of the subject, near the desk.",
+      "category": "direction",
+      "expected_block_prefix": "core.placement.anchor.in_front_of",
+      "expected_category": "location",
+      "notes": "Placement relation with context noise"
+    },
+    {
+      "id": "md_dr02",
+      "text": "She moves right first, then eases toward center.",
+      "category": "direction",
+      "expected_block_prefix": "core.direction.right",
+      "expected_category": "direction",
+      "notes": "Directional motion phrase"
+    },
+    {
+      "id": "md_dr03",
+      "text": "The drone hovers above the rooftops while traffic passes below.",
+      "category": "direction",
+      "expected_block_prefix": "core.placement.anchor.above",
+      "expected_category": "location",
+      "notes": "Above with extra comparative wording"
+    },
+    {
+      "id": "md_dr04",
+      "text": "Water runs below the bridge and disappears into fog.",
+      "category": "direction",
+      "expected_block_prefix": "core.placement.anchor.below",
+      "expected_category": "location",
+      "notes": "Below relation in prose"
+    },
+
+    {
+      "id": "md_lt01",
+      "text": "Keep the scene in soft warm light, with gentle falloff on skin.",
+      "category": "lighting",
+      "expected_block_prefix": "core.light.state.soft_warm",
+      "expected_category": "light",
+      "notes": "Soft-warm with descriptive filler"
+    },
+    {
+      "id": "md_lt02",
+      "text": "Backlit silhouette against the bright window, almost haloed.",
+      "category": "lighting",
+      "expected_block_prefix": "core.light.state.backlit_silhouette",
+      "expected_category": "light",
+      "notes": "Backlit synonyms"
+    },
+    {
+      "id": "md_lt03",
+      "text": "Use hard cool lighting so metallic highlights stay sharp.",
+      "category": "lighting",
+      "expected_block_prefix": "core.light.state.hard_cool",
+      "expected_category": "light",
+      "notes": "Hard-cool with specular intent"
+    },
+    {
+      "id": "md_lt04",
+      "text": "Diffuse neutral illumination across the whole room, no hotspots.",
+      "category": "lighting",
+      "expected_block_prefix": "core.light.state.diffuse_neutral",
+      "expected_category": "light",
+      "notes": "Diffuse-neutral phrasing"
+    },
+
+    {
+      "id": "md_sa01",
+      "text": "The subject remains seated and relaxed while listening.",
+      "category": "subject_action",
+      "expected_block_prefix": "core.subject.pose.seated_relaxed",
+      "expected_category": "character_pose",
+      "notes": "Pose-state with extra context"
+    },
+    {
+      "id": "md_sa02",
+      "text": "Hands point toward the map, then hold steady.",
+      "category": "subject_action",
+      "expected_block_prefix": "core.subject.hands.hands_point",
+      "expected_category": "character_pose",
+      "notes": "Hands gesture variant"
+    },
+    {
+      "id": "md_sa03",
+      "text": "He turns around to face the doorway after hearing the noise.",
+      "category": "subject_action",
+      "expected_block_prefix": "core.subject.motion.turn_around",
+      "expected_category": "character_pose",
+      "notes": "Subject motion with narrative tail"
+    },
+    {
+      "id": "md_sa04",
+      "text": "Maintain direct eye contact for a tense beat.",
+      "category": "subject_action",
+      "expected_block_prefix": "core.subject.look.hold_eye_contact",
+      "expected_category": "character_pose",
+      "notes": "Look behavior with emphasis"
+    },
+
+    {
+      "id": "md_am01",
+      "text": "Low angle dolly forward while warm rim light wraps the subject.",
+      "category": "ambiguous",
+      "expected_block_prefix": null,
+      "expected_category": null,
+      "notes": "Intentionally mixed framing, motion, and lighting"
+    },
+    {
+      "id": "md_am02",
+      "text": "Third person narrative with a soft focus on memories.",
+      "category": "ambiguous",
+      "expected_block_prefix": null,
+      "expected_category": null,
+      "notes": "False-friend phrasing for POV/focus"
+    },
+
+    {
+      "id": "md_un01",
+      "text": "A baker kneads dough while rain taps on the window.",
+      "category": "unrelated",
+      "expected_block_prefix": null,
+      "expected_category": null,
+      "notes": "No directive intent"
+    },
+    {
+      "id": "md_un02",
+      "text": "The museum opens at nine and closes after sunset.",
+      "category": "unrelated",
+      "expected_block_prefix": null,
+      "expected_category": null,
+      "notes": "Informational prose"
+    }
+  ]
+}

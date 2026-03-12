@@ -22,6 +22,7 @@ pack: #PromptBlockPackV1 & {
 				}
 				op: {
 					op_id: "subject.hands.set"
+					signature_id: "subject.hands.v1"
 					modalities: ["both"]
 					refs: [
 						{

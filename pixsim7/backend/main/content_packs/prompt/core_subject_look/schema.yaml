@@ -17,6 +17,7 @@ blocks:
         temporal: neutral
       op:
         op_id: subject.look_at
+        signature_id: subject.look.v1
         modalities:
           - both
         refs:
@@ -32,8 +33,10 @@ blocks:
             enum:
               - eyes
               - head
+              - away
               - body
             default: eyes
+            tag_key: look_focus
           - key: intensity
             type: enum
             enum:
@@ -51,26 +54,18 @@ blocks:
           intensity: medium
       variants:
         - key: glance_target
-          tags:
-            look_focus: eyes
           op_args:
             focus: eyes
             intensity: low
         - key: hold_eye_contact
-          tags:
-            look_focus: eyes
           op_args:
             focus: eyes
             intensity: high
         - key: turn_head_target
-          tags:
-            look_focus: head
           op_args:
             focus: head
             intensity: medium
         - key: look_away_soft
-          tags:
-            look_focus: away
           op_args:
-            focus: head
+            focus: away
             intensity: low

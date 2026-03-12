@@ -41,7 +41,7 @@ package promptpacks
 #PlacementRelationValues: ["near", "left_of", "right_of", "in_front_of", "behind", "above", "below"]
 #PlacementDistanceValues: ["contact", "near", "medium", "far"]
 #PlacementOrientationValues: ["front", "profile_left", "profile_right", "back"]
-#LookFocusValues: ["eyes", "head", "body"]
+#LookFocusValues: ["eyes", "head", "away", "body"]
 #GaitValues: ["step", "walk", "run", "drift", "turn"]
 
 #RefSpec: {

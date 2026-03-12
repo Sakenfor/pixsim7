@@ -59,6 +59,7 @@ blocks:
               - drift
               - turn
             default: walk
+            tag_key: motion_gait
           - key: target_ref
             required: false
             type: ref

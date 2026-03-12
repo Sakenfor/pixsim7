@@ -15,6 +15,9 @@ def test_list_op_signatures_contains_known_ids() -> None:
     signature_ids = {signature.id for signature in list_op_signatures()}
     assert "camera.motion.v1" in signature_ids
     assert "subject.motion.v1" in signature_ids
+    assert "subject.hands.v1" in signature_ids
+    assert "subject.look.v1" in signature_ids
+    assert "light.state.v1" in signature_ids
 
 
 def test_validate_signature_contract_requires_variant_template_when_declared() -> None:

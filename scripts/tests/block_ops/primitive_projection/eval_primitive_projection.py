@@ -5,8 +5,7 @@ Runs the prompt parser with projection on/off against a labeled corpus
 and computes quality metrics for the token_overlap_v1 matcher.
 
 Usage:
-    cd pixsim7/backend
-    python -m scripts.eval_primitive_projection [--threshold 0.45] [--verbose]
+    python scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py [--threshold 0.45] [--verbose]
 
 Produces:
     - Precision@1, coverage, false-positive rate by category
@@ -24,6 +23,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+# Ensure repo-root imports (pixsim7 package) work when running as a direct script.
+_HERE = Path(__file__).resolve()
+for _parent in (_HERE, *_HERE.parents):
+    if (_parent / "docs").is_dir() and (_parent / "pixsim7").is_dir():
+        _repo_root = str(_parent)
+        if _repo_root not in sys.path:
+            sys.path.insert(0, _repo_root)
+        break
+
 # ---------------------------------------------------------------------------
 # Imports from the projection module (no DB, no LLM)
 # ---------------------------------------------------------------------------
@@ -39,6 +47,16 @@ from pixsim7.backend.main.services.prompt.parser.dsl_adapter import (
 
 
 CORPUS_PATH = Path(__file__).parent / "eval_corpus.json"
+DEFAULT_REPORT_PATH = Path("docs/plans/prompt-primitive-projection-eval.md")
+
+
+def _resolve_repo_root() -> Path:
+    here = Path(__file__).resolve()
+    for parent in (here, *here.parents):
+        if (parent / "docs").is_dir() and (parent / "pixsim7").is_dir():
+            return parent
+    # Conservative fallback for unusual execution roots.
+    return here.parents[3]
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -81,12 +99,20 @@ class EvalResult:
 
     @property
     def is_false_positive(self) -> bool:
-        """Match produced but either no match expected or wrong prefix."""
-        if not self.has_match:
+        """Backward-compatible aggregate of wrong-positive + negative FP."""
+        return self.is_wrong_positive or self.is_negative_false_positive
+
+    @property
+    def is_wrong_positive(self) -> bool:
+        """Expected a match, but predicted a non-matching primitive."""
+        if not self.has_match or not self.expected_match:
             return False
-        if not self.expected_match:
-            return True
         return not self.matched_block_id.startswith(self.entry.expected_block_prefix)
+
+    @property
+    def is_negative_false_positive(self) -> bool:
+        """No match expected, but matcher still produced a prediction."""
+        return self.has_match and not self.expected_match
 
     @property
     def is_missed(self) -> bool:
@@ -200,9 +226,15 @@ class CategoryMetrics:
     expected_positives: int = 0
     expected_negatives: int = 0
     true_positives: int = 0
-    false_positives: int = 0
+    wrong_positives: int = 0
+    negative_false_positives: int = 0
     missed: int = 0
     true_negatives: int = 0
+
+    @property
+    def false_positives(self) -> int:
+        """All precision-impacting false positives (legacy aggregate)."""
+        return self.wrong_positives + self.negative_false_positives
 
     @property
     def precision_at_1(self) -> float:
@@ -219,9 +251,10 @@ class CategoryMetrics:
 
     @property
     def false_positive_rate(self) -> float:
-        if self.expected_negatives == 0:
+        denom = self.negative_false_positives + self.true_negatives
+        if denom == 0:
             return 0.0
-        return self.false_positives / self.expected_negatives
+        return self.negative_false_positives / denom
 
 
 def compute_metrics(results: List[EvalResult]) -> Dict[str, CategoryMetrics]:
@@ -237,8 +270,10 @@ def compute_metrics(results: List[EvalResult]) -> Dict[str, CategoryMetrics]:
             m.expected_negatives += 1
         if r.is_true_positive:
             m.true_positives += 1
-        elif r.is_false_positive:
-            m.false_positives += 1
+        elif r.is_wrong_positive:
+            m.wrong_positives += 1
+        elif r.is_negative_false_positive:
+            m.negative_false_positives += 1
         elif r.is_missed:
             m.missed += 1
         elif r.is_true_negative:
@@ -251,7 +286,8 @@ def compute_metrics(results: List[EvalResult]) -> Dict[str, CategoryMetrics]:
         overall.expected_positives += m.expected_positives
         overall.expected_negatives += m.expected_negatives
         overall.true_positives += m.true_positives
-        overall.false_positives += m.false_positives
+        overall.wrong_positives += m.wrong_positives
+        overall.negative_false_positives += m.negative_false_positives
         overall.missed += m.missed
         overall.true_negatives += m.true_negatives
     by_category["OVERALL"] = overall
@@ -265,7 +301,10 @@ def compute_metrics(results: List[EvalResult]) -> Dict[str, CategoryMetrics]:
 
 def print_metrics_table(metrics: Dict[str, CategoryMetrics]) -> str:
     lines = []
-    header = f"{'Category':<20} {'Total':>5} {'TP':>4} {'FP':>4} {'Miss':>4} {'TN':>4} {'P@1':>6} {'Cover':>6} {'FPR':>6}"
+    header = (
+        f"{'Category':<20} {'Total':>5} {'TP':>4} {'FP-':>4} {'Wrong':>5} "
+        f"{'Miss':>4} {'TN':>4} {'P@1':>6} {'Cover':>6} {'FPR':>6}"
+    )
     lines.append(header)
     lines.append("-" * len(header))
 
@@ -275,8 +314,8 @@ def print_metrics_table(metrics: Dict[str, CategoryMetrics]) -> str:
     for cat in order:
         m = metrics[cat]
         lines.append(
-            f"{cat:<20} {m.total:>5} {m.true_positives:>4} {m.false_positives:>4} "
-            f"{m.missed:>4} {m.true_negatives:>4} "
+            f"{cat:<20} {m.total:>5} {m.true_positives:>4} {m.negative_false_positives:>4} "
+            f"{m.wrong_positives:>5} {m.missed:>4} {m.true_negatives:>4} "
             f"{m.precision_at_1:>6.1%} {m.coverage:>6.1%} {m.false_positive_rate:>6.1%}"
         )
 
@@ -359,12 +398,12 @@ def sweep_thresholds(
 
     thresholds = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70]
     lines = ["\nThreshold Sweep:", "-" * 80]
-    header = f"{'Threshold':>10} {'Matches':>8} {'TP':>5} {'FP':>5} {'P@1':>7} {'FPR':>7}"
+    header = f"{'Threshold':>10} {'Matches':>8} {'TP':>5} {'FP-':>5} {'Wrong':>6} {'P@1':>7} {'FPR':>7}"
     lines.append(header)
     lines.append("-" * len(header))
 
     for thresh in thresholds:
-        tp = fp = total_matches = 0
+        tp = fp_neg = wrong = total_matches = 0
         for r in results_at_default:
             # Recompute best match at this threshold
             valid = [m for m in r.all_candidate_matches if m["score"] >= thresh]
@@ -374,14 +413,19 @@ def sweep_thresholds(
             total_matches += 1
             if r.entry.expected_block_prefix and best["block_id"].startswith(r.entry.expected_block_prefix):
                 tp += 1
-            elif not r.entry.expected_block_prefix or not best["block_id"].startswith(r.entry.expected_block_prefix):
-                fp += 1
+            elif r.entry.expected_block_prefix:
+                wrong += 1
+            else:
+                fp_neg += 1
 
-        p1 = tp / max(tp + fp, 1)
-        # FPR relative to entries that should NOT match
+        p1 = tp / max(tp + fp_neg + wrong, 1)
+        # Standard FPR over expected negatives only.
         neg_entries = sum(1 for r in results_at_default if not r.expected_match)
-        fpr = fp / max(neg_entries, 1)
-        lines.append(f"{thresh:>10.2f} {total_matches:>8} {tp:>5} {fp:>5} {p1:>7.1%} {fpr:>7.1%}")
+        tn = max(neg_entries - fp_neg, 0)
+        fpr = fp_neg / max(fp_neg + tn, 1)
+        lines.append(
+            f"{thresh:>10.2f} {total_matches:>8} {tp:>5} {fp_neg:>5} {wrong:>6} {p1:>7.1%} {fpr:>7.1%}"
+        )
 
     text = "\n".join(lines)
     print(text)
@@ -393,8 +437,9 @@ def sweep_thresholds(
 # ---------------------------------------------------------------------------
 
 async def async_main(args: argparse.Namespace) -> None:
-    corpus = load_corpus(CORPUS_PATH)
-    print(f"Loaded {len(corpus)} corpus entries from {CORPUS_PATH}")
+    corpus_path = Path(args.corpus).resolve()
+    corpus = load_corpus(corpus_path)
+    print(f"Loaded {len(corpus)} corpus entries from {corpus_path}")
 
     # Count by category
     cat_counts: Dict[str, int] = defaultdict(int)
@@ -437,7 +482,8 @@ async def async_main(args: argparse.Namespace) -> None:
             print(f"  [{status:4}] {r.entry.id}: \"{r.entry.text[:60]}\" -> {match_str}")
 
     # Generate markdown report
-    report_path = Path(__file__).resolve().parent.parent.parent.parent / "docs" / "plans" / "prompt-primitive-projection-eval.md"
+    report_rel = Path(args.report) if args.report else DEFAULT_REPORT_PATH
+    report_path = (_resolve_repo_root() / report_rel).resolve()
     generate_report(report_path, metrics, fps, missed, results, idx, args.threshold, sweep_text, idx_summary)
     print(f"\nReport written to: {report_path}")
 
@@ -477,15 +523,15 @@ def generate_report(
     # Metrics table
     lines.append("## Metrics Table")
     lines.append("")
-    lines.append("| Category | Total | TP | FP | Miss | TN | P@1 | Coverage | FPR |")
-    lines.append("|----------|------:|---:|---:|-----:|---:|----:|---------:|----:|")
+    lines.append("| Category | Total | TP | FP- | Wrong | Miss | TN | P@1 | Coverage | FPR |")
+    lines.append("|----------|------:|---:|----:|------:|-----:|---:|----:|---------:|----:|")
     order = sorted(k for k in metrics if k != "OVERALL")
     order.append("OVERALL")
     for cat in order:
         m = metrics[cat]
         lines.append(
-            f"| {cat} | {m.total} | {m.true_positives} | {m.false_positives} | "
-            f"{m.missed} | {m.true_negatives} | "
+            f"| {cat} | {m.total} | {m.true_positives} | {m.negative_false_positives} | "
+            f"{m.wrong_positives} | {m.missed} | {m.true_negatives} | "
             f"{m.precision_at_1:.1%} | {m.coverage:.1%} | {m.false_positive_rate:.1%} |"
         )
     lines.append("")
@@ -594,7 +640,7 @@ def generate_report(
     lines.append("")
 
     lines.append("---")
-    lines.append("_Generated by `pixsim7/backend/scripts/eval_primitive_projection.py`_")
+    lines.append("_Generated by `scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py`_")
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -604,6 +650,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate primitive projection quality")
     parser.add_argument("--threshold", type=float, default=0.45, help="Score threshold (default: 0.45)")
     parser.add_argument("--verbose", action="store_true", help="Print all individual results")
+    parser.add_argument(
+        "--corpus",
+        type=str,
+        default=str(CORPUS_PATH),
+        help="Path to corpus JSON (default: eval_corpus.json).",
+    )
+    parser.add_argument(
+        "--report",
+        type=str,
+        default=str(DEFAULT_REPORT_PATH),
+        help="Path (repo-relative) to generated markdown report.",
+    )
     args = parser.parse_args()
     asyncio.run(async_main(args))
 

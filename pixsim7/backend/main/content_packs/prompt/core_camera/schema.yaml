@@ -31,6 +31,7 @@ blocks:
               - normal
               - fast
             default: normal
+            tag_key: motion_speed
           - key: direction
             type: enum
             enum:
@@ -45,6 +46,7 @@ blocks:
               - around
               - none
             default: none
+            tag_key: motion_direction
         default_args:
           speed: normal
           direction: none
