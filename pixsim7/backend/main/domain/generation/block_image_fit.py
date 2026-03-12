@@ -1,21 +1,20 @@
-"""Block ↔ Image Fit Feedback domain model
+"""Block <-> Image Fit Feedback domain model.
 
 User feedback and derived metadata for how well an ActionBlock
 fits a specific image/asset (or generation output).
 """
+from datetime import datetime
+from typing import Optional, Dict, Any
+
 from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import JSON
-from typing import Optional, Dict, Any
-from datetime import datetime
 
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 
 class BlockImageFit(SQLModel, table=True):
-    """
-    User feedback and derived metadata for how well an ActionBlock
-    fits a specific image/asset (or generation output).
-    """
+    """User feedback and derived metadata for block-to-asset fit."""
+
     __tablename__ = "block_image_fits"
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -23,59 +22,62 @@ class BlockImageFit(SQLModel, table=True):
     block_id: str = Field(
         max_length=200,
         index=True,
-        description="Canonical block ID (BlockPrimitive.block_id) being evaluated"
+        description="Canonical block ID (BlockPrimitive.block_id) being evaluated",
     )
 
     asset_id: Optional[int] = Field(
         default=None,
         index=True,
-        description="Asset.id (image/video) the block is being evaluated against"
+        description="Asset.id (image/video) the block is being evaluated against",
     )
 
     generation_id: Optional[int] = Field(
         default=None,
         index=True,
-        description="Generation.id if rating tied to a specific generation"
+        description="Generation.id if rating tied to a specific generation",
     )
 
-    # Sequence context: initial scene setup, continuation, or transition
+    # Sequence role context: initial scene setup, continuation, or transition.
     role_in_sequence: str = Field(
         default="unspecified",
         max_length=32,
-        description="'initial' | 'continuation' | 'transition' | 'unspecified'"
+        description="'initial' | 'continuation' | 'transition' | 'unspecified'",
     )
 
     # User + rating
     user_id: Optional[int] = Field(default=None, index=True)
     fit_rating: Optional[int] = Field(
         default=None,
-        description="1-5 rating for how well block fits the image"
+        description="1-5 rating for how well block fits the image",
     )
 
-    # Heuristic fit score (0-1 or 0-100) from ontology tag comparison, for analysis
+    # Heuristic fit score from ontology/context comparison.
     heuristic_score: Optional[float] = Field(default=None)
 
-    # Optional timestamp for video ratings
+    # Optional timestamp for video ratings.
     timestamp_sec: Optional[float] = Field(
         default=None,
-        description="Optional timestamp in seconds within the asset (video) where this rating applies"
+        description="Optional timestamp in seconds within the asset where this rating applies",
     )
 
-    # Snapshots of tags at rating time (for offline analysis)
+    # Snapshots of tags and scoring contexts at rating time (for offline analysis).
     block_tags_snapshot: Dict[str, Any] = Field(
         default_factory=dict,
-        sa_column=Column(JSON)
+        sa_column=Column(JSON),
     )
     asset_tags_snapshot: Dict[str, Any] = Field(
         default_factory=dict,
-        sa_column=Column(JSON)
+        sa_column=Column(JSON),
     )
-
-    # Parser context snapshot (op/primitive context at scoring time)
     parser_context_snapshot: Dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(JSON),
         description="Snapshot of parser-provided primitive/op context used during scoring",
+    )
+    sequence_context_snapshot: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON),
+        description="Snapshot of sequence continuity context used during scoring",
     )
 
     notes: Optional[str] = Field(default=None, description="Optional free-form notes")

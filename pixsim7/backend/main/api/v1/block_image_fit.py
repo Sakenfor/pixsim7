@@ -1,4 +1,4 @@
-"""Block ↔ Image Fit API endpoints
+"""Block <-> Image Fit API endpoints.
 
 Dev endpoints for computing and recording fit scores between ActionBlocks and assets.
 
@@ -13,32 +13,35 @@ Design:
 - Stores fit feedback in BlockImageFit table
 - Accepts optional parser context (op_id, signature_id, modality, primitive_match)
   for context-aware scoring without duplicating parser matching logic
+- Accepts optional sequence context for continuation/transition continuity scoring
 """
-from fastapi import APIRouter, HTTPException
-from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import Optional, Dict, Any
 
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+
+from pixsim_logging import get_logger
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.domain.assets.models import Asset
-from pixsim7.backend.main.domain.generation.models import Generation
+from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.domain.generation.block_image_fit import BlockImageFit
+from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.services.asset.tags import tag_asset_from_metadata
 from pixsim7.backend.main.services.prompt.block.fit_scoring import (
     compute_block_asset_fit,
-    explain_fit_score
+    explain_fit_score,
 )
-from sqlalchemy import select
-from pixsim_logging import get_logger
 
 logger = get_logger()
 
 router = APIRouter(prefix="/dev/block-fit", tags=["dev", "block-fit"])
 
 
-# ===== Shared Context Schema =====
+# ===== Shared Context Schemas =====
+
 
 class ParserContext(BaseModel):
     """Optional parser-provided context for context-aware scoring.
@@ -46,6 +49,7 @@ class ParserContext(BaseModel):
     Parser owns matching raw text -> primitive/op evidence.
     Block-fit consumes this context to score outcome quality.
     """
+
     primitive_match: Optional[Dict[str, Any]] = Field(
         None,
         description="Full primitive_match payload from primitive_projection parser",
@@ -64,43 +68,89 @@ class ParserContext(BaseModel):
     )
 
 
+class SequenceRelation(BaseModel):
+    """One relation assertion used in sequence continuity checks."""
+
+    subject: str = Field(..., description="Relation subject token")
+    predicate: str = Field(..., description="Relation predicate token")
+    object: str = Field(..., description="Relation object token")
+
+
+class SequenceContext(BaseModel):
+    """Optional sequence/continuity context for continuation-style scoring."""
+
+    requested_refs: Optional[list[str]] = Field(
+        None,
+        description="Reference tokens requested by the continuation prompt",
+    )
+    available_refs: Optional[list[str]] = Field(
+        None,
+        description="Reference tokens known from previous generated context",
+    )
+    requested_relations: Optional[list[SequenceRelation]] = Field(
+        None,
+        description="Relation assertions requested by the continuation prompt",
+    )
+    available_relations: Optional[list[SequenceRelation]] = Field(
+        None,
+        description="Relations known from previous generated context",
+    )
+
+
 # ===== Request Models =====
+
 
 class ComputeFitRequest(BaseModel):
     """Request to compute fit score between a block and asset."""
+
     block_id: str = Field(..., description="BlockPrimitive.block_id to evaluate")
     asset_id: int = Field(..., description="Asset.id to evaluate against")
+    role_in_sequence: str = Field(
+        default="unspecified",
+        description="'initial' | 'continuation' | 'transition' | 'unspecified'",
+    )
     parser_context: Optional[ParserContext] = Field(
         None,
         description="Optional parser-provided context for context-aware scoring",
+    )
+    sequence_context: Optional[SequenceContext] = Field(
+        None,
+        description="Optional sequence continuity context for continuation scoring",
     )
 
 
 class RateFitRequest(BaseModel):
     """Request to rate and record block-to-asset fit."""
+
     block_id: str = Field(..., description="BlockPrimitive.block_id to evaluate")
     asset_id: int = Field(..., description="Asset.id to evaluate against")
     generation_id: Optional[int] = Field(None, description="Optional Generation.id")
     role_in_sequence: str = Field(
         default="unspecified",
-        description="'initial' | 'continuation' | 'transition' | 'unspecified'"
+        description="'initial' | 'continuation' | 'transition' | 'unspecified'",
     )
     fit_rating: int = Field(..., ge=1, le=5, description="User rating 1-5")
     notes: Optional[str] = Field(None, description="Optional notes about the fit")
     timestamp_sec: Optional[float] = Field(
         default=None,
-        description="Optional timestamp in seconds for this rating"
+        description="Optional timestamp in seconds for this rating",
     )
     parser_context: Optional[ParserContext] = Field(
         None,
         description="Optional parser-provided context for context-aware scoring",
     )
+    sequence_context: Optional[SequenceContext] = Field(
+        None,
+        description="Optional sequence continuity context for continuation scoring",
+    )
 
 
 # ===== Response Models =====
 
+
 class FitScoreResponse(BaseModel):
     """Response with heuristic fit score and details."""
+
     heuristic_score: float = Field(..., description="Score 0.0-1.0")
     details: Dict[str, Any] = Field(..., description="Detailed breakdown")
     explanation: str = Field(..., description="Human-readable explanation")
@@ -108,6 +158,7 @@ class FitScoreResponse(BaseModel):
 
 class FitRatingResponse(BaseModel):
     """Response after recording a fit rating."""
+
     id: int
     block_id: str
     asset_id: int
@@ -125,25 +176,42 @@ class FitRatingResponse(BaseModel):
 
 class FitRatingListResponse(BaseModel):
     """Response for listing fit ratings."""
+
     ratings: list[FitRatingResponse]
 
 
 # ===== Helpers =====
 
-def _build_parser_context_dict(
-    ctx: Optional[ParserContext],
-) -> Optional[Dict[str, Any]]:
+
+def _build_parser_context_dict(ctx: Optional[ParserContext]) -> Optional[Dict[str, Any]]:
     """Convert ParserContext model to dict for the scorer, or None if empty."""
+
     if ctx is None:
         return None
     d = ctx.model_dump(exclude_none=True)
     return d if d else None
 
 
-def _build_parser_context_snapshot(
-    ctx: Optional[ParserContext],
-) -> Dict[str, Any]:
-    """Build the full snapshot to persist (includes primitive_match)."""
+def _build_parser_context_snapshot(ctx: Optional[ParserContext]) -> Dict[str, Any]:
+    """Build the full parser snapshot to persist (includes primitive_match)."""
+
+    if ctx is None:
+        return {}
+    return ctx.model_dump(exclude_none=True)
+
+
+def _build_sequence_context_dict(ctx: Optional[SequenceContext]) -> Optional[Dict[str, Any]]:
+    """Convert SequenceContext to scorer dict, or None if empty."""
+
+    if ctx is None:
+        return None
+    d = ctx.model_dump(exclude_none=True)
+    return d if d else None
+
+
+def _build_sequence_context_snapshot(ctx: Optional[SequenceContext]) -> Dict[str, Any]:
+    """Build sequence context snapshot to persist in fit records."""
+
     if ctx is None:
         return {}
     return ctx.model_dump(exclude_none=True)
@@ -151,21 +219,21 @@ def _build_parser_context_snapshot(
 
 # ===== Endpoints =====
 
+
 @router.post("/score", response_model=FitScoreResponse)
 async def compute_fit_score(
     request: ComputeFitRequest,
     db: DatabaseSession,
     user: CurrentUser,
 ) -> FitScoreResponse:
-    """
-    Compute heuristic fit score between an ActionBlock and an Asset.
+    """Compute heuristic fit score between an ActionBlock and an Asset.
 
     This endpoint:
-    1. Loads the ActionBlock and Asset
-    2. Derives ontology tags from the Asset (using generation prompt if available)
-    3. Computes a heuristic fit score based on tag alignment
-    4. Optionally applies context-aware op/signature bonuses when parser_context is provided
-    5. Returns score + detailed explanation
+    1. Loads the ActionBlock and Asset.
+    2. Derives ontology tags from the Asset (using generation prompt if available).
+    3. Computes a heuristic fit score based on tag alignment.
+    4. Optionally applies parser-context and sequence-context scoring deltas.
+    5. Returns score + detailed explanation.
 
     No data is persisted by this endpoint - use /rate to record feedback.
     """
@@ -173,7 +241,7 @@ async def compute_fit_score(
     if not block_id:
         raise HTTPException(status_code=400, detail="block_id is required")
 
-    # Load block from primitives DB
+    # Load block from primitives DB.
     async with get_async_blocks_session() as blocks_db:
         block_result = await blocks_db.execute(
             select(BlockPrimitive).where(BlockPrimitive.block_id == block_id)
@@ -182,15 +250,13 @@ async def compute_fit_score(
     if not block:
         raise HTTPException(status_code=404, detail="ActionBlock not found")
 
-    # Load asset
-    asset_result = await db.execute(
-        select(Asset).where(Asset.id == request.asset_id)
-    )
+    # Load asset.
+    asset_result = await db.execute(select(Asset).where(Asset.id == request.asset_id))
     asset = asset_result.scalar_one_or_none()
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    # Try to load associated generation (for prompt-based tagging)
+    # Try to load associated generation (for prompt-based tagging).
     generation = None
     if asset.id:
         gen_result = await db.execute(
@@ -198,17 +264,23 @@ async def compute_fit_score(
         )
         generation = gen_result.scalar_one_or_none()
 
-    # Derive asset tags
+    # Derive asset tags.
     asset_tags = await tag_asset_from_metadata(
         asset=asset,
         generation=generation,
     )
 
-    # Compute fit (with optional context)
     parser_ctx = _build_parser_context_dict(request.parser_context)
-    score, details = compute_block_asset_fit(block, asset_tags, parser_context=parser_ctx)
+    sequence_ctx = _build_sequence_context_dict(request.sequence_context)
 
-    # Generate explanation
+    score, details = compute_block_asset_fit(
+        block,
+        asset_tags,
+        parser_context=parser_ctx,
+        sequence_context=sequence_ctx,
+        role_in_sequence=request.role_in_sequence,
+    )
+
     explanation = explain_fit_score(details)
 
     logger.info(
@@ -218,7 +290,9 @@ async def compute_fit_score(
             "asset_id": asset.id,
             "score": score,
             "context_provided": parser_ctx is not None,
-        }
+            "sequence_context_provided": sequence_ctx is not None,
+            "role_in_sequence": request.role_in_sequence,
+        },
     )
 
     return FitScoreResponse(
@@ -234,18 +308,17 @@ async def rate_fit(
     db: DatabaseSession,
     user: CurrentUser,
 ) -> FitRatingResponse:
-    """
-    Record a user rating for how well an ActionBlock fits an Asset.
+    """Record a user rating for how well an ActionBlock fits an Asset.
 
     This endpoint:
-    1. Computes heuristic fit score (same as /score), with optional context
+    1. Computes heuristic fit score (same as /score), with optional contexts.
     2. Creates a BlockImageFit record with:
        - User rating (1-5)
        - Heuristic score
-       - Snapshots of block tags, asset tags, and parser context
-       - Sequence context and optional notes
-    3. Persists to database
-    4. Returns the created record
+       - Snapshots of block tags, asset tags, parser context, and sequence context
+       - Sequence role and optional notes
+    3. Persists to database.
+    4. Returns the created record.
 
     Use this to collect training data for fit scoring improvements.
     """
@@ -253,7 +326,7 @@ async def rate_fit(
     if not block_id:
         raise HTTPException(status_code=400, detail="block_id is required")
 
-    # Load block from primitives DB
+    # Load block from primitives DB.
     async with get_async_blocks_session() as blocks_db:
         block_result = await blocks_db.execute(
             select(BlockPrimitive).where(BlockPrimitive.block_id == block_id)
@@ -262,15 +335,13 @@ async def rate_fit(
     if not block:
         raise HTTPException(status_code=404, detail="ActionBlock not found")
 
-    # Load asset
-    asset_result = await db.execute(
-        select(Asset).where(Asset.id == request.asset_id)
-    )
+    # Load asset.
+    asset_result = await db.execute(select(Asset).where(Asset.id == request.asset_id))
     asset = asset_result.scalar_one_or_none()
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    # Validate generation_id if provided
+    # Validate generation_id if provided.
     if request.generation_id:
         gen_result = await db.execute(
             select(Generation).where(Generation.id == request.generation_id)
@@ -278,7 +349,7 @@ async def rate_fit(
         if not gen_result.scalar_one_or_none():
             raise HTTPException(status_code=404, detail="Generation not found")
 
-    # Try to load associated generation for tagging
+    # Try to load associated generation for tagging.
     generation = None
     if request.generation_id:
         gen_result = await db.execute(
@@ -291,17 +362,24 @@ async def rate_fit(
         )
         generation = gen_result.scalar_one_or_none()
 
-    # Derive asset tags
+    # Derive asset tags.
     asset_tags = await tag_asset_from_metadata(
         asset=asset,
         generation=generation,
     )
 
-    # Compute fit (with optional context)
     parser_ctx = _build_parser_context_dict(request.parser_context)
-    score, details = compute_block_asset_fit(block, asset_tags, parser_context=parser_ctx)
+    sequence_ctx = _build_sequence_context_dict(request.sequence_context)
 
-    # Create BlockImageFit record
+    score, details = compute_block_asset_fit(
+        block,
+        asset_tags,
+        parser_context=parser_ctx,
+        sequence_context=sequence_ctx,
+        role_in_sequence=request.role_in_sequence,
+    )
+
+    # Create BlockImageFit record.
     fit_record = BlockImageFit(
         block_id=block_id,
         asset_id=request.asset_id,
@@ -314,6 +392,7 @@ async def rate_fit(
         block_tags_snapshot=block.tags,
         asset_tags_snapshot=asset_tags,
         parser_context_snapshot=_build_parser_context_snapshot(request.parser_context),
+        sequence_context_snapshot=_build_sequence_context_snapshot(request.sequence_context),
         notes=request.notes,
     )
 
@@ -330,7 +409,9 @@ async def rate_fit(
             "rating": request.fit_rating,
             "heuristic_score": score,
             "context_provided": parser_ctx is not None,
-        }
+            "sequence_context_provided": sequence_ctx is not None,
+            "role_in_sequence": request.role_in_sequence,
+        },
     )
 
     return FitRatingResponse.model_validate(fit_record)
@@ -343,12 +424,7 @@ async def list_fit_ratings(
     db: DatabaseSession = None,
     user: CurrentUser = None,
 ) -> FitRatingListResponse:
-    """
-    List fit ratings, optionally filtered by block_id and/or asset_id.
-
-    This endpoint returns existing BlockImageFit records, ordered by creation time
-    (newest first). Useful for viewing rating history and timestamped feedback.
-    """
+    """List fit ratings, optionally filtered by block_id and/or asset_id."""
     query = select(BlockImageFit).order_by(BlockImageFit.created_at.desc())
 
     normalized_block_id = str(block_id or "").strip()
@@ -357,7 +433,7 @@ async def list_fit_ratings(
     if asset_id:
         query = query.where(BlockImageFit.asset_id == asset_id)
 
-    # Limit to most recent 100 records
+    # Limit to most recent 100 records.
     query = query.limit(100)
 
     result = await db.execute(query)
