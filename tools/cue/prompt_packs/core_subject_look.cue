@@ -47,6 +47,7 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "medium"
 							enum:    #LevelValues
+							tag_key: "look_intensity"
 						},
 						{
 							key:            "target_ref"
@@ -65,7 +66,6 @@ pack: #PromptBlockPackV1 & {
 						key: "glance_target"
 						tags: {
 							look_focus:     "eyes"
-							look_intensity: "low"
 						}
 						op_args: {
 							focus:     "eyes"
@@ -76,7 +76,6 @@ pack: #PromptBlockPackV1 & {
 						key: "hold_eye_contact"
 						tags: {
 							look_focus:     "eyes"
-							look_intensity: "high"
 						}
 						op_args: {
 							focus:     "eyes"
@@ -87,7 +86,6 @@ pack: #PromptBlockPackV1 & {
 						key: "turn_head_target"
 						tags: {
 							look_focus:     "head"
-							look_intensity: "medium"
 						}
 						op_args: {
 							focus:     "head"
@@ -98,7 +96,6 @@ pack: #PromptBlockPackV1 & {
 						key: "look_away_soft"
 						tags: {
 							look_focus:     "away"
-							look_intensity: "low"
 						}
 						op_args: {
 							focus:     "head"

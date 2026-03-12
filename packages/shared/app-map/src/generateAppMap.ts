@@ -177,6 +177,27 @@ function getObjectProp(
   return undefined;
 }
 
+function getDefinitionObjectLiteral(
+  initializer: ts.Expression | undefined,
+  helperNames: string[]
+): ts.ObjectLiteralExpression | undefined {
+  if (!initializer) return undefined;
+  if (ts.isObjectLiteralExpression(initializer)) return initializer;
+  if (!ts.isCallExpression(initializer) || initializer.arguments.length === 0) return undefined;
+
+  const callee = initializer.expression;
+  const calleeName = ts.isIdentifier(callee)
+    ? callee.text
+    : ts.isPropertyAccessExpression(callee)
+      ? callee.name.text
+      : null;
+  if (!calleeName || !helperNames.includes(calleeName)) return undefined;
+
+  const firstArg = initializer.arguments[0];
+  if (!ts.isObjectLiteralExpression(firstArg)) return undefined;
+  return firstArg;
+}
+
 function resolveString(
   expr: ts.Expression | undefined,
   routesMap?: Record<string, string>
@@ -523,8 +544,12 @@ function parseModuleFile(
   };
 
   const visit = (node: ts.Node) => {
-    if (ts.isVariableDeclaration(node) && node.initializer && ts.isObjectLiteralExpression(node.initializer)) {
-      const obj = node.initializer;
+    if (ts.isVariableDeclaration(node)) {
+      const obj = getDefinitionObjectLiteral(node.initializer, ['defineModule']);
+      if (!obj) {
+        ts.forEachChild(node, visit);
+        return;
+      }
       const id = resolveString(getObjectProp(obj, 'id'));
       const name = resolveString(getObjectProp(obj, 'name'));
       const pageExpr = getObjectProp(obj, 'page');
@@ -983,7 +1008,11 @@ function parsePanelDefinition(filePath: string): PanelRegistryEntry | null {
 
     if (ts.isCallExpression(node)) {
       const callee = node.expression;
-      if (ts.isIdentifier(callee) && callee.text === 'definePanel' && node.arguments.length > 0) {
+      if (
+        ts.isIdentifier(callee) &&
+        (callee.text === 'definePanel' || callee.text === 'definePanelWithMeta') &&
+        node.arguments.length > 0
+      ) {
         const arg = node.arguments[0];
         if (ts.isObjectLiteralExpression(arg)) {
           const id = resolveString(getObjectProp(arg, 'id'));
@@ -1082,8 +1111,12 @@ function parseModuleDefinition(
   const visit = (node: ts.Node) => {
     if (result) return;
 
-    if (ts.isVariableDeclaration(node) && node.initializer && ts.isObjectLiteralExpression(node.initializer)) {
-      const obj = node.initializer;
+    if (ts.isVariableDeclaration(node)) {
+      const obj = getDefinitionObjectLiteral(node.initializer, ['defineModule']);
+      if (!obj) {
+        ts.forEachChild(node, visit);
+        return;
+      }
       const id = resolveString(getObjectProp(obj, 'id'));
       const name = resolveString(getObjectProp(obj, 'name'));
       if (!id || !name) return;

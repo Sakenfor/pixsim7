@@ -126,6 +126,7 @@ class PromptFamilyService:
         author: Optional[str] = None,
         parent_version_id: Optional[UUID] = None,
         variables: Optional[Dict[str, Any]] = None,
+        commit: bool = True,
         **kwargs
     ) -> PromptVersion:
         """Create a new prompt version
@@ -142,28 +143,32 @@ class PromptFamilyService:
         Returns:
             Created PromptVersion
         """
-        # Use shared versioning allocator with row lock to avoid duplicate
-        # version numbers under concurrent writes.
+        # Use shared versioning write primitives to avoid drift with
+        # other versioned entities (assets/characters).
         from pixsim7.backend.main.services.prompt.git.versioning_adapter import (
             PromptVersioningService,
         )
 
         versioning = PromptVersioningService(self.db)
-        next_version = await versioning.get_next_version_number(family_id, lock=True)
+
+        parent_version = None
+        if parent_version_id:
+            parent_version = await versioning.get_entity(parent_version_id)
+            if not parent_version:
+                raise ValueError(f"Parent version {parent_version_id} not found")
+            if parent_version.family_id != family_id:
+                raise ValueError(
+                    f"Parent version {parent_version_id} does not belong to family {family_id}"
+                )
 
         # Auto-generate diff from parent if parent_version_id is provided
         diff_from_parent = None
-        if parent_version_id:
-            parent = await self.get_version(parent_version_id)
-            if parent:
-                diff_from_parent = generate_inline_diff(parent.prompt_text, prompt_text)
+        if parent_version is not None:
+            diff_from_parent = generate_inline_diff(parent_version.prompt_text, prompt_text)
 
         version = PromptVersion(
-            family_id=family_id,
-            version_number=next_version,
-            parent_version_id=parent_version_id,
             prompt_text=prompt_text,
-            commit_message=commit_message,
+            prompt_hash=kwargs.pop("prompt_hash", None) or PromptVersion.compute_hash(prompt_text),
             author=author,
             variables=variables or {},
             diff_from_parent=diff_from_parent,
@@ -171,7 +176,16 @@ class PromptFamilyService:
         )
 
         self.db.add(version)
-        await self.db.commit()
+        await versioning.assign_version_metadata(
+            new_version=version,
+            family_id=family_id,
+            commit_message=commit_message,
+            parent_version=parent_version,
+        )
+        if commit:
+            await self.db.commit()
+        else:
+            await self.db.flush()
         await self.db.refresh(version)
         return version
 

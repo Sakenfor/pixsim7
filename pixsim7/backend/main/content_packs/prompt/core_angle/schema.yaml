@@ -44,6 +44,7 @@ blocks:
               - dutch_left
               - dutch_right
             default: level
+            tag_key: camera_roll
           - key: target_ref
             required: false
             type: ref
@@ -53,51 +54,30 @@ blocks:
           roll: level
       variants:
         - key: eye_level
-          tags:
-            vertical_angle: eye
-            camera_roll: level
           op_args:
             vertical_angle: eye
             roll: level
         - key: high_angle
-          tags:
-            vertical_angle: high
-            camera_roll: level
           op_args:
             vertical_angle: high
             roll: level
         - key: low_angle
-          tags:
-            vertical_angle: low
-            camera_roll: level
           op_args:
             vertical_angle: low
             roll: level
         - key: bird_eye
-          tags:
-            vertical_angle: bird
-            camera_roll: level
           op_args:
             vertical_angle: bird
             roll: level
         - key: worm_eye
-          tags:
-            vertical_angle: worm
-            camera_roll: level
           op_args:
             vertical_angle: worm
             roll: level
         - key: dutch_left
-          tags:
-            vertical_angle: eye
-            camera_roll: dutch_left
           op_args:
             vertical_angle: eye
             roll: dutch_left
         - key: dutch_right
-          tags:
-            vertical_angle: eye
-            camera_roll: dutch_right
           op_args:
             vertical_angle: eye
             roll: dutch_right

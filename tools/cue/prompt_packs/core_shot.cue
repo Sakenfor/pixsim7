@@ -64,10 +64,6 @@ pack: #PromptBlockPackV1 & {
 				variants: [
 					{
 						key: "extreme_wide_establishing"
-						tags: {
-							shot_size:     "extreme_wide"
-							subject_count: "group"
-						}
 						op_args: {
 							shot_size:     "extreme_wide"
 							subject_count: "group"
@@ -75,10 +71,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "wide_single"
-						tags: {
-							shot_size:     "wide"
-							subject_count: "single"
-						}
 						op_args: {
 							shot_size:     "wide"
 							subject_count: "single"
@@ -86,10 +78,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "medium_single"
-						tags: {
-							shot_size:     "medium"
-							subject_count: "single"
-						}
 						op_args: {
 							shot_size:     "medium"
 							subject_count: "single"
@@ -97,10 +85,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "close_up_single"
-						tags: {
-							shot_size:     "close_up"
-							subject_count: "single"
-						}
 						op_args: {
 							shot_size:     "close_up"
 							subject_count: "single"
@@ -108,10 +92,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "medium_pair"
-						tags: {
-							shot_size:     "medium"
-							subject_count: "pair"
-						}
 						op_args: {
 							shot_size:     "medium"
 							subject_count: "pair"
@@ -119,10 +99,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "close_up_pair"
-						tags: {
-							shot_size:     "close_up"
-							subject_count: "pair"
-						}
 						op_args: {
 							shot_size:     "close_up"
 							subject_count: "pair"
@@ -130,10 +106,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "wide_group"
-						tags: {
-							shot_size:     "wide"
-							subject_count: "group"
-						}
 						op_args: {
 							shot_size:     "wide"
 							subject_count: "group"
@@ -141,10 +113,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "extreme_close_up_detail"
-						tags: {
-							shot_size:     "extreme_close_up"
-							subject_count: "single"
-						}
 						op_args: {
 							shot_size:     "extreme_close_up"
 							subject_count: "single"

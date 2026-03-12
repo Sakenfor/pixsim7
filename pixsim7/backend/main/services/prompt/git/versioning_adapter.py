@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.prompt import PromptVersion, PromptFamily
 from pixsim7.backend.main.services.versioning import (
+    VersionContext,
     VersioningServiceBase,
     TimelineEntry,
 )
@@ -161,6 +162,76 @@ class PromptVersioningService(VersioningServiceBase[PromptFamily, PromptVersion]
     async def get_version(self, version_id: UUID) -> Optional[PromptVersion]:
         """Compatibility wrapper for git services (delegates to get_entity)."""
         return await self.get_entity(version_id)
+
+    async def assign_version_metadata(
+        self,
+        *,
+        new_version: PromptVersion,
+        family_id: UUID,
+        commit_message: Optional[str],
+        parent_version: Optional[PromptVersion] = None,
+    ) -> VersionContext:
+        """
+        Assign prompt version metadata using shared base primitives.
+
+        This centralizes prompt write-path versioning to reduce drift with
+        other versioned domains (assets/characters).
+        """
+        family = await self.get_family(family_id)
+        if not family:
+            raise ValueError(f"Prompt family {family_id} not found")
+
+        # Child version from an explicit parent in same family.
+        if parent_version is not None:
+            if parent_version.family_id != family_id:
+                raise ValueError(
+                    f"Parent version {parent_version.id} does not belong to family {family_id}"
+                )
+            return await self.chain_entity_as_version(
+                new_entity=new_version,
+                parent_entity=parent_version,
+                message=commit_message,
+            )
+
+        # Root/new-line version in an existing family.
+        next_version = await self.get_next_version_number(family_id, lock=True)
+        setattr(new_version, self.family_id_attr, family_id)
+        setattr(new_version, self.version_number_attr, next_version)
+        setattr(new_version, self.parent_id_attr, None)
+        setattr(new_version, self.version_message_attr, commit_message)
+        await self.db.flush()
+
+        return VersionContext(
+            family_id=family_id,
+            version_number=next_version,
+            parent_id=None,
+            version_message=commit_message,
+        )
+
+    async def assign_one_off_metadata(
+        self,
+        *,
+        new_version: PromptVersion,
+        commit_message: Optional[str] = None,
+    ) -> VersionContext:
+        """
+        Assign metadata for one-off prompt versions (no family chain).
+
+        Used by non-library write paths (for example provider sync imports)
+        while still centralizing metadata writes in one adapter.
+        """
+        setattr(new_version, self.family_id_attr, None)
+        setattr(new_version, self.version_number_attr, None)
+        setattr(new_version, self.parent_id_attr, None)
+        setattr(new_version, self.version_message_attr, commit_message)
+        await self.db.flush()
+
+        return VersionContext(
+            family_id=None,
+            version_number=None,
+            parent_id=None,
+            version_message=commit_message,
+        )
 
     async def create_version(
         self,

@@ -70,8 +70,6 @@ blocks:
       variants:
         - key: standing_neutral
           tags:
-            pose: standing
-            hands: at_sides
             gaze: forward
           op_args:
             pose: standing
@@ -79,8 +77,6 @@ blocks:
             gaze: forward
         - key: seated_relaxed
           tags:
-            pose: seated
-            hands: neutral
             gaze: down
           op_args:
             pose: seated
@@ -88,8 +84,6 @@ blocks:
             gaze: down
         - key: leaning_forward
           tags:
-            pose: leaning
-            hands: on_hips
             gaze: at_target
           op_args:
             pose: leaning
@@ -97,8 +91,6 @@ blocks:
             gaze: at_target
         - key: crouched_ready
           tags:
-            pose: crouching
-            hands: neutral
             gaze: forward
           op_args:
             pose: crouching
@@ -106,8 +98,6 @@ blocks:
             gaze: forward
         - key: kneeling_reach
           tags:
-            pose: kneeling
-            hands: holding_object
             gaze: at_target
           op_args:
             pose: kneeling

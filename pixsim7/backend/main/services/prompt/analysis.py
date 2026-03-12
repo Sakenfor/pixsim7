@@ -246,14 +246,25 @@ class PromptAnalysisService:
             prompt_text=normalized,
             prompt_hash=prompt_hash,
             prompt_analysis=analysis,
-            family_id=family_hint,
-            version_number=None if family_hint is None else 1,
             author=author,
             created_at=datetime.now(timezone.utc),
         )
 
         self.db.add(new_version)
-        await self.db.flush()
+        if family_hint is not None:
+            # Reuse shared versioning write path to prevent family/version drift.
+            from pixsim7.backend.main.services.prompt.git.versioning_adapter import (
+                PromptVersioningService,
+            )
+
+            await PromptVersioningService(self.db).assign_version_metadata(
+                new_version=new_version,
+                family_id=family_hint,
+                commit_message=None,
+                parent_version=None,
+            )
+        else:
+            await self.db.flush()
 
         logger.info(f"Created PromptVersion {new_version.id} with {len(analysis.get('candidates', []))} candidates")
         return new_version, True

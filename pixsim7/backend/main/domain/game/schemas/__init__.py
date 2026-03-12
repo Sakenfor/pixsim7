@@ -127,6 +127,19 @@ from .project_bundle import (
     SavedGameProjectDetail,
 )
 
+# Room navigation schemas
+from .room_navigation import (
+    ROOM_NAVIGATION_META_KEY,
+    LEGACY_ROOM_NAVIGATION_META_KEYS,
+    RoomNavigationSchema,
+    RoomNavigationValidationIssue,
+    RoomNavigationValidationError,
+    validate_room_navigation_payload,
+    canonicalize_location_meta_room_navigation,
+    normalize_location_meta_room_navigation,
+    room_navigation_issues_to_dicts,
+)
+
 __all__ = [
     # Relationship schemas + helpers
     "detect_tier_overlaps",
@@ -231,4 +244,15 @@ __all__ = [
     "DuplicateSavedGameProjectRequest",
     "SavedGameProjectSummary",
     "SavedGameProjectDetail",
+
+    # Room navigation schemas
+    "ROOM_NAVIGATION_META_KEY",
+    "LEGACY_ROOM_NAVIGATION_META_KEYS",
+    "RoomNavigationSchema",
+    "RoomNavigationValidationIssue",
+    "RoomNavigationValidationError",
+    "validate_room_navigation_payload",
+    "canonicalize_location_meta_room_navigation",
+    "normalize_location_meta_room_navigation",
+    "room_navigation_issues_to_dicts",
 ]

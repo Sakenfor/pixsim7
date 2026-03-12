@@ -230,6 +230,133 @@ blocks:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_parse_blocks_derives_tags_from_op_args() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: camera_shot
+    block_schema:
+      id_prefix: core.camera.shot
+      text_template: "Shot token: {variant}."
+      op:
+        op_id: "camera.shot.set"
+        signature_id: "camera.shot.v1"
+        params:
+          - key: shot_size
+            type: enum
+            enum: [close_up, medium, wide]
+            default: medium
+          - key: subject_count
+            type: enum
+            enum: [single, pair, group]
+            default: single
+      variants:
+        - key: close_single
+          op_args:
+            shot_size: close_up
+            subject_count: single
+""",
+        )
+
+        parsed = loader.parse_blocks(pack_dir)
+        assert len(parsed) == 1
+        assert parsed[0]["tags"]["shot_size"] == "close_up"
+        assert parsed[0]["tags"]["subject_count"] == "single"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_derives_tags_from_op_args_with_tag_key_mapping() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: camera_angle
+    block_schema:
+      id_prefix: core.camera.angle
+      text_template: "Angle token: {variant}."
+      op:
+        op_id: "camera.angle.set"
+        signature_id: "camera.angle.v1"
+        params:
+          - key: vertical_angle
+            type: enum
+            enum: [high, eye, low]
+            default: eye
+          - key: roll
+            type: enum
+            enum: [level, dutch_left, dutch_right]
+            default: level
+            tag_key: camera_roll
+        default_args:
+          vertical_angle: eye
+          roll: level
+      variants:
+        - key: dutch_left
+          op_args:
+            roll: dutch_left
+""",
+        )
+
+        parsed = loader.parse_blocks(pack_dir)
+        assert len(parsed) == 1
+        assert parsed[0]["tags"]["camera_roll"] == "dutch_left"
+        assert parsed[0]["tags"]["vertical_angle"] == "eye"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_conflicting_manual_and_derived_tags() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: camera_angle
+    block_schema:
+      id_prefix: core.camera.angle
+      text_template: "Angle token: {variant}."
+      op:
+        op_id: "camera.angle.set"
+        signature_id: "camera.angle.v1"
+        params:
+          - key: vertical_angle
+            type: enum
+            enum: [high, eye, low]
+            default: eye
+          - key: roll
+            type: enum
+            enum: [level, dutch_left, dutch_right]
+            default: level
+        default_args:
+          roll: level
+      variants:
+        - key: mismatch
+          tags:
+            vertical_angle: high
+          op_args:
+            vertical_angle: low
+""",
+        )
+
+        with pytest.raises(
+            loader.ContentPackValidationError,
+            match="conflicts with op_args-derived value",
+        ):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_parse_blocks_supports_descriptor_overlay_merge() -> None:
     root, pack_dir = _make_pack_dir()
     try:

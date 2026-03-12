@@ -41,6 +41,7 @@ blocks:
               - backward
               - around
             default: forward
+            tag_key: motion_direction
           - key: speed
             type: enum
             enum:
@@ -48,6 +49,7 @@ blocks:
               - normal
               - fast
             default: normal
+            tag_key: motion_speed
           - key: gait
             type: enum
             enum:
@@ -67,97 +69,61 @@ blocks:
           gait: walk
       variants:
         - key: move_forward
-          tags:
-            motion_direction: forward
-            motion_speed: normal
           op_args:
             direction: forward
             speed: normal
             gait: walk
         - key: move_left
-          tags:
-            motion_direction: left
-            motion_speed: slow
           op_args:
             direction: left
             speed: slow
             gait: step
         - key: move_right
-          tags:
-            motion_direction: right
-            motion_speed: slow
           op_args:
             direction: right
             speed: slow
             gait: step
         - key: turn_around
-          tags:
-            motion_direction: around
-            motion_speed: normal
           op_args:
             direction: around
             speed: normal
             gait: turn
         - key: move_backward
-          tags:
-            motion_direction: backward
-            motion_speed: normal
           op_args:
             direction: backward
             speed: normal
             gait: walk
         - key: move_in
-          tags:
-            motion_direction: in
-            motion_speed: slow
           op_args:
             direction: in
             speed: slow
             gait: step
         - key: move_out
-          tags:
-            motion_direction: out
-            motion_speed: slow
           op_args:
             direction: out
             speed: slow
             gait: step
         - key: run_forward
-          tags:
-            motion_direction: forward
-            motion_speed: fast
           op_args:
             direction: forward
             speed: fast
             gait: run
         - key: drift_left
-          tags:
-            motion_direction: left
-            motion_speed: slow
           op_args:
             direction: left
             speed: slow
             gait: drift
         - key: drift_right
-          tags:
-            motion_direction: right
-            motion_speed: slow
           op_args:
             direction: right
             speed: slow
             gait: drift
         - key: turn_left
-          tags:
-            motion_direction: left
-            motion_speed: slow
           op_args:
             direction: left
             speed: slow
             gait: turn
         - key: turn_right
-          tags:
-            motion_direction: right
-            motion_speed: slow
           op_args:
             direction: right
             speed: slow

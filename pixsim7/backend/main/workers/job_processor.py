@@ -11,8 +11,10 @@ import os
 import random
 from datetime import datetime, timezone, timedelta
 from typing import Any
+from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.domain import Generation
+from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
 from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.services.generation import GenerationService
 from pixsim7.backend.main.services.account import AccountService
@@ -874,6 +876,33 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
             # If no account yet (first attempt or reuse failed), select a new one
             if not account:
+                # For non-pinned generations, exclude accounts that have
+                # pending pinned work so pinned queues run without contention.
+                _pinned_exclude_ids: list[int] = []
+                if not getattr(generation, 'preferred_account_id', None):
+                    try:
+                        _pinned_q = (
+                            sa_select(Generation.preferred_account_id)
+                            .where(
+                                Generation.preferred_account_id.isnot(None),
+                                Generation.provider_id == generation.provider_id,
+                                Generation.status.in_([GenStatus.PENDING, GenStatus.PROCESSING]),
+                                Generation.id != generation.id,
+                            )
+                            .distinct()
+                        )
+                        _pinned_result = await db.execute(_pinned_q)
+                        _pinned_exclude_ids = [
+                            r for (r,) in _pinned_result.all() if r is not None
+                        ]
+                        if _pinned_exclude_ids:
+                            gen_logger.info(
+                                "excluding_pinned_accounts",
+                                excluded_ids=_pinned_exclude_ids,
+                            )
+                    except Exception as _pin_err:
+                        gen_logger.warning("pinned_account_query_failed", error=str(_pin_err))
+
                 async def acquire_account():
                     """Select and reserve next account. Raises if pool empty."""
                     try:
@@ -886,9 +915,24 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             user_id=generation.user_id,
                             include_exhausted=include_exhausted_candidates,
                             min_credits=required_credit_hint,
+                            exclude_account_ids=_pinned_exclude_ids or None,
                         )
                         return acct
                     except (NoAccountAvailableError, AccountCooldownError) as e:
+                        # If we excluded pinned accounts and that left no accounts,
+                        # retry without exclusions so non-pinned jobs don't starve.
+                        if _pinned_exclude_ids:
+                            try:
+                                gen_logger.info("retrying_without_pinned_exclusion")
+                                acct = await account_service.select_and_reserve_account(
+                                    provider_id=generation.provider_id,
+                                    user_id=generation.user_id,
+                                    include_exhausted=include_exhausted_candidates,
+                                    min_credits=required_credit_hint,
+                                )
+                                return acct
+                            except (NoAccountAvailableError, AccountCooldownError):
+                                pass  # Fall through to original error
                         gen_logger.warning("no_account_available", error=str(e), error_type=e.__class__.__name__)
                         debug.worker("no_account_available", error=str(e), error_type=e.__class__.__name__)
                         raise  # Propagate - no more accounts to try

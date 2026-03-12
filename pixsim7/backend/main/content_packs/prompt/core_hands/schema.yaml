@@ -33,6 +33,7 @@ blocks:
               - visible
               - hidden
             default: visible
+            tag_key: hands_visibility
           - key: gesture
             type: enum
             enum:
@@ -43,6 +44,7 @@ blocks:
               - reach
               - hold_object
             default: neutral
+            tag_key: hands_gesture
           - key: target_ref
             required: false
             type: ref
@@ -52,37 +54,22 @@ blocks:
           gesture: neutral
       variants:
         - key: hands_visible_neutral
-          tags:
-            hands_visibility: visible
-            hands_gesture: neutral
           op_args:
             visibility: visible
             gesture: neutral
         - key: hands_hidden
-          tags:
-            hands_visibility: hidden
-            hands_gesture: neutral
           op_args:
             visibility: hidden
             gesture: neutral
         - key: hands_open
-          tags:
-            hands_visibility: visible
-            hands_gesture: open
           op_args:
             visibility: visible
             gesture: open
         - key: hands_point
-          tags:
-            hands_visibility: visible
-            hands_gesture: point
           op_args:
             visibility: visible
             gesture: point
         - key: hands_hold_object
-          tags:
-            hands_visibility: visible
-            hands_gesture: hold_object
           op_args:
             visibility: visible
             gesture: hold_object

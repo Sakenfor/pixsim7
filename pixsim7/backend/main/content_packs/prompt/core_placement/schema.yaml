@@ -49,6 +49,7 @@ blocks:
               - above
               - below
             default: near
+            tag_key: placement_relation
           - key: distance
             type: enum
             enum:
@@ -57,6 +58,7 @@ blocks:
               - medium
               - far
             default: medium
+            tag_key: placement_distance
           - key: orientation
             type: enum
             enum:
@@ -80,8 +82,6 @@ blocks:
       variants:
         - key: near
           tags:
-            placement_relation: near
-            placement_distance: near
             placement_synonyms:
               - nearby
               - close
@@ -93,8 +93,6 @@ blocks:
             distance: near
         - key: left_of
           tags:
-            placement_relation: left_of
-            placement_distance: medium
             placement_synonyms:
               - left of
               - to the left
@@ -105,8 +103,6 @@ blocks:
             distance: medium
         - key: right_of
           tags:
-            placement_relation: right_of
-            placement_distance: medium
             placement_synonyms:
               - right of
               - to the right
@@ -117,8 +113,6 @@ blocks:
             distance: medium
         - key: in_front_of
           tags:
-            placement_relation: in_front_of
-            placement_distance: medium
             placement_synonyms:
               - in front of
               - in front
@@ -129,8 +123,6 @@ blocks:
             distance: medium
         - key: behind
           tags:
-            placement_relation: behind
-            placement_distance: medium
             placement_synonyms:
               - behind
               - in back of
@@ -141,8 +133,6 @@ blocks:
             distance: medium
         - key: above
           tags:
-            placement_relation: above
-            placement_distance: far
             placement_synonyms:
               - above
               - over
@@ -154,8 +144,6 @@ blocks:
             distance: far
         - key: below
           tags:
-            placement_relation: below
-            placement_distance: far
             placement_synonyms:
               - below
               - under

@@ -36,18 +36,21 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "diffuse"
 							enum:    #LightKeyValues
+							tag_key: "light_key"
 						},
 						{
 							key:     "intensity"
 							type:    "enum"
 							default: "medium"
 							enum:    #LevelValues
+							tag_key: "light_intensity"
 						},
 						{
 							key:     "temperature"
 							type:    "enum"
 							default: "neutral"
 							enum:    #LightTemperatureValues
+							tag_key: "light_temperature"
 						},
 						{
 							key:     "contrast"
@@ -66,11 +69,6 @@ pack: #PromptBlockPackV1 & {
 				variants: [
 					{
 						key: "soft_warm"
-						tags: {
-							light_key:         "soft"
-							light_temperature: "warm"
-							light_intensity:   "medium"
-						}
 						op_args: {
 							key_light:   "soft"
 							temperature: "warm"
@@ -80,11 +78,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "hard_cool"
-						tags: {
-							light_key:         "hard"
-							light_temperature: "cool"
-							light_intensity:   "high"
-						}
 						op_args: {
 							key_light:   "hard"
 							temperature: "cool"
@@ -94,11 +87,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "diffuse_neutral"
-						tags: {
-							light_key:         "diffuse"
-							light_temperature: "neutral"
-							light_intensity:   "medium"
-						}
 						op_args: {
 							key_light:   "diffuse"
 							temperature: "neutral"
@@ -108,11 +96,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "rim_dramatic"
-						tags: {
-							light_key:         "rim"
-							light_temperature: "cool"
-							light_intensity:   "high"
-						}
 						op_args: {
 							key_light:   "rim"
 							temperature: "cool"
@@ -122,11 +105,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "backlit_silhouette"
-						tags: {
-							light_key:         "backlit"
-							light_temperature: "mixed"
-							light_intensity:   "high"
-						}
 						op_args: {
 							key_light:   "backlit"
 							temperature: "mixed"

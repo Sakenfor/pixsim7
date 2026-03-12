@@ -37,6 +37,7 @@ from .schemas import (
     TemplateDiagnosticsResponse,
     ResolveWorkbenchRequest,
     CompileWorkbenchTemplateRequest,
+    RollInlineWorkbenchTemplateRequest,
 )
 from .helpers_roles import (
     _compute_slot_composition_summary,
@@ -463,6 +464,27 @@ async def compile_template_for_resolver_workbench(
         return asdict(compiled)
     except Exception as exc:
         raise HTTPException(400, f"Compile failed: {exc}")
+
+
+@router.post("/dev/resolver-workbench/roll-template-inline", response_model=Dict[str, Any])
+async def roll_template_inline_for_resolver_workbench(
+    request: RollInlineWorkbenchTemplateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Dev endpoint: roll an inline template payload without creating a template record."""
+    service = BlockTemplateService(db)
+    result = await service.roll_template_inline(
+        template_payload=dict(request.template or {}),
+        seed=request.seed,
+        exclude_block_ids=request.exclude_block_ids,
+        character_bindings=request.character_bindings,
+        control_values=request.control_values,
+        current_user_id=current_user.id if current_user else None,
+    )
+    if not result.get("success"):
+        raise HTTPException(400, result.get("error") or "Inline template roll failed")
+    return result
 
 
 # ===== Helpers =====

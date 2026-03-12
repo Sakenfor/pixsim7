@@ -169,6 +169,20 @@ class CompileWorkbenchTemplateRequest(BaseModel):
     compiler_id: str = Field("compiler_v1", description="Compiler to use (default: compiler_v1)")
 
 
+class RollInlineWorkbenchTemplateRequest(BaseModel):
+    template: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Inline BlockTemplate-like payload (name/slug optional, slots required)",
+    )
+    seed: Optional[int] = Field(None, description="Random seed for reproducibility")
+    exclude_block_ids: Optional[List[UUID]] = Field(None, description="Block IDs to exclude globally")
+    character_bindings: Optional[Dict[str, Any]] = Field(None, description="Override character bindings for this roll")
+    control_values: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Template control overrides (control_id -> value); defaults to each control's defaultValue",
+    )
+
+
 # ===== Block Schemas =====
 
 class BlockResponse(BaseModel):

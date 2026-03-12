@@ -351,6 +351,7 @@ class AccountService:
         user_id: Optional[int] = None,
         include_exhausted: bool = False,
         min_credits: Optional[int] = None,
+        exclude_account_ids: Optional[list[int]] = None,
     ) -> ProviderAccount:
         """
         Atomically select and reserve an account.
@@ -366,6 +367,8 @@ class AccountService:
             min_credits: If set, only consider accounts that have at least one
                 credit row with amount >= this value (pre-filters in SQL to
                 avoid picking accounts that can't afford the operation)
+            exclude_account_ids: Account IDs to skip (e.g., accounts reserved
+                for pinned generations)
 
         Returns:
             Reserved account with incremented concurrency counter
@@ -396,6 +399,10 @@ class AccountService:
             )
         else:
             query = query.where(ProviderAccount.is_private == False)
+
+        # Skip accounts reserved for pinned generations
+        if exclude_account_ids:
+            query = query.where(ProviderAccount.id.notin_(exclude_account_ids))
 
         # Pre-filter: skip accounts whose DB credits are already too low
         if min_credits is not None and min_credits > 0:

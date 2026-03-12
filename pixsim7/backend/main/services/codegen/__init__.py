@@ -11,6 +11,7 @@ from .runner import (
     load_codegen_tasks,
     run_codegen_task,
 )
+from .migration_health import MigrationHealthService
 from .test_runner import (
     DevtoolsTestRunResult,
     run_test_profile,
@@ -21,6 +22,7 @@ __all__ = [
     "CodegenRunResult",
     "load_codegen_tasks",
     "run_codegen_task",
+    "MigrationHealthService",
     "DevtoolsTestRunResult",
     "run_test_profile",
 ]

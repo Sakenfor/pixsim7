@@ -55,12 +55,14 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "near"
 							enum:    #PlacementRelationValues
+							tag_key: "placement_relation"
 						},
 						{
 							key:     "distance"
 							type:    "enum"
 							default: "medium"
 							enum:    #PlacementDistanceValues
+							tag_key: "placement_distance"
 						},
 						{
 							key:     "orientation"
@@ -91,8 +93,6 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "near"
 						tags: {
-							placement_relation: "near"
-							placement_distance: "near"
 							placement_synonyms: [
 								"nearby",
 								"close",
@@ -109,8 +109,6 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "left_of"
 						tags: {
-							placement_relation: "left_of"
-							placement_distance: "medium"
 							placement_synonyms: [
 								"left of",
 								"to the left",
@@ -126,8 +124,6 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "right_of"
 						tags: {
-							placement_relation: "right_of"
-							placement_distance: "medium"
 							placement_synonyms: [
 								"right of",
 								"to the right",
@@ -143,8 +139,6 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "in_front_of"
 						tags: {
-							placement_relation: "in_front_of"
-							placement_distance: "medium"
 							placement_synonyms: [
 								"in front of",
 								"in front",
@@ -160,8 +154,6 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "behind"
 						tags: {
-							placement_relation: "behind"
-							placement_distance: "medium"
 							placement_synonyms: [
 								"behind",
 								"in back of",
@@ -177,8 +169,6 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "above"
 						tags: {
-							placement_relation: "above"
-							placement_distance: "far"
 							placement_synonyms: [
 								"above",
 								"over",
@@ -195,8 +185,6 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "below"
 						tags: {
-							placement_relation: "below"
-							placement_distance: "far"
 							placement_synonyms: [
 								"below",
 								"under",

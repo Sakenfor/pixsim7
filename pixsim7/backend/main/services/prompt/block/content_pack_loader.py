@@ -64,6 +64,9 @@ from pixsim7.backend.main.services.prompt.block.family_contract_validation impor
     validate_block_family_contract,
     validate_template_slots_family_contracts,
 )
+from pixsim7.backend.main.services.prompt.block.tag_dictionary import (
+    get_block_tag_value_alias_map,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -582,6 +585,88 @@ def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
     return blocks
 
 
+def _normalize_tag_value_with_aliases(
+    *,
+    tag_key: str,
+    value: Any,
+    value_alias_map: Dict[str, Dict[str, str]],
+) -> Any:
+    aliases = value_alias_map.get(tag_key) or {}
+    if not aliases:
+        return value
+
+    def _normalize_scalar(item: Any) -> Any:
+        if isinstance(item, str):
+            return aliases.get(item, item)
+        return item
+
+    if isinstance(value, list):
+        return [_normalize_scalar(item) for item in value]
+    return _normalize_scalar(value)
+
+
+def _derive_variant_tags_from_op_args(
+    *,
+    schema_params: List[Dict[str, Any]],
+    effective_op_args: Dict[str, Any],
+    src: Path,
+    variant_index: int,
+    known_tag_keys: frozenset[str],
+    value_alias_map: Dict[str, Dict[str, str]],
+) -> Dict[str, Any]:
+    derived_tags: Dict[str, Any] = {}
+    for param in schema_params:
+        param_key = str(param.get("key") or "").strip()
+        if not param_key:
+            continue
+
+        raw_tag_key = param.get("tag_key")
+        explicit_tag_key = isinstance(raw_tag_key, str)
+        if explicit_tag_key:
+            tag_key = str(raw_tag_key).strip()
+        elif known_tag_keys and param_key in known_tag_keys:
+            tag_key = param_key
+        elif not known_tag_keys:
+            # Registry unavailable: fall back to key-name mapping.
+            tag_key = param_key
+        else:
+            # No explicit tag mapping and param key is not a canonical tag key.
+            continue
+        if not tag_key:
+            continue
+
+        if explicit_tag_key and known_tag_keys and tag_key not in known_tag_keys:
+            raise ContentPackValidationError(
+                f"{src}: block_schema.op.params key '{param_key}' references unknown tag_key '{tag_key}' "
+                f"(not registered in prompt_block_tags)"
+            )
+
+        if param_key not in effective_op_args:
+            continue
+        raw_value = effective_op_args.get(param_key)
+        if raw_value is None:
+            continue
+        if isinstance(raw_value, (dict, set, tuple)):
+            raise ContentPackValidationError(
+                f"{src}: block_schema.variants[{variant_index}].op_args.{param_key} "
+                f"cannot map to tags because value type '{type(raw_value).__name__}' is unsupported"
+            )
+        if isinstance(raw_value, list):
+            for item_index, item in enumerate(raw_value):
+                if isinstance(item, (dict, set, tuple)):
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.variants[{variant_index}].op_args.{param_key}[{item_index}] "
+                        f"cannot map to tags because value type '{type(item).__name__}' is unsupported"
+                    )
+
+        derived_tags[tag_key] = _normalize_tag_value_with_aliases(
+            tag_key=tag_key,
+            value=raw_value,
+            value_alias_map=value_alias_map,
+        )
+    return derived_tags
+
+
 def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, Any]]:
     """Compile schema-first block definitions into normalized block objects.
 
@@ -772,6 +857,11 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
                     raise ContentPackValidationError(
                         f"{src}: block_schema.op.params[{idx}].description must be a string"
                     )
+                tag_key = raw_param.get("tag_key")
+                if tag_key is not None and (not isinstance(tag_key, str) or not tag_key.strip()):
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.op.params[{idx}].tag_key must be a non-empty string when provided"
+                    )
 
                 enum_values = raw_param.get("enum")
                 if enum_values is not None:
@@ -816,6 +906,8 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
                 normalized_param["key"] = param_key.strip()
                 normalized_param["type"] = param_type
                 normalized_param["required"] = required
+                if isinstance(tag_key, str):
+                    normalized_param["tag_key"] = tag_key.strip()
                 if enum_values is not None:
                     normalized_param["enum"] = [str(item).strip() for item in enum_values]
                 if isinstance(ref_capability, str):
@@ -934,6 +1026,8 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
 
     reserved_schema_keys = {"id_prefix", "mode", "text_template", "descriptors", "tags", "variants", "op"}
     base_block = {k: v for k, v in block_schema.items() if k not in reserved_schema_keys}
+    known_tag_keys = load_prompt_block_tag_keys()
+    tag_value_alias_map = get_block_tag_value_alias_map()
 
     compiled: List[Dict[str, Any]] = []
     for i, variant in enumerate(variants):
@@ -1115,6 +1209,28 @@ def _compile_schema_blocks(*, block_schema: Any, src: Path) -> List[Dict[str, An
         schema_params: List[Dict[str, Any]] = []
         if schema_op is not None and isinstance(schema_op.get("params"), list):
             schema_params = [dict(item) for item in schema_op.get("params") or [] if isinstance(item, dict)]
+
+        derived_op_tags = _derive_variant_tags_from_op_args(
+            schema_params=schema_params,
+            effective_op_args=effective_op_args,
+            src=src,
+            variant_index=i,
+            known_tag_keys=known_tag_keys,
+            value_alias_map=tag_value_alias_map,
+        )
+        for tag_key, derived_value in derived_op_tags.items():
+            if tag_key in tags:
+                existing_value = _normalize_tag_value_with_aliases(
+                    tag_key=tag_key,
+                    value=tags[tag_key],
+                    value_alias_map=tag_value_alias_map,
+                )
+                if existing_value != derived_value:
+                    raise ContentPackValidationError(
+                        f"{src}: block_schema.variants[{i}].tags.{tag_key} "
+                        f"conflicts with op_args-derived value"
+                    )
+            tags[tag_key] = derived_value
 
         block_metadata = block.get("block_metadata")
         if block_metadata is None:

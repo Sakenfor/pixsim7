@@ -37,6 +37,10 @@ export * from './game';
 // Namespace export (new pattern: import { Game } from '@pixsim7/shared.types')
 export * as Game from './game';
 
+// Room navigation metadata contract
+export * from './roomNavigation';
+export * as RoomNavigation from './roomNavigation';
+
 // Character Identity Graph
 export * from './characterGraph';
 
@@ -176,6 +180,12 @@ export * from './docs'
 // ===================
 
 export * from './appMap'
+
+// ===================
+// Flow Map Types
+// ===================
+
+export * from './flowMap'
 
 // ===================
 // Asset Provider Types

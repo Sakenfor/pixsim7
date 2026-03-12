@@ -25,12 +25,15 @@ __all__ = [
     "plugins",
     # Dev tools
     "dev_architecture",
+    "dev_flows",
     "dev_info",
     "dev_prompt_inspector",
     "dev_prompt_import",
     "dev_prompt_library",
     "dev_ontology",
     "dev_prompt_categories",
+    "prompt_packs",
+    "prompt_tools",
     "dev_sql",
 ]
 
@@ -43,6 +46,7 @@ if TYPE_CHECKING:
         auth,
         automation,
         dev_architecture,
+        dev_flows,
         dev_info,
         dev_ontology,
         dev_prompt_categories,
@@ -50,6 +54,8 @@ if TYPE_CHECKING:
         dev_prompt_inspector,
         dev_prompt_library,
         dev_sql,
+        prompt_packs,
+        prompt_tools,
         generations,
         llm_cache,
         npc_state,

@@ -42,12 +42,14 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "first_person"
 							enum:    #PerspectiveValues
+							tag_key: "pov_perspective"
 						},
 						{
 							key:     "camera_height"
 							type:    "enum"
 							default: "eye_level"
 							enum:    #CameraHeightValues
+							tag_key: "pov_height"
 						},
 						{
 							key:            "target_ref"
@@ -64,10 +66,6 @@ pack: #PromptBlockPackV1 & {
 				variants: [
 					{
 						key: "first_person_eye_level"
-						tags: {
-							pov_perspective: "first_person"
-							pov_height:      "eye_level"
-						}
 						op_args: {
 							perspective:   "first_person"
 							camera_height: "eye_level"
@@ -75,10 +73,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "first_person_waist"
-						tags: {
-							pov_perspective: "first_person"
-							pov_height:      "waist"
-						}
 						op_args: {
 							perspective:   "first_person"
 							camera_height: "waist"
@@ -86,10 +80,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "over_shoulder"
-						tags: {
-							pov_perspective: "over_shoulder"
-							pov_height:      "chest"
-						}
 						op_args: {
 							perspective:   "over_shoulder"
 							camera_height: "chest"
@@ -97,10 +87,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "third_person_follow"
-						tags: {
-							pov_perspective: "third_person"
-							pov_height:      "chest"
-						}
 						op_args: {
 							perspective:   "third_person"
 							camera_height: "chest"
@@ -108,10 +94,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "observer_top_down"
-						tags: {
-							pov_perspective: "top_down"
-							pov_height:      "overhead"
-						}
 						op_args: {
 							perspective:   "top_down"
 							camera_height: "overhead"

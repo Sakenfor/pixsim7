@@ -15,6 +15,7 @@ import * as fsSync from 'node:fs';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 
 const CHECK_MODE = process.argv.includes('--check');
 
@@ -31,9 +32,31 @@ const OUTPUT_BASE = path.join(
   'content_packs',
   'prompt'
 );
+const PROMPT_BLOCK_TAGS_VOCAB_FILE = path.join(
+  REPO_ROOT,
+  'pixsim7',
+  'backend',
+  'main',
+  'plugins',
+  'starter_pack',
+  'vocabularies',
+  'prompt_block_tags.yaml'
+);
 const CUE_BIN = resolveCueBinary();
 
 const EXCLUDED_FILES = new Set(['schema_v1.cue']);
+const NON_CANONICAL_OP_PARAM_TAG_KEY_EXEMPTIONS = new Set<string>([
+  // Intentional non-tag execution params (documented in docs/architecture/prompt-pack-tag-authority.md).
+  'core_camera:motion:speed',
+  'core_camera:motion:direction',
+  'core_focus:focus:rack',
+  'core_light:state:contrast',
+  'core_placement:anchor:orientation',
+  'core_subject_look:look:focus',
+  'core_subject_motion:motion:gait',
+  'core_subject_pose:pose:gaze',
+]);
+const CANONICAL_PROMPT_TAG_KEYS = loadCanonicalPromptTagKeys();
 
 type JsonObject = Record<string, unknown>;
 
@@ -94,6 +117,37 @@ function validateSubdir(subdir: string): void {
   ) {
     throw new Error(`Unsafe output subdir: "${subdir}"`);
   }
+}
+
+function loadCanonicalPromptTagKeys(): Set<string> {
+  if (!fsSync.existsSync(PROMPT_BLOCK_TAGS_VOCAB_FILE)) {
+    throw new Error(
+      `prompt_block_tags vocabulary file not found: ${PROMPT_BLOCK_TAGS_VOCAB_FILE}`
+    );
+  }
+
+  const raw = fsSync.readFileSync(PROMPT_BLOCK_TAGS_VOCAB_FILE, 'utf8');
+  const parsed = parseYaml(raw);
+  if (!isRecord(parsed)) {
+    throw new Error(
+      `prompt_block_tags vocabulary must be an object: ${PROMPT_BLOCK_TAGS_VOCAB_FILE}`
+    );
+  }
+  const tags = parsed.tags;
+  if (!isRecord(tags)) {
+    throw new Error(
+      `prompt_block_tags vocabulary is missing top-level 'tags' map: ${PROMPT_BLOCK_TAGS_VOCAB_FILE}`
+    );
+  }
+
+  const keys = new Set<string>();
+  for (const key of Object.keys(tags)) {
+    const trimmed = key.trim();
+    if (trimmed.length > 0) {
+      keys.add(trimmed);
+    }
+  }
+  return keys;
 }
 
 function runCueExportRaw(
@@ -294,6 +348,33 @@ function lintPack(pack: DiscoveredPack, state: LintState): string[] {
         continue;
       }
       paramTypeByKey.set(paramKey, paramType);
+
+      const rawTagKey = param.tag_key;
+      const tagKey = asNonEmptyString(rawTagKey);
+      if (rawTagKey !== undefined && !tagKey) {
+        issues.push(
+          `${blockLabel}.block_schema.op.params[${paramIdx}].tag_key must be a non-empty string`
+        );
+      }
+      if (tagKey && !CANONICAL_PROMPT_TAG_KEYS.has(tagKey)) {
+        issues.push(
+          `${blockLabel}.block_schema.op.params[${paramIdx}] tag_key "${tagKey}" is not registered in prompt_block_tags`
+        );
+      }
+
+      const exemptionKey = `${pack.id}:${blockEntryId}:${paramKey}`;
+      const hasCanonicalParamKey = CANONICAL_PROMPT_TAG_KEYS.has(paramKey);
+      const isRefParam = paramType === 'ref';
+      if (
+        !isRefParam &&
+        !hasCanonicalParamKey &&
+        !tagKey &&
+        !NON_CANONICAL_OP_PARAM_TAG_KEY_EXEMPTIONS.has(exemptionKey)
+      ) {
+        issues.push(
+          `${blockLabel}.block_schema.op.params[${paramIdx}] non-canonical param "${paramKey}" requires tag_key`
+        );
+      }
 
       const paramDefault = param.default;
       if (paramType === 'boolean' && paramDefault !== undefined && typeof paramDefault !== 'boolean') {

@@ -42,12 +42,14 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "forward"
 							enum:    #DirectionValuesNoNone
+							tag_key: "motion_direction"
 						},
 						{
 							key:     "speed"
 							type:    "enum"
 							default: "normal"
 							enum:    #SpeedValues
+							tag_key: "motion_speed"
 						},
 						{
 							key:     "gait"
@@ -71,10 +73,6 @@ pack: #PromptBlockPackV1 & {
 				variants: [
 					{
 						key: "move_forward"
-						tags: {
-							motion_direction: "forward"
-							motion_speed:     "normal"
-						}
 						op_args: {
 							direction: "forward"
 							speed:     "normal"
@@ -83,10 +81,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "move_left"
-						tags: {
-							motion_direction: "left"
-							motion_speed:     "slow"
-						}
 						op_args: {
 							direction: "left"
 							speed:     "slow"
@@ -95,10 +89,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "move_right"
-						tags: {
-							motion_direction: "right"
-							motion_speed:     "slow"
-						}
 						op_args: {
 							direction: "right"
 							speed:     "slow"
@@ -107,10 +97,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "turn_around"
-						tags: {
-							motion_direction: "around"
-							motion_speed:     "normal"
-						}
 						op_args: {
 							direction: "around"
 							speed:     "normal"
@@ -119,10 +105,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "move_backward"
-						tags: {
-							motion_direction: "backward"
-							motion_speed:     "normal"
-						}
 						op_args: {
 							direction: "backward"
 							speed:     "normal"
@@ -131,10 +113,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "move_in"
-						tags: {
-							motion_direction: "in"
-							motion_speed:     "slow"
-						}
 						op_args: {
 							direction: "in"
 							speed:     "slow"
@@ -143,10 +121,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "move_out"
-						tags: {
-							motion_direction: "out"
-							motion_speed:     "slow"
-						}
 						op_args: {
 							direction: "out"
 							speed:     "slow"
@@ -155,10 +129,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "run_forward"
-						tags: {
-							motion_direction: "forward"
-							motion_speed:     "fast"
-						}
 						op_args: {
 							direction: "forward"
 							speed:     "fast"
@@ -167,10 +137,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "drift_left"
-						tags: {
-							motion_direction: "left"
-							motion_speed:     "slow"
-						}
 						op_args: {
 							direction: "left"
 							speed:     "slow"
@@ -179,10 +145,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "drift_right"
-						tags: {
-							motion_direction: "right"
-							motion_speed:     "slow"
-						}
 						op_args: {
 							direction: "right"
 							speed:     "slow"
@@ -191,10 +153,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "turn_left"
-						tags: {
-							motion_direction: "left"
-							motion_speed:     "slow"
-						}
 						op_args: {
 							direction: "left"
 							speed:     "slow"
@@ -203,10 +161,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "turn_right"
-						tags: {
-							motion_direction: "right"
-							motion_speed:     "slow"
-						}
 						op_args: {
 							direction: "right"
 							speed:     "slow"

@@ -48,6 +48,7 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "level"
 							enum:    #RollValues
+							tag_key: "camera_roll"
 						},
 						{
 							key:            "target_ref"
@@ -64,10 +65,6 @@ pack: #PromptBlockPackV1 & {
 				variants: [
 					{
 						key: "eye_level"
-						tags: {
-							vertical_angle: "eye"
-							camera_roll:    "level"
-						}
 						op_args: {
 							vertical_angle: "eye"
 							roll:           "level"
@@ -75,10 +72,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "high_angle"
-						tags: {
-							vertical_angle: "high"
-							camera_roll:    "level"
-						}
 						op_args: {
 							vertical_angle: "high"
 							roll:           "level"
@@ -86,10 +79,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "low_angle"
-						tags: {
-							vertical_angle: "low"
-							camera_roll:    "level"
-						}
 						op_args: {
 							vertical_angle: "low"
 							roll:           "level"
@@ -97,10 +86,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "bird_eye"
-						tags: {
-							vertical_angle: "bird"
-							camera_roll:    "level"
-						}
 						op_args: {
 							vertical_angle: "bird"
 							roll:           "level"
@@ -108,10 +93,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "worm_eye"
-						tags: {
-							vertical_angle: "worm"
-							camera_roll:    "level"
-						}
 						op_args: {
 							vertical_angle: "worm"
 							roll:           "level"
@@ -119,10 +100,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "dutch_left"
-						tags: {
-							vertical_angle: "eye"
-							camera_roll:    "dutch_left"
-						}
 						op_args: {
 							vertical_angle: "eye"
 							roll:           "dutch_left"
@@ -130,10 +107,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "dutch_right"
-						tags: {
-							vertical_angle: "eye"
-							camera_roll:    "dutch_right"
-						}
 						op_args: {
 							vertical_angle: "eye"
 							roll:           "dutch_right"

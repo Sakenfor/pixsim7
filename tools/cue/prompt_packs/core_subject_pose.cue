@@ -72,8 +72,6 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "standing_neutral"
 						tags: {
-							pose:  "standing"
-							hands: "at_sides"
 							gaze:  "forward"
 						}
 						op_args: {
@@ -85,8 +83,6 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "seated_relaxed"
 						tags: {
-							pose:  "seated"
-							hands: "neutral"
 							gaze:  "down"
 						}
 						op_args: {
@@ -98,8 +94,6 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "leaning_forward"
 						tags: {
-							pose:  "leaning"
-							hands: "on_hips"
 							gaze:  "at_target"
 						}
 						op_args: {
@@ -111,8 +105,6 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "crouched_ready"
 						tags: {
-							pose:  "crouching"
-							hands: "neutral"
 							gaze:  "forward"
 						}
 						op_args: {
@@ -124,8 +116,6 @@ pack: #PromptBlockPackV1 & {
 					{
 						key: "kneeling_reach"
 						tags: {
-							pose:  "kneeling"
-							hands: "holding_object"
 							gaze:  "at_target"
 						}
 						op_args: {

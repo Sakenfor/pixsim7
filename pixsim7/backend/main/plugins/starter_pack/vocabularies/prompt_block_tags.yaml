@@ -57,6 +57,261 @@ tags:
         category: composition
     status: active
 
+  vertical_angle:
+    label: "Vertical Angle"
+    description: "Vertical camera angle tier used by camera angle primitives."
+    data_type: string
+    allowed_values: [high, eye, low, bird, worm]
+    aliases: [camera_angle]
+    value_aliases:
+      eye_level: eye
+      birds_eye: bird
+      worms_eye: worm
+    applies_to:
+      - role: camera
+        category: composition
+    status: active
+
+  camera_roll:
+    label: "Camera Roll"
+    description: "Camera roll orientation used by dutch-angle variants."
+    data_type: string
+    allowed_values: [level, dutch_left, dutch_right]
+    aliases: [roll]
+    value_aliases: {}
+    applies_to:
+      - role: camera
+        category: composition
+    status: active
+
+  shot_size:
+    label: "Shot Size"
+    description: "Framing distance/coverage size for the primary subject."
+    data_type: string
+    allowed_values: [extreme_close_up, close_up, medium, wide, extreme_wide]
+    aliases: [shot]
+    value_aliases: {}
+    applies_to:
+      - role: composition
+        category: framing
+    status: active
+
+  subject_count:
+    label: "Subject Count"
+    description: "Number of focal subjects intended in frame."
+    data_type: string
+    allowed_values: [single, pair, group]
+    aliases: [subjects]
+    value_aliases: {}
+    applies_to:
+      - role: composition
+        category: framing
+    status: active
+
+  pov_perspective:
+    label: "POV Perspective"
+    description: "Point-of-view perspective mode for camera framing."
+    data_type: string
+    allowed_values: [first_person, over_shoulder, third_person, top_down]
+    aliases: [perspective]
+    value_aliases: {}
+    applies_to:
+      - role: camera
+        category: composition
+    status: active
+
+  pov_height:
+    label: "POV Height"
+    description: "Camera eye-height tier for POV framing."
+    data_type: string
+    allowed_values: [waist, chest, eye_level, overhead]
+    aliases: [height]
+    value_aliases: {}
+    applies_to:
+      - role: camera
+        category: composition
+    status: active
+
+  focus_target:
+    label: "Focus Target"
+    description: "Primary focus destination for depth-of-field guidance."
+    data_type: string
+    allowed_values: [subject, target, background]
+    aliases: [focus]
+    value_aliases: {}
+    applies_to:
+      - role: camera
+        category: composition
+    status: active
+
+  depth_of_field:
+    label: "Depth of Field"
+    description: "Depth-of-field style for focus treatment."
+    data_type: string
+    allowed_values: [shallow, deep]
+    aliases: [dof]
+    value_aliases: {}
+    applies_to:
+      - role: camera
+        category: composition
+    status: active
+
+  motion_direction:
+    label: "Motion Direction"
+    description: "Direction of subject motion relative to frame."
+    data_type: string
+    allowed_values: [forward, backward, left, right, around, in, out]
+    aliases: [direction]
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: motion_beat
+    status: active
+
+  motion_speed:
+    label: "Motion Speed"
+    description: "Relative speed tier for subject motion."
+    data_type: string
+    allowed_values: [slow, normal, fast]
+    aliases: [speed]
+    value_aliases: {}
+    applies_to:
+      - role: action
+        category: motion_beat
+    status: active
+
+  placement_relation:
+    label: "Placement Relation"
+    description: "Relative placement relation between subject and anchor."
+    data_type: string
+    allowed_values: [left_of, right_of, above, below, in_front_of, behind, near]
+    aliases: [relation]
+    value_aliases: {}
+    applies_to:
+      - role: placement
+        category: depth
+    status: active
+
+  placement_distance:
+    label: "Placement Distance"
+    description: "Relative placement distance from the anchor."
+    data_type: string
+    allowed_values: [near, medium, far]
+    aliases: [distance_band]
+    value_aliases: {}
+    applies_to:
+      - role: placement
+        category: depth
+    status: active
+
+  pose:
+    label: "Pose"
+    description: "Primary body pose state."
+    data_type: string
+    allowed_values: [standing, seated, kneeling, crouching, leaning]
+    aliases: [posture]
+    value_aliases: {}
+    applies_to:
+      - role: subject
+        category: pose_lock
+    status: active
+
+  hands:
+    label: "Hands Pose"
+    description: "Coarse hand placement descriptor."
+    data_type: string
+    allowed_values: [neutral, at_sides, on_hips, holding_object]
+    aliases: [hand_pose]
+    value_aliases: {}
+    applies_to:
+      - role: subject
+        category: pose_lock
+    status: active
+
+  hands_gesture:
+    label: "Hands Gesture"
+    description: "Fine hand gesture variant."
+    data_type: string
+    allowed_values: [neutral, open, point, hold_object]
+    aliases: [gesture]
+    value_aliases: {}
+    applies_to:
+      - role: subject
+        category: pose_lock
+    status: active
+
+  hands_visibility:
+    label: "Hands Visibility"
+    description: "Visibility state of hands in frame."
+    data_type: string
+    allowed_values: [visible, hidden]
+    aliases: [hand_visibility]
+    value_aliases: {}
+    applies_to:
+      - role: subject
+        category: pose_lock
+    status: active
+
+  look_focus:
+    label: "Look Focus"
+    description: "Where the subject directs attention."
+    data_type: string
+    allowed_values: [eyes, head, away]
+    aliases: [gaze_target]
+    value_aliases: {}
+    applies_to:
+      - role: subject
+        category: expression_behavior
+    status: active
+
+  look_intensity:
+    label: "Look Intensity"
+    description: "Intensity of the subject's gaze/attention."
+    data_type: string
+    allowed_values: [low, medium, high]
+    aliases: [gaze_intensity]
+    value_aliases: {}
+    applies_to:
+      - role: subject
+        category: expression_behavior
+    status: active
+
+  light_temperature:
+    label: "Light Temperature"
+    description: "Overall color temperature treatment of key lighting."
+    data_type: string
+    allowed_values: [cool, neutral, warm, mixed]
+    aliases: [color_temperature]
+    value_aliases: {}
+    applies_to:
+      - role: lighting
+        category: composition
+    status: active
+
+  light_key:
+    label: "Light Key"
+    description: "Key-light pattern category used by lighting state primitives."
+    data_type: string
+    allowed_values: [diffuse, soft, hard, rim, backlit]
+    aliases: [key_light]
+    value_aliases: {}
+    applies_to:
+      - role: lighting
+        category: composition
+    status: active
+
+  light_intensity:
+    label: "Light Intensity"
+    description: "Overall intensity tier of key lighting."
+    data_type: string
+    allowed_values: [medium, high]
+    aliases: [intensity]
+    value_aliases: {}
+    applies_to:
+      - role: lighting
+        category: composition
+    status: active
+
   proximity_stage:
     label: "Proximity Stage"
     description: "Discrete spatial distance stage for progression beats."

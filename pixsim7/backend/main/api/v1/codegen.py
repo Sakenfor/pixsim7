@@ -24,10 +24,12 @@ from pixsim7.backend.main.services.codegen import (
     CodegenRunResult,
     CodegenTask,
     DevtoolsTestRunResult,
+    MigrationHealthService,
     load_codegen_tasks,
     run_codegen_task,
     run_test_profile,
 )
+from pixsim7.backend.main.shared.config import settings
 
 router = APIRouter(prefix="/devtools/codegen", tags=["devtools", "codegen"])
 
@@ -233,6 +235,79 @@ class MigrationHeadResponse(BaseModel):
     error: str | None = None
 
 
+class MigrationHealthItem(BaseModel):
+    revision: str
+    filename: str
+    path: str
+    sha256: str
+    down_revisions: list[str] = Field(default_factory=list)
+    is_merge: bool = False
+    is_applied: bool = False
+    is_pending: bool = False
+    is_dirty: bool = False
+    is_current_head: bool = False
+    is_script_head: bool = False
+
+
+class MigrationChainHealth(BaseModel):
+    scope: str
+    config_file: str
+    script_location: str
+    database_url: str
+    version_table: str
+    current_heads: list[str] = Field(default_factory=list)
+    script_heads: list[str] = Field(default_factory=list)
+    total_migrations: int = 0
+    applied_count: int = 0
+    pending_count: int = 0
+    dirty_count: int = 0
+    unknown_applied_revisions: list[str] = Field(default_factory=list)
+    db_error: str | None = None
+    migrations: list[MigrationHealthItem] = Field(default_factory=list)
+
+
+class MigrationHealthSummary(BaseModel):
+    chains: int = 0
+    dirty_chains: int = 0
+    dirty_migrations: int = 0
+    pending_migrations: int = 0
+
+
+class MigrationHealthResponse(BaseModel):
+    available: bool
+    sidecar_path: str
+    sidecar_bootstrapped: bool = False
+    summary: MigrationHealthSummary = Field(default_factory=MigrationHealthSummary)
+    chains: list[MigrationChainHealth] = Field(default_factory=list)
+
+
+class MigrationSnapshotRequest(BaseModel):
+    scope: MigrationScope = "all"
+
+
+class MigrationSnapshotResponse(BaseModel):
+    ok: bool
+    scope: str
+    updated_revisions: int
+    sidecar_path: str
+
+
+class MigrationReapplyRequest(BaseModel):
+    scope: str = Field(..., min_length=1)
+    revision: str = Field(..., min_length=1)
+
+
+class MigrationReapplyResponse(BaseModel):
+    ok: bool
+    scope: str
+    revision: str
+    downgrade_target: str
+    exit_code: int | None
+    duration_ms: int
+    stdout: str
+    stderr: str
+
+
 def _resolve_repo_root() -> Path:
     """Walk up from this file to find the repo root (contains scripts/)."""
     candidate = Path(__file__).resolve()
@@ -246,6 +321,14 @@ def _resolve_repo_root() -> Path:
 def _resolve_migrate_script() -> Path:
     """Locate ``scripts/migrate_all.py`` relative to the repo root."""
     return _resolve_repo_root() / "scripts" / "migrate_all.py"
+
+
+def _require_debug_mode() -> None:
+    """
+    Extra guard for sensitive dev-only migration health endpoints.
+    """
+    if not settings.debug:
+        raise HTTPException(status_code=404, detail="Not found")
 
 
 def _mask_url(url: str) -> str:
@@ -408,3 +491,89 @@ async def run_migration_endpoint(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Migration failed: {exc}") from exc
     return result
+
+
+@router.get("/migrations/health", response_model=MigrationHealthResponse)
+async def get_migration_health(user: CurrentCodegenUser):
+    _ = user
+    _require_debug_mode()
+
+    try:
+        repo_root = _resolve_repo_root()
+    except FileNotFoundError:
+        return MigrationHealthResponse(
+            available=False,
+            sidecar_path=".pixsim7/migration_hashes.json",
+            sidecar_bootstrapped=False,
+            summary=MigrationHealthSummary(),
+            chains=[],
+        )
+
+    service = MigrationHealthService(repo_root=repo_root)
+    try:
+        payload = await run_in_threadpool(service.get_health)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to compute migration health: {exc}") from exc
+    return MigrationHealthResponse(**payload)
+
+
+@router.post("/migrations/health/snapshot", response_model=MigrationSnapshotResponse)
+async def snapshot_migration_hashes(
+    payload: MigrationSnapshotRequest,
+    user: CurrentCodegenUser,
+):
+    _ = user
+    _require_debug_mode()
+
+    if payload.scope not in VALID_MIGRATION_SCOPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid scope '{payload.scope}'. Must be one of: {', '.join(VALID_MIGRATION_SCOPES)}",
+        )
+
+    try:
+        repo_root = _resolve_repo_root()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    service = MigrationHealthService(repo_root=repo_root)
+    try:
+        result = await run_in_threadpool(service.snapshot_hashes, payload.scope)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to snapshot migration hashes: {exc}") from exc
+
+    return MigrationSnapshotResponse(**result)
+
+
+@router.post("/migrations/health/reapply", response_model=MigrationReapplyResponse)
+async def reapply_dirty_migration(
+    payload: MigrationReapplyRequest,
+    user: CurrentCodegenUser,
+):
+    _ = user
+    _require_debug_mode()
+
+    if payload.scope not in INDIVIDUAL_SCOPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid scope '{payload.scope}'. Must be one of: {', '.join(INDIVIDUAL_SCOPES)}",
+        )
+
+    try:
+        repo_root = _resolve_repo_root()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    service = MigrationHealthService(repo_root=repo_root)
+    try:
+        result = await run_in_threadpool(service.reapply_dirty_revision, payload.scope, payload.revision)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to re-apply migration: {exc}") from exc
+
+    return MigrationReapplyResponse(**result)

@@ -367,16 +367,19 @@ class SyntheticGenerationService:
 
         # Create new one-off prompt version (no family)
         version = PromptVersion(
-            family_id=None,  # One-off, not in library
             prompt_text=text,
             prompt_hash=prompt_hash,
-            version_number=None,  # One-off
-            commit_message="Imported from provider sync",
             is_draft=False,
         )
 
         self.db.add(version)
-        await self.db.flush()
+        from pixsim7.backend.main.services.prompt.git.versioning_adapter import (
+            PromptVersioningService,
+        )
+        await PromptVersioningService(self.db).assign_one_off_metadata(
+            new_version=version,
+            commit_message="Imported from provider sync",
+        )
 
         logger.debug(
             "prompt_version_created",

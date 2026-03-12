@@ -344,6 +344,14 @@ export type {
   MigrationRunRequest,
   MigrationRunResponse,
   MigrationHeadResponse,
+  MigrationHealthItem,
+  MigrationChainHealth,
+  MigrationHealthSummary,
+  MigrationHealthResponse,
+  MigrationSnapshotRequest,
+  MigrationSnapshotResponse,
+  MigrationReapplyRequest,
+  MigrationReapplyResponse,
 } from './codegen';
 
 // ===== Providers Types =====

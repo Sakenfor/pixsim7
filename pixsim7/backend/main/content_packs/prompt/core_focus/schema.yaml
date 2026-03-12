@@ -56,8 +56,6 @@ blocks:
       variants:
         - key: subject_shallow
           tags:
-            focus_target: subject
-            depth_of_field: shallow
             rack_focus: "false"
           op_args:
             focus_target: subject
@@ -65,8 +63,6 @@ blocks:
             rack: false
         - key: subject_deep
           tags:
-            focus_target: subject
-            depth_of_field: deep
             rack_focus: "false"
           op_args:
             focus_target: subject
@@ -74,8 +70,6 @@ blocks:
             rack: false
         - key: target_shallow
           tags:
-            focus_target: target
-            depth_of_field: shallow
             rack_focus: "false"
           op_args:
             focus_target: target
@@ -83,8 +77,6 @@ blocks:
             rack: false
         - key: target_deep
           tags:
-            focus_target: target
-            depth_of_field: deep
             rack_focus: "false"
           op_args:
             focus_target: target
@@ -92,8 +84,6 @@ blocks:
             rack: false
         - key: background_deep
           tags:
-            focus_target: background
-            depth_of_field: deep
             rack_focus: "false"
           op_args:
             focus_target: background
@@ -101,8 +91,6 @@ blocks:
             rack: false
         - key: rack_subject_to_target
           tags:
-            focus_target: target
-            depth_of_field: shallow
             rack_focus: "true"
           op_args:
             focus_target: target

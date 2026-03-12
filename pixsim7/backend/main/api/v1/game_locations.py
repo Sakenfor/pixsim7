@@ -9,6 +9,11 @@ from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, GameLoca
 from pixsim7.backend.main.shared.schemas.entity_ref import AssetRef
 from pixsim7.backend.main.shared.schemas.api_base import ApiModel
 from pixsim7.backend.main.api.v1.game_hotspots import GameHotspotDTO, to_hotspot_dto
+from pixsim7.backend.main.domain.game.schemas.room_navigation import (
+    RoomNavigationValidationError,
+    canonicalize_location_meta_room_navigation,
+    room_navigation_issues_to_dicts,
+)
 
 
 router = APIRouter()
@@ -42,6 +47,25 @@ class GameLocationDetail(ApiModel):
 
 class ReplaceHotspotsPayload(ApiModel):
     hotspots: List[GameHotspotDTO]
+
+
+class UpdateLocationMetaPayload(ApiModel):
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+def _serialize_location_detail(loc, hotspots) -> GameLocationDetail:
+    canonical_meta = loc.meta
+    if isinstance(loc.meta, dict):
+        canonical_meta, _ = canonicalize_location_meta_room_navigation(loc.meta)
+
+    return GameLocationDetail(
+        id=loc.id,
+        name=loc.name,
+        asset_id=loc.asset_id,
+        default_spawn=loc.default_spawn,
+        meta=canonical_meta,
+        hotspots=[to_hotspot_dto(h) for h in hotspots],
+    )
 
 
 @router.get("/", response_model=List[GameLocationSummary])
@@ -80,15 +104,41 @@ async def get_location(
         raise HTTPException(status_code=404, detail="Location not found")
 
     hotspots = await game_location_service.get_hotspots(location_id)
+    return _serialize_location_detail(loc, hotspots)
 
-    return GameLocationDetail(
-        id=loc.id,
-        name=loc.name,
-        asset_id=loc.asset_id,
-        default_spawn=loc.default_spawn,
-        meta=loc.meta,
-        hotspots=[to_hotspot_dto(h) for h in hotspots],
-    )
+
+@router.patch("/{location_id}", response_model=GameLocationDetail)
+async def update_location_meta(
+    location_id: int,
+    payload: UpdateLocationMetaPayload,
+    game_location_service: GameLocationSvc,
+    user: CurrentGamePrincipal,
+) -> GameLocationDetail:
+    """
+    Update location metadata.
+
+    Supports canonical room navigation metadata under location.meta.room_navigation.
+    """
+    loc = await game_location_service.get_location(location_id)
+    if not loc:
+        raise HTTPException(status_code=404, detail="Location not found")
+
+    try:
+        updated_location = await game_location_service.update_location_meta(
+            location_id=location_id,
+            meta=payload.meta,
+        )
+    except RoomNavigationValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_room_navigation",
+                "details": room_navigation_issues_to_dicts(exc.issues),
+            },
+        )
+
+    hotspots = await game_location_service.get_hotspots(location_id)
+    return _serialize_location_detail(updated_location, hotspots)
 
 
 @router.put("/{location_id}/hotspots", response_model=GameLocationDetail)
@@ -122,13 +172,4 @@ async def replace_hotspots(
         location_id=location_id,
         hotspots=hotspots_payload,
     )
-
-    return GameLocationDetail(
-        id=loc.id,
-        name=loc.name,
-        asset_id=loc.asset_id,
-        default_spawn=loc.default_spawn,
-        meta=loc.meta,
-        hotspots=[to_hotspot_dto(h) for h in created],
-    )
-
+    return _serialize_location_detail(loc, created)

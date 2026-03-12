@@ -41,12 +41,14 @@ pack: #PromptBlockPackV1 & {
 							type:    "enum"
 							default: "visible"
 							enum:    #VisibilityValues
+							tag_key: "hands_visibility"
 						},
 						{
 							key:     "gesture"
 							type:    "enum"
 							default: "neutral"
 							enum:    #HandsGestureValues
+							tag_key: "hands_gesture"
 						},
 						{
 							key:            "target_ref"
@@ -63,10 +65,6 @@ pack: #PromptBlockPackV1 & {
 				variants: [
 					{
 						key: "hands_visible_neutral"
-						tags: {
-							hands_visibility: "visible"
-							hands_gesture:    "neutral"
-						}
 						op_args: {
 							visibility: "visible"
 							gesture:    "neutral"
@@ -74,10 +72,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "hands_hidden"
-						tags: {
-							hands_visibility: "hidden"
-							hands_gesture:    "neutral"
-						}
 						op_args: {
 							visibility: "hidden"
 							gesture:    "neutral"
@@ -85,10 +79,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "hands_open"
-						tags: {
-							hands_visibility: "visible"
-							hands_gesture:    "open"
-						}
 						op_args: {
 							visibility: "visible"
 							gesture:    "open"
@@ -96,10 +86,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "hands_point"
-						tags: {
-							hands_visibility: "visible"
-							hands_gesture:    "point"
-						}
 						op_args: {
 							visibility: "visible"
 							gesture:    "point"
@@ -107,10 +93,6 @@ pack: #PromptBlockPackV1 & {
 					},
 					{
 						key: "hands_hold_object"
-						tags: {
-							hands_visibility: "visible"
-							hands_gesture:    "hold_object"
-						}
 						op_args: {
 							visibility: "visible"
 							gesture:    "hold_object"

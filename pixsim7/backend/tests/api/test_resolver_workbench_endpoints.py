@@ -425,3 +425,74 @@ async def test_compile_template_slug_not_found_returns_404():
             )
     assert resp.status_code == 404
     assert "not found" in resp.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# roll-template-inline endpoint tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="httpx/fastapi not available")
+async def test_roll_template_inline_returns_service_result():
+    """roll-template-inline returns successful service payload and passes current_user_id."""
+    mock_db = AsyncMock()
+    expected = {
+        "success": True,
+        "assembled_prompt": "camera over shoulder.",
+        "slot_results": [],
+        "warnings": [],
+        "metadata": {"inline_template": True, "resolver_id": "next_v1"},
+    }
+    with patch(
+        "pixsim7.backend.main.api.v1.block_templates.routes_templates.BlockTemplateService"
+    ) as MockService:
+        mock_svc = MagicMock()
+        mock_svc.roll_template_inline = AsyncMock(return_value=expected)
+        MockService.return_value = mock_svc
+        app = _app(db=mock_db)
+        async with _client(app) as client:
+            resp = await client.post(
+                "/api/v1/block-templates/dev/resolver-workbench/roll-template-inline",
+                json={
+                    "template": {
+                        "name": "Inline Camera Test",
+                        "slots": [],
+                    },
+                    "seed": 77,
+                },
+            )
+
+    assert resp.status_code == 200
+    assert resp.json()["metadata"]["inline_template"] is True
+    mock_svc.roll_template_inline.assert_awaited_once_with(
+        template_payload={"name": "Inline Camera Test", "slots": []},
+        seed=77,
+        exclude_block_ids=None,
+        character_bindings=None,
+        control_values=None,
+        current_user_id=1,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="httpx/fastapi not available")
+async def test_roll_template_inline_failure_returns_400():
+    """roll-template-inline maps service failures to HTTP 400."""
+    mock_db = AsyncMock()
+    with patch(
+        "pixsim7.backend.main.api.v1.block_templates.routes_templates.BlockTemplateService"
+    ) as MockService:
+        mock_svc = MagicMock()
+        mock_svc.roll_template_inline = AsyncMock(
+            return_value={"success": False, "error": "Inline template payload must include slots as a list"}
+        )
+        MockService.return_value = mock_svc
+        app = _app(db=mock_db)
+        async with _client(app) as client:
+            resp = await client.post(
+                "/api/v1/block-templates/dev/resolver-workbench/roll-template-inline",
+                json={"template": {"name": "Bad Inline"}},
+            )
+
+    assert resp.status_code == 400
+    assert "slots" in resp.text.lower()

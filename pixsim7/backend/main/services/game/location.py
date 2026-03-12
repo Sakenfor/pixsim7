@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
 from pixsim7.backend.main.domain.game import GameLocation, GameHotspot
+from pixsim7.backend.main.domain.game.schemas.room_navigation import (
+    RoomNavigationValidationError,
+    normalize_location_meta_room_navigation,
+)
 from pixsim7.backend.main.services.game.derived_projections import (
     sync_location_hotspot_projection,
 )
@@ -35,6 +39,25 @@ class GameLocationService:
             select(GameHotspot).where(GameHotspot.location_id == location_id).order_by(GameHotspot.id)
         )
         return result.scalars().all()
+
+    async def update_location_meta(
+        self,
+        location_id: int,
+        meta: Dict[str, Any],
+    ) -> GameLocation:
+        location = await self.db.get(GameLocation, location_id)
+        if not location:
+            raise ValueError("location_not_found")
+
+        normalized_meta, issues, _ = normalize_location_meta_room_navigation(meta)
+        if issues:
+            raise RoomNavigationValidationError(issues)
+
+        location.meta = normalized_meta
+        self.db.add(location)
+        await self.db.commit()
+        await self.db.refresh(location)
+        return location
 
     async def replace_hotspots(
         self,
