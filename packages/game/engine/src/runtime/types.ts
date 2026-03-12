@@ -37,7 +37,11 @@ export interface GameApiClient {
     sessionId: number,
     payload: Partial<GameSessionDTO>
   ): Promise<GameSessionDTO>;
-  createSession(sceneId: number, flags?: Record<string, unknown>): Promise<GameSessionDTO>;
+  createSession(
+    sceneId: number,
+    flags?: Record<string, unknown>,
+    worldId?: number
+  ): Promise<GameSessionDTO>;
 
   // World APIs
   getWorld(worldId: number): Promise<GameWorldDetail>;

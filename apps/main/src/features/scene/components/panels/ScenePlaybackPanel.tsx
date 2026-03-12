@@ -35,20 +35,31 @@ export function ScenePlaybackPanel({
   const currentSceneId = useGraphStore((s) => s.currentSceneId);
   const scenes = useGraphStore((s) => s.scenes);
 
+  const patchSceneMetadata = useGraphStore((s) => s.patchSceneMetadata);
+
+  const currentDraftScene = currentSceneId ? scenes[currentSceneId] : null;
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackMode] = useState<PlaybackMode>('full');
   const [activeTab, setActiveTab] = useState<'playback' | 'mockState' | 'timeline'>('playback');
-  const [mockState, setMockState] = useState<Record<string, any>>({});
   const [playbackEvents, setPlaybackEvents] = useState<PlaybackEvent[]>([]);
   const [runtimeState, setRuntimeState] = useState<SceneRuntimeState | null>(null);
+
+  const mockState = (currentDraftScene?.metadata?.testState as Record<string, any>) ?? {};
+  const setMockState = useCallback(
+    (newState: Record<string, any>) => {
+      if (currentSceneId) {
+        patchSceneMetadata(currentSceneId, { testState: newState });
+      }
+    },
+    [currentSceneId, patchSceneMetadata],
+  );
 
   // Convert current draft scene to runtime scene
   const runtimeScene = useMemo(() => {
     if (!currentSceneId) return null;
     return toRuntimeScene(currentSceneId);
   }, [currentSceneId, toRuntimeScene]);
-
-  const currentDraftScene = currentSceneId ? scenes[currentSceneId] : null;
 
   // Handle state changes from ScenePlayer to track execution
   const handleStateChange = useCallback((newState: SceneRuntimeState) => {

@@ -40,7 +40,7 @@ import {
 import { sessionHelperRegistry } from './helperRegistry';
 import type { NpcRelationshipState } from '../core/types';
 import { getAdapterBySource, type StatSource } from './statAdapters';
-import type { SessionHelpers, SessionAPI, SessionUpdateResponse, RelationshipUpdate } from '../interactions/registry';
+import type { SessionHelpers, SessionAPI, RelationshipUpdate } from '../interactions/registry';
 
 /** Maximum number of retry attempts for conflict resolution */
 const MAX_RETRIES = 3;
@@ -130,6 +130,16 @@ function getNestedValue(obj: any, parts: string[]): any {
 }
 
 /**
+ * Deep clone session state so optimistic updates never mutate the input object.
+ */
+function cloneSession(session: GameSessionDTO): GameSessionDTO {
+  if (typeof globalThis.structuredClone === 'function') {
+    return globalThis.structuredClone(session);
+  }
+  return JSON.parse(JSON.stringify(session)) as GameSessionDTO;
+}
+
+/**
  * Create session helpers bound to a specific game session
  *
  * @param gameSession - Current game session state
@@ -170,12 +180,21 @@ export function createSessionHelpers(
   const applyOptimisticUpdate = async (
     localUpdate: (session: GameSessionDTO) => GameSessionDTO,
     backendUpdate: Partial<GameSessionDTO>,
-    retryCount = 0
+    retryCount = 0,
+    workingSession: GameSessionDTO = gameSession
   ): Promise<GameSessionDTO> => {
+    const applyLocalUpdate = (source: GameSessionDTO): GameSessionDTO => {
+      const sessionClone = cloneSession(source);
+      const updated = localUpdate(sessionClone);
+      return updated === sessionClone ? sessionClone : updated;
+    };
+
+    let optimisticSession: GameSessionDTO | null = null;
+
     // 1. Optimistic update (instant UI) - only on first attempt
     if (retryCount === 0) {
-      const optimistic = localUpdate(gameSession);
-      onUpdate?.(optimistic);
+      optimisticSession = applyLocalUpdate(workingSession);
+      onUpdate?.(optimisticSession);
     }
 
     // 2. Backend validation (if API available)
@@ -184,19 +203,19 @@ export function createSessionHelpers(
         // Include version for optimistic locking
         const payload: SessionUpdatePayload = {
           ...(backendUpdate as SessionUpdatePayload),
-          expected_version: gameSession.version,
+          expected_version: workingSession.version,
           ...(backendUpdate.stats
             ? { stats: backendUpdate.stats as SessionUpdatePayload['stats'] }
             : {}),
         };
-        const response = await api.updateSession(gameSession.id, payload);
+        const response = await api.updateSession(workingSession.id, payload);
 
         // 3a. Handle version conflicts with retry limit
         if (response.conflict && response.serverSession) {
           if (retryCount >= MAX_RETRIES) {
             logger.error(
               `Max retries (${MAX_RETRIES}) exceeded for session update. Giving up.`,
-              { sessionId: gameSession.id, retryCount }
+              { sessionId: workingSession.id, retryCount }
             );
             // Rollback to original state
             onUpdate?.(gameSession);
@@ -205,7 +224,11 @@ export function createSessionHelpers(
 
           logger.info(
             `Version conflict detected (attempt ${retryCount + 1}/${MAX_RETRIES}), resolving...`,
-            { sessionId: gameSession.id, expectedVersion: gameSession.version, serverVersion: response.serverSession.version }
+            {
+              sessionId: workingSession.id,
+              expectedVersion: workingSession.version,
+              serverVersion: response.serverSession.version,
+            }
           );
 
           // Exponential backoff: wait before retrying
@@ -214,28 +237,34 @@ export function createSessionHelpers(
 
           // Re-apply local changes on top of server state
           const serverState = response.serverSession;
-          const resolvedUpdate = localUpdate(serverState);
+          const resolvedUpdate = applyLocalUpdate(serverState);
 
           // Update our local reference to server state
           const newBackendUpdate = {
             ...backendUpdate,
             // Extract only the fields we're updating from the resolved state
-            ...(backendUpdate.flags && { flags: resolvedUpdate.flags }),
-            ...(backendUpdate.stats && { stats: resolvedUpdate.stats }),
-            ...(backendUpdate.world_time && { world_time: resolvedUpdate.world_time }),
+            ...(backendUpdate.flags !== undefined && { flags: resolvedUpdate.flags }),
+            ...(backendUpdate.stats !== undefined && { stats: resolvedUpdate.stats }),
+            ...(backendUpdate.world_time !== undefined && {
+              world_time: resolvedUpdate.world_time,
+            }),
           };
 
           // Recursively retry with incremented counter
           return applyOptimisticUpdate(
-            () => resolvedUpdate, // Use pre-resolved update
+            localUpdate,
             newBackendUpdate,
-            retryCount + 1
+            retryCount + 1,
+            serverState
           );
         }
 
         // 3b. No conflict - apply server truth
         if (response.session) {
-          logger.info('Session update successful', { sessionId: gameSession.id, version: response.session.version });
+          logger.info('Session update successful', {
+            sessionId: workingSession.id,
+            version: response.session.version,
+          });
           onUpdate?.(response.session);
           return response.session;
         }
@@ -247,20 +276,22 @@ export function createSessionHelpers(
       }
     }
 
-    return localUpdate(gameSession);
+    if (optimisticSession) {
+      return optimisticSession;
+    }
+
+    return applyLocalUpdate(workingSession);
   };
 
   // Build dynamic helpers from registry (allows custom extensions)
   const dynamicHelpers = sessionHelperRegistry.buildHelpersObject(gameSession);
 
-  const cloneFlags = (flags: GameSessionDTO['flags']): GameSessionDTO['flags'] => {
-    return JSON.parse(JSON.stringify(flags ?? {})) as GameSessionDTO['flags'];
-  };
-
-  const buildFlagsUpdate = (mutate: (session: GameSessionDTO) => void) => {
-    const sessionCopy: GameSessionDTO = { ...gameSession, flags: cloneFlags(gameSession.flags) };
-    mutate(sessionCopy);
-    return { flags: sessionCopy.flags };
+  const buildFlagsUpdate = (
+    applyUpdate: (session: GameSessionDTO) => GameSessionDTO | void
+  ) => {
+    const sessionCopy = cloneSession(gameSession);
+    const updatedSession = applyUpdate(sessionCopy) ?? sessionCopy;
+    return { flags: updatedSession.flags };
   };
 
   const toQuestStatus = (
@@ -337,21 +368,15 @@ export function createSessionHelpers(
 
     addInventoryItem: async (itemId, quantity = 1) => {
       return applyOptimisticUpdate(
-        (session) => {
-          addInventoryItemCore(session, itemId, quantity);
-          return session;
-        },
+        (session) => addInventoryItemCore(session, itemId, quantity),
         buildFlagsUpdate((session) => addInventoryItemCore(session, itemId, quantity))
       );
     },
 
     removeInventoryItem: async (itemId, quantity = 1) => {
       return applyOptimisticUpdate(
-        (session) => {
-          removeInventoryItemCore(session, itemId, quantity);
-          return session;
-        },
-        buildFlagsUpdate((session) => removeInventoryItemCore(session, itemId, quantity))
+        (session) => removeInventoryItemCore(session, itemId, quantity) ?? session,
+        buildFlagsUpdate((session) => removeInventoryItemCore(session, itemId, quantity) ?? session)
       );
     },
 

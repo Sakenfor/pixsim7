@@ -3,6 +3,8 @@ import { createElement } from 'react';
 import { Navigate } from 'react-router-dom';
 
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { useDockUiStore } from '@features/docks/stores';
+import { DOCK_IDS } from '@features/panels/lib/panelIds';
 
 import { defineModule } from '@app/modules/types';
 
@@ -19,7 +21,7 @@ const quickGenerateAction: ActionDefinition = {
   category: 'quick-add',
   execute: () => {
     useControlCenterStore.getState().setActiveModule('quickGenerate');
-    useControlCenterStore.getState().setOpen(true);
+    useDockUiStore.getState().setDockOpen(DOCK_IDS.controlCenter, true);
   },
 };
 
@@ -33,7 +35,7 @@ const openPresetsAction: ActionDefinition = {
   category: 'quick-add',
   execute: () => {
     useControlCenterStore.getState().setActiveModule('presets');
-    useControlCenterStore.getState().setOpen(true);
+    useDockUiStore.getState().setDockOpen(DOCK_IDS.controlCenter, true);
   },
 };
 
@@ -47,7 +49,7 @@ const selectProviderAction: ActionDefinition = {
   category: 'quick-add',
   execute: () => {
     useControlCenterStore.getState().setActiveModule('providers');
-    useControlCenterStore.getState().setOpen(true);
+    useDockUiStore.getState().setDockOpen(DOCK_IDS.controlCenter, true);
   },
 };
 

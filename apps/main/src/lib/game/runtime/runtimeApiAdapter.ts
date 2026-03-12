@@ -246,9 +246,10 @@ export const gameRuntimeApiClient: GameApiClient = {
 
   async createSession(
     sceneId: number,
-    flags?: Record<string, unknown>
+    flags?: Record<string, unknown>,
+    worldId?: number
   ): Promise<GameSessionDTO> {
-    return await createGameSession(toSceneId(sceneId), flags);
+    return await createGameSession(toSceneId(sceneId), flags, worldId);
   },
 
   async updateSession(

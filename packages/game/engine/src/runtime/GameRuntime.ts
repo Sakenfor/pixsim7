@@ -513,13 +513,19 @@ export class GameRuntime implements IGameRuntime {
         throw new Error(`Failed to load session ${sessionId}`);
       }
 
-      // Preserve existing world unless/until we can reliably infer world_id from session.
-      // This prevents ensureSessionForWorld() from losing the already-loaded world state
-      // when it restores an existing session.
       let world: GameWorldDetail | null = this.world;
       if (loadWorld) {
-        // For now, skip world loading as GameSessionDTO doesn't expose world_id.
-        // Keep current world in memory if one is already available.
+        const worldId = session.world_id;
+        if (typeof worldId === 'number' && Number.isFinite(worldId) && worldId > 0) {
+          try {
+            world = await this.config.apiClient.getWorld(worldId);
+            this.log(`Loaded world ${worldId} for session ${sessionId}`);
+          } catch (err) {
+            this.log(`Failed to load world ${worldId} for session ${sessionId}: ${err}`);
+          }
+        } else {
+          world = null;
+        }
       }
 
       // Update internal state
@@ -769,7 +775,7 @@ export class GameRuntime implements IGameRuntime {
       const sceneId = this.resolveSceneIdForNewSession(world, options);
 
       // Create new session
-      const newSession = await this.config.apiClient.createSession(sceneId, flags);
+      const newSession = await this.config.apiClient.createSession(sceneId, flags, worldId);
       this.session = newSession;
 
       // Sync world_time if needed

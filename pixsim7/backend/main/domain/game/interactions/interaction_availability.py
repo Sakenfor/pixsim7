@@ -18,8 +18,9 @@ Design:
 """
 
 from __future__ import annotations
-from typing import Dict, Any, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, Tuple, Union, TYPE_CHECKING, Callable
 import time
+import logging
 
 from pixsim7.backend.main.domain.game.interactions.interactions import (
     InteractionDefinition,
@@ -49,6 +50,24 @@ from pixsim7.backend.main.domain.game.time.context import get_period_from_hour a
 
 if TYPE_CHECKING:
     from pixsim7.backend.main.domain.game.interactions.target_adapters import InteractionTargetAdapter
+
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_GATING_PLUGIN_ID = "intimacy.default"
+InteractionGatingEvaluator = Callable[
+    [
+        InteractionDefinition,
+        InteractionContext,
+        Optional[Dict[str, Any]],
+        Optional[InteractionTarget],
+        Optional[int],
+        Optional[WorldTimeConfig],
+        Optional["InteractionTargetAdapter"],
+    ],
+    Tuple[bool, Optional[DisabledReason], Optional[str]],
+]
+_WARNED_UNKNOWN_GATING_PLUGINS: set[str] = set()
 
 
 # ===================
@@ -618,7 +637,34 @@ def check_cooldown(
 # Main Gating Logic
 # ===================
 
-def evaluate_interaction_availability(
+def resolve_gating_plugin_id(world_meta: Optional[Dict[str, Any]]) -> str:
+    """
+    Resolve the gating plugin ID from world meta.
+
+    Reads `world.meta.manifest.gating_plugin` (preferred) and falls back to
+    compatible legacy shapes when present.
+    """
+    if not isinstance(world_meta, dict):
+        return DEFAULT_GATING_PLUGIN_ID
+
+    manifest = world_meta.get("manifest")
+    if isinstance(manifest, dict):
+        plugin_id = manifest.get("gating_plugin") or manifest.get("gatingPlugin")
+        if isinstance(plugin_id, str) and plugin_id.strip():
+            return plugin_id.strip()
+    elif manifest is not None:
+        plugin_id = getattr(manifest, "gating_plugin", None) or getattr(manifest, "gatingPlugin", None)
+        if isinstance(plugin_id, str) and plugin_id.strip():
+            return plugin_id.strip()
+
+    top_level_plugin = world_meta.get("gating_plugin") or world_meta.get("gatingPlugin")
+    if isinstance(top_level_plugin, str) and top_level_plugin.strip():
+        return top_level_plugin.strip()
+
+    return DEFAULT_GATING_PLUGIN_ID
+
+
+def _evaluate_interaction_availability_default(
     definition: InteractionDefinition,
     context: InteractionContext,
     stat_definitions: Optional[Dict[str, Any]] = None,
@@ -712,6 +758,54 @@ def evaluate_interaction_availability(
 
     # All checks passed
     return True, None, None
+
+
+INTERACTION_GATING_EVALUATORS: Dict[str, InteractionGatingEvaluator] = {
+    DEFAULT_GATING_PLUGIN_ID: _evaluate_interaction_availability_default,
+}
+
+
+def evaluate_interaction_availability(
+    definition: InteractionDefinition,
+    context: InteractionContext,
+    stat_definitions: Optional[Dict[str, Any]] = None,
+    target: Optional[InteractionTarget] = None,
+    current_time: Optional[int] = None,
+    time_config: Optional[WorldTimeConfig] = None,
+    target_adapter: Optional["InteractionTargetAdapter"] = None,
+    gating_plugin_id: Optional[str] = None,
+) -> Tuple[bool, Optional[DisabledReason], Optional[str]]:
+    """
+    Evaluate whether an interaction is currently available.
+
+    Args:
+        gating_plugin_id: Optional plugin ID from world manifest. Unknown plugin
+            IDs fall back to the default evaluator.
+    """
+    plugin_id = gating_plugin_id.strip() if isinstance(gating_plugin_id, str) else ""
+    if not plugin_id:
+        plugin_id = DEFAULT_GATING_PLUGIN_ID
+
+    evaluator = INTERACTION_GATING_EVALUATORS.get(plugin_id)
+    if evaluator is None:
+        if plugin_id not in _WARNED_UNKNOWN_GATING_PLUGINS:
+            logger.warning(
+                "Unknown interaction gating plugin '%s'; falling back to '%s'",
+                plugin_id,
+                DEFAULT_GATING_PLUGIN_ID,
+            )
+            _WARNED_UNKNOWN_GATING_PLUGINS.add(plugin_id)
+        evaluator = INTERACTION_GATING_EVALUATORS[DEFAULT_GATING_PLUGIN_ID]
+
+    return evaluator(
+        definition,
+        context,
+        stat_definitions,
+        target,
+        current_time,
+        time_config,
+        target_adapter,
+    )
 
 
 def create_interaction_instance(

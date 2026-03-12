@@ -13,6 +13,7 @@ Built-in conditions now use the behavior_registry for uniform registration.
 
 from __future__ import annotations
 
+import ast
 import random
 from typing import Any, Callable, Dict, List, Optional
 
@@ -501,24 +502,174 @@ def _get_time_of_day(hour: int) -> str:
         return "night"
 
 
+def _normalize_location_types(values: Any) -> List[str]:
+    if values is None:
+        return []
+    if not isinstance(values, list):
+        values = [values]
+
+    normalized: List[str] = []
+    for value in values:
+        if isinstance(value, str):
+            cleaned = value.strip().lower()
+            if cleaned:
+                normalized.append(cleaned)
+    return normalized
+
+
+def _extract_current_location_id(npc_state: Dict[str, Any]) -> Optional[Any]:
+    for key in ("currentLocationId", "current_location_id", "locationId", "location_id"):
+        if key in npc_state and npc_state[key] is not None:
+            return npc_state[key]
+    return None
+
+
+def _location_id_variants(location_id: Any) -> List[Any]:
+    variants: List[Any] = []
+
+    def _append(value: Any) -> None:
+        if value not in variants:
+            variants.append(value)
+
+    _append(location_id)
+
+    if isinstance(location_id, int):
+        _append(str(location_id))
+        _append(f"location:{location_id}")
+    elif isinstance(location_id, str):
+        cleaned = location_id.strip()
+        if cleaned:
+            _append(cleaned)
+            if cleaned.startswith("location:"):
+                suffix = cleaned.split(":", 1)[1]
+                _append(suffix)
+                if suffix.isdigit():
+                    numeric = int(suffix)
+                    _append(numeric)
+                    _append(str(numeric))
+            elif cleaned.isdigit():
+                numeric = int(cleaned)
+                _append(numeric)
+                _append(f"location:{cleaned}")
+
+    return variants
+
+
+def _extract_location_type(payload: Any) -> Optional[str]:
+    if isinstance(payload, dict):
+        for key in ("location_type", "locationType", "type"):
+            raw = payload.get(key)
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip().lower()
+
+        meta = payload.get("meta")
+        if isinstance(meta, dict):
+            for key in ("location_type", "locationType", "type"):
+                raw = meta.get(key)
+                if isinstance(raw, str) and raw.strip():
+                    return raw.strip().lower()
+        return None
+
+    for attr in ("location_type", "locationType", "type"):
+        raw = getattr(payload, attr, None)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip().lower()
+
+    meta = getattr(payload, "meta", None)
+    if isinstance(meta, dict):
+        for key in ("location_type", "locationType", "type"):
+            raw = meta.get(key)
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip().lower()
+
+    return None
+
+
+def _match_location_from_collection(collection: Any, location_id: Any) -> Optional[Any]:
+    variants = _location_id_variants(location_id)
+
+    if isinstance(collection, dict):
+        for variant in variants:
+            if variant in collection:
+                return collection[variant]
+        return None
+
+    if isinstance(collection, list):
+        for entry in collection:
+            if isinstance(entry, dict):
+                entry_id = entry.get("id", entry.get("location_id", entry.get("locationId")))
+            else:
+                entry_id = (
+                    getattr(entry, "id", None)
+                    or getattr(entry, "location_id", None)
+                    or getattr(entry, "locationId", None)
+                )
+            if entry_id in variants:
+                return entry
+        return None
+
+    return None
+
+
+def _resolve_location_payload(context: Dict[str, Any], location_id: Any) -> Optional[Any]:
+    source_candidates: List[Any] = [
+        context.get("locations_by_id"),
+        context.get("locations"),
+        context.get("world_locations"),
+    ]
+
+    world = context.get("world")
+    if isinstance(world, dict):
+        source_candidates.append(world.get("locations"))
+        meta = world.get("meta")
+        if isinstance(meta, dict):
+            source_candidates.append(meta.get("locations"))
+    elif world is not None:
+        source_candidates.append(getattr(world, "locations", None))
+        meta = getattr(world, "meta", None)
+        if isinstance(meta, dict):
+            source_candidates.append(meta.get("locations"))
+
+    for source in source_candidates:
+        match = _match_location_from_collection(source, location_id)
+        if match is not None:
+            return match
+
+    return None
+
+
 def _eval_location_type_in(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
     """Evaluate location_type_in condition."""
-    location_types = condition.get("locationTypes", [])
-    npc_state = context.get("npc_state", {})
-    current_location_id = npc_state.get("currentLocationId")
+    required_types = set(_normalize_location_types(condition.get("locationTypes", [])))
+    if not required_types:
+        return True
 
+    npc_state = context.get("npc_state", {})
+    if not isinstance(npc_state, dict):
+        return False
+
+    explicit_type = npc_state.get("currentLocationType") or npc_state.get("current_location_type")
+    if isinstance(explicit_type, str) and explicit_type.strip():
+        return explicit_type.strip().lower() in required_types
+
+    embedded_location = npc_state.get("location")
+    embedded_type = _extract_location_type(embedded_location)
+    if embedded_type:
+        return embedded_type in required_types
+
+    current_location_id = _extract_current_location_id(npc_state)
     if not current_location_id:
         return False
 
-    # Get location from world (simplified - would need actual location lookup)
-    # For now, assume location type is stored in location meta
-    world = context.get("world")
-    if not world:
+    location_payload = _resolve_location_payload(context, current_location_id)
+    if location_payload is None:
         return False
 
-    # This would need actual location lookup logic
-    # Placeholder implementation
-    return True  # TODO: Implement proper location type checking
+    location_type = _extract_location_type(location_payload)
+    if not location_type:
+        return False
+
+    return location_type in required_types
 
 
 def _eval_custom(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
@@ -542,14 +693,139 @@ def _eval_custom(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
 
 def _eval_expression(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
     """
-    Evaluate expression-based condition (ADVANCED - optional).
-
-    For security, this should use a safe expression evaluator.
-    For now, returns False (not implemented).
+    Evaluate expression-based condition with a restricted AST evaluator.
     """
-    expression = condition.get("expression", "")
-    logger.warning(f"Expression conditions not yet implemented: {expression}")
-    return False
+    expression = condition.get("expression")
+    if not isinstance(expression, str):
+        return False
+
+    expression = expression.strip()
+    if not expression:
+        return False
+
+    # Avoid pathological payloads from user-authored world configs.
+    if len(expression) > 512:
+        logger.warning("Expression condition rejected due to size: %s", expression[:80])
+        return False
+
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError:
+        logger.warning("Invalid expression condition syntax: %s", expression)
+        return False
+
+    try:
+        return bool(_eval_expression_node(tree, context))
+    except ValueError as exc:
+        logger.warning("Expression condition rejected: %s", exc)
+        return False
+    except Exception as exc:
+        logger.warning("Expression condition failed: %s", exc)
+        return False
+
+
+def _eval_expression_node(node: ast.AST, variables: Dict[str, Any]) -> Any:
+    if isinstance(node, ast.Expression):
+        return _eval_expression_node(node.body, variables)
+
+    if isinstance(node, ast.Constant):
+        return node.value
+
+    if isinstance(node, ast.Name):
+        return variables.get(node.id)
+
+    if isinstance(node, ast.BoolOp):
+        values = [_eval_expression_node(value, variables) for value in node.values]
+        if isinstance(node.op, ast.And):
+            return all(bool(value) for value in values)
+        if isinstance(node.op, ast.Or):
+            return any(bool(value) for value in values)
+        raise ValueError(f"Unsupported boolean operator: {type(node.op).__name__}")
+
+    if isinstance(node, ast.UnaryOp):
+        operand = _eval_expression_node(node.operand, variables)
+        if isinstance(node.op, ast.Not):
+            return not bool(operand)
+        if isinstance(node.op, ast.USub):
+            return -operand
+        if isinstance(node.op, ast.UAdd):
+            return +operand
+        raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
+
+    if isinstance(node, ast.BinOp):
+        left = _eval_expression_node(node.left, variables)
+        right = _eval_expression_node(node.right, variables)
+        if isinstance(node.op, ast.Add):
+            return left + right
+        if isinstance(node.op, ast.Sub):
+            return left - right
+        if isinstance(node.op, ast.Mult):
+            return left * right
+        if isinstance(node.op, ast.Div):
+            return left / right
+        if isinstance(node.op, ast.Mod):
+            return left % right
+        raise ValueError(f"Unsupported binary operator: {type(node.op).__name__}")
+
+    if isinstance(node, ast.Compare):
+        left = _eval_expression_node(node.left, variables)
+        for operator, comparator in zip(node.ops, node.comparators):
+            right = _eval_expression_node(comparator, variables)
+
+            if isinstance(operator, ast.Eq):
+                passed = left == right
+            elif isinstance(operator, ast.NotEq):
+                passed = left != right
+            elif isinstance(operator, ast.Lt):
+                passed = left < right
+            elif isinstance(operator, ast.LtE):
+                passed = left <= right
+            elif isinstance(operator, ast.Gt):
+                passed = left > right
+            elif isinstance(operator, ast.GtE):
+                passed = left >= right
+            elif isinstance(operator, ast.In):
+                passed = left in right if right is not None else False
+            elif isinstance(operator, ast.NotIn):
+                passed = left not in right if right is not None else True
+            else:
+                raise ValueError(f"Unsupported comparison operator: {type(operator).__name__}")
+
+            if not passed:
+                return False
+            left = right
+        return True
+
+    if isinstance(node, ast.Attribute):
+        value = _eval_expression_node(node.value, variables)
+        if isinstance(value, dict):
+            return value.get(node.attr)
+        return getattr(value, node.attr, None)
+
+    if isinstance(node, ast.Subscript):
+        value = _eval_expression_node(node.value, variables)
+        key = _eval_expression_node(node.slice, variables)
+        if isinstance(value, dict):
+            return value.get(key)
+        if isinstance(value, (list, tuple)) and isinstance(key, int):
+            if 0 <= key < len(value):
+                return value[key]
+            return None
+        return None
+
+    if isinstance(node, ast.List):
+        return [_eval_expression_node(item, variables) for item in node.elts]
+
+    if isinstance(node, ast.Tuple):
+        return tuple(_eval_expression_node(item, variables) for item in node.elts)
+
+    if isinstance(node, ast.Dict):
+        return {
+            _eval_expression_node(key, variables): _eval_expression_node(value, variables)
+            for key, value in zip(node.keys, node.values)
+        }
+
+    raise ValueError(f"Unsupported expression node: {type(node).__name__}")
 
 
 # ==================

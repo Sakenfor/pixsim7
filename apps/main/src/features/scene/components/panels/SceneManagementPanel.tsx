@@ -8,12 +8,13 @@
  * - Scene Playback: Test and preview scenes in the editor
  */
 
-import { SidebarContentLayout } from '@pixsim7/shared.ui';
+import { Badge, SidebarContentLayout } from '@pixsim7/shared.ui';
 import { useMemo, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
 import { useGraphStore } from '@features/graph';
+import { useProjectSessionStore } from '@features/scene';
 
 import { SceneBuilderPanel } from './SceneBuilderPanel';
 import { SceneCollectionPanel } from './SceneCollectionPanel';
@@ -35,6 +36,27 @@ interface SceneManagementPanelProps {
 
   // Initial tab
   initialTab?: TabId;
+}
+
+function ProjectContextHeader() {
+  const projectName = useProjectSessionStore((s) => s.currentProjectName);
+  const dirty = useProjectSessionStore((s) => s.dirty);
+  const sourceWorldId = useProjectSessionStore((s) => s.currentProjectSourceWorldId);
+  const listScenes = useGraphStore((s) => s.listScenes);
+  const sceneCount = listScenes().length;
+
+  return (
+    <span className="flex flex-col gap-0.5 leading-tight">
+      <span className="flex items-center gap-1.5">
+        <span className="truncate text-sm">{projectName || 'Unsaved Project'}</span>
+        {dirty && <Badge color="yellow">unsaved</Badge>}
+      </span>
+      <span className="flex items-center gap-1.5 text-xs font-normal text-neutral-500 dark:text-neutral-400">
+        <span>{sceneCount} scene{sceneCount !== 1 ? 's' : ''}</span>
+        {sourceWorldId != null && <Badge color="blue">world {sourceWorldId}</Badge>}
+      </span>
+    </span>
+  );
 }
 
 function getSectionIdForTab(tabId: TabId): SectionId {
@@ -142,7 +164,7 @@ export function SceneManagementPanel({
         onSelectChild={handleSelectChild}
         expandedSectionIds={expandedSectionIds}
         onToggleExpand={handleToggleExpand}
-        sidebarTitle="Scene Management"
+        sidebarTitle={<ProjectContextHeader />}
         sidebarWidth="w-56"
         variant="light"
         navClassName="space-y-1"

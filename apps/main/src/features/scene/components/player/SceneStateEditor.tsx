@@ -1,5 +1,8 @@
-import { useState, useCallback } from 'react';
+import { IDs } from '@pixsim7/shared.types';
 import { Button, Input } from '@pixsim7/shared.ui';
+import { useState, useCallback } from 'react';
+
+import { getGameSession } from '@lib/api';
 
 export interface SceneStateEditorProps {
   /** Current scene testing state */
@@ -104,6 +107,27 @@ export function SceneStateEditor({ state, onChange }: SceneStateEditorProps) {
   }, [onChange]);
 
   /**
+   * Load state from a game session
+   */
+  const handleLoadSession = useCallback(async () => {
+    const idStr = prompt('Enter session ID:');
+    if (!idStr) return;
+
+    const parsed = parseInt(idStr, 10);
+    if (Number.isNaN(parsed)) {
+      alert('Invalid session ID: must be a number');
+      return;
+    }
+
+    try {
+      const session = await getGameSession(IDs.SessionId(parsed));
+      onChange(session.flags as Record<string, any>);
+    } catch (error) {
+      alert(`Failed to load session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [onChange]);
+
+  /**
    * Export as JSON
    */
   const handleExportJson = useCallback(() => {
@@ -125,6 +149,9 @@ export function SceneStateEditor({ state, onChange }: SceneStateEditorProps) {
         <div className="flex gap-2">
           <Button size="sm" variant="secondary" onClick={handleLoadJson} title="Load from JSON">
             📥 Load
+          </Button>
+          <Button size="sm" variant="secondary" onClick={handleLoadSession} title="Load from game session">
+            🔗 Session
           </Button>
           <Button
             size="sm"

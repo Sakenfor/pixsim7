@@ -416,12 +416,11 @@ class WorldManifest(BaseModel):
     enabled_arc_graphs: List[str] = Field(default_factory=list)
     enabled_campaigns: List[str] = Field(default_factory=list)
     enabled_plugins: List[str] = Field(default_factory=list)
-    # TODO: gating_plugin is stored but not yet wired into runtime gating logic.
-    # Currently the frontend uses 'intimacy.default' plugin directly.
-    # Future work: backend should use this field to select the gating plugin.
+    # Runtime gating systems use this plugin ID to select evaluator behavior.
+    # Unknown IDs safely fall back to "intimacy.default".
     gating_plugin: Optional[str] = Field(
         default="intimacy.default",
-        description="ID of the gating plugin to use (not yet wired - future work)"
+        description="ID of the gating plugin to use for runtime availability checks"
     )
 
     class Config:

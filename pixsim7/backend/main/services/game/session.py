@@ -73,6 +73,7 @@ class GameSessionService:
                         GameSessionEvent.ts < threshold_ts
                     )
                 )
+                await self.db.commit()
                 deleted_count = delete_result.rowcount
                 if deleted_count > 0:
                     logger.info(

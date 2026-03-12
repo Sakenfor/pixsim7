@@ -159,6 +159,28 @@ export const createSceneSlice: StateCreator<SceneManagementState> = (set, get) =
     );
   },
 
+  patchSceneMetadata: (sceneId, patch) => {
+    set(
+      (state) => {
+        const scene = state.scenes[sceneId];
+        if (!scene) return state;
+
+        return {
+          scenes: {
+            ...state.scenes,
+            [sceneId]: {
+              ...scene,
+              metadata: { ...scene.metadata, ...patch },
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        };
+      },
+      false,
+      'patchSceneMetadata'
+    );
+  },
+
   /**
    * Get set of all scene IDs (for validation)
    *

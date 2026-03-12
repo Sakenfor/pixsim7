@@ -29,13 +29,14 @@ import {
   type GenerationSourceMode,
   type GenerationSourceContext,
 } from '@features/contextHub';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { useDockState } from '@features/docks/stores';
 import {
   ViewerAssetInputProvider,
   QuickGenWidget,
   useGenerationSettingsStore,
   type QuickGenWidgetRenderContext,
 } from '@features/generation';
+import { DOCK_IDS } from '@features/panels/lib/panelIds';
 
 import type { OperationType } from '@/types/operations';
 
@@ -229,7 +230,7 @@ function ViewerQuickGenerateChrome({
 }
 
 export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQuickGenerateProps) {
-  const controlCenterOpen = useControlCenterStore((s) => s.open);
+  const controlCenterOpen = useDockState(DOCK_IDS.controlCenter, (dock) => dock.open);
   const [isExpanded, setIsExpanded] = useState(alwaysExpanded);
   // Mode is managed at top level to determine scope before rendering the toggle
   const [mode, setMode] = useState<GenerationSourceMode>('user');
@@ -303,4 +304,3 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     </QuickGenWidget>
   );
 }
-

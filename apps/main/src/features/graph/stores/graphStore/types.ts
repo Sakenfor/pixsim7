@@ -1,3 +1,7 @@
+import type { StateCreator as ZustandStateCreator } from 'zustand';
+
+import type { Scene } from '@lib/registries';
+
 import type {
   DraftScene,
   DraftSceneNode,
@@ -8,8 +12,6 @@ import type {
   SceneMetadata,
   NodeGroupData,
 } from '@domain/sceneBuilder';
-import type { Scene } from '@lib/registries';
-import type { StateCreator as ZustandStateCreator } from 'zustand';
 
 /**
  * Graph Store State Interface
@@ -55,6 +57,7 @@ export interface SceneManagementState {
   getScene: (sceneId: string) => DraftScene | null;
   listScenes: () => DraftScene[];
   renameScene: (sceneId: string, newTitle: string) => void;
+  patchSceneMetadata: (sceneId: string, patch: Record<string, unknown>) => void;
   getSceneIds: () => Set<string>;
 }
 

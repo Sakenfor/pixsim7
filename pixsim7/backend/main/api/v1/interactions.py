@@ -30,6 +30,7 @@ from pixsim7.backend.main.domain.game.interactions.interaction_availability impo
     evaluate_interaction_availability,
     create_interaction_instance,
     filter_interactions_by_participants,
+    resolve_gating_plugin_id,
 )
 from pixsim7.backend.main.domain.game.interactions.target_adapters import (
     get_target_adapter,
@@ -322,6 +323,7 @@ async def list_interactions(
 
     # Get world stat definitions for gating comparisons
     stat_definitions = get_world_stat_definitions(world)
+    gating_plugin_id = resolve_gating_plugin_id(world.get("meta") if isinstance(world, dict) else None)
 
     # Evaluate each interaction
     instances = []
@@ -335,6 +337,7 @@ async def list_interactions(
             target,
             current_time,
             target_adapter=adapter,
+            gating_plugin_id=gating_plugin_id,
         )
 
         # Skip unavailable interactions unless explicitly requested
@@ -463,6 +466,7 @@ async def execute_interaction(
 
     # Get world stat definitions for gating comparisons
     stat_definitions = get_world_stat_definitions(world)
+    gating_plugin_id = resolve_gating_plugin_id(world.get("meta") if isinstance(world, dict) else None)
 
     # Check availability before executing
     ctx.log.debug("Checking interaction availability")
@@ -473,6 +477,7 @@ async def execute_interaction(
         target,
         int(time.time()),
         target_adapter=adapter,
+        gating_plugin_id=gating_plugin_id,
     )
 
     if not available:
@@ -525,4 +530,3 @@ async def execute_interaction(
         updatedSession=result_dict.get("updated_session"),
         timestamp=result_dict["timestamp"],
     )
-

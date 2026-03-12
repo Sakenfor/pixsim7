@@ -319,9 +319,10 @@ export async function listGameSessions(): Promise<GameSessionSummary[]> {
 
 export async function createGameSession(
   sceneId: IDs.SceneId,
-  flags?: Record<string, unknown>
+  flags?: Record<string, unknown>,
+  worldId?: number
 ): Promise<GameSessionDTO> {
-  return gameApi.createSession(sceneId, flags);
+  return gameApi.createSession(sceneId, flags, worldId);
 }
 
 export async function getGameSession(sessionId: IDs.SessionId): Promise<GameSessionDTO> {
