@@ -166,11 +166,16 @@ class PromptFamilyService:
         if parent_version is not None:
             diff_from_parent = generate_inline_diff(parent_version.prompt_text, prompt_text)
 
+        # Keep provider_hints metadata-only.
+        provider_hints = dict(kwargs.pop("provider_hints", {}) or {})
+        provider_hints.pop("prompt_analysis", None)
+
         version = PromptVersion(
             prompt_text=prompt_text,
             prompt_hash=kwargs.pop("prompt_hash", None) or PromptVersion.compute_hash(prompt_text),
             author=author,
             variables=variables or {},
+            provider_hints=provider_hints,
             diff_from_parent=diff_from_parent,
             **kwargs
         )

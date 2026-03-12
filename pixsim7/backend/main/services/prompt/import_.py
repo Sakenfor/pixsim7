@@ -112,7 +112,7 @@ async def prepare_import_payloads(
     )
 
     provider_hints: Dict[str, Any] = dict(spec.version_metadata)
-    provider_hints.setdefault("prompt_analysis", analysis)
+    provider_hints.pop("prompt_analysis", None)
     provider_hints.setdefault("source", spec.source.value)
     if spec.source_reference:
         provider_hints.setdefault("source_reference", spec.source_reference)
@@ -124,6 +124,7 @@ async def prepare_import_payloads(
         parent_version_id=None,
         variables={},
         provider_hints=provider_hints,
+        prompt_analysis=analysis,
         tags=version_tags,
     )
 

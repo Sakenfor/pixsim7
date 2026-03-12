@@ -57,6 +57,7 @@ class PromptOperationsService:
                 parent_version_id=version_data.get("parent_version_id"),
                 variables=version_data.get("variables", {}),
                 provider_hints=version_data.get("provider_hints", {}),
+                prompt_analysis=version_data.get("prompt_analysis"),
                 tags=version_data.get("tags", [])
             )
             created_versions.append(version)
@@ -109,6 +110,7 @@ class PromptOperationsService:
                     "author": v.author,
                     "variables": v.variables,
                     "provider_hints": v.provider_hints,
+                    "prompt_analysis": v.prompt_analysis,
                     "tags": v.tags,
                     "semantic_version": v.semantic_version,
                     "branch_name": v.branch_name,
@@ -195,6 +197,7 @@ class PromptOperationsService:
                     author=version_author or author,
                     variables=v_data.get("variables", {}),
                     provider_hints=v_data.get("provider_hints", {}),
+                    prompt_analysis=v_data.get("prompt_analysis"),
                     tags=v_data.get("tags", []),
                     semantic_version=v_data.get("semantic_version"),
                     branch_name=v_data.get("branch_name")

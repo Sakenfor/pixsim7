@@ -209,6 +209,7 @@ class GitOperationsService:
             parent_version_id=current.id if current else None,
             variables=target.variables,
             provider_hints=target.provider_hints,
+            prompt_analysis=target.prompt_analysis,
             tags=(target.tags or []) + ['rollback', f'rollback_from:{target.version_number}']
         )
 
@@ -252,6 +253,7 @@ class GitOperationsService:
             parent_version_id=current.id if current else None,
             variables=parent.variables,
             provider_hints=parent.provider_hints,
+            prompt_analysis=parent.prompt_analysis,
             tags=['revert', f'revert_of:{version_to_revert.version_number}']
         )
 
@@ -425,6 +427,7 @@ class GitOperationsService:
             branch_name=target_branch,
             variables=version_to_pick.variables,
             provider_hints=version_to_pick.provider_hints,
+            prompt_analysis=version_to_pick.prompt_analysis,
             tags=['cherry-pick', f'picked_from:{version_to_pick.version_number}']
         )
 

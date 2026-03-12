@@ -138,6 +138,12 @@ async def create_version(
     if not family:
         raise HTTPException(status_code=404, detail="Family not found")
 
+    if isinstance(request.provider_hints, dict) and "prompt_analysis" in request.provider_hints:
+        raise HTTPException(
+            status_code=422,
+            detail="provider_hints.prompt_analysis is deprecated; use prompt_analysis field",
+        )
+
     version = await service.create_version(
         family_id=family_id,
         prompt_text=request.prompt_text,
@@ -146,6 +152,7 @@ async def create_version(
         parent_version_id=request.parent_version_id,
         variables=request.variables,
         provider_hints=request.provider_hints,
+        prompt_analysis=request.prompt_analysis,
         tags=request.tags
     )
 

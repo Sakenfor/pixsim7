@@ -69,6 +69,7 @@ class GitBranchService:
             branch_name=branch_name,
             variables=source_version.variables,
             provider_hints=source_version.provider_hints,
+            prompt_analysis=source_version.prompt_analysis,
             tags=source_version.tags.copy() if source_version.tags else []
         )
 

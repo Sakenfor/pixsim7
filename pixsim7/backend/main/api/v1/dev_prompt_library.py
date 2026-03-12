@@ -13,7 +13,7 @@ Purpose:
 Design:
 - Dev-only endpoint (no production use)
 - Read-only operations (no mutations)
-- Exposes prompt_analysis from provider_hints
+- Exposes canonical prompt_analysis from PromptVersion.prompt_analysis
 - Can analyze prompts on-the-fly if needed
 """
 from fastapi import APIRouter, HTTPException
@@ -237,7 +237,7 @@ async def get_version_detail(
     - Version metadata
     - Prompt text
     - Provider hints
-    - Prompt analysis (from provider_hints or computed on-the-fly)
+    - Prompt analysis (from PromptVersion.prompt_analysis or computed on-the-fly)
 
     Path params:
     - version_id: UUID of the version
@@ -256,9 +256,10 @@ async def get_version_detail(
                 detail=f"Version {version_id} not found"
             )
 
-        # Extract provider_hints and prompt_analysis
-        provider_hints = version.provider_hints or {}
-        prompt_analysis = provider_hints.get("prompt_analysis")
+        # Provider hints are metadata-only; prompt analysis is a dedicated column.
+        provider_hints = dict(version.provider_hints or {})
+        provider_hints.pop("prompt_analysis", None)
+        prompt_analysis = version.prompt_analysis
 
         # If no prompt_analysis is present, analyze on the fly
         if not prompt_analysis:

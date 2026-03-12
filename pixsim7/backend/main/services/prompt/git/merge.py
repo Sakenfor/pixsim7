@@ -212,6 +212,7 @@ class GitMergeService:
             parent_version_id=target.id,
             variables=target.variables,
             provider_hints=target.provider_hints,
+            prompt_analysis=target.prompt_analysis,
             tags=(target.tags or []) + ['merge', 'strategy:ours']
         )
 
@@ -240,6 +241,7 @@ class GitMergeService:
             parent_version_id=target.id,
             variables=source.variables,
             provider_hints=source.provider_hints,
+            prompt_analysis=source.prompt_analysis,
             tags=(source.tags or []) + ['merge', 'strategy:theirs']
         )
 
@@ -286,6 +288,7 @@ class GitMergeService:
             parent_version_id=target.id,
             variables=merged_vars,
             provider_hints={**target.provider_hints, **source.provider_hints},
+            prompt_analysis=source.prompt_analysis if merged_text == source.prompt_text else None,
             tags=merged_tags
         )
 

@@ -157,6 +157,7 @@ async def import_prompt(
             parent_version_id=version_req.parent_version_id,
             variables=version_req.variables,
             provider_hints=version_req.provider_hints,
+            prompt_analysis=version_req.prompt_analysis,
             tags=version_req.tags,
         )
 

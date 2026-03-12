@@ -3,7 +3,7 @@ Prompt API Request/Response Models
 
 Pydantic schemas for prompt versioning API endpoints.
 """
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -26,8 +26,15 @@ class CreatePromptVersionRequest(BaseModel):
     commit_message: Optional[str] = Field(None, description="Description of changes")
     author: Optional[str] = None
     parent_version_id: Optional[UUID] = None
-    variables: dict = Field(default_factory=dict)
-    provider_hints: dict = Field(default_factory=dict)
+    variables: Dict[str, Any] = Field(default_factory=dict)
+    provider_hints: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Provider/version metadata only. Must not contain prompt_analysis.",
+    )
+    prompt_analysis: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Canonical structured analysis for this prompt version.",
+    )
     tags: List[str] = Field(default_factory=list)
 
 

@@ -165,3 +165,49 @@ async def test_analyze_and_attach_version_uses_shared_family_version_allocator(d
     assert v2.family_id == family.id
     assert v2.version_number == 2
     assert v2.parent_version_id is None
+
+
+@pytest.mark.asyncio
+async def test_create_version_drops_legacy_prompt_analysis_from_provider_hints(db_session: AsyncSession):
+    service = PromptFamilyService(db_session)
+    family = await service.create_family(
+        title="Legacy hints cleanup",
+        prompt_type="visual",
+        slug=f"legacy-hints-{uuid4().hex[:8]}",
+    )
+    legacy_analysis = {"prompt": "A studio portrait", "candidates": [], "tags": []}
+
+    version = await service.create_version(
+        family_id=family.id,
+        prompt_text="A studio portrait",
+        commit_message="legacy import",
+        provider_hints={"prompt_analysis": legacy_analysis, "source": "legacy-import"},
+        author="tester",
+    )
+
+    assert version.prompt_analysis is None
+    assert version.provider_hints == {"source": "legacy-import"}
+
+
+@pytest.mark.asyncio
+async def test_create_version_prefers_explicit_prompt_analysis_over_legacy_hint(db_session: AsyncSession):
+    service = PromptFamilyService(db_session)
+    family = await service.create_family(
+        title="Prompt analysis precedence",
+        prompt_type="visual",
+        slug=f"analysis-precedence-{uuid4().hex[:8]}",
+    )
+    explicit_analysis = {"prompt": "Explicit", "candidates": [{"id": "x"}], "tags": ["a"]}
+    legacy_analysis = {"prompt": "Legacy", "candidates": [], "tags": []}
+
+    version = await service.create_version(
+        family_id=family.id,
+        prompt_text="Explicit",
+        commit_message="explicit wins",
+        provider_hints={"prompt_analysis": legacy_analysis, "source": "manual"},
+        prompt_analysis=explicit_analysis,
+        author="tester",
+    )
+
+    assert version.prompt_analysis == explicit_analysis
+    assert version.provider_hints == {"source": "manual"}
