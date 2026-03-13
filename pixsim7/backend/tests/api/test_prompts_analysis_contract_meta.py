@@ -57,9 +57,12 @@ async def test_prompt_authoring_contract_exposes_family_version_and_analyze_sche
     assert "title" in result.create_family_request_schema["properties"]
     assert "properties" in result.create_version_request_schema
     assert "prompt_text" in result.create_version_request_schema["properties"]
+    assert "properties" in result.apply_edit_request_schema
+    assert "edit_ops" in result.apply_edit_request_schema["properties"]
     assert "properties" in result.analyze_request_schema
     assert "text" in result.analyze_request_schema["properties"]
     assert any(endpoint.id == "prompts.create_version" for endpoint in result.endpoints)
+    assert any(endpoint.id == "prompts.apply_edit" for endpoint in result.endpoints)
 
 
 @pytest.mark.asyncio
@@ -72,4 +75,9 @@ async def test_prompt_authoring_contract_has_modes_roles_and_deprecation() -> No
     assert any(role.id == "continuation" for role in result.sequence_roles)
     assert any(
         item.get("field") == "provider_hints.prompt_analysis" for item in result.deprecations
+    )
+    assert any(item.get("field") == "prompt_text" for item in result.field_ownership)
+    assert any(
+        item.get("field") == "prompt_analysis.authoring.history[].edit_ops"
+        for item in result.field_ownership
     )

@@ -3,6 +3,7 @@ Advanced Prompt Operations
 
 Batch operations, import/export, similarity search, template validation, and provider validation.
 """
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -339,6 +340,104 @@ class ValidateVersionRequest(BaseModel):
     variables: dict = Field(default_factory=dict, description="Variables to render prompt")
 
 
+class PromptEditOp(BaseModel):
+    """Structured prompt edit instruction."""
+
+    intent: str = Field(
+        ...,
+        description="Edit intent: generate/preserve/modify/add/remove",
+    )
+    target: str = Field(
+        ...,
+        description="Target path or semantic handle (e.g. 'vehicle.interior.detail').",
+    )
+    direction: Optional[str] = Field(
+        None,
+        description="Optional direction hint (increase/decrease/set/remove/emphasize).",
+    )
+    value: Optional[Any] = Field(None, description="Optional value payload for set/replace operations.")
+    note: Optional[str] = Field(None, description="Optional short free-form rationale.")
+
+
+class ApplyPromptEditRequest(BaseModel):
+    """Apply a chat-style edit to an existing prompt version."""
+
+    prompt_text: str = Field(..., min_length=1, description="Rendered prompt text after applying edits.")
+    instruction: Optional[str] = Field(
+        None,
+        description="Original user instruction (e.g. 'less interior detail, more brass').",
+    )
+    edit_ops: List[PromptEditOp] = Field(
+        default_factory=list,
+        description="Normalized structured edit operations.",
+    )
+    commit_message: Optional[str] = Field(
+        None,
+        description="Optional explicit changelog message for the new version.",
+    )
+    author: Optional[str] = Field(None, description="Optional author override.")
+    tags: Optional[List[str]] = Field(
+        None,
+        description="Optional full replacement tags list. If omitted, inherits source tags.",
+    )
+    variables: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional full replacement variables payload. If omitted, inherits source variables.",
+    )
+    provider_hints: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional full replacement provider metadata. If omitted, inherits source provider_hints.",
+    )
+    prompt_analysis: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Optional analysis payload to persist on new version. "
+            "If omitted, endpoint stores authoring metadata in a minimal prompt_analysis object."
+        ),
+    )
+
+
+class ApplyPromptEditResponse(BaseModel):
+    source_version_id: UUID
+    created_version: PromptVersionResponse
+    applied_edit: Dict[str, Any]
+
+
+def _default_edit_commit_message(request: ApplyPromptEditRequest) -> str:
+    if request.instruction:
+        return f"Apply edit: {request.instruction}"
+    if request.edit_ops:
+        intents = [op.intent for op in request.edit_ops if op.intent]
+        if intents:
+            return "Apply edit ops: " + ", ".join(intents[:3])
+    return "Apply prompt edit"
+
+
+def _build_authoring_prompt_analysis(
+    *,
+    base_prompt_analysis: Optional[Dict[str, Any]],
+    source_version_id: UUID,
+    instruction: Optional[str],
+    edit_ops: List[PromptEditOp],
+    commit_message: str,
+) -> Dict[str, Any]:
+    base = dict(base_prompt_analysis or {})
+    authoring_section = dict(base.get("authoring") or {})
+    history = list(authoring_section.get("history") or [])
+    history.append(
+        {
+            "source_version_id": str(source_version_id),
+            "instruction": instruction,
+            "edit_ops": [op.model_dump(exclude_none=True) for op in edit_ops],
+            "commit_message": commit_message,
+            "applied_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    authoring_section["history"] = history
+    base["authoring"] = authoring_section
+    return base
+
+
 @router.post("/validate")
 async def validate_prompt(
     request: ValidatePromptRequest,
@@ -418,6 +517,86 @@ async def validate_version(
         )
 
     return result
+
+
+@router.post("/versions/{version_id}/apply-edit", response_model=ApplyPromptEditResponse)
+async def apply_prompt_edit(
+    version_id: UUID,
+    request: ApplyPromptEditRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """
+    Create a new child prompt version from an existing version using structured edit intent.
+
+    Canonical usage for chat-driven tweak loops:
+    - keep prose prompt in `prompt_text`
+    - keep machine-editable intent trail in `prompt_analysis.authoring.history`
+    - link via `parent_version_id`
+    """
+    service = PromptVersionService(db)
+    source_version = await service.get_version(version_id)
+    if not source_version:
+        raise HTTPException(status_code=404, detail="Source version not found")
+    if source_version.family_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot apply edit to version without family_id",
+        )
+
+    commit_message = request.commit_message or _default_edit_commit_message(request)
+    tags = request.tags if request.tags is not None else list(source_version.tags or [])
+    variables = (
+        request.variables if request.variables is not None else dict(source_version.variables or {})
+    )
+    provider_hints = (
+        request.provider_hints
+        if request.provider_hints is not None
+        else dict(source_version.provider_hints or {})
+    )
+    if isinstance(provider_hints, dict):
+        provider_hints.pop("prompt_analysis", None)
+
+    prompt_analysis_payload = _build_authoring_prompt_analysis(
+        base_prompt_analysis=request.prompt_analysis,
+        source_version_id=source_version.id,
+        instruction=request.instruction,
+        edit_ops=request.edit_ops,
+        commit_message=commit_message,
+    )
+
+    created = await service.create_version(
+        family_id=source_version.family_id,
+        prompt_text=request.prompt_text,
+        commit_message=commit_message,
+        author=request.author or user.email,
+        parent_version_id=source_version.id,
+        variables=variables,
+        provider_hints=provider_hints,
+        prompt_analysis=prompt_analysis_payload,
+        tags=tags,
+    )
+
+    return ApplyPromptEditResponse(
+        source_version_id=source_version.id,
+        created_version=PromptVersionResponse(
+            id=created.id,
+            family_id=created.family_id,
+            version_number=created.version_number,
+            prompt_text=created.prompt_text,
+            commit_message=created.commit_message,
+            author=created.author,
+            generation_count=created.generation_count,
+            successful_assets=created.successful_assets,
+            tags=created.tags,
+            created_at=str(created.created_at),
+        ),
+        applied_edit={
+            "instruction": request.instruction,
+            "edit_ops": [op.model_dump(exclude_none=True) for op in request.edit_ops],
+            "commit_message": commit_message,
+        },
+    )
 
 
 # ===== Prompt Analysis (Preview) =====

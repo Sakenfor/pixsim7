@@ -17,16 +17,21 @@ from pixsim7.backend.main.services.analysis.analyzer_defaults import (
 )
 from pixsim7.backend.main.services.prompt.parser import analyzer_registry
 
-from .operations import AnalyzePromptRequest, AnalyzePromptResponse
+from .operations import (
+    AnalyzePromptRequest,
+    AnalyzePromptResponse,
+    ApplyPromptEditRequest,
+)
 from .schemas import CreatePromptFamilyRequest, CreatePromptVersionRequest
 
 router = APIRouter()
 
 PROMPT_ANALYSIS_CONTRACT_VERSION = "2026-03-12.1"
-PROMPT_AUTHORING_CONTRACT_VERSION = "2026-03-13.1"
+PROMPT_AUTHORING_CONTRACT_VERSION = "2026-03-13.2"
 PROMPT_ANALYZE_ENDPOINT = "/api/v1/prompts/analyze"
 PROMPT_CREATE_FAMILY_ENDPOINT = "/api/v1/prompts/families"
 PROMPT_CREATE_VERSION_ENDPOINT = "/api/v1/prompts/families/{family_id}/versions"
+PROMPT_APPLY_EDIT_ENDPOINT = "/api/v1/prompts/versions/{version_id}/apply-edit"
 
 
 class PromptAnalyzerPresetContract(BaseModel):
@@ -93,8 +98,10 @@ class PromptAuthoringContractResponse(BaseModel):
     endpoints: List[PromptAuthoringEndpointContract]
     create_family_request_schema: Dict[str, Any]
     create_version_request_schema: Dict[str, Any]
+    apply_edit_request_schema: Dict[str, Any]
     analyze_request_schema: Dict[str, Any]
     analyze_response_schema: Dict[str, Any]
+    field_ownership: List[Dict[str, Any]]
     sequence_roles: List[PromptAuthoringSequenceRoleContract]
     authoring_modes: List[PromptAuthoringModeContract]
     deprecations: List[Dict[str, Any]]
@@ -283,6 +290,12 @@ async def get_prompt_authoring_contract(current_user=Depends(get_current_user)):
             path=PROMPT_ANALYZE_ENDPOINT,
             summary="Analyze raw prompt text before persistence.",
         ),
+        PromptAuthoringEndpointContract(
+            id="prompts.apply_edit",
+            method="POST",
+            path=PROMPT_APPLY_EDIT_ENDPOINT,
+            summary="Apply structured chat-style edits to an existing version and create a child version.",
+        ),
     ]
 
     sequence_roles = [
@@ -333,6 +346,29 @@ async def get_prompt_authoring_contract(current_user=Depends(get_current_user)):
         }
     ]
 
+    field_ownership = [
+        {
+            "field": "prompt_text",
+            "owner": "authoring",
+            "description": "Canonical prose prompt used for generation.",
+        },
+        {
+            "field": "prompt_analysis.authoring.history[].edit_ops",
+            "owner": "authoring",
+            "description": "Canonical machine-readable tweak intents per version step.",
+        },
+        {
+            "field": "commit_message",
+            "owner": "authoring",
+            "description": "Human-readable changelog for what changed in this version.",
+        },
+        {
+            "field": "provider_hints",
+            "owner": "metadata",
+            "description": "Provider/version metadata only; must not contain prompt_analysis.",
+        },
+    ]
+
     examples = [
         {
             "name": "create-family",
@@ -379,6 +415,33 @@ async def get_prompt_authoring_contract(current_user=Depends(get_current_user)):
                 },
             },
         },
+        {
+            "name": "apply-edit-to-existing-version",
+            "request": {
+                "method": "POST",
+                "path": PROMPT_APPLY_EDIT_ENDPOINT,
+                "body": {
+                    "instruction": "Less detail in interior, more brass accents.",
+                    "prompt_text": "Updated prose prompt text...",
+                    "edit_ops": [
+                        {
+                            "intent": "modify",
+                            "target": "vehicle.interior.detail",
+                            "direction": "decrease",
+                        },
+                        {
+                            "intent": "add",
+                            "target": "vehicle.material.brass",
+                            "direction": "increase",
+                        },
+                    ],
+                },
+            },
+            "notes": (
+                "Creates a child version with parent_version_id and persists edit_ops in "
+                "prompt_analysis.authoring.history."
+            ),
+        },
     ]
 
     return PromptAuthoringContractResponse(
@@ -390,8 +453,10 @@ async def get_prompt_authoring_contract(current_user=Depends(get_current_user)):
         endpoints=endpoints,
         create_family_request_schema=CreatePromptFamilyRequest.model_json_schema(),
         create_version_request_schema=CreatePromptVersionRequest.model_json_schema(),
+        apply_edit_request_schema=ApplyPromptEditRequest.model_json_schema(),
         analyze_request_schema=AnalyzePromptRequest.model_json_schema(),
         analyze_response_schema=AnalyzePromptResponse.model_json_schema(),
+        field_ownership=field_ownership,
         sequence_roles=sequence_roles,
         authoring_modes=authoring_modes,
         deprecations=deprecations,
