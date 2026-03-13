@@ -2,11 +2,21 @@
 
 Signatures provide cross-pack contracts for op templates so packs can reference
 stable semantic shapes (required params/refs, op ID namespace, etc.).
+
+Source of truth: ``op_signature_registry.yaml`` (sibling file).
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Sequence
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Sequence
+
+import yaml
+
+logger = logging.getLogger(__name__)
+
+_REGISTRY_PATH = Path(__file__).with_name("op_signature_registry.yaml")
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,105 +29,112 @@ class OpSignature:
     allowed_modalities: Sequence[str] = ("image", "video")
 
 
-_OP_SIGNATURES: Dict[str, OpSignature] = {
-    "camera.motion.v1": OpSignature(
-        id="camera.motion.v1",
-        op_id_prefix="camera.motion.",
-        requires_variant_template=True,
-        required_params=("speed", "direction"),
-        required_refs=(),
-        allowed_modalities=("image", "video"),
-    ),
-    "camera.angle.v1": OpSignature(
-        id="camera.angle.v1",
-        op_id_prefix="camera.angle.",
-        requires_variant_template=False,
-        required_params=("vertical_angle", "roll"),
-        required_refs=(),
-        allowed_modalities=("image", "video"),
-    ),
-    "camera.shot.v1": OpSignature(
-        id="camera.shot.v1",
-        op_id_prefix="camera.shot.",
-        requires_variant_template=False,
-        required_params=("shot_size", "subject_count"),
-        required_refs=(),
-        allowed_modalities=("image", "video"),
-    ),
-    "camera.focus.v1": OpSignature(
-        id="camera.focus.v1",
-        op_id_prefix="camera.focus.",
-        requires_variant_template=False,
-        required_params=("focus_target", "depth_of_field", "rack"),
-        required_refs=(),
-        allowed_modalities=("image", "video"),
-    ),
-    "camera.pov.v1": OpSignature(
-        id="camera.pov.v1",
-        op_id_prefix="camera.pov.",
-        requires_variant_template=False,
-        required_params=("perspective", "camera_height"),
-        required_refs=(),
-        allowed_modalities=("image", "video"),
-    ),
-    "scene.anchor.v1": OpSignature(
-        id="scene.anchor.v1",
-        op_id_prefix="scene.anchor.",
-        requires_variant_template=False,
-        required_params=("relation", "distance", "orientation"),
-        required_refs=(),
-        allowed_modalities=("image", "video"),
-    ),
-    "direction.axis.v1": OpSignature(
-        id="direction.axis.v1",
-        op_id_prefix="direction.axis.",
-        requires_variant_template=True,
-        required_params=(),
-        required_refs=(),
-        allowed_modalities=("image", "video"),
-    ),
-    "subject.motion.v1": OpSignature(
-        id="subject.motion.v1",
-        op_id_prefix="subject.move.",
-        requires_variant_template=False,
-        required_params=("direction", "speed", "gait"),
-        required_refs=(),
-        allowed_modalities=("video",),
-    ),
-    "subject.hands.v1": OpSignature(
-        id="subject.hands.v1",
-        op_id_prefix="subject.hands.",
-        requires_variant_template=False,
-        required_params=("visibility", "gesture"),
-        required_refs=(),
-        allowed_modalities=("image", "video"),
-    ),
-    "subject.look.v1": OpSignature(
-        id="subject.look.v1",
-        op_id_prefix="subject.look",
-        requires_variant_template=False,
-        required_params=("focus", "intensity"),
-        required_refs=(),
-        allowed_modalities=("image", "video"),
-    ),
-    "subject.pose.v1": OpSignature(
-        id="subject.pose.v1",
-        op_id_prefix="subject.pose.",
-        requires_variant_template=False,
-        required_params=("pose", "hands", "gaze"),
-        required_refs=(),
-        allowed_modalities=("image", "video"),
-    ),
-    "light.state.v1": OpSignature(
-        id="light.state.v1",
-        op_id_prefix="light.state.",
-        requires_variant_template=False,
-        required_params=("key_light", "intensity", "temperature", "contrast"),
-        required_refs=(),
-        allowed_modalities=("image", "video"),
-    ),
+class OpSignatureRegistryError(Exception):
+    """Raised when the registry data file is invalid."""
+
+
+# ---------------------------------------------------------------------------
+# Registry loader
+# ---------------------------------------------------------------------------
+
+_REQUIRED_FIELDS = {"id", "op_id_prefix"}
+_ALL_FIELDS = {
+    "id", "op_id_prefix", "requires_variant_template",
+    "required_params", "required_refs", "allowed_modalities",
 }
 
+
+def _validate_entry(entry: Any, index: int) -> None:
+    """Validate a single registry entry, raising on first error."""
+    if not isinstance(entry, dict):
+        raise OpSignatureRegistryError(
+            f"signatures[{index}]: expected a mapping, got {type(entry).__name__}"
+        )
+    for field in _REQUIRED_FIELDS:
+        if field not in entry:
+            raise OpSignatureRegistryError(
+                f"signatures[{index}]: missing required field '{field}'"
+            )
+    sig_id = entry["id"]
+    if not isinstance(sig_id, str) or not sig_id.strip():
+        raise OpSignatureRegistryError(
+            f"signatures[{index}]: 'id' must be a non-empty string"
+        )
+    prefix = entry["op_id_prefix"]
+    if not isinstance(prefix, str) or not prefix.strip():
+        raise OpSignatureRegistryError(
+            f"signatures[{index}] ({sig_id}): 'op_id_prefix' must be a non-empty string"
+        )
+    if "requires_variant_template" in entry:
+        val = entry["requires_variant_template"]
+        if not isinstance(val, bool):
+            raise OpSignatureRegistryError(
+                f"signatures[{index}] ({sig_id}): 'requires_variant_template' must be a boolean"
+            )
+    for list_field in ("required_params", "required_refs", "allowed_modalities"):
+        if list_field in entry:
+            val = entry[list_field]
+            if not isinstance(val, list):
+                raise OpSignatureRegistryError(
+                    f"signatures[{index}] ({sig_id}): '{list_field}' must be a list"
+                )
+            for i, item in enumerate(val):
+                if not isinstance(item, str) or not item.strip():
+                    raise OpSignatureRegistryError(
+                        f"signatures[{index}] ({sig_id}): '{list_field}[{i}]' must be a non-empty string"
+                    )
+    unknown = set(entry.keys()) - _ALL_FIELDS
+    if unknown:
+        raise OpSignatureRegistryError(
+            f"signatures[{index}] ({sig_id}): unknown fields: {sorted(unknown)}"
+        )
+
+
+def _load_registry(path: Path) -> Dict[str, OpSignature]:
+    """Load and validate the YAML registry, returning an ordered dict."""
+    if not path.exists():
+        raise OpSignatureRegistryError(f"Registry file not found: {path}")
+
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or "signatures" not in raw:
+        raise OpSignatureRegistryError(
+            "Registry file must contain a top-level 'signatures' key"
+        )
+
+    entries = raw["signatures"]
+    if not isinstance(entries, list):
+        raise OpSignatureRegistryError("'signatures' must be a list")
+
+    seen_ids: Dict[str, int] = {}
+    result: Dict[str, OpSignature] = {}
+
+    for index, entry in enumerate(entries):
+        _validate_entry(entry, index)
+        sig_id = entry["id"].strip()
+        if sig_id in seen_ids:
+            raise OpSignatureRegistryError(
+                f"signatures[{index}]: duplicate id '{sig_id}' (first at index {seen_ids[sig_id]})"
+            )
+        seen_ids[sig_id] = index
+        result[sig_id] = OpSignature(
+            id=sig_id,
+            op_id_prefix=entry["op_id_prefix"].strip(),
+            requires_variant_template=entry.get("requires_variant_template", False),
+            required_params=tuple(entry.get("required_params") or ()),
+            required_refs=tuple(entry.get("required_refs") or ()),
+            allowed_modalities=tuple(entry.get("allowed_modalities") or ("image", "video")),
+        )
+
+    return dict(sorted(result.items()))
+
+
+# Module-level load — fail fast on import if registry is broken.
+_OP_SIGNATURES: Dict[str, OpSignature] = _load_registry(_REGISTRY_PATH)
+
+
+# ---------------------------------------------------------------------------
+# Public API (unchanged)
+# ---------------------------------------------------------------------------
 
 def get_op_signature(signature_id: str) -> Optional[OpSignature]:
     return _OP_SIGNATURES.get(signature_id)

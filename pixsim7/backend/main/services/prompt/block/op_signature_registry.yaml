@@ -1,0 +1,118 @@
+# Canonical op-signature registry.
+#
+# Source of truth for prompt block op signatures.  Loaded at module import
+# by op_signatures.py — changes here take effect on next server restart.
+#
+# Schema per entry:
+#   id:                        unique signature identifier (dotted, versioned)
+#   op_id_prefix:              op_id namespace prefix that blocks must match
+#   requires_variant_template: true when op_id_template with {variant} is required
+#   required_params:           parameter keys every concrete op must declare
+#   required_refs:             reference keys every concrete op must declare
+#   allowed_modalities:        modalities the signature supports
+
+signatures:
+  - id: camera.angle.v1
+    op_id_prefix: "camera.angle."
+    requires_variant_template: false
+    required_params: [vertical_angle, roll]
+    required_refs: []
+    allowed_modalities: [image, video]
+
+  - id: camera.focus.v1
+    op_id_prefix: "camera.focus."
+    requires_variant_template: false
+    required_params: [focus_target, depth_of_field, rack]
+    required_refs: []
+    allowed_modalities: [image, video]
+
+  - id: camera.motion.v1
+    op_id_prefix: "camera.motion."
+    requires_variant_template: true
+    required_params: [speed, direction]
+    required_refs: []
+    allowed_modalities: [image, video]
+
+  - id: camera.pov.v1
+    op_id_prefix: "camera.pov."
+    requires_variant_template: false
+    required_params: [perspective, camera_height]
+    required_refs: []
+    allowed_modalities: [image, video]
+
+  - id: camera.shot.v1
+    op_id_prefix: "camera.shot."
+    requires_variant_template: false
+    required_params: [shot_size, subject_count]
+    required_refs: []
+    allowed_modalities: [image, video]
+
+  - id: direction.axis.v1
+    op_id_prefix: "direction.axis."
+    requires_variant_template: true
+    required_params: []
+    required_refs: []
+    allowed_modalities: [image, video]
+
+  - id: light.state.v1
+    op_id_prefix: "light.state."
+    requires_variant_template: false
+    required_params: [key_light, intensity, temperature, contrast]
+    required_refs: []
+    allowed_modalities: [image, video]
+
+  - id: scene.anchor.v1
+    op_id_prefix: "scene.anchor."
+    requires_variant_template: false
+    required_params: [relation, distance, orientation]
+    required_refs: []
+    allowed_modalities: [image, video]
+
+  - id: scene.relation.v1
+    op_id_prefix: "scene.relation."
+    requires_variant_template: false
+    required_params: [relation, distance, orientation]
+    required_refs: [subject, target]
+    allowed_modalities: [image, video]
+
+  - id: sequence.continuity.v1
+    op_id_prefix: "sequence.continuity."
+    requires_variant_template: false
+    required_params: [role_in_sequence, continuity_focus, continuity_priority]
+    required_refs: []
+    allowed_modalities: [image, video]
+
+  - id: subject.hands.v1
+    op_id_prefix: "subject.hands."
+    requires_variant_template: false
+    required_params: [visibility, gesture]
+    required_refs: []
+    allowed_modalities: [image, video]
+
+  - id: subject.interaction.v1
+    op_id_prefix: "subject.interaction."
+    requires_variant_template: false
+    required_params: [beat_type, contact_stage, response_mode, social_tone]
+    required_refs: [subject, target]
+    allowed_modalities: [image, video]
+
+  - id: subject.look.v1
+    op_id_prefix: "subject.look"
+    requires_variant_template: false
+    required_params: [focus, intensity]
+    required_refs: []
+    allowed_modalities: [image, video]
+
+  - id: subject.motion.v1
+    op_id_prefix: "subject.move."
+    requires_variant_template: false
+    required_params: [direction, speed, gait]
+    required_refs: []
+    allowed_modalities: [video]
+
+  - id: subject.pose.v1
+    op_id_prefix: "subject.pose."
+    requires_variant_template: false
+    required_params: [pose, hands, gaze]
+    required_refs: []
+    allowed_modalities: [image, video]

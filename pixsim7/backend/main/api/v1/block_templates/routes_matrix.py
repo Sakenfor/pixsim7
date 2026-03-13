@@ -1,4 +1,4 @@
-"""Block matrix endpoint."""
+"""Block matrix and meta endpoints."""
 from typing import List, Optional, Dict, Any
 from fastapi import HTTPException, Query
 
@@ -30,8 +30,20 @@ from .router import router
 
 @router.get("/meta/blocks/matrix", response_model=BlockMatrixResponse)
 async def get_block_matrix(
-    row_key: str = Query(..., description="Matrix row axis key (tag key or top-level field; use tag:<key> for tags)"),
-    col_key: str = Query(..., description="Matrix column axis key (tag key or top-level field; use tag:<key> for tags)"),
+    row_key: str = Query(
+        ...,
+        description=(
+            "Matrix row axis key (tag key or top-level field; use tag:<key> for tags). "
+            "Supported op axes: op_id, signature_id, op_namespace, op_modalities."
+        ),
+    ),
+    col_key: str = Query(
+        ...,
+        description=(
+            "Matrix column axis key (tag key or top-level field; use tag:<key> for tags). "
+            "Supported op axes: op_id, signature_id, op_namespace, op_modalities."
+        ),
+    ),
     source: str = Query("primitives", description='Block source: "primitives"'),
     composition_role: Optional[str] = Query(None, description="Filter by inferred composition role id"),
     category: Optional[str] = Query(None, description="Filter by category"),
@@ -210,3 +222,26 @@ async def get_block_matrix(
         },
         cells=cells,
     )
+
+
+# ---------------------------------------------------------------------------
+# Meta: op-signature registry
+# ---------------------------------------------------------------------------
+
+
+@router.get("/meta/op-signatures")
+async def list_op_signatures_endpoint() -> List[Dict[str, Any]]:
+    """Return the full op-signature registry for tooling / UI discovery."""
+    from pixsim7.backend.main.services.prompt.block.op_signatures import list_op_signatures
+
+    return [
+        {
+            "id": sig.id,
+            "op_id_prefix": sig.op_id_prefix,
+            "requires_variant_template": sig.requires_variant_template,
+            "required_params": list(sig.required_params),
+            "required_refs": list(sig.required_refs),
+            "allowed_modalities": list(sig.allowed_modalities),
+        }
+        for sig in list_op_signatures()
+    ]
