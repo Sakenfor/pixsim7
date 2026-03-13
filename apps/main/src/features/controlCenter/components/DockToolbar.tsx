@@ -36,7 +36,7 @@ export interface QuickNavItem {
 export const DEFAULT_QUICK_NAV: QuickNavItem[] = [
   { id: 'gallery', icon: '🖼️', label: 'Gallery', path: '/assets' },
   { id: 'workspace', icon: '🎨', label: 'Workspace', path: '/workspace' },
-  { id: 'devtools', icon: 'code', label: 'DevTools', path: '/devtools' },
+  { id: 'devtools', icon: 'code', label: 'DevTools', path: '/dev/developer-tasks' },
   { id: 'home', icon: '🏠', label: 'Home', path: '/' },
   { id: 'graph', icon: '🕸️', label: 'Graph', path: '/graph/1' },
 ];

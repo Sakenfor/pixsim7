@@ -30,7 +30,6 @@ import {
   useRoutes,
   useActions,
 } from '@lib/capabilities';
-import { buildDevtoolsUrl } from '@lib/dev/devtools/devtoolsUrl';
 import { pluginCatalog } from '@lib/plugins/pluginSystem';
 import {
   fromPluginSystemMetadata,
@@ -161,7 +160,7 @@ export function AppMapPanel() {
   // Devtools codegen link (permission + DEV mode)
   const user = useAuthStore((s) => s.user);
   const showCodegenLink = import.meta.env.DEV && canRunCodegen(user);
-  const codegenUrl = useMemo(() => buildDevtoolsUrl('/dev/codegen?task=app-map'), []);
+  const codegenUrl = '/dev/developer-tasks?task=app-map';
 
   // Data from capability registry
   const allFeatures = useFeatures();

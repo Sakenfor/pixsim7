@@ -3,10 +3,10 @@ import { Navigate } from 'react-router-dom';
 
 import { defineModule } from '@app/modules/types';
 
-// Redirect component for /settings/overlays -> /devtools
+// Redirect component for /settings/overlays -> /dev/developer-tasks
 function OverlayConfigRedirect() {
   return createElement(Navigate, {
-    to: '/devtools',
+    to: '/dev/developer-tasks',
     replace: true,
   });
 }

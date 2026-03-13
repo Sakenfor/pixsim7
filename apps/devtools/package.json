@@ -85,7 +85,7 @@
         "VITE_BACKEND_URL": "$BACKEND_BASE_URL"
       },
       "auto_start": false,
-      "enabled": true
+      "enabled": false
     }
   }
 }
