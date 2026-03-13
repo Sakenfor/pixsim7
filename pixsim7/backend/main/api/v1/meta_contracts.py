@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from pixsim7.backend.main.api.v1.prompts.meta import (
     PROMPT_ANALYSIS_CONTRACT_VERSION,
+    PROMPT_AUTHORING_CONTRACT_VERSION,
 )
 
 router = APIRouter(prefix="/meta", tags=["meta"])
@@ -49,6 +50,18 @@ async def list_contract_endpoints() -> ContractsIndexResponse:
             owner="prompt-analyzer lane",
             summary=(
                 "Analyzer selection order, request/response schema, prompt analyzer catalog, "
+                "deprecations, and examples."
+            ),
+        ),
+        ContractIndexEntry(
+            id="prompts.authoring",
+            name="Prompt Authoring Contract",
+            endpoint="/api/v1/prompts/meta/authoring-contract",
+            version=PROMPT_AUTHORING_CONTRACT_VERSION,
+            auth_required=True,
+            owner="prompt-authoring lane",
+            summary=(
+                "Prompt family/version authoring flow, request schemas, sequence role guidance, "
                 "deprecations, and examples."
             ),
         )

@@ -14,6 +14,8 @@ Use these first when an agent needs canonical request/response contracts or anal
   - Source: `pixsim7/backend/main/api/v1/meta_contracts.py`
 - Prompt analysis contract: `/api/v1/prompts/meta/analysis-contract`
   - Source: `pixsim7/backend/main/api/v1/prompts/meta.py`
+- Prompt authoring contract: `/api/v1/prompts/meta/authoring-contract`
+  - Source: `pixsim7/backend/main/api/v1/prompts/meta.py`
 
 Why this exists:
 - Single discovery surface for tools/agents (instead of scanning many files)

@@ -18,11 +18,15 @@ from pixsim7.backend.main.services.analysis.analyzer_defaults import (
 from pixsim7.backend.main.services.prompt.parser import analyzer_registry
 
 from .operations import AnalyzePromptRequest, AnalyzePromptResponse
+from .schemas import CreatePromptFamilyRequest, CreatePromptVersionRequest
 
 router = APIRouter()
 
 PROMPT_ANALYSIS_CONTRACT_VERSION = "2026-03-12.1"
+PROMPT_AUTHORING_CONTRACT_VERSION = "2026-03-13.1"
 PROMPT_ANALYZE_ENDPOINT = "/api/v1/prompts/analyze"
+PROMPT_CREATE_FAMILY_ENDPOINT = "/api/v1/prompts/families"
+PROMPT_CREATE_VERSION_ENDPOINT = "/api/v1/prompts/families/{family_id}/versions"
 
 
 class PromptAnalyzerPresetContract(BaseModel):
@@ -59,6 +63,40 @@ class PromptAnalysisContractResponse(BaseModel):
     request_schema: Dict[str, Any]
     response_schema: Dict[str, Any]
     prompt_analyzers: List[PromptAnalyzerContract]
+    deprecations: List[Dict[str, Any]]
+    examples: List[Dict[str, Any]]
+
+
+class PromptAuthoringEndpointContract(BaseModel):
+    id: str
+    method: str
+    path: str
+    summary: str
+
+
+class PromptAuthoringModeContract(BaseModel):
+    id: str
+    label: str
+    description: str
+    recommended_tags: List[str] = Field(default_factory=list)
+    required_fields: List[str] = Field(default_factory=list)
+
+
+class PromptAuthoringSequenceRoleContract(BaseModel):
+    id: str
+    description: str
+
+
+class PromptAuthoringContractResponse(BaseModel):
+    version: str
+    summary: str
+    endpoints: List[PromptAuthoringEndpointContract]
+    create_family_request_schema: Dict[str, Any]
+    create_version_request_schema: Dict[str, Any]
+    analyze_request_schema: Dict[str, Any]
+    analyze_response_schema: Dict[str, Any]
+    sequence_roles: List[PromptAuthoringSequenceRoleContract]
+    authoring_modes: List[PromptAuthoringModeContract]
     deprecations: List[Dict[str, Any]]
     examples: List[Dict[str, Any]]
 
@@ -211,6 +249,151 @@ async def get_prompt_analysis_contract(current_user=Depends(get_current_user)):
         request_schema=AnalyzePromptRequest.model_json_schema(),
         response_schema=AnalyzePromptResponse.model_json_schema(),
         prompt_analyzers=prompt_analyzers,
+        deprecations=deprecations,
+        examples=examples,
+    )
+
+
+@router.get("/meta/authoring-contract", response_model=PromptAuthoringContractResponse)
+async def get_prompt_authoring_contract(current_user=Depends(get_current_user)):
+    """
+    Return machine-readable prompt authoring and persistence contract.
+
+    Intended for AI agents that need a single endpoint describing how to:
+    1) create families
+    2) create versions
+    3) persist prompt_analysis from /prompts/analyze
+    """
+    endpoints = [
+        PromptAuthoringEndpointContract(
+            id="prompts.create_family",
+            method="POST",
+            path=PROMPT_CREATE_FAMILY_ENDPOINT,
+            summary="Create a prompt family container.",
+        ),
+        PromptAuthoringEndpointContract(
+            id="prompts.create_version",
+            method="POST",
+            path=PROMPT_CREATE_VERSION_ENDPOINT,
+            summary="Create a prompt version under a family and optionally persist prompt_analysis.",
+        ),
+        PromptAuthoringEndpointContract(
+            id="prompts.analyze",
+            method="POST",
+            path=PROMPT_ANALYZE_ENDPOINT,
+            summary="Analyze raw prompt text before persistence.",
+        ),
+    ]
+
+    sequence_roles = [
+        PromptAuthoringSequenceRoleContract(
+            id="initial",
+            description="First scene/setup prompt. No continuity assumptions.",
+        ),
+        PromptAuthoringSequenceRoleContract(
+            id="continuation",
+            description="Prompt continues prior context and should preserve continuity.",
+        ),
+        PromptAuthoringSequenceRoleContract(
+            id="transition",
+            description="Prompt bridges between states/scenes with continuity constraints.",
+        ),
+    ]
+
+    authoring_modes = [
+        PromptAuthoringModeContract(
+            id="scene_setup",
+            label="Scene Setup",
+            description="Long-form initial scene prompt with style, setting, and cast setup.",
+            recommended_tags=["sequence:initial", "intent:setup", "mode:scene_setup"],
+            required_fields=["prompt_text"],
+        ),
+        PromptAuthoringModeContract(
+            id="scene_continuation",
+            label="Scene Continuation",
+            description="Short-to-medium continuation prompt that advances from previous context.",
+            recommended_tags=["sequence:continuation", "intent:advance", "mode:continuation"],
+            required_fields=["prompt_text", "parent_version_id"],
+        ),
+        PromptAuthoringModeContract(
+            id="tool_edit",
+            label="Tool Edit",
+            description="Prompt intended for mask/tool-style edits (replace/modify specific regions).",
+            recommended_tags=["intent:modify", "mode:tool_edit", "scope:region_or_mask"],
+            required_fields=["prompt_text"],
+        ),
+    ]
+
+    deprecations = [
+        {
+            "field": "provider_hints.prompt_analysis",
+            "status": "deprecated",
+            "behavior": "Rejected by create-version API (HTTP 422).",
+            "use_instead": "prompt_analysis field on prompt version payloads.",
+        }
+    ]
+
+    examples = [
+        {
+            "name": "create-family",
+            "request": {
+                "method": "POST",
+                "path": PROMPT_CREATE_FAMILY_ENDPOINT,
+                "body": {
+                    "title": "Victorian Consultation Room",
+                    "prompt_type": "visual",
+                    "category": "scene_setup",
+                    "tags": ["style:victorian_etching", "location:consultation_room"],
+                },
+            },
+        },
+        {
+            "name": "create-initial-version-with-analysis",
+            "request": {
+                "method": "POST",
+                "path": PROMPT_CREATE_VERSION_ENDPOINT,
+                "body": {
+                    "prompt_text": "Raw prose scene setup text...",
+                    "commit_message": "Initial scene setup draft",
+                    "tags": ["sequence:initial", "intent:setup"],
+                    "prompt_analysis": {
+                        "analyzer_id": "prompt:agent-authored",
+                        "tags": ["style:victorian_etching"],
+                        "candidates": [],
+                        "source": "local-agent",
+                    },
+                },
+            },
+            "notes": "Persist analysis in prompt_analysis, not provider_hints.",
+        },
+        {
+            "name": "create-continuation-version",
+            "request": {
+                "method": "POST",
+                "path": PROMPT_CREATE_VERSION_ENDPOINT,
+                "body": {
+                    "prompt_text": "Character reaches for the medical instrument.",
+                    "parent_version_id": "prev-version-uuid",
+                    "commit_message": "Continuation beat",
+                    "tags": ["sequence:continuation", "intent:advance"],
+                },
+            },
+        },
+    ]
+
+    return PromptAuthoringContractResponse(
+        version=PROMPT_AUTHORING_CONTRACT_VERSION,
+        summary=(
+            "Canonical authoring contract for AI agents that write prompt families/versions "
+            "and persist optional prompt analysis."
+        ),
+        endpoints=endpoints,
+        create_family_request_schema=CreatePromptFamilyRequest.model_json_schema(),
+        create_version_request_schema=CreatePromptVersionRequest.model_json_schema(),
+        analyze_request_schema=AnalyzePromptRequest.model_json_schema(),
+        analyze_response_schema=AnalyzePromptResponse.model_json_schema(),
+        sequence_roles=sequence_roles,
+        authoring_modes=authoring_modes,
         deprecations=deprecations,
         examples=examples,
     )

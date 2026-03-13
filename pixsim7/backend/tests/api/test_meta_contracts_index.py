@@ -21,5 +21,10 @@ async def test_contracts_index_lists_prompt_analysis_contract() -> None:
         and contract.endpoint == "/api/v1/prompts/meta/analysis-contract"
         for contract in result.contracts
     )
+    assert any(
+        contract.id == "prompts.authoring"
+        and contract.endpoint == "/api/v1/prompts/meta/authoring-contract"
+        for contract in result.contracts
+    )
     # Ensure generated_at is valid ISO datetime string.
     datetime.fromisoformat(result.generated_at.replace("Z", "+00:00"))

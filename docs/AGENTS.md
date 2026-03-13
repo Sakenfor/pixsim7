@@ -10,6 +10,7 @@ Before scanning the repo for API shapes, check the machine-readable contract end
 
 - `/api/v1/meta/contracts` (global contract index)
 - `/api/v1/prompts/meta/analysis-contract` (prompt analysis request/response and analyzer resolution contract)
+- `/api/v1/prompts/meta/authoring-contract` (prompt family/version authoring flow and persistence contract)
 
 Source files:
 - `pixsim7/backend/main/api/v1/meta_contracts.py`
