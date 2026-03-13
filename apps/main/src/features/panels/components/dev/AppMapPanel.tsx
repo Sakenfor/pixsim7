@@ -11,6 +11,7 @@
 
 import type { ArchitectureGraphV1 } from '@pixsim7/shared.api.model';
 import type { AppMapMetadata } from '@pixsim7/shared.types';
+import { Button, SidebarContentLayout } from '@pixsim7/shared.ui';
 import React, {
   useState,
   useMemo,
@@ -113,25 +114,20 @@ class AppMapErrorBoundary extends Component<
 }
 
 // =============================================================================
-// Tab Types
+// Section Types
 // =============================================================================
 
-type TabId = 'features' | 'plugins' | 'registries' | 'graph' | 'journeys' | 'testing' | 'stats' | 'backend';
+type SectionId = 'features' | 'plugins' | 'registries' | 'graph' | 'journeys' | 'testing' | 'stats' | 'backend';
 
-interface TabConfig {
-  id: TabId;
-  label: string;
-}
-
-const TABS: TabConfig[] = [
-  { id: 'features', label: 'Features & Routes' },
-  { id: 'plugins', label: 'Plugin Ecosystem' },
+const SECTIONS: { id: SectionId; label: string }[] = [
+  { id: 'features', label: 'Features' },
+  { id: 'plugins', label: 'Plugins' },
   { id: 'registries', label: 'Registries' },
-  { id: 'graph', label: 'Dependency Graph' },
+  { id: 'graph', label: 'Dep Graph' },
   { id: 'journeys', label: 'Journeys' },
-  { id: 'testing', label: 'Capability Testing' },
+  { id: 'testing', label: 'Testing' },
   { id: 'stats', label: 'Statistics' },
-  { id: 'backend', label: 'Backend Architecture' },
+  { id: 'backend', label: 'Backend' },
 ];
 
 // =============================================================================
@@ -143,7 +139,7 @@ export function AppMapPanel() {
   const [familyFilter, setFamilyFilter] = useState<UnifiedPluginFamily | 'all'>('all');
   const [originFilter, setOriginFilter] = useState<UnifiedPluginOrigin | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<TabId>('features');
+  const [activeSection, setActiveSection] = useState<SectionId>('features');
   const [allPlugins, setAllPlugins] = useState<UnifiedPluginDescriptor[]>([]);
 
   // Architecture graph (unified backend + frontend data)
@@ -403,151 +399,127 @@ export function AppMapPanel() {
 
   return (
     <AppMapErrorBoundary>
-      <div className="flex flex-col h-full bg-white dark:bg-neutral-900">
-        {/* Header */}
-        <div className="border-b border-neutral-200 dark:border-neutral-700 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-                App Map
-              </h2>
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                Live visualization of features, routes, actions, and plugins
-              </p>
-            </div>
-            <div className="flex gap-3 items-center">
-              <div className="flex items-center gap-3 text-sm text-neutral-600 dark:text-neutral-400">
-                <span>
-                  <span className="font-medium">{displayedFeatures.length}</span> features
-                  {' | '}
-                  <span className="font-medium">{displayedPlugins.length}</span> plugins
-                </span>
-                {graphSource && (
-                  <span
-                    className={`px-2 py-0.5 rounded text-xs font-medium ${
-                      graphSource === 'backend'
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
-                    }`}
-                    title={
-                      graphSource === 'backend'
-                        ? `Live graph from backend (${graphData?.sources.backend.generated_at ?? ''})`
-                        : 'Using local fallback — backend offline'
-                    }
-                  >
-                    {graphSource === 'backend' ? 'Live' : 'Offline'}
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={handleExport}
-                className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-md transition-colors"
-              >
-                Export JSON
-              </button>
-              {docsUrl ? (
-                <a
-                  href={docsUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                >
-                  Open Docs
-                </a>
-              ) : null}
-              {showCodegenLink ? (
-                <a
-                  href={codegenUrl}
-                  className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                >
-                  Open Codegen
-                </a>
-              ) : null}
-            </div>
-          </div>
-
-          {graphWarnings.length > 0 && (
-            <div className="mt-3 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800 dark:border-yellow-900/40 dark:bg-yellow-900/20 dark:text-yellow-200">
-              {graphWarnings.map((warning) => (
-                <div key={`${warning.code}-${warning.message}`}>
-                  [{warning.severity}] {warning.message}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Tab Navigation */}
-          <div className="flex gap-2 mt-4 flex-wrap">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === tab.id
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+      <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-950">
+        {/* Compact header */}
+        <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-200 dark:border-neutral-800">
+          <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+            <span className="font-medium">{displayedFeatures.length}</span> features
+            <span className="mx-0.5">|</span>
+            <span className="font-medium">{displayedPlugins.length}</span> plugins
+            {graphSource && (
+              <span
+                className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                  graphSource === 'backend'
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                    : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
                 }`}
+                title={
+                  graphSource === 'backend'
+                    ? `Live graph from backend (${graphData?.sources.backend.generated_at ?? ''})`
+                    : 'Using local fallback — backend offline'
+                }
               >
-                {tab.label}
-              </button>
+                {graphSource === 'backend' ? 'Live' : 'Offline'}
+              </span>
+            )}
+          </div>
+          <div className="flex gap-1.5 items-center">
+            <Button size="sm" variant="secondary" onClick={handleExport}>
+              Export
+            </Button>
+            {docsUrl ? (
+              <a
+                href={docsUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="px-2 py-1 text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700"
+              >
+                Docs
+              </a>
+            ) : null}
+            {showCodegenLink ? (
+              <a
+                href={codegenUrl}
+                className="px-2 py-1 text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700"
+              >
+                Codegen
+              </a>
+            ) : null}
+          </div>
+        </div>
+
+        {graphWarnings.length > 0 && (
+          <div className="px-3 py-1.5 border-b border-yellow-200 bg-yellow-50 text-[11px] text-yellow-800 dark:border-yellow-900/40 dark:bg-yellow-900/20 dark:text-yellow-200">
+            {graphWarnings.map((warning) => (
+              <div key={`${warning.code}-${warning.message}`}>
+                [{warning.severity}] {warning.message}
+              </div>
             ))}
           </div>
-        </div>
+        )}
 
-        {/* Content */}
-        <div className="flex-1 overflow-hidden">
-          {activeTab === 'features' && (
-            <FeaturesView
-              features={displayedFeatures}
-              selectedFeature={selectedFeature}
-              selectedFeatureRoutes={selectedFeatureRoutes}
-              selectedFeatureActions={selectedFeatureActions}
-              onSelectFeature={setSelectedFeatureId}
-            />
-          )}
+        {/* Sidebar + Content */}
+        <SidebarContentLayout
+          sections={SECTIONS}
+          activeSectionId={activeSection}
+          onSelectSection={(id) => setActiveSection(id as SectionId)}
+          sidebarWidth="w-28"
+          variant="light"
+        >
+          <div className="h-full overflow-hidden">
+            {activeSection === 'features' && (
+              <FeaturesView
+                features={displayedFeatures}
+                selectedFeature={selectedFeature}
+                selectedFeatureRoutes={selectedFeatureRoutes}
+                selectedFeatureActions={selectedFeatureActions}
+                onSelectFeature={setSelectedFeatureId}
+              />
+            )}
 
-          {activeTab === 'plugins' && (
-            <PluginsView
-              allPlugins={displayedPlugins}
-              filteredPlugins={filteredPlugins}
-              familyFilter={familyFilter}
-              originFilter={originFilter}
-              searchQuery={searchQuery}
-              onFamilyFilterChange={setFamilyFilter}
-              onOriginFilterChange={setOriginFilter}
-              onSearchQueryChange={setSearchQuery}
-            />
-          )}
+            {activeSection === 'plugins' && (
+              <PluginsView
+                allPlugins={displayedPlugins}
+                filteredPlugins={filteredPlugins}
+                familyFilter={familyFilter}
+                originFilter={originFilter}
+                searchQuery={searchQuery}
+                onFamilyFilterChange={setFamilyFilter}
+                onOriginFilterChange={setOriginFilter}
+                onSearchQueryChange={setSearchQuery}
+              />
+            )}
 
-          {activeTab === 'registries' && <RegistriesView />}
+            {activeSection === 'registries' && <RegistriesView />}
 
-          {activeTab === 'graph' && (
-            <DependencyGraphPanel features={displayedFeatures} plugins={displayedPlugins} />
-          )}
+            {activeSection === 'graph' && (
+              <DependencyGraphPanel features={displayedFeatures} plugins={displayedPlugins} />
+            )}
 
-          {activeTab === 'journeys' && <JourneysView />}
+            {activeSection === 'journeys' && <JourneysView />}
 
-          {activeTab === 'testing' && (
-            <CapabilityTestingPanel
-              features={allFeatures}
-              routes={allRoutes}
-              actions={allActions}
-            />
-          )}
+            {activeSection === 'testing' && (
+              <CapabilityTestingPanel
+                features={allFeatures}
+                routes={allRoutes}
+                actions={allActions}
+              />
+            )}
 
-          {activeTab === 'stats' && (
-            <StatsView
-              pluginCounts={pluginCounts}
-              originCounts={originCounts}
-              pluginHealth={pluginHealth}
-              featureUsageStats={featureUsageStats}
-              allFeatures={displayedFeatures}
-              allActions={useGraphFeatures ? [] : allActions}
-            />
-          )}
+            {activeSection === 'stats' && (
+              <StatsView
+                pluginCounts={pluginCounts}
+                originCounts={originCounts}
+                pluginHealth={pluginHealth}
+                featureUsageStats={featureUsageStats}
+                allFeatures={displayedFeatures}
+                allActions={useGraphFeatures ? [] : allActions}
+              />
+            )}
 
-          {activeTab === 'backend' && <BackendArchitecturePanel />}
-        </div>
+            {activeSection === 'backend' && <BackendArchitecturePanel />}
+          </div>
+        </SidebarContentLayout>
       </div>
     </AppMapErrorBoundary>
   );

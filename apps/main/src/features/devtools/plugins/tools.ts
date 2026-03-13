@@ -17,6 +17,7 @@ const CapabilityTestingPanel = lazy(() => import('@features/panels/components/de
 const AppMapPanel = lazy(() => import('@features/panels/components/dev/AppMapPanel').then(m => ({ default: m.AppMapPanel })));
 const DependencyGraphPanel = lazy(() => import('@features/panels/components/dev/DependencyGraphPanel').then(m => ({ default: m.DependencyGraphPanel })));
 const BackendArchitecturePanel = lazy(() => import('@features/panels/components/dev/BackendArchitecturePanel').then(m => ({ default: m.BackendArchitecturePanel })));
+const DocBrowserPanel = lazy(() => import('@features/panels/components/dev/DocBrowserPanel').then(m => ({ default: m.DocBrowserPanel })));
 const GizmoSurfacesPanel = lazy(() => import('@features/panels/components/dev/GizmoSurfacesPanel').then(m => ({ default: m.GizmoSurfacesPanel })));
 const TypesExplorerPanel = lazy(() => import('@features/panels/components/dev/TypesExplorerPanel').then(m => ({ default: m.TypesExplorerPanel })));
 const SqlQueryExplorerPanel = lazy(() => import('@features/panels/components/dev/SqlQueryExplorerPanel').then(m => ({ default: m.SqlQueryExplorerPanel })));
@@ -107,6 +108,19 @@ export const backendArchitectureTool = defineDevTool({
   category: 'graph',
   panelComponent: BackendArchitecturePanel,
   tags: ['backend', 'architecture', 'services', 'api'],
+});
+
+export const docBrowserTool = defineDevTool({
+  id: 'doc-browser',
+  label: 'Docs',
+  updatedAt: '2026-03-13T00:00:00Z',
+  changeNote: 'Standalone documentation browser extracted from App Map.',
+  featureHighlights: ['Browse, search, and read project documentation with linked navigation.'],
+  description: 'Browse and search project documentation',
+  icon: 'fileText',
+  category: 'graph',
+  panelComponent: DocBrowserPanel,
+  tags: ['docs', 'documentation', 'plans', 'architecture', 'search'],
 });
 
 // ============================================================================

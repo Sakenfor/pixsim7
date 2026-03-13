@@ -27,8 +27,11 @@ class GameLocationService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def list_locations(self) -> List[GameLocation]:
-        result = await self.db.execute(select(GameLocation).order_by(GameLocation.id))
+    async def list_locations(self, world_id: Optional[int] = None) -> List[GameLocation]:
+        stmt = select(GameLocation)
+        if world_id is not None:
+            stmt = stmt.where(GameLocation.world_id == world_id)
+        result = await self.db.execute(stmt.order_by(GameLocation.id))
         return result.scalars().all()
 
     async def get_location(self, location_id: int) -> Optional[GameLocation]:

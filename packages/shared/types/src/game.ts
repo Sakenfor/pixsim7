@@ -432,6 +432,7 @@ export type GameObject =
 
 export interface GameLocationSummary {
   id: number;
+  world_id?: number | null;
   name: string;
   asset?: EntityRef | null;
   default_spawn?: string | null;

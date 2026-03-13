@@ -100,8 +100,8 @@ export type {
 // Locations API (delegating to shared client with app-specific extensions)
 // =============================================================================
 
-export async function listGameLocations(): Promise<GameLocationSummary[]> {
-  return gameApi.listLocations();
+export async function listGameLocations(opts?: { worldId?: number | null }): Promise<GameLocationSummary[]> {
+  return gameApi.listLocations(opts);
 }
 
 export async function getGameLocation(locationId: IDs.LocationId): Promise<GameLocationDetail> {

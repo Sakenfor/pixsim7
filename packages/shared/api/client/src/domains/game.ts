@@ -199,8 +199,14 @@ export function createGameApi(client: PixSimApiClient) {
 
     // ===== Locations =====
 
-    async listLocations(): Promise<GameLocationSummary[]> {
-      const response = await client.get<readonly GameLocationSummary[]>('/game/locations');
+    async listLocations(opts?: { worldId?: number | null }): Promise<GameLocationSummary[]> {
+      const params = new URLSearchParams();
+      if (opts?.worldId != null) {
+        params.set('world_id', String(opts.worldId));
+      }
+      const query = params.toString();
+      const url = query ? `/game/locations?${query}` : '/game/locations';
+      const response = await client.get<readonly GameLocationSummary[]>(url);
       return [...response];
     },
 

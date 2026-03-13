@@ -23,6 +23,7 @@ class GameLocationSummary(ApiModel):
     """Summary of a game location."""
 
     id: int
+    world_id: Optional[int] = None
     name: str
     asset: Optional[AssetRef] = Field(
         default=None,
@@ -72,16 +73,16 @@ def _serialize_location_detail(loc, hotspots) -> GameLocationDetail:
 async def list_locations(
     game_location_service: GameLocationSvc,
     user: CurrentGamePrincipal,
+    world_id: Optional[int] = None,
 ) -> List[GameLocationSummary]:
     """
-    List game locations.
-
-    Currently returns all locations; future versions may filter by workspace/user.
+    List game locations, optionally filtered by world.
     """
-    locations = await game_location_service.list_locations()
+    locations = await game_location_service.list_locations(world_id=world_id)
     return [
         GameLocationSummary(
             id=loc.id,
+            world_id=loc.world_id,
             name=loc.name,
             asset_id=loc.asset_id,
             default_spawn=loc.default_spawn,

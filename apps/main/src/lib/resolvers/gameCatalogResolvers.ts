@@ -74,12 +74,7 @@ export function initializeGameCatalogResolvers(): void {
     },
     run: async (input) => {
       const worldId = normalizeWorldId((input as WorldScopedInput | undefined)?.worldId);
-      const rows = await listGameLocations();
-      if (worldId == null) return rows;
-      return rows.filter((row) => {
-        const rowWorldId = readWorldIdFromRow(row);
-        return rowWorldId == null || rowWorldId === worldId;
-      });
+      return listGameLocations(worldId != null ? { worldId } : undefined);
     },
   });
 

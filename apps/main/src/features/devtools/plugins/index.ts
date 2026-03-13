@@ -13,6 +13,7 @@ import {
   appMapTool,
   dependencyGraphTool,
   backendArchitectureTool,
+  docBrowserTool,
   gizmoSurfacesTool,
   promptImporterTool,
   blockFitTool,
@@ -31,6 +32,7 @@ export {
   appMapTool,
   dependencyGraphTool,
   backendArchitectureTool,
+  docBrowserTool,
   gizmoSurfacesTool,
   promptImporterTool,
   blockFitTool,
@@ -53,6 +55,7 @@ export const builtInDevTools = [
   appMapTool,
   dependencyGraphTool,
   backendArchitectureTool,
+  docBrowserTool,
 
   // Gizmo & Surface Management
   gizmoSurfacesTool,

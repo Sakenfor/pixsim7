@@ -2,10 +2,11 @@
  * FeaturesView - Features & Routes tab for App Map
  *
  * Shows registered features grouped by category with their routes and actions.
+ * Doc links open in the dedicated Doc Browser panel.
  */
 
 import type { AppMapMetadata } from '@pixsim7/shared.types';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import type {
   FeatureCapability,
@@ -14,7 +15,7 @@ import type {
 } from '@lib/capabilities';
 import { Icon } from '@lib/icons';
 
-import { DocViewer } from './DocViewer';
+import { openWorkspacePanel } from '@features/workspace';
 
 const getDocLabel = (docPath: string) => {
   const parts = docPath.split('/');
@@ -47,12 +48,6 @@ export function FeaturesView({
   selectedFeatureActions,
   onSelectFeature,
 }: FeaturesViewProps) {
-  const [selectedDocPath, setSelectedDocPath] = useState<string | null>(null);
-
-  useEffect(() => {
-    setSelectedDocPath(null);
-  }, [selectedFeature?.id]);
-
   const featuresByCategory = useMemo(() => {
     const grouped: Record<string, FeatureCapability[]> = {};
     features.forEach((f) => {
@@ -199,12 +194,8 @@ export function FeaturesView({
                         {docItems.map((item) => (
                           <button
                             key={item}
-                            onClick={() => setSelectedDocPath(item)}
-                            className={`w-full text-left px-2 py-1 rounded transition-colors ${
-                              selectedDocPath === item
-                                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200'
-                                : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
-                            }`}
+                            onClick={() => openWorkspacePanel('dev-tool:doc-browser')}
+                            className="w-full text-left px-2 py-1 rounded transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
                           >
                             <code className="text-xs font-mono text-neutral-600 dark:text-neutral-400">
                               {getDocLabel(item)}
@@ -232,13 +223,6 @@ export function FeaturesView({
                   ))}
                 </div>
               </div>
-            )}
-
-            {selectedDocPath && (
-              <DocViewer
-                docPath={selectedDocPath}
-                onNavigateDoc={setSelectedDocPath}
-              />
             )}
 
             {/* Routes */}
