@@ -3,13 +3,21 @@
  *
  * Provides a searchable index + page viewer for project documentation.
  * Reuses the DocViewer component from appMap for page rendering.
+ * Shows related test suites matched via code path overlap.
  */
 
 import type { DocIndexEntry } from '@pixsim7/shared.types';
-import { SidebarContentLayout } from '@pixsim7/shared.ui';
+import { Button, SidebarContentLayout } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
+
+import {
+  ensureBuiltInTestCatalogRegistered,
+  testSuiteRegistry,
+  type TestSuiteDefinition,
+} from '@features/devtools/services/testCatalogRegistry';
+import { openWorkspacePanel } from '@features/workspace';
 
 import { DocViewer } from './appMap/DocViewer';
 
@@ -38,8 +46,109 @@ function groupByFolder(entries: DocIndexEntry[]): Record<string, DocIndexEntry[]
   return grouped;
 }
 
+/**
+ * Match test suites whose `covers` paths overlap with the given code paths.
+ * Uses prefix matching: a suite covering "pixsim7/backend/main/services/ownership"
+ * matches a doc linking to "pixsim7/backend/main/services/ownership/policies.py".
+ */
+function findRelatedSuites(
+  codePaths: string[],
+  allSuites: TestSuiteDefinition[],
+): TestSuiteDefinition[] {
+  if (codePaths.length === 0) return [];
+
+  const matched = new Set<string>();
+  const results: TestSuiteDefinition[] = [];
+
+  for (const suite of allSuites) {
+    if (!suite.covers || suite.covers.length === 0) continue;
+    if (matched.has(suite.id)) continue;
+
+    const isRelated = suite.covers.some((coverPath) =>
+      codePaths.some(
+        (docCodePath) =>
+          docCodePath.startsWith(coverPath) || coverPath.startsWith(docCodePath),
+      ),
+    );
+
+    if (isRelated) {
+      matched.add(suite.id);
+      results.push(suite);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Extract code-like paths from a doc index entry's links array.
+ */
+function extractCodePaths(entry: DocIndexEntry | undefined): string[] {
+  if (!entry?.links) return [];
+  return entry.links
+    .filter((link) => link.kind === 'code' && link.resolvedPath)
+    .map((link) => link.resolvedPath!);
+}
+
 // =============================================================================
-// Component
+// RelatedTests sub-component
+// =============================================================================
+
+function RelatedTests({ docEntry }: { docEntry: DocIndexEntry | undefined }) {
+  const relatedSuites = useMemo(() => {
+    ensureBuiltInTestCatalogRegistered();
+    const allSuites = testSuiteRegistry.getAll();
+    const codePaths = extractCodePaths(docEntry);
+    return findRelatedSuites(codePaths, allSuites);
+  }, [docEntry]);
+
+  if (relatedSuites.length === 0) return null;
+
+  return (
+    <div className="border-t border-neutral-200 dark:border-neutral-800 mt-4 pt-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs font-semibold uppercase text-neutral-500 dark:text-neutral-400">
+          Related Tests ({relatedSuites.length})
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => openWorkspacePanel('dev-tool:test-overview')}
+        >
+          Open Test Overview
+        </Button>
+      </div>
+      <div className="space-y-1">
+        {relatedSuites.map((suite) => (
+          <div
+            key={suite.id}
+            className="flex items-start gap-2 px-2 py-1.5 rounded border border-neutral-200 dark:border-neutral-800 text-xs"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-neutral-800 dark:text-neutral-200 truncate">
+                {suite.label}
+              </div>
+              <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
+                {suite.path}
+              </div>
+            </div>
+            {suite.kind && (
+              <span className="shrink-0 px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-[10px]">
+                {suite.kind}
+              </span>
+            )}
+            <span className="shrink-0 px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-[10px]">
+              {suite.layer}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Main Component
 // =============================================================================
 
 export function DocBrowserPanel() {
@@ -115,6 +224,12 @@ export function DocBrowserPanel() {
 
   const activeFolderEntries = activeFolder ? (grouped[activeFolder] ?? []) : [];
 
+  // Find index entry for current doc (for code links → test matching)
+  const selectedEntry = useMemo(
+    () => (selectedDocPath ? entries.find((e) => e.path === selectedDocPath) : undefined),
+    [entries, selectedDocPath],
+  );
+
   return (
     <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-950">
       {/* Search bar */}
@@ -178,13 +293,16 @@ export function DocBrowserPanel() {
               </div>
             </div>
 
-            {/* Doc viewer */}
+            {/* Doc viewer + related tests */}
             <div className="flex-1 overflow-y-auto p-4">
               {selectedDocPath ? (
-                <DocViewer
-                  docPath={selectedDocPath}
-                  onNavigateDoc={handleSelectDoc}
-                />
+                <>
+                  <DocViewer
+                    docPath={selectedDocPath}
+                    onNavigateDoc={handleSelectDoc}
+                  />
+                  <RelatedTests docEntry={selectedEntry} />
+                </>
               ) : (
                 <div className="flex items-center justify-center h-full text-xs text-neutral-500 dark:text-neutral-400">
                   Select a doc to view
