@@ -114,21 +114,21 @@ class SettingsSchemaRegistry {
    * Collect all groups marked `adminGroup: true` across every category.
    * Returns each group with the source category's useStore for rendering.
    */
-  getAdminGroups(): Array<{ group: SettingGroup; useStore: () => SettingStoreAdapter; sourceLabel: string }> {
-    const results: Array<{ group: SettingGroup; useStore: () => SettingStoreAdapter; sourceLabel: string }> = [];
+  getAdminGroups(): Array<{ group: SettingGroup; useStore: () => SettingStoreAdapter; sourceLabel: string; sourceIcon?: string | React.ReactNode }> {
+    const results: Array<{ group: SettingGroup; useStore: () => SettingStoreAdapter; sourceLabel: string; sourceIcon?: string | React.ReactNode }> = [];
 
     for (const cat of this.categories.values()) {
       // Direct groups
       for (const group of cat.groups) {
         if (group.adminGroup) {
-          results.push({ group, useStore: cat.useStore, sourceLabel: cat.label });
+          results.push({ group, useStore: cat.useStore, sourceLabel: cat.label, sourceIcon: cat.icon });
         }
       }
       // Groups inside tabs
       for (const tab of cat.tabs.values()) {
         for (const group of tab.groups) {
           if (group.adminGroup) {
-            results.push({ group, useStore: cat.useStore, sourceLabel: cat.label });
+            results.push({ group, useStore: cat.useStore, sourceLabel: cat.label, sourceIcon: cat.icon });
           }
         }
       }
