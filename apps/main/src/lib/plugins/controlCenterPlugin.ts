@@ -65,7 +65,10 @@ class ControlCenterRegistry {
 
   private activeId: string | null = null;
   private defaultId: string | null = null;
+  private preferredId: string | null = null;
   private listeners = new Set<() => void>();
+
+  private static readonly PREFERENCE_KEY = 'control-center-preference';
 
   private notify() {
     for (const listener of this.listeners) {
@@ -75,6 +78,73 @@ class ControlCenterRegistry {
         console.error('[ControlCenter] Listener error', err);
       }
     }
+  }
+
+  private getStoredPreference(): string | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    try {
+      return localStorage.getItem(ControlCenterRegistry.PREFERENCE_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  private setStoredPreference(id: string | null): void {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      if (id) {
+        localStorage.setItem(ControlCenterRegistry.PREFERENCE_KEY, id);
+      } else {
+        localStorage.removeItem(ControlCenterRegistry.PREFERENCE_KEY);
+      }
+    } catch {
+      // Ignore storage write errors; runtime state still updates.
+    }
+  }
+
+  private recomputeDefaultId(): void {
+    const defaultIds = Array.from(this.controlCenters.values())
+      .filter(({ manifest }) => manifest.controlCenter.default === true)
+      .map(({ manifest }) => manifest.controlCenter.id)
+      .sort((a, b) => a.localeCompare(b));
+    this.defaultId = defaultIds[0] ?? null;
+  }
+
+  private resolveFallbackId(): string | null {
+    if (this.controlCenters.size === 0) {
+      return null;
+    }
+    return Array.from(this.controlCenters.keys()).sort((a, b) => a.localeCompare(b))[0] ?? null;
+  }
+
+  private resolveActiveId(preferredCandidate?: string | null): string | null {
+    const preferred = preferredCandidate ?? this.preferredId;
+    if (preferred && this.controlCenters.has(preferred)) {
+      return preferred;
+    }
+
+    if (this.defaultId && this.controlCenters.has(this.defaultId)) {
+      return this.defaultId;
+    }
+
+    return this.resolveFallbackId();
+  }
+
+  private reconcileActiveId(preferredCandidate?: string | null): void {
+    const previousActiveId = this.resolveActiveId(this.activeId);
+    const nextActiveId = this.resolveActiveId(preferredCandidate ?? this.activeId);
+
+    if (previousActiveId && previousActiveId !== nextActiveId) {
+      this.controlCenters.get(previousActiveId)?.plugin.cleanup?.();
+    }
+
+    this.activeId = nextActiveId;
   }
 
   /**
@@ -96,10 +166,8 @@ class ControlCenterRegistry {
     options: { origin?: UnifiedPluginOrigin } = {}
   ) {
     this.controlCenters.set(manifest.controlCenter.id, { manifest, plugin });
-
-    if (manifest.controlCenter.default && !this.defaultId) {
-      this.defaultId = manifest.controlCenter.id;
-    }
+    this.recomputeDefaultId();
+    this.reconcileActiveId();
 
     void options;
     console.log(`[ControlCenter] Registered: ${manifest.controlCenter.displayName}`);
@@ -114,10 +182,8 @@ class ControlCenterRegistry {
     if (entry) {
       entry.plugin.cleanup?.();
       this.controlCenters.delete(id);
-
-      if (this.activeId === id) {
-        this.activeId = this.defaultId;
-      }
+      this.recomputeDefaultId();
+      this.reconcileActiveId();
       this.notify();
     }
   }
@@ -131,16 +197,24 @@ class ControlCenterRegistry {
       return false;
     }
 
+    const previousActiveId = this.resolveActiveId(this.activeId);
+    if (previousActiveId === id) {
+      this.preferredId = id;
+      this.setStoredPreference(id);
+      return true;
+    }
+
     // Cleanup previous
-    if (this.activeId) {
-      const prev = this.controlCenters.get(this.activeId);
+    if (previousActiveId) {
+      const prev = this.controlCenters.get(previousActiveId);
       prev?.plugin.cleanup?.();
     }
 
     this.activeId = id;
+    this.preferredId = id;
 
     // Save preference
-    localStorage.setItem('control-center-preference', id);
+    this.setStoredPreference(id);
 
     console.log(`[ControlCenter] Activated: ${id}`);
     this.notify();
@@ -151,7 +225,7 @@ class ControlCenterRegistry {
    * Get the active control center plugin
    */
   getActive(): ControlCenterPlugin | null {
-    const id = this.activeId || this.defaultId;
+    const id = this.resolveActiveId(this.activeId);
     if (!id) return null;
 
     return this.controlCenters.get(id)?.plugin || null;
@@ -161,33 +235,45 @@ class ControlCenterRegistry {
    * Get the active control center ID
    */
   getActiveId(): string | null {
-    return this.activeId || this.defaultId;
+    return this.resolveActiveId(this.activeId);
   }
 
   /**
    * Get all registered control centers
    */
   getAll() {
-    return Array.from(this.controlCenters.values()).map(({ manifest }) => ({
-      id: manifest.controlCenter.id,
-      displayName: manifest.controlCenter.displayName,
-      description: manifest.controlCenter.description,
-      preview: manifest.controlCenter.preview,
-      features: manifest.controlCenter.features || [],
-      default: manifest.controlCenter.default || false,
-    }));
+    return Array.from(this.controlCenters.values())
+      .map(({ manifest }) => ({
+        id: manifest.controlCenter.id,
+        displayName: manifest.controlCenter.displayName,
+        description: manifest.controlCenter.description,
+        preview: manifest.controlCenter.preview,
+        features: manifest.controlCenter.features || [],
+        default: manifest.controlCenter.default || false,
+      }))
+      .sort((a, b) => {
+        const byName = a.displayName.localeCompare(b.displayName);
+        if (byName !== 0) {
+          return byName;
+        }
+        return a.id.localeCompare(b.id);
+      });
   }
 
   /**
    * Load user preference from storage
    */
   loadPreference() {
-    const saved = localStorage.getItem('control-center-preference');
-    if (saved && this.controlCenters.has(saved)) {
-      this.activeId = saved;
-    } else {
-      this.activeId = this.defaultId;
+    this.preferredId = this.getStoredPreference();
+    this.recomputeDefaultId();
+    this.reconcileActiveId(this.preferredId);
+
+    // If there is no preferred ID and no control centers left, clear storage
+    // to avoid stale values lingering across sessions.
+    if (!this.activeId && !this.preferredId) {
+      this.setStoredPreference(null);
     }
+
     this.notify();
   }
 }

@@ -12,36 +12,17 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { filterPanelsByPrefs } from '@features/docks';
 import { useDockPanelPrefs, useDockState, useDockUiStore } from '@features/docks/stores';
 import type { DockPosition } from '@features/docks/stores';
 import { usePanelCatalogBootstrap } from '@features/panels';
 import { PanelHostDockview } from '@features/panels/components/host/PanelHostDockview';
 import type { PanelHostDockviewRef } from '@features/panels/components/host/PanelHostDockview';
 import { DOCK_IDS, PANEL_IDS } from '@features/panels/lib/panelIds';
-import type { PanelDefinition } from '@features/panels/lib/panelRegistry';
 
 import { FLOATING_DEFAULTS, TOOLBAR_HEIGHT, Z_INDEX } from './constants';
 import { DockToolbar } from './DockToolbar';
 import { useDockBehavior } from './hooks/useDockBehavior';
-
-/**
- * Get enabled control center panels based on user preferences.
- * Filters panels that have availableIn: [DOCK_IDS.controlCenter].
- */
-function getEnabledCCPanels(enabledPrefs?: Record<string, boolean>): PanelDefinition[] {
-  const all = panelSelectors.getPanelsForScope(DOCK_IDS.controlCenter);
-
-  if (!enabledPrefs || Object.keys(enabledPrefs).length === 0) {
-    return all.filter((p) => p.enabledByDefault !== false);
-  }
-
-  return all.filter((p) => {
-    if (p.id in enabledPrefs) {
-      return enabledPrefs[p.id];
-    }
-    return p.enabledByDefault !== false;
-  });
-}
 
 export function ControlCenterDock() {
   // Store selectors
@@ -121,7 +102,10 @@ export function ControlCenterDock() {
 
   // Get enabled panels based on user preferences
   const panels = useMemo(() => {
-    return getEnabledCCPanels(enabledModules);
+    return filterPanelsByPrefs(
+      panelSelectors.getPanelsForScope(DOCK_IDS.controlCenter),
+      enabledModules,
+    );
   }, [enabledModules, panelCatalogVersion, open]);
 
   // Get panel IDs for dockview allowlist

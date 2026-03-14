@@ -16,11 +16,14 @@ import { DOCK_IDS } from '@features/panels/lib/panelIds';
 
 import { moduleRegistry } from '@app/modules';
 
+const NO_ACTIVE_PROMPT_DELAY_MS = 1500;
+
 export function ControlCenterManager() {
   const [activePlugin, setActivePlugin] = useState(() => controlCenterRegistry.getActive());
   const [bootstrapReady, setBootstrapReady] = useState(() =>
     moduleRegistry.isModuleInitialized('plugin-bootstrap')
   );
+  const [showNoActivePrompt, setShowNoActivePrompt] = useState(false);
   const [showSelector, setShowSelector] = useState(false);
   const [availableControlCenters, setAvailableControlCenters] = useState(() =>
     controlCenterRegistry.getAll()
@@ -70,6 +73,24 @@ export function ControlCenterManager() {
     return unsubscribe;
   }, []);
 
+  // Guard against transient bootstrap/HMR windows before showing the
+  // "No Control Center Active" fallback.
+  useEffect(() => {
+    const hasRegisteredControlCenters = availableControlCenters.length > 0;
+    if (!bootstrapReady || activePlugin || hasRegisteredControlCenters) {
+      setShowNoActivePrompt(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setShowNoActivePrompt(true);
+    }, NO_ACTIVE_PROMPT_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [bootstrapReady, activePlugin, availableControlCenters.length]);
+
   // Keyboard shortcut to open selector
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -103,6 +124,10 @@ export function ControlCenterManager() {
   }
 
   if (!activePlugin) {
+    if (!showNoActivePrompt) {
+      return null;
+    }
+
     return (
       <div className="fixed bottom-4 right-4 z-40 bg-black/80 backdrop-blur-md rounded-lg p-4 text-white max-w-sm">
         <h3 className="font-bold mb-2">⚠️ No Control Center Active</h3>
@@ -226,3 +251,4 @@ export function ControlCenterManager() {
     </>
   );
 }
+
