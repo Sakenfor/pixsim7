@@ -21,6 +21,7 @@ const TypesExplorerPanel = lazy(() => import('@features/panels/components/dev/Ty
 const SqlQueryExplorerPanel = lazy(() => import('@features/panels/components/dev/SqlQueryExplorerPanel').then(m => ({ default: m.SqlQueryExplorerPanel })));
 const LogViewerPanel = lazy(() => import('@features/panels/components/dev/LogViewerPanel').then(m => ({ default: m.LogViewerPanel })));
 const TestOverviewPanel = lazy(() => import('@features/panels/components/dev/TestOverviewPanel').then(m => ({ default: m.TestOverviewPanel })));
+const CodegenDevPage = lazy(() => import('../routes/pages/CodegenDevPage').then(m => ({ default: m.CodegenDevPage })));
 
 // ============================================================================
 // Session & World State Tools
@@ -231,6 +232,7 @@ export const codegenTool = defineDevTool({
   description: 'Code generation, database migrations, and other developer tasks',
   icon: 'code',
   category: 'debug',
+  panelComponent: CodegenDevPage,
   routePath: '/dev/developer-tasks',
   tags: ['codegen', 'types', 'schema', 'generation', 'typescript', 'migrations', 'database'],
   safeForNonDev: false,

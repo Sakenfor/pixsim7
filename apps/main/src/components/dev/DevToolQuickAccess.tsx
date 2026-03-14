@@ -59,9 +59,7 @@ export function DevToolQuickAccess() {
     addRecentTool(tool.id);
     closeQuickAccess();
 
-    if (tool.routePath) {
-      window.location.href = tool.routePath;
-    } else if (tool.panelComponent) {
+    if (tool.panelComponent) {
       const panelId = `dev-tool:${tool.id}` as any;
       openFloatingPanel(panelId, {
         width: 800,
@@ -71,6 +69,8 @@ export function DevToolQuickAccess() {
           toolDefinition: tool,
         },
       });
+    } else if (tool.routePath) {
+      window.location.href = tool.routePath;
     }
   };
 
