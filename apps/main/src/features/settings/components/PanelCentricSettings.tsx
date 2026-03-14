@@ -6,6 +6,7 @@
  * - Right panel: All settings for the selected panel
  */
 
+import { SearchInput } from '@pixsim7/shared.ui';
 import { useState, useMemo, useEffect } from 'react';
 
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
@@ -116,12 +117,11 @@ export function PanelCentricSettings() {
       <div className="w-64 border-r border-neutral-200 dark:border-neutral-700 flex flex-col">
         {/* Search */}
         <div className="p-4 border-b border-neutral-200 dark:border-neutral-700">
-          <input
-            type="text"
-            placeholder="Search panels..."
+          <SearchInput
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 placeholder-neutral-400"
+            onChange={setSearchQuery}
+            placeholder="Search panels..."
+            size="md"
           />
         </div>
 

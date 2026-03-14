@@ -11,7 +11,7 @@ import type {
   ExtendedPluginMetadata,
 } from '@pixsim7/shared.plugins';
 import { CAPABILITY_LABELS } from '@pixsim7/shared.plugins';
-import { Button, Panel, Badge, FilterPillGroup } from '@pixsim7/shared.ui';
+import { Button, Panel, Badge, FilterPillGroup, SearchInput } from '@pixsim7/shared.ui';
 import { useState, useSyncExternalStore, useMemo, useCallback, useRef } from 'react';
 
 import { Icon } from '@lib/icons';
@@ -225,12 +225,11 @@ export function PluginManagerUI() {
       </div>
 
       {/* Search */}
-      <input
-        type="text"
-        placeholder="Search plugins..."
+      <SearchInput
         value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        className="w-full px-3 py-2 text-sm border border-neutral-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        onChange={setSearchQuery}
+        placeholder="Search plugins..."
+        size="md"
       />
 
       {/* Family filter */}

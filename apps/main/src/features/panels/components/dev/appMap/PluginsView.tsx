@@ -4,7 +4,7 @@
  * Shows all registered plugins with filtering by family and origin.
  */
 
-import { FilterPillGroup } from '@pixsim7/shared.ui';
+import { FilterPillGroup, SearchInput } from '@pixsim7/shared.ui';
 import { useMemo, useState } from 'react';
 
 import { Icon } from '@lib/icons';
@@ -64,12 +64,11 @@ export function PluginsView({
       {/* Filters */}
       <div className="border-b border-neutral-200 dark:border-neutral-700 p-4 space-y-3">
         {/* Search */}
-        <input
-          type="text"
+        <SearchInput
           value={searchQuery}
-          onChange={(e) => onSearchQueryChange(e.target.value)}
+          onChange={onSearchQueryChange}
           placeholder="Search plugins..."
-          className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          size="md"
         />
 
         {/* Family Filter */}

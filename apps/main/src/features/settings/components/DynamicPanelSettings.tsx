@@ -5,6 +5,7 @@
  * Integrates with the catalog-backed panel settings system.
  */
 
+import { SearchInput } from '@pixsim7/shared.ui';
 import { useMemo, useState, useCallback, useEffect } from 'react';
 
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
@@ -224,12 +225,11 @@ export function DynamicPanelSettings() {
       {/* Filters */}
       <div className="space-y-3">
         {/* Search */}
-        <input
-          type="text"
-          placeholder="Search panels..."
+        <SearchInput
           value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 placeholder-neutral-400"
+          onChange={setSearchQuery}
+          placeholder="Search panels..."
+          size="md"
         />
 
         {/* Category Filter + Actions */}

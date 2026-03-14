@@ -1,6 +1,8 @@
+import { Button, SearchInput } from '@pixsim7/shared.ui';
 import { useState, useMemo } from 'react';
+
 import { useGraphStore, type GraphState } from '@features/graph';
-import { Button } from '@pixsim7/shared.ui';
+
 import type { DraftScene } from '@domain/sceneBuilder';
 
 /**
@@ -108,12 +110,12 @@ export function SceneLibraryPanel() {
         </div>
 
         {/* Search */}
-        <input
-          type="text"
+        <SearchInput
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={setSearchQuery}
           placeholder="Search scenes..."
-          className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 mb-2"
+          size="md"
+          className="mb-2"
         />
 
         {/* Filter */}
