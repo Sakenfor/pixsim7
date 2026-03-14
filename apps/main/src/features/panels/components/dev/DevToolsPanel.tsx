@@ -105,10 +105,7 @@ export function DevToolsPanel() {
     // Add to recent tools
     addRecentTool(tool.id);
 
-    if (tool.routePath) {
-      // Navigate to route
-      window.location.href = tool.routePath;
-    } else if (tool.panelComponent) {
+    if (tool.panelComponent) {
       // Open as floating panel using a special dev-tool panel ID
       // The panel ID format is: dev-tool:<toolId>
       const panelId = `dev-tool:${tool.id}` as any;
@@ -121,6 +118,9 @@ export function DevToolsPanel() {
           toolDefinition: tool,
         },
       });
+    } else if (tool.routePath) {
+      // Navigate to route
+      window.location.href = tool.routePath;
     }
   };
 

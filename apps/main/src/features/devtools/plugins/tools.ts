@@ -235,7 +235,7 @@ export const codegenTool = defineDevTool({
   panelComponent: CodegenDevPage,
   routePath: '/dev/developer-tasks',
   tags: ['codegen', 'types', 'schema', 'generation', 'typescript', 'migrations', 'database'],
-  safeForNonDev: false,
+  safeForNonDev: true,
   settings: [
     {
       type: 'boolean',
