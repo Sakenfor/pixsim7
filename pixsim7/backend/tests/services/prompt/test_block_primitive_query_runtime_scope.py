@@ -32,3 +32,20 @@ def test_query_falls_back_to_public_only_when_no_active_source_packs() -> None:
 
     assert " OR " not in sql
     assert "block_primitives.is_public IS true" in sql
+
+
+def test_query_supports_composition_role_filter() -> None:
+    query = build_block_primitive_query(composition_role="lighting:key")
+    compiled = query.compile()
+    param_values = {str(value) for value in compiled.params.values() if value is not None}
+
+    assert "lighting:key" in param_values
+    assert "role:lighting:key" in param_values
+
+
+def test_query_normalizes_role_prefixed_composition_role_filter() -> None:
+    query = build_block_primitive_query(composition_role="role:lighting:key")
+    compiled = query.compile()
+    param_values = {str(value) for value in compiled.params.values() if value is not None}
+
+    assert "lighting:key" in param_values

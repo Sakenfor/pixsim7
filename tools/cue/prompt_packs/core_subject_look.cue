@@ -21,7 +21,7 @@ pack: #PromptBlockPackV1 & {
 					temporal:         "neutral"
 				}
 				op: {
-					op_id: "subject.look_at"
+					op_id: "subject.look.apply"
 					signature_id: "subject.look.v1"
 					modalities: ["both"]
 					refs: [

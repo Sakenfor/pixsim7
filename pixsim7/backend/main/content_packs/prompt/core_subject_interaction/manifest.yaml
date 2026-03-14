@@ -1,0 +1,16 @@
+id: core-subject-interaction
+title: Core Subject Interaction
+description: Subject-to-target interaction beat primitives.
+matrix_presets:
+  - label: Interaction by Contact
+    query:
+      row_key: tag:beat_type
+      col_key: tag:contact_stage
+      package_name: core_subject_interaction
+      include_empty: true
+  - label: Interaction by Tone
+    query:
+      row_key: tag:response_mode
+      col_key: tag:social_tone
+      package_name: core_subject_interaction
+      include_empty: true

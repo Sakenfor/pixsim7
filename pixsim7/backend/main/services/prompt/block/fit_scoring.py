@@ -34,6 +34,112 @@ CONTINUATION_REF_MATCH_BONUS = 0.08
 CONTINUATION_REF_MISS_PENALTY = 0.10
 CONTINUATION_RELATION_MATCH_BONUS = 0.06
 CONTINUATION_RELATION_MISS_PENALTY = 0.08
+SEQUENCE_ROLE_MATCH_BONUS = 0.07
+SEQUENCE_ROLE_MISMATCH_PENALTY = 0.09
+
+
+def _coerce_block_op_payload(block: TagsCarrier) -> Dict[str, Any]:
+    tags = block.tags if isinstance(block.tags, dict) else {}
+    op_payload = tags.get("op")
+    if isinstance(op_payload, dict):
+        return op_payload
+    return {}
+
+
+def _block_op_id(block: TagsCarrier) -> Optional[str]:
+    op_payload = _coerce_block_op_payload(block)
+    op_id = op_payload.get("op_id")
+    if isinstance(op_id, str) and op_id.strip():
+        return op_id.strip()
+    tags = block.tags if isinstance(block.tags, dict) else {}
+    tag_op_id = tags.get("op_id")
+    if isinstance(tag_op_id, str) and tag_op_id.strip():
+        return tag_op_id.strip()
+    return None
+
+
+def _block_signature_id(block: TagsCarrier) -> Optional[str]:
+    op_payload = _coerce_block_op_payload(block)
+    signature_id = op_payload.get("signature_id")
+    if isinstance(signature_id, str) and signature_id.strip():
+        return signature_id.strip()
+    tags = block.tags if isinstance(block.tags, dict) else {}
+    tag_signature = tags.get("op_signature_id")
+    if isinstance(tag_signature, str) and tag_signature.strip():
+        return tag_signature.strip()
+    return None
+
+
+def _block_sequence_role(block: TagsCarrier) -> str:
+    tags = block.tags if isinstance(block.tags, dict) else {}
+    role_tag = tags.get("role_in_sequence")
+    if isinstance(role_tag, str):
+        normalized = _normalize_sequence_role(role_tag)
+        if normalized != "unspecified":
+            return normalized
+
+    op_payload = _coerce_block_op_payload(block)
+    args = op_payload.get("args")
+    if isinstance(args, dict):
+        op_role = args.get("role_in_sequence")
+        if isinstance(op_role, str):
+            normalized = _normalize_sequence_role(op_role)
+            if normalized != "unspecified":
+                return normalized
+
+    return "unspecified"
+
+
+def _is_sequence_continuity_block(block: TagsCarrier) -> bool:
+    op_id = _block_op_id(block) or ""
+    if op_id.startswith("sequence.continuity."):
+        return True
+    signature_id = _block_signature_id(block) or ""
+    return signature_id == "sequence.continuity.v1"
+
+
+def _infer_sequence_role_from_parser_context(parser_context: Dict[str, Any]) -> str:
+    direct_role = parser_context.get("role_in_sequence")
+    if isinstance(direct_role, str):
+        normalized = _normalize_sequence_role(direct_role)
+        if normalized != "unspecified":
+            return normalized
+
+    primitive_match = parser_context.get("primitive_match")
+    if not isinstance(primitive_match, dict):
+        return "unspecified"
+
+    primitive_role = primitive_match.get("role_in_sequence")
+    if isinstance(primitive_role, str):
+        normalized = _normalize_sequence_role(primitive_role)
+        if normalized != "unspecified":
+            return normalized
+
+    block_id = primitive_match.get("block_id")
+    if isinstance(block_id, str):
+        block_id_lower = block_id.lower()
+        if "transition" in block_id_lower:
+            return "transition"
+        if "continuation" in block_id_lower:
+            return "continuation"
+        if "initial" in block_id_lower:
+            return "initial"
+
+    overlap_tokens = primitive_match.get("overlap_tokens")
+    if isinstance(overlap_tokens, list):
+        overlap_set = {
+            str(item).strip().lower()
+            for item in overlap_tokens
+            if isinstance(item, str) and item.strip()
+        }
+        if "transition" in overlap_set:
+            return "transition"
+        if "continuation" in overlap_set or "continue" in overlap_set:
+            return "continuation"
+        if "initial" in overlap_set:
+            return "initial"
+
+    return "unspecified"
 
 
 def _compute_context_delta(
@@ -52,13 +158,8 @@ def _compute_context_delta(
     ctx_modality: Optional[str] = parser_context.get("modality")
 
     # Extract block's own op metadata (if any)
-    block_op = block.tags.get("op") if isinstance(block.tags, dict) else None
-    if isinstance(block_op, dict):
-        block_op_id = block_op.get("op_id")
-        block_signature_id = block_op.get("signature_id")
-    else:
-        block_op_id = None
-        block_signature_id = None
+    block_op_id = _block_op_id(block)
+    block_signature_id = _block_signature_id(block)
 
     # 1) Direct op_id match
     if ctx_op_id and block_op_id:
@@ -175,6 +276,7 @@ def _normalize_relation_set(value: Any) -> Set[str]:
 
 def _compute_sequence_delta(
     *,
+    block: Optional[TagsCarrier] = None,
     sequence_context: Dict[str, Any],
     role_in_sequence: str,
 ) -> Tuple[float, Dict[str, Any]]:
@@ -233,8 +335,32 @@ def _compute_sequence_delta(
                 }
             )
 
+    if block is not None and _is_sequence_continuity_block(block):
+        block_role = _block_sequence_role(block)
+        if role_in_sequence != "unspecified" and block_role != "unspecified":
+            if block_role == role_in_sequence:
+                delta += SEQUENCE_ROLE_MATCH_BONUS
+                contributions.append(
+                    {
+                        "factor": "sequence_role_match",
+                        "delta": round(SEQUENCE_ROLE_MATCH_BONUS, 4),
+                        "detail": f"block role '{block_role}' matches requested role",
+                    }
+                )
+            else:
+                delta -= SEQUENCE_ROLE_MISMATCH_PENALTY
+                contributions.append(
+                    {
+                        "factor": "sequence_role_mismatch",
+                        "delta": round(-SEQUENCE_ROLE_MISMATCH_PENALTY, 4),
+                        "detail": (
+                            f"block role '{block_role}' differs from requested role '{role_in_sequence}'"
+                        ),
+                    }
+                )
+
     details = {
-        "context_provided": True,
+        "context_provided": bool(sequence_context) or bool(contributions),
         "role_in_sequence": role_in_sequence,
         "sequence_delta": round(delta, 4),
         "contributions": contributions,
@@ -243,6 +369,7 @@ def _compute_sequence_delta(
             "available_refs": sorted(available_refs),
             "requested_relations": sorted(requested_relations),
             "available_relations": sorted(available_relations),
+            "block_role_in_sequence": _block_sequence_role(block) if block is not None else "unspecified",
         },
     }
     return delta, details
@@ -275,6 +402,8 @@ def compute_block_asset_fit(
         Sequence layer (applied when sequence_context is provided):
         - Additive continuation/transition bonuses/penalties for entity refs
           and relation continuity.
+        - Optional sequence-role alignment bonus/penalty for
+          ``sequence.continuity.*`` blocks.
         - Initial scenes remain neutral for continuity checks.
 
     Args:
@@ -285,6 +414,7 @@ def compute_block_asset_fit(
         sequence_context: Optional dict with keys:
             requested_refs, available_refs, requested_relations, available_relations
         role_in_sequence: initial|continuation|transition|unspecified
+            (if unspecified, may be inferred from parser_context.primitive_match)
 
     Returns:
         Tuple of (score, details_dict)
@@ -347,6 +477,10 @@ def compute_block_asset_fit(
 
     # Sequence-aware layer.
     normalized_role = _normalize_sequence_role(role_in_sequence)
+    if normalized_role == "unspecified" and parser_context:
+        inferred_role = _infer_sequence_role_from_parser_context(parser_context)
+        if inferred_role != "unspecified":
+            normalized_role = inferred_role
     sequence_delta = 0.0
     sequence_details: Dict[str, Any] = {
         "context_provided": False,
@@ -360,7 +494,14 @@ def compute_block_asset_fit(
             ):
                 normalized_role = "continuation"
         sequence_delta, sequence_details = _compute_sequence_delta(
+            block=block,
             sequence_context=sequence_context,
+            role_in_sequence=normalized_role,
+        )
+    elif normalized_role != "unspecified":
+        sequence_delta, sequence_details = _compute_sequence_delta(
+            block=block,
+            sequence_context={},
             role_in_sequence=normalized_role,
         )
 

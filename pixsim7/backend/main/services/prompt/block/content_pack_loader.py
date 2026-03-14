@@ -49,6 +49,9 @@ from pixsim7.backend.main.services.prompt.block.capabilities import (
     derive_block_capabilities,
     normalize_capability_ids,
 )
+from pixsim7.backend.main.services.prompt.block.composition_role_inference import (
+    infer_composition_role,
+)
 from pixsim7.backend.main.services.prompt.block.op_signatures import (
     get_op_signature,
     validate_signature_contract,
@@ -97,6 +100,7 @@ _BLOCK_FIELDS: Dict[str, Any] = {
     "category": "uncategorized",
     "text": "",
     "tags": {},
+    "block_metadata": {},
     "capabilities": [],
     "source": "system",
     "is_public": True,
@@ -1878,6 +1882,16 @@ def _project_block_to_primitive(block: Dict[str, Any], *, plugin_name: str) -> D
     if not category:
         category = "uncategorized"
 
+    inferred_role = infer_composition_role(
+        role=role,
+        category=category,
+        tags=tags,
+    ).role_id
+    if inferred_role:
+        existing_role = tags.get("composition_role")
+        if not (isinstance(existing_role, str) and existing_role.strip()):
+            tags["composition_role"] = inferred_role
+
     capabilities = derive_block_capabilities(
         category=category,
         tags=tags,
@@ -1898,11 +1912,18 @@ def _project_block_to_primitive(block: Dict[str, Any], *, plugin_name: str) -> D
     if not isinstance(is_public, bool):
         is_public = True
 
+    block_metadata = block.get("block_metadata")
+    if isinstance(block_metadata, dict):
+        block_metadata = dict(block_metadata)
+    else:
+        block_metadata = {}
+
     return {
         "block_id": block.get("block_id"),
         "category": category,
         "text": text,
         "tags": tags,
+        "block_metadata": block_metadata,
         "capabilities": capabilities,
         "source": source,
         "is_public": is_public,
@@ -2265,6 +2286,188 @@ async def get_content_pack_inventory(db: AsyncSession) -> Dict[str, Any]:
             "total_orphaned_entities": total_orphaned_entities,
         },
     }
+
+
+def _rewrite_pack_metadata(
+    metadata: Dict[str, Any] | None,
+    *,
+    source_pack_name: str,
+    target_pack_name: str,
+) -> tuple[Dict[str, Any], bool]:
+    """Rewrite `content_pack` and nested source.pack metadata values."""
+    current = dict(metadata or {})
+    changed = False
+
+    if current.get(CONTENT_PACK_SOURCE_KEY) == source_pack_name:
+        current[CONTENT_PACK_SOURCE_KEY] = target_pack_name
+        changed = True
+
+    source_meta = current.get("source")
+    if isinstance(source_meta, dict):
+        next_source_meta = dict(source_meta)
+        if next_source_meta.get("pack") == source_pack_name:
+            next_source_meta["pack"] = target_pack_name
+            current["source"] = next_source_meta
+            changed = True
+
+    return current, changed
+
+
+async def adopt_orphaned_pack(
+    db: AsyncSession,
+    source_pack_name: str,
+    target_pack_name: str,
+    *,
+    rewrite_package_names: bool = True,
+) -> Dict[str, int]:
+    """Rehome orphaned pack entities by rewriting metadata source-pack references."""
+    from pixsim7.backend.main.domain.prompt import BlockTemplate
+    from pixsim7.backend.main.domain.game.entities.character import Character
+
+    source_pack_name = source_pack_name.strip()
+    target_pack_name = target_pack_name.strip()
+
+    if not source_pack_name:
+        raise ValueError("source_pack_name is required")
+    if not target_pack_name:
+        raise ValueError("target_pack_name is required")
+    if source_pack_name == target_pack_name:
+        raise ValueError("source and target pack names must differ")
+
+    disk_packs = set(discover_content_packs())
+    if target_pack_name not in disk_packs:
+        raise ValueError(
+            f"Target pack '{target_pack_name}' does not exist on disk."
+        )
+
+    inventory = await get_content_pack_inventory(db)
+    source_info = inventory.get("packs", {}).get(source_pack_name)
+    if source_info is None:
+        raise ValueError(f"Source pack '{source_pack_name}' not found in inventory.")
+    if source_info.get("status") != "orphaned":
+        raise ValueError(
+            f"Source pack '{source_pack_name}' is not orphaned (status={source_info.get('status')})."
+        )
+
+    now = datetime.now(timezone.utc)
+    result: Dict[str, int] = {
+        "blocks_adopted": 0,
+        "templates_adopted": 0,
+        "characters_adopted": 0,
+        "template_package_renamed": 0,
+        "slot_package_renamed": 0,
+        "block_source_pack_renamed": 0,
+    }
+
+    # BlockPrimitive lives in the blocks DB.
+    async with get_async_blocks_session() as blocks_db:
+        block_rows = (
+            await blocks_db.execute(
+                select(BlockPrimitive).where(
+                    BlockPrimitive.tags.op("->>")(CONTENT_PACK_SOURCE_KEY) == source_pack_name
+                )
+            )
+        ).scalars().all()
+
+        for row in block_rows:
+            tags = dict(row.tags or {})
+            changed = False
+
+            if tags.get(CONTENT_PACK_SOURCE_KEY) == source_pack_name:
+                tags[CONTENT_PACK_SOURCE_KEY] = target_pack_name
+                changed = True
+
+            source_pack = tags.get("source_pack")
+            if isinstance(source_pack, str) and source_pack == source_pack_name:
+                tags["source_pack"] = target_pack_name
+                result["block_source_pack_renamed"] += 1
+                changed = True
+
+            if changed:
+                row.tags = tags
+                row.updated_at = now
+                result["blocks_adopted"] += 1
+
+        await blocks_db.commit()
+
+    template_rows = (
+        await db.execute(
+            select(BlockTemplate).where(
+                BlockTemplate.template_metadata.op("->>")(CONTENT_PACK_SOURCE_KEY) == source_pack_name
+            )
+        )
+    ).scalars().all()
+
+    for row in template_rows:
+        changed = False
+
+        next_metadata, metadata_changed = _rewrite_pack_metadata(
+            row.template_metadata if isinstance(row.template_metadata, dict) else {},
+            source_pack_name=source_pack_name,
+            target_pack_name=target_pack_name,
+        )
+        if metadata_changed:
+            row.template_metadata = next_metadata
+            changed = True
+
+        if rewrite_package_names:
+            if isinstance(row.package_name, str) and row.package_name.strip() == source_pack_name:
+                row.package_name = target_pack_name
+                result["template_package_renamed"] += 1
+                changed = True
+
+            if isinstance(row.slots, list):
+                rewritten_slots: List[Any] = []
+                slot_changed = False
+                for slot in row.slots:
+                    if isinstance(slot, dict):
+                        next_slot = dict(slot)
+                        slot_package = next_slot.get("package_name")
+                        if isinstance(slot_package, str) and slot_package.strip() == source_pack_name:
+                            next_slot["package_name"] = target_pack_name
+                            result["slot_package_renamed"] += 1
+                            slot_changed = True
+                        rewritten_slots.append(next_slot)
+                    else:
+                        rewritten_slots.append(slot)
+                if slot_changed:
+                    row.slots = rewritten_slots
+                    changed = True
+
+        if changed:
+            row.updated_at = now
+            result["templates_adopted"] += 1
+
+    character_rows = (
+        await db.execute(
+            select(Character).where(
+                Character.character_metadata.op("->>")(CONTENT_PACK_SOURCE_KEY) == source_pack_name
+            )
+        )
+    ).scalars().all()
+
+    for row in character_rows:
+        next_metadata, metadata_changed = _rewrite_pack_metadata(
+            row.character_metadata if isinstance(row.character_metadata, dict) else {},
+            source_pack_name=source_pack_name,
+            target_pack_name=target_pack_name,
+        )
+        if not metadata_changed:
+            continue
+        row.character_metadata = next_metadata
+        row.updated_at = now
+        result["characters_adopted"] += 1
+
+    await db.commit()
+
+    logger.info(
+        "content_pack_adopted",
+        source_pack=source_pack_name,
+        target_pack=target_pack_name,
+        **{k: v for k, v in result.items() if v},
+    )
+
+    return result
 
 
 async def purge_orphaned_pack(db: AsyncSession, pack_name: str) -> Dict[str, int]:

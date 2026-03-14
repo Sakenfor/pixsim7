@@ -1,0 +1,16 @@
+id: core-sequence-continuity
+title: Core Sequence Continuity
+description: Sequence role/continuity primitives for initial, continuation, and transition beats.
+matrix_presets:
+  - label: Sequence Role by Focus
+    query:
+      row_key: tag:role_in_sequence
+      col_key: tag:continuity_focus
+      package_name: core_sequence_continuity
+      include_empty: true
+  - label: Continuity Focus by Priority
+    query:
+      row_key: tag:continuity_focus
+      col_key: tag:continuity_priority
+      package_name: core_sequence_continuity
+      include_empty: true

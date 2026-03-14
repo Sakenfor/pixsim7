@@ -1,0 +1,8 @@
+id: style_foundation
+version: "1.0.0"
+description: "Style-layer primitives: rendering technique, form language, aesthetic presets"
+
+categories:
+  - rendering_technique
+  - form_language
+  - aesthetic_preset

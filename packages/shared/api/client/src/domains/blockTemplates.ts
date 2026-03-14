@@ -337,6 +337,28 @@ export interface PurgeContentPacksResponse {
   results: Record<string, PurgeContentPackStats>;
 }
 
+export interface AdoptOrphanedPackQuery {
+  source_pack: string;
+  target_pack: string;
+  rewrite_packages?: boolean;
+}
+
+export interface AdoptOrphanedPackStats {
+  blocks_adopted: number;
+  templates_adopted: number;
+  characters_adopted: number;
+  template_package_renamed: number;
+  slot_package_renamed: number;
+  block_source_pack_renamed: number;
+}
+
+export interface AdoptOrphanedPackResponse {
+  source_pack: string;
+  target_pack: string;
+  rewrite_packages: boolean;
+  result: AdoptOrphanedPackStats;
+}
+
 export interface TemplateSlotPackageCount {
   package_name: string | null;
   count: number;
@@ -492,6 +514,16 @@ export function createBlockTemplatesApi(client: PixSimApiClient) {
         '/block-templates/meta/content-packs/purge',
         undefined,
         { params: pack ? { pack } : undefined },
+      );
+    },
+
+    async adoptOrphanedPack(
+      query: AdoptOrphanedPackQuery,
+    ): Promise<AdoptOrphanedPackResponse> {
+      return client.post<AdoptOrphanedPackResponse>(
+        '/block-templates/meta/content-packs/adopt',
+        undefined,
+        { params: query },
       );
     },
 

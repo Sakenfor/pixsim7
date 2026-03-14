@@ -155,6 +155,23 @@ blocks:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_project_block_to_primitive_preserves_block_metadata_and_sets_composition_role() -> None:
+    item = loader._project_block_to_primitive(
+        {
+            "block_id": "core.light.key",
+            "category": "light",
+            "text": "Key light",
+            "tags": {"source_pack": "demo_pack"},
+            "block_metadata": {"op": {"signature_id": "camera.motion.v1"}},
+        },
+        plugin_name="demo_pack",
+    )
+
+    assert item["block_metadata"]["op"]["signature_id"] == "camera.motion.v1"
+    assert isinstance(item["tags"].get("composition_role"), str)
+    assert bool(str(item["tags"]["composition_role"]).strip())
+
+
 def test_parse_blocks_supports_op_schema_with_refs() -> None:
     root, pack_dir = _make_pack_dir()
     try:
@@ -226,6 +243,138 @@ blocks:
         assert pan["tags"]["op_id"] == "camera.motion.pan"
         assert pan["tags"]["modality_support"] == "video"
         assert pan["block_metadata"]["op"]["args"]["speed"] == "slow"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_supports_subject_interaction_schema() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+package_name: interaction_pkg
+blocks:
+  - id: interaction
+    block_schema:
+      id_prefix: core.subject.interaction
+      category: interaction_beat
+      capabilities: [subject.interaction]
+      text_template: "Interaction token: {variant}."
+      op:
+        op_id: "subject.interaction.apply"
+        signature_id: "subject.interaction.v1"
+        modalities: [both]
+        refs:
+          - key: subject
+            capability: subject
+            required: true
+          - key: target
+            capability: target
+            required: true
+        params:
+          - key: beat_type
+            type: enum
+            enum: [greet, brief_exchange, pass_item, hold, brief_acknowledge]
+            default: greet
+          - key: contact_stage
+            type: enum
+            enum: [none, offered_hand, brief_contact]
+            default: none
+          - key: response_mode
+            type: enum
+            enum: [neutral, receptive, hesitant, boundary]
+            default: neutral
+          - key: social_tone
+            type: enum
+            enum: [neutral, warm, playful]
+            default: neutral
+          - key: target_ref
+            type: ref
+            required: false
+            ref_capability: target
+      variants:
+        - key: greet_offer_hand
+          op_args:
+            beat_type: greet
+            contact_stage: offered_hand
+            response_mode: neutral
+            social_tone: warm
+""",
+        )
+
+        parsed = loader.parse_blocks(pack_dir)
+        assert [b["block_id"] for b in parsed] == ["core.subject.interaction.greet_offer_hand"]
+        row = parsed[0]
+        assert row["tags"]["op_id"] == "subject.interaction.apply"
+        assert row["tags"]["contact_stage"] == "offered_hand"
+        assert row["tags"]["response_mode"] == "neutral"
+        assert row["tags"]["social_tone"] == "warm"
+        assert "ref:subject" in row["capabilities"]
+        assert "ref:target" in row["capabilities"]
+        assert row["block_metadata"]["op"]["signature_id"] == "subject.interaction.v1"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_supports_sequence_continuity_schema() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+package_name: sequence_pkg
+blocks:
+  - id: continuity
+    block_schema:
+      id_prefix: core.sequence.continuity
+      category: continuity
+      role: composition
+      capabilities: [sequence.continuity]
+      text_template: "Sequence continuity token: {variant}."
+      op:
+        op_id: "sequence.continuity.apply"
+        signature_id: "sequence.continuity.v1"
+        modalities: [both]
+        refs:
+          - key: subject
+            capability: subject
+            required: false
+          - key: target
+            capability: target
+            required: false
+        params:
+          - key: role_in_sequence
+            type: enum
+            enum: [initial, continuation, transition, unspecified]
+            default: continuation
+          - key: continuity_focus
+            type: enum
+            enum: [subject, target, setting, props, tone]
+            default: subject
+          - key: continuity_priority
+            type: enum
+            enum: [low, medium, high]
+            default: medium
+      variants:
+        - key: continuation_subject_lock
+          op_args:
+            role_in_sequence: continuation
+            continuity_focus: subject
+            continuity_priority: high
+""",
+        )
+
+        parsed = loader.parse_blocks(pack_dir)
+        assert [b["block_id"] for b in parsed] == ["core.sequence.continuity.continuation_subject_lock"]
+        row = parsed[0]
+        assert row["tags"]["op_id"] == "sequence.continuity.apply"
+        assert row["tags"]["role_in_sequence"] == "continuation"
+        assert row["tags"]["continuity_focus"] == "subject"
+        assert row["tags"]["continuity_priority"] == "high"
+        assert row["block_metadata"]["op"]["signature_id"] == "sequence.continuity.v1"
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -475,6 +624,45 @@ blocks:
         )
 
         with pytest.raises(loader.ContentPackValidationError, match="missing required params: direction"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_op_signature_missing_required_ref() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "schema.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - id: placement
+    block_schema:
+      id_prefix: core.placement.anchor
+      text_template: "Placement token: {variant}."
+      op:
+        op_id: "scene.relation.place"
+        signature_id: "scene.relation.v1"
+        refs:
+          - key: subject
+            capability: subject
+        params:
+          - key: relation
+            type: enum
+            enum: [near, left_of]
+          - key: distance
+            type: enum
+            enum: [near, medium]
+          - key: orientation
+            type: enum
+            enum: [front, back]
+      variants:
+        - key: near
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="missing required refs: target"):
             loader.parse_blocks(pack_dir)
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -1521,3 +1709,29 @@ async def test_upsert_entities_rehome_can_be_disabled(
             pack_name="new_pack",
             allow_rehome=False,
         )
+
+
+def test_rewrite_pack_metadata_updates_root_and_nested_source_pack() -> None:
+    rewritten, changed = loader._rewrite_pack_metadata(
+        {
+            loader.CONTENT_PACK_SOURCE_KEY: "old_pack",
+            "source": {"kind": "content_pack", "pack": "old_pack"},
+        },
+        source_pack_name="old_pack",
+        target_pack_name="new_pack",
+    )
+
+    assert changed is True
+    assert rewritten[loader.CONTENT_PACK_SOURCE_KEY] == "new_pack"
+    assert rewritten["source"]["pack"] == "new_pack"
+
+
+def test_rewrite_pack_metadata_is_noop_when_pack_not_present() -> None:
+    rewritten, changed = loader._rewrite_pack_metadata(
+        {"source": {"kind": "content_pack", "pack": "other_pack"}},
+        source_pack_name="old_pack",
+        target_pack_name="new_pack",
+    )
+
+    assert changed is False
+    assert rewritten["source"]["pack"] == "other_pack"

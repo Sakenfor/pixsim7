@@ -698,3 +698,55 @@ def test_parse_manifests_tag_key_not_in_family_axis_expected_values_skips() -> N
         assert len(manifests) == 1
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+# ── Regression: tag key drift detection ──────────────────────────────────
+
+
+def test_parse_manifests_vertical_angle_drift_rejected() -> None:
+    """Regression: unregistered tag keys like 'vertical_angle_TYPO' (drift from
+    a registered key) must be caught by the registry validation."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "matrix_presets": [
+                    {
+                        "label": "Angle drift",
+                        "query": {
+                            "row_key": "tag:vertical_angle_TYPO",
+                            "col_key": "role",
+                        },
+                    }
+                ]
+            },
+        )
+        with pytest.raises(ContentPackValidationError, match="unknown tag key"):
+            parse_manifests(root, pack_name="testpack")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_manifests_misspelled_tag_key_in_col_rejected() -> None:
+    """A misspelled tag key in col_key must fail validation."""
+    root = Path(f"test_artifacts_pack_{uuid4().hex}")
+    try:
+        _write_yaml(
+            root / "blocks" / "manifest.yaml",
+            {
+                "matrix_presets": [
+                    {
+                        "label": "Typo col",
+                        "query": {
+                            "row_key": "role",
+                            "col_key": "tag:camrea_roll",
+                        },
+                    }
+                ]
+            },
+        )
+        with pytest.raises(ContentPackValidationError, match="unknown tag key"):
+            parse_manifests(root, pack_name="testpack")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)

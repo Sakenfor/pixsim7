@@ -33,6 +33,13 @@ export type {
   BlockTagNormalizeResponse,
   ReloadContentPacksQuery,
   ReloadContentPacksResponse,
+  ContentPackInfo,
+  ContentPackInventory,
+  PurgeContentPackStats,
+  PurgeContentPacksResponse,
+  AdoptOrphanedPackQuery,
+  AdoptOrphanedPackStats,
+  AdoptOrphanedPackResponse,
   ContentPackMatrixManifest,
   ContentPackMatrixPreset,
   TemplateDiagnosticsResponse,
@@ -57,6 +64,9 @@ export const listBlockPackages = blockTemplatesApi.listBlockPackages;
 export const listContentPacks = blockTemplatesApi.listContentPacks;
 export const listContentPackManifests = blockTemplatesApi.listContentPackManifests;
 export const reloadContentPacks = blockTemplatesApi.reloadContentPacks;
+export const getContentPackInventory = blockTemplatesApi.getContentPackInventory;
+export const purgeOrphanedPacks = blockTemplatesApi.purgeOrphanedPacks;
+export const adoptOrphanedPack = blockTemplatesApi.adoptOrphanedPack;
 export const searchBlocks = blockTemplatesApi.searchBlocks;
 export const listBlockRoles = blockTemplatesApi.listBlockRoles;
 export const listBlockTagFacets = blockTemplatesApi.listBlockTagFacets;

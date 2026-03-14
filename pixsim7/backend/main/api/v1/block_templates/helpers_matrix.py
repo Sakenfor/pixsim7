@@ -2,7 +2,89 @@
 from collections import Counter
 from typing import List, Optional, Dict, Any
 
+from pixsim7.backend.main.services.prompt.block.op_signatures import list_op_signatures
+
 from .helpers_roles import _infer_block_composition_role
+
+_TOP_LEVEL_MATRIX_KEYS = {
+    "composition_role",
+    "category",
+    "package_name",
+    "kind",
+    "default_intent",
+    "complexity_level",
+    "source",
+    # Op-level matrix axes.
+    "op_id",
+    "signature_id",
+    "op_signature_id",
+    "op_namespace",
+    "op_modalities",
+}
+
+_SIGNATURE_PREFIXES: List[tuple[str, str]] = sorted(
+    [
+        (sig.op_id_prefix, sig.id)
+        for sig in list_op_signatures()
+        if sig.op_namespace
+    ],
+    key=lambda item: len(item[0]),
+    reverse=True,
+)
+
+
+def _read_block_attr(block: Any, key: str) -> Any:
+    if isinstance(block, dict):
+        return block.get(key)
+    return getattr(block, key, None)
+
+
+def _as_non_empty_string(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _infer_signature_id_from_op_id(op_id: Optional[str]) -> Optional[str]:
+    op_id = _as_non_empty_string(op_id)
+    if not op_id:
+        return None
+    for prefix, signature_id in _SIGNATURE_PREFIXES:
+        if op_id.startswith(prefix):
+            return signature_id
+    return None
+
+
+def _extract_matrix_op_axes(block: Any, tags_dict: Dict[str, Any]) -> Dict[str, Optional[str]]:
+    block_metadata = _read_block_attr(block, "block_metadata")
+    op_payload = block_metadata.get("op") if isinstance(block_metadata, dict) else None
+    op_dict = op_payload if isinstance(op_payload, dict) else {}
+
+    op_id = _as_non_empty_string(tags_dict.get("op_id")) or _as_non_empty_string(op_dict.get("op_id"))
+    signature_id = (
+        _as_non_empty_string(tags_dict.get("op_signature_id"))
+        or _as_non_empty_string(op_dict.get("signature_id"))
+        or _infer_signature_id_from_op_id(op_id)
+    )
+    op_namespace = _as_non_empty_string(tags_dict.get("op_namespace"))
+    if not op_namespace and op_id:
+        op_namespace = op_id.split(".", 1)[0]
+
+    op_modalities = _as_non_empty_string(tags_dict.get("op_modalities"))
+    if not op_modalities:
+        raw_modalities = op_dict.get("modalities")
+        if isinstance(raw_modalities, list):
+            normalized = [str(v).strip() for v in raw_modalities if v is not None and str(v).strip()]
+            op_modalities = ",".join(normalized) if normalized else None
+
+    return {
+        "op_id": op_id,
+        "signature_id": signature_id,
+        "op_signature_id": signature_id,
+        "op_namespace": op_namespace,
+        "op_modalities": op_modalities,
+    }
 
 
 def _resolve_block_matrix_value(
@@ -22,26 +104,25 @@ def _resolve_block_matrix_value(
     if not key:
         return missing_label
 
-    top_level_keys = {
-        "composition_role", "category", "package_name", "kind",
-        "default_intent", "complexity_level", "source",
-    }
-    tags = getattr(block, "tags", None)
+    tags = _read_block_attr(block, "tags")
     tags_dict: Dict[str, Any] = tags if isinstance(tags, dict) else {}
+    op_axes = _extract_matrix_op_axes(block, tags_dict)
 
     if key.startswith("tag:"):
         tag_key = key[4:]
         value = tags_dict.get(tag_key)
     elif key in {"composition_role", "role"}:
         value = _infer_block_composition_role(block)
+    elif key in {"op_id", "signature_id", "op_signature_id", "op_namespace", "op_modalities"}:
+        value = op_axes.get(key)
     elif key == "package_name":
         source_pack = tags_dict.get("source_pack")
         if isinstance(source_pack, str) and source_pack.strip():
             value = source_pack.strip()
         else:
-            value = getattr(block, "package_name", None)
-    elif key in top_level_keys:
-        value = getattr(block, key, None)
+            value = _read_block_attr(block, "package_name")
+    elif key in _TOP_LEVEL_MATRIX_KEYS:
+        value = _read_block_attr(block, key)
         if key == "default_intent" and value is not None:
             value = getattr(value, "value", value)
     else:
@@ -85,18 +166,10 @@ def _extend_axis_values_from_canonical_dictionary(
     if not axis_key:
         return
 
-    top_level_keys = {
-        "composition_role",
-        "category",
-        "package_name",
-        "kind",
-        "default_intent",
-        "complexity_level",
-    }
     tag_key: Optional[str] = None
     if axis_key.startswith("tag:"):
         tag_key = axis_key[4:].strip()
-    elif axis_key not in top_level_keys and axis_key in canonical:
+    elif axis_key not in _TOP_LEVEL_MATRIX_KEYS and axis_key in canonical:
         tag_key = axis_key
 
     if not tag_key:
@@ -121,15 +194,7 @@ def _axis_key_to_tag_key(axis_key: str) -> Optional[str]:
         return None
     if axis_key.startswith("tag:"):
         return axis_key[4:].strip() or None
-    top_level_keys = {
-        "composition_role",
-        "category",
-        "package_name",
-        "kind",
-        "default_intent",
-        "complexity_level",
-    }
-    return None if axis_key in top_level_keys else axis_key
+    return None if axis_key in _TOP_LEVEL_MATRIX_KEYS else axis_key
 
 
 def _canonical_allowed_values_for_tag_key(tag_key: str) -> List[str]:

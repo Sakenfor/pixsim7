@@ -1,0 +1,25 @@
+blocks:
+  - block_id: style.aesthetic.steampunk
+    category: aesthetic_preset
+    text: "Steampunk aesthetic with brass machinery motifs, Victorian-era industrial detail, and weathered engineered forms."
+    tags: { aesthetic_preset: steampunk, scope: global, source_pack: style_foundation }
+
+  - block_id: style.aesthetic.cyberpunk
+    category: aesthetic_preset
+    text: "Cyberpunk aesthetic with neon-accented contrast, dense urban tech clutter, and sharp high-voltage geometry."
+    tags: { aesthetic_preset: cyberpunk, scope: global, source_pack: style_foundation }
+
+  - block_id: style.aesthetic.art_deco
+    category: aesthetic_preset
+    text: "Art Deco aesthetic with geometric symmetry, polished metallic accents, and refined ornamental rhythm."
+    tags: { aesthetic_preset: art_deco, scope: global, source_pack: style_foundation }
+
+  - block_id: style.aesthetic.gothic_noir
+    category: aesthetic_preset
+    text: "Gothic noir aesthetic with dramatic shadow architecture, ornate dark materials, and moody high-contrast atmosphere."
+    tags: { aesthetic_preset: gothic_noir, scope: global, source_pack: style_foundation }
+
+  - block_id: style.aesthetic.retrofuturism
+    category: aesthetic_preset
+    text: "Retrofuturist aesthetic with mid-century future design language, analog controls, and optimistic industrial styling."
+    tags: { aesthetic_preset: retrofuturism, scope: global, source_pack: style_foundation }

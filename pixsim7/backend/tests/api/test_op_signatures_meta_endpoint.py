@@ -7,6 +7,19 @@ from pixsim7.backend.main.api.v1.block_templates.routes_matrix import (
     list_op_signatures_endpoint,
 )
 
+TEST_SUITE = {
+    "id": "prompt-op-signatures-meta-api",
+    "label": "Op Signatures Meta API Endpoint Tests",
+    "kind": "contract",
+    "category": "backend/api",
+    "subcategory": "op-signatures-meta",
+    "covers": [
+        "pixsim7/backend/main/api/v1/block_templates/routes_matrix.py",
+        "pixsim7/backend/main/services/prompt/block/op_signatures.py",
+    ],
+    "order": 26.3,
+}
+
 
 @pytest.mark.asyncio
 async def test_meta_op_signatures_returns_all_entries() -> None:
@@ -25,7 +38,7 @@ async def test_meta_op_signatures_entry_shape() -> None:
     result = await list_op_signatures_endpoint()
     entry = next(e for e in result if e["id"] == "camera.motion.v1")
 
-    assert entry["op_id_prefix"] == "camera.motion."
+    assert entry["op_namespace"] == "camera.motion"
     assert entry["requires_variant_template"] is True
     assert isinstance(entry["required_params"], list)
     assert "speed" in entry["required_params"]

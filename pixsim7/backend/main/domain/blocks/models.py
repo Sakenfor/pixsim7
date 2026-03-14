@@ -44,6 +44,11 @@ class BlockPrimitive(SQLModel, table=True):
         sa_column=Column(JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
         description="Structured tags for filtering and composition",
     )
+    block_metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+        description="Structured metadata for composition/runtime systems",
+    )
     capabilities: List[str] = Field(
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),

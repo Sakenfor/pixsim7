@@ -1,0 +1,25 @@
+blocks:
+  - block_id: style.rendering.cinematic_film_grain
+    category: rendering_technique
+    text: "Render with cinematic film grain, warm tungsten highlights, and controlled contrast."
+    tags: { rendering_technique: cinematic_film_grain, scope: global, source_pack: style_foundation }
+
+  - block_id: style.rendering.watercolor_wash
+    category: rendering_technique
+    text: "Render as watercolor with soft pigment bleeding, visible brushstrokes, and paper texture."
+    tags: { rendering_technique: watercolor_wash, scope: global, source_pack: style_foundation }
+
+  - block_id: style.rendering.cel_shaded_flat
+    category: rendering_technique
+    text: "Render with cel-shaded flat color, clean contour lines, and minimal tonal gradients."
+    tags: { rendering_technique: cel_shaded_flat, scope: global, source_pack: style_foundation }
+
+  - block_id: style.rendering.victorian_etching
+    category: rendering_technique
+    text: "Render with Victorian etching crosshatching, stippled shadow, and engraved line detail."
+    tags: { rendering_technique: victorian_etching, scope: global, source_pack: style_foundation }
+
+  - block_id: style.rendering.oil_impasto
+    category: rendering_technique
+    text: "Render as oil impasto with thick paint buildup, directional strokes, and tactile texture."
+    tags: { rendering_technique: oil_impasto, scope: global, source_pack: style_foundation }

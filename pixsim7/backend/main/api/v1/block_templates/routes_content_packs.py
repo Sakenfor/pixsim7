@@ -1,4 +1,4 @@
-"""Content pack management endpoints (list, manifests, reload, inventory, purge)."""
+"""Content pack management endpoints (list, manifests, reload, inventory, adopt, purge)."""
 from typing import List, Optional
 from fastapi import Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -133,3 +133,37 @@ async def purge_content_packs(
             results[pack_name] = {"error": str(e)}
 
     return {"packs_purged": packs_purged, "results": results}
+
+
+@router.post("/meta/content-packs/adopt")
+async def adopt_orphaned_content_pack(
+    source_pack: str = Query(..., description="Orphaned source pack name"),
+    target_pack: str = Query(..., description="Target on-disk pack name"),
+    rewrite_packages: bool = Query(
+        True,
+        description="Also rewrite template package_name/slot package_name when equal to source pack",
+    ),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Adopt orphaned pack entities into a target pack by rewriting source metadata."""
+    from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
+        adopt_orphaned_pack,
+    )
+
+    try:
+        stats = await adopt_orphaned_pack(
+            db,
+            source_pack_name=source_pack,
+            target_pack_name=target_pack,
+            rewrite_package_names=rewrite_packages,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {
+        "source_pack": source_pack,
+        "target_pack": target_pack,
+        "rewrite_packages": rewrite_packages,
+        "result": stats,
+    }

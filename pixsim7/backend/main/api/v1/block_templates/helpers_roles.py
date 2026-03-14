@@ -64,6 +64,13 @@ def _infer_block_composition_role(block: Any) -> Optional[str]:
     """Infer composition role id for a block row."""
     tags = getattr(block, "tags", None)
     tags_dict: Dict[str, Any] = tags if isinstance(tags, dict) else {}
+    raw_tag_role = tags_dict.get("composition_role") if isinstance(tags_dict, dict) else None
+    if isinstance(raw_tag_role, str) and raw_tag_role.strip():
+        normalized = raw_tag_role.strip()
+        if normalized.startswith("role:"):
+            normalized = normalized.split(":", 1)[1].strip()
+        if normalized:
+            return normalized
     inferred = infer_composition_role(
         role=None,
         category=getattr(block, "category", None),

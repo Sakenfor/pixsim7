@@ -27,6 +27,34 @@ def test_resolve_block_matrix_value_derives_composition_role_aliases() -> None:
     assert _resolve_block_matrix_value(block, "role", missing_label="__m__") == "lighting:key"
 
 
+def test_resolve_block_matrix_value_supports_op_axes_from_tags() -> None:
+    block = _b(
+        "b1",
+        tags={
+            "op_id": "sequence.continuity.apply",
+            "op_signature_id": "sequence.continuity.v1",
+        },
+    )
+    assert _resolve_block_matrix_value(block, "op_id", missing_label="__m__") == "sequence.continuity.apply"
+    assert _resolve_block_matrix_value(block, "signature_id", missing_label="__m__") == "sequence.continuity.v1"
+    assert _resolve_block_matrix_value(block, "op_signature_id", missing_label="__m__") == "sequence.continuity.v1"
+    assert _resolve_block_matrix_value(block, "op_namespace", missing_label="__m__") == "sequence"
+
+
+def test_resolve_block_matrix_value_derives_signature_id_from_op_namespace() -> None:
+    block = _b("b1", tags={"op_id": "subject.interaction.apply"})
+    assert _resolve_block_matrix_value(block, "signature_id", missing_label="__m__") == "subject.interaction.v1"
+
+
+def test_resolve_block_matrix_value_reads_op_modalities_from_metadata() -> None:
+    block = _b(
+        "b1",
+        tags={"op_id": "camera.motion.pan"},
+        block_metadata={"op": {"modalities": ["image", "video"]}},
+    )
+    assert _resolve_block_matrix_value(block, "op_modalities", missing_label="__m__") == "image,video"
+
+
 def test_build_block_matrix_drift_report_axis_and_tag_drift() -> None:
     blocks = [
         _b("ok", tags={"sequence_family": "public_social_idle", "beat_axis": "activity"}),

@@ -16,7 +16,6 @@ from .schemas import (
 )
 from .helpers_roles import (
     _parse_tag_csv,
-    _infer_block_composition_role,
 )
 from .helpers_matrix import (
     _resolve_block_matrix_value,
@@ -76,12 +75,16 @@ async def get_block_matrix(
         merged = dict(tag_constraints or {})
         merged.setdefault("source_pack", package_name)
         tag_constraints = merged
+    effective_composition_role = None
+    if isinstance(composition_role, str) and composition_role.strip():
+        effective_composition_role = composition_role.strip()
 
     # --- Fetch blocks from primitives source ---
     from pixsim7.backend.main.domain.blocks import BlockPrimitive
 
     query = build_block_primitive_query(
         category=category,
+        composition_role=effective_composition_role,
         tag_query=tag_constraints,
         text_query=q,
     )
@@ -89,12 +92,6 @@ async def get_block_matrix(
     async with get_async_blocks_session() as blocks_db:
         result = await blocks_db.execute(query)
         blocks = list(result.scalars().all())
-
-    effective_composition_role = None
-    if isinstance(composition_role, str) and composition_role.strip():
-        effective_composition_role = composition_role.strip()
-    if effective_composition_role:
-        blocks = [b for b in blocks if _infer_block_composition_role(b) == effective_composition_role]
 
     # --- Auto-expected values from family schema (legacy only) ---
     family_schema = _get_prompt_block_family_schema((tag_constraints or {}).get("sequence_family"))
@@ -237,7 +234,7 @@ async def list_op_signatures_endpoint() -> List[Dict[str, Any]]:
     return [
         {
             "id": sig.id,
-            "op_id_prefix": sig.op_id_prefix,
+            "op_namespace": sig.op_namespace,
             "requires_variant_template": sig.requires_variant_template,
             "required_params": list(sig.required_params),
             "required_refs": list(sig.required_refs),

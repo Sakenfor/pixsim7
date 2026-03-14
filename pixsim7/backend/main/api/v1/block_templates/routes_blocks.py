@@ -6,6 +6,9 @@ from fastapi import Depends, HTTPException, Query, Response
 from sqlalchemy import select
 
 from pixsim7.backend.main.api.dependencies import get_current_user
+from pixsim7.backend.main.services.ownership.user_owned import (
+    assert_can_write_user_owned,
+)
 from pixsim7.backend.main.services.prompt.block.block_primitive_query import (
     build_block_primitive_query,
 )
@@ -47,6 +50,42 @@ from .helpers_roles import (
 from .router import router
 
 
+def _is_admin_user(user: Any) -> bool:
+    if user is None:
+        return False
+    admin_attr = getattr(user, "is_admin", None)
+    if callable(admin_attr):
+        return bool(admin_attr())
+    return bool(admin_attr)
+
+
+def _extract_tag_owner_user_id(tags: Any) -> Optional[int]:
+    if not isinstance(tags, dict):
+        return None
+    raw = tags.get("owner_user_id")
+    if raw is None:
+        return None
+    if isinstance(raw, int):
+        return raw
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _assert_can_write_primitive_block(*, block: Any, current_user: User) -> None:
+    if _is_admin_user(current_user):
+        return
+    owner_user_id = _extract_tag_owner_user_id(getattr(block, "tags", None))
+    if owner_user_id is None:
+        raise HTTPException(status_code=403, detail="Not allowed to modify system-owned block")
+    assert_can_write_user_owned(
+        user=current_user,
+        owner_user_id=owner_user_id,
+        denied_detail="Not allowed to modify this block",
+    )
+
+
 @router.get("/blocks", response_model=List[BlockResponse])
 async def search_blocks(
     role: Optional[str] = Query(None, description="Filter by inferred role"),
@@ -67,11 +106,13 @@ async def search_blocks(
         merged = dict(tag_constraints or {})
         merged.setdefault("source_pack", package_name)
         tag_constraints = merged
+    role_filter = role.strip() if isinstance(role, str) and role.strip() else None
 
     from pixsim7.backend.main.domain.blocks import BlockPrimitive
 
     query = build_block_primitive_query(
         category=category,
+        composition_role=role_filter,
         tag_query=tag_constraints,
         text_query=q,
     )
@@ -81,17 +122,6 @@ async def search_blocks(
     async with get_async_blocks_session() as blocks_db:
         result = await blocks_db.execute(query)
         blocks = list(result.scalars().all())
-
-    if role:
-        role_filter = role.strip()
-        blocks = [
-            b for b in blocks
-            if infer_composition_role(
-                role=None,
-                category=getattr(b, "category", None),
-                tags=getattr(b, "tags", None) if isinstance(getattr(b, "tags", None), dict) else None,
-            ).role_id == role_filter
-        ]
 
     return [_to_block_response(b) for b in blocks]
 
@@ -111,8 +141,6 @@ async def upsert_block_by_block_id(
 
     This endpoint writes to the separate block primitives database.
     """
-    del current_user  # Auth enforced by dependency; user ownership not yet modeled for primitives.
-
     normalized_block_id = str(block_id or "").strip()
     if not normalized_block_id:
         raise HTTPException(status_code=400, detail="block_id_required")
@@ -124,7 +152,24 @@ async def upsert_block_by_block_id(
     if not text:
         raise HTTPException(status_code=400, detail="text_required")
 
+    user_is_admin = _is_admin_user(current_user)
+    if not user_is_admin and request.is_public:
+        raise HTTPException(
+            status_code=403,
+            detail="Non-admin users can only create private blocks",
+        )
+
     tags_dict = dict(request.tags or {})
+    if not user_is_admin:
+        if current_user.id is None:
+            raise HTTPException(status_code=403, detail="User identity required")
+        tags_dict["owner_user_id"] = int(current_user.id)
+    inferred_role = infer_composition_role(role=None, category=category, tags=tags_dict).role_id
+    if inferred_role:
+        existing = tags_dict.get("composition_role")
+        if not (isinstance(existing, str) and existing.strip()):
+            tags_dict["composition_role"] = inferred_role
+
     declared_capabilities = normalize_capability_ids(request.capabilities)
     capabilities = derive_block_capabilities(
         category=category,
@@ -155,8 +200,9 @@ async def upsert_block_by_block_id(
                 text=text,
                 tags=tags_dict,
                 capabilities=capabilities,
+                block_metadata={},
                 source=request.source,
-                is_public=request.is_public,
+                is_public=(request.is_public if user_is_admin else False),
                 avg_rating=request.avg_rating,
                 usage_count=request.usage_count or 0,
                 created_at=now,
@@ -172,12 +218,13 @@ async def upsert_block_by_block_id(
                 block=_to_block_response(block),
             )
 
+        _assert_can_write_primitive_block(block=block, current_user=current_user)
         block.category = category
         block.text = text
         block.tags = tags_dict
         block.capabilities = capabilities
         block.source = request.source
-        block.is_public = request.is_public
+        block.is_public = (request.is_public if user_is_admin else False)
         if request.avg_rating is not None:
             block.avg_rating = request.avg_rating
         if request.usage_count is not None:
@@ -198,8 +245,6 @@ async def delete_block_by_block_id(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a primitive block by block_id."""
-    del current_user  # Auth enforced by dependency; user ownership not yet modeled for primitives.
-
     normalized_block_id = str(block_id or "").strip()
     if not normalized_block_id:
         raise HTTPException(status_code=400, detail="block_id_required")
@@ -213,6 +258,7 @@ async def delete_block_by_block_id(
         block = result.scalars().first()
         if block is None:
             raise HTTPException(status_code=404, detail="block_not_found")
+        _assert_can_write_primitive_block(block=block, current_user=current_user)
         await blocks_db.delete(block)
         await blocks_db.commit()
 
@@ -240,11 +286,13 @@ async def get_block_catalog(
         merged = dict(tag_constraints or {})
         merged.setdefault("source_pack", package_name)
         tag_constraints = merged
+    role_filter = role.strip() if isinstance(role, str) and role.strip() else None
 
     from pixsim7.backend.main.domain.blocks import BlockPrimitive
 
     query = build_block_primitive_query(
         category=category,
+        composition_role=role_filter,
         text_query=q,
         tag_query=tag_constraints,
     )
@@ -253,17 +301,6 @@ async def get_block_catalog(
     async with get_async_blocks_session() as blocks_db:
         result = await blocks_db.execute(query)
         blocks = list(result.scalars().all())
-
-    if role:
-        role_filter = role.strip()
-        blocks = [
-            b for b in blocks
-            if infer_composition_role(
-                role=None,
-                category=getattr(b, "category", None),
-                tags=getattr(b, "tags", None) if isinstance(getattr(b, "tags", None), dict) else None,
-            ).role_id == role_filter
-        ]
 
     rows: List[BlockCatalogRowResponse] = []
     for b in blocks:
@@ -334,8 +371,10 @@ async def list_block_tag_facets(
     package_name: Optional[str] = Query(None, description="Filter by package via tags.source_pack"),
 ):
     """List distinct tag keys and values from primitive blocks."""
+    role_filter = role.strip() if isinstance(role, str) and role.strip() else None
     tag_query = {"all": {"source_pack": package_name}} if package_name else None
     query = build_block_primitive_query(
+        composition_role=role_filter,
         category=category,
         tag_query=tag_query,
     )
@@ -343,20 +382,11 @@ async def list_block_tag_facets(
         result = await blocks_db.execute(query)
         blocks = list(result.scalars().all())
 
-    role_filter = role.strip() if isinstance(role, str) and role.strip() else None
     all_tags: List[Dict[str, Any]] = []
     for block in blocks:
         tags_map = block.tags if isinstance(getattr(block, "tags", None), dict) else {}
         if not tags_map:
             continue
-        if role_filter:
-            inferred = infer_composition_role(
-                role=None,
-                category=getattr(block, "category", None),
-                tags=tags_map,
-            )
-            if inferred.role_id != role_filter:
-                continue
         all_tags.append(tags_map)
 
     facets: Dict[str, set[str]] = {}
@@ -387,28 +417,16 @@ async def get_block_tag_dictionary(
     canonical_keys = set(canonical.keys())
     alias_keys = set(alias_key_map.keys())
 
+    role_filter = role.strip() if isinstance(role, str) and role.strip() else None
     tag_query = {"all": {"source_pack": package_name}} if package_name else None
     query = build_block_primitive_query(
+        composition_role=role_filter,
         category=category,
         tag_query=tag_query,
     )
     async with get_async_blocks_session() as blocks_db:
         result = await blocks_db.execute(query)
         blocks = list(result.scalars().all())
-
-    role_filter = role.strip() if isinstance(role, str) and role.strip() else None
-    if role_filter:
-        filtered_blocks: List[Any] = []
-        for block in blocks:
-            tags_map = block.tags if isinstance(getattr(block, "tags", None), dict) else {}
-            inferred = infer_composition_role(
-                role=None,
-                category=getattr(block, "category", None),
-                tags=tags_map,
-            )
-            if inferred.role_id == role_filter:
-                filtered_blocks.append(block)
-        blocks = filtered_blocks
 
     key_counts: Dict[str, int] = {}
     value_counts: Dict[str, Dict[str, int]] = {}
@@ -549,7 +567,7 @@ async def get_block_tag_dictionary(
         )
 
     return BlockTagDictionaryResponse(
-        generated_at=datetime.utcnow().isoformat() + "Z",
+        generated_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         scope={
             "package_name": package_name,
             "composition_role": role,

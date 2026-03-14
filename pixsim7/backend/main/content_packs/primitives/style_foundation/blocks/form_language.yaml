@@ -1,0 +1,25 @@
+blocks:
+  - block_id: style.form.photoreal_anatomy
+    category: form_language
+    text: "Keep anatomy and proportions grounded in photoreal body structure and realistic scale."
+    tags: { form_language: photoreal_anatomy, scope: global, source_pack: style_foundation }
+
+  - block_id: style.form.stylized_exaggerated
+    category: form_language
+    text: "Use stylized exaggerated proportions with emphasized silhouettes and pushed shape contrast."
+    tags: { form_language: stylized_exaggerated, scope: global, source_pack: style_foundation }
+
+  - block_id: style.form.chibi_proportions
+    category: form_language
+    text: "Use chibi proportions with compact limbs, oversized head ratio, and simplified massing."
+    tags: { form_language: chibi_proportions, scope: global, source_pack: style_foundation }
+
+  - block_id: style.form.heroic_proportions
+    category: form_language
+    text: "Use heroic proportions with broadened shoulders, elongated leg line, and idealized structure."
+    tags: { form_language: heroic_proportions, scope: global, source_pack: style_foundation }
+
+  - block_id: style.form.elongated_editorial
+    category: form_language
+    text: "Use elongated editorial proportions with slim limbs, long neck line, and fashion-forward pose geometry."
+    tags: { form_language: elongated_editorial, scope: global, source_pack: style_foundation }

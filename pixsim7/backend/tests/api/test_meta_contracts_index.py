@@ -40,6 +40,12 @@ async def test_contracts_index_includes_blocks_discovery() -> None:
     assert len(blocks.sub_endpoints) >= 4
     # Has tag dictionary sub-endpoint
     assert any(ep.id == "blocks.tag_dictionary" for ep in blocks.sub_endpoints)
+    # Has block matrix sub-endpoint with the canonical path
+    assert any(
+        ep.id == "blocks.matrix"
+        and ep.path == "/api/v1/block-templates/meta/blocks/matrix"
+        for ep in blocks.sub_endpoints
+    )
 
 
 @pytest.mark.asyncio

@@ -13,7 +13,7 @@ pack: #PromptBlockPackV1 & {
 			block_schema: {
 				id_prefix: "core.placement.anchor"
 				category:  "location"
-				capabilities: ["scene.anchor"]
+				capabilities: ["scene.relation", "scene.anchor"]
 				text_template: "Placement token: {variant}."
 				tags: {
 					modifier_family:  "placement"
@@ -29,8 +29,8 @@ pack: #PromptBlockPackV1 & {
 					]
 				}
 				op: {
-					op_id: "scene.anchor.place"
-					signature_id: "scene.anchor.v1"
+					op_id: "scene.relation.place"
+					signature_id: "scene.relation.v1"
 					modalities: ["both"]
 					refs: [
 						{

@@ -14,14 +14,35 @@ from pixsim7.backend.main.services.prompt.block.fit_scoring import (
     CONTINUATION_REF_MISS_PENALTY,
     CONTINUATION_RELATION_MATCH_BONUS,
     CONTINUATION_RELATION_MISS_PENALTY,
+    SEQUENCE_ROLE_MATCH_BONUS,
+    SEQUENCE_ROLE_MISMATCH_PENALTY,
 )
 from pixsim7.backend.main.services.prompt.block.tagging import extract_ontology_ids_from_tags
 
+TEST_SUITE = {
+    "id": "prompt-block-fit-scoring",
+    "label": "Prompt Block Fit Scoring Tests",
+    "kind": "contract",
+    "category": "backend/prompt-analysis",
+    "subcategory": "fit-scoring",
+    "covers": [
+        "pixsim7/backend/main/services/prompt/parser/primitive_projection.py",
+        "pixsim7/backend/main/shared/ontology/vocabularies/registry.py",
+    ],
+    "order": 29,
+}
 
-def _make_block(ontology_ids: list[str], op: dict | None = None) -> PromptBlock:
+
+def _make_block(
+    ontology_ids: list[str],
+    op: dict | None = None,
+    extra_tags: dict | None = None,
+) -> PromptBlock:
     tags: dict = {"ontology_ids": ontology_ids}
     if op is not None:
         tags["op"] = op
+    if extra_tags is not None:
+        tags.update(extra_tags)
     return PromptBlock(
         block_id="test_block",
         text="test block",
@@ -259,6 +280,38 @@ class TestSequenceDelta:
         assert delta == pytest.approx(0.0)
         assert details["contributions"] == []
 
+    def test_sequence_role_match_bonus_for_sequence_blocks(self):
+        block = _make_block(
+            ["camera:angle_pov"],
+            op={"op_id": "sequence.continuity.apply", "signature_id": "sequence.continuity.v1"},
+            extra_tags={"role_in_sequence": "continuation"},
+        )
+        score, details = compute_block_asset_fit(
+            block=block,
+            asset_tags={"ontology_ids": []},
+            role_in_sequence="continuation",
+        )
+
+        assert score == pytest.approx(0.7 + SEQUENCE_ROLE_MATCH_BONUS)
+        contrib = next(c for c in details["sequence"]["contributions"] if c["factor"] == "sequence_role_match")
+        assert contrib["delta"] == pytest.approx(SEQUENCE_ROLE_MATCH_BONUS)
+
+    def test_sequence_role_mismatch_penalty_for_sequence_blocks(self):
+        block = _make_block(
+            ["camera:angle_pov"],
+            op={"op_id": "sequence.continuity.apply", "signature_id": "sequence.continuity.v1"},
+            extra_tags={"role_in_sequence": "continuation"},
+        )
+        score, details = compute_block_asset_fit(
+            block=block,
+            asset_tags={"ontology_ids": []},
+            role_in_sequence="initial",
+        )
+
+        assert score == pytest.approx(0.7 - SEQUENCE_ROLE_MISMATCH_PENALTY)
+        contrib = next(c for c in details["sequence"]["contributions"] if c["factor"] == "sequence_role_mismatch")
+        assert contrib["delta"] == pytest.approx(-SEQUENCE_ROLE_MISMATCH_PENALTY)
+
 
 # ---- Integration: full scoring with contexts ----
 
@@ -335,6 +388,30 @@ class TestFullScoringWithContext:
 
         assert score == pytest.approx(1.0 - CONTINUATION_REF_MISS_PENALTY)
         assert details["sequence"]["role_in_sequence"] == "continuation"
+
+    def test_unspecified_role_infers_from_parser_context_primitive_match(self):
+        block = _make_block(
+            ["camera:angle_pov"],
+            op={"op_id": "sequence.continuity.apply", "signature_id": "sequence.continuity.v1"},
+            extra_tags={"role_in_sequence": "transition"},
+        )
+        asset_tags = {"ontology_ids": []}
+
+        score, details = compute_block_asset_fit(
+            block,
+            asset_tags,
+            parser_context={
+                "primitive_match": {
+                    "block_id": "core.sequence.continuity.transition_setting_shift",
+                    "role_in_sequence": "transition",
+                    "op": {"op_id": "sequence.continuity.apply", "signature_id": "sequence.continuity.v1"},
+                    "overlap_tokens": ["transition", "setting"],
+                }
+            },
+        )
+
+        assert score == pytest.approx(0.7 + SEQUENCE_ROLE_MATCH_BONUS)
+        assert details["sequence"]["role_in_sequence"] == "transition"
 
     def test_deterministic_with_same_contexts(self):
         block = _make_block(
