@@ -12,6 +12,18 @@ from pixsim7.backend.main.services.ownership.user_owned import (
     resolve_user_owned_list_scope,
 )
 
+TEST_SUITE = {
+    "id": "ownership-user-owned-service",
+    "label": "Ownership User-Owned Tests",
+    "kind": "unit",
+    "category": "backend/ownership",
+    "subcategory": "user-owned",
+    "covers": [
+        "pixsim7/backend/main/services/ownership/user_owned.py",
+    ],
+    "order": 32,
+}
+
 
 def _user(*, user_id: int, username: str = "user", is_admin: bool = False) -> SimpleNamespace:
     return SimpleNamespace(

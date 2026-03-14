@@ -1,5 +1,6 @@
 #!/usr/bin/env tsx
 
+import { execSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +16,7 @@ import {
 
 interface CatalogPayload {
   version: number;
-  source: string;
+  sources: string[];
   profiles: CatalogProfileRecord[];
   suites: CatalogSuiteRecord[];
 }
@@ -55,7 +56,7 @@ function getArgValue(flag: string, args: string[]): string | undefined {
   return undefined;
 }
 
-function sortByOrderThenLabel<T extends { order?: number; label: string }>(items: T[]): T[] {
+function sortByOrderThenLabel<T extends { order?: number | null; label: string }>(items: T[]): T[] {
   return items.slice().sort((a, b) => {
     const orderA = a.order ?? Number.MAX_SAFE_INTEGER;
     const orderB = b.order ?? Number.MAX_SAFE_INTEGER;
@@ -108,18 +109,64 @@ function toSuiteRecord(suite: TestSuiteDefinition): CatalogSuiteRecord {
   };
 }
 
-function buildCatalogPayload(): CatalogPayload {
+function discoverBackendSuites(root: string): CatalogSuiteRecord[] {
+  try {
+    const raw = execSync('python scripts/tests/discover_backend_suites.py', {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: 15_000,
+    });
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.map(
+      (entry: Record<string, unknown>): CatalogSuiteRecord => ({
+        id: String(entry.id ?? ''),
+        label: String(entry.label ?? ''),
+        path: String(entry.path ?? ''),
+        layer: (entry.layer as CatalogSuiteRecord['layer']) ?? 'backend',
+        kind: entry.kind != null ? String(entry.kind) : null,
+        category: entry.category != null ? String(entry.category) : null,
+        subcategory: entry.subcategory != null ? String(entry.subcategory) : null,
+        covers: Array.isArray(entry.covers) ? entry.covers.map(String) : [],
+        order: typeof entry.order === 'number' ? entry.order : null,
+      }),
+    );
+  } catch (err) {
+    console.error('[test-registry] Warning: backend suite discovery failed:', err);
+    return [];
+  }
+}
+
+function buildCatalogPayload(root: string): CatalogPayload {
   resetTestCatalogForTesting();
   ensureBuiltInTestCatalogRegistered();
 
   const profiles = sortByOrderThenLabel(testProfileRegistry.getAll()).map(toProfileRecord);
-  const suites = sortByOrderThenLabel(testSuiteRegistry.getAll()).map(toSuiteRecord);
+  const tsSuites = sortByOrderThenLabel(testSuiteRegistry.getAll()).map(toSuiteRecord);
+  const backendSuites = discoverBackendSuites(root);
+
+  // Merge: backend-discovered suites + TS-registered suites, deduplicate by id.
+  const seenIds = new Set<string>();
+  const allSuites: CatalogSuiteRecord[] = [];
+
+  for (const suite of [...backendSuites, ...tsSuites]) {
+    if (seenIds.has(suite.id)) {
+      continue;
+    }
+    seenIds.add(suite.id);
+    allSuites.push(suite);
+  }
 
   return {
     version: 1,
-    source: 'apps/main/src/features/devtools/services/testCatalogRegistry.ts',
+    sources: [
+      'apps/main/src/features/devtools/services/testCatalogRegistry.ts',
+      'scripts/tests/discover_backend_suites.py (TEST_SUITE in test files)',
+    ],
     profiles,
-    suites,
+    suites: sortByOrderThenLabel(allSuites),
   };
 }
 
@@ -133,7 +180,7 @@ function main(): void {
   const root = path.resolve(__dirname, '../..');
   const outPath = path.resolve(root, outArg ?? 'scripts/tests/test-registry.json');
 
-  const payload = buildCatalogPayload();
+  const payload = buildCatalogPayload(root);
   const serialized = `${JSON.stringify(payload, null, 2)}\n`;
 
   let existing = '';

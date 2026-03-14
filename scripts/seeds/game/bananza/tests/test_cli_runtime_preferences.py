@@ -4,6 +4,16 @@ from pathlib import Path
 
 from scripts.seeds.game.bananza import cli
 
+TEST_SUITE = {
+    "id": "bananza-runtime-preferences",
+    "label": "Bananza Runtime Preferences Tests",
+    "kind": "integration",
+    "category": "scripts/bananza",
+    "subcategory": "runtime-preferences",
+    "covers": ["scripts/seeds/game/bananza/cli.py"],
+    "order": 51,
+}
+
 
 def test_read_runtime_preferences_prefers_nested_runtime_meta() -> None:
     snapshot = {

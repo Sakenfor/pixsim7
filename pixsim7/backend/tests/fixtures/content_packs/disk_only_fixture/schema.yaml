@@ -1,0 +1,16 @@
+version: "1.0.0"
+package_name: disk_only_fixture
+defaults:
+  source: system
+blocks:
+  - block_id: fixture.disk_only.block_01
+    category: environment
+    text: "A serene mountain landscape at dawn"
+    tags:
+      environment_type: mountain
+
+  - block_id: fixture.disk_only.block_02
+    category: environment
+    text: "An urban cityscape at night"
+    tags:
+      environment_type: urban

@@ -71,66 +71,53 @@ pnpm test:registry:gen     # regenerate scripts/tests/test-registry.json from TS
 pnpm test:registry:check   # validate suite metadata and covers paths
 ```
 
-## Canonical Registration (Devtools)
+## Suite Registration
 
-The canonical frontend path for introducing test metadata is:
+Test suites register themselves — no central manifest needed for new suites.
 
-- `apps/main/src/features/devtools/services/testCatalogRegistry.ts`
-  - `registerTestProfile(...)`
-  - `registerTestSuite(...)`
-  - `registerTestCatalogPlugin(...)` for plugin-style batched registration
+### Backend / Scripts (Python)
 
-`TestOverviewPanel` and `testOverviewService` read from this registry only.  
-Use compatibility reads where needed, but keep writes/registrations canonical through registry helpers.
+Add a `TEST_SUITE` dict at module level in your test file (after imports):
 
-Recommended suite metadata fields (for agent-friendly categorization):
+```python
+TEST_SUITE = {
+    "id": "my-feature-tests",
+    "label": "My Feature Tests",
+    "kind": "contract",
+    "category": "backend/my-domain",
+    "subcategory": "my-feature",
+    "covers": ["pixsim7/backend/main/services/my_feature.py"],
+    "order": 30,
+}
+```
+
+For directory-level suites, put `TEST_SUITE` in `conftest.py` — the discovery
+script uses the directory as the suite path.
+
+`path` and `layer` are derived automatically from the file location.
+
+Discovery: `scripts/tests/discover_backend_suites.py` scans `pixsim7/backend/tests/`
+and `scripts/` for `TEST_SUITE` dicts via AST parsing (no imports executed).
+
+### Frontend (TypeScript)
+
+Frontend suites register via `testCatalogRegistry.ts`:
+
+- `registerTestSuite(...)` / `registerTestCatalogPlugin(...)`
+
+### Metadata fields
 
 - `category`: stable high-level area (`backend/api`, `frontend/project-bundle`, `scripts/bananza`)
 - `subcategory`: focused domain inside a category (`codegen`, `lifecycle`, `runtime-meta`)
 - `kind`: `unit | contract | integration | e2e | smoke`
 - `covers`: source paths that the suite validates
 
-Catalog metadata can be validated with:
+### Validation
 
 ```bash
-pnpm test:registry:gen
-python scripts/tests/validate_catalog.py
-python scripts/tests/validate_catalog.py --json
-```
-
-Example:
-
-```ts
-import { registerTestCatalogPlugin } from '@/features/devtools/services/testOverviewService';
-
-const unregister = registerTestCatalogPlugin({
-  id: 'my-feature-tests',
-  profiles: [
-    {
-      id: 'my-feature-fast',
-      label: 'My Feature Fast',
-      command: 'pnpm test:fast',
-      description: 'Focused checks for my feature.',
-      targets: ['Backend + Frontend'],
-      tags: ['feature'],
-      runRequest: { profile: 'fast' },
-    },
-  ],
-  suites: [
-    {
-      id: 'my-feature-suite',
-      label: 'My Feature Suite',
-      path: 'apps/main/src/features/myFeature',
-      layer: 'frontend',
-      category: 'frontend/my-feature',
-      subcategory: 'core',
-      kind: 'integration',
-      covers: ['apps/main/src/features/myFeature'],
-    },
-  ],
-});
-
-// call unregister() when unloading plugin/hot-reload cleanup
+pnpm test:registry:gen      # regenerate test-registry.json
+pnpm test:registry:check    # verify no drift
+python scripts/tests/validate_catalog.py --json  # detailed validation
 ```
 
 ## Pytest Markers

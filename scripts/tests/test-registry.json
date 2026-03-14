@@ -1,6 +1,9 @@
 {
   "version": 1,
-  "source": "apps/main/src/features/devtools/services/testCatalogRegistry.ts",
+  "sources": [
+    "apps/main/src/features/devtools/services/testCatalogRegistry.ts",
+    "scripts/tests/discover_backend_suites.py (TEST_SUITE in test files)"
+  ],
   "profiles": [
     {
       "id": "changed",
@@ -214,6 +217,49 @@
         "pixsim7/backend/main/services/asset/ingestion.py"
       ],
       "order": 26
+    },
+    {
+      "id": "prompt-op-signatures",
+      "label": "Op Signature Registry & Contract Tests",
+      "path": "pixsim7/backend/tests/services/prompt/test_op_signatures.py",
+      "layer": "backend",
+      "kind": "contract",
+      "category": "backend/prompt-block",
+      "subcategory": "op-signatures",
+      "covers": [
+        "pixsim7/backend/main/services/prompt/block/op_signatures.py",
+        "pixsim7/backend/main/services/prompt/block/op_signature_registry.yaml"
+      ],
+      "order": 26.1
+    },
+    {
+      "id": "prompt-op-signature-registry",
+      "label": "Op Signature Registry Loader & Validation Tests",
+      "path": "pixsim7/backend/tests/services/prompt/test_op_signature_registry.py",
+      "layer": "backend",
+      "kind": "contract",
+      "category": "backend/prompt-block",
+      "subcategory": "op-signature-registry",
+      "covers": [
+        "pixsim7/backend/main/services/prompt/block/op_signatures.py",
+        "pixsim7/backend/main/services/prompt/block/op_signature_registry.yaml",
+        "pixsim7/backend/main/content_packs/prompt"
+      ],
+      "order": 26.2
+    },
+    {
+      "id": "prompt-op-signatures-meta-api",
+      "label": "Op Signatures Meta API Endpoint Tests",
+      "path": "pixsim7/backend/tests/api/test_op_signatures_meta_endpoint.py",
+      "layer": "backend",
+      "kind": "contract",
+      "category": "backend/api",
+      "subcategory": "op-signatures-meta",
+      "covers": [
+        "pixsim7/backend/main/api/v1/block_templates/routes_matrix.py",
+        "pixsim7/backend/main/services/prompt/block/op_signatures.py"
+      ],
+      "order": 26.3
     },
     {
       "id": "prompt-primitive-projection",

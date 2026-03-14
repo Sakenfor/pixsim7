@@ -12,6 +12,16 @@ import pytest
 from scripts.seeds.game.bananza.flows import api_flow
 from scripts.seeds.game.bananza.seed_data import BOOTSTRAP_PROFILE, BOOTSTRAP_SOURCE_KEY
 
+TEST_SUITE = {
+    "id": "bananza-project-sync",
+    "label": "Bananza Project Sync Tests",
+    "kind": "integration",
+    "category": "scripts/bananza",
+    "subcategory": "sync-registration",
+    "covers": ["scripts/seeds/game/bananza/cli.py", "pixsim7/backend/main/shared/extension_contract.py"],
+    "order": 52,
+}
+
 
 class _FakeAsyncClient:
     def __init__(self, *args: Any, **kwargs: Any) -> None:

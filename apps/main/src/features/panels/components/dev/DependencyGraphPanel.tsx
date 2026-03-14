@@ -1,3 +1,4 @@
+import dagre from "@dagrejs/dagre";
 import React, { useMemo } from "react";
 
 import { Icon } from "@lib/icons";
@@ -7,7 +8,9 @@ import ReactFlow, {
   type Edge,
   Background,
   Controls,
+  Handle,
   MiniMap,
+  Position,
   useNodesState,
   useEdgesState,
   type NodeTypes,
@@ -22,6 +25,32 @@ interface DependencyGraphPanelProps {
   plugins: UnifiedPluginDescriptor[];
 }
 
+const NODE_WIDTH = 220;
+const NODE_HEIGHT = 80;
+
+function layoutWithDagre(nodes: Node[], edges: Edge[]): Node[] {
+  const g = new dagre.graphlib.Graph();
+  g.setDefaultEdgeLabel(() => ({}));
+  g.setGraph({ rankdir: "LR", nodesep: 60, ranksep: 200, marginx: 40, marginy: 40 });
+
+  for (const node of nodes) {
+    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+  }
+  for (const edge of edges) {
+    g.setEdge(edge.source, edge.target);
+  }
+
+  dagre.layout(g);
+
+  return nodes.map((node) => {
+    const pos = g.node(node.id);
+    return {
+      ...node,
+      position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
+    };
+  });
+}
+
 /**
  * DependencyGraphPanel - Visualizes relationships between features, routes, and plugins
  *
@@ -30,24 +59,23 @@ interface DependencyGraphPanelProps {
  * - Plugins as purple nodes
  * - Feature→Plugin dependencies (consumesFeatures)
  * - Plugin→Feature dependencies (providesFeatures)
+ *
+ * Layout is computed by dagre (left-to-right DAG).
  */
 export function DependencyGraphPanel({
   features,
   plugins,
 }: DependencyGraphPanelProps) {
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
-    const nodes: Node[] = [];
+    const rawNodes: Node[] = [];
     const edges: Edge[] = [];
 
     // Create feature nodes
-    features.forEach((feature, index) => {
-      nodes.push({
+    features.forEach((feature) => {
+      rawNodes.push({
         id: `feature-${feature.id}`,
         type: "featureNode",
-        position: {
-          x: 100,
-          y: index * 150,
-        },
+        position: { x: 0, y: 0 }, // will be overwritten by dagre
         data: {
           label: feature.name,
           featureId: feature.id,
@@ -58,15 +86,12 @@ export function DependencyGraphPanel({
     });
 
     // Create plugin nodes
-    plugins.forEach((plugin, index) => {
+    plugins.forEach((plugin) => {
       const pluginId = `${plugin.family}-${plugin.id}`;
-      nodes.push({
+      rawNodes.push({
         id: `plugin-${pluginId}`,
         type: "pluginNode",
-        position: {
-          x: 600,
-          y: index * 150,
-        },
+        position: { x: 0, y: 0 },
         data: {
           label: plugin.name,
           pluginId: plugin.id,
@@ -106,6 +131,7 @@ export function DependencyGraphPanel({
       }
     });
 
+    const nodes = layoutWithDagre(rawNodes, edges);
     return { nodes, edges };
   }, [features, plugins]);
 
@@ -159,6 +185,8 @@ interface FeatureNodeData {
 function FeatureNode({ data }: { data: FeatureNodeData }) {
   return (
     <div className="px-4 py-3 rounded-lg border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-lg min-w-[200px]">
+      <Handle type="target" position={Position.Left} className="!bg-blue-500" />
+      <Handle type="source" position={Position.Right} className="!bg-blue-500" />
       <div className="flex items-center gap-2 mb-1">
         {data.icon && <Icon name={data.icon} size={18} />}
         <div className="font-semibold text-blue-900 dark:text-blue-100">
@@ -192,6 +220,8 @@ interface PluginNodeData {
 function PluginNode({ data }: { data: PluginNodeData }) {
   return (
     <div className="px-4 py-3 rounded-lg border-2 border-purple-500 bg-purple-50 dark:bg-purple-900/20 shadow-lg min-w-[200px]">
+      <Handle type="target" position={Position.Left} className="!bg-purple-500" />
+      <Handle type="source" position={Position.Right} className="!bg-purple-500" />
       <div className="flex items-center gap-2 mb-1">
         {data.icon && <Icon name={data.icon} size={18} />}
         <div className="font-semibold text-purple-900 dark:text-purple-100">

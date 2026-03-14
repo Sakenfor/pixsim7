@@ -1,8 +1,7 @@
-import { PanelShell } from '@pixsim7/shared.ui';
+import { PanelShell, SidebarPaneShell, HierarchicalSidebarNav } from '@pixsim7/shared.ui';
 import { useMemo, useState } from 'react';
 
 import { canRunCodegen } from '@lib/auth';
-import { Icon } from '@lib/icons';
 
 import {
   extractErrorMessage,
@@ -25,13 +24,6 @@ import { useAuthStore } from '@/stores/authStore';
 import { TestAnalyticsGraphs } from './TestAnalyticsGraphs';
 
 type TestOverviewSection = 'run' | 'catalog' | 'history' | 'reports';
-
-interface SectionDefinition {
-  id: TestOverviewSection;
-  label: string;
-  description: string;
-  count: number;
-}
 
 interface SuiteSubcategoryGroup {
   key: string;
@@ -230,46 +222,6 @@ function formatRunOutput(result: TestRunResponse): string {
     .join('\n');
 }
 
-interface SectionTabsProps {
-  sections: SectionDefinition[];
-  activeSection: TestOverviewSection;
-  onSectionChange: (section: TestOverviewSection) => void;
-}
-
-function SectionTabs({ sections, activeSection, onSectionChange }: SectionTabsProps) {
-  return (
-    <section className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-1">
-      <div className="flex flex-wrap gap-1">
-        {sections.map((section) => {
-          const active = section.id === activeSection;
-          return (
-            <button
-              key={section.id}
-              onClick={() => onSectionChange(section.id)}
-              className={`px-3 py-2 rounded-md text-xs font-medium transition-colors ${
-                active
-                  ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-                  : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-              }`}
-              title={section.description}
-            >
-              {section.label}
-              <span
-                className={`ml-1.5 inline-flex min-w-[1.25rem] justify-center rounded px-1 text-[10px] ${
-                  active
-                    ? 'bg-white/20 dark:bg-neutral-900/10'
-                    : 'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200'
-                }`}
-              >
-                {section.count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
 
 interface ProfileCardProps {
   profile: TestProfileDefinition;
@@ -376,40 +328,6 @@ export function TestOverviewPanel() {
     const references = overview.docs.filter((path) => !reports.includes(path));
     return { reports, references };
   }, [overview.docs]);
-  const sectionDefinitions = useMemo<SectionDefinition[]>(
-    () => [
-      {
-        id: 'run',
-        label: 'Run',
-        description: 'Execute profile-based tests and inspect command output.',
-        count: overview.profiles.length,
-      },
-      {
-        id: 'catalog',
-        label: 'Catalog',
-        description: 'Browse test suites grouped by layer, category, and subcategory.',
-        count: overview.suites.length,
-      },
-      {
-        id: 'history',
-        label: 'History',
-        description: 'Review local snapshots and trend analytics.',
-        count: runs.length,
-      },
-      {
-        id: 'reports',
-        label: 'Reports',
-        description: 'Quick links to eval reports and test-reference docs.',
-        count: docsByKind.reports.length,
-      },
-    ],
-    [
-      docsByKind.reports.length,
-      overview.profiles.length,
-      overview.suites.length,
-      runs.length,
-    ],
-  );
 
   const handleCopyCommand = async (profile: TestProfileDefinition) => {
     try {
@@ -453,53 +371,52 @@ export function TestOverviewPanel() {
   return (
     <PanelShell
       className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
-      header={
-        <header className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
-          <div className="flex items-center gap-2">
-            <Icon name="flask" size={18} className="text-emerald-500" />
-            <h2 className="text-lg font-semibold">Test Overview</h2>
-          </div>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-            User-facing test profile overview aligned with the unified runner.
-          </p>
-          {!canExecute && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
-              Read-only mode. The <code>devtools.codegen</code> permission is required to execute profiles.
-            </p>
-          )}
-        </header>
-      }
-      bodyClassName="p-4 space-y-4"
-    >
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
-            <div className="text-xs text-neutral-500 dark:text-neutral-400">Profiles</div>
-            <div className="text-2xl font-semibold mt-1">{overview.profiles.length}</div>
-          </div>
-          <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
-            <div className="text-xs text-neutral-500 dark:text-neutral-400">Tracked suites</div>
-            <div className="text-2xl font-semibold mt-1">{overview.suites.length}</div>
-          </div>
-          <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3">
-            <div className="text-xs text-neutral-500 dark:text-neutral-400">Last run</div>
-            {lastRun ? (
-              <div className="mt-1 flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusClasses(lastRun.status)}`}>
-                  {lastRun.status}
-                </span>
-                <span className="text-xs text-neutral-500 dark:text-neutral-400">{lastRun.profileLabel}</span>
+      sidebar={
+        <SidebarPaneShell widthClassName="w-full" title="Test Overview" variant="light" collapsible expandedWidth={176} persistKey="test-overview-sidebar">
+          <HierarchicalSidebarNav
+            items={[
+              { id: 'run', label: `Run (${overview.profiles.length})` },
+              { id: 'catalog', label: `Catalog (${overview.suites.length})` },
+              { id: 'history', label: `History (${runs.length})` },
+              { id: 'reports', label: `Reports (${docsByKind.reports.length})` },
+            ]}
+            onSelectItem={(id) => setActiveSection(id as TestOverviewSection)}
+            getItemState={(item) => (item.id === activeSection ? 'active' : 'inactive')}
+            variant="light"
+          />
+          <div className="mt-4 border-t border-neutral-200 dark:border-neutral-800 pt-3 px-1 space-y-2">
+            <div className="text-[10px] uppercase tracking-wider text-neutral-400 dark:text-neutral-500 font-medium px-2">
+              Summary
+            </div>
+            <div className="px-2 py-1 text-xs">
+              <span className="text-neutral-500 dark:text-neutral-400">Profiles</span>
+              <span className="ml-auto float-right font-semibold">{overview.profiles.length}</span>
+            </div>
+            <div className="px-2 py-1 text-xs">
+              <span className="text-neutral-500 dark:text-neutral-400">Suites</span>
+              <span className="ml-auto float-right font-semibold">{overview.suites.length}</span>
+            </div>
+            {lastRun && (
+              <div className="px-2 py-1 text-xs">
+                <div className="text-neutral-500 dark:text-neutral-400">Last run</div>
+                <div className="mt-1">
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusClasses(lastRun.status)}`}>
+                    {lastRun.status}
+                  </span>
+                </div>
               </div>
-            ) : (
-              <div className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">No local snapshots</div>
+            )}
+            {!canExecute && (
+              <div className="px-2 py-1 text-[10px] text-amber-600 dark:text-amber-400">
+                Read-only mode
+              </div>
             )}
           </div>
-        </section>
-
-        <SectionTabs
-          sections={sectionDefinitions}
-          activeSection={activeSection}
-          onSectionChange={setActiveSection}
-        />
+        </SidebarPaneShell>
+      }
+      sidebarWidth="w-44"
+      bodyClassName="p-4 space-y-4"
+    >
 
         {activeSection === 'run' && (
           <section className="space-y-3">

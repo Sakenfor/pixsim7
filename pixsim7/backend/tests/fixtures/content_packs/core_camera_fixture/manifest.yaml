@@ -1,0 +1,10 @@
+id: core-camera-fixture
+title: Core Camera Fixture
+description: Test fixture for camera primitive matrix presets
+matrix_presets:
+  - label: Camera Angles
+    query:
+      row_key: tag:vertical_angle
+      col_key: role
+      category: camera
+      expected_row_values: "low,high,eye"

@@ -7,6 +7,16 @@ from sqlalchemy.exc import OperationalError
 
 from scripts.seeds.game.bananza.flows import direct_flow
 
+TEST_SUITE = {
+    "id": "bananza-direct-mode-hardening",
+    "label": "Bananza Direct Mode Hardening Tests",
+    "kind": "integration",
+    "category": "scripts/bananza",
+    "subcategory": "direct-mode-hardening",
+    "covers": ["scripts/seeds/game/bananza/cli.py"],
+    "order": 53,
+}
+
 
 class _BrokenBlocksSession:
     async def execute(self, *_args: Any, **_kwargs: Any) -> Any:

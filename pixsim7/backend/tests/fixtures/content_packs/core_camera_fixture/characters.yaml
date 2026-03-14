@@ -1,0 +1,12 @@
+version: "1.0.0"
+characters:
+  - character_id: fixture.test_character
+    name: Test Character
+    display_name: Test Char
+    category: human
+    species: human
+    archetype: protagonist
+    visual_traits:
+      hair_color: brown
+    tags:
+      role: test

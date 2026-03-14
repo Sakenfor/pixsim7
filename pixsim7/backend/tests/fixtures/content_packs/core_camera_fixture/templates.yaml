@@ -1,0 +1,18 @@
+version: "1.0.0"
+templates:
+  - slug: fixture-camera-angle-template
+    name: Camera Angle Template
+    package_name: core_camera_fixture
+    composition_strategy: sequential
+    slots:
+      - label: Camera Angle
+        category: camera
+        block_source: primitives
+        package_name: core_camera_fixture
+        tags:
+          all:
+            vertical_angle: eye
+      - label: Secondary Camera
+        category: camera
+        block_source: primitives
+        package_name: other_pack

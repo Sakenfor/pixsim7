@@ -27,6 +27,19 @@ try:
 except ImportError:
     IMPORTS_AVAILABLE = False
 
+TEST_SUITE = {
+    "id": "codegen-admin-api",
+    "label": "Codegen Admin API Tests",
+    "kind": "contract",
+    "category": "backend/api",
+    "subcategory": "codegen",
+    "covers": [
+        "pixsim7/backend/main/api/v1/codegen.py",
+        "pixsim7/backend/main/services/codegen/test_runner.py",
+    ],
+    "order": 25,
+}
+
 
 def _mock_user(*, permissions: list[str] | None = None) -> MagicMock:
     granted = set(permissions or [])

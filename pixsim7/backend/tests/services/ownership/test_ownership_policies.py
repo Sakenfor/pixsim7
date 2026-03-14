@@ -14,6 +14,18 @@ from pixsim7.backend.main.services.ownership.policies import (
     assert_can_access,
 )
 
+TEST_SUITE = {
+    "id": "ownership-policies-service",
+    "label": "Ownership Policies Tests",
+    "kind": "unit",
+    "category": "backend/ownership",
+    "subcategory": "policies",
+    "covers": [
+        "pixsim7/backend/main/services/ownership/policies.py",
+    ],
+    "order": 31,
+}
+
 
 def test_assert_can_access_user_scope_requires_auth_when_owner_missing() -> None:
     with pytest.raises(HTTPException) as exc:

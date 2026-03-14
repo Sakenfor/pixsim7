@@ -27,6 +27,19 @@ from pixsim7.backend.main.infrastructure.database.session import _strip_tz_from_
 from pixsim7.backend.main.services.asset.asset_factory import add_asset
 from pixsim7.backend.main.shared.config import settings
 
+TEST_SUITE = {
+    "id": "assets-upload-api",
+    "label": "Assets Upload API Tests",
+    "kind": "contract",
+    "category": "backend/api",
+    "subcategory": "assets-upload",
+    "covers": [
+        "pixsim7/backend/main/api/v1/assets_upload.py",
+        "pixsim7/backend/main/services/asset/ingestion.py",
+    ],
+    "order": 26,
+}
+
 
 def _make_upload_file(
     *,

@@ -1,0 +1,26 @@
+version: "1.0.0"
+package_name: core_camera_fixture
+defaults:
+  source: system
+  is_public: true
+blocks:
+  - block_id: fixture.camera.low_angle
+    category: camera
+    text: "Low angle perspective, looking upward at the subject"
+    tags:
+      vertical_angle: low
+      effect: imposing
+
+  - block_id: fixture.camera.high_angle
+    category: camera
+    text: "High angle perspective, looking down at the subject"
+    tags:
+      vertical_angle: high
+      effect: diminishing
+
+  - block_id: fixture.camera.eye_level
+    category: camera
+    text: "Eye level neutral framing"
+    tags:
+      vertical_angle: eye
+      effect: neutral
