@@ -83,6 +83,13 @@ export interface DefinePanelOptions<TSettings = any> {
   settingScopes?: string[];
   scopes?: string[];
 
+  /**
+   * Shorthand: auto-adds 'generation' to settingScopes so the panel
+   * gets its own GenerationScopeProvider (settings, input, session stores).
+   * Panel can then call useGenerationScopeStores() and executeGeneration().
+   */
+  generationCapable?: boolean;
+
   // Settings
   defaultSettings?: TSettings;
   settingsVersion?: number;
@@ -167,6 +174,7 @@ export function definePanel<TSettings = any>(
     providesCapabilities,
     settingScopes,
     scopes,
+    generationCapable,
     defaultSettings,
     settingsVersion,
     settingsSchema,
@@ -187,7 +195,15 @@ export function definePanel<TSettings = any>(
   } = options;
 
   const resolvedContexts = availability?.docks ?? availableIn ?? contexts;
-  const resolvedSettingScopes = settingScopes ?? scopes;
+  let resolvedSettingScopes = settingScopes ?? scopes;
+
+  // Auto-add 'generation' scope when generationCapable is declared
+  if (generationCapable) {
+    resolvedSettingScopes = resolvedSettingScopes ? [...resolvedSettingScopes] : [];
+    if (!resolvedSettingScopes.includes('generation')) {
+      resolvedSettingScopes.push('generation');
+    }
+  }
 
   // Warn about unregistered scopes in development
   if (import.meta.env.DEV && resolvedSettingScopes?.length) {

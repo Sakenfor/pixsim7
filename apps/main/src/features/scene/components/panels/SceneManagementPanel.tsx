@@ -8,12 +8,13 @@
  * - Scene Playback: Test and preview scenes in the editor
  */
 
-import { Badge, SidebarContentLayout } from '@pixsim7/shared.ui';
-import { useMemo, useState } from 'react';
+import { Badge, SidebarContentLayout, useDetachableSidebarNav } from '@pixsim7/shared.ui';
+import { useMemo } from 'react';
 
 import { Icon } from '@lib/icons';
 
 import { useGraphStore } from '@features/graph';
+import { useDetachableSidebar } from '@features/panels/lib/useDetachableSidebar';
 import { useProjectSessionStore } from '@features/scene';
 
 import { SceneBuilderPanel } from './SceneBuilderPanel';
@@ -22,7 +23,6 @@ import { SceneLibraryPanel } from './SceneLibraryPanel';
 import { ScenePlaybackPanel } from './ScenePlaybackPanel';
 
 type TabId = 'builder' | 'library' | 'collections' | 'playback';
-type SectionId = 'authoring' | 'runtime';
 
 interface SceneManagementPanelProps {
   // Scene collection props
@@ -59,14 +59,6 @@ function ProjectContextHeader() {
   );
 }
 
-function getSectionIdForTab(tabId: TabId): SectionId {
-  return tabId === 'playback' ? 'runtime' : 'authoring';
-}
-
-function getDefaultTabForSection(sectionId: SectionId): TabId {
-  return sectionId === 'runtime' ? 'playback' : 'builder';
-}
-
 export function SceneManagementPanel({
   selectedCollectionId,
   onCollectionSelect,
@@ -75,10 +67,6 @@ export function SceneManagementPanel({
   onPlaybackStop,
   initialTab = 'library',
 }: SceneManagementPanelProps) {
-  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
-  const [expandedSectionIds, setExpandedSectionIds] = useState<Set<string>>(
-    () => new Set<SectionId>(['authoring', 'runtime']),
-  );
   const listScenes = useGraphStore((s) => s.listScenes);
 
   // Get available scene IDs for collection validation
@@ -95,17 +83,17 @@ export function SceneManagementPanel({
         icon: <Icon name="layoutGrid" size={14} className="flex-shrink-0" />,
         children: [
           {
-            id: 'builder',
+            id: 'builder' as TabId,
             label: 'Builder',
             icon: <Icon name="layoutGrid" size={12} className="flex-shrink-0" />,
           },
           {
-            id: 'library',
+            id: 'library' as TabId,
             label: 'Scene Library',
             icon: <Icon name="library" size={12} className="flex-shrink-0" />,
           },
           {
-            id: 'collections',
+            id: 'collections' as TabId,
             label: 'Collections',
             icon: <Icon name="folderTree" size={12} className="flex-shrink-0" />,
           },
@@ -117,7 +105,7 @@ export function SceneManagementPanel({
         icon: <Icon name="play" size={14} className="flex-shrink-0" />,
         children: [
           {
-            id: 'playback',
+            id: 'playback' as TabId,
             label: 'Playback',
             icon: <Icon name="play" size={12} className="flex-shrink-0" />,
           },
@@ -127,47 +115,36 @@ export function SceneManagementPanel({
     [],
   );
 
-  const activeSectionId = getSectionIdForTab(activeTab);
-
-  const handleSelectSection = (sectionId: string) => {
-    if (sectionId !== 'authoring' && sectionId !== 'runtime') {
-      return;
-    }
-    setActiveTab(getDefaultTabForSection(sectionId));
-  };
-
-  const handleSelectChild = (_parentId: string, childId: string) => {
-    if (childId === 'builder' || childId === 'library' || childId === 'collections' || childId === 'playback') {
-      setActiveTab(childId);
-    }
-  };
-
-  const handleToggleExpand = (sectionId: string) => {
-    setExpandedSectionIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(sectionId)) {
-        next.delete(sectionId);
-      } else {
-        next.add(sectionId);
-      }
-      return next;
-    });
-  };
+  const nav = useDetachableSidebarNav({
+    sidebarId: 'scene-management-sidebar',
+    sections: navSections,
+    initial: initialTab,
+  });
+  const sidebar = useDetachableSidebar({
+    sidebarId: 'scene-management-sidebar',
+    companionPanelId: 'scene-management-nav',
+    dockviewId: 'workspace',
+  });
+  const activeTab = nav.activeId as TabId;
 
   return (
     <div className="h-full min-h-0 flex bg-white dark:bg-neutral-900">
       <SidebarContentLayout
         sections={navSections}
-        activeSectionId={activeSectionId}
-        onSelectSection={handleSelectSection}
-        activeChildId={activeTab}
-        onSelectChild={handleSelectChild}
-        expandedSectionIds={expandedSectionIds}
-        onToggleExpand={handleToggleExpand}
+        activeSectionId={nav.activeSectionId}
+        onSelectSection={nav.selectSection}
+        activeChildId={nav.activeChildId}
+        onSelectChild={nav.selectChild}
+        expandedSectionIds={nav.expandedSectionIds}
+        onToggleExpand={nav.toggleExpand}
         sidebarTitle={<ProjectContextHeader />}
         sidebarWidth="w-56"
         variant="light"
         navClassName="space-y-1"
+        collapsible
+        expandedWidth={224}
+        persistKey="scene-management-sidebar"
+        detachable={sidebar.detachableProps}
       >
         {activeTab === 'builder' && <SceneBuilderPanel showInspector={false} />}
 

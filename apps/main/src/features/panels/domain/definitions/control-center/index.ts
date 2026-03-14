@@ -1,4 +1,5 @@
 import { ControlCenterManager } from '@features/controlCenter';
+import { createDockPanelPrefsSettingsSection } from '@features/docks';
 import { DOCK_IDS, PANEL_IDS } from '@features/panels/lib/panelIds';
 import { createPanelSchemaSettingsSection } from '@features/settings';
 
@@ -21,6 +22,14 @@ export default definePanel({
       title: 'UI Settings',
       description: 'Dock layout and interaction preferences.',
       component: createPanelSchemaSettingsSection('workspace', DOCK_IDS.controlCenter),
+    },
+    {
+      id: 'panel-preferences',
+      title: 'Panels',
+      description: 'Enable or disable control-center dock panels.',
+      component: createDockPanelPrefsSettingsSection({
+        dockId: DOCK_IDS.controlCenter,
+      }),
     },
   ],
   orchestration: {

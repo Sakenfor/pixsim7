@@ -74,6 +74,28 @@ export const DEFAULT_BLOCK_MATRIX_PRESETS: BlockMatrixPreset[] = [
     },
   },
   {
+    id: 'op-signature',
+    source: 'builtin',
+    label: 'Op x Signature',
+    description: 'Operational coverage by concrete op_id and signature contract',
+    query: {
+      row_key: 'op_id',
+      col_key: 'signature_id',
+      include_empty: false,
+    },
+  },
+  {
+    id: 'signature-category',
+    source: 'builtin',
+    label: 'Signature x Category',
+    description: 'Which categories implement each op signature',
+    query: {
+      row_key: 'signature_id',
+      col_key: 'category',
+      include_empty: false,
+    },
+  },
+  {
     id: 'pose-lock-coverage',
     source: 'builtin',
     label: 'Pose Lock Coverage',

@@ -7,11 +7,14 @@
 import { useContextMenuOptional } from '@pixsim7/shared.ui.context-menu';
 import { DockviewDefaultTab } from 'dockview';
 import type { IDockviewPanelHeaderProps } from 'dockview-core';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+
+import { Icon } from '@lib/icons';
 
 import { useContextHubState } from '@features/contextHub';
 
 
+import { resolveBadgesForScopes } from '../capabilityBadges';
 import {
   buildFloatingOriginMetaRecord,
   deriveFloatingGroupRestoreHint,
@@ -192,14 +195,32 @@ export function CustomTabComponent(props: IDockviewPanelHeaderProps) {
     window.addEventListener('pointercancel', onPointerUp, true);
   };
 
+  // Resolve capability badges from panel definition's settingScopes
+  const capabilityBadges = useMemo(() => {
+    const definitionId = resolveDockviewPanelDefinitionId(props.api);
+    if (!definitionId || !panelRegistry) return [];
+    const definition = panelRegistry.get?.(definitionId);
+    const scopes = definition?.settingScopes ?? definition?.scopes;
+    return resolveBadgesForScopes(scopes);
+  }, [props.api, panelRegistry]);
+
   return (
     <div
       ref={rootRef}
       onContextMenu={handleContextMenu}
       onPointerDownCapture={handlePointerDownCapture}
-      className="h-full"
+      className="h-full flex items-center"
     >
       <DockviewDefaultTab {...props} tabLocation="header" />
+      {capabilityBadges.length > 0 && (
+        <span className="flex items-center gap-0.5 mr-1 -ml-1 opacity-50">
+          {capabilityBadges.map((badge) => (
+            <span key={badge.scopeId} title={badge.tooltip}>
+              <Icon name={badge.icon} size={10} />
+            </span>
+          ))}
+        </span>
+      )}
     </div>
   );
 }

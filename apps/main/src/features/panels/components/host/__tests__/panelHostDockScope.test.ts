@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveScopedOutOfLayoutPanelIds, type PanelLookupSource } from "../panelHostDockScope";
+import {
+  resolveScopedOutOfLayoutPanelIds,
+  resolveScopedPanelIds,
+  type PanelLookupSource,
+} from "../panelHostDockScope";
 
 function createSource(): PanelLookupSource {
   const allIds = [
@@ -80,5 +84,54 @@ describe("resolveScopedOutOfLayoutPanelIds", () => {
         allowedCategories: ["tools"],
       })
     ).toEqual(["quickGenerate", "quickgen-prompt", "inspector", "logs"]);
+  });
+});
+
+describe("resolveScopedPanelIds", () => {
+  it("returns explicit panels when provided", () => {
+    const source = createSource();
+    expect(
+      resolveScopedPanelIds(source, {
+        panels: ["media-preview", "info"],
+      })
+    ).toEqual(["media-preview", "info"]);
+  });
+
+  it("returns scoped panel IDs when dockId is provided", () => {
+    const source = createSource();
+    expect(
+      resolveScopedPanelIds(source, {
+        dockId: "asset-viewer",
+      })
+    ).toEqual(["media-preview", "quickGenerate", "info"]);
+  });
+
+  it("applies filters in scoped mode", () => {
+    const source = createSource();
+    expect(
+      resolveScopedPanelIds(source, {
+        dockId: "asset-viewer",
+        excludePanels: ["info"],
+      })
+    ).toEqual(["media-preview", "quickGenerate"]);
+
+    expect(
+      resolveScopedPanelIds(source, {
+        dockId: "asset-viewer",
+        allowedPanels: ["quickGenerate", "info"],
+      })
+    ).toEqual(["quickGenerate", "info"]);
+
+    expect(
+      resolveScopedPanelIds(source, {
+        dockId: "asset-viewer",
+        allowedCategories: ["tools"],
+      })
+    ).toEqual(["media-preview", "info"]);
+  });
+
+  it("returns empty list when neither dockId nor panels are set", () => {
+    const source = createSource();
+    expect(resolveScopedPanelIds(source, {})).toEqual([]);
   });
 });

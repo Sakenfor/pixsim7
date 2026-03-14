@@ -162,12 +162,16 @@ export function SmartDockviewBase<TContext = any>({
       }
       apiRef.current = event.api;
       layoutController.onReady(event.api);
-      onReadyRef.current?.(event.api);
 
+      // Load saved layout BEFORE firing onReady so that panel reconciliation
+      // (e.g. PanelHostDockview.ensurePanels) sees the restored panels and
+      // only adds genuinely missing ones instead of duplicating them.
       const loaded = layoutController.loadLayout ? layoutController.loadLayout() : false;
       if (!loaded && defaultLayoutRef.current) {
         defaultLayoutRef.current(event.api);
       }
+
+      onReadyRef.current?.(event.api);
       setIsReady(true);
     },
     [layoutController],

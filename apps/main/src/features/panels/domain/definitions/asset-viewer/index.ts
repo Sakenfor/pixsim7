@@ -1,3 +1,4 @@
+import { createDockPanelPrefsSettingsSection } from '@features/docks';
 import { DOCK_IDS, PANEL_IDS } from '@features/panels/lib/panelIds';
 import { createPanelSchemaSettingsSection } from '@features/settings';
 
@@ -22,6 +23,15 @@ export default definePanel({
       title: 'UI Settings',
       description: 'Viewer defaults and playback behavior.',
       component: createPanelSchemaSettingsSection('workspace', DOCK_IDS.assetViewer),
+    },
+    {
+      id: 'panel-preferences',
+      title: 'Panels',
+      description: 'Enable or disable asset-viewer dock panels.',
+      component: createDockPanelPrefsSettingsSection({
+        dockId: DOCK_IDS.assetViewer,
+        requiredPanelIds: ['media-preview'],
+      }),
     },
   ],
   orchestration: {
