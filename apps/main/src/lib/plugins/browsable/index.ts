@@ -15,7 +15,6 @@ import { workspaceConfigs } from './workspaceConfigs';
 export {
   dockWidgetConfig,
   workspacePanelConfig,
-  panelGroupConfig,
   workspaceConfigs,
 } from './workspaceConfigs';
 export { graphEditorConfig, devToolConfig, toolsConfigs } from './toolsConfigs';
