@@ -307,10 +307,10 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
         <SmartDockview
           key={resetKey}
           panels={resolvedPanels}
-          dockId={dockId}
-          excludePanels={excludePanels}
-          allowedPanels={allowedPanels}
-          allowedCategories={allowedCategories}
+          dockId={resolvedPanels ? undefined : dockId}
+          excludePanels={resolvedPanels ? undefined : excludePanels}
+          allowedPanels={resolvedPanels ? undefined : allowedPanels}
+          allowedCategories={resolvedPanels ? undefined : allowedCategories}
           storageKey={storageKey}
           context={context}
           defaultPanelScopes={defaultPanelScopes}

@@ -27,6 +27,8 @@ import {
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import type { ViewerAsset } from '@features/assets';
+import { filterPanelsByPrefs } from '@features/docks';
+import { useDockPanelPrefs } from '@features/docks/stores';
 import {
   PanelHostDockview,
   usePanelCatalogBootstrap,
@@ -69,8 +71,8 @@ const DEFAULT_VIEWER_PANEL_IDS = [
   'media-preview',
   'quickGenerate',
   'info',
-  'interactive-surface',
 ] as const;
+const REQUIRED_VIEWER_PANEL_IDS = ['media-preview'] as const;
 
 function arePanelDefinitionsRegistered(panelIds: readonly string[]): boolean {
   return panelIds.every((panelId) => panelSelectors.has(panelId));
@@ -184,16 +186,26 @@ export function AssetViewerDockview({
   className,
   panelManagerId,
 }: AssetViewerDockviewProps) {
+  const panelPrefs = useDockPanelPrefs(DOCK_IDS.assetViewer, (prefs) => prefs);
   const { catalogVersion, initializationComplete } = usePanelCatalogBootstrap({
     contexts: [DOCK_IDS.assetViewer],
     onInitializeError: (error) => {
       console.error('[AssetViewerDockview] Failed to initialize asset-viewer panels:', error);
     },
   });
-  const scopedPanelIds = useMemo(
-    () => panelSelectors.getIdsForScope(DOCK_IDS.assetViewer),
+  const scopedPanels = useMemo(
+    () => panelSelectors.getPanelsForScope(DOCK_IDS.assetViewer),
     [catalogVersion],
   );
+  const enabledScopedPanels = useMemo(
+    () => filterPanelsByPrefs(scopedPanels, panelPrefs),
+    [scopedPanels, panelPrefs],
+  );
+  const scopedPanelIds = useMemo(
+    () => enabledScopedPanels.map((panel) => panel.id),
+    [enabledScopedPanels],
+  );
+  const scopedPanelIdSet = useMemo(() => new Set(scopedPanelIds), [scopedPanelIds]);
   const defaultPanelsRegistered = arePanelDefinitionsRegistered(DEFAULT_VIEWER_PANEL_IDS);
   const panelsReady = defaultPanelsRegistered;
   const showLoadingPlaceholder = !initializationComplete && !defaultPanelsRegistered;
@@ -203,13 +215,24 @@ export function AssetViewerDockview({
       if (!panelsReady) {
         return [];
       }
-      const merged = new Set<string>(DEFAULT_VIEWER_PANEL_IDS);
-      for (const panelId of scopedPanelIds) {
-        merged.add(panelId);
+
+      // Only include required + default panels. Additional scoped panels
+      // (e.g. asset-tags, interactive-surface) are available via context menu
+      // but not forced into the layout.
+      const merged = new Set<string>();
+      for (const panelId of REQUIRED_VIEWER_PANEL_IDS) {
+        if (panelSelectors.has(panelId)) {
+          merged.add(panelId);
+        }
       }
-      return Array.from(merged).filter((panelId) => panelSelectors.has(panelId));
+      for (const panelId of DEFAULT_VIEWER_PANEL_IDS) {
+        if (scopedPanelIdSet.has(panelId) && panelSelectors.has(panelId)) {
+          merged.add(panelId);
+        }
+      }
+      return Array.from(merged);
     },
-    [panelsReady, scopedPanelIds]
+    [panelsReady, scopedPanelIds, scopedPanelIdSet]
   );
   const viewerPanelIdSet = useMemo(() => new Set(viewerPanelIds), [viewerPanelIds]);
   const resolvedDockviewId = panelManagerId ?? DOCK_IDS.assetViewer;
@@ -323,6 +346,7 @@ export function AssetViewerDockview({
       ref={panelHostRef}
       panels={useDockId ? undefined : viewerPanelIds}
       dockId={useDockId ? DOCK_IDS.assetViewer : undefined}
+      allowedPanels={useDockId ? viewerPanelIds : undefined}
       excludePanels={useDockId ? floatingViewerPanelIds : undefined}
       storageKey="dockview:asset-viewer:v5"
       excludeFromLayout={floatingViewerPanelIds}

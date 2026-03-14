@@ -1,4 +1,5 @@
 import { ROLE_COLORS } from '@pixsim7/shared.types/composition-roles.generated';
+import { SidebarContentLayout, useSidebarNav } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -42,6 +43,37 @@ import { PromptInteractionsWorkbench } from './PromptInteractionsWorkbench';
 import { PromptPackAuthoringWorkbench } from './PromptPackAuthoringWorkbench';
 
 type TabId = 'packages' | 'templates' | 'blocks' | 'matrix' | 'interactions' | 'authoring' | 'prompt-authoring';
+
+const NAV_SECTIONS = [
+  {
+    id: 'browse',
+    label: 'Browse',
+    icon: <Icon name="library" size={14} className="flex-shrink-0" />,
+    children: [
+      { id: 'packages' as TabId, label: 'Packages', icon: <Icon name="library" size={12} className="flex-shrink-0" /> },
+      { id: 'templates' as TabId, label: 'Templates', icon: <Icon name="layers" size={12} className="flex-shrink-0" /> },
+      { id: 'blocks' as TabId, label: 'Blocks', icon: <Icon name="grid" size={12} className="flex-shrink-0" /> },
+      { id: 'matrix' as TabId, label: 'Matrix', icon: <Icon name="grid" size={12} className="flex-shrink-0" /> },
+    ],
+  },
+  {
+    id: 'authoring-group',
+    label: 'Authoring',
+    icon: <Icon name="pencil" size={14} className="flex-shrink-0" />,
+    children: [
+      { id: 'prompt-authoring' as TabId, label: 'Prompt Authoring', icon: <Icon name="gitBranch" size={12} className="flex-shrink-0" /> },
+      { id: 'authoring' as TabId, label: 'Pack Authoring', icon: <Icon name="pencil" size={12} className="flex-shrink-0" /> },
+    ],
+  },
+  {
+    id: 'analysis',
+    label: 'Analysis',
+    icon: <Icon name="sparkles" size={14} className="flex-shrink-0" />,
+    children: [
+      { id: 'interactions' as TabId, label: 'Interactions', icon: <Icon name="sparkles" size={12} className="flex-shrink-0" /> },
+    ],
+  },
+];
 
 interface PromptLibraryInspectorPanelProps {
   tab?: TabId;
@@ -114,7 +146,21 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
   const contextFocusRoleId =
     typeof props.context?.focusRoleId === 'string' ? props.context.focusRoleId : undefined;
   const focusRoleId = props.focusRoleId ?? contextFocusRoleId;
-  const [tab, setTab] = useState<TabId>('packages');
+  const persistedTab = useMemo(() => {
+    try {
+      const saved = localStorage.getItem('prompt-library-inspector:tab');
+      if (saved && ['packages', 'templates', 'blocks', 'matrix', 'interactions', 'authoring', 'prompt-authoring'].includes(saved)) {
+        return saved as TabId;
+      }
+    } catch { /* ignore */ }
+    return 'packages' as TabId;
+  }, []);
+  const nav = useSidebarNav<string, TabId>({ sections: NAV_SECTIONS, initial: persistedTab });
+  const tab = nav.activeId as TabId;
+  const setTab = useCallback((id: TabId) => {
+    nav.navigate(id);
+    try { localStorage.setItem('prompt-library-inspector:tab', id); } catch { /* ignore */ }
+  }, [nav]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -440,43 +486,35 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-neutral-50 dark:bg-neutral-900">
-      <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
-        <div className="flex items-center gap-1">
-          {([
-            ['packages', 'Packages', 'library'],
-            ['templates', 'Templates', 'layers'],
-            ['blocks', 'Blocks', 'grid'],
-            ['matrix', 'Matrix', 'grid'],
-            ['interactions', 'Interactions', 'sparkles'],
-            ['prompt-authoring', 'Prompt Authoring', 'gitBranch'],
-            ['authoring', 'Pack Authoring', 'pencil'],
-          ] as Array<[TabId, string, string]>).map(([id, label, icon]) => (
+    <div className="h-full min-h-0 flex bg-neutral-50 dark:bg-neutral-900">
+      <SidebarContentLayout
+        sections={NAV_SECTIONS}
+        activeSectionId={nav.activeSectionId}
+        onSelectSection={nav.selectSection}
+        activeChildId={nav.activeChildId}
+        onSelectChild={nav.selectChild}
+        expandedSectionIds={nav.expandedSectionIds}
+        onToggleExpand={nav.toggleExpand}
+        sidebarTitle={
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-sm">Prompt Library</span>
             <button
-              key={id}
               type="button"
-              onClick={() => setTab(id)}
-              className={clsx(
-                'text-xs px-2 py-1 rounded border inline-flex items-center gap-1.5',
-                tab === id
-                  ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300'
-                  : 'border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-300',
-              )}
+              onClick={() => void refreshAll()}
+              className="text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300"
+              aria-label="Refresh"
             >
-              <Icon name={icon} size={12} />
-              {label}
+              <Icon name="refresh" size={12} />
             </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => void refreshAll()}
-          className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 inline-flex items-center gap-1"
-        >
-          <Icon name="refresh" size={12} />
-          Refresh
-        </button>
-      </div>
+          </span>
+        }
+        sidebarWidth="w-44"
+        variant="light"
+        navClassName="space-y-1"
+        collapsible
+        expandedWidth={176}
+        persistKey="prompt-library-sidebar"
+      >
 
       {tab === 'blocks' && (
         <div className="flex-1 min-h-0">
@@ -1041,7 +1079,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
       )}
 
       {tab === 'prompt-authoring' && (
-        <div className="flex-1 min-h-0">
+        <div className="h-full">
           <PromptAuthoringWorkbenchHost />
         </div>
       )}
@@ -1051,6 +1089,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
           <PromptPackAuthoringWorkbench />
         </div>
       )}
+      </SidebarContentLayout>
     </div>
   );
 }
