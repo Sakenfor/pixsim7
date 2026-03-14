@@ -11,7 +11,7 @@ import type {
   ExtendedPluginMetadata,
 } from '@pixsim7/shared.plugins';
 import { CAPABILITY_LABELS } from '@pixsim7/shared.plugins';
-import { Button, Panel, Badge } from '@pixsim7/shared.ui';
+import { Button, Panel, Badge, FilterPillGroup } from '@pixsim7/shared.ui';
 import { useState, useSyncExternalStore, useMemo, useCallback, useRef } from 'react';
 
 import { Icon } from '@lib/icons';
@@ -181,16 +181,26 @@ export function PluginManagerUI() {
   const allPlugins = useCatalogPlugins();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [familyFilter, setFamilyFilter] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Sorted plugins, optionally filtered by family
+  // Sorted plugins, filtered by family and search
   const plugins = useMemo(() => {
     let list = [...allPlugins];
     if (familyFilter) {
       list = list.filter(p => p.family === familyFilter);
     }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q) ||
+        p.description?.toLowerCase().includes(q) ||
+        p.tags?.some(t => t.toLowerCase().includes(q))
+      );
+    }
     list.sort((a, b) => a.name.localeCompare(b.name));
     return list;
-  }, [allPlugins, familyFilter]);
+  }, [allPlugins, familyFilter, searchQuery]);
 
   // Available families for filter
   const families = useMemo(() => {
@@ -214,33 +224,28 @@ export function PluginManagerUI() {
         </div>
       </div>
 
+      {/* Search */}
+      <input
+        type="text"
+        placeholder="Search plugins..."
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        className="w-full px-3 py-2 text-sm border border-neutral-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+
       {/* Family filter */}
       {families.length > 1 && (
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            className={`px-2 py-1 text-xs rounded border transition-colors ${
-              !familyFilter
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700 hover:border-blue-400'
-            }`}
-            onClick={() => setFamilyFilter(null)}
-          >
-            All ({allPlugins.length})
-          </button>
-          {families.map(([family, count]) => (
-            <button
-              key={family}
-              className={`px-2 py-1 text-xs rounded border transition-colors ${
-                familyFilter === family
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700 hover:border-blue-400'
-              }`}
-              onClick={() => setFamilyFilter(family)}
-            >
-              {FAMILY_LABELS[family as PluginFamily] ?? family} ({count})
-            </button>
-          ))}
-        </div>
+        <FilterPillGroup
+          options={families.map(([family, count]) => ({
+            value: family,
+            label: FAMILY_LABELS[family as PluginFamily] ?? family,
+            count,
+          }))}
+          value={familyFilter}
+          onChange={setFamilyFilter}
+          allLabel="All"
+          allCount={allPlugins.length}
+        />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

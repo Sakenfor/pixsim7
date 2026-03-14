@@ -35,9 +35,6 @@
 export { InteractiveImageSurface, default } from './InteractiveImageSurface';
 export type { InteractiveImageSurfaceHandle } from './InteractiveImageSurface';
 
-// Demo component (reference implementation for mask editing)
-export { InteractiveSurfaceDemo } from './InteractiveSurfaceDemo';
-
 // Curve utilities
 export {
   hitTestCurve,

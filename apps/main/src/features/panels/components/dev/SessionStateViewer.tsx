@@ -1,6 +1,6 @@
 import { parseNpcKey } from "@pixsim7/game.engine";
 import { SessionId as toSessionId } from "@pixsim7/shared.types";
-import { Button, Select, useToast } from "@pixsim7/shared.ui";
+import { Button, Select, useToast, FilterPillGroup } from "@pixsim7/shared.ui";
 import { useState, useEffect } from "react";
 
 import {
@@ -414,19 +414,16 @@ export function SessionStateViewer() {
       </div>
 
       {/* Filter */}
-      <div className="flex gap-1">
-        {(["all", "arcs", "quests", "relationships", "inventory"] as const).map(
-          (f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-2 py-1 text-xs rounded ${filter === f ? "bg-blue-500 text-white" : "bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300"}`}
-            >
-              {f.charAt(0).toUpperCase() + f.slice(1)}
-            </button>
-          ),
-        )}
-      </div>
+      <FilterPillGroup
+        options={(["arcs", "quests", "relationships", "inventory"] as const).map((f) => ({
+          value: f,
+          label: f.charAt(0).toUpperCase() + f.slice(1),
+        }))}
+        value={filter === "all" ? null : filter}
+        onChange={(v) => setFilter(v ?? "all")}
+        allLabel="All"
+        size="sm"
+      />
 
       {/* World Time */}
       <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">

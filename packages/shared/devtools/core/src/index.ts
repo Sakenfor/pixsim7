@@ -11,7 +11,6 @@ import type { PluginMeta } from '@pixsim7/shared.plugins';
 export type DevToolId =
   | 'session-state-viewer'
   | 'plugin-workspace'
-  | 'dependency-graph'
   | 'app-map'
   | 'generation-debug'
   | string;

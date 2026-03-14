@@ -231,6 +231,9 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
     return panelDef.availableIn.some((scope) => dockviewIdMatches(scope, dockviewId));
   }, [definitionId]);
 
+  const rndRef = useRef<Rnd | null>(null);
+  const dragElRef = useRef<HTMLElement | null>(null);
+
   const {
     activeDropZone,
     activeTarget,
@@ -242,6 +245,7 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
     canDockInto,
     holdDelayMs: 520,
     activationInsetPx: 24,
+    dragElementRef: dragElRef,
   });
 
   // Keep activeDropZone/activeTarget in refs so handleDrag always reads the latest value
@@ -249,8 +253,6 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
   activeDropZoneRef.current = activeDropZone;
   const activeTargetRef = useRef<DragToDockTarget | null>(null);
   activeTargetRef.current = activeTarget;
-
-  const rndRef = useRef<Rnd | null>(null);
 
   const isDevToolPanel =
     typeof definitionId === "string" && definitionId.startsWith("dev-tool:");
@@ -349,6 +351,8 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
   };
 
   const handleDragStart = () => {
+    // Sync the drag element ref so useDragToDock can exclude child dockviews
+    dragElRef.current = rndRef.current?.getSelfElement() ?? null;
     onDragStart();
     onDragStateChange(panel.id, true, null, null);
   };
@@ -363,10 +367,14 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
   };
 
   const handleDragStop = (_e: unknown, d: { x: number; y: number }) => {
+    // Read the component's state-synced ref BEFORE onDragStop resets everything.
+    // This ref only becomes non-null after React renders the drop zone overlay,
+    // so it guards against docking when the user never saw the highlight.
+    const wasHighlightRendered = activeDropZoneRef.current !== null;
     const result = onDragStop();
     onDragStateChange(panel.id, false, null, null);
 
-    if (result.shouldDock && result.zone) {
+    if (result.shouldDock && result.zone && wasHighlightRendered) {
       panelPlacementCoordinator.dockFloatingPanel(panel.id, {
         direction: result.zone === "center" ? "within" : result.zone,
         targetDockviewId: result.targetDockviewId ?? undefined,

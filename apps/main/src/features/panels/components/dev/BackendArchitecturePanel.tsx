@@ -1,4 +1,7 @@
+import { FilterPillGroup } from "@pixsim7/shared.ui";
 import React, { useState, useEffect } from "react";
+
+import { BACKEND_BASE } from "@lib/api/client";
 
 interface BackendArchitectureData {
   version: string;
@@ -53,9 +56,7 @@ interface BackendArchitectureData {
   };
 }
 
-interface BackendArchitecturePanelProps {}
-
-export function BackendArchitecturePanel({}: BackendArchitecturePanelProps) {
+export function BackendArchitecturePanel() {
   const [data, setData] = useState<BackendArchitectureData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +71,7 @@ export function BackendArchitecturePanel({}: BackendArchitecturePanelProps) {
   const fetchArchitectureData = async () => {
     try {
       setLoading(true);
-      const response = await fetch("/dev/architecture/map");
+      const response = await fetch(`${BACKEND_BASE}/dev/architecture/map`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -155,47 +156,17 @@ export function BackendArchitecturePanel({}: BackendArchitecturePanelProps) {
       </div>
 
       {/* View Tabs */}
-      <div className="border-b border-neutral-200 dark:border-neutral-700 px-4 py-2 flex gap-2">
-        <button
-          onClick={() => setActiveView("services")}
-          className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            activeView === "services"
-              ? "bg-blue-500 text-white"
-              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-          }`}
-        >
-          Service Composition
-        </button>
-        <button
-          onClick={() => setActiveView("routes")}
-          className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            activeView === "routes"
-              ? "bg-blue-500 text-white"
-              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-          }`}
-        >
-          Routes & Capabilities
-        </button>
-        <button
-          onClick={() => setActiveView("capabilities")}
-          className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            activeView === "capabilities"
-              ? "bg-blue-500 text-white"
-              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-          }`}
-        >
-          Capability APIs
-        </button>
-        <button
-          onClick={() => setActiveView("permissions")}
-          className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            activeView === "permissions"
-              ? "bg-blue-500 text-white"
-              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-          }`}
-        >
-          Permission Matrix
-        </button>
+      <div className="border-b border-neutral-200 dark:border-neutral-700 px-4 py-2">
+        <FilterPillGroup
+          options={[
+            { value: 'services' as const, label: 'Service Composition' },
+            { value: 'routes' as const, label: 'Routes & Capabilities' },
+            { value: 'capabilities' as const, label: 'Capability APIs' },
+            { value: 'permissions' as const, label: 'Permission Matrix' },
+          ]}
+          value={activeView}
+          onChange={(v) => v && setActiveView(v)}
+        />
       </div>
 
       {/* Content */}

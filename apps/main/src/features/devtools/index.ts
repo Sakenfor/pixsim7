@@ -21,8 +21,6 @@ export {
   generationHealthTool,
   capabilityTestingTool,
   appMapTool,
-  dependencyGraphTool,
-  backendArchitectureTool,
   gizmoSurfacesTool,
   promptImporterTool,
   blockFitTool,

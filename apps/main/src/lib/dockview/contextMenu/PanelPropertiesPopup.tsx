@@ -541,7 +541,7 @@ export function PropertiesPopup() {
   return createPortal(
     <div
       ref={popupRef}
-      className="fixed z-[9998]"
+      className="fixed z-[10200]"
       style={{ left: `${coords.x}px`, top: `${coords.y}px` }}
       data-properties-popup
     >

@@ -101,7 +101,7 @@ export function ContextMenuPortal({ renderIcon = defaultRenderIcon }: ContextMen
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-[9999]"
+      className="fixed z-[10200]"
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
@@ -266,7 +266,7 @@ function MenuItemComponent({ item, onClose, depth = 0, renderIcon }: MenuItemCom
       {hasChildren && showChildren && submenuPos && (
         <div
           ref={submenuRef}
-          className="fixed z-[10000]"
+          className="fixed z-[10201]"
           style={{ left: submenuPos.x, top: submenuPos.y }}
           data-context-menu
           onMouseEnter={() => {

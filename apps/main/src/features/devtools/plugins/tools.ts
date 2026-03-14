@@ -15,8 +15,6 @@ const SessionStateViewer = lazy(() => import('@features/panels/components/dev/Se
 const GenerationHealthView = lazy(() => import('@features/panels/components/dev/GenerationHealthView').then(m => ({ default: m.GenerationHealthView })));
 const CapabilityTestingPanel = lazy(() => import('@features/panels/components/dev/CapabilityTestingPanel').then(m => ({ default: m.CapabilityTestingPanel })));
 const AppMapPanel = lazy(() => import('@features/panels/components/dev/AppMapPanel').then(m => ({ default: m.AppMapPanel })));
-const DependencyGraphPanel = lazy(() => import('@features/panels/components/dev/DependencyGraphPanel').then(m => ({ default: m.DependencyGraphPanel })));
-const BackendArchitecturePanel = lazy(() => import('@features/panels/components/dev/BackendArchitecturePanel').then(m => ({ default: m.BackendArchitecturePanel })));
 const DocBrowserPanel = lazy(() => import('@features/panels/components/dev/DocBrowserPanel').then(m => ({ default: m.DocBrowserPanel })));
 const GizmoSurfacesPanel = lazy(() => import('@features/panels/components/dev/GizmoSurfacesPanel').then(m => ({ default: m.GizmoSurfacesPanel })));
 const TypesExplorerPanel = lazy(() => import('@features/panels/components/dev/TypesExplorerPanel').then(m => ({ default: m.TypesExplorerPanel })));
@@ -82,32 +80,6 @@ export const appMapTool = defineDevTool({
   category: 'graph',
   panelComponent: AppMapPanel,
   tags: ['architecture', 'plugins', 'registries', 'capabilities', 'diagnostics'],
-});
-
-export const dependencyGraphTool = defineDevTool({
-  id: 'dependency-graph',
-  label: 'Dependency Graph',
-  updatedAt: '2026-03-10T00:00:00Z',
-  changeNote: 'Added canonical metadata baseline for dependency graph explorer.',
-  featureHighlights: ['Visual dependency analysis for module relationships.'],
-  description: 'Visualize module dependencies and relationships',
-  icon: 'graph',
-  category: 'graph',
-  panelComponent: DependencyGraphPanel,
-  tags: ['dependencies', 'graph', 'architecture', 'modules'],
-});
-
-export const backendArchitectureTool = defineDevTool({
-  id: 'backend-architecture',
-  label: 'Backend Architecture',
-  updatedAt: '2026-03-10T00:00:00Z',
-  changeNote: 'Added canonical metadata baseline for backend architecture explorer.',
-  featureHighlights: ['Backend service topology and data-flow inspection surface.'],
-  description: 'View backend service architecture and data flow',
-  icon: 'code',
-  category: 'graph',
-  panelComponent: BackendArchitecturePanel,
-  tags: ['backend', 'architecture', 'services', 'api'],
 });
 
 export const docBrowserTool = defineDevTool({

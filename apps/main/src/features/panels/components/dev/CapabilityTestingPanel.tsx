@@ -1,5 +1,7 @@
+import { FilterPillGroup } from "@pixsim7/shared.ui";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+
 
 import {
   type FeatureCapability,
@@ -55,38 +57,15 @@ export function CapabilityTestingPanel({
     <div className="flex flex-col h-full bg-white dark:bg-neutral-900">
       {/* Section Tabs */}
       <div className="border-b border-neutral-200 dark:border-neutral-700 p-4">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setActiveSection("routes")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeSection === "routes"
-                ? "bg-blue-500 text-white"
-                : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-            }`}
-          >
-            Routes ({routes.length})
-          </button>
-          <button
-            onClick={() => setActiveSection("actions")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeSection === "actions"
-                ? "bg-blue-500 text-white"
-                : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-            }`}
-          >
-            Actions ({actions.length})
-          </button>
-          <button
-            onClick={() => setActiveSection("state")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeSection === "state"
-                ? "bg-blue-500 text-white"
-                : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-            }`}
-          >
-            State Inspection
-          </button>
-        </div>
+        <FilterPillGroup
+          options={[
+            { value: 'routes' as const, label: `Routes (${routes.length})` },
+            { value: 'actions' as const, label: `Actions (${actions.length})` },
+            { value: 'state' as const, label: 'State Inspection' },
+          ]}
+          value={activeSection}
+          onChange={(v) => v && setActiveSection(v)}
+        />
       </div>
 
       {/* Content */}

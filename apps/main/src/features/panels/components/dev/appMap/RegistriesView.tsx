@@ -6,7 +6,8 @@
  */
 
 import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '@pixsim7/game.engine';
-import { useState, useMemo, useSyncExternalStore, useEffect } from 'react';
+import { FilterPillGroup } from '@pixsim7/shared.ui';
+import { useState, useMemo, useRef, useSyncExternalStore, useEffect } from 'react';
 
 import type { Identifiable } from '@lib/core/BaseRegistry';
 import { Icon } from '@lib/icons';
@@ -164,21 +165,15 @@ export function RegistriesView() {
       <div className="w-1/3 border-r border-neutral-200 dark:border-neutral-700 flex flex-col">
         {/* Category Filter */}
         <div className="p-3 border-b border-neutral-200 dark:border-neutral-700">
-          <div className="flex gap-2">
-            {(['all', 'tools', 'surfaces', 'interactions', 'resolvers'] as const).map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setCategoryFilter(cat)}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                  categoryFilter === cat
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-                }`}
-              >
-                {cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
-              </button>
-            ))}
-          </div>
+          <FilterPillGroup
+            options={(['tools', 'surfaces', 'interactions', 'resolvers'] as const).map((cat) => ({
+              value: cat,
+              label: cat.charAt(0).toUpperCase() + cat.slice(1),
+            }))}
+            value={categoryFilter === 'all' ? null : categoryFilter}
+            onChange={(v) => setCategoryFilter(v ?? 'all')}
+            allLabel="All"
+          />
         </div>
 
         {/* Registry List */}
@@ -705,6 +700,11 @@ function RegistryItemList({
  */
 function RegistrySummary({ registries }: { registries: RegistryInfo[] }) {
   // Get live counts for all registries with a single subscription
+  const snapshotRef = useRef<{ key: string; value: { id: string; count: number }[] }>({
+    key: '',
+    value: [],
+  });
+
   const counts = useSyncExternalStore(
     (callback) => {
       const unsubscribers = registries.map((r) => r.subscribe(callback));
@@ -712,11 +712,17 @@ function RegistrySummary({ registries }: { registries: RegistryInfo[] }) {
         unsubscribers.forEach((unsubscribe) => unsubscribe());
       };
     },
-    () =>
-      registries.map((r) => ({
+    () => {
+      const items = registries.map((r) => ({
         id: r.id,
         count: r.getItems().length,
-      }))
+      }));
+      const key = items.map((i) => `${i.id}:${i.count}`).join(',');
+      if (key !== snapshotRef.current.key) {
+        snapshotRef.current = { key, value: items };
+      }
+      return snapshotRef.current.value;
+    }
   );
 
   const total = counts.reduce((sum, c) => sum + c.count, 0);

@@ -11,8 +11,6 @@ import {
   generationHealthTool,
   capabilityTestingTool,
   appMapTool,
-  dependencyGraphTool,
-  backendArchitectureTool,
   docBrowserTool,
   gizmoSurfacesTool,
   promptImporterTool,
@@ -30,8 +28,6 @@ export {
   generationHealthTool,
   capabilityTestingTool,
   appMapTool,
-  dependencyGraphTool,
-  backendArchitectureTool,
   docBrowserTool,
   gizmoSurfacesTool,
   promptImporterTool,
@@ -53,8 +49,6 @@ export const builtInDevTools = [
 
   // Architecture & Graph
   appMapTool,
-  dependencyGraphTool,
-  backendArchitectureTool,
   docBrowserTool,
 
   // Gizmo & Surface Management

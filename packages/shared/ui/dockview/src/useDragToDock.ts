@@ -7,7 +7,7 @@
  * Drop zones only appear after holding over a dockview for a configurable delay.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type RefObject } from 'react';
 import { getDockviewHost, getDockviewHostIds } from '@pixsim7/shared.dockview.core';
 
 export type DropZone = 'left' | 'right' | 'above' | 'below' | 'center';
@@ -37,6 +37,8 @@ export interface UseDragToDockOptions {
    * Default: 0 (no inset).
    */
   activationInsetPx?: number;
+  /** Ref to the element being dragged. Dockviews inside this element are excluded from targeting. */
+  dragElementRef?: RefObject<HTMLElement | null>;
 }
 
 export interface UseDragToDockReturn {
@@ -180,6 +182,7 @@ function findBestTarget(
   activationInsetPx: number,
   candidateIds: string[],
   canDockInto?: (id: string) => boolean,
+  excludeElement?: HTMLElement | null,
 ): DragToDockTarget | null {
   let best: DragToDockTarget | null = null;
   let bestArea = Infinity;
@@ -189,6 +192,10 @@ function findBestTarget(
 
     const el = getWorkspaceElement(id);
     if (!el) continue;
+
+    // Skip dockviews that are inside the element being dragged
+    // (e.g. a floating panel with its own internal dockview)
+    if (excludeElement && excludeElement.contains(el)) continue;
 
     const rect = el.getBoundingClientRect();
     // Skip zero-area rects (hidden dockviews)
@@ -213,6 +220,7 @@ export function useDragToDock({
   throttleMs = 16,
   holdDelayMs = 400,
   activationInsetPx = 0,
+  dragElementRef,
 }: UseDragToDockOptions): UseDragToDockReturn {
   const [isDragging, setIsDragging] = useState(false);
   const [activeDropZone, setActiveDropZone] = useState<DropZone | null>(null);
@@ -246,13 +254,20 @@ export function useDragToDock({
     clearHoldTimer();
     pendingDockviewIdRef.current = null;
     activatedDockviewIdRef.current = null;
+    committedAtRef.current = 0;
     setActiveDropZone(null);
     activeDropZoneRef.current = null;
     setActiveTarget(null);
     activeTargetRef.current = null;
   };
 
+  // Track when a target was committed so onDragStop can enforce a minimum
+  // visible time — the overlay needs 2 React render cycles + a paint before
+  // the user can actually see it.
+  const committedAtRef = useRef<number>(0);
+
   const commitTarget = (target: DragToDockTarget) => {
+    committedAtRef.current = Date.now();
     activatedDockviewIdRef.current = target.dockviewId;
     setActiveDropZone(target.zone);
     activeDropZoneRef.current = target.zone;
@@ -281,6 +296,7 @@ export function useDragToDock({
         activationInsetPx,
         candidateIds,
         canDockInto,
+        dragElementRef?.current,
       );
 
       if (!target) {
@@ -353,8 +369,13 @@ export function useDragToDock({
 
     const target = activeTargetRef.current;
     const zone = target?.zone ?? null;
-    const shouldDock = zone !== null;
     const targetDockviewId = target?.dockviewId ?? null;
+
+    // Only allow docking if the zone was active long enough for the overlay
+    // to render and be visible to the user (~2 React renders + paint).
+    const MIN_VISIBLE_MS = 120;
+    const visibleDuration = committedAtRef.current > 0 ? Date.now() - committedAtRef.current : 0;
+    const shouldDock = zone !== null && visibleDuration >= MIN_VISIBLE_MS;
 
     // Reset state
     setIsDragging(false);
@@ -362,6 +383,7 @@ export function useDragToDock({
     setActiveTarget(null);
     pendingDockviewIdRef.current = null;
     activatedDockviewIdRef.current = null;
+    committedAtRef.current = 0;
 
     return { shouldDock, zone, targetDockviewId };
   }, []);

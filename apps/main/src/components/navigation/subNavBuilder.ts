@@ -58,7 +58,7 @@ const PAGE_NAV_HINTS: Record<string, PageNavHints> = {
     featureTagHints: ['game', 'world', 'npc'],
   },
   'game-2d': {
-    panelIds: ['game', 'interactive-surface', 'hud-designer', 'edge-effects'],
+    panelIds: ['game', 'hud-designer', 'edge-effects'],
     routePageIds: ['game'],
     featureTagHints: ['game', 'hud', 'interactive'],
   },

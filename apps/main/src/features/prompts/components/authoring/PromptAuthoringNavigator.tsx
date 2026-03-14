@@ -5,6 +5,7 @@
  * Consumes shared state from PromptAuthoringContext.
  */
 
+import { DisclosureSection } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 
 import { Icon } from '@lib/icons';
@@ -100,9 +101,16 @@ export function PromptAuthoringNavigator() {
       </div>
 
       {/* Family + version lists */}
-      <div className="flex-1 min-h-0 grid grid-rows-[minmax(0,1fr)_minmax(0,1fr)]">
-        {/* Family list */}
-        <div className="min-h-0 overflow-y-auto border-b border-neutral-200 dark:border-neutral-800">
+      <div className="flex-1 min-h-0 flex flex-col">
+        <DisclosureSection
+          label="Families"
+          defaultOpen
+          fillHeight
+          badge={families.length > 0 ? <span className="text-[10px] text-neutral-500 dark:text-neutral-400">({families.length})</span> : undefined}
+          className="border-b border-neutral-200 dark:border-neutral-800"
+          headerClassName="px-3"
+          contentClassName="!mt-0"
+        >
           {families.length === 0 && !familiesLoading ? (
             <div className="px-3 py-4 text-xs text-neutral-500 dark:text-neutral-400">
               No prompt families found.
@@ -129,13 +137,16 @@ export function PromptAuthoringNavigator() {
               ))}
             </div>
           )}
-        </div>
+        </DisclosureSection>
 
-        {/* Version list */}
-        <div className="min-h-0 overflow-y-auto">
-          <div className="px-3 py-2 text-xs font-semibold text-neutral-700 dark:text-neutral-200 border-b border-neutral-200 dark:border-neutral-800">
-            Versions
-          </div>
+        <DisclosureSection
+          label="Versions"
+          defaultOpen
+          fillHeight
+          badge={versions.length > 0 ? <span className="text-[10px] text-neutral-500 dark:text-neutral-400">({versions.length})</span> : undefined}
+          headerClassName="px-3"
+          contentClassName="!mt-0"
+        >
           {versionsError && (
             <div className="px-3 py-2 text-[11px] text-red-600 dark:text-red-300">{versionsError}</div>
           )}
@@ -170,7 +181,7 @@ export function PromptAuthoringNavigator() {
               ))}
             </div>
           )}
-        </div>
+        </DisclosureSection>
       </div>
     </div>
   );

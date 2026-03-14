@@ -4,6 +4,7 @@
  * Shows all registered plugins with filtering by family and origin.
  */
 
+import { FilterPillGroup } from '@pixsim7/shared.ui';
 import { useMemo, useState } from 'react';
 
 import { Icon } from '@lib/icons';
@@ -72,44 +73,20 @@ export function PluginsView({
         />
 
         {/* Family Filter */}
-        <div className="flex gap-2 flex-wrap">
-          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400 self-center">
-            Family:
-          </span>
-          {familyOptions.map((family) => (
-            <button
-              key={family}
-              onClick={() => onFamilyFilterChange(family)}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                familyFilter === family
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-              }`}
-            >
-              {family}
-            </button>
-          ))}
-        </div>
+        <FilterPillGroup
+          options={familyOptions.filter((f) => f !== 'all').map((f) => ({ value: f, label: f }))}
+          value={familyFilter === 'all' ? null : familyFilter}
+          onChange={(v) => onFamilyFilterChange(v ?? 'all')}
+          allLabel="All"
+        />
 
         {/* Origin Filter */}
-        <div className="flex gap-2 flex-wrap">
-          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400 self-center">
-            Origin:
-          </span>
-          {PLUGIN_ORIGINS.map((origin) => (
-            <button
-              key={origin}
-              onClick={() => onOriginFilterChange(origin)}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                originFilter === origin
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-              }`}
-            >
-              {origin}
-            </button>
-          ))}
-        </div>
+        <FilterPillGroup
+          options={PLUGIN_ORIGINS.filter((o) => o !== 'all').map((o) => ({ value: o, label: o }))}
+          value={originFilter === 'all' ? null : originFilter}
+          onChange={(v) => onOriginFilterChange(v ?? 'all')}
+          allLabel="All"
+        />
 
         {/* Results count */}
         <div className="text-xs text-neutral-600 dark:text-neutral-400">

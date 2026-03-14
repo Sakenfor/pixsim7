@@ -38,6 +38,10 @@ export interface DisclosureSectionProps {
   actions?: React.ReactNode;
   /** When true, only show actions when the section is open */
   actionsWhenOpen?: boolean;
+  /** When true, section stretches to fill available height (flex-1) when open. Use inside a flex column. */
+  fillHeight?: boolean;
+  /** Badge/count element rendered after the label */
+  badge?: React.ReactNode;
 }
 
 /**
@@ -65,6 +69,8 @@ export function DisclosureSection({
   disabled = false,
   actions,
   actionsWhenOpen = false,
+  fillHeight = false,
+  badge,
 }: DisclosureSectionProps) {
   const disclosure = useDisclosure({
     defaultOpen,
@@ -143,6 +149,7 @@ export function DisclosureSection({
         </span>
         {/* Label */}
         <span className="flex-1 min-w-0">{label}</span>
+        {badge != null && <span className="shrink-0">{badge}</span>}
       </div>
       {showActions && (
         <div className="flex items-center gap-1 shrink-0">{actions}</div>
@@ -151,7 +158,11 @@ export function DisclosureSection({
   );
 
   return (
-    <div className={clsx('disclosure-section', className)}>
+    <div className={clsx(
+      'disclosure-section',
+      fillHeight && isOpen && 'flex-1 min-h-0 flex flex-col',
+      className,
+    )}>
       {headerRow}
 
       {/* Content */}
@@ -161,6 +172,7 @@ export function DisclosureSection({
             'disclosure-content',
             'mt-1',
             sizes.content,
+            fillHeight && 'flex-1 min-h-0 overflow-y-auto',
             bordered &&
               'pl-4 ml-1.5 border-l-2 border-neutral-200 dark:border-neutral-700',
             contentClassName
