@@ -31,7 +31,7 @@ from .schemas import CreatePromptFamilyRequest, CreatePromptVersionRequest
 router = APIRouter()
 
 PROMPT_ANALYSIS_CONTRACT_VERSION = "2026-03-13.1"
-PROMPT_AUTHORING_CONTRACT_VERSION = "2026-03-14.3"
+PROMPT_AUTHORING_CONTRACT_VERSION = "2026-03-14.5"
 PROMPT_ANALYZE_ENDPOINT = "/api/v1/prompts/analyze"
 PROMPT_CREATE_FAMILY_ENDPOINT = "/api/v1/prompts/families"
 PROMPT_LIST_FAMILIES_ENDPOINT = "/api/v1/prompts/families"
@@ -87,12 +87,39 @@ class PromptAuthoringEndpointContract(BaseModel):
     summary: str
 
 
+class GenerationHintContract(BaseModel):
+    operation: str = Field(description="OperationType value (text_to_image, image_to_image, etc.).")
+    priority: int = Field(
+        description="Lower = preferred. UI picks the first compatible option."
+    )
+    requires_input_asset: bool = Field(
+        False, description="Whether this operation needs a source asset."
+    )
+    auto_bind: Optional[str] = Field(
+        None,
+        description=(
+            "How to auto-attach input asset. "
+            "'parent_output' = output of parent version's generation. "
+            "'viewer_asset' = currently viewed asset. "
+            "Null = manual selection."
+        ),
+    )
+    note: Optional[str] = Field(None, description="Optional context for this hint.")
+
+
 class PromptAuthoringModeContract(BaseModel):
     id: str
     label: str
     description: str
     sequence_role: Optional[str] = Field(
         None, description="Mapped sequence role (initial, continuation, transition)."
+    )
+    generation_hints: List[GenerationHintContract] = Field(
+        default_factory=list,
+        description=(
+            "Ranked list of compatible generation operations. "
+            "UI picks the first one compatible with current context (assets available, etc.)."
+        ),
     )
     recommended_tags: List[str] = Field(default_factory=list)
     required_fields: List[str] = Field(default_factory=list)
@@ -547,6 +574,10 @@ async def get_prompt_authoring_contract(
             label="Scene Setup",
             description="Long-form initial scene prompt with style, setting, and cast setup.",
             sequence_role="initial",
+            generation_hints=[
+                GenerationHintContract(operation="text_to_image", priority=1, requires_input_asset=False),
+                GenerationHintContract(operation="text_to_video", priority=2, requires_input_asset=False),
+            ],
             recommended_tags=["sequence:initial", "intent:setup", "mode:scene_setup"],
             required_fields=["prompt_text"],
         ),
@@ -555,6 +586,17 @@ async def get_prompt_authoring_contract(
             label="Scene Continuation",
             description="Short-to-medium continuation prompt that advances from previous context.",
             sequence_role="continuation",
+            generation_hints=[
+                GenerationHintContract(
+                    operation="image_to_video", priority=1,
+                    requires_input_asset=True, auto_bind="parent_output",
+                ),
+                GenerationHintContract(
+                    operation="image_to_image", priority=2,
+                    requires_input_asset=True, auto_bind="parent_output",
+                ),
+                GenerationHintContract(operation="text_to_image", priority=3, requires_input_asset=False),
+            ],
             recommended_tags=["sequence:continuation", "intent:advance", "mode:continuation"],
             required_fields=["prompt_text", "parent_version_id"],
         ),
@@ -563,7 +605,65 @@ async def get_prompt_authoring_contract(
             label="Tool Edit",
             description="Prompt intended for mask/tool-style edits (replace/modify specific regions).",
             sequence_role=None,
+            generation_hints=[
+                GenerationHintContract(
+                    operation="image_to_image", priority=1,
+                    requires_input_asset=True, auto_bind="viewer_asset",
+                ),
+            ],
             recommended_tags=["intent:modify", "mode:tool_edit", "scope:region_or_mask"],
+            required_fields=["prompt_text"],
+        ),
+        PromptAuthoringModeContract(
+            id="patch_edit",
+            label="Patch Edit",
+            description="Targeted edit to an existing generation — change specific elements while preserving the rest.",
+            sequence_role=None,
+            generation_hints=[
+                GenerationHintContract(
+                    operation="image_to_image", priority=1,
+                    requires_input_asset=True, auto_bind="parent_output",
+                ),
+            ],
+            recommended_tags=["intent:modify", "mode:patch_edit", "scope:targeted"],
+            required_fields=["prompt_text", "parent_version_id"],
+        ),
+        PromptAuthoringModeContract(
+            id="variation",
+            label="Variation",
+            description=(
+                "Generate a variation of an existing output — same general concept "
+                "with bounded divergence in composition, angle, or detail."
+            ),
+            sequence_role=None,
+            generation_hints=[
+                GenerationHintContract(
+                    operation="image_to_image", priority=1,
+                    requires_input_asset=True, auto_bind="parent_output",
+                ),
+                GenerationHintContract(operation="text_to_image", priority=2, requires_input_asset=False),
+            ],
+            recommended_tags=["intent:generate", "mode:variation", "scope:bounded"],
+            required_fields=["prompt_text"],
+        ),
+        PromptAuthoringModeContract(
+            id="character_design",
+            label="Character Design",
+            description=(
+                "Detailed character or creature concept — anatomical description, "
+                "distinctive features, materials, and personality cues. "
+                "Focus is on defining a single entity, not a full scene."
+            ),
+            sequence_role="initial",
+            generation_hints=[
+                GenerationHintContract(operation="text_to_image", priority=1, requires_input_asset=False),
+                GenerationHintContract(
+                    operation="image_to_image", priority=2,
+                    requires_input_asset=True, auto_bind="viewer_asset",
+                    note="Refine from a rough sketch or reference.",
+                ),
+            ],
+            recommended_tags=["intent:setup", "mode:character_design", "scope:entity"],
             required_fields=["prompt_text"],
         ),
     ]

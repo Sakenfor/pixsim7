@@ -17,6 +17,7 @@ from .schemas import (
     ForkFromArtifactRequest,
     PromptFamilyResponse,
     PromptVersionResponse,
+    UpdatePromptFamilyRequest,
 )
 
 router = APIRouter()
@@ -118,6 +119,37 @@ async def get_family(
         tags=family.tags,
         is_active=family.is_active,
         version_count=len(versions)
+    )
+
+
+@router.patch("/families/{family_id}", response_model=PromptFamilyResponse)
+async def update_family(
+    family_id: UUID,
+    request: UpdatePromptFamilyRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user)
+):
+    """Update mutable fields on a prompt family"""
+    service = PromptVersionService(db)
+
+    updates = request.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    family = await service.update_family(family_id, **updates)
+
+    if not family:
+        raise HTTPException(status_code=404, detail="Family not found")
+
+    return PromptFamilyResponse(
+        id=family.id,
+        slug=family.slug,
+        title=family.title,
+        description=family.description,
+        prompt_type=family.prompt_type,
+        category=family.category,
+        tags=family.tags,
+        is_active=family.is_active
     )
 
 

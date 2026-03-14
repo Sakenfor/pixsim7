@@ -18,6 +18,15 @@ export interface AnalysisResult {
   prompt: string;
   candidates: PromptBlockCandidate[];
   tags: Array<{ tag: string; candidates: number[]; source: string; confidence?: number }>;
+  role_in_sequence?: string;
+  sequence_context?: SequenceContext;
+}
+
+export interface SequenceContext {
+  role_in_sequence: string;
+  source: string;
+  confidence?: number | null;
+  matched_block_id?: string | null;
 }
 
 interface CacheEntry {

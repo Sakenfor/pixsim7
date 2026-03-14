@@ -626,10 +626,43 @@ class AnalyzePromptRequest(BaseModel):
     )
 
 
+class AnalyzePromptSequenceContext(BaseModel):
+    role_in_sequence: str = Field(
+        ...,
+        description="Normalized role (`initial`, `continuation`, `transition`, or `unspecified`).",
+    )
+    source: str = Field(
+        ...,
+        description="Where the role was inferred from (for example candidates primitive match or tags).",
+    )
+    confidence: Optional[float] = Field(
+        None,
+        description="Optional confidence score for role inference (when available).",
+    )
+    matched_block_id: Optional[str] = Field(
+        None,
+        description="Primitive block ID that supplied role evidence when available.",
+    )
+
+
 class AnalyzePromptResponse(BaseModel):
     """Response from prompt analysis."""
     analysis: Dict[str, Any] = Field(..., description="Analysis result with blocks, tags, ontology_ids")
     analyzer_id: str = Field(..., description="Analyzer used")
+    role_in_sequence: str = Field(
+        ...,
+        description=(
+            "Inferred sequence role for this prompt (`initial`, `continuation`, "
+            "`transition`, or `unspecified`)."
+        ),
+    )
+    sequence_context: AnalyzePromptSequenceContext = Field(
+        ...,
+        description=(
+            "Detailed sequence-role envelope (role/source/confidence/evidence) "
+            "derived from prompt analysis."
+        ),
+    )
 
 
 @router.post("/analyze", response_model=AnalyzePromptResponse)
@@ -652,6 +685,7 @@ async def analyze_prompt(
     - candidates: Parsed semantic candidates with roles and categories
     - tags: Derived tags (role tags + ontology IDs + metadata-derived sub-tags like tone/camera)
     - ontology_ids: Matched ontology keywords
+    - role_in_sequence + sequence_context: explicit sequence-role inference envelope
     """
     from pixsim7.backend.main.services.prompt.analysis import PromptAnalysisService
 
@@ -743,10 +777,14 @@ async def analyze_prompt(
         pack_ids=request.pack_ids,
         user_id=user.id,
     )
+    sequence_context = _coerce_sequence_context_payload(analysis.get("sequence_context"))
+    analysis["sequence_context"] = sequence_context
 
     return AnalyzePromptResponse(
         analysis=analysis,
         analyzer_id=analysis.get("analyzer_id", analyzer_id),
+        role_in_sequence=sequence_context["role_in_sequence"],
+        sequence_context=sequence_context,
     )
 
 
@@ -760,3 +798,49 @@ def _merge_instance_config(
     if isinstance(override_config, dict):
         merged.update(override_config)
     return merged
+
+
+_SEQUENCE_ROLES = {"initial", "continuation", "transition"}
+
+
+def _coerce_sequence_context_payload(raw: Any) -> Dict[str, Any]:
+    if not isinstance(raw, dict):
+        return {
+            "role_in_sequence": "unspecified",
+            "source": "none",
+            "confidence": None,
+            "matched_block_id": None,
+        }
+    role = raw.get("role_in_sequence")
+    if isinstance(role, str):
+        normalized_role = role.strip().lower()
+    else:
+        normalized_role = ""
+    if normalized_role not in _SEQUENCE_ROLES:
+        normalized_role = "unspecified"
+
+    source = raw.get("source")
+    if not isinstance(source, str) or not source.strip():
+        source = "analysis.sequence_context" if normalized_role != "unspecified" else "none"
+    else:
+        source = source.strip()
+
+    confidence = raw.get("confidence")
+    if confidence is not None:
+        try:
+            confidence = float(confidence)
+        except (TypeError, ValueError):
+            confidence = None
+
+    matched_block_id = raw.get("matched_block_id")
+    if not isinstance(matched_block_id, str) or not matched_block_id.strip():
+        matched_block_id = None
+    else:
+        matched_block_id = matched_block_id.strip()
+
+    return {
+        "role_in_sequence": normalized_role,
+        "source": source,
+        "confidence": confidence,
+        "matched_block_id": matched_block_id,
+    }

@@ -21,6 +21,14 @@ class CreatePromptFamilyRequest(BaseModel):
     action_concept_id: Optional[str] = None
 
 
+class UpdatePromptFamilyRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+
+
 class CreatePromptVersionRequest(BaseModel):
     prompt_text: str = Field(..., description="The actual prompt text")
     commit_message: Optional[str] = Field(None, description="Description of changes")

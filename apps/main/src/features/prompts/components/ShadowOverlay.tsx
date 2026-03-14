@@ -27,6 +27,19 @@ export interface ShadowOverlayProps {
   analysis: ShadowAnalysisState;
 }
 
+function getSequenceRoleLabel(role: string): string {
+  switch (role) {
+    case 'initial':
+      return 'Initial';
+    case 'continuation':
+      return 'Continuation';
+    case 'transition':
+      return 'Transition';
+    default:
+      return 'Unspecified';
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Chips
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +86,13 @@ export function ShadowOverlay({ analysis }: ShadowOverlayProps) {
   const { result, loading, refresh } = analysis;
   const promptRoleColors = usePromptSettingsStore((s) => s.promptRoleColors);
   const candidates = result?.candidates ?? [];
+  const sequenceContext = result?.sequenceContext;
+  const sequenceRole = result?.roleInSequence ?? sequenceContext?.role_in_sequence ?? 'unspecified';
+  const hasSequenceRole = sequenceRole !== 'unspecified';
+  const sequenceConfidencePct =
+    typeof sequenceContext?.confidence === 'number'
+      ? Math.round(sequenceContext.confidence * 100)
+      : null;
 
   const primitiveMatches = useMemo(
     () => extractPrimitiveMatches(candidates),
@@ -106,6 +126,31 @@ export function ShadowOverlay({ analysis }: ShadowOverlayProps) {
           size={12}
           className="text-neutral-400 dark:text-neutral-500 animate-spin flex-shrink-0"
         />
+      )}
+
+      {hasSequenceRole && (
+        <span
+          className={clsx(
+            'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap border',
+            'border-cyan-200/70 dark:border-cyan-700/50',
+            'bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300',
+          )}
+          title={
+            [
+              `Sequence role: ${getSequenceRoleLabel(sequenceRole)}`,
+              sequenceContext?.source ? `Source: ${sequenceContext.source}` : null,
+            ]
+              .filter(Boolean)
+              .join(' | ')
+          }
+        >
+          {getSequenceRoleLabel(sequenceRole)}
+          {sequenceConfidencePct !== null && (
+            <span className="tabular-nums text-cyan-600 dark:text-cyan-400">
+              {sequenceConfidencePct}%
+            </span>
+          )}
+        </span>
       )}
 
       {/* Role chips — always show when we have candidates */}

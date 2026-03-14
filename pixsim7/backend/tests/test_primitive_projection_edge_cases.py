@@ -22,6 +22,19 @@ from pixsim7.backend.main.services.prompt.parser.dsl_adapter import (
     parse_prompt_to_candidates,
 )
 
+TEST_SUITE = {
+    "id": "prompt-primitive-projection-edge-cases",
+    "label": "Primitive Projection Edge Cases",
+    "kind": "integration",
+    "category": "backend/prompt-analysis",
+    "subcategory": "primitive-projection-edge-cases",
+    "covers": [
+        "pixsim7/backend/main/services/prompt/parser/primitive_projection.py",
+        "pixsim7/backend/main/services/prompt/parser/dsl_adapter.py",
+    ],
+    "order": 28,
+}
+
 
 # ---------------------------------------------------------------------------
 # Shared synthetic index for deterministic testing
@@ -957,7 +970,7 @@ class TestScoringEdgeCases:
                 "category": "character_pose",
                 "tokens": frozenset({"character", "eyes", "look", "focus"}),
                 "block_tokens": frozenset({"core", "subject", "look", "hold", "eye", "contact"}),
-                "op_id": "subject.look_at",
+                "op_id": "subject.look.apply",
                 "signature_id": "subject.look.v1",
                 "op_modalities": ("image", "video"),
             },
@@ -1139,7 +1152,129 @@ class TestPlacementRecallAndDisambiguation:
 
 
 # ---------------------------------------------------------------------------
-# EDGE CASE 9: Enrich idempotency
+# EDGE CASE 9: Sequence continuity projection
+# ---------------------------------------------------------------------------
+
+
+class TestSequenceContinuityProjection:
+    def test_continuation_cue_prefers_continuation_variant(self):
+        index = (
+            {
+                "block_id": "core.sequence.continuity.continuation_subject_lock",
+                "package_name": "core_sequence_continuity",
+                "role": "composition",
+                "category": "continuity",
+                "tokens": frozenset({"continuation", "subject", "continuity", "sequence", "high"}),
+                "block_tokens": frozenset({"core", "sequence", "continuity", "continuation", "subject", "lock"}),
+                "op_id": "sequence.continuity.apply",
+                "signature_id": "sequence.continuity.v1",
+                "op_modalities": ("image", "video"),
+                "role_in_sequence": "continuation",
+                "continuity_focus": "subject",
+                "continuity_priority": "high",
+            },
+            {
+                "block_id": "core.sequence.continuity.transition_setting_shift",
+                "package_name": "core_sequence_continuity",
+                "role": "composition",
+                "category": "continuity",
+                "tokens": frozenset({"transition", "setting", "continuity", "sequence", "medium"}),
+                "block_tokens": frozenset({"core", "sequence", "continuity", "transition", "setting", "shift"}),
+                "op_id": "sequence.continuity.apply",
+                "signature_id": "sequence.continuity.v1",
+                "op_modalities": ("image", "video"),
+                "role_in_sequence": "transition",
+                "continuity_focus": "setting",
+                "continuity_priority": "medium",
+            },
+            {
+                "block_id": "core.camera.motion.pan",
+                "package_name": "core_camera",
+                "role": "camera",
+                "category": "camera",
+                "tokens": frozenset({"pan", "camera", "motion", "frame"}),
+                "block_tokens": frozenset({"core", "camera", "motion", "pan"}),
+                "op_id": "camera.motion.pan",
+                "signature_id": "camera.motion.v1",
+                "op_modalities": ("video",),
+            },
+        )
+        candidate = {
+            "text": "Continue from previous frame and keep subject continuity.",
+            "role": None,
+            "matched_keywords": [],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=index)
+        assert match is not None
+        assert match["block_id"] == "core.sequence.continuity.continuation_subject_lock"
+        assert match["role_in_sequence"] == "continuation"
+
+    def test_transition_cue_prefers_transition_variant(self):
+        index = (
+            {
+                "block_id": "core.sequence.continuity.continuation_subject_lock",
+                "package_name": "core_sequence_continuity",
+                "role": "composition",
+                "category": "continuity",
+                "tokens": frozenset({"continuation", "subject", "continuity", "sequence"}),
+                "block_tokens": frozenset({"core", "sequence", "continuity", "continuation", "subject", "lock"}),
+                "op_id": "sequence.continuity.apply",
+                "signature_id": "sequence.continuity.v1",
+                "op_modalities": ("image", "video"),
+                "role_in_sequence": "continuation",
+            },
+            {
+                "block_id": "core.sequence.continuity.transition_tone_shift",
+                "package_name": "core_sequence_continuity",
+                "role": "composition",
+                "category": "continuity",
+                "tokens": frozenset({"transition", "tone", "continuity", "sequence"}),
+                "block_tokens": frozenset({"core", "sequence", "continuity", "transition", "tone", "shift"}),
+                "op_id": "sequence.continuity.apply",
+                "signature_id": "sequence.continuity.v1",
+                "op_modalities": ("image", "video"),
+                "role_in_sequence": "transition",
+            },
+        )
+        candidate = {
+            "text": "Transition to a new tone while preserving scene context.",
+            "role": None,
+            "matched_keywords": [],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=index)
+        assert match is not None
+        assert match["block_id"] == "core.sequence.continuity.transition_tone_shift"
+        assert match["role_in_sequence"] == "transition"
+
+    def test_non_sequence_prompt_does_not_force_sequence_match(self):
+        index = (
+            {
+                "block_id": "core.sequence.continuity.continuation_subject_lock",
+                "package_name": "core_sequence_continuity",
+                "role": "composition",
+                "category": "continuity",
+                "tokens": frozenset({"continuation", "subject", "continuity", "sequence"}),
+                "block_tokens": frozenset({"core", "sequence", "continuity", "continuation", "subject", "lock"}),
+                "op_id": "sequence.continuity.apply",
+                "signature_id": "sequence.continuity.v1",
+                "op_modalities": ("image", "video"),
+                "role_in_sequence": "continuation",
+            },
+        )
+        candidate = {
+            "text": "Soft warm light over a quiet skyline.",
+            "role": None,
+            "matched_keywords": [],
+            "metadata": {},
+        }
+        match = match_candidate_to_primitive(candidate, primitive_index=index)
+        assert match is None
+
+
+# ---------------------------------------------------------------------------
+# EDGE CASE 10: Enrich idempotency
 # ---------------------------------------------------------------------------
 
 class TestEnrichIdempotency:

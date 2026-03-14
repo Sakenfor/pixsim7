@@ -187,6 +187,52 @@ async def test_prompt_authoring_modes_have_sequence_role_mapping() -> None:
 
 
 @pytest.mark.asyncio
+async def test_prompt_authoring_modes_have_generation_hints() -> None:
+    result = await get_prompt_authoring_contract(current_user=_user_with_defaults())
+    modes_by_id = {m.id: m for m in result.authoring_modes}
+
+    # scene_setup prefers t2i
+    setup = modes_by_id["scene_setup"]
+    assert len(setup.generation_hints) >= 1
+    assert setup.generation_hints[0].operation == "text_to_image"
+    assert setup.generation_hints[0].requires_input_asset is False
+
+    # scene_continuation prefers i2v with auto-bind
+    cont = modes_by_id["scene_continuation"]
+    assert cont.generation_hints[0].requires_input_asset is True
+    assert cont.generation_hints[0].auto_bind == "parent_output"
+
+    # patch_edit requires input asset
+    patch = modes_by_id["patch_edit"]
+    assert len(patch.generation_hints) == 1
+    assert patch.generation_hints[0].operation == "image_to_image"
+    assert patch.generation_hints[0].requires_input_asset is True
+    assert patch.generation_hints[0].auto_bind == "parent_output"
+
+    # variation prefers i2i but can fallback to t2i
+    var = modes_by_id["variation"]
+    assert var.generation_hints[0].operation == "image_to_image"
+    assert var.generation_hints[1].operation == "text_to_image"
+    assert var.generation_hints[1].requires_input_asset is False
+
+    # tool_edit auto-binds to viewer_asset
+    tool = modes_by_id["tool_edit"]
+    assert tool.generation_hints[0].auto_bind == "viewer_asset"
+
+    # character_design prefers t2i, can refine from reference
+    char = modes_by_id["character_design"]
+    assert char.sequence_role == "initial"
+    assert char.generation_hints[0].operation == "text_to_image"
+    assert char.generation_hints[1].operation == "image_to_image"
+    assert char.generation_hints[1].auto_bind == "viewer_asset"
+
+    # all hints are sorted by priority
+    for mode in result.authoring_modes:
+        priorities = [h.priority for h in mode.generation_hints]
+        assert priorities == sorted(priorities), f"{mode.id} hints not sorted by priority"
+
+
+@pytest.mark.asyncio
 async def test_prompt_authoring_contract_includes_discovery_endpoints() -> None:
     result = await get_prompt_authoring_contract(current_user=_user_with_defaults())
 

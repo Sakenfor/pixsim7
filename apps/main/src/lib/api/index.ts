@@ -71,5 +71,7 @@ export { createWorldRoutine, deleteWorldRoutine, getWorldBehavior, updateWorldRo
 export type { BackendRoutineEdge, BackendRoutineGraph, BackendRoutineNode, BehaviorConfigResponse } from './gameBehavior';
 export { listTags } from './tags';
 export type { ListTagsQuery, TagListResponse, TagSummary } from './tags';
+export { applyPromptEdit, createPromptFamily, createPromptVersion, getPromptFamily, getPromptVersion, getPromptVersionAssets, listPromptFamilies, listPromptVersions } from './prompts';
+export type { ApplyPromptEditRequest, ApplyPromptEditResponse, PromptEditOp, PromptFamilyDetail, PromptFamilySummary, PromptVersionAsset, PromptVersionAssetsResponse, PromptVersionDetail, PromptVersionSummary } from './prompts';
 
 // Note: __simulate_extend.ts NOT exported (test utility)

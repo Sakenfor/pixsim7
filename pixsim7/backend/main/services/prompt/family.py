@@ -85,6 +85,30 @@ class PromptFamilyService:
         )
         return result.scalar_one_or_none()
 
+    async def update_family(
+        self,
+        family_id: UUID,
+        **fields: Any,
+    ) -> Optional[PromptFamily]:
+        """Update mutable fields on a prompt family.
+
+        Accepts any combination of: title, description, category, tags, is_active.
+        Returns updated family or None if not found.
+        """
+        family = await self.get_family(family_id)
+        if not family:
+            return None
+
+        allowed = {"title", "description", "category", "tags", "is_active"}
+        for key, value in fields.items():
+            if key in allowed and value is not None:
+                setattr(family, key, value)
+
+        self.db.add(family)
+        await self.db.commit()
+        await self.db.refresh(family)
+        return family
+
     async def get_family_by_slug(self, slug: str) -> Optional[PromptFamily]:
         """Get family by slug"""
         result = await self.db.execute(

@@ -41,6 +41,8 @@ from pixsim7.backend.main.services.prompt.semantic_context import (
 
 logger = logging.getLogger(__name__)
 
+_SEQUENCE_ROLES = {"initial", "continuation", "transition"}
+
 
 class PromptAnalysisService:
     """
@@ -129,6 +131,7 @@ class PromptAnalysisService:
         # Ensure analyzer_id is in result
         analysis["analyzer_id"] = selected_id
         analysis["provenance"] = provenance.to_dict()
+        _attach_sequence_context(analysis)
 
         return analysis
 
@@ -188,11 +191,13 @@ class PromptAnalysisService:
         normalized = text.strip()
         prompt_hash = self._compute_hash(normalized)
 
-        # Try to find existing by hash (dedup on text only, not analysis)
+        # Try to find existing by hash (dedup on text only, not analysis).
+        # Use .first() instead of .scalar_one_or_none() because duplicate
+        # hashes can exist (no unique constraint on prompt_hash).
         result = await self.db.execute(
             select(PromptVersion).where(PromptVersion.prompt_hash == prompt_hash)
         )
-        existing = result.scalar_one_or_none()
+        existing = result.scalars().first()
 
         if existing:
             # Check if we need to (re)analyze
@@ -213,7 +218,8 @@ class PromptAnalysisService:
             if needs_analysis:
                 if precomputed_analysis:
                     logger.info(f"Attaching precomputed analysis to PromptVersion {existing.id}")
-                    analysis = precomputed_analysis
+                    analysis = dict(precomputed_analysis)
+                    _attach_sequence_context(analysis)
                 else:
                     logger.info(f"Re-analyzing PromptVersion {existing.id} with {effective_analyzer}")
                     analysis = await self.analyze(
@@ -231,7 +237,8 @@ class PromptAnalysisService:
         # Create new PromptVersion with analysis
         if precomputed_analysis:
             logger.info(f"Creating new PromptVersion for hash {prompt_hash[:16]}... (precomputed from {effective_analyzer})")
-            analysis = precomputed_analysis
+            analysis = dict(precomputed_analysis)
+            _attach_sequence_context(analysis)
         else:
             logger.info(f"Creating new PromptVersion for hash {prompt_hash[:16]}... (analyzer={effective_analyzer})")
             analysis = await self.analyze(
@@ -559,3 +566,125 @@ def _strip_config_meta(config: Dict[str, Any]) -> Dict[str, Any]:
             continue
         stripped[key] = value
     return stripped
+
+
+def _attach_sequence_context(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Attach normalized sequence context to analysis payload."""
+    if not isinstance(analysis, dict):
+        return analysis
+    analysis["sequence_context"] = _derive_sequence_context(analysis)
+    return analysis
+
+
+def _derive_sequence_context(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Derive role-in-sequence metadata from analysis candidates/tags."""
+    existing = analysis.get("sequence_context")
+    if isinstance(existing, dict):
+        normalized_existing = _normalize_sequence_context_dict(existing)
+        if normalized_existing.get("role_in_sequence") != "unspecified":
+            return normalized_existing
+
+    best_match: Optional[Dict[str, Any]] = None
+    for candidate in analysis.get("candidates") or []:
+        if not isinstance(candidate, dict):
+            continue
+        metadata = candidate.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        primitive_match = metadata.get("primitive_match")
+        if not isinstance(primitive_match, dict):
+            continue
+        role_in_sequence = _normalize_sequence_role(primitive_match.get("role_in_sequence"))
+        if role_in_sequence == "unspecified":
+            continue
+
+        confidence = _coerce_optional_float(
+            primitive_match.get("score", primitive_match.get("confidence"))
+        )
+        candidate_match = {
+            "role_in_sequence": role_in_sequence,
+            "source": "analysis.candidates[].metadata.primitive_match",
+            "confidence": confidence,
+            "matched_block_id": _coerce_optional_str(primitive_match.get("block_id")),
+        }
+
+        if best_match is None:
+            best_match = candidate_match
+            continue
+        if (candidate_match.get("confidence") or 0.0) > (best_match.get("confidence") or 0.0):
+            best_match = candidate_match
+
+    if best_match is not None:
+        return best_match
+
+    tags_role = _extract_sequence_role_from_tags(analysis.get("tags"))
+    if tags_role != "unspecified":
+        return {
+            "role_in_sequence": tags_role,
+            "source": "analysis.tags",
+            "confidence": None,
+            "matched_block_id": None,
+        }
+
+    return {
+        "role_in_sequence": "unspecified",
+        "source": "none",
+        "confidence": None,
+        "matched_block_id": None,
+    }
+
+
+def _normalize_sequence_context_dict(raw: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "role_in_sequence": _normalize_sequence_role(raw.get("role_in_sequence")),
+        "source": _coerce_optional_str(raw.get("source")) or "analysis.sequence_context",
+        "confidence": _coerce_optional_float(raw.get("confidence")),
+        "matched_block_id": _coerce_optional_str(raw.get("matched_block_id")),
+    }
+
+
+def _normalize_sequence_role(value: Any) -> str:
+    if not isinstance(value, str):
+        return "unspecified"
+    normalized = value.strip().lower()
+    if normalized in _SEQUENCE_ROLES:
+        return normalized
+    return "unspecified"
+
+
+def _extract_sequence_role_from_tags(raw_tags: Any) -> str:
+    if not isinstance(raw_tags, list):
+        return "unspecified"
+    for item in raw_tags:
+        tag = None
+        if isinstance(item, str):
+            tag = item
+        elif isinstance(item, dict):
+            raw_tag = item.get("tag")
+            if isinstance(raw_tag, str):
+                tag = raw_tag
+        if not tag:
+            continue
+
+        normalized_tag = tag.strip().lower()
+        if normalized_tag.startswith("sequence:"):
+            return _normalize_sequence_role(normalized_tag.split(":", 1)[1])
+        if normalized_tag.startswith("role_in_sequence:"):
+            return _normalize_sequence_role(normalized_tag.split(":", 1)[1])
+    return "unspecified"
+
+
+def _coerce_optional_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_optional_str(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None

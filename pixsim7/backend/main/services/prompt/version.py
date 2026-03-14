@@ -48,6 +48,9 @@ class PromptVersionService:
     async def list_families(self, *args, **kwargs):
         return await self._family.list_families(*args, **kwargs)
 
+    async def update_family(self, *args, **kwargs):
+        return await self._family.update_family(*args, **kwargs)
+
     # ===== Version Management (delegate to PromptFamilyService) =====
 
     async def create_version(self, *args, **kwargs):

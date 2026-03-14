@@ -8,6 +8,19 @@ from pixsim7.backend.main.services.prompt.parser.primitive_projection import (
     match_candidate_to_primitive,
 )
 
+TEST_SUITE = {
+    "id": "prompt-primitive-projection",
+    "label": "Prompt Primitive Projection Tests",
+    "kind": "unit",
+    "category": "backend/prompt-analysis",
+    "subcategory": "primitive-projection",
+    "covers": [
+        "pixsim7/backend/main/services/prompt/parser/dsl_adapter.py",
+        "pixsim7/backend/main/services/prompt/parser/primitive_projection.py",
+    ],
+    "order": 27,
+}
+
 
 def _synthetic_index():
     return (

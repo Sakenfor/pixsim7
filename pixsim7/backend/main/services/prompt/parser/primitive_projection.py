@@ -201,6 +201,22 @@ _NARRATIVE_CUE_TOKENS = {
     "style",
     "writing",
 }
+_SEQUENCE_INITIAL_SIGNAL_TOKENS = {
+    "initial",
+    "opening",
+    "establishing",
+    "setup",
+}
+_SEQUENCE_CONTINUATION_SIGNAL_TOKENS = {
+    "continue",
+    "continuation",
+    "resume",
+}
+_SEQUENCE_TRANSITION_SIGNAL_TOKENS = {
+    "transition",
+    "cut",
+    "shift",
+}
 _RUN_SIGNAL_TOKENS = {
     "run",
     "runs",
@@ -254,6 +270,11 @@ _ANCHOR_RELATION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("near", re.compile(r"\b(?:near|next\s+to|beside)\b")),
     ("above", re.compile(r"\babove\b")),
     ("below", re.compile(r"\b(?:below|beneath|under|underneath)\b")),
+)
+_SEQUENCE_ROLE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("initial", re.compile(r"\b(?:initial|opening|first\s+scene|scene\s+setup|establishing)\b")),
+    ("continuation", re.compile(r"\b(?:continue|continuation|resume|carry\s+on|from\s+(?:the\s+)?previous)\b")),
+    ("transition", re.compile(r"\b(?:transition|cut\s+to|shift\s+to|move\s+to|scene\s+change)\b")),
 )
 _ROLE_STOP_TOKEN_OVERRIDES: dict[str, set[str]] = {
     "camera": {"camera"},
@@ -374,6 +395,22 @@ def _extract_anchor_relation_hints(text: str) -> tuple[set[str], str | None]:
     return set(found.keys()), primary_relation
 
 
+def _extract_sequence_role_hints(text: str, text_tokens: set[str]) -> set[str]:
+    """Extract role hints for sequence continuity primitives."""
+    hints: set[str] = set()
+    for role, pattern in _SEQUENCE_ROLE_PATTERNS:
+        if pattern.search(text):
+            hints.add(role)
+
+    if text_tokens & _SEQUENCE_INITIAL_SIGNAL_TOKENS:
+        hints.add("initial")
+    if text_tokens & _SEQUENCE_CONTINUATION_SIGNAL_TOKENS:
+        hints.add("continuation")
+    if text_tokens & _SEQUENCE_TRANSITION_SIGNAL_TOKENS:
+        hints.add("transition")
+    return hints
+
+
 def _entry_anchor_relation_key(entry_block_tokens: set[str]) -> str | None:
     if {"front", "in"} & entry_block_tokens and "front" in entry_block_tokens:
         return "in_front_of"
@@ -389,6 +426,18 @@ def _entry_anchor_relation_key(entry_block_tokens: set[str]) -> str | None:
         return "below"
     if "near" in entry_block_tokens:
         return "near"
+    return None
+
+
+def _entry_sequence_role_key(entry_tokens: set[str]) -> str | None:
+    if "continuation" in entry_tokens:
+        return "continuation"
+    if "transition" in entry_tokens:
+        return "transition"
+    if "initial" in entry_tokens:
+        return "initial"
+    if "unspecified" in entry_tokens:
+        return "unspecified"
     return None
 
 
@@ -432,6 +481,9 @@ def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str,
 
     op_id = _as_text(op_payload.get("op_id"))
     signature_id = _as_text(op_payload.get("signature_id"))
+    role_in_sequence = _as_text(tags.get("role_in_sequence"))
+    continuity_focus = _as_text(tags.get("continuity_focus"))
+    continuity_priority = _as_text(tags.get("continuity_priority"))
     op_modalities: List[str] = []
     raw_modalities = op_payload.get("modalities")
     if isinstance(raw_modalities, list):
@@ -449,6 +501,9 @@ def _build_index_entry(*, block: Mapping[str, Any], pack_name: str) -> Dict[str,
         "op_id": op_id,
         "signature_id": signature_id,
         "op_modalities": tuple(op_modalities),
+        "role_in_sequence": role_in_sequence,
+        "continuity_focus": continuity_focus,
+        "continuity_priority": continuity_priority,
     }
 
 
@@ -600,6 +655,9 @@ def _extract_candidate_evidence(candidate: Mapping[str, Any]) -> Dict[str, Any]:
 
     relation_hints, primary_relation = _extract_anchor_relation_hints(text_lower)
     phrase_hints = {f"placement_{relation}" for relation in relation_hints}
+    sequence_role_hints = _extract_sequence_role_hints(text_lower, text_tokens)
+    for sequence_role in sequence_role_hints:
+        phrase_hints.add(f"sequence_{sequence_role}")
     if re.search(r"\bturn(?:s|ed|ing)?\s+around\b", text_lower):
         phrase_hints.add("subject_turn_around")
         text_tokens.update({"turn", "around"})
@@ -612,6 +670,8 @@ def _extract_candidate_evidence(candidate: Mapping[str, Any]) -> Dict[str, Any]:
         "phrase_hints": phrase_hints,
         "has_explicit_anchor_phrase": bool(relation_hints),
         "primary_relation": primary_relation,
+        "sequence_role_hints": sequence_role_hints,
+        "has_sequence_cues": bool(sequence_role_hints) or ("continuity" in text_tokens),
     }
 
 
@@ -689,10 +749,13 @@ def _score_entry(
     has_camera_framing_signal = bool(probe_token_set & _CAMERA_FRAMING_SIGNAL_TOKENS)
     has_subject_motion_signal = bool(probe_token_set & _SUBJECT_MOTION_SIGNAL_TOKENS)
     has_narrative_cues = bool(probe_token_set & _NARRATIVE_CUE_TOKENS)
+    sequence_role_hints = set(evidence.get("sequence_role_hints") or set())
+    has_sequence_cues = bool(evidence.get("has_sequence_cues"))
     is_direction_axis = op_id.startswith("direction.axis.")
     is_camera_motion = op_id.startswith("camera.motion.")
-    is_scene_anchor = op_id.startswith("scene.anchor.place")
-    is_subject_look = op_id.startswith("subject.look")
+    is_scene_anchor = op_id.startswith("scene.anchor.place") or op_id.startswith("scene.relation.place")
+    is_sequence_continuity = op_id.startswith("sequence.continuity.")
+    is_subject_look = op_id.startswith("subject.look.")
     is_camera_pov = op_id.startswith("camera.pov.")
     is_camera_framing = (
         op_id.startswith("camera.shot.")
@@ -771,6 +834,21 @@ def _score_entry(
             domain_multiplier *= 1.6
         else:
             domain_multiplier *= 0.8
+
+    if is_sequence_continuity:
+        if has_sequence_cues:
+            domain_multiplier *= 1.25
+        else:
+            domain_multiplier *= 0.55
+
+        entry_sequence_role = _entry_sequence_role_key(entry_tokens | entry_block_tokens)
+        if sequence_role_hints and entry_sequence_role:
+            if entry_sequence_role in sequence_role_hints:
+                domain_multiplier *= 1.45
+            elif entry_sequence_role != "unspecified":
+                domain_multiplier *= 0.72
+    elif has_sequence_cues and (is_camera_motion or is_direction_axis or is_scene_anchor):
+        domain_multiplier *= 0.9
 
     if is_scene_anchor:
         entry_relation_key = _entry_anchor_relation_key(entry_block_tokens)
@@ -954,6 +1032,12 @@ def match_candidate_to_primitive(
         "category": best_entry.get("category"),
         "overlap_tokens": list(best["overlap_tokens"]),
     }
+    if isinstance(best_entry.get("role_in_sequence"), str):
+        payload["role_in_sequence"] = best_entry["role_in_sequence"]
+    if isinstance(best_entry.get("continuity_focus"), str):
+        payload["continuity_focus"] = best_entry["continuity_focus"]
+    if isinstance(best_entry.get("continuity_priority"), str):
+        payload["continuity_priority"] = best_entry["continuity_priority"]
 
     op_payload: Dict[str, Any] = {}
     if isinstance(best_entry.get("op_id"), str):

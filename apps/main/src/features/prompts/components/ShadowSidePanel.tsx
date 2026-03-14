@@ -105,6 +105,19 @@ function SectionLabel({
   );
 }
 
+function getSequenceRoleLabel(role: string): string {
+  switch (role) {
+    case 'initial':
+      return 'Initial';
+    case 'continuation':
+      return 'Continuation';
+    case 'transition':
+      return 'Transition';
+    default:
+      return 'Unspecified';
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,6 +126,13 @@ export function ShadowSidePanel({ analysis }: ShadowSidePanelProps) {
   const { result, loading, refresh } = analysis;
   const promptRoleColors = usePromptSettingsStore((s) => s.promptRoleColors);
   const candidates = result?.candidates ?? [];
+  const sequenceContext = result?.sequenceContext;
+  const sequenceRole = sequenceContext?.role_in_sequence ?? 'unspecified';
+  const hasSequenceRole = sequenceRole !== 'unspecified';
+  const sequenceConfidencePct =
+    typeof sequenceContext?.confidence === 'number'
+      ? Math.round(sequenceContext.confidence * 100)
+      : null;
   const [collapsed, setCollapsed] = useState(false);
 
   const primitiveMatches = useMemo(
@@ -168,6 +188,29 @@ export function ShadowSidePanel({ analysis }: ShadowSidePanelProps) {
         <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300 flex-1 min-w-0">
           Analysis
         </span>
+        {hasSequenceRole && (
+          <span
+            className="inline-flex items-center gap-1 px-1 py-0.5 rounded border border-cyan-200/70 dark:border-cyan-700/50 bg-cyan-50 dark:bg-cyan-900/20 text-[10px] text-cyan-700 dark:text-cyan-300 whitespace-nowrap"
+            title={
+              [
+                `Sequence role: ${getSequenceRoleLabel(sequenceRole)}`,
+                sequenceContext?.source ? `Source: ${sequenceContext.source}` : null,
+                sequenceContext?.matched_block_id
+                  ? `Block: ${sequenceContext.matched_block_id}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' | ')
+            }
+          >
+            {getSequenceRoleLabel(sequenceRole)}
+            {sequenceConfidencePct !== null && (
+              <span className="tabular-nums text-cyan-500 dark:text-cyan-400">
+                {sequenceConfidencePct}%
+              </span>
+            )}
+          </span>
+        )}
         {loading && (
           <Icon
             name="refresh"
@@ -200,6 +243,25 @@ export function ShadowSidePanel({ analysis }: ShadowSidePanelProps) {
         {!hasContent && (
           <div className="text-[10px] text-neutral-400 dark:text-neutral-500 px-1 py-4 text-center">
             Type to analyze
+          </div>
+        )}
+
+        {hasSequenceRole && sequenceContext && (
+          <div className="px-1.5 py-1 rounded border border-cyan-200/70 dark:border-cyan-700/50 bg-cyan-50/70 dark:bg-cyan-900/20 text-[10px] text-cyan-800 dark:text-cyan-200 space-y-0.5">
+            <div className="flex items-center gap-1">
+              <span className="font-medium">Sequence</span>
+              <span className="ml-auto">{getSequenceRoleLabel(sequenceRole)}</span>
+              {sequenceConfidencePct !== null && (
+                <span className="tabular-nums text-cyan-600 dark:text-cyan-300">
+                  {sequenceConfidencePct}%
+                </span>
+              )}
+            </div>
+            {sequenceContext.source && sequenceContext.source !== 'none' && (
+              <div className="text-cyan-700/80 dark:text-cyan-300/80 truncate">
+                src: {sequenceContext.source}
+              </div>
+            )}
           </div>
         )}
 

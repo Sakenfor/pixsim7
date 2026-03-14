@@ -807,16 +807,12 @@ export function PromptComposer({
         <button
           type="button"
           disabled={disabled}
-          onClick={(e) => {
-            if (e.ctrlKey || e.metaKey) {
-              setShowPromptTools((prev) => !prev);
-            }
-          }}
+          onClick={() => setShowPromptTools((prev) => !prev)}
           onContextMenu={(e) => {
             e.preventDefault();
             setShowPromptTools((prev) => !prev);
           }}
-          title="Prompt tools (Ctrl+click)"
+          title="Prompt tools"
           className={clsx(
             'p-1 rounded transition-colors',
             showPromptTools

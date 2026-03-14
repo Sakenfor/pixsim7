@@ -13,6 +13,7 @@ import {
   getCachedAnalysis,
   setCachedAnalysis,
   type AnalysisResult,
+  type SequenceContext,
 } from '../lib/promptAnalysisCache';
 import type { PromptBlockCandidate } from '../types';
 
@@ -25,12 +26,17 @@ interface AnalyzePromptResponse {
     prompt?: string;
     candidates?: PromptBlockCandidate[];
     tags?: AnalysisResult['tags'];
+    sequence_context?: SequenceContext;
   };
+  role_in_sequence?: string;
+  sequence_context?: SequenceContext;
 }
 
 export interface ShadowAnalysisResult {
   analyzedPrompt: string;
   candidates: PromptBlockCandidate[];
+  roleInSequence: string;
+  sequenceContext: SequenceContext;
 }
 
 export interface ShadowAnalysisState {
@@ -45,6 +51,55 @@ export interface ShadowAnalysisState {
 
 const DEBOUNCE_MS = 600;
 const MIN_CHARS = 8;
+const VALID_SEQUENCE_ROLES = new Set(['initial', 'continuation', 'transition', 'unspecified']);
+const DEFAULT_SEQUENCE_CONTEXT: SequenceContext = {
+  role_in_sequence: 'unspecified',
+  source: 'none',
+  confidence: null,
+  matched_block_id: null,
+};
+
+function normalizeSequenceRole(raw: unknown): string {
+  if (typeof raw !== 'string') return 'unspecified';
+  const normalized = raw.trim().toLowerCase();
+  return VALID_SEQUENCE_ROLES.has(normalized) ? normalized : 'unspecified';
+}
+
+function normalizeSequenceContext(raw: unknown): SequenceContext {
+  if (!raw || typeof raw !== 'object') {
+    return { ...DEFAULT_SEQUENCE_CONTEXT };
+  }
+  const record = raw as Record<string, unknown>;
+  return {
+    role_in_sequence: normalizeSequenceRole(record.role_in_sequence),
+    source:
+      typeof record.source === 'string' && record.source.trim()
+        ? record.source.trim()
+        : 'none',
+    confidence: typeof record.confidence === 'number' ? record.confidence : null,
+    matched_block_id:
+      typeof record.matched_block_id === 'string' && record.matched_block_id.trim()
+        ? record.matched_block_id.trim()
+        : null,
+  };
+}
+
+function resolveSequenceContext(response: AnalyzePromptResponse): SequenceContext {
+  const preferred = response.sequence_context ?? response.analysis?.sequence_context;
+  const normalized = normalizeSequenceContext(preferred);
+  if (normalized.role_in_sequence !== 'unspecified') {
+    return normalized;
+  }
+  const fallbackRole = normalizeSequenceRole(response.role_in_sequence);
+  if (fallbackRole === 'unspecified') {
+    return normalized;
+  }
+  return {
+    ...normalized,
+    role_in_sequence: fallbackRole,
+    source: normalized.source === 'none' ? 'response.role_in_sequence' : normalized.source,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Hook
@@ -87,9 +142,17 @@ export function useShadowAnalysis(
       if (!skipCache) {
         const cached = getCachedAnalysis(normalized, analyzerIdRef.current);
         if (cached) {
+          const sequenceContext = normalizeSequenceContext(
+            cached.sequence_context ?? {
+              role_in_sequence: cached.role_in_sequence,
+              source: 'cache',
+            },
+          );
           setResult({
             analyzedPrompt: normalized,
             candidates: cached.candidates,
+            roleInSequence: sequenceContext.role_in_sequence,
+            sequenceContext,
           });
           setLoading(false);
           return;
@@ -114,17 +177,22 @@ export function useShadowAnalysis(
 
         const candidates = response?.analysis?.candidates ?? [];
         const tags = response?.analysis?.tags ?? [];
+        const sequenceContext = resolveSequenceContext(response);
 
         // Write to shared cache
         setCachedAnalysis(normalized, analyzerIdRef.current, {
           prompt: response?.analysis?.prompt || normalized,
           candidates,
           tags,
+          role_in_sequence: sequenceContext.role_in_sequence,
+          sequence_context: sequenceContext,
         });
 
         setResult({
           analyzedPrompt: normalized,
           candidates,
+          roleInSequence: sequenceContext.role_in_sequence,
+          sequenceContext,
         });
       } catch {
         // Fail silently
