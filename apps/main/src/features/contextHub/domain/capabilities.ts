@@ -318,6 +318,20 @@ export interface EditorContextSnapshot {
  */
 export type PanelContextCapability<T = unknown> = T;
 
+/** Unified overrides for all generation triggers. */
+export interface GenerateOverrides {
+  /** Override the prompt without modifying the widget's UI state */
+  promptOverride?: string;
+  /** Replace current inputs entirely with these assets */
+  assetOverrides?: AssetModel[];
+  /** Merged into dynamicParams (e.g., { duration: 5 }) */
+  paramOverrides?: Record<string, any>;
+  /** Burst mode: submit this many generations (default: 1) */
+  count?: number;
+  /** Skip falling back to the active/selected asset when no inputs are queued */
+  skipActiveAssetFallback?: boolean;
+}
+
 /**
  * Generation widget capability - exposes actions for the nearest generation widget.
  * Allows media cards and other components to add inputs to the correct widget.
@@ -333,9 +347,9 @@ export interface GenerationWidgetContext {
   operationType: OperationType;
   /** Update the operation type (if supported by the widget) */
   setOperationType?: (operationType: OperationType) => void;
-  /** Trigger generation with the widget's current state (if supported).
-   *  Optional overrides allow injecting a prompt without modifying the widget's UI state. */
-  generate?: (options?: { promptOverride?: string }) => void | Promise<void>;
+  /** Trigger generation with the widget's current state.
+   *  Accepts unified overrides for prompt, assets, params, and burst count. */
+  generate?: (overrides?: GenerateOverrides) => void | Promise<void>;
   /** Add an asset to the widget's inputs */
   addInput: (options: {
     asset: AssetModel;
@@ -347,10 +361,6 @@ export interface GenerationWidgetContext {
     assets: AssetModel[];
     operationType: OperationType;
   }) => void;
-  /** Generate using current settings with a specific asset as sole input.
-   *  When count > 1, submits multiple generations (burst mode).
-   *  Optional overrides allow gesture-driven parameter adjustments (e.g., duration). */
-  generateWithAsset?: (asset: AssetModel, count?: number, overrides?: { duration?: number }) => void | Promise<void>;
   /** Unique identifier for this widget instance */
   widgetId: string;
 }
@@ -419,7 +429,7 @@ export interface CharacterScenePrepPrefillContext {
   discoveryNotes?: string;
 }
 
-export type UiStudioTabId = "surfaces" | "hud" | "panel-groups" | "overlay";
+export type UiStudioTabId = "surfaces" | "hud" | "overlay";
 
 export interface UiStudioTargetContext {
   tab: UiStudioTabId;

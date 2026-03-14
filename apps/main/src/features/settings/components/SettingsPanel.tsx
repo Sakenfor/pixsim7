@@ -4,7 +4,7 @@
  * Sidebar-based settings panel with expandable sub-sections.
  * Modules register themselves and provide their own UI components.
  */
-import { SidebarContentLayout } from '@pixsim7/shared.ui';
+import { SidebarContentLayout, useSidebarNav } from '@pixsim7/shared.ui';
 import { useState, useEffect, Suspense, type ReactNode } from 'react';
 
 import { Icon } from '@lib/icons';
@@ -80,10 +80,6 @@ export function SettingsPanel() {
   const activeTabId = useSettingsUiStore((state) => state.activeTabId);
   const setActiveTabId = useSettingsUiStore((state) => state.setActiveTabId);
 
-  // Track expanded modules and active sub-sections
-  const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
-  const [activeSubSection, setActiveSubSection] = useState<string | null>(null);
-
   // Subscribe to registry changes
   useEffect(() => {
     const unsubscribe = settingsRegistry.subscribe(() => {
@@ -92,7 +88,6 @@ export function SettingsPanel() {
       // If active tab was removed, switch to first available
       if (!updated.find((m) => m.id === activeTabId) && updated.length > 0) {
         setActiveTabId(updated[0].id);
-        setActiveSubSection(null);
       }
     });
     return unsubscribe;
@@ -105,39 +100,6 @@ export function SettingsPanel() {
     }
   }, [activeTabId, modules, setActiveTabId]);
 
-  // Auto-expand module when selected (if it has sub-sections)
-  useEffect(() => {
-    if (activeTabId) {
-      const module = modules.find((m) => m.id === activeTabId);
-      if (module?.subSections?.length) {
-        setExpandedModules((prev) => new Set([...prev, activeTabId]));
-      }
-    }
-  }, [activeTabId, modules]);
-
-  const handleSelectModule = (moduleId: string) => {
-    setActiveTabId(moduleId);
-    setActiveSubSection(null);
-  };
-
-  const handleToggleExpand = (moduleId: string) => {
-    setExpandedModules((prev) => {
-      const next = new Set(prev);
-      if (next.has(moduleId)) {
-        next.delete(moduleId);
-      } else {
-        next.add(moduleId);
-      }
-      return next;
-    });
-  };
-
-  const handleSelectSubSection = (moduleId: string, subSectionId: string) => {
-    setActiveTabId(moduleId);
-    setActiveSubSection(subSectionId);
-  };
-
-  const activeModule = modules.find((m) => m.id === activeTabId);
   const navItems = modules.map((module) => ({
     id: module.id,
     label: module.label,
@@ -149,23 +111,44 @@ export function SettingsPanel() {
     })),
   }));
 
+  const nav = useSidebarNav({ sections: navItems, initial: activeTabId ?? undefined, storageKey: 'settings:nav' });
+
+  // Sync external store → hook when external navigation changes
+  useEffect(() => {
+    if (activeTabId && activeTabId !== nav.activeSectionId) {
+      nav.navigate(activeTabId);
+    }
+  }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync hook → external store
+  useEffect(() => {
+    if (nav.activeSectionId && nav.activeSectionId !== activeTabId) {
+      setActiveTabId(nav.activeSectionId);
+    }
+  }, [nav.activeSectionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const activeModule = modules.find((m) => m.id === nav.activeSectionId);
+
   return (
     <div className="h-full w-full flex bg-white dark:bg-neutral-900">
       <SidebarContentLayout
         sections={navItems}
-        activeSectionId={activeTabId ?? ''}
-        onSelectSection={handleSelectModule}
-        activeChildId={activeSubSection ?? undefined}
-        onSelectChild={handleSelectSubSection}
-        expandedSectionIds={expandedModules}
-        onToggleExpand={handleToggleExpand}
+        activeSectionId={nav.activeSectionId}
+        onSelectSection={nav.selectSection}
+        activeChildId={nav.activeChildId}
+        onSelectChild={nav.selectChild}
+        expandedSectionIds={nav.expandedSectionIds}
+        onToggleExpand={nav.toggleExpand}
         sidebarTitle="Settings"
         sidebarWidth="w-48"
         variant="light"
         navClassName="space-y-0.5"
+        collapsible
+        expandedWidth={192}
+        persistKey="settings-sidebar"
       >
         {activeModule ? (
-          <SettingsContent module={activeModule} subSectionId={activeSubSection} />
+          <SettingsContent module={activeModule} subSectionId={nav.activeChildId ?? null} />
         ) : (
           <div className="flex-1 flex items-center justify-center text-neutral-500 dark:text-neutral-400 text-sm">
             No settings modules registered

@@ -11,7 +11,7 @@
 
 import type { ArchitectureGraphV1 } from '@pixsim7/shared.api.model';
 import type { AppMapMetadata } from '@pixsim7/shared.types';
-import { Button, SidebarContentLayout } from '@pixsim7/shared.ui';
+import { Button, SidebarContentLayout, useSidebarNav } from '@pixsim7/shared.ui';
 import React, {
   useState,
   useMemo,
@@ -119,15 +119,27 @@ class AppMapErrorBoundary extends Component<
 
 type SectionId = 'features' | 'plugins' | 'registries' | 'graph' | 'journeys' | 'testing' | 'stats' | 'backend';
 
-const SECTIONS: { id: SectionId; label: string }[] = [
-  { id: 'features', label: 'Features' },
-  { id: 'plugins', label: 'Plugins' },
-  { id: 'registries', label: 'Registries' },
-  { id: 'graph', label: 'Dep Graph' },
-  { id: 'journeys', label: 'Journeys' },
-  { id: 'testing', label: 'Testing' },
-  { id: 'stats', label: 'Statistics' },
-  { id: 'backend', label: 'Backend' },
+const SECTIONS = [
+  {
+    id: 'architecture',
+    label: 'Architecture',
+    children: [
+      { id: 'features' as SectionId, label: 'Features' },
+      { id: 'plugins' as SectionId, label: 'Plugins' },
+      { id: 'registries' as SectionId, label: 'Registries' },
+      { id: 'graph' as SectionId, label: 'Dep Graph' },
+    ],
+  },
+  {
+    id: 'analysis',
+    label: 'Analysis',
+    children: [
+      { id: 'journeys' as SectionId, label: 'Journeys' },
+      { id: 'testing' as SectionId, label: 'Testing' },
+      { id: 'stats' as SectionId, label: 'Statistics' },
+      { id: 'backend' as SectionId, label: 'Backend' },
+    ],
+  },
 ];
 
 // =============================================================================
@@ -139,7 +151,8 @@ export function AppMapPanel() {
   const [familyFilter, setFamilyFilter] = useState<UnifiedPluginFamily | 'all'>('all');
   const [originFilter, setOriginFilter] = useState<UnifiedPluginOrigin | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeSection, setActiveSection] = useState<SectionId>('features');
+  const nav = useSidebarNav<string, SectionId>({ sections: SECTIONS, initial: 'features', storageKey: 'app-map:nav' });
+  const activeSection = nav.activeId as SectionId;
   const [allPlugins, setAllPlugins] = useState<UnifiedPluginDescriptor[]>([]);
 
   // Architecture graph (unified backend + frontend data)
@@ -461,10 +474,17 @@ export function AppMapPanel() {
         {/* Sidebar + Content */}
         <SidebarContentLayout
           sections={SECTIONS}
-          activeSectionId={activeSection}
-          onSelectSection={(id) => setActiveSection(id as SectionId)}
-          sidebarWidth="w-28"
+          activeSectionId={nav.activeSectionId}
+          onSelectSection={nav.selectSection}
+          activeChildId={nav.activeChildId}
+          onSelectChild={nav.selectChild}
+          expandedSectionIds={nav.expandedSectionIds}
+          onToggleExpand={nav.toggleExpand}
+          sidebarWidth="w-36"
           variant="light"
+          collapsible
+          expandedWidth={144}
+          persistKey="appmap-sidebar"
         >
           <div className="h-full overflow-hidden">
             {activeSection === 'features' && (

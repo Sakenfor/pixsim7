@@ -11,9 +11,10 @@ import {
   PanelShell,
   SidebarContentLayout,
   type SidebarContentLayoutSection,
+  useSidebarNav,
 } from "@pixsim7/shared.ui";
 import clsx from "clsx";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 
 import { Icon, type IconName } from "@lib/icons";
 
@@ -31,7 +32,6 @@ import { OverlayConfig } from "@/routes/OverlayConfig";
 
 import { HudDesignerPanel } from "../HudDesignerPanel";
 
-import { PanelGroupsWorkbench } from "./PanelGroupsWorkbench";
 import { SurfaceWorkbenchPanel } from "./SurfaceWorkbenchPanel";
 
 interface UiStudioTab {
@@ -41,7 +41,7 @@ interface UiStudioTab {
   icon: IconName;
 }
 
-type UiStudioSectionId = "authoring" | "runtime";
+type UiStudioSectionId = "authoring";
 
 const STUDIO_TAB_META: Record<UiStudioTabId, UiStudioTab> = {
   surfaces: {
@@ -62,12 +62,6 @@ const STUDIO_TAB_META: Record<UiStudioTabId, UiStudioTab> = {
     description: "Edit overlay widget layouts, stack groups, and runtime imports",
     icon: "layers",
   },
-  "panel-groups": {
-    id: "panel-groups",
-    label: "Panel Groups",
-    description: "Apply panel-group presets to active dock widgets",
-    icon: "blocks",
-  },
 };
 
 const STUDIO_TAB_IDS = Object.keys(STUDIO_TAB_META) as UiStudioTabId[];
@@ -75,7 +69,6 @@ const STUDIO_TAB_ID_SET = new Set<UiStudioTabId>(STUDIO_TAB_IDS);
 
 const STUDIO_SECTION_TABS: Record<UiStudioSectionId, UiStudioTabId[]> = {
   authoring: ["surfaces", "hud", "overlay"],
-  runtime: ["panel-groups"],
 };
 
 const STUDIO_SECTIONS: Array<{
@@ -84,15 +77,8 @@ const STUDIO_SECTIONS: Array<{
   icon: IconName;
 }> = [
   { id: "authoring", label: "Authoring", icon: "wrench" },
-  { id: "runtime", label: "Runtime", icon: "sliders" },
 ];
 
-const TAB_SECTION_BY_ID: Record<UiStudioTabId, UiStudioSectionId> = {
-  surfaces: "authoring",
-  hud: "authoring",
-  overlay: "authoring",
-  "panel-groups": "runtime",
-};
 
 const STUDIO_SIDEBAR_SECTIONS: SidebarContentLayoutSection[] = STUDIO_SECTIONS.map(
   (section) => ({
@@ -112,51 +98,21 @@ function renderContextSummary(value: number | null): string {
 }
 
 export function UiStudioPanel() {
-  const [activeTab, setActiveTab] = useState<UiStudioTabId>("surfaces");
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    () => new Set(STUDIO_SECTIONS.map((section) => section.id)),
-  );
   const authoringContext = useAuthoringContext();
+  const nav = useSidebarNav<UiStudioSectionId, UiStudioTabId>({
+    sections: STUDIO_SIDEBAR_SECTIONS,
+    initial: "surfaces",
+    storageKey: 'ui-studio:nav',
+  });
+  const activeTab = nav.activeId as UiStudioTabId;
   const setActiveStudioTab = useCallback((nextTab: UiStudioTabId) => {
-    setActiveTab((current) =>
-      STUDIO_TAB_ID_SET.has(nextTab) ? nextTab : current,
-    );
-  }, []);
-  const handleSelectSection = useCallback(
-    (sectionId: string) => {
-      const sectionTabs =
-        STUDIO_SECTION_TABS[sectionId as UiStudioSectionId] ?? [];
-      if (sectionTabs.length > 0) {
-        setActiveStudioTab(sectionTabs[0]);
-      }
-    },
-    [setActiveStudioTab],
-  );
-  const handleSelectTab = useCallback(
-    (_sectionId: string, tabId: string) => {
-      if (STUDIO_TAB_ID_SET.has(tabId as UiStudioTabId)) {
-        setActiveStudioTab(tabId as UiStudioTabId);
-      }
-    },
-    [setActiveStudioTab],
-  );
-  const handleToggleSection = useCallback((sectionId: string) => {
-    setExpandedSections((previous) => {
-      const next = new Set(previous);
-      if (next.has(sectionId)) {
-        next.delete(sectionId);
-      } else {
-        next.add(sectionId);
-      }
-      return next;
-    });
-  }, []);
+    if (STUDIO_TAB_ID_SET.has(nextTab)) {
+      nav.navigate(nextTab);
+    }
+  }, [nav]);
 
   const activeTabMeta = useMemo(() => STUDIO_TAB_META[activeTab], [activeTab]);
-  const activeSectionId = useMemo<UiStudioSectionId>(
-    () => TAB_SECTION_BY_ID[activeTab] ?? "authoring",
-    [activeTab],
-  );
+  const activeSectionId = nav.activeSectionId;
   const activeSectionLabel = useMemo(
     () =>
       STUDIO_SECTIONS.find((section) => section.id === activeSectionId)
@@ -230,17 +186,20 @@ export function UiStudioPanel() {
     <div className="h-full w-full flex bg-white dark:bg-neutral-900">
       <SidebarContentLayout
         sections={STUDIO_SIDEBAR_SECTIONS}
-        activeSectionId={activeSectionId}
-        onSelectSection={handleSelectSection}
-        activeChildId={activeTab}
-        onSelectChild={handleSelectTab}
-        expandedSectionIds={expandedSections}
-        onToggleExpand={handleToggleSection}
+        activeSectionId={nav.activeSectionId}
+        onSelectSection={nav.selectSection}
+        activeChildId={nav.activeChildId}
+        onSelectChild={nav.selectChild}
+        expandedSectionIds={nav.expandedSectionIds}
+        onToggleExpand={nav.toggleExpand}
         sidebarTitle="UI Studio"
         sidebarWidth="w-56"
         variant="light"
         navClassName="space-y-1"
         contentClassName="overflow-hidden"
+        collapsible
+        expandedWidth={224}
+        persistKey="ui-studio-sidebar"
       >
         <PanelShell
           header={
@@ -279,9 +238,6 @@ export function UiStudioPanel() {
         >
           {activeTab === "surfaces" && <SurfaceWorkbenchPanel />}
           {activeTab === "hud" && <HudDesignerPanel />}
-          {activeTab === "panel-groups" && (
-            <PanelGroupsWorkbench className="h-full overflow-auto p-4 space-y-6 text-xs text-neutral-800 dark:text-neutral-100" />
-          )}
           {activeTab === "overlay" && <OverlayConfig embedded />}
         </PanelShell>
       </SidebarContentLayout>

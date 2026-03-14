@@ -16,7 +16,7 @@ import type { GallerySurfaceDefinition } from '@features/gallery';
 import type { GizmoSurfaceDefinition } from '@features/gizmos';
 import { nodeRendererRegistry, type NodeRenderer } from '@features/graph/lib/editor/nodeRendererRegistry';
 import type { GraphEditorDefinition } from '@features/graph/lib/editor/types';
-import type { PanelDefinition, PanelGroupDefinition } from '@features/panels';
+import type { PanelDefinition } from '@features/panels';
 import type { GenerationUIPlugin } from '@features/providers';
 import type { WorldToolPlugin } from '@features/worldTools';
 
@@ -85,7 +85,6 @@ export interface PluginTypeMap {
   'scene-view': SceneViewRegistration;
   'control-center': ControlCenterRegistration;
   'ui-plugin': UiPluginRegistration;
-  'panel-group': PanelGroupDefinition;
   'overlay-widget': WidgetDefinition;
 }
 
@@ -399,25 +398,6 @@ function buildGizmoSurfaceMetadata(
   } as ExtendedPluginMetadata<'gizmo-surface'>;
 }
 
-function buildPanelGroupMetadata(
-  group: PanelGroupDefinition,
-  context: PluginRegistrationContext
-): ExtendedPluginMetadata<'panel-group'> {
-  const slotNames = Object.keys(group.panels);
-  const presetNames = Object.keys(group.presets);
-
-  return {
-    ...buildBaseMetadata('panel-group', { id: group.id, description: group.description, tags: group.tags }, context),
-    name: group.title || group.id,
-    groupId: group.id,
-    category: group.category,
-    icon: group.icon,
-    slots: slotNames,
-    presets: presetNames,
-    defaultScopes: group.defaultScopes,
-  } as ExtendedPluginMetadata<'panel-group'>;
-}
-
 function buildOverlayWidgetMetadata(
   widget: WidgetDefinition,
   context: PluginRegistrationContext
@@ -589,10 +569,6 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
       }
     },
     buildMetadata: buildUiPluginMetadata,
-  },
-  'panel-group': {
-    register: () => {},
-    buildMetadata: buildPanelGroupMetadata,
   },
   'overlay-widget': {
     register: (widget: WidgetDefinition) => {

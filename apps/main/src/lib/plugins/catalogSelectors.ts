@@ -21,7 +21,6 @@ import type {
   GizmoSurfaceId,
 } from '@features/gizmos/lib/core/surfaceRegistry';
 import type { GraphEditorDefinition } from '@features/graph/lib/editor/types';
-import type { PanelGroupDefinition } from '@features/panels/lib/definePanelGroup';
 import type { PanelDefinition, WorkspaceContext } from '@features/panels/lib/panelRegistry';
 import type {
   GenerationUIPlugin,
@@ -657,33 +656,3 @@ export const generationUiSelectors = {
   },
 };
 
-// ============================================================================
-// Panel Group Selectors
-// ============================================================================
-
-const panelGroupBase = createBaseSelector<PanelGroupDefinition>('panel-group');
-
-export const panelGroupSelectors = {
-  ...panelGroupBase,
-
-  getIds(): string[] {
-    return pluginCatalog.getByFamily('panel-group').map((meta) => meta.id);
-  },
-
-  get size(): number {
-    return pluginCatalog.getByFamily('panel-group').length;
-  },
-
-  getByCategory: createCategoryMethod(() => panelGroupBase.getAll(), 'category'),
-
-  search: createSearchMethod(
-    () => panelGroupBase.getAll(),
-    ['id', 'title', 'description', 'tags'],
-  ),
-
-  getPanelIdsForPreset(groupId: string, presetName: string): string[] {
-    const group = this.get(groupId);
-    if (!group) return [];
-    return group.getPanelIds(presetName);
-  },
-};

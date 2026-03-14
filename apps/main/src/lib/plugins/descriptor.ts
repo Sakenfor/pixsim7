@@ -45,7 +45,6 @@ export type UnifiedPluginFamily =
   | 'workspace-panel'
   | 'dock-widget'
   | 'gizmo-surface'
-  | 'panel-group'
   | 'generation-ui';
 
 /**
