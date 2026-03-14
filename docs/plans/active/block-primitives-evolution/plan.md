@@ -1,6 +1,6 @@
 # Block Primitives Evolution
 
-Last updated: 2026-03-12
+Last updated: 2026-03-13
 Owner: block-primitives lane
 Status: active
 Stage: phase_0_baseline
@@ -118,6 +118,20 @@ Exit criteria:
 - [ ] Complete and verify op-signature coverage in core packs.
 - [ ] Extend tests around op ingestion, capability stamping, and ref capability tags.
 - [ ] Finalize canonical handling for prose/descriptors without introducing parallel contracts.
+- [x] Add ref-first placement relation contract:
+  - Added `scene.relation.v1` signature (`relation/distance/orientation` + required refs `subject,target`).
+  - Migrated `core_placement` op metadata to `scene.relation.place` / `scene.relation.v1`.
+  - Preserved parser scoring compatibility for legacy `scene.anchor.place` during transition.
+  - Added signature and loader regression tests for missing required refs.
+- [x] Add subject interaction op contract:
+  - Added `subject.interaction.v1` signature (`beat_type/contact_stage/response_mode/social_tone` + required refs `subject,target`).
+  - Added new CUE-authored core pack `core_subject_interaction` and generated runtime schema/manifest.
+  - Added contract + loader regression tests for signature acceptance and derived interaction tags.
+- [x] Add sequence continuity op contract:
+  - Added `sequence.continuity.v1` signature (`role_in_sequence/continuity_focus/continuity_priority`).
+  - Added canonical vocabulary keys for sequence continuity params (`role_in_sequence`, `continuity_focus`, `continuity_priority`).
+  - Added new CUE-authored core pack `core_sequence_continuity` and generated runtime schema/manifest.
+  - Added contract + loader regression tests for sequence continuity signature acceptance and derived tags.
 
 Exit criteria:
 
@@ -166,6 +180,29 @@ Exit criteria:
 - No active runtime path depends on legacy selector-era action-block stack.
 - Naming/docs no longer imply multiple canonical primitive systems.
 
+## Op Namespace Rules
+
+Each op signature declares an `op_namespace` — a lowercase dotted identifier
+(e.g. `camera.motion`, `subject.pose`).
+
+**Format**: `[a-z][a-z0-9]*(.[a-z][a-z0-9]*)*` — no wildcards, no trailing dots,
+no underscores as segment separators.
+
+**Matching rule**: An `op_id` or `op_id_template` must start with `{op_namespace}.`
+(namespace + literal dot).  The dot boundary prevents accidental prefix collisions.
+
+**Examples**:
+- `op_namespace: camera.motion` → `camera.motion.pan` (valid), `camera.motion.{variant}` (valid), `camera.motion_pan` (rejected)
+- `op_namespace: subject.look` → `subject.look.apply` (valid), `subject.look_at` (rejected — underscore breaks namespace boundary)
+
+**Verb conventions**:
+- `.set` — stateless state assignment (`camera.angle.set`, `subject.pose.set`)
+- `.apply` — stateful/composite ops (`subject.interaction.apply`, `sequence.continuity.apply`)
+- `.place` — spatial positioning (`scene.relation.place`)
+- `.{variant}` — variant-templated ops (`camera.motion.{variant}`, `direction.axis.{variant}`)
+
+**Source of truth**: `services/prompt/block/op_signature_registry.yaml`
+
 ## Risks
 
 - Risk: generated schemas become hand-edited and drift from CUE.
@@ -193,3 +230,11 @@ Exit criteria:
 - 2026-03-12 (`uncommitted`): Added camera-motion-vs-subject-look disambiguation for explicit motion tokens (e.g. `zoom`) plus adverb stop-token filtering (`slowly/quickly/gently/smoothly`). Eval rerun raised `camera_motion` coverage to `90.0%` and overall coverage to `74.6%` (`misses: 10`, FPR still unchanged/high so projection remains shadow-only).
 - 2026-03-12 (`uncommitted`): Expanded Phase 2 with block-fit convergence track (context-aware scoring contract, parser/block-fit ownership boundary, regression coverage, backward-compatibility criteria).
 - 2026-03-12 (`uncommitted`): Implemented block-fit op-aware scoring (Phase 2 convergence): extended `/dev/block-fit/score` and `/rate` with optional `parser_context` (op_id, signature_id, modality, primitive_match); layered scoring adds context delta to base ontology score; `parser_context_snapshot` persisted in fit records; 18 unit tests covering no-context backward-compat, exact op match, family match/mismatch, signature-only, modality alignment, determinism, and explanation output.
+- 2026-03-13 (`uncommitted`): Added `scene.relation.v1` signature and migrated `core_placement` CUE/schema op contract to `scene.relation.place`; kept primitive projection heuristics compatible with legacy `scene.anchor.place`; added required-ref validation tests in op-signature and content-pack loader suites.
+- 2026-03-13 (`uncommitted`): Added `subject.interaction.v1` signature and new `core_subject_interaction` CUE pack/schema with interaction beat variants; expanded op-signature and loader tests for subject interaction contract coverage.
+- 2026-03-13 (`uncommitted`): Added `sequence.continuity.v1` signature and new `core_sequence_continuity` CUE pack/schema for initial/continuation/transition continuity primitives; expanded canonical prompt-tag vocabulary with sequence continuity keys and added op-signature + loader regression coverage.
+- 2026-03-13 (`uncommitted`): Wired sequence continuity into parser/block-fit scoring path: primitive projection now detects continuation/transition/initial cues and surfaces continuity role metadata in `primitive_match`; block-fit now infers sequence role from parser context when missing and applies sequence-role alignment bonus/penalty for `sequence.continuity.*` blocks, with regression tests.
+- 2026-03-13 (`uncommitted`): Exposed sequence-role inference as first-class prompt-analysis contract output: prompt analysis now attaches normalized `sequence_context` (role/source/confidence/matched block) and `/prompts/analyze` explicitly returns `role_in_sequence` + `sequence_context`; updated meta-contract schema tests and added service-level sequence-context derivation coverage.
+- 2026-03-13 (`uncommitted`): Wired prompt UI to consume sequence-role contract fields end-to-end (`promptAnalysisCache` + `useShadowAnalysis` + shadow overlay/side panel), so role/source/confidence surface directly without parsing candidate-level primitive metadata.
+- 2026-03-13 (`uncommitted`): Extended Block Matrix axis resolution with op-level keys (`op_id`, `signature_id`, `op_namespace`, `op_modalities`) including signature fallback derivation from canonical op-signature prefixes; added drift-report resolver tests and builtin matrix presets for op/signature coverage.
+- 2026-03-13 (`uncommitted`): Canonicalized op namespace matching: replaced `op_id_prefix` with `op_namespace` (lowercase dotted identifier, implicit dot boundary); normalized `subject.look_at` → `subject.look.apply`; added format validation regex and reverse coverage test; documented Op Namespace Rules in plan.

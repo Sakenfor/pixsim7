@@ -3,7 +3,7 @@ title: Block Primitives Evolution
 status: active
 stage: phase_0_baseline
 owner: block-primitives lane
-last_updated: 2026-03-10
+last_updated: 2026-03-13
 summary: "BlockPrimitive model, PromptBlock retirement, composition and migration paths."
 plan_path: ./plan.md
 code_paths:

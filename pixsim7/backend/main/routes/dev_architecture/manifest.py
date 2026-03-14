@@ -16,6 +16,7 @@ manifest = PluginManifest(
     author="PixSim Team",
     kind="route",
     prefix="",  # Routes already include /dev/architecture
+    prefix_raw=True,
     tags=["dev", "introspection", "architecture"],
     dependencies=[],
     requires_db=False,

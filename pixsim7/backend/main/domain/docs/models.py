@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import JSON, Text
@@ -9,11 +9,36 @@ from sqlmodel import Column, Field, Index, SQLModel
 
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
+PLAN_META_SCHEMA = "dev_meta"
+
+
+class PlanSyncRun(SQLModel, table=True):
+    """A single filesystem->DB sync attempt with aggregate counters."""
+
+    __tablename__ = "plan_sync_runs"
+    __table_args__ = {"schema": PLAN_META_SCHEMA}
+
+    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
+    status: str = Field(default="running", max_length=32, index=True)
+    started_at: datetime = Field(default_factory=utcnow, index=True)
+    finished_at: Optional[datetime] = Field(default=None, index=True)
+    commit_sha: Optional[str] = Field(default=None, max_length=64)
+    actor: Optional[str] = Field(default=None, max_length=120)
+    error_message: Optional[str] = Field(default=None, sa_column=Column(Text))
+    created: int = Field(default=0)
+    updated: int = Field(default=0)
+    removed: int = Field(default=0)
+    unchanged: int = Field(default=0)
+    events: int = Field(default=0)
+    duration_ms: Optional[int] = Field(default=None)
+    changed_fields: Optional[Dict[str, int]] = Field(default=None, sa_column=Column(JSON))
+
 
 class PlanRegistry(SQLModel, table=True):
     """Cached projection of a plan manifest bundle."""
 
     __tablename__ = "plan_registry"
+    __table_args__ = {"schema": PLAN_META_SCHEMA}
 
     id: str = Field(primary_key=True, max_length=120)
     title: str = Field(max_length=255)
@@ -41,10 +66,12 @@ class PlanEvent(SQLModel, table=True):
     __tablename__ = "plan_events"
     __table_args__ = (
         Index("idx_plan_event_plan_ts", "plan_id", "timestamp"),
+        {"schema": PLAN_META_SCHEMA},
     )
 
     id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
-    plan_id: str = Field(foreign_key="plan_registry.id", index=True, max_length=120)
+    run_id: Optional[UUID] = Field(default=None, foreign_key=f"{PLAN_META_SCHEMA}.plan_sync_runs.id", index=True)
+    plan_id: str = Field(foreign_key=f"{PLAN_META_SCHEMA}.plan_registry.id", index=True, max_length=120)
     event_type: str = Field(max_length=64)
     field: Optional[str] = Field(default=None, max_length=64)
     old_value: Optional[str] = Field(default=None, sa_column=Column(Text))

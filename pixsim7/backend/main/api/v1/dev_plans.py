@@ -5,15 +5,20 @@ Provides access to the plan registry: manifest metadata, plan markdown,
 companions, handoffs, DB-backed sync, and event history.
 """
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import get_database
-from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry
+from pixsim7.backend.main.api.dependencies import CurrentAdminUser, get_database
+from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry, PlanSyncRun
 from pixsim7.backend.main.services.docs.plans import get_plans_index
-from pixsim7.backend.main.services.docs.plan_sync import sync_plans
+from pixsim7.backend.main.services.docs.plan_sync import (
+    PlanSyncLockedError,
+    prune_plan_sync_history,
+    sync_plans,
+)
 
 router = APIRouter(prefix="/dev/plans", tags=["dev", "plans"])
 
@@ -80,6 +85,7 @@ class PlanRegistryListResponse(BaseModel):
 
 class PlanEventEntry(BaseModel):
     id: str
+    runId: Optional[str] = None
     planId: str
     eventType: str
     field: Optional[str] = None
@@ -95,6 +101,7 @@ class PlanEventsResponse(BaseModel):
 
 
 class PlanActivityEntry(BaseModel):
+    runId: Optional[str] = None
     planId: str
     planTitle: str
     eventType: str
@@ -110,12 +117,44 @@ class PlanActivityResponse(BaseModel):
 
 
 class SyncResultResponse(BaseModel):
+    runId: Optional[str] = None
     created: int = 0
     updated: int = 0
     removed: int = 0
     unchanged: int = 0
     events: int = 0
+    durationMs: Optional[int] = None
+    changedFields: Dict[str, int] = Field(default_factory=dict)
     details: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class PlanSyncRunEntry(BaseModel):
+    id: str
+    status: str
+    startedAt: str
+    finishedAt: Optional[str] = None
+    durationMs: Optional[int] = None
+    commitSha: Optional[str] = None
+    actor: Optional[str] = None
+    errorMessage: Optional[str] = None
+    created: int = 0
+    updated: int = 0
+    removed: int = 0
+    unchanged: int = 0
+    events: int = 0
+    changedFields: Dict[str, int] = Field(default_factory=dict)
+
+
+class PlanSyncRunsResponse(BaseModel):
+    runs: List[PlanSyncRunEntry] = Field(default_factory=list)
+
+
+class PlanSyncRetentionResponse(BaseModel):
+    dryRun: bool
+    retentionDays: int
+    cutoff: str
+    eventsDeleted: int
+    runsDeleted: int
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -166,6 +205,7 @@ def _row_to_registry_entry(row: PlanRegistry) -> dict:
 def _event_to_entry(ev: PlanEvent, plan_title: str = "") -> dict:
     return {
         "id": str(ev.id),
+        "runId": str(ev.run_id) if ev.run_id else None,
         "planId": ev.plan_id,
         "planTitle": plan_title,
         "eventType": ev.event_type,
@@ -174,6 +214,25 @@ def _event_to_entry(ev: PlanEvent, plan_title: str = "") -> dict:
         "newValue": ev.new_value,
         "commitSha": ev.commit_sha,
         "timestamp": ev.timestamp.isoformat() if ev.timestamp else "",
+    }
+
+
+def _run_to_entry(run: PlanSyncRun) -> dict:
+    return {
+        "id": str(run.id),
+        "status": run.status,
+        "startedAt": run.started_at.isoformat() if run.started_at else "",
+        "finishedAt": run.finished_at.isoformat() if run.finished_at else None,
+        "durationMs": run.duration_ms,
+        "commitSha": run.commit_sha,
+        "actor": run.actor,
+        "errorMessage": run.error_message,
+        "created": run.created or 0,
+        "updated": run.updated or 0,
+        "removed": run.removed or 0,
+        "unchanged": run.unchanged or 0,
+        "events": run.events or 0,
+        "changedFields": run.changed_fields or {},
     }
 
 
@@ -209,19 +268,84 @@ async def list_plans(
 
 @router.post("/sync", response_model=SyncResultResponse)
 async def trigger_sync(
+    _admin: CurrentAdminUser,
     commit_sha: Optional[str] = Query(None, description="Current git commit SHA"),
     db: AsyncSession = Depends(get_database),
 ):
     """Sync filesystem manifests into the DB, detecting and recording changes."""
-    result = await sync_plans(db, commit_sha=commit_sha)
+    actor_id = getattr(_admin, "id", None)
+    actor = f"user:{actor_id}" if actor_id is not None else "user:unknown"
+    try:
+        result = await sync_plans(db, commit_sha=commit_sha, actor=actor)
+    except PlanSyncLockedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     return {
+        "runId": result.run_id,
         "created": result.created,
         "updated": result.updated,
         "removed": result.removed,
         "unchanged": result.unchanged,
         "events": result.events,
+        "durationMs": result.duration_ms,
+        "changedFields": result.changed_fields,
         "details": result.details,
     }
+
+
+@router.get("/sync-runs", response_model=PlanSyncRunsResponse)
+async def list_sync_runs(
+    status: Optional[str] = Query(None, description="Filter by run status (success, failed, running)"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_database),
+):
+    stmt = select(PlanSyncRun).order_by(PlanSyncRun.started_at.desc()).offset(offset).limit(limit)
+    if status:
+        stmt = stmt.where(PlanSyncRun.status == status)
+
+    rows = (await db.execute(stmt)).scalars().all()
+    return {"runs": [_run_to_entry(row) for row in rows]}
+
+
+@router.post("/sync-runs/retention", response_model=PlanSyncRetentionResponse)
+async def run_sync_retention(
+    _admin: CurrentAdminUser,
+    days: int = Query(90, ge=1, le=3650, description="Retention window in days"),
+    dry_run: bool = Query(True, description="Preview deletions without applying changes"),
+    db: AsyncSession = Depends(get_database),
+):
+    try:
+        result = await prune_plan_sync_history(
+            db,
+            retention_days=days,
+            dry_run=dry_run,
+        )
+    except PlanSyncLockedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "dryRun": result.dry_run,
+        "retentionDays": result.retention_days,
+        "cutoff": result.cutoff,
+        "eventsDeleted": result.events_deleted,
+        "runsDeleted": result.runs_deleted,
+    }
+
+
+@router.get("/sync-runs/{run_id}", response_model=PlanSyncRunEntry)
+async def get_sync_run(
+    run_id: UUID,
+    db: AsyncSession = Depends(get_database),
+):
+    row = await db.get(PlanSyncRun, run_id)
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Sync run not found: {run_id}")
+    return _run_to_entry(row)
 
 
 @router.get("/registry", response_model=PlanRegistryListResponse)
@@ -279,6 +403,7 @@ async def get_plan_events(
         "events": [
             {
                 "id": str(ev.id),
+                "runId": str(ev.run_id) if ev.run_id else None,
                 "planId": ev.plan_id,
                 "eventType": ev.event_type,
                 "field": ev.field,
