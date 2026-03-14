@@ -195,7 +195,6 @@ class PromptVariantService:
         result = await self.db.execute(
             select(Asset)
             .join(Generation, Asset.source_generation_id == Generation.id)
-            .join(Generation, Generation.id == Generation.id)
             .where(Generation.prompt_version_id == version_id)
             .limit(limit)
         )
@@ -206,7 +205,6 @@ class PromptVariantService:
         result = await self.db.execute(
             select(PromptVersion)
             .join(Generation, PromptVersion.id == Generation.prompt_version_id)
-            .join(Generation, Generation.id == Generation.id)
             .where(Generation.asset_id == asset_id)
         )
         return result.scalar_one_or_none()

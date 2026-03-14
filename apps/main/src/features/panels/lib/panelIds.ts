@@ -1,9 +1,9 @@
 /**
- * Canonical panel-definition IDs and dock-scope IDs used by panel hosts.
+ * Canonical IDs for core system panels referenced across multiple features.
  *
- * Keep these centralized to avoid string drift between:
- * - panel metadata/orchestration IDs (camelCase)
- * - dock scopes / layout keys (kebab-case)
+ * Only add an ID here when it is used in cross-feature interaction rules,
+ * orchestration metadata, or dock state selectors. Panels that are only
+ * referenced locally should use string literals at the call site.
  */
 export const PANEL_IDS = {
   assetViewer: 'assetViewer',

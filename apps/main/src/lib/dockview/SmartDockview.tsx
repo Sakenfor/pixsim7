@@ -318,20 +318,28 @@ function PanelContextProvider<TContext>({
 function createFallbackLayout(api: DockviewApi, panelDefs: PanelDefinition[]) {
   if (panelDefs.length === 0) return;
 
+  // Build set of already-existing panel IDs to avoid "already exists" errors.
+  // This can happen when reconcileDockviewPanels (via ensurePanels) runs before
+  // the fallback layout path — e.g. when loadLayout returns false due to
+  // unavailable components.
+  const existing = new Set(getDockviewPanels(api).map((p) => p.id));
+  const toAdd = panelDefs.filter((d) => !existing.has(d.id));
+  if (toAdd.length === 0) return;
+
   // Add first panel
   api.addPanel({
-    id: panelDefs[0].id,
-    component: panelDefs[0].id,
-    title: panelDefs[0].title,
+    id: toAdd[0].id,
+    component: toAdd[0].id,
+    title: toAdd[0].title,
   });
 
   // Add remaining panels as tabs in the same group
-  for (let i = 1; i < panelDefs.length; i++) {
+  for (let i = 1; i < toAdd.length; i++) {
     api.addPanel({
-      id: panelDefs[i].id,
-      component: panelDefs[i].id,
-      title: panelDefs[i].title,
-      position: { referencePanel: panelDefs[0].id },
+      id: toAdd[i].id,
+      component: toAdd[i].id,
+      title: toAdd[i].title,
+      position: { referencePanel: toAdd[0].id },
     });
   }
 }
@@ -657,12 +665,18 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
         registerPanel(def.id, def.component, def);
       });
     } else {
-      // Panels mode - global panel registry (availablePanelDefs)
+      // Panels mode - register from resolved panels first (explicit panels prop),
+      // then fill in remaining available panels for context menu additions.
+      resolvedPanelDefs.forEach((def) => {
+        registerPanel(def.id, def.component, def);
+      });
       availablePanelDefs.forEach((def) => {
         if (def.isInternal) return;
         registerPanel(def.id, def.component, def);
       });
     }
+
+
 
     // During HMR the catalog briefly empties, so registerPanel is never called
     // and map would be {}. Backfill from the cache so SmartDockviewBase's stable
@@ -690,6 +704,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     return map;
   }, [
     registry,
+    resolvedPanelDefs,
     availablePanelDefs,
     directComponents,
     baseWrapOptions,

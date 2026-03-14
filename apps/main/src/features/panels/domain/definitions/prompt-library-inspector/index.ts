@@ -3,6 +3,7 @@ import { definePanel } from '../../../lib/definePanel';
 import { PromptLibraryInspectorPanel } from './PromptLibraryInspectorPanel';
 
 export { PromptLibraryInspectorPanel };
+export { PromptVersionAuthoringWorkbench } from './PromptVersionAuthoringWorkbench';
 
 export default definePanel({
   id: 'prompt-library-inspector',

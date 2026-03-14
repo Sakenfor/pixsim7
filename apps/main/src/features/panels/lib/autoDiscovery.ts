@@ -77,33 +77,6 @@ const panelModules = import.meta.glob<PanelModule>(
 type PanelModuleLoader = () => Promise<PanelModule>;
 const inFlightPanelRegistrations = new Set<string>();
 
-/**
- * Scope hints for path-level prefiltering.
- *
- * Panels without explicit context metadata are treated as workspace-first,
- * so non-workspace contexts can narrow imports to known folders.
- */
-const CONTEXT_MODULE_HINTS: Record<string, string[]> = {
-  'asset-viewer': [
-    'asset-viewer',
-    'asset-tags',
-    'info',
-    'interactive-surface',
-    'media-preview',
-    'quick-generate',
-  ],
-  'control-center': [
-    'panel-browser',
-    'shortcuts',
-  ],
-  'gizmo-lab': [
-    'gizmo-browser',
-    'gizmo-playground',
-    'tool-browser',
-    'tool-playground',
-  ],
-};
-
 function normalizeValues(values?: string[]): string[] {
   if (!values) return [];
   return values
@@ -132,33 +105,6 @@ function createModuleFolderSet(panelIds: string[]): Set<string> {
   return folders;
 }
 
-function createHintedModuleFolderSet(filterContexts: string[]): Set<string> | null {
-  if (filterContexts.length === 0 || filterContexts.includes('workspace')) {
-    return null;
-  }
-
-  const hinted = new Set<string>();
-  let hasUnknownContext = false;
-
-  for (const context of filterContexts) {
-    const contextHints = CONTEXT_MODULE_HINTS[context];
-    if (!contextHints) {
-      hasUnknownContext = true;
-      continue;
-    }
-
-    for (const folder of contextHints) {
-      hinted.add(folder);
-    }
-  }
-
-  if (hasUnknownContext || hinted.size === 0) {
-    return null;
-  }
-
-  return hinted;
-}
-
 function panelMatchesContexts(panelContexts: string[], filterContexts: string[]): boolean {
   if (filterContexts.length === 0) return true;
 
@@ -168,21 +114,24 @@ function panelMatchesContexts(panelContexts: string[], filterContexts: string[])
   return panelContexts.some((context) => filterContexts.includes(context));
 }
 
+/**
+ * Narrow candidate modules by explicit panel IDs when provided.
+ * Context filtering happens post-load via panelMatchesContexts —
+ * the panel definition's `availableIn` is the single source of truth.
+ */
 function createCandidateModules(
-  filterContexts: string[],
   panelIds: string[],
 ): Array<[string, PanelModuleLoader]> {
   const entries = Object.entries(panelModules) as Array<[string, PanelModuleLoader]>;
-  const panelFolderSet = panelIds.length > 0 ? createModuleFolderSet(panelIds) : null;
-  const hintedFolderSet = panelFolderSet ?? createHintedModuleFolderSet(filterContexts);
 
-  if (!hintedFolderSet) {
+  if (panelIds.length === 0) {
     return entries;
   }
 
+  const panelFolderSet = createModuleFolderSet(panelIds);
   return entries.filter(([path]) => {
     const folder = extractModuleFolder(path);
-    return folder ? hintedFolderSet.has(folder) : false;
+    return folder ? panelFolderSet.has(folder) : false;
   });
 }
 
@@ -211,7 +160,7 @@ export async function discoverPanels(
 ): Promise<DiscoveredPanel[]> {
   const filterContexts = normalizeValues(options.filterContexts);
   const panelIds = normalizeValues(options.panelIds);
-  const candidateModules = createCandidateModules(filterContexts, panelIds);
+  const candidateModules = createCandidateModules(panelIds);
   const discovered: DiscoveredPanel[] = [];
 
   for (const [path, loadModule] of candidateModules) {
@@ -244,7 +193,7 @@ export async function autoRegisterPanels(
 
   const registered: DiscoveredPanel[] = [];
   const failed: Array<{ path: string; error: Error }> = [];
-  const candidateModules = createCandidateModules(filterContexts, panelIds);
+  const candidateModules = createCandidateModules(panelIds);
 
   if (verbose) {
     console.log(

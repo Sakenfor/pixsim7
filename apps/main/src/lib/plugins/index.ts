@@ -53,7 +53,7 @@ export type {
 } from './pluginSystem';
 
 // Catalog selectors (catalog-only families)
-export { generationUiSelectors, panelGroupSelectors } from './catalogSelectors';
+export { generationUiSelectors } from './catalogSelectors';
 
 // Browsable families registry
 export {

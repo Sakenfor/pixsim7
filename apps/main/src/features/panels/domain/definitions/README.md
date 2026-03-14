@@ -21,8 +21,8 @@ export default definePanel({
   category: 'tools',
   component: MyPanel,
 
-  // Where this panel can appear
-  contexts: ['asset-viewer', 'workspace'],
+  // Where this panel can appear (omit for everywhere)
+  availableIn: ['asset-viewer', 'workspace'],
 
   // Optional: Only show when condition is met
   showWhen: (ctx) => !!ctx.currentAsset,
@@ -46,8 +46,8 @@ definePanel({
   icon?: string;        // Icon name
   description?: string; // Tooltip/search description
 
-  // Context binding
-  contexts?: [];        // Where panel can appear: ['asset-viewer', 'workspace', ...]
+  // Dock scoping
+  availableIn?: [];     // Which docks: ['asset-viewer', 'workspace', ...] (omit = everywhere)
 
   // Visibility
   showWhen?: (ctx) => boolean;  // Conditional visibility
@@ -90,24 +90,39 @@ export default definePanel({
 
 `Ctrl/Cmd+Click` on sub-navigation still forces route navigation.
 
-## Context Binding
+## Dock Scoping (`availableIn`)
 
-The `contexts` array determines where a panel can appear:
-
-- `'asset-viewer'` - Asset viewer dockview
-- `'workspace'` - Main workspace dockview
-- `'control-center'` - Control center dockview
-- Empty array `[]` - Available everywhere (default)
+The `availableIn` array determines which dockview containers a panel can appear in.
+This is the single source of truth for panel discovery — each container uses `dockId`
+on `PanelHostDockview`, which filters panels by their `availableIn` values.
 
 ```typescript
 // Only in asset viewer
-contexts: ['asset-viewer']
+availableIn: ['asset-viewer']
 
 // In asset viewer AND workspace
-contexts: ['asset-viewer', 'workspace']
+availableIn: ['asset-viewer', 'workspace']
 
-// Available everywhere
-contexts: []
+// Available everywhere (default when omitted)
+// availableIn: undefined
+```
+
+Current dockview containers: `workspace`, `control-center`, `asset-viewer`, `gizmo-lab`, `prompt-authoring`.
+
+### Sub-panels for a dockview container
+
+When creating sub-panels that belong to a specific container (e.g. a panel with
+`orchestration.type: 'dockview-container'`), set `availableIn` and `internal: true`:
+
+```typescript
+export default definePanel({
+  id: 'my-sub-panel',
+  title: 'My Sub Panel',
+  component: MySubPanel,
+  availableIn: ['my-container'],
+  internal: true,
+  supportsMultipleInstances: false,
+});
 ```
 
 ## Directory Structure

@@ -12,7 +12,7 @@ export {
   type PanelInstancePolicy,
 } from "@pixsim7/shared.ui.panels";
 
-export { panelSelectors, dockWidgetSelectors, panelGroupSelectors } from "@lib/plugins/catalogSelectors";
+export { panelSelectors, dockWidgetSelectors } from "@lib/plugins/catalogSelectors";
 
 export {
   PanelRegistry,
@@ -52,23 +52,6 @@ export {
   type PanelModule,
 } from "./definePanel";
 
-// Panel Group system
-export {
-  definePanelGroup,
-  type DefinePanelGroupOptions,
-  type PanelGroupDefinition,
-  type PanelGroupPreset,
-  type PanelGroupLayoutConfig,
-  type PanelGroupHostProps,
-  type PanelSlots,
-  type PanelTitleResolver,
-  type PanelGroupModule,
-} from "./definePanelGroup";
-
-export {
-  panelGroupRegistry,
-  autoRegisterPanelGroups,
-} from "./panelGroupRegistry";
 
 // Sibling resolution
 export {

@@ -18,9 +18,46 @@ import {
 import type { DockviewHost } from "@lib/dockview";
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
-import { resolveScopedOutOfLayoutPanelIds } from "./panelHostDockScope";
+import { usePanelCatalogBootstrap } from "../../hooks/usePanelCatalogBootstrap";
+
+import { resolveScopedOutOfLayoutPanelIds, resolveScopedPanelIds } from "./panelHostDockScope";
 
 type DockviewPanelPosition = Parameters<DockviewApi["addPanel"]>[0]["position"];
+
+/**
+ * Declarative layout entry.
+ * Panels are added in order; each can position relative to a previous panel.
+ */
+export interface LayoutSpecEntry {
+  /** Panel definition ID. */
+  id: string;
+  /** Direction relative to `ref`. Omit for the first panel. */
+  direction?: 'right' | 'left' | 'above' | 'below' | 'within';
+  /** ID of the reference panel to position against. */
+  ref?: string;
+}
+
+/** Convert a layout spec to a defaultLayout function. */
+function layoutSpecToDefaultLayout(spec: readonly LayoutSpecEntry[]): (api: DockviewApi) => void {
+  return (api) => {
+    for (const entry of spec) {
+      if (api.getPanel(entry.id)) continue;
+      const title = panelSelectors.get(entry.id)?.title ?? entry.id;
+      const position: DockviewPanelPosition | undefined =
+        entry.direction && entry.ref && api.getPanel(entry.ref)
+          ? { direction: entry.direction, referencePanel: entry.ref }
+          : undefined;
+      try {
+        api.addPanel({ id: entry.id, component: entry.id, title, position });
+      } catch {
+        // Fallback: add without position if layout placement fails
+        if (position) {
+          api.addPanel({ id: entry.id, component: entry.id, title });
+        }
+      }
+    }
+  };
+}
 
 export interface PanelHostDockviewProps {
   /** Panel IDs to include (registry-backed). */
@@ -46,6 +83,11 @@ export interface PanelHostDockviewProps {
   context?: unknown;
   /** Custom default layout function. */
   defaultLayout?: (api: DockviewApi) => void;
+  /**
+   * Declarative layout spec. Converted to a defaultLayout function internally.
+   * Ignored if `defaultLayout` is also provided.
+   */
+  layoutSpec?: readonly LayoutSpecEntry[];
   /** Callback when dockview is ready. */
   onReady?: (api: DockviewApi) => void;
   /** Minimum panels before showing tabs (default: 1). */
@@ -85,7 +127,8 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
       storageKey,
       panelManagerId,
       context,
-      defaultLayout,
+      defaultLayout: defaultLayoutProp,
+      layoutSpec,
       onReady,
       minPanelsForTabs = 1,
       enableContextMenu = true,
@@ -102,9 +145,38 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
     },
     ref
   ) => {
+    // Resolve layout: explicit function > layoutSpec > undefined
+    const defaultLayout = defaultLayoutProp ?? (layoutSpec ? layoutSpecToDefaultLayout(layoutSpec) : undefined);
+    // Default title resolver: use registry titles
+    const effectiveResolvePanelTitle = resolvePanelTitle ?? ((id: string) => panelSelectors.get(id)?.title ?? id);
+
+    // Bootstrap: ensure panel definitions are registered before rendering.
+    // Derives panel IDs from explicit panels prop, layoutSpec, or dockId scope.
+    const bootstrapPanelIds = useMemo(() => {
+      if (panels && panels.length > 0) return panels;
+      if (layoutSpec && layoutSpec.length > 0) return layoutSpec.map((e) => e.id);
+      return undefined; // dockId-only mode — no explicit bootstrap needed
+    }, [panels, layoutSpec]);
+    const bootstrap = usePanelCatalogBootstrap({
+      panelIds: bootstrapPanelIds,
+      enabled: !!bootstrapPanelIds,
+    });
+    // Re-evaluated on each bootstrap catalogVersion bump (triggers re-render)
+    const panelsReady = !bootstrapPanelIds
+      || (bootstrap.catalogVersion >= 0 && bootstrapPanelIds.every((id) => panelSelectors.has(id)));
+
     const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
     const [resetKey, setResetKey] = useState(0);
     const [dockviewHost, setDockviewHost] = useState<DockviewHost | null>(null);
+    const scopedPanelIds = useMemo(() => {
+      return resolveScopedPanelIds(panelSelectors, {
+        dockId,
+        panels,
+        excludePanels,
+        allowedPanels,
+        allowedCategories,
+      });
+    }, [dockId, panels, excludePanels, allowedPanels, allowedCategories]);
     const scopedOutOfLayoutPanelIds = useMemo(() => {
       return resolveScopedOutOfLayoutPanelIds(panelSelectors, {
         dockId,
@@ -138,27 +210,31 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
           }
         }
 
-        ensurePanels(
-          api,
-          (panels ?? []).filter((panelId) => !excludedFromLayoutSet.has(panelId)),
-          {
-            resolveOptions: (panelId, apiInstance) => {
-              const position = resolvePanelPosition?.(panelId, apiInstance);
-              if (resolvePanelTitle) {
-                return {
-                  title: resolvePanelTitle(panelId),
-                  position,
-                };
-              }
-              if (position) {
-                return { position };
-              }
-              return undefined;
-            },
-          }
+        const panelsToAdd = scopedPanelIds.filter(
+          (panelId) => !excludedFromLayoutSet.has(panelId),
         );
+        // Add panels individually so one failure doesn't block the rest
+        for (const panelId of panelsToAdd) {
+          if (api.getPanel(panelId)) continue;
+          try {
+            const position = resolvePanelPosition?.(panelId, api);
+            const safePosition =
+              position && 'referencePanel' in position && position.referencePanel
+                ? api.getPanel(position.referencePanel) ? position : undefined
+                : position;
+            ensurePanels(api, [panelId], {
+              resolveOptions: () => ({
+                title: effectiveResolvePanelTitle(panelId),
+                position: safePosition,
+              }),
+            });
+          } catch (error) {
+            console.warn(`[PanelHostDockview] Failed to add panel "${panelId}" to dock "${dockId ?? storageKey}":`, error);
+          }
+        }
       },
-      [excludedFromLayoutSet, panels, resolvePanelPosition, resolvePanelTitle]
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- dockId/storageKey used only in warning message
+      [excludedFromLayoutSet, scopedPanelIds, resolvePanelPosition, effectiveResolvePanelTitle]
     );
 
     const handleReady = useCallback(
@@ -214,17 +290,27 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
       [resetLayout, dockviewApi, dockviewHost]
     );
 
-    const resolvedPanels = panels && panels.length > 0 ? [...panels] : undefined;
+    // Derive explicit panel list: prefer props, fall back to layoutSpec IDs
+    const resolvedPanels = panels && panels.length > 0
+      ? [...panels]
+      : layoutSpec && layoutSpec.length > 0
+        ? layoutSpec.map((entry) => entry.id)
+        : undefined;
+
+    // Wait for panel definitions to be registered before rendering dockview
+    if (bootstrapPanelIds && !panelsReady) {
+      return <div className={className ?? "h-full w-full"} />;
+    }
 
     return (
       <div className={className ?? "h-full w-full"}>
         <SmartDockview
           key={resetKey}
           panels={resolvedPanels}
-          dockId={resolvedPanels ? undefined : dockId}
-          excludePanels={resolvedPanels ? undefined : excludePanels}
-          allowedPanels={resolvedPanels ? undefined : allowedPanels}
-          allowedCategories={resolvedPanels ? undefined : allowedCategories}
+          dockId={dockId}
+          excludePanels={excludePanels}
+          allowedPanels={allowedPanels}
+          allowedCategories={allowedCategories}
           storageKey={storageKey}
           context={context}
           defaultPanelScopes={defaultPanelScopes}

@@ -9,16 +9,24 @@
 
 import { getAllGizmos, getAllTools } from '@pixsim7/interaction.gizmos';
 import { Button } from '@pixsim7/shared.ui';
-import type { DockviewApi } from 'dockview-core';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { useGizmoLabStore } from '@features/gizmos/stores/gizmoLabStore';
-import { PanelHostDockview } from '@features/panels/components/host/PanelHostDockview';
-import gizmoLabGroup from '@features/panels/domain/groups/gizmo-lab';
+import {
+  PanelHostDockview,
+  type LayoutSpecEntry,
+} from '@features/panels/components/host/PanelHostDockview';
 
 export interface GizmoLabProps {
   sceneId?: number;
 }
+
+const LAYOUT_SPEC: LayoutSpecEntry[] = [
+  { id: 'gizmo-browser' },
+  { id: 'tool-browser', direction: 'below', ref: 'gizmo-browser' },
+  { id: 'gizmo-playground', direction: 'right', ref: 'gizmo-browser' },
+  { id: 'tool-playground', direction: 'below', ref: 'gizmo-playground' },
+];
 
 export function GizmoLab({ sceneId }: GizmoLabProps = {}) {
   const allGizmos = useMemo(() => getAllGizmos(), []);
@@ -38,16 +46,6 @@ export function GizmoLab({ sceneId }: GizmoLabProps = {}) {
       selectTool(allTools[0].id);
     }
   }, [allGizmos, allTools, selectedGizmoId, selectedToolId, selectGizmo, selectTool]);
-
-  const panelIds = gizmoLabGroup.getPanelIds('full');
-
-  const defaultLayout = useCallback((api: DockviewApi) => {
-    gizmoLabGroup.defaultLayout?.create(
-      api,
-      gizmoLabGroup.panels,
-      ['gizmoBrowser', 'toolBrowser', 'gizmoPlayground', 'toolPlayground'],
-    );
-  }, []);
 
   return (
     <div className="h-full flex flex-col bg-neutral-50 dark:bg-neutral-950">
@@ -81,10 +79,9 @@ export function GizmoLab({ sceneId }: GizmoLabProps = {}) {
       <div className="flex-1 overflow-hidden">
         <PanelHostDockview
           dockId="gizmo-lab"
-          panels={panelIds}
           storageKey="gizmo-lab-dockview-layout:v1"
           panelManagerId="gizmoLab"
-          defaultLayout={defaultLayout}
+          layoutSpec={LAYOUT_SPEC}
           minPanelsForTabs={2}
           enableContextMenu
           className="h-full"

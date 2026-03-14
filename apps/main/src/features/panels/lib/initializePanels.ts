@@ -6,13 +6,10 @@
  */
 
 import { registerDefaultBrowsableFamilies } from "@lib/plugins/browsableFamilies";
-import { registerPluginDefinition } from "@lib/plugins/pluginRuntime";
 
 import { registerGraphEditors } from "@features/graph/lib/editor/registerEditors";
 
-import type { PanelGroupDefinition } from "./definePanelGroup";
 import { registerDefaultDockWidgets } from "./dockWidgetRegistry";
-import { panelGroupRegistry } from "./panelGroupRegistry";
 
 /** Track initialization state */
 let initialized = false;
@@ -23,8 +20,7 @@ let dockWidgetsRegistered = false;
 let dockWidgetsPromise: Promise<void> | null = null;
 let graphEditorsRegistered = false;
 let graphEditorsPromise: Promise<void> | null = null;
-let panelGroupsRegistered = false;
-let panelGroupsPromise: Promise<void> | null = null;
+let browsableFamiliesRegistered = false;
 
 const CONTEXTS_REQUIRING_GRAPH_EDITORS = new Set([
   "workspace",
@@ -37,11 +33,6 @@ const PANEL_IDS_REQUIRING_GRAPH_EDITORS = new Set([
   "arc-graph",
   "routine-graph",
   "generation-workflow-graph",
-]);
-
-const CONTEXTS_REQUIRING_PANEL_GROUPS = new Set([
-  "workspace",
-  "gizmo-lab",
 ]);
 
 export interface InitializePanelsOptions {
@@ -67,7 +58,6 @@ function createScopedKey(contexts: string[], panelIds: string[]): string {
 interface PanelInfrastructureRequirements {
   graphEditors: boolean;
   dockWidgets: boolean;
-  panelGroups: boolean;
 }
 
 function hasIntersection(values: string[], targets: Set<string>): boolean {
@@ -82,7 +72,6 @@ function resolveInfrastructureRequirements(
     return {
       graphEditors: true,
       dockWidgets: true,
-      panelGroups: true,
     };
   }
 
@@ -91,7 +80,6 @@ function resolveInfrastructureRequirements(
       hasIntersection(options.contexts, CONTEXTS_REQUIRING_GRAPH_EDITORS) ||
       hasIntersection(options.panelIds, PANEL_IDS_REQUIRING_GRAPH_EDITORS),
     dockWidgets: true,
-    panelGroups: hasIntersection(options.contexts, CONTEXTS_REQUIRING_PANEL_GROUPS),
   };
 }
 
@@ -142,8 +130,13 @@ async function doInitializePanels(
       resolveInfrastructureRequirements(options, markFullyInitialized),
     );
 
+    // Register browsable families for Widget Builder (once)
+    if (!browsableFamiliesRegistered) {
+      registerDefaultBrowsableFamilies();
+      browsableFamiliesRegistered = true;
+    }
+
     // Auto-discover and register panels from definitions directory.
-    // This now uses lazy module loaders and can be narrowed by context/panel ID.
     const { autoRegisterPanels } = await import("./autoDiscovery");
     const result = await autoRegisterPanels({
       filterContexts: options.contexts,
@@ -175,10 +168,6 @@ async function ensurePanelInfrastructure(
 
   if (requirements.dockWidgets) {
     tasks.push(ensureDockWidgetsRegistered());
-  }
-
-  if (requirements.panelGroups) {
-    tasks.push(ensurePanelGroupsRegistered());
   }
 
   if (tasks.length === 0) {
@@ -228,26 +217,6 @@ async function ensureDockWidgetsRegistered(): Promise<void> {
   return dockWidgetsPromise;
 }
 
-async function ensurePanelGroupsRegistered(): Promise<void> {
-  if (panelGroupsRegistered) {
-    return;
-  }
-  if (panelGroupsPromise) {
-    return panelGroupsPromise;
-  }
-
-  panelGroupsPromise = registerPanelGroups()
-    .then(() => {
-      panelGroupsRegistered = true;
-    })
-    .catch((error) => {
-      panelGroupsPromise = null;
-      throw error;
-    });
-
-  return panelGroupsPromise;
-}
-
 async function ensurePanelScopesRegistered(): Promise<void> {
   if (scopesRegistered) {
     return;
@@ -268,43 +237,4 @@ async function ensurePanelScopesRegistered(): Promise<void> {
  */
 export function arePanelsInitialized(): boolean {
   return initialized;
-}
-
-/**
- * Register all panel groups.
- * Currently uses explicit imports; can be extended with auto-discovery.
- */
-async function registerPanelGroups(): Promise<void> {
-  // Register browsable families for Widget Builder
-  registerDefaultBrowsableFamilies();
-
-  // Import panel group definitions
-  const quickgenGroup = await import("../domain/groups/quickgen");
-  const gizmoLabGroup = await import("../domain/groups/gizmo-lab");
-
-  // Register each group with both registries
-  await registerPanelGroup(quickgenGroup.default);
-  await registerPanelGroup(gizmoLabGroup.default);
-
-  console.log(
-    `[initializePanels] Registered ${panelGroupRegistry.getAll().length} panel groups`
-  );
-}
-
-/**
- * Register a panel group with both the legacy registry and plugin catalog.
- */
-async function registerPanelGroup(group: PanelGroupDefinition): Promise<void> {
-  // Register with legacy registry for backward compatibility
-  panelGroupRegistry.register(group);
-
-  // Register with plugin catalog for unified browsing
-  await registerPluginDefinition({
-    id: group.id,
-    family: "panel-group",
-    origin: "builtin",
-    source: "source",
-    plugin: group,
-    canDisable: false,
-  });
 }

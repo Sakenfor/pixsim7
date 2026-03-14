@@ -54,11 +54,6 @@ export {
   type PanelStateOptions,
 } from './hooks/usePanelState';
 
-export {
-  usePanelGroups,
-  usePanelGroup,
-  usePanelGroupsByCategory,
-} from './hooks/usePanelGroups';
 
 // Panel Registry System
 export {
@@ -74,16 +69,6 @@ export {
   type PanelSettingsTab,
   type PanelSettingsFormSchema,
 } from "./lib/panelRegistry";
-
-// Panel Group System
-export {
-  definePanelGroup,
-  panelGroupRegistry,
-  type PanelGroupDefinition,
-  type PanelGroupPreset,
-  type DefinePanelGroupOptions,
-  type PanelGroupHostProps,
-} from "./lib";
 
 
 export {
@@ -141,7 +126,7 @@ export {
 } from "./lib/panelPlugin";
 export { initializePanels } from "./lib/initializePanels";
 export { PanelHostLite } from "./components/host/PanelHostLite";
-export { PanelHostDockview, type PanelHostDockviewRef } from "./components/host/PanelHostDockview";
+export { PanelHostDockview, type PanelHostDockviewRef, type LayoutSpecEntry } from "./components/host/PanelHostDockview";
 
 // Panel actions
 export type {
@@ -196,7 +181,6 @@ export {
 export {
   panelSelectors,
   dockWidgetSelectors,
-  panelGroupSelectors,
   registerSimplePanel,
   getPanelsByTag,
   getPanelIdsByTag,
@@ -205,7 +189,6 @@ export {
   definePanel,
   getPanelContexts,
   panelBelongsToContext,
-  autoRegisterPanelGroups,
   resolveSiblings,
   filterOpenSiblings,
   toPanelAction,
@@ -227,10 +210,6 @@ export type {
   PanelInstancePolicy,
   DefinePanelOptions,
   PanelModule,
-  PanelGroupLayoutConfig,
-  PanelSlots,
-  PanelTitleResolver,
-  PanelGroupModule,
   SiblingCandidate,
   ToPanelActionOptions,
   ResolvedSettings,

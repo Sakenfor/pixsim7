@@ -1,0 +1,67 @@
+/**
+ * PromptAuthoringWorkbenchHost
+ *
+ * Top-level component for the standalone Prompt Authoring panel.
+ * Wraps PromptAuthoringProvider + GenerationScopeProvider + PanelHostDockview.
+ */
+
+import { useState } from 'react';
+
+import { GenerationScopeProvider, useProvideGenerationWidget } from '@features/generation';
+import { PanelHostDockview, type LayoutSpecEntry } from '@features/panels/components/host/PanelHostDockview';
+
+import { PromptAuthoringProvider } from '../../context/PromptAuthoringContext';
+
+const DOCK_ID = 'prompt-authoring';
+
+const PANEL_IDS = [
+  'prompt-authoring-navigator',
+  'prompt-authoring-editor',
+  'prompt-authoring-assets',
+] as const;
+
+const LAYOUT_SPEC: LayoutSpecEntry[] = [
+  { id: PANEL_IDS[0] },
+  { id: PANEL_IDS[1], direction: 'right', ref: PANEL_IDS[0] },
+  { id: PANEL_IDS[2], direction: 'right', ref: PANEL_IDS[1] },
+];
+
+function PromptAuthoringWorkbenchInner({
+  isOpen,
+  setOpen,
+}: {
+  isOpen: boolean;
+  setOpen: (open: boolean) => void;
+}) {
+  useProvideGenerationWidget({
+    widgetId: 'promptAuthoring',
+    label: 'Prompt Authoring',
+    priority: 5,
+    isOpen,
+    setOpen,
+  });
+
+  return (
+    <PanelHostDockview
+      panels={[...PANEL_IDS]}
+      dockId={DOCK_ID}
+      storageKey="dockview:prompt-authoring:v1"
+      panelManagerId={DOCK_ID}
+      layoutSpec={LAYOUT_SPEC}
+      enableContextMenu
+      minPanelsForTabs={1}
+    />
+  );
+}
+
+export function PromptAuthoringWorkbenchHost() {
+  const [widgetOpen, setWidgetOpen] = useState(true);
+
+  return (
+    <PromptAuthoringProvider>
+      <GenerationScopeProvider scopeId="prompt-authoring" label="Prompt Authoring">
+        <PromptAuthoringWorkbenchInner isOpen={widgetOpen} setOpen={setWidgetOpen} />
+      </GenerationScopeProvider>
+    </PromptAuthoringProvider>
+  );
+}

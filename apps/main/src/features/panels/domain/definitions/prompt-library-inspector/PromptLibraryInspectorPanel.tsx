@@ -7,16 +7,22 @@ import {
   getTemplate,
   listBlockPackages,
   listContentPackManifests,
+  getContentPackInventory,
+  adoptOrphanedPack,
   listBlockRoles,
   type BlockRoleSummary,
   type TemplateDiagnosticsResponse,
   type BlockTemplateDetail,
   type BlockTemplateSummary,
+  type ContentPackInfo,
+  type ContentPackInventory,
+  type AdoptOrphanedPackResponse,
   type ContentPackMatrixManifest,
 } from '@lib/api/blockTemplates';
 import { Icon } from '@lib/icons';
 import { resolveBlockTemplates, resolveContentPacks } from '@lib/resolvers';
 
+import { PromptAuthoringWorkbenchHost } from '@features/prompts/components/authoring/PromptAuthoringWorkbenchHost';
 import { useWorkspaceStore } from '@features/workspace';
 
 import { useCompositionPackages } from '@/stores/compositionPackageStore';
@@ -31,10 +37,11 @@ import {
   type BlockMatrixPreset,
 } from '../block-matrix/presets';
 
+
 import { PromptInteractionsWorkbench } from './PromptInteractionsWorkbench';
 import { PromptPackAuthoringWorkbench } from './PromptPackAuthoringWorkbench';
 
-type TabId = 'packages' | 'templates' | 'blocks' | 'matrix' | 'interactions' | 'authoring';
+type TabId = 'packages' | 'templates' | 'blocks' | 'matrix' | 'interactions' | 'authoring' | 'prompt-authoring';
 
 interface PromptLibraryInspectorPanelProps {
   tab?: TabId;
@@ -52,6 +59,8 @@ interface PackageStats {
   categoryCount: number;
   roles: BlockRoleSummary[];
 }
+
+type PackStatus = ContentPackInfo['status'] | 'unknown';
 
 function readStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -94,7 +103,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
   const { roles: compositionRoles, packages: compositionPackages } = useCompositionPackages();
   const contextTab = ((): TabId | undefined => {
     const raw = props.context?.tab;
-    return raw === 'packages' || raw === 'templates' || raw === 'blocks' || raw === 'matrix' || raw === 'interactions' || raw === 'authoring'
+    return raw === 'packages' || raw === 'templates' || raw === 'blocks' || raw === 'matrix' || raw === 'interactions' || raw === 'authoring' || raw === 'prompt-authoring'
       ? raw
       : undefined;
   })();
@@ -111,8 +120,13 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
 
   const [contentPacks, setContentPacks] = useState<string[]>([]);
   const [contentPackManifests, setContentPackManifests] = useState<ContentPackMatrixManifest[]>([]);
+  const [contentPackInventory, setContentPackInventory] = useState<ContentPackInventory | null>(null);
   const [blockPackages, setBlockPackages] = useState<string[]>([]);
   const [templates, setTemplates] = useState<BlockTemplateSummary[]>([]);
+  const [adoptTargetPack, setAdoptTargetPack] = useState('');
+  const [adoptLoading, setAdoptLoading] = useState(false);
+  const [adoptError, setAdoptError] = useState<string | null>(null);
+  const [adoptResult, setAdoptResult] = useState<AdoptOrphanedPackResponse | null>(null);
 
   const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
   const [packageStats, setPackageStats] = useState<Record<string, PackageStats>>({});
@@ -130,20 +144,26 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
     setLoading(true);
     setError(null);
     try {
-      const [packs, manifests, dbPkgs, rows] = await Promise.all([
+      const [packs, manifests, inventory, dbPkgs, rows] = await Promise.all([
         resolveContentPacks({ consumerId: 'PromptLibraryInspectorPanel.loadContentPacks' }),
         listContentPackManifests(),
+        getContentPackInventory().catch(() => null),
         listBlockPackages(),
         resolveBlockTemplates(
           { limit: 200 },
           { consumerId: 'PromptLibraryInspectorPanel.loadTemplates' },
         ),
       ]);
+      const templatePackages = rows
+        .map((row) => row.package_name)
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+      const availablePackages = Array.from(new Set([...packs, ...dbPkgs, ...templatePackages]));
       setContentPacks(packs);
       setContentPackManifests(manifests);
+      setContentPackInventory(inventory);
       setBlockPackages(dbPkgs);
       setTemplates(rows);
-      setSelectedPackage((prev) => (prev && [...packs, ...dbPkgs].includes(prev) ? prev : (packs[0] ?? dbPkgs[0] ?? null)));
+      setSelectedPackage((prev) => (prev && availablePackages.includes(prev) ? prev : (availablePackages[0] ?? null)));
       setSelectedTemplateId((prev) => (prev && rows.some((t) => t.id === prev) ? prev : (rows[0]?.id ?? null)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load prompt library data');
@@ -179,6 +199,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
   }, [contextFocusPackage, contextTab, props.focusPackage, props.tab]);
 
   const packageRows = useMemo(() => {
+    const inventoryPacks = contentPackInventory?.packs ?? {};
     const discovered = new Set(contentPacks);
     const withBlocks = new Set(blockPackages);
     const templateCounts = new Map<string, number>();
@@ -188,13 +209,22 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
     }
     return Array.from(new Set([...contentPacks, ...blockPackages, ...templateCounts.keys()]))
       .sort()
-      .map((name) => ({
-        name,
-        discovered: discovered.has(name),
-        hasBlocks: withBlocks.has(name),
-        templateCount: templateCounts.get(name) ?? 0,
-      }));
-  }, [blockPackages, contentPacks, templates]);
+      .map((name) => {
+        const discoveredPack = discovered.has(name);
+        const hasBlocks = withBlocks.has(name);
+        const templateCount = templateCounts.get(name) ?? 0;
+        const statusFromInventory = inventoryPacks[name]?.status;
+        const inferredOrphaned = !statusFromInventory && !discoveredPack && (hasBlocks || templateCount > 0);
+        const status: PackStatus = statusFromInventory ?? (inferredOrphaned ? 'orphaned' : (discoveredPack ? 'active' : 'unknown'));
+        return {
+          name,
+          discovered: discoveredPack,
+          hasBlocks,
+          templateCount,
+          status,
+        };
+      });
+  }, [blockPackages, contentPackInventory, contentPacks, templates]);
 
   useEffect(() => {
     if (!selectedPackage) return;
@@ -285,6 +315,62 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
   const selectedPackageRow = packageRows.find((p) => p.name === selectedPackage) ?? null;
   const selectedPackageTemplates = templates.filter((t) => t.package_name === selectedPackage);
   const currentPackageStats = selectedPackage ? packageStats[selectedPackage] : undefined;
+  const adoptTargetOptions = useMemo(
+    () =>
+      packageRows
+        .filter((row) => row.name !== selectedPackageRow?.name && row.status !== 'orphaned')
+        .map((row) => row.name),
+    [packageRows, selectedPackageRow?.name],
+  );
+
+  useEffect(() => {
+    if (selectedPackageRow?.status !== 'orphaned') {
+      setAdoptTargetPack('');
+      setAdoptError(null);
+      setAdoptResult(null);
+      return;
+    }
+    setAdoptTargetPack((prev) => (adoptTargetOptions.includes(prev) ? prev : (adoptTargetOptions[0] ?? '')));
+    setAdoptError(null);
+    setAdoptResult(null);
+  }, [adoptTargetOptions, selectedPackageRow?.status]);
+
+  const handleAdoptOrphanedPack = useCallback(async () => {
+    if (!selectedPackageRow || selectedPackageRow.status !== 'orphaned') return;
+    const sourcePack = selectedPackageRow.name;
+    const targetPack = adoptTargetPack.trim();
+    if (!targetPack) {
+      setAdoptError('Select a target pack first.');
+      return;
+    }
+    const confirmed = window.confirm(
+      `Adopt orphaned pack '${sourcePack}' into '${targetPack}'? This rewrites source pack metadata for matching DB rows.`,
+    );
+    if (!confirmed) return;
+
+    setAdoptLoading(true);
+    setAdoptError(null);
+    setAdoptResult(null);
+    try {
+      const response = await adoptOrphanedPack({
+        source_pack: sourcePack,
+        target_pack: targetPack,
+        rewrite_packages: true,
+      });
+      setAdoptResult(response);
+      await refreshAll();
+      setSelectedPackage(targetPack);
+    } catch (err) {
+      setAdoptError(err instanceof Error ? err.message : 'Failed to adopt orphaned pack');
+    } finally {
+      setAdoptLoading(false);
+    }
+  }, [adoptTargetPack, refreshAll, selectedPackageRow]);
+
+  const packageStatusMap = useMemo(
+    () => new Map(packageRows.map((row) => [row.name, row.status])),
+    [packageRows],
+  );
 
   const templateMeta = (templateDetail?.template_metadata ?? {}) as Record<string, unknown>;
   const templateMatrixPresets = useMemo(
@@ -300,6 +386,18 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
     [packMatrixPresets, templateMatrixPresets],
   );
   const source = (templateMeta.source ?? {}) as Record<string, unknown>;
+  const templateSourcePack = useMemo(() => {
+    if (typeof templateMeta.content_pack === 'string' && templateMeta.content_pack.trim().length > 0) {
+      return templateMeta.content_pack;
+    }
+    if (typeof source.pack === 'string' && source.pack.trim().length > 0) {
+      return source.pack;
+    }
+    return null;
+  }, [source.pack, templateMeta.content_pack]);
+  const templateSourcePackStatus: PackStatus | null = templateSourcePack
+    ? (packageStatusMap.get(templateSourcePack) ?? 'unknown')
+    : null;
   const dependencies = (templateMeta.dependencies ?? {}) as Record<string, unknown>;
   const requiredPackages = readStringArray(dependencies.required_block_packages);
   const preferredPackages = readStringArray(dependencies.preferred_block_packages);
@@ -351,7 +449,8 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
             ['blocks', 'Blocks', 'grid'],
             ['matrix', 'Matrix', 'grid'],
             ['interactions', 'Interactions', 'sparkles'],
-            ['authoring', 'Authoring', 'pencil'],
+            ['prompt-authoring', 'Prompt Authoring', 'gitBranch'],
+            ['authoring', 'Pack Authoring', 'pencil'],
           ] as Array<[TabId, string, string]>).map(([id, label, icon]) => (
             <button
               key={id}
@@ -402,6 +501,16 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
               >
                 <div className="text-xs font-medium text-neutral-800 dark:text-neutral-100 truncate">{row.name}</div>
                 <div className="mt-1 flex items-center gap-1 flex-wrap">
+                  {row.status === 'orphaned' && (
+                    <span className="text-[10px] px-1 py-0.5 rounded border border-red-200 text-red-700 dark:border-red-900/40 dark:text-red-300">
+                      orphaned
+                    </span>
+                  )}
+                  {row.status === 'disk_only' && (
+                    <span className="text-[10px] px-1 py-0.5 rounded border border-amber-200 text-amber-700 dark:border-amber-800/40 dark:text-amber-300">
+                      disk-only
+                    </span>
+                  )}
                   {row.discovered && <span className="text-[10px] px-1 py-0.5 rounded border border-emerald-200 text-emerald-700 dark:border-emerald-800/40 dark:text-emerald-300">pack</span>}
                   {row.hasBlocks && <span className="text-[10px] px-1 py-0.5 rounded border border-blue-200 text-blue-700 dark:border-blue-800/40 dark:text-blue-300">blocks</span>}
                   {row.templateCount > 0 && <span className="text-[10px] px-1 py-0.5 rounded border border-purple-200 text-purple-700 dark:border-purple-800/40 dark:text-purple-300">{row.templateCount} templates</span>}
@@ -416,6 +525,61 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
                 <div className="rounded border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 p-3">
                   <div className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">{selectedPackageRow.name}</div>
                   <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">Discovered pack, DB block package, and template assignment overview.</div>
+                  <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                    {selectedPackageRow.status === 'orphaned' && (
+                      <span className="text-[10px] px-1 py-0.5 rounded border border-red-200 text-red-700 dark:border-red-900/40 dark:text-red-300">
+                        Orphaned pack data still in DB
+                      </span>
+                    )}
+                    {selectedPackageRow.status === 'disk_only' && (
+                      <span className="text-[10px] px-1 py-0.5 rounded border border-amber-200 text-amber-700 dark:border-amber-800/40 dark:text-amber-300">
+                        Disk-only pack (not loaded to DB yet)
+                      </span>
+                    )}
+                    {selectedPackageRow.status === 'unknown' && (
+                      <span className="text-[10px] px-1 py-0.5 rounded border border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-300">
+                        Status unknown (inventory unavailable)
+                      </span>
+                    )}
+                  </div>
+                  {selectedPackageRow.status === 'orphaned' && (
+                    <div className="mt-3 rounded border border-red-200 dark:border-red-900/40 bg-red-50/60 dark:bg-red-900/10 p-2 space-y-2">
+                      <div className="text-[11px] text-red-700 dark:text-red-300">
+                        Port orphaned DB rows into an existing on-disk pack.
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={adoptTargetPack}
+                          onChange={(event) => setAdoptTargetPack(event.target.value)}
+                          disabled={adoptLoading || adoptTargetOptions.length === 0}
+                          className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 min-w-56"
+                        >
+                          {adoptTargetOptions.length === 0 && (
+                            <option value="">No target packs available</option>
+                          )}
+                          {adoptTargetOptions.map((name) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => void handleAdoptOrphanedPack()}
+                          disabled={adoptLoading || !adoptTargetPack}
+                          className="text-xs px-2 py-1 rounded border border-red-200 text-red-700 dark:border-red-900/40 dark:text-red-300 disabled:opacity-60"
+                        >
+                          {adoptLoading ? 'Porting...' : 'Port to pack'}
+                        </button>
+                      </div>
+                      {adoptError && <div className="text-[11px] text-red-600 dark:text-red-400">{adoptError}</div>}
+                      {adoptResult && (
+                        <div className="text-[11px] text-red-700 dark:text-red-300">
+                          Ported {adoptResult.result.blocks_adopted} blocks, {adoptResult.result.templates_adopted} templates, {adoptResult.result.characters_adopted} characters.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div className="rounded border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/50 p-3">
@@ -517,31 +681,46 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               {filteredTemplates.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setSelectedTemplateId(t.id)}
-                  className={clsx(
+                (() => {
+                  const templatePackageStatus = t.package_name ? packageStatusMap.get(t.package_name) : undefined;
+                  return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setSelectedTemplateId(t.id)}
+                    className={clsx(
                     'w-full text-left rounded border p-2',
                     t.id === selectedTemplateId
                       ? 'border-blue-300 bg-blue-50 dark:border-blue-800/60 dark:bg-blue-900/20'
                       : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800',
                   )}
-                >
-                  <div className="text-xs font-medium text-neutral-800 dark:text-neutral-100 truncate">{t.name}</div>
-                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">{t.slug}</div>
-                  <div className="mt-1 flex items-center gap-1.5 text-[10px] text-neutral-500 dark:text-neutral-400">
-                    <span>{t.package_name ?? 'unscoped'} | {t.slot_count} slots</span>
-                    {(t.composition_role_gap_count ?? 0) > 0 && (
-                      <span
-                        className="px-1 py-0.5 rounded border border-amber-200 text-amber-700 dark:border-amber-800/40 dark:text-amber-300"
-                        title={`${t.composition_role_gap_count} slot(s) with unknown/ambiguous composition role`}
-                      >
-                        {t.composition_role_gap_count} unmapped
-                      </span>
-                    )}
-                  </div>
-                </button>
+                  >
+                    <div className="text-xs font-medium text-neutral-800 dark:text-neutral-100 truncate">{t.name}</div>
+                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">{t.slug}</div>
+                    <div className="mt-1 flex items-center gap-1.5 text-[10px] text-neutral-500 dark:text-neutral-400">
+                      <span>{t.package_name ?? 'unscoped'} | {t.slot_count} slots</span>
+                      {templatePackageStatus === 'orphaned' && (
+                        <span className="px-1 py-0.5 rounded border border-red-200 text-red-700 dark:border-red-900/40 dark:text-red-300">
+                          orphaned
+                        </span>
+                      )}
+                      {templatePackageStatus === 'disk_only' && (
+                        <span className="px-1 py-0.5 rounded border border-amber-200 text-amber-700 dark:border-amber-800/40 dark:text-amber-300">
+                          disk-only
+                        </span>
+                      )}
+                      {(t.composition_role_gap_count ?? 0) > 0 && (
+                        <span
+                          className="px-1 py-0.5 rounded border border-amber-200 text-amber-700 dark:border-amber-800/40 dark:text-amber-300"
+                          title={`${t.composition_role_gap_count} slot(s) with unknown/ambiguous composition role`}
+                        >
+                          {t.composition_role_gap_count} unmapped
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                  );
+                })()
               ))}
             </div>
           </div>
@@ -569,6 +748,21 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
                     <div className="text-xs font-medium text-neutral-700 dark:text-neutral-200 mb-2">Package references</div>
                     <div className="space-y-1 text-xs">
                       <div className="flex justify-between gap-2"><span className="text-neutral-500">template.package_name</span><span>{templateDetail.package_name ?? '-'}</span></div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-neutral-500">source.content_pack</span>
+                        <span>{templateSourcePack ?? '-'}</span>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span className="text-neutral-500">source.pack_status</span>
+                        <span>
+                          {templateSourcePackStatus ?? '-'}
+                          {templateSourcePackStatus === 'orphaned' && (
+                            <span className="ml-1 px-1 py-0.5 rounded border border-red-200 text-red-700 dark:border-red-900/40 dark:text-red-300">
+                              orphaned
+                            </span>
+                          )}
+                        </span>
+                      </div>
                       <div className="flex justify-between gap-2"><span className="text-neutral-500">source.kind</span><span>{String(source.kind ?? '-')}</span></div>
                       <div className="flex justify-between gap-2"><span className="text-neutral-500">source.pack</span><span>{String(source.pack ?? '-')}</span></div>
                       <div>
@@ -843,6 +1037,12 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
       {tab === 'interactions' && (
         <div className="flex-1 min-h-0">
           <PromptInteractionsWorkbench />
+        </div>
+      )}
+
+      {tab === 'prompt-authoring' && (
+        <div className="flex-1 min-h-0">
+          <PromptAuthoringWorkbenchHost />
         </div>
       )}
 
