@@ -55,6 +55,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_GATING_PLUGIN_ID = "intimacy.default"
+RELAXED_GATING_PLUGIN_ID = "intimacy.relaxed"
 InteractionGatingEvaluator = Callable[
     [
         InteractionDefinition,
@@ -664,7 +665,7 @@ def resolve_gating_plugin_id(world_meta: Optional[Dict[str, Any]]) -> str:
     return DEFAULT_GATING_PLUGIN_ID
 
 
-def _evaluate_interaction_availability_default(
+def _evaluate_interaction_availability_core(
     definition: InteractionDefinition,
     context: InteractionContext,
     stat_definitions: Optional[Dict[str, Any]] = None,
@@ -672,6 +673,8 @@ def _evaluate_interaction_availability_default(
     current_time: Optional[int] = None,
     time_config: Optional[WorldTimeConfig] = None,
     target_adapter: Optional["InteractionTargetAdapter"] = None,
+    *,
+    enforce_stat_gating: bool = True,
 ) -> Tuple[bool, Optional[DisabledReason], Optional[str]]:
     """
     Evaluate whether an interaction is currently available.
@@ -711,15 +714,16 @@ def _evaluate_interaction_availability_default(
     target_id = target.id if target else None
     npc_id = target_id if target_kind == "npc" else None
 
-    # Check stat-based gating
-    passes, msg, _ = check_stat_gating(
-        gating.stat_gating,
-        context.stats_snapshot,
-        stat_definitions,
-        npc_id,
-    )
-    if not passes:
-        return False, DisabledReason.STAT_GATING_FAILED, msg
+    if enforce_stat_gating:
+        # Check stat-based gating
+        passes, msg, _ = check_stat_gating(
+            gating.stat_gating,
+            context.stats_snapshot,
+            stat_definitions,
+            npc_id,
+        )
+        if not passes:
+            return False, DisabledReason.STAT_GATING_FAILED, msg
 
     # Check behavior state (target-specific)
     if gating.behavior:
@@ -760,8 +764,57 @@ def _evaluate_interaction_availability_default(
     return True, None, None
 
 
+def _evaluate_interaction_availability_default(
+    definition: InteractionDefinition,
+    context: InteractionContext,
+    stat_definitions: Optional[Dict[str, Any]] = None,
+    target: Optional[InteractionTarget] = None,
+    current_time: Optional[int] = None,
+    time_config: Optional[WorldTimeConfig] = None,
+    target_adapter: Optional["InteractionTargetAdapter"] = None,
+) -> Tuple[bool, Optional[DisabledReason], Optional[str]]:
+    return _evaluate_interaction_availability_core(
+        definition,
+        context,
+        stat_definitions,
+        target,
+        current_time,
+        time_config,
+        target_adapter,
+        enforce_stat_gating=True,
+    )
+
+
+def _evaluate_interaction_availability_relaxed(
+    definition: InteractionDefinition,
+    context: InteractionContext,
+    stat_definitions: Optional[Dict[str, Any]] = None,
+    target: Optional[InteractionTarget] = None,
+    current_time: Optional[int] = None,
+    time_config: Optional[WorldTimeConfig] = None,
+    target_adapter: Optional["InteractionTargetAdapter"] = None,
+) -> Tuple[bool, Optional[DisabledReason], Optional[str]]:
+    """
+    Relaxed evaluator variant that intentionally skips stat gating.
+
+    This supports worlds that want behavioral/time/flag checks without stat
+    threshold enforcement.
+    """
+    return _evaluate_interaction_availability_core(
+        definition,
+        context,
+        stat_definitions,
+        target,
+        current_time,
+        time_config,
+        target_adapter,
+        enforce_stat_gating=False,
+    )
+
+
 INTERACTION_GATING_EVALUATORS: Dict[str, InteractionGatingEvaluator] = {
     DEFAULT_GATING_PLUGIN_ID: _evaluate_interaction_availability_default,
+    RELAXED_GATING_PLUGIN_ID: _evaluate_interaction_availability_relaxed,
 }
 
 

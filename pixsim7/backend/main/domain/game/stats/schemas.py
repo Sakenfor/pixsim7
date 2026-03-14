@@ -420,7 +420,7 @@ class WorldManifest(BaseModel):
     # Unknown IDs safely fall back to "intimacy.default".
     gating_plugin: Optional[str] = Field(
         default="intimacy.default",
-        description="ID of the gating plugin to use for runtime availability checks"
+        description="ID of the gating plugin to use for runtime availability checks (e.g., intimacy.default, intimacy.relaxed)"
     )
 
     class Config:
