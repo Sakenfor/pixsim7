@@ -567,6 +567,13 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         const defId = getFloatingDefinitionId(panelId);
         const originMeta = readFloatingOriginMeta(floatingPanel.context);
 
+        // Dev-tool panels use dynamic components not registered in dockview —
+        // they can only live as floating panels.
+        if (defId.startsWith("dev-tool:")) {
+          console.warn("[dockFloatingPanel] Dev-tool panels cannot be docked:", defId);
+          return;
+        }
+
         // Get target dockview API (defaults to "workspace" for backward compat)
         const requestedDockviewId = position.targetDockviewId ?? "workspace";
         let targetDockviewId = requestedDockviewId;

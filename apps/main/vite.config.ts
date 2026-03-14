@@ -12,4 +12,7 @@ export default defineConfig({
       projects: [path.resolve(__dirname, './tsconfig.app.json')],
     }),
   ],
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+  },
 });

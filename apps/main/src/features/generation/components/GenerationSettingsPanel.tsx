@@ -8,7 +8,7 @@
  */
 
 import clsx from 'clsx';
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useRef, useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { Icon } from '@lib/icons';
@@ -127,6 +127,24 @@ export function GenerationSettingsPanel({
   const [burstSequentialMode, setBurstSequentialMode] = usePersistedScopeState('burstSequentialMode', false);
   const isBurstMode = burstCount > 1;
   const canUseSequentialBurst = !!onGenerateSequentialBurst;
+
+  // Non-passive wheel listener for burst count stepper (React onWheel is passive)
+  const burstWheelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = burstWheelRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (generating || !canGenerate) return;
+      e.preventDefault();
+      if (e.deltaY < 0) {
+        setBurstCount((c: number) => Math.min(50, c + 1));
+      } else if (e.deltaY > 0) {
+        setBurstCount((c: number) => Math.max(1, c - 1));
+      }
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, [generating, canGenerate, setBurstCount]);
 
   // Input count from scoped store
   const inputCount = useInputStore(s => s.inputsByOperation[operationType]?.items?.length ?? 0);
@@ -376,16 +394,8 @@ export function GenerationSettingsPanel({
           </div>
           {/* Primary Go button with inline burst stepper */}
           <div
+            ref={burstWheelRef}
             className="min-w-0 flex flex-1"
-            onWheel={(e) => {
-              if (generating || !canGenerate) return;
-              e.preventDefault();
-              if (e.deltaY < 0) {
-                setBurstCount((c: number) => Math.min(50, c + 1));
-              } else if (e.deltaY > 0) {
-                setBurstCount((c: number) => Math.max(1, c - 1));
-              }
-            }}
           >
             {/* Main Go area */}
             <button

@@ -332,19 +332,24 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
       }
     }
 
-    if (!resolvedSourceIds && !explicitCompositionAssets && !hasQueuedCompositionAssets) {
+    const hasAnyAsset = !!(resolvedSourceIds || explicitCompositionAssets || hasQueuedCompositionAssets);
+
+    if (!hasAnyAsset && !trimmedPrompt) {
+      // No asset AND no prompt — can't do image_to_image or text_to_image
       return {
-        error: 'No image selected. Select an image from the gallery to transform.',
+        error: 'No image selected. Select an image or enter a prompt for text-to-image.',
         finalPrompt: trimmedPrompt,
       };
     }
 
-    if (!trimmedPrompt) {
+    if (hasAnyAsset && !trimmedPrompt) {
       return {
         error: 'Please enter a prompt describing how to transform the image.',
         finalPrompt: trimmedPrompt,
       };
     }
+
+    // No asset + has prompt → will fall back to text_to_image via getFallbackOperation
 
     if (resolvedSourceIds && !dynamicParams.source_asset_ids) {
       inferredSourceAssetIds = resolvedSourceIds;

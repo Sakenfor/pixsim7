@@ -942,6 +942,9 @@ export function ProjectPanel() {
         sidebarWidth="w-36"
         variant="light"
         contentClassName="p-3 text-xs space-y-3"
+        collapsible
+        expandedWidth={144}
+        persistKey="project-sidebar"
       >
           {activeSection === 'settings' && activeSettingsChild === 'save' && (
             <>
