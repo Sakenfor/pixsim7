@@ -17,25 +17,46 @@ import {
 import {
   useGenerationWorkbench,
   resolveDisplayAssets,
+  useGenerationScopeStores,
 } from '@features/generation';
 import {
   QUICKGEN_PROMPT_COMPONENT_ID,
   QUICKGEN_PROMPT_DEFAULTS,
 } from '@features/generation/lib/quickGenerateComponentSettings';
+import {
+  PROMPT_TOOL_RUN_CONTEXT_PATCH_KEY,
+  type PromptToolRunContextPatch,
+} from '@features/generation/lib/runContext';
+import { useAssetRegionStore, useCaptureRegionStore } from '@features/mediaViewer/stores/assetRegionStore';
 import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, GENERATION_SCOPE_ID } from '@features/panels';
 import { PromptComposer, useQuickGenerateController } from '@features/prompts';
 
+import { useMaskOverlayStore } from '@/components/media/viewer/overlays/builtins/maskOverlayStore';
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
-
 import { type QuickGenPanelProps } from './quickGenPanelTypes';
 
+function parseAssetReferenceId(value: unknown): number | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('asset:')) return null;
+  const rawId = Number(trimmed.slice('asset:'.length));
+  return Number.isFinite(rawId) ? rawId : null;
+}
 
 export function PromptPanel(props: QuickGenPanelProps) {
   const ctx = props.context;
   const allowAnySelected = !ctx;
   const controller = useQuickGenerateController();
+  const { useSessionStore } = useGenerationScopeStores();
+  const setSessionUiState = useSessionStore((s) => s.setUiState);
+  const maskRegionsByAsset = useAssetRegionStore((s) => s.regionsByAsset);
+  const maskLayersByAsset = useAssetRegionStore((s) => s.layersByAsset);
+  const captureRegionsByAsset = useCaptureRegionStore((s) => s.regionsByAsset);
+  const captureLayersByAsset = useCaptureRegionStore((s) => s.layersByAsset);
+  const maskOverlayLayers = useMaskOverlayStore((s) => s.layers);
+  const maskOverlayActiveLayerId = useMaskOverlayStore((s) => s.activeLayerId);
   // Use scope instanceId if available, else fall back to dockview-computed instanceId
   const scopeInstanceId = useScopeInstanceId(GENERATION_SCOPE_ID);
   const dockviewId = useDockviewId();
@@ -154,6 +175,117 @@ export function PromptPanel(props: QuickGenPanelProps) {
   const promptValue = hasTransitionPrompt
     ? transitionPrompts?.[transitionIndex] ?? ''
     : prompt;
+  const currentInput = useMemo(() => {
+    const inputs = controller.operationInputs;
+    if (!Array.isArray(inputs) || inputs.length === 0) {
+      return null;
+    }
+    const index = Math.max(0, Math.min(operationInputIndex - 1, inputs.length - 1));
+    return inputs[index] ?? null;
+  }, [controller.operationInputs, operationInputIndex]);
+  const primaryAssetId = currentInput?.asset?.id ?? resolvedDisplayAssets[0]?.id ?? null;
+  const maskRegions = useMemo(() => {
+    if (primaryAssetId === null) return [];
+    const key = String(primaryAssetId);
+    const visibleLayerIds = new Set(
+      (maskLayersByAsset.get(key) ?? [])
+        .filter((layer) => layer.visible)
+        .map((layer) => layer.id),
+    );
+    if (visibleLayerIds.size === 0) return [];
+    return (maskRegionsByAsset.get(key) ?? []).map((region) => ({
+      id: region.id,
+      layerId: region.layerId,
+      type: region.type,
+      bounds: region.bounds,
+      points: region.points,
+      pointWidths: region.pointWidths,
+      label: region.label,
+      note: region.note,
+    })).filter((region) => visibleLayerIds.has(region.layerId));
+  }, [primaryAssetId, maskLayersByAsset, maskRegionsByAsset]);
+  const captureRegions = useMemo(() => {
+    if (primaryAssetId === null) return [];
+    const key = String(primaryAssetId);
+    const visibleLayerIds = new Set(
+      (captureLayersByAsset.get(key) ?? [])
+        .filter((layer) => layer.visible)
+        .map((layer) => layer.id),
+    );
+    if (visibleLayerIds.size === 0) return [];
+    return (captureRegionsByAsset.get(key) ?? []).map((region) => ({
+      id: region.id,
+      layerId: region.layerId,
+      type: region.type,
+      bounds: region.bounds,
+      points: region.points,
+      pointWidths: region.pointWidths,
+      label: region.label,
+      note: region.note,
+    })).filter((region) => visibleLayerIds.has(region.layerId));
+  }, [primaryAssetId, captureLayersByAsset, captureRegionsByAsset]);
+  const currentInputMaskAssetId = useMemo(() => {
+    const visibleLayer = currentInput?.maskLayers?.find((layer) => layer.visible !== false);
+    if (!visibleLayer) return null;
+    return parseAssetReferenceId(visibleLayer.assetUrl);
+  }, [currentInput]);
+  const overlayMaskAssetId = useMemo(() => {
+    const activeLayer = maskOverlayLayers.find((layer) => layer.id === maskOverlayActiveLayerId);
+    if (activeLayer?.visible && typeof activeLayer.savedAssetId === 'number') {
+      return activeLayer.savedAssetId;
+    }
+    const firstVisibleSavedLayer = maskOverlayLayers.find(
+      (layer) => layer.visible && typeof layer.savedAssetId === 'number',
+    );
+    return firstVisibleSavedLayer?.savedAssetId ?? null;
+  }, [maskOverlayActiveLayerId, maskOverlayLayers]);
+  const preferredMaskAssetId = currentInputMaskAssetId ?? overlayMaskAssetId;
+  const promptToolsRunContextSeed = useMemo<Record<string, unknown>>(() => {
+    const seed: Record<string, unknown> = {};
+
+    if (primaryAssetId !== null) {
+      seed.primary_asset_id = primaryAssetId;
+    }
+
+    if (resolvedDisplayAssets.length > 0) {
+      seed.composition_assets = resolvedDisplayAssets.map((asset, index) => {
+        const promptDescriptor = typeof asset.prompt === 'string' ? asset.prompt.trim() : '';
+        const descriptionLabel = typeof asset.description === 'string' ? asset.description.trim() : '';
+        const descriptor = promptDescriptor || descriptionLabel;
+        return {
+          asset_id: asset.id,
+          role: index === 0 ? 'primary' : `reference_${index}`,
+          label: descriptionLabel || `Asset ${index + 1}`,
+          media_type: asset.mediaType,
+          ...(descriptor ? { description: descriptor } : {}),
+        };
+      });
+    }
+
+    if (maskRegions.length > 0) {
+      seed.mask_regions = maskRegions;
+    }
+
+    if (captureRegions.length > 0) {
+      seed.capture_regions = captureRegions;
+    }
+
+    if (preferredMaskAssetId !== null) {
+      seed.mask_asset = { asset_id: preferredMaskAssetId };
+    }
+
+    return seed;
+  }, [captureRegions, maskRegions, preferredMaskAssetId, primaryAssetId, resolvedDisplayAssets]);
+  const handlePromptToolRunContextPatch = useCallback((patch: PromptToolRunContextPatch | null) => {
+    const hasGuidancePatch = !!(patch?.guidance_patch && Object.keys(patch.guidance_patch).length > 0);
+    const hasCompositionAssetsPatch = !!(
+      patch?.composition_assets_patch && patch.composition_assets_patch.length > 0
+    );
+    setSessionUiState(
+      PROMPT_TOOL_RUN_CONTEXT_PATCH_KEY,
+      hasGuidancePatch || hasCompositionAssetsPatch ? patch : null,
+    );
+  }, [setSessionUiState]);
   const handlePromptChange = useCallback((value: string) => {
     if (!hasTransitionPrompt) {
       setPrompt(value);
@@ -233,6 +365,8 @@ export function PromptPanel(props: QuickGenPanelProps) {
           value={promptValue}
           onChange={handlePromptChange}
           maxChars={maxChars}
+          runContextSeed={promptToolsRunContextSeed}
+          onPromptToolRunContextPatch={handlePromptToolRunContextPatch}
           disabled={generating || (isTransitionMode && transitionCount === 0)}
           variant={resolvedPromptSettings.variant}
           showCounter={resolvedPromptSettings.showCounter}

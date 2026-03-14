@@ -49,6 +49,13 @@ export interface GenerationRunContext {
   [key: string]: unknown;
 }
 
+export interface PromptToolRunContextPatch {
+  guidance_patch?: Record<string, unknown>;
+  composition_assets_patch?: Array<Record<string, unknown>>;
+}
+
+export const PROMPT_TOOL_RUN_CONTEXT_PATCH_KEY = 'prompt_tool_run_context_patch';
+
 function createRunId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -160,4 +167,3 @@ export function buildGuidancePlanReferences(
     references: Object.keys(references).length > 0 ? references : undefined,
   };
 }
-

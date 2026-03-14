@@ -7,6 +7,7 @@ import { logEvent } from '@lib/utils/logging';
 import { extractFrame, fromAssetResponse, getAssetDisplayUrls, toSelectedAsset, type AssetModel } from '@features/assets';
 import { resolveAssetSet, assetModelsToInputItems } from '@features/assets/lib/assetSetResolver';
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
+import type { GenerateOverrides } from '@features/contextHub';
 import { useGenerationsStore, createPendingGeneration } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 import { generateAsset, prepareGenerateAssetSubmission } from '@features/generation/lib/api';
@@ -33,7 +34,13 @@ import {
 } from '../lib/fanoutPresets';
 import { pickFromSet } from '../lib/pickFromSet';
 import { buildGenerationRequest, type PickStateUpdate } from '../lib/quickGenerateLogic';
-import { createGenerationRunDescriptor, createGenerationRunItemContext, type GenerationRunContext } from '../lib/runContext';
+import {
+  createGenerationRunDescriptor,
+  createGenerationRunItemContext,
+  PROMPT_TOOL_RUN_CONTEXT_PATCH_KEY,
+  type GenerationRunContext,
+  type PromptToolRunContextPatch,
+} from '../lib/runContext';
 import { executeSequentialSteps, createSequentialStepRunContextMetadata } from '../lib/sequentialExecutor';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 
@@ -72,6 +79,109 @@ function extractInputAssetIds(group: any[]): number[] {
     .filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeRecordList(value: unknown): Array<Record<string, unknown>> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const rows = value.filter(isRecord).map((row) => ({ ...row }));
+  return rows.length > 0 ? rows : undefined;
+}
+
+function normalizePromptToolRunContextPatch(value: unknown): PromptToolRunContextPatch | null {
+  if (!isRecord(value)) return null;
+  const guidancePatch = isRecord(value.guidance_patch)
+    ? ({ ...value.guidance_patch } as Record<string, unknown>)
+    : undefined;
+  const compositionAssetsPatch = normalizeRecordList(value.composition_assets_patch);
+  if (!guidancePatch && !compositionAssetsPatch) return null;
+  return {
+    ...(guidancePatch ? { guidance_patch: guidancePatch } : {}),
+    ...(compositionAssetsPatch ? { composition_assets_patch: compositionAssetsPatch } : {}),
+  };
+}
+
+function deepMergeRecords(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    const currentValue = merged[key];
+    if (isRecord(currentValue) && isRecord(value)) {
+      merged[key] = deepMergeRecords(currentValue, value);
+      continue;
+    }
+    merged[key] = value;
+  }
+  return merged;
+}
+
+function mergeCompositionAssetsPatch(
+  base: Array<Record<string, unknown>>,
+  patch: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  const merged = [...base];
+  for (const row of patch) {
+    const patchAssetId = row.asset_id;
+    const patchAssetKey = (
+      typeof patchAssetId === 'string' || typeof patchAssetId === 'number'
+    )
+      ? String(patchAssetId)
+      : null;
+    if (!patchAssetKey) {
+      merged.push(row);
+      continue;
+    }
+
+    const existingIndex = merged.findIndex((entry) => {
+      const existingAssetId = entry.asset_id;
+      if (typeof existingAssetId !== 'string' && typeof existingAssetId !== 'number') {
+        return false;
+      }
+      return String(existingAssetId) === patchAssetKey;
+    });
+    if (existingIndex < 0) {
+      merged.push(row);
+      continue;
+    }
+    merged[existingIndex] = {
+      ...merged[existingIndex],
+      ...row,
+    };
+  }
+  return merged;
+}
+
+function mergePromptToolRunContextPatch(
+  runContext: GenerationRunContext | undefined,
+  patch: PromptToolRunContextPatch | null,
+): GenerationRunContext | undefined {
+  if (!patch) return runContext;
+
+  const nextRunContext: GenerationRunContext = runContext
+    ? { ...runContext }
+    : ({} as GenerationRunContext);
+
+  if (patch.guidance_patch) {
+    const existingGuidancePatch = isRecord(nextRunContext.guidance_patch)
+      ? (nextRunContext.guidance_patch as Record<string, unknown>)
+      : {};
+    nextRunContext.guidance_patch = deepMergeRecords(existingGuidancePatch, patch.guidance_patch);
+  }
+
+  if (patch.composition_assets_patch && patch.composition_assets_patch.length > 0) {
+    const existingCompositionAssetsPatch = normalizeRecordList(nextRunContext.composition_assets_patch) ?? [];
+    nextRunContext.composition_assets_patch = mergeCompositionAssetsPatch(
+      existingCompositionAssetsPatch,
+      patch.composition_assets_patch,
+    );
+  }
+
+  return nextRunContext;
+}
+
 /**
  * Hook: useQuickGenerateController
  *
@@ -104,6 +214,9 @@ export function useQuickGenerateController() {
   const setGenerating = useSessionStore((s) => s.setGenerating);
   const prompt = useSessionStore((s) => s.prompt);
   const setPrompt = useSessionStore((s) => s.setPrompt);
+  const promptToolRunContextPatch = useSessionStore(
+    (s) => s.uiState?.[PROMPT_TOOL_RUN_CONTEXT_PATCH_KEY],
+  );
 
   // Template pinning state (global, from blockTemplateStore)
   // Sync pinned template per-operation (same pattern as promptPerOperation in session store)
@@ -385,13 +498,15 @@ export function useQuickGenerateController() {
   function withServerTemplateRollRunContext(
     runContext?: GenerationRunContext,
   ): GenerationRunContext | undefined {
-    if (!runContext || !pinnedTemplateId || templateRollMode !== 'each') {
-      return runContext;
+    const promptToolPatch = normalizePromptToolRunContextPatch(promptToolRunContextPatch);
+    const mergedRunContext = mergePromptToolRunContextPatch(runContext, promptToolPatch);
+    if (!mergedRunContext || !pinnedTemplateId || templateRollMode !== 'each') {
+      return mergedRunContext;
     }
     const draftBindings = useBlockTemplateStore.getState().draftCharacterBindings;
     const hasBindings = Object.keys(draftBindings).length > 0;
     return {
-      ...runContext,
+      ...mergedRunContext,
       block_template_id: pinnedTemplateId,
       ...(hasBindings ? { character_bindings: draftBindings } : {}),
     };
@@ -551,15 +666,42 @@ export function useQuickGenerateController() {
     }
   }
 
-  async function generate(options?: { overrideDynamicParams?: Record<string, any>; overrideOperationInputs?: any[]; skipActiveAssetFallback?: boolean; promptOverride?: string }) {
+  /**
+   * Unified generation entry point.
+   * Handles single generation, burst (count > 1), and asset overrides.
+   * All generation triggers should go through this method.
+   */
+  async function generate(overrides?: GenerateOverrides) {
     resetForGeneration();
+
+    const burstCount = overrides?.count && overrides.count > 1 ? overrides.count : 1;
+    const isBurst = burstCount > 1;
 
     try {
       const { currentInputs, currentInput, transitionInputs } = getInputState();
-      const effectiveInputs = options?.overrideOperationInputs ?? currentInputs;
-      const dynamicParams = { ...bindings.dynamicParams, ...options?.overrideDynamicParams };
+      const dynamicParams = { ...bindings.dynamicParams, ...overrides?.paramOverrides };
 
-      await applyFrameExtraction(dynamicParams, currentInput, transitionInputs);
+      // Asset overrides: convert AssetModel[] to InputItems, bypassing store inputs
+      let effectiveInputs: any[];
+      let effectiveCurrentInput: any;
+      let activeAssetOverride: ReturnType<typeof toSelectedAsset> | undefined;
+
+      if (overrides?.assetOverrides?.length) {
+        const inputItems = overrides.assetOverrides.map(asset => ({
+          id: `quick-${asset.id}-${Date.now()}`,
+          asset,
+          queuedAt: new Date().toISOString(),
+          lockedTimestamp: undefined,
+        }));
+        effectiveInputs = inputItems;
+        effectiveCurrentInput = inputItems[0];
+        activeAssetOverride = toSelectedAsset(overrides.assetOverrides[0], 'gallery');
+      } else {
+        effectiveInputs = currentInputs;
+        effectiveCurrentInput = currentInput;
+      }
+
+      await applyFrameExtraction(dynamicParams, effectiveCurrentInput, transitionInputs);
 
       // Template handling:
       // - 'each' mode: backend rolls per request using run_context
@@ -567,41 +709,129 @@ export function useQuickGenerateController() {
       // Caller-provided promptOverride takes priority over template rolling.
       const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
       const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
-      const overrides: { activeAsset?: ReturnType<typeof toSelectedAsset> | null; promptOverride?: string | null } = {
-        promptOverride: options?.promptOverride ?? rolledOnce,
+      const requestOverrides: { activeAsset?: ReturnType<typeof toSelectedAsset> | null; promptOverride?: string | null } = {
+        promptOverride: overrides?.promptOverride ?? rolledOnce,
       };
-      if (options?.skipActiveAssetFallback) {
-        overrides.activeAsset = null;
-      }
-      const request = await buildRequest(dynamicParams, effectiveInputs, currentInput, overrides);
-      if ('error' in request) {
-        setError(request.error);
-        setGenerating(false);
-        return;
+      if (activeAssetOverride) {
+        requestOverrides.activeAsset = activeAssetOverride;
+      } else if (overrides?.skipActiveAssetFallback) {
+        requestOverrides.activeAsset = null;
       }
 
-      const run = createGenerationRunDescriptor({
-        mode: 'quickgen_single',
-      });
-      const genId = await submitOne(
-        request,
-        createGenerationRunItemContext(run, {
-          itemIndex: 0,
-          itemTotal: 1,
-          inputAssetIds: extractInputAssetIds(effectiveInputs),
-        }),
-      );
-      setGenerationId(genId);
-      setWatchingGeneration(genId);
-      recordInputHistory(operationType, currentInputs);
-      applyPickStateUpdates(request.pickStateUpdates);
+      if (isBurst) {
+        // ── Burst path ──
+        const generatedIds: number[] = [];
+        const run = createGenerationRunDescriptor({
+          mode: 'quickgen_burst',
+          ...(overrides?.assetOverrides ? { metadata: { source: 'assetOverrides' } } : {}),
+        });
+        setQueueProgress({ queued: 0, total: burstCount });
 
-      logEvent('INFO', 'generation_created', {
-        generationId: genId,
-        operationType,
-        providerId: providerId || 'pixverse',
-        status: 'pending',
-      });
+        // Pre-resolve sets once so burst iterations don't re-resolve per item
+        const hasRandomEachRef = effectiveInputs.some(
+          (item: any) => item.assetSetRef?.mode === 'random_each',
+        );
+        const setCache = hasRandomEachRef ? await preResolveSetRefs(effectiveInputs) : new Map<string, AssetModel[]>();
+
+        // Build a base request for validation (and reuse when no random_each refs)
+        const baseRequest = await buildRequest(dynamicParams, effectiveInputs, effectiveCurrentInput, requestOverrides);
+        if ('error' in baseRequest) {
+          setError(baseRequest.error);
+          setGenerating(false);
+          setQueueProgress(null);
+          return;
+        }
+
+        recordInputHistory(operationType, effectiveInputs);
+
+        for (let i = 0; i < burstCount; i++) {
+          try {
+            // When random_each refs exist, pre-pick from cached sets
+            // so each burst item gets a fresh pick without re-resolving the set
+            let request = baseRequest;
+            if (hasRandomEachRef) {
+              const pickedInputs = prePickSetRefs(effectiveInputs, setCache);
+              const pickedCurrent = pickedInputs.find((item: any) => item.id === effectiveCurrentInput?.id) ?? effectiveCurrentInput;
+              const freshRequest = await buildRequest(dynamicParams, pickedInputs, pickedCurrent, requestOverrides);
+              if (!('error' in freshRequest)) {
+                request = freshRequest;
+              }
+            }
+
+            const genId = await submitOne(
+              request,
+              createGenerationRunItemContext(run, {
+                itemIndex: i,
+                itemTotal: burstCount,
+                inputAssetIds: extractInputAssetIds(effectiveInputs),
+              }),
+            );
+            generatedIds.push(genId);
+            setQueueProgress({ queued: generatedIds.length, total: burstCount });
+
+            logEvent('INFO', 'burst_generation_created', {
+              generationId: genId,
+              operationType,
+              providerId: providerId || 'pixverse',
+              burstIndex: i + 1,
+              burstTotal: burstCount,
+            });
+          } catch (itemErr) {
+            logEvent('ERROR', 'burst_item_failed', {
+              burstIndex: i + 1,
+              error: extractErrorMessage(itemErr, 'Unknown error'),
+            });
+          }
+        }
+
+        applyPickStateUpdates(baseRequest.pickStateUpdates);
+
+        if (generatedIds.length > 0) {
+          const lastId = generatedIds[generatedIds.length - 1];
+          setGenerationId(lastId);
+          setWatchingGeneration(lastId);
+        }
+
+        logEvent('INFO', 'burst_complete', {
+          queued: generatedIds.length,
+          total: burstCount,
+          operationType,
+          providerId: providerId || 'pixverse',
+        });
+        setTimeout(() => setQueueProgress(null), 2000);
+      } else {
+        // ── Single generation path ──
+        const request = await buildRequest(dynamicParams, effectiveInputs, effectiveCurrentInput, requestOverrides);
+        if ('error' in request) {
+          setError(request.error);
+          setGenerating(false);
+          return;
+        }
+
+        const run = createGenerationRunDescriptor({
+          mode: 'quickgen_single',
+          ...(overrides?.assetOverrides ? { metadata: { source: 'assetOverrides' } } : {}),
+        });
+        const genId = await submitOne(
+          request,
+          createGenerationRunItemContext(run, {
+            itemIndex: 0,
+            itemTotal: 1,
+            inputAssetIds: extractInputAssetIds(effectiveInputs),
+          }),
+        );
+        setGenerationId(genId);
+        setWatchingGeneration(genId);
+        recordInputHistory(operationType, effectiveInputs);
+        applyPickStateUpdates(request.pickStateUpdates);
+
+        logEvent('INFO', 'generation_created', {
+          generationId: genId,
+          operationType,
+          providerId: providerId || 'pixverse',
+          status: 'pending',
+        });
+      }
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to generate asset'));
     } finally {
@@ -609,131 +839,8 @@ export function useQuickGenerateController() {
     }
   }
 
-  /**
-   * Generate multiple times (burst mode).
-   * Submits the same generation request N times for variety.
-   */
-  const generateBurst = useCallback(async (count: number, options?: { overrideDynamicParams?: Record<string, any>; overrideOperationInputs?: any[] }) => {
-    if (count <= 1) return generate(options);
-
-    resetForGeneration();
-    const total = count;
-    let queued = 0;
-    const generatedIds: number[] = [];
-    const run = createGenerationRunDescriptor({ mode: 'quickgen_burst' });
-    setQueueProgress({ queued: 0, total });
-
-    try {
-      const { currentInputs, currentInput, transitionInputs } = getInputState();
-      const effectiveInputs = options?.overrideOperationInputs ?? currentInputs;
-      const effectiveCurrentInput = options?.overrideOperationInputs
-        ? options.overrideOperationInputs[0] ?? currentInput
-        : currentInput;
-      const dynamicParams = { ...bindings.dynamicParams, ...options?.overrideDynamicParams };
-
-      await applyFrameExtraction(dynamicParams, effectiveCurrentInput, transitionInputs);
-
-      // Template handling:
-      // - 'each' mode: backend rolls per request using run_context
-      // - 'once' mode: roll once client-side, pass prompt override for all items
-      const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
-      const rollOnce = !useServerRolling ? await maybeRollTemplate() : null;
-      // Pre-resolve sets once so burst iterations don't re-resolve per item
-      const hasRandomEachRef = effectiveInputs.some(
-        (item: any) => item.assetSetRef?.mode === 'random_each',
-      );
-      const setCache = hasRandomEachRef ? await preResolveSetRefs(effectiveInputs) : new Map<string, AssetModel[]>();
-
-      // Build a base request for validation (and reuse when no random_each refs)
-      const baseRequest = await buildRequest(dynamicParams, effectiveInputs, effectiveCurrentInput, { promptOverride: rollOnce });
-      if ('error' in baseRequest) {
-        setError(baseRequest.error);
-        setGenerating(false);
-        setQueueProgress(null);
-        return;
-      }
-
-      recordInputHistory(operationType, effectiveInputs);
-
-      for (let i = 0; i < count; i++) {
-        try {
-          // Bug 2 fix: when random_each refs exist, pre-pick from cached sets
-          // so each burst item gets a fresh pick without re-resolving the set
-          let request = baseRequest;
-          if (hasRandomEachRef) {
-            const pickedInputs = prePickSetRefs(effectiveInputs, setCache);
-            const pickedCurrent = pickedInputs.find((item: any) => item.id === effectiveCurrentInput?.id) ?? effectiveCurrentInput;
-            const freshRequest = await buildRequest(dynamicParams, pickedInputs, pickedCurrent, { promptOverride: rollOnce });
-            if (!('error' in freshRequest)) {
-              request = freshRequest;
-            }
-          }
-
-          const genId = await submitOne(
-            request,
-            createGenerationRunItemContext(run, {
-              itemIndex: i,
-              itemTotal: total,
-            }),
-          );
-          generatedIds.push(genId);
-          queued++;
-          setQueueProgress({ queued, total });
-
-          logEvent('INFO', 'burst_generation_created', {
-            generationId: genId,
-            operationType,
-            providerId: providerId || 'pixverse',
-            burstIndex: i + 1,
-            burstTotal: count,
-          });
-        } catch (itemErr) {
-          logEvent('ERROR', 'burst_item_failed', {
-            burstIndex: i + 1,
-            error: extractErrorMessage(itemErr, 'Unknown error'),
-          });
-        }
-      }
-
-      applyPickStateUpdates(baseRequest.pickStateUpdates);
-
-      if (generatedIds.length > 0) {
-        const lastId = generatedIds[generatedIds.length - 1];
-        setGenerationId(lastId);
-        setWatchingGeneration(lastId);
-      }
-
-      logEvent('INFO', 'burst_complete', {
-        queued,
-        total,
-        operationType,
-        providerId: providerId || 'pixverse',
-      });
-    } catch (err) {
-      setError(extractErrorMessage(err, 'Failed to queue generations'));
-    } finally {
-      setGenerating(false);
-      setTimeout(() => setQueueProgress(null), 2000);
-    }
-  }, [
-    generate,
-    operationType,
-    prompt,
-    providerId,
-    pinnedTemplateId,
-    templateRollMode,
-    bindings.dynamicParams,
-    bindings.prompts,
-    bindings.transitionDurations,
-    bindings.lastSelectedAsset,
-    useInputStore,
-    addOrUpdateGeneration,
-    setWatchingGeneration,
-    setGenerating,
-  ]);
-
   const generateSequentialBurst = useCallback(async (count: number, options?: { overrideDynamicParams?: Record<string, any> }) => {
-    if (count <= 1) return generate(options);
+    if (count <= 1) return generate({ paramOverrides: options?.overrideDynamicParams });
 
     resetForGeneration();
     const total = count;
@@ -1005,145 +1112,14 @@ export function useQuickGenerateController() {
     setGenerating,
   ]);
 
-  /**
-   * Generate using current settings with a specific asset as sole input.
-   * Used by media card quick-generate buttons to delegate to the controller
-   * instead of duplicating the generation logic.
-   *
-   * When count > 1, submits multiple generations (burst mode) using the asset.
-   */
-  async function generateWithAsset(asset: AssetModel, count?: number, overrides?: { duration?: number }) {
-    resetForGeneration();
-
-    const burstCount = count && count > 1 ? count : 1;
-
-    try {
-      const dynamicParams = { ...bindings.dynamicParams };
-
-      // Merge gesture-driven overrides (e.g., duration from secondary axis)
-      if (overrides?.duration !== undefined) {
-        dynamicParams.duration = overrides.duration;
-      }
-
-      // Create an InputItem for the asset
-      const inputItem = {
-        id: `quick-${asset.id}-${Date.now()}`,
-        asset,
-        queuedAt: new Date().toISOString(),
-        lockedTimestamp: undefined,
-      };
-
-      await applyFrameExtraction(dynamicParams, inputItem, []);
-
-      // Match main Quick Generate behavior:
-      // - 'each' mode: backend rolls per request via run_context in submitOne()
-      // - 'once' mode: roll once client-side and use prompt override
-      const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
-      const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
-
-      const request = await buildRequest(
-        dynamicParams,
-        [inputItem],
-        inputItem,
-        {
-          activeAsset: toSelectedAsset(asset, 'gallery'),
-          promptOverride: rolledOnce,
-        },
-      );
-      if ('error' in request) {
-        setError(request.error);
-        return;
-      }
-
-      const isBurst = burstCount > 1;
-      const run = createGenerationRunDescriptor({
-        mode: isBurst ? 'quickgen_burst' : 'quickgen_single',
-        metadata: {
-          source: 'generateWithAsset',
-        },
-      });
-
-      if (isBurst) {
-        const generatedIds: number[] = [];
-        setQueueProgress({ queued: 0, total: burstCount });
-
-        for (let i = 0; i < burstCount; i++) {
-          try {
-            const genId = await submitOne(
-              request,
-              createGenerationRunItemContext(run, {
-                itemIndex: i,
-                itemTotal: burstCount,
-                inputAssetIds: [asset.id],
-              }),
-            );
-            generatedIds.push(genId);
-            setQueueProgress({ queued: generatedIds.length, total: burstCount });
-
-            logEvent('INFO', 'burst_generation_created', {
-              generationId: genId,
-              operationType,
-              providerId: providerId || 'pixverse',
-              burstIndex: i + 1,
-              burstTotal: burstCount,
-              source: 'generateWithAsset',
-            });
-          } catch (itemErr) {
-            logEvent('ERROR', 'burst_item_failed', {
-              burstIndex: i + 1,
-              error: extractErrorMessage(itemErr, 'Unknown error'),
-              source: 'generateWithAsset',
-            });
-          }
-        }
-
-        if (generatedIds.length > 0) {
-          const lastId = generatedIds[generatedIds.length - 1];
-          setGenerationId(lastId);
-          setWatchingGeneration(lastId);
-        }
-        recordInputHistory(operationType, [inputItem]);
-        setTimeout(() => setQueueProgress(null), 2000);
-      } else {
-        const genId = await submitOne(
-          request,
-          createGenerationRunItemContext(run, {
-            itemIndex: 0,
-            itemTotal: 1,
-            inputAssetIds: [asset.id],
-          }),
-        );
-        setGenerationId(genId);
-        setWatchingGeneration(genId);
-        recordInputHistory(operationType, [inputItem]);
-
-        logEvent('INFO', 'generation_created', {
-          generationId: genId,
-          operationType,
-          providerId: providerId || 'pixverse',
-          status: 'pending',
-          source: 'generateWithAsset',
-        });
-      }
-    } catch (err) {
-      setError(extractErrorMessage(err, 'Failed to generate asset'));
-    } finally {
-      setGenerating(false);
-    }
-  }
-
   /** Generate using only the currently selected carousel input (ignores other queued inputs). */
   async function generateCurrentOnly(count?: number) {
     const { currentInput } = getInputState();
-    if (!currentInput) {
+    if (!currentInput?.asset) {
       // Empty carousel slot: skip activeAsset fallback so text-to-* kicks in
       return generate({ skipActiveAssetFallback: true });
     }
-    const inputOverride = [currentInput];
-    if (count && count > 1) {
-      return generateBurst(count, { overrideOperationInputs: inputOverride });
-    }
-    return generate({ overrideOperationInputs: inputOverride });
+    return generate({ assetOverrides: [currentInput.asset], count });
   }
 
   return {
@@ -1171,8 +1147,6 @@ export function useQuickGenerateController() {
     // Actions
     generate,
     generateCurrentOnly,
-    generateWithAsset,
-    generateBurst,
     generateSequentialBurst,
     generateEach,
   };

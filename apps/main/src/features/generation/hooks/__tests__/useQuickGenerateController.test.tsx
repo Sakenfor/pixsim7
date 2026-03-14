@@ -16,10 +16,12 @@ const testState = vi.hoisted(() => {
     providerId: 'pixverse',
     generating: false,
     prompt: 'base prompt',
+    uiState: {} as Record<string, unknown>,
     setProvider: vi.fn(),
     setOperationType: vi.fn(),
     setGenerating: setGeneratingMock,
     setPrompt: vi.fn(),
+    setUiState: vi.fn(),
   };
 
   const settingsState = {
@@ -182,6 +184,7 @@ vi.mock('../../lib/quickGenerateLogic', () => ({
 }));
 
 vi.mock('../../lib/runContext', () => ({
+  PROMPT_TOOL_RUN_CONTEXT_PATCH_KEY: 'prompt_tool_run_context_patch',
   createGenerationRunDescriptor: vi.fn(() => ({ id: 'run-1' })),
   createGenerationRunItemContext: vi.fn(() => ({ itemIndex: 0, itemTotal: 1 })),
 }));
@@ -196,7 +199,7 @@ vi.mock('../../stores/generationHistoryStore', () => ({
 
 import { useQuickGenerateController } from '../useQuickGenerateController';
 
-describe('useQuickGenerateController.generateWithAsset', () => {
+describe('useQuickGenerateController.generate with assetOverrides', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -204,6 +207,7 @@ describe('useQuickGenerateController.generateWithAsset', () => {
     testState.sessionState.providerId = 'pixverse';
     testState.sessionState.generating = false;
     testState.sessionState.prompt = 'base prompt';
+    testState.sessionState.uiState = {};
 
     testState.blockTemplateState.pinnedTemplateId = 'tpl-1';
     testState.blockTemplateState.templateRollMode = 'once';
@@ -228,7 +232,7 @@ describe('useQuickGenerateController.generateWithAsset', () => {
     });
   });
 
-  it('rolls pinned template in once mode for generateWithAsset and submits the rolled prompt', async () => {
+  it('rolls pinned template in once mode for generate with assetOverrides and submits the rolled prompt', async () => {
     const { result } = renderHook(() => useQuickGenerateController());
 
     const asset = {
@@ -239,7 +243,7 @@ describe('useQuickGenerateController.generateWithAsset', () => {
     } as any;
 
     await act(async () => {
-      await result.current.generateWithAsset(asset);
+      await result.current.generate({ assetOverrides: [asset] });
     });
 
     expect(testState.rollTemplateMock).toHaveBeenCalledTimes(1);
@@ -259,7 +263,7 @@ describe('useQuickGenerateController.generateWithAsset', () => {
     );
   });
 
-  it('uses server template rolling in each mode for generateWithAsset (no client roll)', async () => {
+  it('uses server template rolling in each mode for generate with assetOverrides (no client roll)', async () => {
     testState.blockTemplateState.templateRollMode = 'each';
     testState.blockTemplateState.draftCharacterBindings = {
       hero: { character_id: 'char-1' },
@@ -275,7 +279,7 @@ describe('useQuickGenerateController.generateWithAsset', () => {
     } as any;
 
     await act(async () => {
-      await result.current.generateWithAsset(asset);
+      await result.current.generate({ assetOverrides: [asset] });
     });
 
     expect(testState.rollTemplateMock).not.toHaveBeenCalled();
@@ -293,6 +297,51 @@ describe('useQuickGenerateController.generateWithAsset', () => {
           character_bindings: {
             hero: { character_id: 'char-1' },
           },
+        }),
+      }),
+    );
+  });
+
+  it('merges prompt-tool run context patch into generation runContext', async () => {
+    testState.blockTemplateState.templateRollMode = 'each';
+    testState.sessionState.uiState = {
+      prompt_tool_run_context_patch: {
+        guidance_patch: {
+          reference_merge: {
+            asset_count: 2,
+          },
+        },
+        composition_assets_patch: [
+          { asset_id: 123, operation: 'reference_merge' },
+        ],
+      },
+    };
+
+    const { result } = renderHook(() => useQuickGenerateController());
+
+    const asset = {
+      id: 123,
+      mediaType: 'image',
+      providerUploads: {},
+      lastUploadStatusByProvider: {},
+    } as any;
+
+    await act(async () => {
+      await result.current.generate({ assetOverrides: [asset] });
+    });
+
+    expect(testState.generateAssetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runContext: expect.objectContaining({
+          block_template_id: 'tpl-1',
+          guidance_patch: {
+            reference_merge: {
+              asset_count: 2,
+            },
+          },
+          composition_assets_patch: [
+            { asset_id: 123, operation: 'reference_merge' },
+          ],
         }),
       }),
     );

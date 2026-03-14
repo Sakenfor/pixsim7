@@ -30,7 +30,12 @@ import {
 import { usePromptHistory } from '../hooks/usePromptHistory';
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { useShadowAnalysis } from '../hooks/useShadowAnalysis';
-import { getCachedAnalysis, setCachedAnalysis, type AnalysisResult } from '../lib/promptAnalysisCache';
+import {
+  getCachedAnalysis,
+  setCachedAnalysis,
+  type AnalysisResult,
+  type SequenceContext,
+} from '../lib/promptAnalysisCache';
 import { useBlockTemplateStore } from '../stores/blockTemplateStore';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptTag } from '../types';
@@ -55,7 +60,10 @@ interface AnalyzePromptResponse {
     prompt?: string;
     candidates?: PromptBlockCandidate[];
     tags?: PromptTag[];
+    sequence_context?: SequenceContext;
   };
+  role_in_sequence?: string;
+  sequence_context?: SequenceContext;
 }
 
 interface PromptAnalysis {
@@ -96,6 +104,11 @@ export interface PromptComposerProps {
   showCounter?: boolean;
   resizable?: boolean;
   minHeight?: number;
+  runContextSeed?: Record<string, unknown>;
+  onPromptToolRunContextPatch?: (patch: {
+    guidance_patch?: Record<string, unknown>;
+    composition_assets_patch?: Array<Record<string, unknown>>;
+  } | null) => void;
 }
 
 function truncate(text: string, maxLen: number) {
@@ -105,6 +118,12 @@ function truncate(text: string, maxLen: number) {
 
 function composePrompt(blocks: PromptBlockItem[]) {
   return composePromptFromBlocks(blocks);
+}
+
+function resolveSequenceContext(response: AnalyzePromptResponse): SequenceContext | undefined {
+  const sequenceContext = response.sequence_context ?? response.analysis?.sequence_context;
+  if (!sequenceContext) return undefined;
+  return sequenceContext;
 }
 
 export function PromptComposer({
@@ -118,6 +137,8 @@ export function PromptComposer({
   showCounter = true,
   resizable = false,
   minHeight,
+  runContextSeed,
+  onPromptToolRunContextPatch,
 }: PromptComposerProps) {
   const composerId = useId();
   const api = useApi();
@@ -351,6 +372,8 @@ export function PromptComposer({
           prompt: response?.analysis?.prompt || normalized,
           candidates,
           tags: (response?.analysis?.tags ?? []) as AnalysisResult['tags'],
+          role_in_sequence: response?.role_in_sequence,
+          sequence_context: resolveSequenceContext(response),
         });
 
         const derivedBlocks = deriveBlocksFromCandidates(candidates, {
@@ -487,6 +510,8 @@ export function PromptComposer({
         prompt: next.prompt,
         candidates: next.candidates,
         tags: next.tags as AnalysisResult['tags'],
+        role_in_sequence: response?.role_in_sequence,
+        sequence_context: resolveSequenceContext(response),
       });
 
       setBlockAnalysis(next);
@@ -605,8 +630,21 @@ export function PromptComposer({
             ? `${sourceText}\n\n${outputText}`
             : outputText
           : outputText;
+      const runContextPatch =
+        (payload.guidancePatch && Object.keys(payload.guidancePatch).length > 0)
+          || (payload.compositionAssetsPatch && payload.compositionAssetsPatch.length > 0)
+          ? {
+              ...(payload.guidancePatch && Object.keys(payload.guidancePatch).length > 0
+                ? { guidance_patch: payload.guidancePatch }
+                : {}),
+              ...(payload.compositionAssetsPatch && payload.compositionAssetsPatch.length > 0
+                ? { composition_assets_patch: payload.compositionAssetsPatch }
+                : {}),
+            }
+          : null;
       flushSnapshot();
       onChangeRef.current(nextText);
+      onPromptToolRunContextPatch?.(runContextPatch);
       if (mode === 'blocks') {
         lastComposedRef.current = null;
         void seedBlocksFromPrompt(nextText, { force: true });
@@ -628,7 +666,7 @@ export function PromptComposer({
 
       setShowPromptTools(false);
     },
-    [blocks, disabled, flushSnapshot, mode, seedBlocksFromPrompt, updateBlocks, value],
+    [blocks, disabled, flushSnapshot, mode, onPromptToolRunContextPatch, seedBlocksFromPrompt, updateBlocks, value],
   );
 
   const composedPrompt = useMemo(() => composePrompt(blocks), [blocks]);
@@ -796,6 +834,7 @@ export function PromptComposer({
           <PromptToolsPanel
             promptText={value}
             disabled={disabled}
+            runContextSeed={runContextSeed}
             onApply={handlePromptToolApply}
           />
         </FloatingToolPanel>
@@ -1194,4 +1233,3 @@ export function PromptComposer({
     </div>
   );
 }
-

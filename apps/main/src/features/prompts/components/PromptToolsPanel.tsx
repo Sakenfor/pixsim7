@@ -26,11 +26,14 @@ export interface PromptToolsApplyPayload {
   mode: PromptToolApplyMode;
   promptText: string;
   blockOverlay: BlockOverlayItem[] | null;
+  guidancePatch?: Record<string, unknown> | null;
+  compositionAssetsPatch?: Array<Record<string, unknown>> | null;
 }
 
 export interface PromptToolsPanelProps {
   promptText: string;
   disabled?: boolean;
+  runContextSeed?: Record<string, unknown>;
   onApply: (payload: PromptToolsApplyPayload) => void;
 }
 
@@ -72,7 +75,12 @@ function parseBlockOverlay(overlay: Array<Record<string, unknown>> | undefined |
   return items.length > 0 ? items : null;
 }
 
-export function PromptToolsPanel({ promptText, disabled = false, onApply }: PromptToolsPanelProps) {
+export function PromptToolsPanel({
+  promptText,
+  disabled = false,
+  runContextSeed,
+  onApply,
+}: PromptToolsPanelProps) {
   const panelId = useId();
 
   const [scope, setScope] = useState<PromptToolCatalogScope>('builtin');
@@ -124,7 +132,11 @@ export function PromptToolsPanel({ promptText, disabled = false, onApply }: Prom
     setRunError(null);
     try {
       const params = parseJsonObject(paramsText, 'Params');
-      const runContext = parseJsonObject(contextText, 'Run context');
+      const runContextOverrides = parseJsonObject(contextText, 'Run context');
+      const runContext = {
+        ...(runContextSeed ?? {}),
+        ...runContextOverrides,
+      };
       const res = await executePromptTool({
         preset_id: selectedId,
         prompt_text: promptTextRef.current,
@@ -139,7 +151,7 @@ export function PromptToolsPanel({ promptText, disabled = false, onApply }: Prom
     } finally {
       setRunning(false);
     }
-  }, [disabled, selectedId, paramsText, contextText]);
+  }, [disabled, selectedId, paramsText, contextText, runContextSeed]);
 
   const handleApply = useCallback(() => {
     if (!result || disabled) return;
@@ -148,6 +160,14 @@ export function PromptToolsPanel({ promptText, disabled = false, onApply }: Prom
       mode: applyMode,
       promptText: result.prompt_text ?? '',
       blockOverlay: overlay,
+      guidancePatch:
+        result.guidance_patch && typeof result.guidance_patch === 'object'
+          ? result.guidance_patch
+          : null,
+      compositionAssetsPatch:
+        Array.isArray(result.composition_assets_patch)
+          ? result.composition_assets_patch
+          : null,
     });
   }, [result, disabled, applyMode, onApply]);
 
@@ -226,6 +246,12 @@ export function PromptToolsPanel({ promptText, disabled = false, onApply }: Prom
         </div>
       )}
 
+      {runContextSeed && Object.keys(runContextSeed).length > 0 && (
+        <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+          Auto context keys: {Object.keys(runContextSeed).join(', ')}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         <label className="text-[11px] text-neutral-600 dark:text-neutral-300">
           Params (JSON)
@@ -238,7 +264,7 @@ export function PromptToolsPanel({ promptText, disabled = false, onApply }: Prom
           />
         </label>
         <label className="text-[11px] text-neutral-600 dark:text-neutral-300">
-          Run context (JSON)
+          Run context overrides (JSON)
           <textarea
             value={contextText}
             disabled={disabled || running}
