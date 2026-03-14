@@ -347,9 +347,14 @@ export interface GenerationWidgetContext {
   operationType: OperationType;
   /** Update the operation type (if supported by the widget) */
   setOperationType?: (operationType: OperationType) => void;
-  /** Trigger generation with the widget's current state.
-   *  Accepts unified overrides for prompt, assets, params, and burst count. */
+  /** Trigger generation with widget state management (generating, error, generationId).
+   *  Use this from the widget's own UI (Go button). */
   generate?: (overrides?: GenerateOverrides) => void | Promise<void>;
+  /** Execute the generation pipeline without managing widget state.
+   *  Use this from external triggers (media cards, gestures) to avoid
+   *  side-effects on the widget's generating/error/generationId state.
+   *  Returns generation IDs on success, throws on fatal error. */
+  executeGeneration?: (overrides?: GenerateOverrides) => Promise<{ generationIds: number[] }>;
   /** Add an asset to the widget's inputs */
   addInput: (options: {
     asset: AssetModel;

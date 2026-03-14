@@ -109,7 +109,7 @@ export function SettingsPanel(props: QuickGenPanelProps) {
           error={controller.error}
           targetProviderId={targetProviderId}
           queueProgress={controller.queueProgress}
-          onGenerateBurst={controller.generateBurst}
+          onGenerateBurst={(count) => controller.generate({ count })}
           onGenerateSequentialBurst={controller.generateSequentialBurst}
           onGenerateEach={(fanoutOptions) => controller.generateEach({ fanoutOptions })}
           onGenerateCurrentOnly={controller.generateCurrentOnly}

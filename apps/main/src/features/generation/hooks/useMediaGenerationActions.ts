@@ -102,17 +102,17 @@ export function useMediaGenerationActions() {
             setTimeout(resolve, 16);
           });
           const resolved = getWidgetContext();
-          if (resolved?.generateWithAsset) return resolved;
+          if (resolved?.executeGeneration) return resolved;
         }
         return null;
       };
 
       const initial = getWidgetContext();
-      if (initial?.generateWithAsset) return initial;
+      if (initial?.executeGeneration) return initial;
 
       const candidates = getCandidateWidgets();
-      const direct = candidates.find((candidate) => !!candidate.generateWithAsset);
-      if (direct?.generateWithAsset) return direct;
+      const direct = candidates.find((candidate) => !!candidate.executeGeneration);
+      if (direct?.executeGeneration) return direct;
 
       // Open whichever generation widget is currently resolved first (nearest/targeted),
       // then fall back to other discovered widget providers.
@@ -123,7 +123,7 @@ export function useMediaGenerationActions() {
         if (key) opened.add(key);
         candidate.setOpen(true);
         const resolved = await waitForResolvedGenerator();
-        if (resolved?.generateWithAsset) return resolved;
+        if (resolved?.executeGeneration) return resolved;
       }
 
       return getWidgetContext();
@@ -221,7 +221,7 @@ export function useMediaGenerationActions() {
     [addInputs, getCurrentOperationType, selectAssetFromSummary],
   );
 
-  // Quick generate - delegates to the controller's generateWithAsset method
+  // Quick generate - delegates to the controller's unified generate method
   // which uses the full generation pipeline (provider resolution, param building, etc.)
   // When count > 1, triggers burst mode (multiple generations).
   // Optional duration override from gesture secondary axis.
@@ -235,11 +235,11 @@ export function useMediaGenerationActions() {
         selectAssetFromSummary(asset);
       }
 
-      if (!widget?.generateWithAsset) {
+      if (!widget?.executeGeneration) {
         widget = await resolveWidgetForQuickGenerate();
       }
 
-      if (!widget?.generateWithAsset) {
+      if (!widget?.executeGeneration) {
         useToastStore.getState().addToast({
           type: 'error',
           message: 'No generation widget available for quick generate',
@@ -249,7 +249,11 @@ export function useMediaGenerationActions() {
       }
 
       try {
-        await widget.generateWithAsset(asset, options?.count, { duration: options?.duration });
+        await widget.executeGeneration({
+          assetOverrides: [asset],
+          count: options?.count,
+          paramOverrides: options?.duration !== undefined ? { duration: options.duration } : undefined,
+        });
       } catch (err) {
         useToastStore.getState().addToast({
           type: 'error',

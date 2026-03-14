@@ -44,7 +44,11 @@ import {
 import { executeSequentialSteps, createSequentialStepRunContextMetadata } from '../lib/sequentialExecutor';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 
-
+/** Result of the generation pipeline (no widget state side-effects). */
+export interface GenerationPipelineResult {
+  generationIds: number[];
+  pickStateUpdates?: PickStateUpdate[];
+}
 
 /** Throw if the extracted frame failed to upload to any provider (no usable provider_uploads). */
 function assertFrameUploadSucceeded(frame: AssetModel) {
@@ -667,175 +671,197 @@ export function useQuickGenerateController() {
   }
 
   /**
-   * Unified generation entry point.
-   * Handles single generation, burst (count > 1), and asset overrides.
-   * All generation triggers should go through this method.
+   * Generation pipeline core — builds request, submits to API, seeds generations store.
+   * Does NOT touch widget state (generating, error, generationId, queueProgress).
+   * Throws on fatal errors (build failure, template roll failure).
+   *
+   * Use this from external triggers (media cards, gestures) to avoid
+   * side-effects on the widget's UI state.
    */
-  async function generate(overrides?: GenerateOverrides) {
-    resetForGeneration();
-
+  async function executeGeneration(
+    overrides?: GenerateOverrides,
+    callbacks?: { onProgress?: (progress: { queued: number; total: number } | null) => void },
+  ): Promise<GenerationPipelineResult> {
     const burstCount = overrides?.count && overrides.count > 1 ? overrides.count : 1;
     const isBurst = burstCount > 1;
 
-    try {
-      const { currentInputs, currentInput, transitionInputs } = getInputState();
-      const dynamicParams = { ...bindings.dynamicParams, ...overrides?.paramOverrides };
+    const { currentInputs, currentInput, transitionInputs } = getInputState();
+    const dynamicParams = { ...bindings.dynamicParams, ...overrides?.paramOverrides };
 
-      // Asset overrides: convert AssetModel[] to InputItems, bypassing store inputs
-      let effectiveInputs: any[];
-      let effectiveCurrentInput: any;
-      let activeAssetOverride: ReturnType<typeof toSelectedAsset> | undefined;
+    // Asset overrides: convert AssetModel[] to InputItems, bypassing store inputs
+    let effectiveInputs: any[];
+    let effectiveCurrentInput: any;
+    let activeAssetOverride: ReturnType<typeof toSelectedAsset> | undefined;
 
-      if (overrides?.assetOverrides?.length) {
-        const inputItems = overrides.assetOverrides.map(asset => ({
-          id: `quick-${asset.id}-${Date.now()}`,
-          asset,
-          queuedAt: new Date().toISOString(),
-          lockedTimestamp: undefined,
-        }));
-        effectiveInputs = inputItems;
-        effectiveCurrentInput = inputItems[0];
-        activeAssetOverride = toSelectedAsset(overrides.assetOverrides[0], 'gallery');
-      } else {
-        effectiveInputs = currentInputs;
-        effectiveCurrentInput = currentInput;
+    if (overrides?.assetOverrides?.length) {
+      const inputItems = overrides.assetOverrides.map(asset => ({
+        id: `quick-${asset.id}-${Date.now()}`,
+        asset,
+        queuedAt: new Date().toISOString(),
+        lockedTimestamp: undefined,
+      }));
+      effectiveInputs = inputItems;
+      effectiveCurrentInput = inputItems[0];
+      activeAssetOverride = toSelectedAsset(overrides.assetOverrides[0], 'gallery');
+    } else {
+      effectiveInputs = currentInputs;
+      effectiveCurrentInput = currentInput;
+    }
+
+    await applyFrameExtraction(dynamicParams, effectiveCurrentInput, transitionInputs);
+
+    // Template handling:
+    // - Caller-provided promptOverride skips template rolling entirely
+    // - 'each' mode: backend rolls per request using run_context
+    // - 'once' mode: roll once client-side and pass prompt override
+    const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
+    const rolledOnce = overrides?.promptOverride
+      ? null  // skip template roll when caller provides explicit prompt
+      : (!useServerRolling ? await maybeRollTemplate() : null);
+    const requestOverrides: { activeAsset?: ReturnType<typeof toSelectedAsset> | null; promptOverride?: string | null } = {
+      promptOverride: overrides?.promptOverride ?? rolledOnce,
+    };
+    if (activeAssetOverride) {
+      requestOverrides.activeAsset = activeAssetOverride;
+    } else if (overrides?.skipActiveAssetFallback) {
+      requestOverrides.activeAsset = null;
+    }
+
+    if (isBurst) {
+      // ── Burst path ──
+      const generatedIds: number[] = [];
+      const run = createGenerationRunDescriptor({
+        mode: 'quickgen_burst',
+        ...(overrides?.assetOverrides ? { metadata: { source: 'assetOverrides' } } : {}),
+      });
+      callbacks?.onProgress?.({ queued: 0, total: burstCount });
+
+      // Pre-resolve sets once so burst iterations don't re-resolve per item
+      const hasRandomEachRef = effectiveInputs.some(
+        (item: any) => item.assetSetRef?.mode === 'random_each',
+      );
+      const setCache = hasRandomEachRef ? await preResolveSetRefs(effectiveInputs) : new Map<string, AssetModel[]>();
+
+      // Build a base request for validation (and reuse when no random_each refs)
+      const baseRequest = await buildRequest(dynamicParams, effectiveInputs, effectiveCurrentInput, requestOverrides);
+      if ('error' in baseRequest) {
+        throw new Error(baseRequest.error);
       }
 
-      await applyFrameExtraction(dynamicParams, effectiveCurrentInput, transitionInputs);
+      recordInputHistory(operationType, effectiveInputs);
 
-      // Template handling:
-      // - 'each' mode: backend rolls per request using run_context
-      // - 'once' mode: roll once client-side and pass prompt override
-      // Caller-provided promptOverride takes priority over template rolling.
-      const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
-      const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
-      const requestOverrides: { activeAsset?: ReturnType<typeof toSelectedAsset> | null; promptOverride?: string | null } = {
-        promptOverride: overrides?.promptOverride ?? rolledOnce,
-      };
-      if (activeAssetOverride) {
-        requestOverrides.activeAsset = activeAssetOverride;
-      } else if (overrides?.skipActiveAssetFallback) {
-        requestOverrides.activeAsset = null;
-      }
-
-      if (isBurst) {
-        // ── Burst path ──
-        const generatedIds: number[] = [];
-        const run = createGenerationRunDescriptor({
-          mode: 'quickgen_burst',
-          ...(overrides?.assetOverrides ? { metadata: { source: 'assetOverrides' } } : {}),
-        });
-        setQueueProgress({ queued: 0, total: burstCount });
-
-        // Pre-resolve sets once so burst iterations don't re-resolve per item
-        const hasRandomEachRef = effectiveInputs.some(
-          (item: any) => item.assetSetRef?.mode === 'random_each',
-        );
-        const setCache = hasRandomEachRef ? await preResolveSetRefs(effectiveInputs) : new Map<string, AssetModel[]>();
-
-        // Build a base request for validation (and reuse when no random_each refs)
-        const baseRequest = await buildRequest(dynamicParams, effectiveInputs, effectiveCurrentInput, requestOverrides);
-        if ('error' in baseRequest) {
-          setError(baseRequest.error);
-          setGenerating(false);
-          setQueueProgress(null);
-          return;
-        }
-
-        recordInputHistory(operationType, effectiveInputs);
-
-        for (let i = 0; i < burstCount; i++) {
-          try {
-            // When random_each refs exist, pre-pick from cached sets
-            // so each burst item gets a fresh pick without re-resolving the set
-            let request = baseRequest;
-            if (hasRandomEachRef) {
-              const pickedInputs = prePickSetRefs(effectiveInputs, setCache);
-              const pickedCurrent = pickedInputs.find((item: any) => item.id === effectiveCurrentInput?.id) ?? effectiveCurrentInput;
-              const freshRequest = await buildRequest(dynamicParams, pickedInputs, pickedCurrent, requestOverrides);
-              if (!('error' in freshRequest)) {
-                request = freshRequest;
-              }
+      for (let i = 0; i < burstCount; i++) {
+        try {
+          // When random_each refs exist, pre-pick from cached sets
+          // so each burst item gets a fresh pick without re-resolving the set
+          let request = baseRequest;
+          if (hasRandomEachRef) {
+            const pickedInputs = prePickSetRefs(effectiveInputs, setCache);
+            const pickedCurrent = pickedInputs.find((item: any) => item.id === effectiveCurrentInput?.id) ?? effectiveCurrentInput;
+            const freshRequest = await buildRequest(dynamicParams, pickedInputs, pickedCurrent, requestOverrides);
+            if (!('error' in freshRequest)) {
+              request = freshRequest;
             }
-
-            const genId = await submitOne(
-              request,
-              createGenerationRunItemContext(run, {
-                itemIndex: i,
-                itemTotal: burstCount,
-                inputAssetIds: extractInputAssetIds(effectiveInputs),
-              }),
-            );
-            generatedIds.push(genId);
-            setQueueProgress({ queued: generatedIds.length, total: burstCount });
-
-            logEvent('INFO', 'burst_generation_created', {
-              generationId: genId,
-              operationType,
-              providerId: providerId || 'pixverse',
-              burstIndex: i + 1,
-              burstTotal: burstCount,
-            });
-          } catch (itemErr) {
-            logEvent('ERROR', 'burst_item_failed', {
-              burstIndex: i + 1,
-              error: extractErrorMessage(itemErr, 'Unknown error'),
-            });
           }
+
+          const genId = await submitOne(
+            request,
+            createGenerationRunItemContext(run, {
+              itemIndex: i,
+              itemTotal: burstCount,
+              inputAssetIds: extractInputAssetIds(effectiveInputs),
+            }),
+          );
+          generatedIds.push(genId);
+          callbacks?.onProgress?.({ queued: generatedIds.length, total: burstCount });
+
+          logEvent('INFO', 'burst_generation_created', {
+            generationId: genId,
+            operationType,
+            providerId: providerId || 'pixverse',
+            burstIndex: i + 1,
+            burstTotal: burstCount,
+          });
+        } catch (itemErr) {
+          logEvent('ERROR', 'burst_item_failed', {
+            burstIndex: i + 1,
+            error: extractErrorMessage(itemErr, 'Unknown error'),
+          });
         }
-
-        applyPickStateUpdates(baseRequest.pickStateUpdates);
-
-        if (generatedIds.length > 0) {
-          const lastId = generatedIds[generatedIds.length - 1];
-          setGenerationId(lastId);
-          setWatchingGeneration(lastId);
-        }
-
-        logEvent('INFO', 'burst_complete', {
-          queued: generatedIds.length,
-          total: burstCount,
-          operationType,
-          providerId: providerId || 'pixverse',
-        });
-        setTimeout(() => setQueueProgress(null), 2000);
-      } else {
-        // ── Single generation path ──
-        const request = await buildRequest(dynamicParams, effectiveInputs, effectiveCurrentInput, requestOverrides);
-        if ('error' in request) {
-          setError(request.error);
-          setGenerating(false);
-          return;
-        }
-
-        const run = createGenerationRunDescriptor({
-          mode: 'quickgen_single',
-          ...(overrides?.assetOverrides ? { metadata: { source: 'assetOverrides' } } : {}),
-        });
-        const genId = await submitOne(
-          request,
-          createGenerationRunItemContext(run, {
-            itemIndex: 0,
-            itemTotal: 1,
-            inputAssetIds: extractInputAssetIds(effectiveInputs),
-          }),
-        );
-        setGenerationId(genId);
-        setWatchingGeneration(genId);
-        recordInputHistory(operationType, effectiveInputs);
-        applyPickStateUpdates(request.pickStateUpdates);
-
-        logEvent('INFO', 'generation_created', {
-          generationId: genId,
-          operationType,
-          providerId: providerId || 'pixverse',
-          status: 'pending',
-        });
       }
+
+      if (generatedIds.length > 0) {
+        setWatchingGeneration(generatedIds[generatedIds.length - 1]);
+      }
+
+      logEvent('INFO', 'burst_complete', {
+        queued: generatedIds.length,
+        total: burstCount,
+        operationType,
+        providerId: providerId || 'pixverse',
+      });
+
+      return { generationIds: generatedIds, pickStateUpdates: baseRequest.pickStateUpdates };
+    }
+
+    // ── Single generation path ──
+    const request = await buildRequest(dynamicParams, effectiveInputs, effectiveCurrentInput, requestOverrides);
+    if ('error' in request) {
+      throw new Error(request.error);
+    }
+
+    const run = createGenerationRunDescriptor({
+      mode: 'quickgen_single',
+      ...(overrides?.assetOverrides ? { metadata: { source: 'assetOverrides' } } : {}),
+    });
+    const genId = await submitOne(
+      request,
+      createGenerationRunItemContext(run, {
+        itemIndex: 0,
+        itemTotal: 1,
+        inputAssetIds: extractInputAssetIds(effectiveInputs),
+      }),
+    );
+    setWatchingGeneration(genId);
+    recordInputHistory(operationType, effectiveInputs);
+
+    logEvent('INFO', 'generation_created', {
+      generationId: genId,
+      operationType,
+      providerId: providerId || 'pixverse',
+      status: 'pending',
+    });
+
+    return { generationIds: [genId], pickStateUpdates: request.pickStateUpdates };
+  }
+
+  /**
+   * Widget-facing generation entry point.
+   * Wraps executeGeneration with widget state management (generating, error,
+   * generationId, queueProgress). Use this when the generation is triggered
+   * from the widget's own UI (Go button).
+   */
+  async function generate(overrides?: GenerateOverrides) {
+    resetForGeneration();
+    const isBurst = overrides?.count && overrides.count > 1;
+
+    try {
+      const result = await executeGeneration(overrides, {
+        onProgress: setQueueProgress,
+      });
+
+      if (result.generationIds.length > 0) {
+        setGenerationId(result.generationIds[result.generationIds.length - 1]);
+      }
+      applyPickStateUpdates(result.pickStateUpdates);
     } catch (err) {
+      console.error('[generate]', err);
       setError(extractErrorMessage(err, 'Failed to generate asset'));
     } finally {
       setGenerating(false);
+      if (isBurst) {
+        setTimeout(() => setQueueProgress(null), 2000);
+      }
     }
   }
 
@@ -1146,6 +1172,7 @@ export function useQuickGenerateController() {
 
     // Actions
     generate,
+    executeGeneration,
     generateCurrentOnly,
     generateSequentialBurst,
     generateEach,

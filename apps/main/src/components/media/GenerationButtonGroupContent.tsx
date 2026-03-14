@@ -98,7 +98,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const inferredProviderId = useProviderIdForModel(activeModel);
   const effectiveProviderId = scopedProviderId ?? inferredProviderId;
 
-  // Widget scope stores — quick generate delegates to the widget's generateWithAsset,
+  // Widget scope stores — quick generate delegates to the widget's generate method,
   // which runs in the widget's scope (not the media card's local scope).
   // Read model/provider from the widget scope so tooltip and visibility checks are accurate.
   const widgetScopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
@@ -362,7 +362,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   // Quick generate requires: capability enabled, widget available, and asset accessible to provider.
   // Providers with asset_upload feature (e.g. Pixverse) require the asset uploaded to their platform first.
   // Use widget scope provider for quick-generate visibility — the generation runs in the
-  // widget's scope, so the upload check must match the provider generateWithAsset will use.
+  // widget's scope, so the upload check must match the provider generate will use.
   const providerRequiresUpload = widgetEffectiveProviderId
     ? providerCapabilityRegistry.hasFeature(widgetEffectiveProviderId, 'asset_upload')
     : false;
@@ -373,7 +373,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       )
     : true;
   const hasQuickGenerate = !!cardProps.presetCapabilities?.showsQuickGenerate
-    && !!widgetContext?.generateWithAsset
+    && !!widgetContext?.executeGeneration
     && assetUploadedToProvider;
 
   const availableActionModes = useMemo<MediaCardActionMode[]>(() => {
@@ -511,7 +511,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   }
 
   if (hasQuickGenerate) {
-    // Show widget scope values — these match what generateWithAsset will actually use.
+    // Show widget scope values — these match what generate will actually use.
     const widgetOpType = widgetContext!.operationType ?? operationType;
     const widgetOpMetadata = OPERATION_METADATA[widgetOpType];
     const quickGenStates = makeAsyncStates('sparkles', [

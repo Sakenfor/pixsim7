@@ -14,6 +14,7 @@ import { useGestureSecondaryStore } from '@lib/gestures';
 import {
   CAP_GENERATION_WIDGET,
   useProvideCapability,
+  type GenerateOverrides,
   type GenerationWidgetContext,
 } from '@features/contextHub';
 import { providerCapabilityRegistry } from '@features/providers';
@@ -54,8 +55,8 @@ export function useProvideGenerationWidget(config: UseProvideGenerationWidgetCon
       scopeId,
       operationType: controller.operationType,
       setOperationType: controller.setOperationType,
-      generate: (opts?: { promptOverride?: string }) => controller.generate(opts),
-      generateWithAsset: controller.generateWithAsset,
+      generate: (overrides?: GenerateOverrides) => controller.generate(overrides),
+      executeGeneration: (overrides?: GenerateOverrides) => controller.executeGeneration(overrides),
       addInput: scopedAddInput,
       addInputs: scopedAddInputs,
       widgetId: config.widgetId,
@@ -67,7 +68,7 @@ export function useProvideGenerationWidget(config: UseProvideGenerationWidgetCon
       controller.operationType,
       controller.setOperationType,
       controller.generate,
-      controller.generateWithAsset,
+      controller.executeGeneration,
       scopedAddInput,
       scopedAddInputs,
       config.widgetId,

@@ -197,13 +197,13 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     [addOrUpdateGeneration, setWatchingGeneration],
   );
 
-  // Quick generate: delegates to the controller's generateWithAsset method,
-  // which uses the full generation pipeline (provider resolution, param building, etc.)
+  // Quick generate: delegates to the controller's pipeline directly,
+  // bypassing widget state management (no flash on Go button).
   const handleQuickGenerate = useCallback(async () => {
-    if (isQuickGenerating || !widgetContext?.generateWithAsset) return;
+    if (isQuickGenerating || !widgetContext?.executeGeneration) return;
     setIsQuickGenerating(true);
     try {
-      await widgetContext.generateWithAsset(inputAsset);
+      await widgetContext.executeGeneration({ assetOverrides: [inputAsset] });
     } catch (err) {
       useToastStore.getState().addToast({
         type: 'error',

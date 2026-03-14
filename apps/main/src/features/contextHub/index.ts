@@ -48,6 +48,7 @@ export type {
   PromptBoxContext,
   AssetInputContext,
   GenerateActionContext,
+  GenerateOverrides,
   EditorContextSnapshot,
   PanelContextCapability,
   GenerationWidgetContext,
