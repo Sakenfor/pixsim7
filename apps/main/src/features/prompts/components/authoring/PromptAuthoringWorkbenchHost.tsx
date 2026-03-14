@@ -33,7 +33,7 @@ export function PromptAuthoringWorkbenchHost() {
         panelManagerId={DOCK_ID}
         layoutSpec={LAYOUT_SPEC}
         enableContextMenu
-        minPanelsForTabs={1}
+        minPanelsForTabs={2}
       />
     </PromptAuthoringProvider>
   );

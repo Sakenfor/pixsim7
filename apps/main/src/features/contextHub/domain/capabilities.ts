@@ -333,8 +333,9 @@ export interface GenerationWidgetContext {
   operationType: OperationType;
   /** Update the operation type (if supported by the widget) */
   setOperationType?: (operationType: OperationType) => void;
-  /** Trigger generation with the widget's current state (if supported) */
-  generate?: () => void | Promise<void>;
+  /** Trigger generation with the widget's current state (if supported).
+   *  Optional overrides allow injecting a prompt without modifying the widget's UI state. */
+  generate?: (options?: { promptOverride?: string }) => void | Promise<void>;
   /** Add an asset to the widget's inputs */
   addInput: (options: {
     asset: AssetModel;

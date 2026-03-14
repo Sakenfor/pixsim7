@@ -146,20 +146,14 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
   const contextFocusRoleId =
     typeof props.context?.focusRoleId === 'string' ? props.context.focusRoleId : undefined;
   const focusRoleId = props.focusRoleId ?? contextFocusRoleId;
-  const persistedTab = useMemo(() => {
-    try {
-      const saved = localStorage.getItem('prompt-library-inspector:tab');
-      if (saved && ['packages', 'templates', 'blocks', 'matrix', 'interactions', 'authoring', 'prompt-authoring'].includes(saved)) {
-        return saved as TabId;
-      }
-    } catch { /* ignore */ }
-    return 'packages' as TabId;
-  }, []);
-  const nav = useSidebarNav<string, TabId>({ sections: NAV_SECTIONS, initial: persistedTab });
+  const nav = useSidebarNav<string, TabId>({
+    sections: NAV_SECTIONS,
+    initial: 'packages',
+    storageKey: 'prompt-library-inspector:tab',
+  });
   const tab = nav.activeId as TabId;
   const setTab = useCallback((id: TabId) => {
     nav.navigate(id);
-    try { localStorage.setItem('prompt-library-inspector:tab', id); } catch { /* ignore */ }
   }, [nav]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

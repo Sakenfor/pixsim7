@@ -54,7 +54,7 @@ export function useProvideGenerationWidget(config: UseProvideGenerationWidgetCon
       scopeId,
       operationType: controller.operationType,
       setOperationType: controller.setOperationType,
-      generate: controller.generate,
+      generate: (opts?: { promptOverride?: string }) => controller.generate(opts),
       generateWithAsset: controller.generateWithAsset,
       addInput: scopedAddInput,
       addInputs: scopedAddInputs,

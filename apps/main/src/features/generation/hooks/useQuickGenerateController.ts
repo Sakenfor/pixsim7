@@ -253,7 +253,7 @@ export function useQuickGenerateController() {
     dynamicParams: Record<string, any>,
     operationInputs: any[],
     currentInput: any,
-    overrides?: { activeAsset?: ReturnType<typeof toSelectedAsset>; promptOverride?: string | null },
+    overrides?: { activeAsset?: ReturnType<typeof toSelectedAsset> | null; promptOverride?: string | null },
   ): Promise<{ error: string } | { finalPrompt: string; params: any; effectiveOperationType: string; pickStateUpdates?: PickStateUpdate[] }> {
     // Resolve prompt limit so buildGenerationRequest can clamp the prompt
     const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', operationType);
@@ -267,6 +267,12 @@ export function useQuickGenerateController() {
       ? operationInputs.slice(0, maxSlots)
       : operationInputs;
 
+    // activeAsset: null means explicitly skip gallery fallback (e.g. empty carousel slot).
+    // undefined means "not provided" → use gallery fallback.
+    const resolvedActiveAsset = overrides && 'activeAsset' in overrides
+      ? overrides.activeAsset ?? undefined
+      : bindings.lastSelectedAsset;
+
     const buildResult = await buildGenerationRequest({
       operationType,
       prompt: overrides?.promptOverride ?? prompt,
@@ -274,7 +280,7 @@ export function useQuickGenerateController() {
       operationInputs: clampedInputs,
       prompts: bindings.prompts,
       transitionDurations: bindings.transitionDurations,
-      activeAsset: overrides?.activeAsset ?? bindings.lastSelectedAsset,
+      activeAsset: resolvedActiveAsset,
       currentInput,
       maxChars,
     });
@@ -545,7 +551,7 @@ export function useQuickGenerateController() {
     }
   }
 
-  async function generate(options?: { overrideDynamicParams?: Record<string, any>; overrideOperationInputs?: any[] }) {
+  async function generate(options?: { overrideDynamicParams?: Record<string, any>; overrideOperationInputs?: any[]; skipActiveAssetFallback?: boolean; promptOverride?: string }) {
     resetForGeneration();
 
     try {
@@ -558,9 +564,16 @@ export function useQuickGenerateController() {
       // Template handling:
       // - 'each' mode: backend rolls per request using run_context
       // - 'once' mode: roll once client-side and pass prompt override
+      // Caller-provided promptOverride takes priority over template rolling.
       const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
       const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
-      const request = await buildRequest(dynamicParams, effectiveInputs, currentInput, { promptOverride: rolledOnce });
+      const overrides: { activeAsset?: ReturnType<typeof toSelectedAsset> | null; promptOverride?: string | null } = {
+        promptOverride: options?.promptOverride ?? rolledOnce,
+      };
+      if (options?.skipActiveAssetFallback) {
+        overrides.activeAsset = null;
+      }
+      const request = await buildRequest(dynamicParams, effectiveInputs, currentInput, overrides);
       if ('error' in request) {
         setError(request.error);
         setGenerating(false);
@@ -1122,7 +1135,10 @@ export function useQuickGenerateController() {
   /** Generate using only the currently selected carousel input (ignores other queued inputs). */
   async function generateCurrentOnly(count?: number) {
     const { currentInput } = getInputState();
-    if (!currentInput) return generate();
+    if (!currentInput) {
+      // Empty carousel slot: skip activeAsset fallback so text-to-* kicks in
+      return generate({ skipActiveAssetFallback: true });
+    }
     const inputOverride = [currentInput];
     if (count && count > 1) {
       return generateBurst(count, { overrideOperationInputs: inputOverride });

@@ -15,10 +15,7 @@ import {
   type GenerationWidgetContext,
   useCapabilityAll,
 } from '@features/contextHub';
-import {
-  getGenerationSessionStore,
-  getGenerationSettingsStore,
-} from '@features/generation/stores/generationScopeStores';
+import { getGenerationSessionStore } from '@features/generation/stores/generationScopeStores';
 
 import { usePromptAuthoring, formatDate } from '../../context/PromptAuthoringContext';
 import { PromptComposer } from '../PromptComposer';
@@ -46,37 +43,29 @@ export function PromptAuthoringEditor() {
   } = usePromptAuthoring();
 
   const widgets = useCapabilityAll<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
-  const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null);
+  const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(() => {
+    try { return localStorage.getItem('prompt-authoring:widgetId'); } catch { return null; }
+  });
 
   // Resolve selected widget (fall back to first available)
   const selectedWidget = widgets.find((w) => w.provider.id === selectedWidgetId)
     ?? (widgets.length > 0 ? widgets[0] : null);
 
-  const sendToSelected = (andGenerate: boolean) => {
+  const sendToSelected = (andGenerate: boolean, openWidget = true) => {
     const widget = selectedWidget?.value;
     if (!widget?.scopeId || !editorText.trim()) return;
-    const sessionStore = getGenerationSessionStore(widget.scopeId);
-    sessionStore.getState().setPrompt(editorText);
-    widget.setOpen(true);
     if (andGenerate && widget.generate) {
-      setTimeout(() => void widget.generate?.(), 150);
+      // Use promptOverride to inject prompt without touching widget UI state
+      void widget.generate({ promptOverride: editorText });
+    } else {
+      // "Send" only — push to session store so user can review in widget
+      const sessionStore = getGenerationSessionStore(widget.scopeId);
+      sessionStore.getState().setPrompt(editorText);
     }
+    if (openWidget) widget.setOpen(true);
   };
 
   const hasText = !!editorText.trim();
-
-  // Build tooltip summarizing the selected widget's current settings
-  const generateTooltip = (() => {
-    const widget = selectedWidget?.value;
-    if (!widget?.scopeId) return 'Generate';
-    const settings = getGenerationSettingsStore(widget.scopeId);
-    const params = settings.getState().params;
-    const parts = [widget.operationType?.replace(/_/g, ' ')];
-    if (params.model) parts.push(String(params.model));
-    if (params.quality) parts.push(params.quality);
-    if (params.duration) parts.push(`${params.duration}s`);
-    return `Generate: ${parts.filter(Boolean).join(' · ')}`;
-  })();
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-white dark:bg-neutral-900/60">
@@ -147,7 +136,11 @@ export function PromptAuthoringEditor() {
           <div className="flex items-center gap-1 pt-1 border-t border-neutral-100 dark:border-neutral-800">
             <select
               value={selectedWidget?.provider.id ?? ''}
-              onChange={(e) => setSelectedWidgetId(e.target.value || null)}
+              onChange={(e) => {
+                const id = e.target.value || null;
+                setSelectedWidgetId(id);
+                try { if (id) localStorage.setItem('prompt-authoring:widgetId', id); } catch { /* ignore */ }
+              }}
               className="rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-1.5 py-1 text-[11px]"
             >
               {widgets.map(({ provider }) => (
@@ -171,16 +164,16 @@ export function PromptAuthoringEditor() {
                   type="button"
                   onClick={() => sendToSelected(true)}
                   disabled={!hasText || !selectedWidget}
-                  title="Send prompt & generate"
+                  title={`Send prompt & open ${selectedWidget.provider.label}`}
                   className="p-1 rounded border border-neutral-200 dark:border-neutral-700 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-40"
                 >
                   <Icon name="zap" size={12} />
                 </button>
                 <button
                   type="button"
-                  onClick={() => void selectedWidget.value.generate?.()}
-                  disabled={!selectedWidget}
-                  title={generateTooltip}
+                  onClick={() => sendToSelected(true, false)}
+                  disabled={!hasText || !selectedWidget}
+                  title={`Generate silently via ${selectedWidget.provider.label}`}
                   className="p-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-40"
                 >
                   <Icon name="play" size={12} />
