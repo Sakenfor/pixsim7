@@ -6,6 +6,8 @@ export interface PanelLookupSource {
   getIdsForScope(scope: string): string[];
   getIds(): string[];
   get(id: string): PanelCategoryLookup | undefined;
+  /** Return settingScopes for a panel definition (if available). */
+  getSettingScopes?(id: string): string[] | undefined;
 }
 
 export interface ScopedOutOfLayoutOptions {
@@ -14,6 +16,8 @@ export interface ScopedOutOfLayoutOptions {
   excludePanels?: string[];
   allowedPanels?: string[];
   allowedCategories?: string[];
+  /** Setting scopes of the host panel. Panels sharing a scope are auto-included. */
+  hostSettingScopes?: string[];
 }
 
 function applyScopedFilters(
@@ -53,22 +57,47 @@ function applyScopedFilters(
 /**
  * Resolve panel definition IDs that should exist in this dock host.
  * Supports explicit panels mode and scoped dock host mode.
+ *
+ * When hostSettingScopes is provided, panels that share a settingScope
+ * with the host are automatically included (e.g. generation-capable
+ * panels appear in any generation-capable host).
  */
 export function resolveScopedPanelIds(
   source: PanelLookupSource,
   options: ScopedOutOfLayoutOptions
 ): string[] {
-  const { dockId, panels } = options;
+  const { dockId, panels, hostSettingScopes } = options;
+
+  let basePanelIds: readonly string[];
 
   if (panels && panels.length > 0) {
-    return applyScopedFilters(source, panels, options);
+    basePanelIds = panels;
+  } else if (dockId) {
+    basePanelIds = source.getIdsForScope(dockId);
+  } else {
+    basePanelIds = [];
   }
 
-  if (!dockId) {
-    return [];
+  // Auto-include panels that share a settingScope with the host
+  if (hostSettingScopes?.length && source.getSettingScopes) {
+    const hostScopeSet = new Set(hostSettingScopes);
+    const baseSet = new Set(basePanelIds);
+    const extras: string[] = [];
+
+    for (const panelId of source.getIds()) {
+      if (baseSet.has(panelId)) continue;
+      const panelScopes = source.getSettingScopes(panelId);
+      if (panelScopes?.some((s) => hostScopeSet.has(s))) {
+        extras.push(panelId);
+      }
+    }
+
+    if (extras.length > 0) {
+      basePanelIds = [...basePanelIds, ...extras];
+    }
   }
 
-  return applyScopedFilters(source, source.getIdsForScope(dockId), options);
+  return applyScopedFilters(source, basePanelIds, options);
 }
 
 /**

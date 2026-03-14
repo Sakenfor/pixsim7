@@ -70,6 +70,13 @@ export interface PanelHostDockviewProps {
   allowedPanels?: string[];
   /** Optional allowlist of panel categories to include. */
   allowedCategories?: string[];
+  /**
+   * Setting scopes of the host panel. Panels sharing a scope are
+   * auto-included in the context menu (e.g. generation settings panels
+   * appear in any generationCapable host). Derived from the host panel
+   * definition's settingScopes if not provided.
+   */
+  hostSettingScopes?: string[];
   /** Panel IDs that should not exist in the persisted/embedded layout. */
   excludeFromLayout?: readonly string[];
   /** Storage key for persisting layout. */
@@ -139,6 +146,7 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
       excludePanels,
       allowedPanels,
       allowedCategories,
+      hostSettingScopes: hostSettingScopesProp,
       excludeFromLayout,
       resolvePanelTitle,
       resolvePanelPosition,
@@ -165,6 +173,14 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
     const panelsReady = !bootstrapPanelIds
       || (bootstrap.catalogVersion >= 0 && bootstrapPanelIds.every((id) => panelSelectors.has(id)));
 
+    // Auto-derive hostSettingScopes from the parent panel definition when not explicit
+    const hostSettingScopes = useMemo(() => {
+      if (hostSettingScopesProp) return hostSettingScopesProp;
+      if (!dockId) return undefined;
+      const hostDef = panelSelectors.get(dockId);
+      return (hostDef as any)?.settingScopes ?? undefined;
+    }, [hostSettingScopesProp, dockId]);
+
     const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
     const [resetKey, setResetKey] = useState(0);
     const [dockviewHost, setDockviewHost] = useState<DockviewHost | null>(null);
@@ -175,8 +191,9 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
         excludePanels,
         allowedPanels,
         allowedCategories,
+        hostSettingScopes,
       });
-    }, [dockId, panels, excludePanels, allowedPanels, allowedCategories]);
+    }, [dockId, panels, excludePanels, allowedPanels, allowedCategories, hostSettingScopes]);
     const scopedOutOfLayoutPanelIds = useMemo(() => {
       return resolveScopedOutOfLayoutPanelIds(panelSelectors, {
         dockId,

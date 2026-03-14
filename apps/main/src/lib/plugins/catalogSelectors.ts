@@ -493,6 +493,11 @@ export const panelSelectors = {
   getPanelIdsForScope(scope: string): string[] {
     return this.getIdsForScope(scope);
   },
+
+  getSettingScopes(id: string): string[] | undefined {
+    const panel = this.get(id);
+    return panel?.settingScopes ?? undefined;
+  },
 };
 
 // ============================================================================
