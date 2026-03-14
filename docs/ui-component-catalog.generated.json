@@ -1,0 +1,3005 @@
+{
+  "$schema": "ui-component-catalog",
+  "generatedAt": "2026-03-14",
+  "description": "Auto-generated catalog of shared UI components. Use these instead of writing inline UI with raw Tailwind classes.",
+  "componentCount": 65,
+  "hookCount": 14,
+  "package": "@pixsim7/shared.ui",
+  "components": [
+    {
+      "name": "ActionHintBadge",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/ButtonGroup.tsx",
+      "description": "Additional className applied to this item's button element */ buttonClassName?: string; /** Inline style applied to this item's button element */ buttonStyle?: React.CSSProperties; onClick?: (e: React.MouseEvent) => void; /** Middle-click handler */ onAuxClick?: (e: React.MouseEvent) => void; title?: string; disabled?: boolean; /** Right-click handler */ onContextMenu?: (e: React.MouseEvent) => void; /** Small badge rendered at top-right corner of the button (e.g. mode indicator) */ badge?: React.ReactNode; /** Content to show on hover (expands in opposite direction of layout) */ expandContent?: React.ReactNode; /** Delay before showing expand content (ms) */ expandDelay?: number; /** Delay before hiding expand content (ms) - allows time to move mouse to expanded content */ collapseDelay?: number; } // ============================================================================ // ActionHintBadge — small corner badge for action buttons // ============================================================================ export interface ActionHintBadgeProps { /** Icon node to render inside the badge (optional — omit for a plain dot) */ icon?: React.ReactNode; /** Background color class. Default: 'bg-accent-muted' */ colorClass?: string; /** Border color class. Default: 'border-accent-hover' */ borderClass?: string; className?: string; } /** Tiny badge indicator for action buttons. Render inside a `relative` container — positions itself at top-right. // Dot-only <ActionHintBadge /> // With icon <ActionHintBadge icon={<Icon name=\"refresh-cw\" size={7} color=\"#fff\" />} />",
+      "props": [
+        {
+          "name": "icon",
+          "type": "React.ReactNode",
+          "required": false,
+          "description": "Icon node to render inside the badge (optional — omit for a plain dot)"
+        },
+        {
+          "name": "colorClass",
+          "type": "string",
+          "required": false,
+          "description": "Background color class.",
+          "default": ":"
+        },
+        {
+          "name": "borderClass",
+          "type": "string",
+          "required": false,
+          "description": "Border color class.",
+          "default": ":"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "Badge",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Badge.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "color",
+          "type": "'blue' | 'green' | 'red' | 'gray' | 'purple' | 'pink' | 'orange' | 'yellow' | 'accent'",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "Button",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Button.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "ButtonGroup",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/ButtonGroup.tsx",
+      "description": "ButtonGroup - Unified button group component with multiple layouts Supports: - Pill (horizontal, fully rounded ends) - Stack (vertical, fully rounded ends) - Inline (horizontal, slightly rounded) Features: - Auto-rounding on first/last items - Dividers between items - Hover-expand content for any item - Size variants (sm, md, lg) - Color customization ```tsx // Horizontal pill <ButtonGroup layout=\"pill\" items={[ { id: 'menu', icon: <ChevronDown />, onClick: openMenu }, { id: 'action', icon: <Zap />, onClick: doAction, expandContent: <Picker /> }, { id: 'quick', icon: <Sparkles />, onClick: quickGen }, ]} /> // Vertical stack <ButtonGroup layout=\"stack\" items={slots.map((s, i) => ({ id: `slot-${i}`, icon: <SlotIcon /> }))} /> ```",
+      "props": [
+        {
+          "name": "items",
+          "type": "ButtonGroupItem[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "layout",
+          "type": "ButtonGroupLayout",
+          "required": false,
+          "description": "Layout direction and shape"
+        },
+        {
+          "name": "size",
+          "type": "ButtonGroupSize",
+          "required": false,
+          "description": "Size variant"
+        },
+        {
+          "name": "colorClass",
+          "type": "string",
+          "required": false,
+          "description": "Background color class (full class, e.g., 'bg-accent')"
+        },
+        {
+          "name": "hoverClass",
+          "type": "string",
+          "required": false,
+          "description": "Hover color class (full class, e.g., 'hover:bg-accent-hover')"
+        },
+        {
+          "name": "dividerClass",
+          "type": "string",
+          "required": false,
+          "description": "Divider color class (full class, e.g., 'bg-accent-muted/50')"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional className for the container"
+        },
+        {
+          "name": "expandOffset",
+          "type": "number",
+          "required": false,
+          "description": "Gap between expand content and trigger (px)"
+        },
+        {
+          "name": "showLabels",
+          "type": "boolean",
+          "required": false,
+          "description": "Show labels alongside icons"
+        },
+        {
+          "name": "portal",
+          "type": "boolean",
+          "required": false,
+          "description": "Render expand content in a portal to escape overflow/stacking-context constraints"
+        },
+        {
+          "name": "wheelCycle",
+          "type": "boolean",
+          "required": false,
+          "description": "Enable mouse-wheel cycling through items (useful when the group is wider than compact cards). Cycles one item per wheel step."
+        },
+        {
+          "name": "responsiveVisible",
+          "type": "boolean",
+          "required": false,
+          "description": "Enable responsive windowing of visible items based on nearest `.cq-scale` container width. Intended for compact media-card overlays."
+        },
+        {
+          "name": "visibleCount",
+          "type": "number",
+          "required": false,
+          "description": "Optional fixed visible-item count (overrides responsiveVisible)."
+        },
+        {
+          "name": "preferredVisibleId",
+          "type": "string",
+          "required": false,
+          "description": "When windowing is active, start with a window that includes this item id (centered when possible). Useful for keeping a primary action visible."
+        }
+      ],
+      "examples": [
+        "* // Horizontal pill\n * <ButtonGroup\n *   layout=\"pill\"\n *   items={[\n *     { id: 'menu', icon: <ChevronDown />, onClick: openMenu },\n *     { id: 'action', icon: <Zap />, onClick: doAction, expandContent: <Picker /> },\n *     { id: 'quick', icon: <Sparkles />, onClick: quickGen },\n *   ]}\n * />\n *\n * // Vertical stack\n * <ButtonGroup\n *   layout=\"stack\"\n *   items={slots.map((s, i) => ({ id: `slot-${i}`, icon: <SlotIcon /> }))}\n * />\n *"
+      ]
+    },
+    {
+      "name": "Checkbox",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Checkbox.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "ConfirmModal",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Modal.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onConfirm",
+          "type": "() => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onCancel",
+          "type": "() => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "confirmText",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "cancelText",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "variant",
+          "type": "'danger' | 'primary'",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "CubeTooltip",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Tooltip.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "DisclosureGroup",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/disclosure/DisclosureSection.tsx",
+      "description": "Child DisclosureSection components */ children: React.ReactNode; /** Allow multiple sections open (false = accordion) */ allowMultiple?: boolean; /** Initially open section IDs */ defaultOpenIds?: string[]; /** Additional class */ className?: string; } export interface DisclosureGroupContextValue { allowMultiple: boolean; openIds: Set<string>; toggle: (id: string) => void; } export const DisclosureGroupContext = React.createContext<DisclosureGroupContextValue | null>(null); /** Container for multiple DisclosureSection components with shared state ```tsx <DisclosureGroup allowMultiple={false}> <DisclosureSection id=\"a\" label=\"Section A\">Content A</DisclosureSection> <DisclosureSection id=\"b\" label=\"Section B\">Content B</DisclosureSection> </DisclosureGroup> ```",
+      "props": [
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": "Child DisclosureSection components"
+        },
+        {
+          "name": "allowMultiple",
+          "type": "boolean",
+          "required": false,
+          "description": "Allow multiple sections open (false = accordion)"
+        },
+        {
+          "name": "defaultOpenIds",
+          "type": "string[]",
+          "required": false,
+          "description": "Initially open section IDs"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional class"
+        }
+      ],
+      "examples": [
+        "* <DisclosureGroup allowMultiple={false}>\n *   <DisclosureSection id=\"a\" label=\"Section A\">Content A</DisclosureSection>\n *   <DisclosureSection id=\"b\" label=\"Section B\">Content B</DisclosureSection>\n * </DisclosureGroup>\n *"
+      ]
+    },
+    {
+      "name": "DisclosureGroupContext",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/disclosure/DisclosureSection.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "DisclosureSection",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/disclosure/DisclosureSection.tsx",
+      "description": "DisclosureSection - React component for collapsible content sections A ready-to-use component that combines the disclosure state with proper styling, animations, and accessibility. / import * as React from 'react'; import { useDisclosure } from './useDisclosure'; import clsx from 'clsx'; export interface DisclosureSectionProps { /** Section label/title */ label: React.ReactNode; /** Content to show when expanded */ children: React.ReactNode; /** Initial open state */ defaultOpen?: boolean; /** Controlled open state */ isOpen?: boolean; /** Callback when toggled */ onToggle?: (isOpen: boolean) => void; /** Icon style: 'chevron' or 'plusMinus' */ iconStyle?: 'chevron' | 'plusMinus'; /** Size variant */ size?: 'sm' | 'md'; /** Additional class for the container */ className?: string; /** Additional class for the header/trigger */ headerClassName?: string; /** Additional class for the content */ contentClassName?: string; /** Whether to show border around content */ bordered?: boolean; /** Disable the toggle interaction */ disabled?: boolean; /** Actions rendered at the end of the header row, outside the toggle click area */ actions?: React.ReactNode; /** When true, only show actions when the section is open */ actionsWhenOpen?: boolean; /** When true, section stretches to fill available height (flex-1) when open. Use inside a flex column. */ fillHeight?: boolean; /** Badge/count element rendered after the label */ badge?: React.ReactNode; } /** A collapsible section with header and expandable content ```tsx <DisclosureSection label=\"Details\" defaultOpen={false}> <p>Hidden content here</p> </DisclosureSection> ```",
+      "props": [
+        {
+          "name": "label",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": "Section label/title"
+        },
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": "Content to show when expanded"
+        },
+        {
+          "name": "defaultOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "Initial open state"
+        },
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "Controlled open state"
+        },
+        {
+          "name": "onToggle",
+          "type": "(isOpen: boolean) => void",
+          "required": false,
+          "description": "Callback when toggled"
+        },
+        {
+          "name": "iconStyle",
+          "type": "'chevron' | 'plusMinus'",
+          "required": false,
+          "description": "Icon style: 'chevron' or 'plusMinus'"
+        },
+        {
+          "name": "size",
+          "type": "'sm' | 'md'",
+          "required": false,
+          "description": "Size variant"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional class for the container"
+        },
+        {
+          "name": "headerClassName",
+          "type": "string",
+          "required": false,
+          "description": "Additional class for the header/trigger"
+        },
+        {
+          "name": "contentClassName",
+          "type": "string",
+          "required": false,
+          "description": "Additional class for the content"
+        },
+        {
+          "name": "bordered",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether to show border around content"
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false,
+          "description": "Disable the toggle interaction"
+        },
+        {
+          "name": "actions",
+          "type": "React.ReactNode",
+          "required": false,
+          "description": "Actions rendered at the end of the header row, outside the toggle click area"
+        },
+        {
+          "name": "actionsWhenOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "When true, only show actions when the section is open"
+        },
+        {
+          "name": "fillHeight",
+          "type": "boolean",
+          "required": false,
+          "description": "When true, section stretches to fill available height (flex-1) when open. Use inside a flex column."
+        },
+        {
+          "name": "badge",
+          "type": "React.ReactNode",
+          "required": false,
+          "description": "Badge/count element rendered after the label"
+        }
+      ],
+      "examples": [
+        "* <DisclosureSection label=\"Details\" defaultOpen={false}>\n *   <p>Hidden content here</p>\n * </DisclosureSection>\n *"
+      ]
+    },
+    {
+      "name": "DocAstRenderer",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/DocAstRenderer.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "nodes",
+          "type": "DocAstNode[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "resolveLink",
+          "type": "(href: string) => ResolvedDocLink | null",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "onNavigateDoc",
+          "type": "(path: string) => void",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "Dropdown",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Dropdown.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": true,
+          "description": "Whether the dropdown is open"
+        },
+        {
+          "name": "onClose",
+          "type": "() => void",
+          "required": true,
+          "description": "Callback when the dropdown should close (e.g., click outside)"
+        },
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": "The dropdown menu items"
+        },
+        {
+          "name": "position",
+          "type": "'bottom-left' | 'bottom-right' | 'top-left' | 'top-right'",
+          "required": false,
+          "description": "Position relative to trigger"
+        },
+        {
+          "name": "positionMode",
+          "type": "'absolute' | 'fixed' | 'static'",
+          "required": false,
+          "description": "Positioning mode for the dropdown"
+        },
+        {
+          "name": "anchorPosition",
+          "type": "{ x: number",
+          "required": false,
+          "description": "Anchor position for fixed mode"
+        },
+        {
+          "name": "y",
+          "type": "number }",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "minWidth",
+          "type": "string",
+          "required": false,
+          "description": "Minimum width of the dropdown"
+        },
+        {
+          "name": "closeOnOutsideClick",
+          "type": "boolean",
+          "required": false,
+          "description": "Close when clicking outside (",
+          "default": "true"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional CSS classes"
+        },
+        {
+          "name": "portal",
+          "type": "boolean",
+          "required": false,
+          "description": "When true, render the dropdown into a portal on document.body so it escapes overflow: hidden containers."
+        },
+        {
+          "name": "triggerRef",
+          "type": "React.RefObject<HTMLElement | null>",
+          "required": false,
+          "description": "Ref to the trigger element — excluded from click-outside detection so toggling the trigger doesn't immediately re-close the portal'd dropdown."
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "DropdownDivider",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Dropdown.tsx",
+      "description": "DropdownItem — individual menu item in a dropdown / export interface DropdownItemProps { /** Click handler / onClick?: () => void; /** Whether the item is disabled / disabled?: boolean; /** Icon to display before the text (React node) / icon?: React.ReactNode; /** Content of the item / children: React.ReactNode; /** Additional CSS classes / className?: string; /** Visual variant / variant?: 'default' | 'danger' | 'primary' | 'success'; /** Optional right-side content (shortcut, chevron, etc.) / rightSlot?: React.ReactNode; } export function DropdownItem({ onClick, disabled = false, icon, children, className, variant = 'default', rightSlot, }: DropdownItemProps) { const variantClasses = { default: 'hover:bg-neutral-100 dark:hover:bg-neutral-700', danger: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20', primary: 'text-accent hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/20', success: 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20', }; return ( <button onClick={onClick} disabled={disabled} className={clsx( 'w-full text-left text-xs px-2 py-1 rounded flex items-center gap-2', disabled ? 'opacity-50 cursor-not-allowed' : variantClasses[variant], className )} > {icon && <span className=\"flex-shrink-0\">{icon}</span>} <span className=\"flex-1\">{children}</span> {rightSlot && <span className=\"flex items-center gap-1 text-[10px] text-neutral-400\">{rightSlot}</span>} </button> ); } /** DropdownDivider — divider between dropdown items",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "DropdownItem",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Dropdown.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "onClick",
+          "type": "() => void",
+          "required": false,
+          "description": "Click handler"
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether the item is disabled"
+        },
+        {
+          "name": "icon",
+          "type": "React.ReactNode",
+          "required": false,
+          "description": "Icon to display before the text (React node)"
+        },
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": "Content of the item"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional CSS classes"
+        },
+        {
+          "name": "variant",
+          "type": "'default' | 'danger' | 'primary' | 'success'",
+          "required": false,
+          "description": "Visual variant"
+        },
+        {
+          "name": "rightSlot",
+          "type": "React.ReactNode",
+          "required": false,
+          "description": "Optional right-side content (shortcut, chevron, etc.)"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "DropdownSectionHeader",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Dropdown.tsx",
+      "description": "Click handler / onClick?: () => void; /** Whether the item is disabled / disabled?: boolean; /** Icon to display before the text (React node) / icon?: React.ReactNode; /** Content of the item / children: React.ReactNode; /** Additional CSS classes / className?: string; /** Visual variant / variant?: 'default' | 'danger' | 'primary' | 'success'; /** Optional right-side content (shortcut, chevron, etc.) / rightSlot?: React.ReactNode; } export function DropdownItem({ onClick, disabled = false, icon, children, className, variant = 'default', rightSlot, }: DropdownItemProps) { const variantClasses = { default: 'hover:bg-neutral-100 dark:hover:bg-neutral-700', danger: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20', primary: 'text-accent hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/20', success: 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20', }; return ( <button onClick={onClick} disabled={disabled} className={clsx( 'w-full text-left text-xs px-2 py-1 rounded flex items-center gap-2', disabled ? 'opacity-50 cursor-not-allowed' : variantClasses[variant], className )} > {icon && <span className=\"flex-shrink-0\">{icon}</span>} <span className=\"flex-1\">{children}</span> {rightSlot && <span className=\"flex items-center gap-1 text-[10px] text-neutral-400\">{rightSlot}</span>} </button> ); } /** DropdownDivider — divider between dropdown items / export function DropdownDivider() { return <div className=\"border-t dark:border-neutral-700 my-1\" />; } /** DropdownSectionHeader — small uppercase label for grouping dropdown items. Usage: <DropdownSectionHeader>Strategy</DropdownSectionHeader> <DropdownItem .../>",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "ExpandableButtonGroup",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/ExpandableButtonGroup.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "trigger",
+          "type": "ReactNode",
+          "required": true,
+          "description": "The trigger element (usually a button)"
+        },
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "required": true,
+          "description": "The content to show when expanded"
+        },
+        {
+          "name": "direction",
+          "type": "'down' | 'up' | 'left' | 'right'",
+          "required": false,
+          "description": "Direction to expand towards"
+        },
+        {
+          "name": "triggerClassName",
+          "type": "string",
+          "required": false,
+          "description": "Additional className for the trigger wrapper"
+        },
+        {
+          "name": "contentClassName",
+          "type": "string",
+          "required": false,
+          "description": "Additional className for the content wrapper"
+        },
+        {
+          "name": "hoverDelay",
+          "type": "number",
+          "required": false,
+          "description": "Delay in ms before expanding on hover (prevents accidental triggers)"
+        },
+        {
+          "name": "collapseDelay",
+          "type": "number",
+          "required": false,
+          "description": "Delay in ms before collapsing on mouse leave (allows time to reach expanded content)"
+        },
+        {
+          "name": "offset",
+          "type": "number",
+          "required": false,
+          "description": "Distance offset from trigger in pixels"
+        },
+        {
+          "name": "staggerChildren",
+          "type": "boolean",
+          "required": false,
+          "description": "Enable stagger animation for children"
+        },
+        {
+          "name": "staggerDelay",
+          "type": "number",
+          "required": false,
+          "description": "Stagger delay between children in seconds"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "ExpandableItem",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/ExpandableButtonGroup.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "FilterPillGroup",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/FilterPillGroup.tsx",
+      "description": "FilterPillGroup - Single-select filter pill buttons A row of toggle buttons for filtering data by category. Supports an optional \"All\" pill, per-option counts, and wrapping on small containers. ```tsx <FilterPillGroup options={[ { value: 'world-tool', label: 'World Tools', count: 5 }, { value: 'helper', label: 'Helpers', count: 3 }, ]} value={familyFilter} onChange={setFamilyFilter} allLabel=\"All\" /> ``` ```tsx <FilterPillGroup options={families.map(f => ({ value: f, label: f }))} value={selected} onChange={setSelected} /> ``` / import clsx from 'clsx'; export interface FilterPillOption<T extends string = string> { value: T; label: string; count?: number; } export interface FilterPillGroupProps<T extends string = string> { /** Available filter options */ options: FilterPillOption<T>[]; /** Currently selected value, or null for \"All\" */ value: T | null; /** Called when selection changes. Passes null when \"All\" is selected. */ onChange: (value: T | null) => void; /** Label for the \"All\" option. If omitted, no \"All\" pill is rendered. */ allLabel?: string; /** Total count shown on the \"All\" pill. If omitted, sums option counts. */ allCount?: number; /** Size variant */ size?: 'sm' | 'md'; /** Additional className for the wrapper */ className?: string; } const SIZE_CLASSES = { sm: 'px-2 py-0.5 text-[11px] gap-1', md: 'px-2 py-1 text-xs gap-1.5', } as const; /** Single-select filter pill group for category/family/tag filtering.",
+      "props": [
+        {
+          "name": "options",
+          "type": "FilterPillOption<T>[]",
+          "required": true,
+          "description": "Available filter options"
+        },
+        {
+          "name": "value",
+          "type": "T | null",
+          "required": true,
+          "description": "Currently selected value, or null for \"All\""
+        },
+        {
+          "name": "onChange",
+          "type": "(value: T | null) => void",
+          "required": true,
+          "description": "Called when selection changes. Passes null when \"All\" is selected."
+        },
+        {
+          "name": "allLabel",
+          "type": "string",
+          "required": false,
+          "description": "Label for the \"All\" option. If omitted, no \"All\" pill is rendered."
+        },
+        {
+          "name": "allCount",
+          "type": "number",
+          "required": false,
+          "description": "Total count shown on the \"All\" pill. If omitted, sums option counts."
+        },
+        {
+          "name": "size",
+          "type": "'sm' | 'md'",
+          "required": false,
+          "description": "Size variant"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional className for the wrapper"
+        }
+      ],
+      "examples": [
+        "* <FilterPillGroup\n *   options={[\n *     { value: 'world-tool', label: 'World Tools', count: 5 },\n *     { value: 'helper', label: 'Helpers', count: 3 },\n *   ]}\n *   value={familyFilter}\n *   onChange={setFamilyFilter}\n *   allLabel=\"All\"\n * />\n *",
+        "* <FilterPillGroup\n *   options={families.map(f => ({ value: f, label: f }))}\n *   value={selected}\n *   onChange={setSelected}\n * />\n *"
+      ]
+    },
+    {
+      "name": "Fold",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/disclosure/Fold.tsx",
+      "description": "Fold - Inline text/content folding component Unlike DisclosureSection (UI panels), Fold is designed for inline use within text content, similar to code folding in IDEs. Use cases: - Fold sentences/paragraphs in parsed prompts - Collapse nested parameters in JSON/config views - Hide verbose sections inline while showing a summary / import * as React from 'react'; import clsx from 'clsx'; // ============================================================================ // Fold - Single inline foldable region // ============================================================================ export interface FoldProps { /** Content to show when expanded */ children: React.ReactNode; /** Summary shown when folded (defaults to \"...\" or truncated content) */ summary?: React.ReactNode; /** Controlled open state */ isOpen?: boolean; /** Initial open state (uncontrolled) */ defaultOpen?: boolean; /** Callback when toggled */ onToggle?: (isOpen: boolean) => void; /** Additional class for the container */ className?: string; /** Additional class for the summary/trigger */ summaryClassName?: string; /** Additional class for the expanded content */ contentClassName?: string; /** Show fold indicator even when expanded */ showIndicatorWhenOpen?: boolean; /** Indicator style */ indicator?: 'dots' | 'bracket' | 'chevron' | 'none'; /** Make the entire content clickable to toggle (vs just the indicator) */ clickableContent?: boolean; } /** Inline foldable region for text content ```tsx <p> This is the intro. <Fold summary=\"[2 more sentences]\"> This is a longer explanation that can be hidden. And this is another sentence with more detail. </Fold> </p> ```",
+      "props": [
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": "Content to show when expanded"
+        },
+        {
+          "name": "summary",
+          "type": "React.ReactNode",
+          "required": false,
+          "description": "Summary shown when folded (\"...\" or truncated content)",
+          "default": "to"
+        },
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "Controlled open state"
+        },
+        {
+          "name": "defaultOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "Initial open state (uncontrolled)"
+        },
+        {
+          "name": "onToggle",
+          "type": "(isOpen: boolean) => void",
+          "required": false,
+          "description": "Callback when toggled"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional class for the container"
+        },
+        {
+          "name": "summaryClassName",
+          "type": "string",
+          "required": false,
+          "description": "Additional class for the summary/trigger"
+        },
+        {
+          "name": "contentClassName",
+          "type": "string",
+          "required": false,
+          "description": "Additional class for the expanded content"
+        },
+        {
+          "name": "showIndicatorWhenOpen",
+          "type": "boolean",
+          "required": false,
+          "description": "Show fold indicator even when expanded"
+        },
+        {
+          "name": "indicator",
+          "type": "'dots' | 'bracket' | 'chevron' | 'none'",
+          "required": false,
+          "description": "Indicator style"
+        },
+        {
+          "name": "clickableContent",
+          "type": "boolean",
+          "required": false,
+          "description": "Make the entire content clickable to toggle (vs just the indicator)"
+        }
+      ],
+      "examples": [
+        "* <p>\n *   This is the intro.\n *   <Fold summary=\"[2 more sentences]\">\n *     This is a longer explanation that can be hidden.\n *     And this is another sentence with more detail.\n *   </Fold>\n * </p>\n *"
+      ]
+    },
+    {
+      "name": "FoldableJson",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/disclosure/FoldableJson.tsx",
+      "description": "FoldableJson - Collapsible JSON/dict viewer Renders nested objects and arrays with fold capability, similar to browser DevTools or IDE JSON viewers. / import * as React from 'react'; import clsx from 'clsx'; export interface FoldableJsonProps { /** The data to display */ data: unknown; /** Initial depth to expand (0 = all collapsed, Infinity = all expanded) */ defaultExpandDepth?: number; /** Maximum depth to render (prevents infinite recursion) */ maxDepth?: number; /** Root name label (optional) */ rootName?: string; /** Compact mode - less spacing */ compact?: boolean; /** Additional class */ className?: string; /** Show data types */ showTypes?: boolean; /** Indent size in characters */ indentSize?: number; } interface NodeContextValue { defaultExpandDepth: number; maxDepth: number; compact: boolean; showTypes: boolean; indentSize: number; } const NodeContext = React.createContext<NodeContextValue>({ defaultExpandDepth: 1, maxDepth: 10, compact: false, showTypes: false, indentSize: 2, }); /** Foldable JSON viewer with collapsible nested structures ```tsx <FoldableJson data={{ name: \"test\", config: { nested: true, items: [1, 2, 3] } }} defaultExpandDepth={1} /> ```",
+      "props": [
+        {
+          "name": "data",
+          "type": "unknown",
+          "required": true,
+          "description": "The data to display"
+        },
+        {
+          "name": "defaultExpandDepth",
+          "type": "number",
+          "required": false,
+          "description": "Initial depth to expand (0 = all collapsed, Infinity = all expanded)"
+        },
+        {
+          "name": "maxDepth",
+          "type": "number",
+          "required": false,
+          "description": "Maximum depth to render (prevents infinite recursion)"
+        },
+        {
+          "name": "rootName",
+          "type": "string",
+          "required": false,
+          "description": "Root name label (optional)"
+        },
+        {
+          "name": "compact",
+          "type": "boolean",
+          "required": false,
+          "description": "Compact mode - less spacing"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional class"
+        },
+        {
+          "name": "showTypes",
+          "type": "boolean",
+          "required": false,
+          "description": "Show data types"
+        },
+        {
+          "name": "indentSize",
+          "type": "number",
+          "required": false,
+          "description": "Indent size in characters"
+        }
+      ],
+      "examples": [
+        "* <FoldableJson\n *   data={{ name: \"test\", config: { nested: true, items: [1, 2, 3] } }}\n *   defaultExpandDepth={1}\n * />\n *"
+      ]
+    },
+    {
+      "name": "FoldGroup",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/disclosure/Fold.tsx",
+      "description": "Allow multiple folds open (false = accordion) */ allowMultiple?: boolean; /** Initially open fold IDs */ defaultOpenIds?: string[]; /** Callback when any fold changes */ onToggle?: (id: string, isOpen: boolean) => void; /** Render prop for controls */ renderControls?: (ctx: { expandAll: () => void; collapseAll: () => void; openCount: number }) => React.ReactNode; } /** Group multiple Fold components with shared state ```tsx <FoldGroup allowMultiple={false} renderControls={({ expandAll, collapseAll }) => ( <div> <button onClick={expandAll}>Expand All</button> <button onClick={collapseAll}>Collapse All</button> </div> )} > <GroupedFold id=\"a\" summary=\"Section A...\">Content A</GroupedFold> <GroupedFold id=\"b\" summary=\"Section B...\">Content B</GroupedFold> </FoldGroup> ```",
+      "props": [
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "allowMultiple",
+          "type": "boolean",
+          "required": false,
+          "description": "Allow multiple folds open (false = accordion)"
+        },
+        {
+          "name": "defaultOpenIds",
+          "type": "string[]",
+          "required": false,
+          "description": "Initially open fold IDs"
+        },
+        {
+          "name": "onToggle",
+          "type": "(id: string, isOpen: boolean) => void",
+          "required": false,
+          "description": "Callback when any fold changes"
+        },
+        {
+          "name": "renderControls",
+          "type": "(ctx: { expandAll: () => void",
+          "required": false,
+          "description": "Render prop for controls"
+        },
+        {
+          "name": "collapseAll",
+          "type": "() => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "openCount",
+          "type": "number }) => React.ReactNode",
+          "required": true,
+          "description": ""
+        }
+      ],
+      "examples": [
+        "* <FoldGroup\n *   allowMultiple={false}\n *   renderControls={({ expandAll, collapseAll }) => (\n *     <div>\n *       <button onClick={expandAll}>Expand All</button>\n *       <button onClick={collapseAll}>Collapse All</button>\n *     </div>\n *   )}\n * >\n *   <GroupedFold id=\"a\" summary=\"Section A...\">Content A</GroupedFold>\n *   <GroupedFold id=\"b\" summary=\"Section B...\">Content B</GroupedFold>\n * </FoldGroup>\n *"
+      ]
+    },
+    {
+      "name": "FoldGroupContext",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/disclosure/Fold.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "FoldRegions",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/disclosure/Fold.tsx",
+      "description": "Unique ID within the group */ id: string; } /** Fold component that syncs with parent FoldGroup / export function GroupedFold({ id, ...props }: GroupedFoldProps) { const group = React.useContext(FoldGroupContext); if (!group) { console.warn('GroupedFold must be used within a FoldGroup'); return <Fold {...props} />; } return ( <Fold {...props} isOpen={group.isOpen(id)} onToggle={() => group.toggle(id)} /> ); } // ============================================================================ // FoldRegions - Render text with multiple fold regions // ============================================================================ export interface FoldRegion { /** Unique ID */ id: string; /** Start index in text */ start: number; /** End index in text */ end: number; /** Summary when folded */ summary?: string; /** Default open state */ defaultOpen?: boolean; } export interface FoldRegionsProps { /** Full text content */ text: string; /** Regions to make foldable */ regions: FoldRegion[]; /** Props passed to each Fold */ foldProps?: Partial<FoldProps>; /** Wrapper class */ className?: string; } /** Render text with multiple foldable regions ```tsx <FoldRegions text=\"Hello world. This is a long explanation. And more text.\" regions={[ { id: 'middle', start: 13, end: 42, summary: '[...]' } ]} /> ```",
+      "props": [
+        {
+          "name": "text",
+          "type": "string",
+          "required": true,
+          "description": "Full text content"
+        },
+        {
+          "name": "regions",
+          "type": "FoldRegion[]",
+          "required": true,
+          "description": "Regions to make foldable"
+        },
+        {
+          "name": "foldProps",
+          "type": "Partial<FoldProps>",
+          "required": false,
+          "description": "Props passed to each Fold"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Wrapper class"
+        }
+      ],
+      "examples": [
+        "* <FoldRegions\n *   text=\"Hello world. This is a long explanation. And more text.\"\n *   regions={[\n *     { id: 'middle', start: 13, end: 42, summary: '[...]' }\n *   ]}\n * />\n *"
+      ]
+    },
+    {
+      "name": "FormField",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/FormField.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": "The label text to display above the field"
+        },
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": "The form control element (Input, Select, textarea, etc.)"
+        },
+        {
+          "name": "required",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether this field is required"
+        },
+        {
+          "name": "optional",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether this field is optional (shows \"(optional)\" badge)"
+        },
+        {
+          "name": "error",
+          "type": "string",
+          "required": false,
+          "description": "Error message to display below the field"
+        },
+        {
+          "name": "helpText",
+          "type": "string",
+          "required": false,
+          "description": "Help text to display below the field"
+        },
+        {
+          "name": "size",
+          "type": "'sm' | 'md' | 'lg'",
+          "required": false,
+          "description": "Size variant for the label"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional CSS classes for the container"
+        },
+        {
+          "name": "labelClassName",
+          "type": "string",
+          "required": false,
+          "description": "Additional CSS classes for the label"
+        },
+        {
+          "name": "htmlFor",
+          "type": "string",
+          "required": false,
+          "description": "HTML id for the input (used for label association)"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "GroupByPillBar",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/GroupByPillBar.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "options",
+          "type": "GroupByOption<T>[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "selected",
+          "type": "T[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onToggle",
+          "type": "(value: T) => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onClear",
+          "type": "() => void",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "GroupedFold",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/disclosure/Fold.tsx",
+      "description": "Unique ID within the group */ id: string; } /** Fold component that syncs with parent FoldGroup",
+      "props": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "description": "Unique ID within the group"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "GroupMenuTrigger",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/GroupMenuTrigger.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "icon",
+          "type": "ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "count",
+          "type": "number",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "onClick",
+          "type": "() => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "HierarchicalSidebarNav",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/HierarchicalSidebarNav.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "items",
+          "type": "HierarchicalSidebarNavItem[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "expandedItemIds",
+          "type": "ReadonlySet<string>",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "onToggleExpand",
+          "type": "(itemId: string) => void",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "onSelectItem",
+          "type": "(itemId: string) => void",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "onSelectChild",
+          "type": "(itemId: string, childId: string) => void",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "getItemState",
+          "type": "(item: HierarchicalSidebarNavItem) => HierarchicalSidebarNavState",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "getChildState",
+          "type": "(\n    item: HierarchicalSidebarNavItem,\n    child: HierarchicalSidebarNavChildItem,\n  ) => 'inactive' | 'active'",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "variant",
+          "type": "'light' | 'dark'",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "IconButton",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/IconButton.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "Input",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Input.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "size",
+          "type": "'sm' | 'md' | 'lg'",
+          "required": false,
+          "description": "Visual size variant"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional CSS classes to apply"
+        },
+        {
+          "name": "error",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether the input has an error state"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "KEY_ALIASES",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/shortcuts.ts",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "Modal",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Modal.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onClose",
+          "type": "() => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "size",
+          "type": "'sm' | 'md' | 'lg'",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "showClose",
+          "type": "boolean",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "MODIFIER_ALIASES",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/shortcuts.ts",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "OrientationProvider",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/OrientationContext.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "Panel",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Panel.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "PanelHeader",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/PanelHeader.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "description": "Main panel title (e.g., \"Scene Graph\", \"Game World\")"
+        },
+        {
+          "name": "icon",
+          "type": "ReactNode",
+          "required": false,
+          "description": "Optional icon (string glyph or React element)"
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "required": false,
+          "description": "High-level category label to visually group panels"
+        },
+        {
+          "name": "contextLabel",
+          "type": "string",
+          "required": false,
+          "description": "Optional contextual label (e.g., \"World #3\", \"Scene: intro\")"
+        },
+        {
+          "name": "statusIcon",
+          "type": "ReactNode",
+          "required": false,
+          "description": "Optional status indicator (icon or small badge)"
+        },
+        {
+          "name": "statusLabel",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "onClickTitle",
+          "type": "() => void",
+          "required": false,
+          "description": "Called when the title area is clicked. Intended for \"change panel type\" / \"switch surface\" interactions, similar to Blender's editor type dropdown."
+        },
+        {
+          "name": "onOpenMenu",
+          "type": "() => void",
+          "required": false,
+          "description": "Called when the overflow/menu button is clicked"
+        },
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "required": false,
+          "description": "Optional right-aligned children (custom actions, toggles)"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "PanelShell",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/PanelShell.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "header",
+          "type": "ReactNode",
+          "required": false,
+          "description": "Fixed-height header/toolbar rendered above the body. Gets shrink-0."
+        },
+        {
+          "name": "footer",
+          "type": "ReactNode",
+          "required": false,
+          "description": "Fixed-height footer rendered below the body. Gets shrink-0."
+        },
+        {
+          "name": "sidebar",
+          "type": "ReactNode",
+          "required": false,
+          "description": "Left sidebar element. Gets shrink-0 + width from `sidebarWidth`. Content controls its own background, borders, and scroll behavior."
+        },
+        {
+          "name": "sidebarWidth",
+          "type": "string",
+          "required": false,
+          "description": "Tailwind width class for the left sidebar.",
+          "default": "'w-48'"
+        },
+        {
+          "name": "sidebarRight",
+          "type": "ReactNode",
+          "required": false,
+          "description": "Right sidebar element. Gets shrink-0 + width from `sidebarRightWidth`. Content controls its own background, borders, and scroll behavior."
+        },
+        {
+          "name": "sidebarRightWidth",
+          "type": "string",
+          "required": false,
+          "description": "Tailwind width class for the right sidebar.",
+          "default": "'w-48'"
+        },
+        {
+          "name": "bodyScroll",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether the body area scrolls vertically. Set to false when the body manages its own scroll (e.g. a nested dockview or canvas).",
+          "default": "true"
+        },
+        {
+          "name": "bodyClassName",
+          "type": "string",
+          "required": false,
+          "description": "Extra class names on the body wrapper."
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Extra class names on the root container."
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "Popover",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Popover.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "anchor",
+          "type": "HTMLElement | DOMRect | null",
+          "required": true,
+          "description": "Anchor element (or DOMRect) to position relative to"
+        },
+        {
+          "name": "placement",
+          "type": "AnchorPlacement",
+          "required": true,
+          "description": "Which side of the anchor to place content on"
+        },
+        {
+          "name": "align",
+          "type": "AnchorAlign",
+          "required": false,
+          "description": "Cross-axis alignment (",
+          "default": "'center'"
+        },
+        {
+          "name": "offset",
+          "type": "number",
+          "required": false,
+          "description": "Gap between anchor and content in px (",
+          "default": "8"
+        },
+        {
+          "name": "open",
+          "type": "boolean",
+          "required": true,
+          "description": "Whether the popover is visible"
+        },
+        {
+          "name": "onClose",
+          "type": "() => void",
+          "required": true,
+          "description": "Called when the popover requests to close (click-outside or Escape)"
+        },
+        {
+          "name": "closeOnClickOutside",
+          "type": "boolean",
+          "required": false,
+          "description": "Close when clicking outside the popover + trigger (",
+          "default": "true"
+        },
+        {
+          "name": "closeOnEscape",
+          "type": "boolean",
+          "required": false,
+          "description": "Close when pressing Escape (",
+          "default": "true"
+        },
+        {
+          "name": "triggerRef",
+          "type": "React.RefObject<HTMLElement | null>",
+          "required": false,
+          "description": "Trigger element ref — excluded from click-outside detection"
+        },
+        {
+          "name": "clamp",
+          "type": "boolean",
+          "required": false,
+          "description": "Clamp content within viewport bounds (",
+          "default": "true"
+        },
+        {
+          "name": "viewportMargin",
+          "type": "number",
+          "required": false,
+          "description": "Minimum margin from viewport edges when clamping, in px (",
+          "default": "8"
+        },
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": "Content to render inside the popover"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional className for the portal container"
+        },
+        {
+          "name": "style",
+          "type": "React.CSSProperties",
+          "required": false,
+          "description": "Additional inline styles"
+        },
+        {
+          "name": "onMouseEnter",
+          "type": "React.MouseEventHandler",
+          "required": false,
+          "description": "Hover enter handler"
+        },
+        {
+          "name": "onMouseLeave",
+          "type": "React.MouseEventHandler",
+          "required": false,
+          "description": "Hover leave handler"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "PortalFloat",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/PortalFloat.tsx",
+      "description": "Anchor element (or its DOMRect) to position relative to */ anchor: HTMLElement | DOMRect | null; /** Which side of the anchor to place content on */ placement: AnchorPlacement; /** Cross-axis alignment (default: 'center') */ align?: AnchorAlign; /** Gap between anchor and content in px (default: 8) */ offset?: number; /** Content to render in the portal */ children: React.ReactNode; /** Additional className (appended to 'fixed z-popover') */ className?: string; /** Additional inline styles */ style?: React.CSSProperties; /** Hover enter handler (for hover delegation from trigger to portal content) */ onMouseEnter?: React.MouseEventHandler; /** Hover leave handler */ onMouseLeave?: React.MouseEventHandler; /** Clamp content within viewport bounds after render (default: false) */ clamp?: boolean; /** Minimum margin from viewport edges when clamping, in px (default: 8) */ viewportMargin?: number; } /** Renders children in a portal at document.body, positioned relative to an anchor element with `position: fixed` and `z-popover`. ```tsx {isOpen && ( <PortalFloat anchor={buttonRef.current} placement=\"top\" offset={6}> <MyPopoverContent /> </PortalFloat> )} ```",
+      "props": [
+        {
+          "name": "anchor",
+          "type": "HTMLElement | DOMRect | null",
+          "required": true,
+          "description": "Anchor element (or its DOMRect) to position relative to"
+        },
+        {
+          "name": "placement",
+          "type": "AnchorPlacement",
+          "required": true,
+          "description": "Which side of the anchor to place content on"
+        },
+        {
+          "name": "align",
+          "type": "AnchorAlign",
+          "required": false,
+          "description": "Cross-axis alignment (",
+          "default": "'center'"
+        },
+        {
+          "name": "offset",
+          "type": "number",
+          "required": false,
+          "description": "Gap between anchor and content in px (",
+          "default": "8"
+        },
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": "Content to render in the portal"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional className (appended to 'fixed z-popover')"
+        },
+        {
+          "name": "style",
+          "type": "React.CSSProperties",
+          "required": false,
+          "description": "Additional inline styles"
+        },
+        {
+          "name": "onMouseEnter",
+          "type": "React.MouseEventHandler",
+          "required": false,
+          "description": "Hover enter handler (for hover delegation from trigger to portal content)"
+        },
+        {
+          "name": "onMouseLeave",
+          "type": "React.MouseEventHandler",
+          "required": false,
+          "description": "Hover leave handler"
+        },
+        {
+          "name": "clamp",
+          "type": "boolean",
+          "required": false,
+          "description": "Clamp content within viewport bounds after render (",
+          "default": "false"
+        },
+        {
+          "name": "viewportMargin",
+          "type": "number",
+          "required": false,
+          "description": "Minimum margin from viewport edges when clamping, in px (",
+          "default": "8"
+        }
+      ],
+      "examples": [
+        "* {isOpen && (\n *   <PortalFloat anchor={buttonRef.current} placement=\"top\" offset={6}>\n *     <MyPopoverContent />\n *   </PortalFloat>\n * )}\n *"
+      ]
+    },
+    {
+      "name": "ProgressBar",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/ProgressBar.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "value",
+          "type": "number",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "color",
+          "type": "'blue' | 'green' | 'red' | 'purple' | 'pink' | 'orange' | 'yellow'",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "showValue",
+          "type": "boolean",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "PromptInput",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/PromptInput.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "value",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onChange",
+          "type": "(val: string) => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "maxChars",
+          "type": "number",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "autoFocus",
+          "type": "boolean",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "variant",
+          "type": "'default' | 'compact'",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "showCounter",
+          "type": "boolean",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "resizable",
+          "type": "boolean",
+          "required": false,
+          "description": "Allow vertical resize. false for backwards compat",
+          "default": "to"
+        },
+        {
+          "name": "minHeight",
+          "type": "number",
+          "required": false,
+          "description": "Minimum height in pixels"
+        },
+        {
+          "name": "enforceLimit",
+          "type": "boolean",
+          "required": false,
+          "description": "If true, hard-truncate input at maxChars. If false, allow exceeding limit with visual warning. false.",
+          "default": "to"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "PromptModal",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Modal.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onConfirm",
+          "type": "(value: string) => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onCancel",
+          "type": "() => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "defaultValue",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "confirmText",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "cancelText",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "multiline",
+          "type": "boolean",
+          "required": false,
+          "description": "Render a textarea instead of a single-line input. Ctrl+Enter submits."
+        },
+        {
+          "name": "rows",
+          "type": "number",
+          "required": false,
+          "description": "Rows for textarea (",
+          "default": "4"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "ResizeDivider",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/ResizeDivider.tsx",
+      "description": "Mouse down handler to start resize */ onMouseDown: (e: React.MouseEvent) => void /** Whether this divider is currently being dragged */ isDragging?: boolean /** Orientation of the divider */ orientation?: 'vertical' | 'horizontal' /** Additional class names */ className?: string } /** A draggable divider for resizable panels. Use with useResizablePanels hook for full functionality.",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "SearchInput",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/SearchInput.tsx",
+      "description": "SearchInput - Search box with consistent styling and optional debounce Wraps the base Input with search-specific defaults: placeholder icon area, clear button, and optional debounced onChange. ```tsx <SearchInput value={query} onChange={setQuery} placeholder=\"Search plugins...\" /> ``` ```tsx <SearchInput value={query} onChange={setQuery} placeholder=\"Search...\" debounceMs={300} /> ``` / import React, { useCallback, useEffect, useRef, useState } from 'react'; import clsx from 'clsx'; export interface SearchInputProps { /** Current search value */ value: string; /** Called when value changes (after debounce if configured) */ onChange: (value: string) => void; /** Placeholder text */ placeholder?: string; /** Debounce delay in ms. 0 = no debounce (default). */ debounceMs?: number; /** Size variant */ size?: 'sm' | 'md'; /** Whether the input is disabled */ disabled?: boolean; /** Additional className */ className?: string; /** Auto-focus on mount */ autoFocus?: boolean; } const SIZE_CLASSES = { sm: 'text-xs px-2 py-1.5', md: 'text-sm px-3 py-2', } as const; /** Search input with consistent styling across the app.",
+      "props": [
+        {
+          "name": "value",
+          "type": "string",
+          "required": true,
+          "description": "Current search value"
+        },
+        {
+          "name": "onChange",
+          "type": "(value: string) => void",
+          "required": true,
+          "description": "Called when value changes (after debounce if configured)"
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "required": false,
+          "description": "Placeholder text"
+        },
+        {
+          "name": "debounceMs",
+          "type": "number",
+          "required": false,
+          "description": "Debounce delay in ms. 0 = no debounce (",
+          "default": ")"
+        },
+        {
+          "name": "size",
+          "type": "'sm' | 'md'",
+          "required": false,
+          "description": "Size variant"
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether the input is disabled"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional className"
+        },
+        {
+          "name": "autoFocus",
+          "type": "boolean",
+          "required": false,
+          "description": "Auto-focus on mount"
+        }
+      ],
+      "examples": [
+        "* <SearchInput\n *   value={query}\n *   onChange={setQuery}\n *   placeholder=\"Search plugins...\"\n * />\n *",
+        "* <SearchInput\n *   value={query}\n *   onChange={setQuery}\n *   placeholder=\"Search...\"\n *   debounceMs={300}\n * />\n *"
+      ]
+    },
+    {
+      "name": "SegmentedControl",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/SegmentedControl.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "value",
+          "type": "T",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onChange",
+          "type": "(value: T) => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "options",
+          "type": "Array<{ value: T",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "label",
+          "type": "string }>",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "Select",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Select.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "size",
+          "type": "'sm' | 'md' | 'lg'",
+          "required": false,
+          "description": "Visual size variant"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional CSS classes to apply"
+        },
+        {
+          "name": "error",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether the select has an error state"
+        },
+        {
+          "name": "transparent",
+          "type": "boolean",
+          "required": false,
+          "description": "Use transparent background (for inline selects)"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "SIDEBAR_WIDTHS",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/SidebarPaneShell.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "SidebarContentLayout",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/SidebarContentLayout.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "sections",
+          "type": "SidebarContentLayoutSection[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "activeSectionId",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onSelectSection",
+          "type": "(sectionId: string) => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "activeChildId",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "onSelectChild",
+          "type": "(parentId: string, childId: string) => void",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "expandedSectionIds",
+          "type": "ReadonlySet<string>",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "onToggleExpand",
+          "type": "(sectionId: string) => void",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "sidebarTitle",
+          "type": "ReactNode",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "sidebarWidth",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "variant",
+          "type": "'light' | 'dark'",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "contentClassName",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "navClassName",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "collapsible",
+          "type": "boolean",
+          "required": false,
+          "description": "Enable collapse toggle on the sidebar."
+        },
+        {
+          "name": "expandedWidth",
+          "type": "number",
+          "required": false,
+          "description": "Width in px when expanded (used when collapsible=true)."
+        },
+        {
+          "name": "persistKey",
+          "type": "string",
+          "required": false,
+          "description": "localStorage persistence key for collapse state."
+        },
+        {
+          "name": "defaultCollapsed",
+          "type": "boolean",
+          "required": false,
+          "description": "Initial collapsed state."
+        },
+        {
+          "name": "collapsed",
+          "type": "boolean",
+          "required": false,
+          "description": "Controlled collapsed state."
+        },
+        {
+          "name": "onCollapsedChange",
+          "type": "(v: boolean) => void",
+          "required": false,
+          "description": "Callback when collapsed state changes."
+        },
+        {
+          "name": "detachable",
+          "type": "SidebarPaneShellProps['detachable']",
+          "required": false,
+          "description": "Enable detach/dock-back support."
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "SidebarPaneShell",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/SidebarPaneShell.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "title",
+          "type": "ReactNode",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "children",
+          "type": "ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "variant",
+          "type": "'light' | 'dark'",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "widthClassName",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "headerClassName",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "bodyClassName",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "bodyScrollable",
+          "type": "boolean",
+          "required": false,
+          "description": "When false, body uses overflow-hidden and no padding (for children that manage their own scrolling).",
+          "default": "true"
+        },
+        {
+          "name": "collapsible",
+          "type": "boolean",
+          "required": false,
+          "description": "Enable collapse toggle.",
+          "default": "false"
+        },
+        {
+          "name": "expandedWidth",
+          "type": "number",
+          "required": false,
+          "description": "Width in px when expanded (used when collapsible=true, replaces widthClassName).",
+          "default": "192"
+        },
+        {
+          "name": "persistKey",
+          "type": "string",
+          "required": false,
+          "description": "localStorage persistence key for collapse state."
+        },
+        {
+          "name": "defaultCollapsed",
+          "type": "boolean",
+          "required": false,
+          "description": "Initial collapsed state.",
+          "default": "false"
+        },
+        {
+          "name": "collapsed",
+          "type": "boolean",
+          "required": false,
+          "description": "Controlled collapsed state."
+        },
+        {
+          "name": "onCollapsedChange",
+          "type": "(v: boolean) => void",
+          "required": false,
+          "description": "Callback when collapsed state changes."
+        },
+        {
+          "name": "detachable",
+          "type": "{\n    /** Whether the sidebar is currently detached. */\n    detached: boolean",
+          "required": false,
+          "description": "Enable detach/dock-back support. Shows a pop-out button in the header."
+        },
+        {
+          "name": "onDetach",
+          "type": "() => void",
+          "required": true,
+          "description": "Called when user clicks the detach (pop-out) button."
+        },
+        {
+          "name": "onDockBack",
+          "type": "() => void",
+          "required": true,
+          "description": "Called when user clicks the dock-back button on the collapsed rail."
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "StatusBadge",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/StatusBadge.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "Switch",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Switch.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "Table",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Table.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "striped",
+          "type": "boolean",
+          "required": false,
+          "description": "Enable striped rows for better readability"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "TableBody",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Table.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "TableCell",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Table.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "align",
+          "type": "'left' | 'center' | 'right'",
+          "required": false,
+          "description": "Text alignment"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "TableHead",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Table.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "align",
+          "type": "'left' | 'center' | 'right'",
+          "required": false,
+          "description": "Text alignment"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "TableHeader",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Table.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "TableRow",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Table.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "children",
+          "type": "React.ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "onClick",
+          "type": "() => void",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "Tabs",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Tabs.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "tabs",
+          "type": "Tab[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onChange",
+          "type": "(id: string) => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "ThemeToggle",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/ThemeToggle.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "ThumbnailGrid",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/ThumbnailGrid.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "items",
+          "type": "ThumbnailGridItem[]",
+          "required": true,
+          "description": "Items to display in grid"
+        },
+        {
+          "name": "activeIndex",
+          "type": "number",
+          "required": false,
+          "description": "Currently active/selected index"
+        },
+        {
+          "name": "onSelect",
+          "type": "(index: number, item: ThumbnailGridItem) => void",
+          "required": false,
+          "description": "Callback when item is clicked"
+        },
+        {
+          "name": "columns",
+          "type": "2 | 3 | 4 | 5",
+          "required": false,
+          "description": "Number of columns (",
+          "default": "3"
+        },
+        {
+          "name": "size",
+          "type": "'xs' | 'sm' | 'md' | 'lg'",
+          "required": false,
+          "description": "Thumbnail size preset (",
+          "default": "'sm'"
+        },
+        {
+          "name": "thumbSize",
+          "type": "number",
+          "required": false,
+          "description": "Custom thumbnail size in pixels (overrides size preset)"
+        },
+        {
+          "name": "showNumbers",
+          "type": "boolean",
+          "required": false,
+          "description": "Show index numbers on thumbnails"
+        },
+        {
+          "name": "oneIndexed",
+          "type": "boolean",
+          "required": false,
+          "description": "Use 1-based numbering (",
+          "default": "true"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional class name"
+        },
+        {
+          "name": "popup",
+          "type": "boolean",
+          "required": false,
+          "description": "Render as popup (adds positioning styles)"
+        },
+        {
+          "name": "gap",
+          "type": "0 | 1 | 2",
+          "required": false,
+          "description": "Gap between items (= gap-1)",
+          "default": "1"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "Toast",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Toast.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "ToastContainer",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Toast.tsx",
+      "description": "Toast notification container. Place this component at the root of your app to display toast notifications.",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "ToolbarSelect",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/ToolbarSelect.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "value",
+          "type": "T",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onChange",
+          "type": "(value: T) => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "options",
+          "type": "Array<{ value: T",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "disabled",
+          "type": "boolean }>",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "ToolbarToggleButton",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/ToolbarToggleButton.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "active",
+          "type": "boolean",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "onClick",
+          "type": "() => void",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "icon",
+          "type": "ReactNode",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "Tooltip",
+      "kind": "component",
+      "sourceFile": "packages/shared/ui/src/Tooltip.tsx",
+      "description": "",
+      "props": [
+        {
+          "name": "content",
+          "type": "ReactNode",
+          "required": true,
+          "description": "Tooltip content"
+        },
+        {
+          "name": "position",
+          "type": "'top' | 'bottom' | 'left' | 'right'",
+          "required": false,
+          "description": "Position relative to target"
+        },
+        {
+          "name": "show",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether to show the tooltip"
+        },
+        {
+          "name": "delay",
+          "type": "number",
+          "required": false,
+          "description": "Delay before showing (ms)"
+        },
+        {
+          "name": "variant",
+          "type": "'default' | 'info' | 'warning' | 'success'",
+          "required": false,
+          "description": "Visual style variant"
+        },
+        {
+          "name": "className",
+          "type": "string",
+          "required": false,
+          "description": "Additional CSS classes"
+        },
+        {
+          "name": "shortcut",
+          "type": "string",
+          "required": false,
+          "description": "Keyboard shortcut to display"
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "useDetachableSidebarNav",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/hooks/useDetachableSidebar.ts",
+      "description": "",
+      "props": [
+        {
+          "name": "sidebarId",
+          "type": "string",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "sections",
+          "type": "SidebarNavSection<TChildId>[]",
+          "required": true,
+          "description": ""
+        },
+        {
+          "name": "initial",
+          "type": "string",
+          "required": false,
+          "description": ""
+        },
+        {
+          "name": "defaultAllExpanded",
+          "type": "boolean",
+          "required": false,
+          "description": ""
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "useDetachableSidebarStore",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/hooks/useDetachableSidebar.ts",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "useDisclosure",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/disclosure/useDisclosure.ts",
+      "description": "useDisclosure - React hook for disclosure state management Wraps the framework-agnostic disclosureState for React usage. / import { useState, useCallback, useMemo, useSyncExternalStore } from 'react'; import { createDisclosure, createDisclosureGroup, type DisclosureOptions, type DisclosureGroupOptions, type DisclosureGroupState, } from './disclosureState'; // ============================================================================ // Single Disclosure Hook // ============================================================================ export interface UseDisclosureOptions extends DisclosureOptions {} export interface UseDisclosureReturn { /** Current open state */ isOpen: boolean; /** Toggle open/closed */ toggle: () => void; /** Open the disclosure */ open: () => void; /** Close the disclosure */ close: () => void; /** Set open state directly */ setOpen: (isOpen: boolean) => void; /** Props to spread on the trigger element */ triggerProps: { onClick: () => void; 'aria-expanded': boolean; }; /** Props to spread on the content element */ contentProps: { hidden: boolean; }; } /** React hook for single disclosure state ```tsx function MyComponent() { const { isOpen, toggle, triggerProps, contentProps } = useDisclosure({ defaultOpen: false }); return ( <div> <button {...triggerProps}>Toggle</button> <div {...contentProps}>Content here</div> </div> ); } ```",
+      "props": [
+        {
+          "name": "isOpen",
+          "type": "boolean",
+          "required": true,
+          "description": "Current open state"
+        },
+        {
+          "name": "toggle",
+          "type": "() => void",
+          "required": true,
+          "description": "Toggle open/closed"
+        },
+        {
+          "name": "open",
+          "type": "() => void",
+          "required": true,
+          "description": "Open the disclosure"
+        },
+        {
+          "name": "close",
+          "type": "() => void",
+          "required": true,
+          "description": "Close the disclosure"
+        },
+        {
+          "name": "setOpen",
+          "type": "(isOpen: boolean) => void",
+          "required": true,
+          "description": "Set open state directly"
+        },
+        {
+          "name": "triggerProps",
+          "type": "{\n    onClick: () => void",
+          "required": true,
+          "description": "Props to spread on the trigger element"
+        },
+        {
+          "name": "contentProps",
+          "type": "{\n    hidden: boolean",
+          "required": true,
+          "description": "Props to spread on the content element"
+        }
+      ],
+      "examples": [
+        "* function MyComponent() {\n *   const { isOpen, toggle, triggerProps, contentProps } = useDisclosure({ defaultOpen: false });\n *\n *   return (\n *     <div>\n *       <button {...triggerProps}>Toggle</button>\n *       <div {...contentProps}>Content here</div>\n *     </div>\n *   );\n * }\n *"
+      ]
+    },
+    {
+      "name": "useDisclosureGroup",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/disclosure/useDisclosure.ts",
+      "description": "Check if an item is open */ isOpen: (id: string) => boolean; /** Toggle an item */ toggle: (id: string) => void; /** Open an item */ open: (id: string) => void; /** Close an item */ close: (id: string) => void; /** Close all items */ closeAll: () => void; /** Get all open IDs */ openIds: string[]; /** Get props for an item's trigger */ getTriggerProps: (id: string) => { onClick: () => void; 'aria-expanded': boolean; }; /** Get props for an item's content */ getContentProps: (id: string) => { hidden: boolean; }; } /** React hook for disclosure group (accordion) state ```tsx function Accordion() { const group = useDisclosureGroup({ allowMultiple: false }); return ( <div> {items.map(item => ( <div key={item.id}> <button {...group.getTriggerProps(item.id)}>{item.title}</button> <div {...group.getContentProps(item.id)}>{item.content}</div> </div> ))} </div> ); } ```",
+      "props": [
+        {
+          "name": "isOpen",
+          "type": "(id: string) => boolean",
+          "required": true,
+          "description": "Check if an item is open"
+        },
+        {
+          "name": "toggle",
+          "type": "(id: string) => void",
+          "required": true,
+          "description": "Toggle an item"
+        },
+        {
+          "name": "open",
+          "type": "(id: string) => void",
+          "required": true,
+          "description": "Open an item"
+        },
+        {
+          "name": "close",
+          "type": "(id: string) => void",
+          "required": true,
+          "description": "Close an item"
+        },
+        {
+          "name": "closeAll",
+          "type": "() => void",
+          "required": true,
+          "description": "Close all items"
+        },
+        {
+          "name": "openIds",
+          "type": "string[]",
+          "required": true,
+          "description": "Get all open IDs"
+        },
+        {
+          "name": "getTriggerProps",
+          "type": "(id: string) => {\n    onClick: () => void",
+          "required": true,
+          "description": "Get props for an item's trigger"
+        },
+        {
+          "name": "getContentProps",
+          "type": "(id: string) => {\n    hidden: boolean",
+          "required": true,
+          "description": "Get props for an item's content"
+        }
+      ],
+      "examples": [
+        "* function Accordion() {\n *   const group = useDisclosureGroup({ allowMultiple: false });\n *\n *   return (\n *     <div>\n *       {items.map(item => (\n *         <div key={item.id}>\n *           <button {...group.getTriggerProps(item.id)}>{item.title}</button>\n *           <div {...group.getContentProps(item.id)}>{item.content}</div>\n *         </div>\n *       ))}\n *     </div>\n *   );\n * }\n *"
+      ]
+    },
+    {
+      "name": "useDragReorder",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/useDragReorder.ts",
+      "description": "",
+      "props": [
+        {
+          "name": "onReorder",
+          "type": "(fromIndex: number, toIndex: number) => void",
+          "required": true,
+          "description": "Called when an item is reordered within the same list."
+        },
+        {
+          "name": "serialize",
+          "type": "(index: number) => T",
+          "required": false,
+          "description": "Serialize payload to attach for cross-list transfers."
+        },
+        {
+          "name": "onExternalDrop",
+          "type": "(data: T, targetIndex: number) => void",
+          "required": false,
+          "description": "Handle a drop originating from a different useDragReorder instance."
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "useHoverExpand",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/useHoverExpand.ts",
+      "description": "Delay in ms before expanding on hover (prevents accidental triggers) */ expandDelay?: number; /** Delay in ms before collapsing on mouse leave (allows time to reach expanded content) */ collapseDelay?: number; } export interface UseHoverExpandResult { isExpanded: boolean; isHovering: boolean; handlers: { onMouseEnter: () => void; onMouseLeave: () => void; }; } /** Shared hook for hover-to-expand behavior with configurable delays. - `expandDelay`: Time to wait before showing expanded content (prevents accidental triggers) - `collapseDelay`: Time to wait before hiding (allows crossing gaps to expanded content) ```tsx const { isExpanded, handlers } = useHoverExpand({ expandDelay: 150, collapseDelay: 100 }); return ( <div {...handlers}> <button>Trigger</button> {isExpanded && <div>Expanded content</div>} </div> ); ```",
+      "props": [
+        {
+          "name": "expandDelay",
+          "type": "number",
+          "required": false,
+          "description": "Delay in ms before expanding on hover (prevents accidental triggers)"
+        },
+        {
+          "name": "collapseDelay",
+          "type": "number",
+          "required": false,
+          "description": "Delay in ms before collapsing on mouse leave (allows time to reach expanded content)"
+        }
+      ],
+      "examples": [
+        "* const { isExpanded, handlers } = useHoverExpand({ expandDelay: 150, collapseDelay: 100 });\n *\n * return (\n *   <div {...handlers}>\n *     <button>Trigger</button>\n *     {isExpanded && <div>Expanded content</div>}\n *   </div>\n * );\n *"
+      ]
+    },
+    {
+      "name": "useOrientation",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/OrientationContext.tsx",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "useResizeHandle",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/hooks/useResizeHandle.ts",
+      "description": "Callback fired during resize with resize event data / onResize: (event: ResizeEvent) => void; /** Orientation of the resize handle - 'vertical': Resizes horizontally (left/right) - 'horizontal': Resizes vertically (up/down) / orientation?: 'vertical' | 'horizontal'; /** Whether to call onResize on every mouse move (true) or only on mouse up (false) / immediate?: boolean; } export interface UseResizeHandleReturn { /** Whether the handle is currently being dragged / isDragging: boolean; /** Handler to attach to the resize handle's onMouseDown / handleMouseDown: (e: React.MouseEvent) => void; } /** A generic hook for handling resize operations via mouse drag. Handles mouse event setup/cleanup and dragging state. Provides delta, position, and raw event to the consumer for flexible resize calculations. ```tsx // Example 1: Delta-based resize (Control Center style) const { isDragging, handleMouseDown } = useResizeHandle({ onResize: ({ delta }) => { const newSize = Math.max(200, Math.min(800, initialSize + delta)); setSize(newSize); }, orientation: 'vertical' }); // Example 2: Position-based resize (Asset Viewer style) const { isDragging, handleMouseDown } = useResizeHandle({ onResize: ({ position, event }) => { const container = containerRef.current; if (!container) return; const rect = container.getBoundingClientRect(); const percentage = ((rect.width - (position - rect.left)) / rect.width) * 100; const constrained = Math.max(20, Math.min(60, percentage)); setPanelWidth(constrained); }, orientation: 'vertical' }); return ( <ResizeDivider onMouseDown={handleMouseDown} isDragging={isDragging} orientation=\"vertical\" /> ); ```",
+      "props": [
+        {
+          "name": "onResize",
+          "type": "(event: ResizeEvent) => void",
+          "required": true,
+          "description": "Callback fired during resize with resize event data"
+        },
+        {
+          "name": "orientation",
+          "type": "'vertical' | 'horizontal'",
+          "required": false,
+          "description": "Orientation of the resize handle - 'vertical': Resizes horizontally (left/right) - 'horizontal': Resizes vertically (up/down)"
+        },
+        {
+          "name": "immediate",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether to call onResize on every mouse move (true) or only on mouse up (false) @"
+        }
+      ],
+      "examples": [
+        "* // Example 1: Delta-based resize (Control Center style)\n * const { isDragging, handleMouseDown } = useResizeHandle({\n *   onResize: ({ delta }) => {\n *     const newSize = Math.max(200, Math.min(800, initialSize + delta));\n *     setSize(newSize);\n *   },\n *   orientation: 'vertical'\n * });\n *\n * // Example 2: Position-based resize (Asset Viewer style)\n * const { isDragging, handleMouseDown } = useResizeHandle({\n *   onResize: ({ position, event }) => {\n *     const container = containerRef.current;\n *     if (!container) return;\n *     const rect = container.getBoundingClientRect();\n *     const percentage = ((rect.width - (position - rect.left)) / rect.width) * 100;\n *     const constrained = Math.max(20, Math.min(60, percentage));\n *     setPanelWidth(constrained);\n *   },\n *   orientation: 'vertical'\n * });\n *\n * return (\n *   <ResizeDivider\n *     onMouseDown={handleMouseDown}\n *     isDragging={isDragging}\n *     orientation=\"vertical\"\n *   />\n * );\n *"
+      ]
+    },
+    {
+      "name": "useSidebarCollapse",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/hooks/useSidebarCollapse.ts",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "useSidebarNav",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/hooks/useSidebarNav.ts",
+      "description": "",
+      "props": [
+        {
+          "name": "sections",
+          "type": "SidebarNavSection<TChildId>[]",
+          "required": true,
+          "description": "Section definitions with optional children."
+        },
+        {
+          "name": "initial",
+          "type": "TSectionId | TChildId",
+          "required": false,
+          "description": "Initial active item (section or child id). Falls back to first section."
+        },
+        {
+          "name": "defaultAllExpanded",
+          "type": "boolean",
+          "required": false,
+          "description": "Start all expandable sections open.",
+          "default": "true"
+        },
+        {
+          "name": "defaultExpandedIds",
+          "type": "TSectionId[]",
+          "required": false,
+          "description": "Section ids to start expanded (ignored when is true).",
+          "default": "AllExpanded"
+        },
+        {
+          "name": "storageKey",
+          "type": "string",
+          "required": false,
+          "description": "localStorage key for persisting the active selection. When provided, the active section/child id is saved and restored automatically."
+        }
+      ],
+      "examples": []
+    },
+    {
+      "name": "useTheme",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/useTheme.ts",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "useToast",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/useToast.ts",
+      "description": "Hook for easy toast usage Supports both object-based and string-based APIs",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "useToastStore",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/useToast.ts",
+      "description": "",
+      "props": [],
+      "examples": []
+    },
+    {
+      "name": "useTooltipDismissal",
+      "kind": "hook",
+      "sourceFile": "packages/shared/ui/src/Tooltip.tsx",
+      "description": "Hook to manage tooltip dismissal state with localStorage Usage: const { dismissed, dismiss } = useTooltipDismissal('welcome-tooltip'); if (!dismissed) { return <Tooltip content=\"Welcome!\" />; }",
+      "props": [],
+      "examples": []
+    }
+  ]
+}

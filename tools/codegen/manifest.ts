@@ -65,4 +65,11 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     supportsCheck: false,
     groups: ['plugins'],
   },
+  {
+    id: 'ui-catalog',
+    description: 'Generate UI component catalog from shared UI package exports',
+    script: 'tools/codegen/generate-ui-catalog.ts',
+    supportsCheck: true,
+    groups: ['docs'],
+  },
 ];
