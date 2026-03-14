@@ -65,6 +65,8 @@ async def lifespan(app: FastAPI):
         setup_providers,
         setup_ai_models,
         setup_analyzer_plugins,
+        setup_authoring_workflow_plugins,
+        setup_meta_contract_plugins,
         setup_registry_cleanup_hooks,
         setup_analyzer_presets,
         setup_event_handlers,
@@ -109,6 +111,8 @@ async def lifespan(app: FastAPI):
     setup_providers()
     setup_ai_models()
     setup_analyzer_plugins()
+    setup_authoring_workflow_plugins()
+    setup_meta_contract_plugins()
     setup_registry_cleanup_hooks()
     setup_event_handlers()
     event_bridge = await start_event_bus_bridge(role="api")

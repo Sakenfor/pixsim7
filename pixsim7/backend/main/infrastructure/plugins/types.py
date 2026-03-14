@@ -436,6 +436,12 @@ class PluginEvents:
     # Analyzer system
     ANALYZERS_REGISTER = "analyzers:register"
 
+    # Authoring workflow system
+    WORKFLOWS_REGISTER = "workflows:register"
+
+    # Meta contract system
+    CONTRACTS_REGISTER = "contracts:register"
+
     # System events
     APP_STARTUP = "app:startup"
     APP_SHUTDOWN = "app:shutdown"

@@ -436,6 +436,16 @@ class PluginManager:
             plugin_id=plugin_id,
             plugin=self.plugins[plugin_id],
         )
+        plugin_hooks.emit_sync(
+            PluginEvents.WORKFLOWS_REGISTER,
+            plugin_id=plugin_id,
+            plugin=self.plugins[plugin_id],
+        )
+        plugin_hooks.emit_sync(
+            PluginEvents.CONTRACTS_REGISTER,
+            plugin_id=plugin_id,
+            plugin=self.plugins[plugin_id],
+        )
 
         # Emit event (sync context)
         plugin_hooks.emit_sync(PluginEvents.PLUGIN_LOADED, plugin_id)
@@ -647,6 +657,16 @@ class PluginManager:
             plugin_hooks.emit_sync(PluginEvents.NPC_SURFACES_REGISTER, plugin_id=canonical_id)
             plugin_hooks.emit_sync(
                 PluginEvents.ANALYZERS_REGISTER,
+                plugin_id=canonical_id,
+                plugin=self.plugins[canonical_id],
+            )
+            plugin_hooks.emit_sync(
+                PluginEvents.WORKFLOWS_REGISTER,
+                plugin_id=canonical_id,
+                plugin=self.plugins[canonical_id],
+            )
+            plugin_hooks.emit_sync(
+                PluginEvents.CONTRACTS_REGISTER,
                 plugin_id=canonical_id,
                 plugin=self.plugins[canonical_id],
             )

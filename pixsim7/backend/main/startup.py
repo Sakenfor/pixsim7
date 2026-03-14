@@ -345,6 +345,32 @@ def setup_analyzer_plugins() -> None:
     logger.info("analyzer_plugin_hooks_registered")
 
 
+def setup_authoring_workflow_plugins() -> None:
+    """
+    Register plugin hooks for authoring workflow discovery.
+
+    Must run before plugins load so workflows are registered during load.
+    """
+    from pixsim7.backend.main.services.prompt.authoring_workflow_plugins import (
+        setup_authoring_workflow_plugin_hooks,
+    )
+    setup_authoring_workflow_plugin_hooks()
+    logger.info("authoring_workflow_plugin_hooks_registered")
+
+
+def setup_meta_contract_plugins() -> None:
+    """
+    Register plugin hooks for meta contract discovery.
+
+    Must run before plugins load so contracts are registered during load.
+    """
+    from pixsim7.backend.main.services.meta.contract_plugins import (
+        setup_meta_contract_plugin_hooks,
+    )
+    setup_meta_contract_plugin_hooks()
+    logger.info("meta_contract_plugin_hooks_registered")
+
+
 def setup_registry_cleanup_hooks() -> None:
     """
     Register plugin hooks for registry cleanup on plugin disable.
