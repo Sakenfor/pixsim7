@@ -48,7 +48,15 @@ def test_dynamic_slot_planner_builds_runtime_plan_from_action_context() -> None:
 
     assert plan.planner_id == "dynamic_slot_planner_v1"
     categories = [slot["category"] for slot in plan.slots]
-    assert categories[:5] == ["environment", "light", "camera", "character_pose", "location"]
+    assert categories[:7] == [
+        "environment",
+        "light",
+        "camera",
+        "rendering_technique",
+        "form_language",
+        "character_pose",
+        "location",
+    ]
     assert "mood" in categories
     assert "wardrobe" in categories
 
@@ -80,3 +88,16 @@ def test_dynamic_slot_planner_respects_prefer_granular_and_category_filters() ->
 
     # Slots are normalized and should not carry legacy tag_constraints.
     assert all("tag_constraints" not in slot for slot in plan.slots)
+
+
+def test_dynamic_slot_planner_supports_explicit_aesthetic_preset_category() -> None:
+    request = ComposerPlanRequest(
+        context=ComposerContextInput(),
+        include_categories=["aesthetic_preset"],
+        exclude_categories=["camera"],
+    )
+    plan = DynamicSlotPlanner().plan(request)
+
+    aesthetic_slot = next(slot for slot in plan.slots if slot["category"] == "aesthetic_preset")
+    assert aesthetic_slot["role"] == "style"
+    assert aesthetic_slot["label"] == "Aesthetic preset"

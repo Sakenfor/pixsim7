@@ -83,6 +83,21 @@ class TestRoleCategoryPair:
         assert result.role_id == "materials:wardrobe"
         assert result.confidence == "heuristic"
 
+    def test_style_rendering_technique(self):
+        result = infer_composition_role(role="style", category="rendering_technique")
+        assert result.role_id == "materials:rendering"
+        assert result.confidence == "heuristic"
+
+    def test_style_form_language(self):
+        result = infer_composition_role(role="style", category="form_language")
+        assert result.role_id == "materials:rendering"
+        assert result.confidence == "heuristic"
+
+    def test_style_aesthetic_preset(self):
+        result = infer_composition_role(role="style", category="aesthetic_preset")
+        assert result.role_id == "materials:rendering"
+        assert result.confidence == "heuristic"
+
     def test_composition_layer_order(self):
         result = infer_composition_role(role="composition", category="layer_order")
         assert result.role_id == "camera:composition"
@@ -237,6 +252,9 @@ class TestRegistryDriven:
         assert cats.get("hold_attitude") == "animation:pose"
         assert cats.get("creature") == "entities:companion"
         assert cats.get("fill") == "lighting:fill"
+        assert cats.get("rendering_technique") == "materials:rendering"
+        assert cats.get("form_language") == "materials:rendering"
+        assert cats.get("aesthetic_preset") == "materials:rendering"
 
     def test_role_map_includes_prompt_roles_and_aliases(self):
         """Combined role map should contain both prompt role mappings and aliases."""

@@ -351,6 +351,9 @@ namespace_mappings:
   scene: role:world:environment
   place: role:world:environment
   style: role:materials:rendering
+  rendering_technique: role:materials:rendering
+  form_language: role:materials:rendering
+  aesthetic_preset: role:materials:rendering
   lighting: role:lighting:key
   camera: role:camera:angle
   # Tag-key inference: lock-type tags → entities:subject
@@ -384,6 +387,9 @@ category_mappings:
   atmosphere: role:materials:atmosphere
   wardrobe: role:materials:wardrobe
   rendering: role:materials:rendering
+  rendering_technique: role:materials:rendering
+  form_language: role:materials:rendering
+  aesthetic_preset: role:materials:rendering
   # Composition
   layer_order: role:camera:composition
   # Primitive category → role (no prompt-role context)

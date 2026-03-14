@@ -38,6 +38,7 @@ _ROLE_ORDER = {
     "action": 30,
     "camera": 40,
     "mood": 50,
+    "style": 55,
     "other": 90,
 }
 
@@ -279,7 +280,15 @@ def _infer_layer_from_role_category(role: Optional[str], category: Optional[str]
         return "L1"
     if category_key in {"camera", "shot", "angle", "focus", "light", "placement", "action"}:
         return "L2"
-    if category_key in {"mood", "style", "tone", "emotion"}:
+    if category_key in {
+        "mood",
+        "style",
+        "tone",
+        "emotion",
+        "rendering_technique",
+        "form_language",
+        "aesthetic_preset",
+    }:
         return "L3"
 
     return "L4"

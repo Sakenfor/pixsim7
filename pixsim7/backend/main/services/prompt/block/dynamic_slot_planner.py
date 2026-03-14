@@ -199,6 +199,9 @@ class DynamicSlotPlanner:
         "environment": "environment",
         "light": "lighting",
         "camera": "camera",
+        "rendering_technique": "style",
+        "form_language": "style",
+        "aesthetic_preset": "style",
         "character_pose": "character",
         "location": "placement",
         "character_desc": "character",
@@ -210,6 +213,9 @@ class DynamicSlotPlanner:
         "environment": "Scene environment",
         "light": "Lighting",
         "camera": "Camera framing",
+        "rendering_technique": "Rendering technique",
+        "form_language": "Form language",
+        "aesthetic_preset": "Aesthetic preset",
         "character_pose": "Character pose",
         "location": "Spatial placement",
         "character_desc": "Character prose",
@@ -231,7 +237,13 @@ class DynamicSlotPlanner:
         intimacy_value = _strip_prefix(context.intimacy_level, "intimacy")
         pose_value = _strip_prefix(context.pose, "pose")
 
-        categories: List[str] = ["environment", "light", "camera"]
+        categories: List[str] = [
+            "environment",
+            "light",
+            "camera",
+            "rendering_technique",
+            "form_language",
+        ]
         if request.prefer_granular:
             categories.extend(["character_pose", "location"])
         else:

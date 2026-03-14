@@ -1,0 +1,16 @@
+id: core-form-language
+title: Core Form Language
+description: Shape and proportion style modifiers independent of rendering medium.
+matrix_presets:
+  - label: Form Language Variants
+    query:
+      row_key: tag:modifier_family
+      col_key: tag:variant
+      package_name: core_form_language
+      include_empty: true
+  - label: Form Language Catalog
+    query:
+      row_key: tag:form_language
+      col_key: tag:variant
+      package_name: core_form_language
+      include_empty: true

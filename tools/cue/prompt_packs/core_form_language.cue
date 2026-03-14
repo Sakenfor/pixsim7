@@ -1,0 +1,89 @@
+package promptpacks
+
+pack: #PromptBlockPackV1 & {
+	version:      "1.0.0"
+	package_name: "core_form_language"
+	defaults: {
+		is_public: true
+		source:    "system"
+	}
+	blocks: [
+		{
+			id: "form"
+			block_schema: {
+				id_prefix: "core.form.language"
+				category:  "form_language"
+				role:      "style"
+				capabilities: ["style.form"]
+				tags: {
+					modifier_family:  "form_language"
+					modality_support: "both"
+					temporal:         "neutral"
+				}
+				variants: [
+					{
+						key:  "photoreal_anatomy"
+						text: "Keep anatomy and proportions grounded in photoreal body structure and realistic scale."
+						tags: {
+							form_language: "photoreal_anatomy"
+						}
+					},
+					{
+						key:  "stylized_exaggerated"
+						text: "Use stylized exaggerated proportions with emphasized silhouettes and pushed shape contrast."
+						tags: {
+							form_language: "stylized_exaggerated"
+						}
+					},
+					{
+						key:  "chibi_proportions"
+						text: "Use chibi proportions with compact limbs, oversized head ratio, and simplified massing."
+						tags: {
+							form_language: "chibi_proportions"
+						}
+					},
+					{
+						key:  "heroic_proportions"
+						text: "Use heroic proportions with broadened shoulders, elongated leg line, and idealized structure."
+						tags: {
+							form_language: "heroic_proportions"
+						}
+					},
+					{
+						key:  "elongated_editorial"
+						text: "Use elongated editorial proportions with slim limbs, long neck line, and fashion-forward pose geometry."
+						tags: {
+							form_language: "elongated_editorial"
+						}
+					},
+				]
+			}
+		},
+	]
+}
+
+manifest: #PromptPackManifestV1 & {
+	id:          "core-form-language"
+	title:       "Core Form Language"
+	description: "Shape and proportion style modifiers independent of rendering medium."
+	matrix_presets: [
+		{
+			label: "Form Language Variants"
+			query: {
+				row_key:       "tag:modifier_family"
+				col_key:       "tag:variant"
+				package_name:  "core_form_language"
+				include_empty: true
+			}
+		},
+		{
+			label: "Form Language Catalog"
+			query: {
+				row_key:       "tag:form_language"
+				col_key:       "tag:variant"
+				package_name:  "core_form_language"
+				include_empty: true
+			}
+		},
+	]
+}

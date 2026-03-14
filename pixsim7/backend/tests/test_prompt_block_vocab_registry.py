@@ -31,3 +31,15 @@ def test_registry_loads_prompt_block_tag_and_family_vocab_types() -> None:
     tattoo_policy = registry.get_prompt_block_tag("tattoo_policy")
     assert tattoo_policy is not None
     assert "tattoo_anchor" in (tattoo_policy.data.get("aliases") or [])
+
+    rendering_technique = registry.get_prompt_block_tag("rendering_technique")
+    assert rendering_technique is not None
+    assert "cinematic_film_grain" in (rendering_technique.data.get("allowed_values") or [])
+
+    form_language = registry.get_prompt_block_tag("form_language")
+    assert form_language is not None
+    assert "heroic_proportions" in (form_language.data.get("allowed_values") or [])
+
+    aesthetic_preset = registry.get_prompt_block_tag("aesthetic_preset")
+    assert aesthetic_preset is not None
+    assert "retrofuturism" in (aesthetic_preset.data.get("allowed_values") or [])

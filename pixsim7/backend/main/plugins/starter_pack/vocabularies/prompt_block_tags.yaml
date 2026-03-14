@@ -43,6 +43,48 @@ tags:
     applies_to: []
     status: active
 
+  role_in_sequence:
+    label: "Role In Sequence"
+    description: "Sequence role context used by continuity-aware composition."
+    data_type: string
+    allowed_values: [initial, continuation, transition, unspecified]
+    aliases: [sequence_role]
+    value_aliases: {}
+    applies_to:
+      - role: composition
+        category: continuity
+      - role: action
+        category: continuity
+    status: active
+
+  continuity_focus:
+    label: "Continuity Focus"
+    description: "Primary continuity anchor to preserve across sequence steps."
+    data_type: string
+    allowed_values: [subject, target, setting, props, tone]
+    aliases: [continuity_anchor]
+    value_aliases: {}
+    applies_to:
+      - role: composition
+        category: continuity
+      - role: action
+        category: continuity
+    status: active
+
+  continuity_priority:
+    label: "Continuity Priority"
+    description: "Strength/priority of continuity preservation."
+    data_type: string
+    allowed_values: [low, medium, high]
+    aliases: [continuity_weight]
+    value_aliases: {}
+    applies_to:
+      - role: composition
+        category: continuity
+      - role: action
+        category: continuity
+    status: active
+
   view_profile:
     label: "View Profile"
     description: "Camera/view relationship profile."
@@ -710,6 +752,70 @@ tags:
     applies_to:
       - role: style
         category: wardrobe_modifier
+    status: active
+
+  rendering_technique:
+    label: "Rendering Technique"
+    description: "Global rendering medium or processing style."
+    data_type: string
+    allowed_values:
+      - cinematic_film_grain
+      - watercolor_wash
+      - cel_shaded_flat
+      - victorian_etching
+      - oil_impasto
+    aliases: [rendering, render_style]
+    value_aliases:
+      cinematic: cinematic_film_grain
+      watercolor: watercolor_wash
+      cel_shaded: cel_shaded_flat
+    applies_to:
+      - role: style
+        category: rendering_technique
+      - role: style
+        category: aesthetic_preset
+    status: active
+
+  form_language:
+    label: "Form Language"
+    description: "Shape/proportion style independent of rendering medium."
+    data_type: string
+    allowed_values:
+      - photoreal_anatomy
+      - stylized_exaggerated
+      - chibi_proportions
+      - heroic_proportions
+      - elongated_editorial
+    aliases: [shape_language, proportion_style]
+    value_aliases:
+      photorealistic: photoreal_anatomy
+      stylized: stylized_exaggerated
+      chibi: chibi_proportions
+      heroic: heroic_proportions
+    applies_to:
+      - role: style
+        category: form_language
+      - role: style
+        category: aesthetic_preset
+    status: active
+
+  aesthetic_preset:
+    label: "Aesthetic Preset"
+    description: "Bundled thematic style identity that can imply rendering and form defaults."
+    data_type: string
+    allowed_values:
+      - steampunk
+      - cyberpunk
+      - art_deco
+      - gothic_noir
+      - retrofuturism
+    aliases: [aesthetic, style_preset, theme_style]
+    value_aliases:
+      noir: gothic_noir
+      retro_futurism: retrofuturism
+    applies_to:
+      - role: style
+        category: aesthetic_preset
     status: active
 
   tattoo_policy:
