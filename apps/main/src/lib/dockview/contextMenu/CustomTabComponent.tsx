@@ -10,9 +10,9 @@ import type { IDockviewPanelHeaderProps } from 'dockview-core';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { Icon } from '@lib/icons';
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useContextHubState } from '@features/contextHub';
-
 
 import { resolveBadgesForScopes } from '../capabilityBadges';
 import {
@@ -195,14 +195,14 @@ export function CustomTabComponent(props: IDockviewPanelHeaderProps) {
     window.addEventListener('pointercancel', onPointerUp, true);
   };
 
-  // Resolve capability badges from panel definition's settingScopes
+  // Resolve capability badges from the global panel definition's settingScopes
   const capabilityBadges = useMemo(() => {
     const definitionId = resolveDockviewPanelDefinitionId(props.api);
-    if (!definitionId || !panelRegistry) return [];
-    const definition = panelRegistry.get?.(definitionId);
-    const scopes = definition?.settingScopes ?? definition?.scopes;
+    if (!definitionId) return [];
+    const definition = panelSelectors.get(definitionId);
+    const scopes = definition?.settingScopes ?? (definition as any)?.scopes;
     return resolveBadgesForScopes(scopes);
-  }, [props.api, panelRegistry]);
+  }, [props.api]);
 
   return (
     <div
