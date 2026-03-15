@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { useSidebarCollapse } from './hooks/useSidebarCollapse';
 
@@ -28,6 +29,11 @@ export interface SidebarPaneShellProps {
   collapsed?: boolean;
   /** Callback when collapsed state changes. */
   onCollapsedChange?: (v: boolean) => void;
+  /**
+   * When true, hide the title when the sidebar is inside a container
+   * that already shows a title (floating panel or visible dockview tab bar).
+   */
+  autoHideTitle?: boolean;
   /** Enable detach/dock-back support. Shows a pop-out button in the header. */
   detachable?: {
     /** Whether the sidebar is currently detached. */
@@ -54,9 +60,35 @@ export function SidebarPaneShell({
   defaultCollapsed = false,
   collapsed: controlledCollapsed,
   onCollapsedChange,
+  autoHideTitle = true,
   detachable,
 }: SidebarPaneShellProps) {
   const internal = useSidebarCollapse(persistKey, defaultCollapsed);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [hasExternalTitle, setHasExternalTitle] = useState(false);
+
+  useEffect(() => {
+    if (!autoHideTitle) return;
+    const el = rootRef.current;
+    if (!el) return;
+
+    // Check for floating panel ancestor
+    if (el.closest('.floating-panel')) {
+      setHasExternalTitle(true);
+      return;
+    }
+
+    // Check for visible dockview tab bar
+    const group = el.closest('.dv-groupview') as HTMLElement | null;
+    if (!group) return;
+
+    const check = () => setHasExternalTitle(!group.classList.contains('dv-tabs-hidden'));
+    check();
+
+    const observer = new MutationObserver(check);
+    observer.observe(group, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, [autoHideTitle]);
   const isControlled = controlledCollapsed !== undefined;
   const isDetached = detachable?.detached ?? false;
   const collapsed = isDetached
@@ -86,11 +118,14 @@ export function SidebarPaneShell({
     ? { width: collapsed ? COLLAPSED_WIDTH : expandedWidth }
     : undefined;
 
+  const effectiveTitle = autoHideTitle && hasExternalTitle ? undefined : title;
+
   return (
     <div
+      ref={rootRef}
       className={clsx(
         !collapsible && widthClassName,
-        'flex shrink-0 flex-col border-r',
+        'flex shrink-0 flex-col border-r relative',
         collapsible && 'transition-[width] duration-200 ease-in-out',
         borderClass,
         className,
@@ -132,9 +167,9 @@ export function SidebarPaneShell({
         </div>
       ) : (
         <>
-          {title ? (
+          {effectiveTitle ? (
             <div className={clsx('flex shrink-0 items-center border-b px-3 py-3', borderClass, headerClassName)}>
-              <h1 className={clsx(titleClass, 'flex-1 min-w-0')}>{title}</h1>
+              <h1 className={clsx(titleClass, 'flex-1 min-w-0')}>{effectiveTitle}</h1>
               {(collapsible || detachable) && (
                 <div className="ml-1 flex shrink-0 items-center gap-0.5">
                   {detachable && (
@@ -171,38 +206,74 @@ export function SidebarPaneShell({
               )}
             </div>
           ) : (collapsible || detachable) ? (
-            <div className={clsx('flex shrink-0 justify-end gap-0.5 border-b px-2 py-2', borderClass, headerClassName)}>
-              {detachable && (
-                <button
-                  type="button"
-                  onClick={detachable.onDetach}
-                  className={clsx(
-                    'flex h-5 w-5 items-center justify-center rounded',
-                    'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300',
-                    'hover:bg-neutral-100 dark:hover:bg-neutral-800',
-                    'transition-colors',
-                  )}
-                  aria-label="Pop out sidebar"
-                >
-                  <PopOutIcon />
-                </button>
-              )}
-              {collapsible && (
-                <button
-                  type="button"
-                  onClick={handleToggle}
-                  className={clsx(
-                    'flex h-5 w-5 items-center justify-center rounded',
-                    'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300',
-                    'hover:bg-neutral-100 dark:hover:bg-neutral-800',
-                    'transition-colors',
-                  )}
-                  aria-label="Collapse sidebar"
-                >
-                  <ChevronLeft />
-                </button>
-              )}
-            </div>
+            hasExternalTitle ? (
+              /* Title hidden by autoHideTitle — overlay collapse button on content */
+              <div className="absolute top-1 right-1 z-10 flex items-center gap-0.5 opacity-60 hover:opacity-100 transition-opacity">
+                {detachable && (
+                  <button
+                    type="button"
+                    onClick={detachable.onDetach}
+                    className={clsx(
+                      'flex h-5 w-5 items-center justify-center rounded',
+                      'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300',
+                      'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                      'transition-colors',
+                    )}
+                    aria-label="Pop out sidebar"
+                  >
+                    <PopOutIcon />
+                  </button>
+                )}
+                {collapsible && (
+                  <button
+                    type="button"
+                    onClick={handleToggle}
+                    className={clsx(
+                      'flex h-5 w-5 items-center justify-center rounded',
+                      'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300',
+                      'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                      'transition-colors',
+                    )}
+                    aria-label="Collapse sidebar"
+                  >
+                    <ChevronLeft />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className={clsx('flex shrink-0 justify-end gap-0.5 border-b px-2 py-2', borderClass, headerClassName)}>
+                {detachable && (
+                  <button
+                    type="button"
+                    onClick={detachable.onDetach}
+                    className={clsx(
+                      'flex h-5 w-5 items-center justify-center rounded',
+                      'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300',
+                      'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                      'transition-colors',
+                    )}
+                    aria-label="Pop out sidebar"
+                  >
+                    <PopOutIcon />
+                  </button>
+                )}
+                {collapsible && (
+                  <button
+                    type="button"
+                    onClick={handleToggle}
+                    className={clsx(
+                      'flex h-5 w-5 items-center justify-center rounded',
+                      'text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300',
+                      'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                      'transition-colors',
+                    )}
+                    aria-label="Collapse sidebar"
+                  >
+                    <ChevronLeft />
+                  </button>
+                )}
+              </div>
+            )
           ) : null}
           <div className={clsx('min-h-0 flex-1', bodyScrollable ? 'overflow-y-auto p-2' : 'overflow-hidden', bodyClassName)}>
             {children}

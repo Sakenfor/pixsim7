@@ -46,6 +46,8 @@ export interface PanelWrapOptions {
   tags?: string[];
   /** Panel category (from definition) */
   category?: string;
+  /** Whether this panel is a dockview container (hosts sub-panels) */
+  isDockviewContainer?: boolean;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -129,6 +131,7 @@ export function wrapPanelWithContextMenu(
     declaredScopes,
     tags,
     category,
+    isDockviewContainer,
   } = options;
 
   const Wrapped = (panelProps: IDockviewPanelProps) => {
@@ -210,7 +213,10 @@ export function wrapPanelWithContextMenu(
       );
     };
 
-    const badges = resolveBadgesForScopes(declaredScopes);
+    // Skip badges for dockview-container panels — they render their own badge
+    // inside their component (inner dockview covers this wrapper's absolute badge).
+    // Also skip for sub-panels to avoid noise — only non-container scope owners show it.
+    const badges = isDockviewContainer ? [] : resolveBadgesForScopes(declaredScopes);
 
     return (
       <div

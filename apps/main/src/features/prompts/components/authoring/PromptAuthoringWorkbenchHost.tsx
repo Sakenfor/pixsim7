@@ -29,7 +29,7 @@ export function PromptAuthoringWorkbenchHost() {
       <PanelHostDockview
         panels={[...PANEL_IDS]}
         dockId={DOCK_ID}
-        storageKey="dockview:prompt-authoring:v1"
+        storageKey="dockview:prompt-authoring:v2"
         panelManagerId={DOCK_ID}
         layoutSpec={LAYOUT_SPEC}
         enableContextMenu

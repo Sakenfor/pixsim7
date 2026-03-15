@@ -655,6 +655,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
             declaredScopes: meta?.settingScopes ?? meta?.scopes,
             tags: meta?.tags,
             category: meta?.category,
+            isDockviewContainer: (meta as any)?.orchestration?.type === 'dockview-container',
           },
           contextRef,
           PanelContextProvider,

@@ -21,7 +21,7 @@ export default definePanel({
       hasDockview: true,
       subPanelsCanBreakout: true,
       persistLayout: true,
-      storageKey: 'dockview:prompt-authoring:v1',
+      storageKey: 'dockview:prompt-authoring:v2',
     },
   },
 });

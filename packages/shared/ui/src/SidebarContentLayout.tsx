@@ -40,6 +40,8 @@ export interface SidebarContentLayoutProps {
   onCollapsedChange?: (v: boolean) => void;
   /** Enable detach/dock-back support. */
   detachable?: SidebarPaneShellProps['detachable'];
+  /** Hide title when inside a floating panel or when dockview tabs are visible. */
+  autoHideTitle?: boolean;
 }
 
 export function SidebarContentLayout({
@@ -64,6 +66,7 @@ export function SidebarContentLayout({
   collapsed,
   onCollapsedChange,
   detachable,
+  autoHideTitle,
 }: SidebarContentLayoutProps) {
   const items: HierarchicalSidebarNavItem[] = sections;
 
@@ -80,6 +83,7 @@ export function SidebarContentLayout({
         collapsed={collapsed}
         onCollapsedChange={onCollapsedChange}
         detachable={detachable}
+        autoHideTitle={autoHideTitle}
       >
         <HierarchicalSidebarNav
           className={navClassName}
