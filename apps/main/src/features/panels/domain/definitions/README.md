@@ -56,6 +56,8 @@ definePanel({
   // Capabilities
   supportsCompactMode?: false;
   supportsMultipleInstances?: false;
+  generationCapable?: false;  // Auto-adds 'generation' to settingScopes
+  settingScopes?: [];         // Scope IDs for provider wrapping + cross-panel discovery
 
   // Settings
   defaultSettings?: {};
@@ -64,6 +66,49 @@ definePanel({
   // Internal (hidden from user lists)
   internal?: false;
 });
+```
+
+## Generation-Capable Panels
+
+Panels that need their own generation scope (model, quality, settings) use `generationCapable`:
+
+```typescript
+export default definePanel({
+  id: 'prompt-authoring',
+  title: 'Prompt Authoring',
+  component: PromptAuthoringWorkbenchHost,
+  generationCapable: true,  // Gets own GenerationScopeProvider + ⚡ tab badge
+  // ...
+});
+```
+
+This is shorthand for `settingScopes: ['generation']`. The framework:
+1. Wraps the panel with `GenerationScopeProvider` (via `ScopeHost`)
+2. Shows a ⚡ capability badge on the dockview tab
+3. Auto-includes other generation-scoped panels (like settings) in the right-click context menu
+
+Inside the panel component, use `useGenerationScopeStores()` to access the scoped stores.
+
+## Setting Scopes & Capability Badges
+
+`settingScopes` declares which provider scopes a panel needs. The `ScopeHost` automatically
+wraps the panel with matching scope providers. Additionally:
+
+- **Context menu auto-inclusion**: When a dockview host has `settingScopes`, panels sharing
+  a scope are automatically available in its "Add Panel" context menu. No manual wiring needed.
+- **Tab badges**: Each scope can register a capability badge (icon + tooltip) via
+  `registerCapabilityBadge()` in `@lib/dockview/capabilityBadges.ts`. Badges appear on
+  dockview tabs next to the panel title.
+
+Built-in badges:
+| Scope | Icon | Tooltip |
+|-------|------|---------|
+| `generation` | ⚡ | Generation-capable |
+
+To add a custom badge for a new scope:
+```typescript
+import { registerCapabilityBadge } from '@lib/dockview/capabilityBadges';
+registerCapabilityBadge({ scopeId: 'analytics', icon: 'barChart', tooltip: 'Has analytics' });
 ```
 
 ## Navigation Open Preference

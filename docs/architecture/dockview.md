@@ -57,9 +57,32 @@ Panels are added in order; each positions relative to a `ref` panel via `directi
 3. In the parent's component, render `<PanelHostDockview dockId="my-container" layoutSpec={[...]} />`
 4. Done — sub-panels are auto-discovered, layout is declarative
 
+### Scope-Driven Panel Discovery
+
+Panels can declare `settingScopes` (e.g. `['generation']`) to opt into provider wrapping and cross-panel discovery. When a `PanelHostDockview`'s parent panel shares a scope, matching panels are **automatically included** in the right-click "Add Panel" context menu — no manual `panels` or `availableIn` wiring needed.
+
+**How it works:**
+1. Host panel declares `generationCapable: true` (or `settingScopes: ['generation']`)
+2. `PanelHostDockview` auto-derives `hostSettingScopes` from the parent panel definition
+3. `resolveScopedPanelIds()` scans all panel definitions — any panel with a matching `settingScopes` entry is auto-included
+4. Those panels appear in the context menu alongside the explicit `panels` list
+
+**Example:** `prompt-authoring` host has `generationCapable: true`. `quickgen-settings` has `settingScopes: ['generation']`. Result: settings panel appears in prompt-authoring's context menu automatically.
+
+Source: `panelHostDockScope.ts` (`hostSettingScopes` option).
+
+### Capability Badges
+
+Dockview tabs show small icon badges for panels that declare certain scopes. Badges are data-driven — the tab component reads `settingScopes` from the panel definition and looks up matching badges in `capabilityBadges.ts`.
+
+Built-in: `generation` scope → ⚡ icon. Extensible via `registerCapabilityBadge()`.
+
+Source: `apps/main/src/lib/dockview/capabilityBadges.ts`.
+
 ### Panel Authoring Checklist
 - Set `availableIn: ['dock-id']` to scope a sub-panel to a specific dock.
 - Set `category` for menu grouping.
+- Use `generationCapable: true` for panels that need their own generation scope.
 - Prefer `instances: "single" | "multiple" | { max }` over `supportsMultipleInstances`.
 - Use `layoutSpec` for default layout; fall back to `defaultLayout` function for complex dynamic layouts.
 - Panel titles auto-resolve from the registry — no need for custom `resolvePanelTitle` unless overriding.
