@@ -8,9 +8,13 @@
 import type { IDockviewPanelProps } from 'dockview';
 import type { DockviewApi } from 'dockview-core';
 
+import { Icon } from '@lib/icons';
+
 import { ContextHubHost, useContextHubState } from '@features/contextHub';
 import { getInstanceId, ScopeHost } from '@features/panels';
 
+
+import { resolveBadgesForScopes } from './capabilityBadges';
 import {
   useContextMenuOptional,
   useDockviewContext,
@@ -206,15 +210,26 @@ export function wrapPanelWithContextMenu(
       );
     };
 
+    const badges = resolveBadgesForScopes(declaredScopes);
+
     return (
       <div
-        className="dv-panel-cq h-full w-full"
+        className="dv-panel-cq h-full w-full relative"
         onContextMenuCapture={
           contextMenuActive && enablePanelContentContextMenu
             ? handleContextMenu
             : undefined
         }
       >
+        {badges.length > 0 && (
+          <div className="absolute top-1 right-1 z-10 flex items-center gap-0.5 pointer-events-none opacity-30">
+            {badges.map((badge) => (
+              <span key={badge.scopeId} title={badge.tooltip}>
+                <Icon name={badge.icon} size={11} />
+              </span>
+            ))}
+          </div>
+        )}
         <ContextHubHost hostId={instanceId}>
           <ScopeHost
             panelId={panelId}
