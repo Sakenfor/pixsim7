@@ -7,6 +7,7 @@ Runs periodically to:
 3. Create assets when completed
 4. Update generation status
 """
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
@@ -31,7 +32,7 @@ from pixsim7.backend.main.services.provider import ProviderService
 from pixsim7.backend.main.services.account import AccountService
 from pixsim7.backend.main.services.asset import AssetService
 from pixsim7.backend.main.services.user import UserService
-from pixsim7.backend.main.infrastructure.database.session import get_db
+from pixsim7.backend.main.infrastructure.database.session import get_db, get_async_session
 from pixsim7.backend.main.infrastructure.queue import (
     clear_generation_wait_metadata,
     enqueue_generation_fresh_job,
@@ -120,6 +121,13 @@ class _ProcessingGenerationSnapshot:
             started_at=started_ts,
             attempt_id=parsed_attempt_id,
         )
+
+
+@dataclass
+class _PollGenerationResult:
+    generation_id: int
+    outcome: str  # 'completed', 'failed', 'still_processing', 'error'
+    missing_provider_job: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -531,6 +539,765 @@ async def _load_processing_generation_snapshots(
     return _to_processing_generation_snapshots(result.all())
 
 
+async def _poll_single_generation(
+    generation: _ProcessingGenerationSnapshot,
+    poll_cache: dict[str, object],
+    timeout_threshold: datetime,
+    unsubmitted_timeout_threshold: datetime,
+    mixed_submission_timeout_threshold: datetime,
+    timeout_hours: int,
+    unsubmitted_timeout_minutes: int,
+    mixed_submission_timeout_minutes: int,
+) -> _PollGenerationResult:
+    """Poll a single generation's status using its own DB session."""
+    worker_debug = get_global_debug_logger()
+    generation_id = generation.id
+    generation_started_at = generation.started_at
+    generation_operation_type = generation.operation_type
+    missing_provider_job = False
+
+    async with get_async_session() as db:
+        try:
+            user_service = UserService(db)
+            generation_service = GenerationService(db, user_service)
+            provider_service = ProviderService(db)
+            account_service = AccountService(db)
+            asset_service = AssetService(db, user_service)
+
+            latest_error_submission_without_job_id = None
+            (
+                submission,
+                latest_submission_any_attempt,
+                current_attempt_id,
+            ) = await _select_current_attempt_submission(db, generation)
+
+            if not submission:
+                logger.warning(
+                    "no_current_attempt_submission",
+                    generation_id=generation.id,
+                    attempt_id=current_attempt_id,
+                    has_latest_submission_any_attempt=latest_submission_any_attempt is not None,
+                    latest_submission_id=(
+                        latest_submission_any_attempt.id
+                        if latest_submission_any_attempt
+                        else None
+                    ),
+                    latest_submission_attempt_id=(
+                        latest_submission_any_attempt.generation_attempt_id
+                        if latest_submission_any_attempt
+                        else None
+                    ),
+                    generation_started_at=(
+                        str(generation.started_at) if generation.started_at else None
+                    ),
+                )
+
+                if generation.started_at and generation.started_at < unsubmitted_timeout_threshold:
+                    await generation_service.mark_failed(
+                        generation.id,
+                        (
+                            "Generation failed: no submission found for current attempt "
+                            f"(timed out after {unsubmitted_timeout_minutes} minutes)"
+                        ),
+                        error_code=GenerationErrorCode.PROVIDER_UNAVAILABLE.value,
+                    )
+
+                    timeout_account_id = generation.account_id
+                    if (
+                        timeout_account_id is None
+                        and latest_submission_any_attempt is not None
+                    ):
+                        timeout_account_id = latest_submission_any_attempt.account_id
+                    if timeout_account_id:
+                        orphan_account = await db.get(ProviderAccount, timeout_account_id)
+                        if orphan_account and orphan_account.current_processing_jobs > 0:
+                            orphan_account.current_processing_jobs -= 1
+                            logger.info(
+                                "counter_decremented_no_current_attempt_submission",
+                                account_id=timeout_account_id,
+                                generation_id=generation.id,
+                            )
+
+                    await db.commit()
+                    return _PollGenerationResult(generation_id=generation_id, outcome='failed')
+
+                return _PollGenerationResult(generation_id=generation_id, outcome='still_processing')
+
+            account = await db.get(ProviderAccount, submission.account_id)
+            if not account:
+                logger.error("account_not_found", account_id=submission.account_id)
+                await generation_service.mark_failed(generation.id, "Account not found")
+                await db.commit()
+                return _PollGenerationResult(generation_id=generation_id, outcome='failed')
+
+            if not submission.provider_job_id:
+                missing_provider_job = True
+                now = datetime.now(timezone.utc)
+                submission_age_seconds = _snapshot_age_seconds(
+                    submission.submitted_at, now=now
+                )
+                generation_started_age_seconds = _snapshot_age_seconds(
+                    generation.started_at, now=now
+                )
+
+                submission_count_query = select(func.count(ProviderSubmission.id)).where(
+                    ProviderSubmission.generation_id == generation.id
+                )
+                previous_valid_query = (
+                    _submission_snapshot_query()
+                    .where(ProviderSubmission.generation_id == generation.id)
+                    .where(ProviderSubmission.provider_job_id.is_not(None))
+                )
+                if current_attempt_id > 0 and submission.generation_attempt_id is not None:
+                    submission_count_query = submission_count_query.where(
+                        ProviderSubmission.generation_attempt_id == current_attempt_id
+                    )
+                    previous_valid_query = previous_valid_query.where(
+                        ProviderSubmission.generation_attempt_id == current_attempt_id
+                    )
+
+                submission_count_result = await db.execute(submission_count_query)
+                submission_count = submission_count_result.scalar() or 0
+
+                previous_valid_result = await db.execute(
+                    previous_valid_query
+                    .order_by(ProviderSubmission.submitted_at.desc())
+                    .limit(1)
+                )
+                previous_valid_row = previous_valid_result.first()
+                previous_valid_submission = (
+                    _GenerationSubmissionSnapshot.from_row(tuple(previous_valid_row))
+                    if previous_valid_row is not None
+                    else None
+                )
+
+                response_keys = []
+                if isinstance(submission.response, dict):
+                    response_keys = list(submission.response.keys())
+
+                logger.warning(
+                    "generation_submission_missing_provider_job_id",
+                    generation_id=generation.id,
+                    submission_id=submission.id,
+                    submission_status=submission.status,
+                    submission_age_seconds=submission_age_seconds,
+                    generation_started_age_seconds=generation_started_age_seconds,
+                    submitted_at=str(submission.submitted_at) if submission.submitted_at else None,
+                    responded_at=str(submission.responded_at) if submission.responded_at else None,
+                    submission_attempt_id=submission.generation_attempt_id,
+                    generation_attempt_id=current_attempt_id,
+                    response_keys=response_keys,
+                    submission_count=submission_count,
+                    has_previous_valid_submission=previous_valid_submission is not None,
+                    previous_valid_submission_id=(
+                        previous_valid_submission.id if previous_valid_submission else None
+                    ),
+                    previous_valid_provider_job_id=(
+                        previous_valid_submission.provider_job_id
+                        if previous_valid_submission
+                        else None
+                    ),
+                    previous_valid_submitted_at=(
+                        str(previous_valid_submission.submitted_at)
+                        if previous_valid_submission and previous_valid_submission.submitted_at
+                        else None
+                    ),
+                )
+
+                # Terminal submit failure: provider submit already responded
+                # with an error and no job id. Do not keep polling forever.
+                if submission.status == "error" and previous_valid_submission is None:
+                    if not _submission_is_likely_current_attempt(generation, submission):
+                        logger.info(
+                            "generation_skip_non_current_attempt_submission_error",
+                            generation_id=generation.id,
+                            submission_id=submission.id,
+                            generation_attempt_id=current_attempt_id,
+                            submission_attempt_id=submission.generation_attempt_id,
+                            generation_started_at=(
+                                str(generation.started_at) if generation.started_at else None
+                            ),
+                            submission_attempt_started_at=(
+                                submission.response.get("generation_attempt_started_at")
+                                if isinstance(submission.response, dict)
+                                else None
+                            ),
+                        )
+                        return _PollGenerationResult(
+                            generation_id=generation_id,
+                            outcome='still_processing',
+                            missing_provider_job=True,
+                        )
+
+                    # Guard against stale no-job-id submissions from a prior
+                    # attempt. A newer attempt may already be PROCESSING but
+                    # still in dispatch stagger before creating its next
+                    # ProviderSubmission row.
+                    latest_submission_is_stale = _is_stale_unsubmitted_error_submission(
+                        generation,
+                        submission,
+                    )
+                    if latest_submission_is_stale:
+                        logger.info(
+                            "generation_skip_stale_unsubmitted_submission_error",
+                            generation_id=generation.id,
+                            submission_id=submission.id,
+                            generation_started_at=(
+                                str(generation.started_at) if generation.started_at else None
+                            ),
+                            submission_submitted_at=(
+                                str(submission.submitted_at) if submission.submitted_at else None
+                            ),
+                            submission_responded_at=(
+                                str(submission.responded_at) if submission.responded_at else None
+                            ),
+                        )
+                        return _PollGenerationResult(
+                            generation_id=generation_id,
+                            outcome='still_processing',
+                            missing_provider_job=True,
+                        )
+
+                    submit_error = None
+                    if isinstance(submission.response, dict):
+                        submit_error = (
+                            submission.response.get("error_message")
+                            or submission.response.get("error")
+                        )
+                    error_code = _map_submit_error_to_generation_error_code(submission)
+                    final_error = (
+                        str(submit_error)
+                        if submit_error
+                        else "Generation failed before provider job ID was assigned"
+                    )
+                    logger.warning(
+                        "generation_failed_unsubmitted_submission_error",
+                        generation_id=generation.id,
+                        submission_id=submission.id,
+                        submission_status=submission.status,
+                        error=final_error,
+                        error_code=error_code,
+                    )
+                    await generation_service.mark_failed(
+                        generation.id,
+                        final_error,
+                        error_code=error_code,
+                    )
+
+                    try:
+                        billing_service = GenerationBillingService(db)
+                        generation_model = await db.get(Generation, generation.id)
+                        if generation_model is not None:
+                            await billing_service.finalize_billing(
+                                generation=generation_model,
+                                final_submission=submission,
+                                account=account,
+                            )
+                    except Exception as billing_err:
+                        logger.warning(
+                            "billing_finalization_error",
+                            generation_id=generation.id,
+                            error=str(billing_err),
+                        )
+
+                    locked = await db.execute(
+                        select(ProviderAccount).where(ProviderAccount.id == account.id).with_for_update()
+                    )
+                    account = locked.scalar_one()
+                    account.total_videos_failed += 1
+                    account.failure_streak += 1
+                    account.success_rate = account.calculate_success_rate()
+                    account_id_for_release = account.id
+                    await db.commit()
+                    account = await account_service.release_account(account_id_for_release)
+                    await db.commit()
+
+                    return _PollGenerationResult(
+                        generation_id=generation_id,
+                        outcome='failed',
+                        missing_provider_job=True,
+                    )
+
+                # Retry/no-job-id edge case: a newer submission may have
+                # failed before getting a provider job id while an older
+                # valid submission is still the actual in-flight job.
+                # Poll the previous valid submission instead of calling
+                # provider.check_status(None) and looping forever.
+                if previous_valid_submission is not None:
+                    latest_submission = submission
+                    if latest_submission.status == "error":
+                        latest_error_submission_without_job_id = latest_submission
+                    submission = previous_valid_submission
+                    if submission.account_id != account.id:
+                        fallback_account = await db.get(ProviderAccount, submission.account_id)
+                        if fallback_account:
+                            account = fallback_account
+                        else:
+                            logger.error(
+                                "account_not_found_previous_valid_submission",
+                                generation_id=generation.id,
+                                latest_submission_id=latest_submission.id,
+                                polling_submission_id=submission.id,
+                                account_id=submission.account_id,
+                            )
+                            await generation_service.mark_failed(
+                                generation.id,
+                                "Account not found for previous valid provider submission",
+                            )
+                            await db.commit()
+                            return _PollGenerationResult(
+                                generation_id=generation_id,
+                                outcome='failed',
+                                missing_provider_job=True,
+                            )
+
+                    logger.info(
+                        "generation_poll_using_previous_valid_submission",
+                        generation_id=generation.id,
+                        latest_submission_id=latest_submission.id,
+                        latest_submission_status=latest_submission.status,
+                        polling_submission_id=submission.id,
+                        polling_provider_job_id=submission.provider_job_id,
+                        polling_submitted_at=(
+                            str(submission.submitted_at) if submission.submitted_at else None
+                        ),
+                    )
+
+            if (
+                latest_error_submission_without_job_id is not None
+                and generation.started_at
+                and generation.started_at < mixed_submission_timeout_threshold
+            ):
+                logger.warning(
+                    "generation_timeout_mixed_submissions",
+                    generation_id=generation.id,
+                    started_at=str(generation.started_at),
+                    timeout_minutes=mixed_submission_timeout_minutes,
+                    latest_submission_id=latest_error_submission_without_job_id.id,
+                    latest_submission_status=latest_error_submission_without_job_id.status,
+                    polling_submission_id=submission.id,
+                    polling_provider_job_id=submission.provider_job_id,
+                )
+                await generation_service.mark_failed(
+                    generation.id,
+                    (
+                        "Generation stuck after mixed provider submissions "
+                        f"(timed out after {mixed_submission_timeout_minutes} minutes)"
+                    ),
+                )
+
+                try:
+                    billing_service = GenerationBillingService(db)
+                    generation_model = await db.get(Generation, generation.id)
+                    if generation_model is not None:
+                        await billing_service.finalize_billing(
+                            generation=generation_model,
+                            final_submission=latest_error_submission_without_job_id,
+                            account=account,
+                        )
+                except Exception as billing_err:
+                    logger.warning(
+                        "billing_finalization_error",
+                        generation_id=generation.id,
+                        error=str(billing_err),
+                    )
+
+                locked = await db.execute(
+                    select(ProviderAccount).where(ProviderAccount.id == account.id).with_for_update()
+                )
+                account = locked.scalar_one()
+                account.total_videos_failed += 1
+                account.failure_streak += 1
+                account.success_rate = account.calculate_success_rate()
+                account_id_for_release = account.id
+                await db.commit()
+                account = await account_service.release_account(account_id_for_release)
+                await db.commit()
+
+                return _PollGenerationResult(
+                    generation_id=generation_id,
+                    outcome='failed',
+                    missing_provider_job=missing_provider_job,
+                )
+
+            # Fail jobs that never got a provider_job_id after the short timeout
+            # (submission to provider failed; no point polling for 2 hours)
+            if (
+                not submission.provider_job_id
+                and generation.started_at
+                and generation.started_at < unsubmitted_timeout_threshold
+            ):
+                logger.warning(
+                    "generation_timeout_unsubmitted",
+                    generation_id=generation.id,
+                    started_at=str(generation.started_at),
+                    timeout_minutes=unsubmitted_timeout_minutes,
+                )
+                await generation_service.mark_failed(
+                    generation.id,
+                    f"Generation failed: never submitted to provider (timed out after {unsubmitted_timeout_minutes} minutes)",
+                )
+
+                try:
+                    billing_service = GenerationBillingService(db)
+                    generation_model = await db.get(Generation, generation.id)
+                    if generation_model is not None:
+                        await billing_service.finalize_billing(
+                            generation=generation_model,
+                            final_submission=submission,
+                            account=account,
+                        )
+                except Exception as billing_err:
+                    logger.warning(
+                        "billing_finalization_error",
+                        generation_id=generation.id,
+                        error=str(billing_err),
+                    )
+
+                # Track failure stats on account
+                locked = await db.execute(
+                    select(ProviderAccount).where(ProviderAccount.id == account.id).with_for_update()
+                )
+                account = locked.scalar_one()
+                account.total_videos_failed += 1
+                account.failure_streak += 1
+                account.success_rate = account.calculate_success_rate()
+                account_id_for_release = account.id
+                await db.commit()
+                account = await account_service.release_account(account_id_for_release)
+                await db.commit()
+
+                return _PollGenerationResult(
+                    generation_id=generation_id,
+                    outcome='failed',
+                    missing_provider_job=missing_provider_job,
+                )
+
+            if generation.started_at and generation.started_at < timeout_threshold:
+                logger.warning("generation_timeout", generation_id=generation.id, started_at=str(generation.started_at))
+                await generation_service.mark_failed(generation.id, f"Generation timed out after {timeout_hours} hours")
+
+                # Finalize billing as skipped (no charge for timed-out generations)
+                try:
+                    billing_service = GenerationBillingService(db)
+                    generation_model = await db.get(Generation, generation.id)
+                    if generation_model is not None:
+                        await billing_service.finalize_billing(
+                            generation=generation_model,
+                            final_submission=submission,
+                            account=account,
+                        )
+                except Exception as billing_err:
+                    logger.warning(
+                        "billing_finalization_error",
+                        generation_id=generation.id,
+                        error=str(billing_err)
+                    )
+
+                # Track failure stats on account
+                locked = await db.execute(
+                    select(ProviderAccount).where(ProviderAccount.id == account.id).with_for_update()
+                )
+                account = locked.scalar_one()
+                account.total_videos_failed += 1
+                account.failure_streak += 1
+                account.success_rate = account.calculate_success_rate()
+                account_id_for_release = account.id
+                await db.commit()
+
+                # Decrement account's concurrent job count and wake pinned waiters
+                account = await account_service.release_account(account_id_for_release)
+                await db.commit()
+
+                return _PollGenerationResult(
+                    generation_id=generation_id,
+                    outcome='failed',
+                    missing_provider_job=missing_provider_job,
+                )
+
+            try:
+                submission_model = await db.get(ProviderSubmission, submission.id)
+                if submission_model is None:
+                    logger.warning(
+                        "generation_submission_missing_before_poll",
+                        generation_id=generation_id,
+                        submission_id=submission.id,
+                    )
+                    return _PollGenerationResult(
+                        generation_id=generation_id,
+                        outcome='still_processing',
+                        missing_provider_job=missing_provider_job,
+                    )
+
+                status_result = await provider_service.check_status(
+                    submission=submission_model,
+                    account=account,
+                    operation_type=generation_operation_type,
+                    poll_cache=poll_cache,
+                )
+                submission = submission_model
+
+                # Include provider's raw status/metadata for debugging
+                provider_status = None
+                if status_result.metadata and isinstance(status_result.metadata, dict):
+                    provider_status = status_result.metadata.get("provider_status")
+
+                # Use info level so status is visible even when debug is filtered
+                logger.info(
+                    "generation_status",
+                    generation_id=generation.id,
+                    status=str(status_result.status),
+                    progress=status_result.progress,
+                    provider_status=str(provider_status) if provider_status is not None else None,
+                )
+                worker_debug.provider(
+                    "generation_status",
+                    generation_id=generation.id,
+                    status=str(status_result.status),
+                    progress=status_result.progress,
+                    provider_status=str(provider_status) if provider_status is not None else None,
+                )
+
+                # Handle status
+                if status_result.status == ProviderStatus.COMPLETED:
+                    # Re-check: generation may have been cancelled while we polled
+                    generation_model = await db.get(Generation, generation.id)
+                    if generation_model and generation_model.status == GenerationStatus.CANCELLED:
+                        logger.info("generation_cancelled_during_poll", generation_id=generation.id)
+                        account = await account_service.release_account(account.id)
+                        await db.commit()
+                        return _PollGenerationResult(
+                            generation_id=generation_id,
+                            outcome='completed',
+                            missing_provider_job=missing_provider_job,
+                        )
+                    if generation_model is None:
+                        logger.warning(
+                            "generation_not_found_during_poll",
+                            generation_id=generation.id,
+                        )
+                        account = await account_service.release_account(account.id)
+                        await db.commit()
+                        return _PollGenerationResult(
+                            generation_id=generation_id,
+                            outcome='failed',
+                            missing_provider_job=missing_provider_job,
+                        )
+
+                    # Refresh submission to get updated response from check_status
+                    await db.refresh(submission)
+                    # Create asset from submission
+                    asset = await asset_service.create_from_submission(
+                        submission=submission,
+                        generation=generation_model
+                    )
+                    logger.info("generation_completed", generation_id=generation.id, asset_id=asset.id)
+                    worker_debug.worker(
+                        "generation_completed",
+                        generation_id=generation.id,
+                        asset_id=asset.id,
+                    )
+
+                    # Mark generation as completed
+                    await generation_service.mark_completed(generation.id, asset.id)
+
+                    # Finalize billing — reuse generation_model (avoids double fetch)
+                    try:
+                        billing_service = GenerationBillingService(db)
+                        await db.refresh(generation_model)
+                        await billing_service.finalize_billing(
+                            generation=generation_model,
+                            final_submission=submission,
+                            account=account,
+                            actual_duration=status_result.duration_sec,
+                        )
+                    except Exception as billing_err:
+                        logger.warning(
+                            "billing_finalization_error",
+                            generation_id=generation.id,
+                            error=str(billing_err)
+                        )
+
+                    # Track generation stats on account (locked to prevent lost updates)
+                    locked = await db.execute(
+                        select(ProviderAccount).where(ProviderAccount.id == account.id).with_for_update()
+                    )
+                    account = locked.scalar_one()
+                    account.total_videos_generated += 1
+                    account.videos_today += 1
+                    account.failure_streak = 0
+                    account.last_used = datetime.now(timezone.utc)
+                    if status_result.duration_sec:
+                        account.update_ema_generation_time(status_result.duration_sec)
+                    account.success_rate = account.calculate_success_rate()
+                    account_id_for_release = account.id
+                    await db.commit()
+
+                    # Decrement account's concurrent job count and wake pinned waiters
+                    account = await account_service.release_account(account_id_for_release)
+
+                    # Refresh credits from provider to sync actual balance
+                    await refresh_account_credits(account, account_service, logger)
+                    await db.commit()
+
+                    return _PollGenerationResult(
+                        generation_id=generation_id,
+                        outcome='completed',
+                        missing_provider_job=missing_provider_job,
+                    )
+
+                elif status_result.status in {
+                    ProviderStatus.FAILED,
+                    ProviderStatus.FILTERED,
+                    ProviderStatus.CANCELLED,
+                }:
+                    # Re-check: generation may have been cancelled while we polled
+                    generation_model = await db.get(Generation, generation.id)
+                    if generation_model and generation_model.status == GenerationStatus.CANCELLED:
+                        logger.info("generation_cancelled_during_poll", generation_id=generation.id)
+                        account = await account_service.release_account(account.id)
+                        await db.commit()
+                        return _PollGenerationResult(
+                            generation_id=generation_id,
+                            outcome='failed',
+                            missing_provider_job=missing_provider_job,
+                        )
+
+                    # Mark this attempt as failed
+                    logger.warning(
+                        "generation_failed_provider",
+                        generation_id=generation.id,
+                        status=str(status_result.status),
+                        error=status_result.error_message,
+                    )
+                    error_text = (
+                        status_result.error_message
+                        or f"Provider reported terminal status: {status_result.status.value}"
+                    )
+                    error_code = (
+                        GenerationErrorCode.CONTENT_FILTERED.value
+                        if status_result.status == ProviderStatus.FILTERED
+                        else None
+                    )
+                    await generation_service.mark_failed(
+                        generation.id,
+                        error_text,
+                        error_code=error_code,
+                    )
+
+                    # Finalize billing — reuse generation_model (avoids double fetch)
+                    try:
+                        billing_service = GenerationBillingService(db)
+                        await db.refresh(generation_model)
+                        await billing_service.finalize_billing(
+                            generation=generation_model,
+                            final_submission=submission,
+                            account=account,
+                        )
+                    except Exception as billing_err:
+                        logger.warning(
+                            "billing_finalization_error",
+                            generation_id=generation.id,
+                            error=str(billing_err)
+                        )
+
+                    # Track failure stats on account (locked to prevent lost updates)
+                    locked = await db.execute(
+                        select(ProviderAccount).where(ProviderAccount.id == account.id).with_for_update()
+                    )
+                    account = locked.scalar_one()
+                    account.total_videos_failed += 1
+                    account.failure_streak += 1
+                    account.success_rate = account.calculate_success_rate()
+                    account_id_for_release = account.id
+                    await db.commit()
+
+                    # Decrement account's concurrent job count and wake pinned waiters
+                    account = await account_service.release_account(account_id_for_release)
+
+                    # Refresh credits from provider to sync actual balance
+                    # (Pixverse auto-refunds for failed/filtered generations)
+                    await refresh_account_credits(account, account_service, logger)
+                    await db.commit()
+
+                    # Poll-time terminal retries are owned by the
+                    # job:failed event auto-retry handler. Do not also
+                    # requeue here, or poller and event-handler race to
+                    # retry the same generation.
+                    logger.debug(
+                        "auto_retry_delegated_to_event_handler",
+                        generation_id=generation.id,
+                        status=str(status_result.status),
+                        error_code=error_code,
+                    )
+
+                    return _PollGenerationResult(
+                        generation_id=generation_id,
+                        outcome='failed',
+                        missing_provider_job=missing_provider_job,
+                    )
+
+                elif status_result.status == ProviderStatus.PROCESSING:
+                    return _PollGenerationResult(
+                        generation_id=generation_id,
+                        outcome='still_processing',
+                        missing_provider_job=missing_provider_job,
+                    )
+
+                else:
+                    logger.debug("generation_pending", generation_id=generation.id)
+                    return _PollGenerationResult(
+                        generation_id=generation_id,
+                        outcome='still_processing',
+                        missing_provider_job=missing_provider_job,
+                    )
+
+            except ProviderError as e:
+                # Provider error during status check (auth, session, API).
+                # Fail the generation so the auto-retry handler can re-queue
+                # it with a fresh session.  Leaving it in PROCESSING forever
+                # blocks the account's capacity counter.
+                logger.warning(
+                    "provider_check_error_failing",
+                    generation_id=generation.id,
+                    error=str(e),
+                    error_type=e.__class__.__name__,
+                )
+                try:
+                    await generation_service.mark_failed(
+                        generation.id,
+                        f"Status check failed: {e}",
+                        error_code=getattr(e, 'error_code', None) or "poll_provider_error",
+                    )
+                    account = await account_service.release_account(account.id)
+                    await db.commit()
+                    return _PollGenerationResult(
+                        generation_id=generation_id,
+                        outcome='failed',
+                        missing_provider_job=missing_provider_job,
+                    )
+                except Exception as mark_err:
+                    logger.error(
+                        "provider_check_error_mark_failed_error",
+                        generation_id=generation.id,
+                        error=str(mark_err),
+                    )
+                    return _PollGenerationResult(
+                        generation_id=generation_id,
+                        outcome='still_processing',
+                        missing_provider_job=missing_provider_job,
+                    )
+
+        except Exception as e:
+            logger.error("poll_generation_error", generation_id=generation_id, error=str(e), exc_info=True)
+            worker_debug.worker(
+                "poll_generation_error",
+                generation_id=generation_id,
+                error=str(e),
+            )
+            return _PollGenerationResult(generation_id=generation_id, outcome='error')
+
+
 async def poll_job_statuses(ctx: dict) -> dict:
     """
     Poll status of all processing generations.
@@ -564,11 +1331,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
     async for db in get_db():
         try:
-            user_service = UserService(db)
-            generation_service = GenerationService(db, user_service)
             provider_service = ProviderService(db)
-            account_service = AccountService(db)
-            asset_service = AssetService(db, user_service)
 
             processing_generations = await _load_processing_generation_snapshots(db)
             logger.info("poll_loaded", count=len(processing_generations))
@@ -597,673 +1360,39 @@ async def poll_job_statuses(ctx: dict) -> dict:
                 minutes=MIXED_SUBMISSION_TIMEOUT_MINUTES
             )
 
-            for generation in processing_generations:
+            # --- Parallel generation polling ---
+            MAX_CONCURRENT_POLLS = 10
+            _poll_semaphore = asyncio.Semaphore(MAX_CONCURRENT_POLLS)
+
+            async def _bounded_poll(gen):
+                async with _poll_semaphore:
+                    return await _poll_single_generation(
+                        gen, poll_status_cache,
+                        timeout_threshold, unsubmitted_timeout_threshold,
+                        mixed_submission_timeout_threshold,
+                        TIMEOUT_HOURS, UNSUBMITTED_TIMEOUT_MINUTES,
+                        MIXED_SUBMISSION_TIMEOUT_MINUTES,
+                    )
+
+            _poll_results = await asyncio.gather(
+                *[_bounded_poll(gen) for gen in processing_generations],
+                return_exceptions=True,
+            )
+
+            for _poll_result in _poll_results:
+                if isinstance(_poll_result, Exception):
+                    logger.error("poll_gather_error", error=str(_poll_result), exc_info=True)
+                    continue
                 checked += 1
-                generation_id = generation.id
-                generation_started_at = generation.started_at
-                generation_operation_type = generation.operation_type
-
-                try:
-                    latest_error_submission_without_job_id = None
-                    (
-                        submission,
-                        latest_submission_any_attempt,
-                        current_attempt_id,
-                    ) = await _select_current_attempt_submission(
-                        db,
-                        generation,
-                    )
-
-                    if not submission:
-                        logger.warning(
-                            "no_current_attempt_submission",
-                            generation_id=generation.id,
-                            attempt_id=current_attempt_id,
-                            has_latest_submission_any_attempt=latest_submission_any_attempt is not None,
-                            latest_submission_id=(
-                                latest_submission_any_attempt.id
-                                if latest_submission_any_attempt
-                                else None
-                            ),
-                            latest_submission_attempt_id=(
-                                latest_submission_any_attempt.generation_attempt_id
-                                if latest_submission_any_attempt
-                                else None
-                            ),
-                            generation_started_at=(
-                                str(generation.started_at) if generation.started_at else None
-                            ),
-                        )
-
-                        if generation.started_at and generation.started_at < unsubmitted_timeout_threshold:
-                            await generation_service.mark_failed(
-                                generation.id,
-                                (
-                                    "Generation failed: no submission found for current attempt "
-                                    f"(timed out after {UNSUBMITTED_TIMEOUT_MINUTES} minutes)"
-                                ),
-                                error_code=GenerationErrorCode.PROVIDER_UNAVAILABLE.value,
-                            )
-
-                            timeout_account_id = generation.account_id
-                            if (
-                                timeout_account_id is None
-                                and latest_submission_any_attempt is not None
-                            ):
-                                timeout_account_id = latest_submission_any_attempt.account_id
-                            if timeout_account_id:
-                                orphan_account = await db.get(ProviderAccount, timeout_account_id)
-                                if orphan_account and orphan_account.current_processing_jobs > 0:
-                                    orphan_account.current_processing_jobs -= 1
-                                    logger.info(
-                                        "counter_decremented_no_current_attempt_submission",
-                                        account_id=timeout_account_id,
-                                        generation_id=generation.id,
-                                    )
-
-                            failed += 1
-                            continue
-
-                        still_processing += 1
-                        still_processing_ids.append(generation.id)
-                        continue
-
-                    account = await db.get(ProviderAccount, submission.account_id)
-                    if not account:
-                        logger.error("account_not_found", account_id=submission.account_id)
-                        await generation_service.mark_failed(generation.id, "Account not found")
-                        failed += 1
-                        continue
-
-                    if not submission.provider_job_id:
-                        missing_provider_job_generation_ids.append(generation.id)
-                        now = datetime.now(timezone.utc)
-                        submission_age_seconds = _snapshot_age_seconds(
-                            submission.submitted_at, now=now
-                        )
-                        generation_started_age_seconds = _snapshot_age_seconds(
-                            generation.started_at, now=now
-                        )
-
-                        submission_count_query = select(func.count(ProviderSubmission.id)).where(
-                            ProviderSubmission.generation_id == generation.id
-                        )
-                        previous_valid_query = (
-                            _submission_snapshot_query()
-                            .where(ProviderSubmission.generation_id == generation.id)
-                            .where(ProviderSubmission.provider_job_id.is_not(None))
-                        )
-                        if current_attempt_id > 0 and submission.generation_attempt_id is not None:
-                            submission_count_query = submission_count_query.where(
-                                ProviderSubmission.generation_attempt_id == current_attempt_id
-                            )
-                            previous_valid_query = previous_valid_query.where(
-                                ProviderSubmission.generation_attempt_id == current_attempt_id
-                            )
-
-                        submission_count_result = await db.execute(submission_count_query)
-                        submission_count = submission_count_result.scalar() or 0
-
-                        previous_valid_result = await db.execute(
-                            previous_valid_query
-                            .order_by(ProviderSubmission.submitted_at.desc())
-                            .limit(1)
-                        )
-                        previous_valid_row = previous_valid_result.first()
-                        previous_valid_submission = (
-                            _GenerationSubmissionSnapshot.from_row(tuple(previous_valid_row))
-                            if previous_valid_row is not None
-                            else None
-                        )
-
-                        response_keys = []
-                        if isinstance(submission.response, dict):
-                            response_keys = list(submission.response.keys())
-
-                        logger.warning(
-                            "generation_submission_missing_provider_job_id",
-                            generation_id=generation.id,
-                            submission_id=submission.id,
-                            submission_status=submission.status,
-                            submission_age_seconds=submission_age_seconds,
-                            generation_started_age_seconds=generation_started_age_seconds,
-                            submitted_at=str(submission.submitted_at) if submission.submitted_at else None,
-                            responded_at=str(submission.responded_at) if submission.responded_at else None,
-                            submission_attempt_id=submission.generation_attempt_id,
-                            generation_attempt_id=current_attempt_id,
-                            response_keys=response_keys,
-                            submission_count=submission_count,
-                            has_previous_valid_submission=previous_valid_submission is not None,
-                            previous_valid_submission_id=(
-                                previous_valid_submission.id if previous_valid_submission else None
-                            ),
-                            previous_valid_provider_job_id=(
-                                previous_valid_submission.provider_job_id
-                                if previous_valid_submission
-                                else None
-                            ),
-                            previous_valid_submitted_at=(
-                                str(previous_valid_submission.submitted_at)
-                                if previous_valid_submission and previous_valid_submission.submitted_at
-                                else None
-                            ),
-                        )
-
-                        # Terminal submit failure: provider submit already responded
-                        # with an error and no job id. Do not keep polling forever.
-                        if submission.status == "error" and previous_valid_submission is None:
-                            if not _submission_is_likely_current_attempt(generation, submission):
-                                logger.info(
-                                    "generation_skip_non_current_attempt_submission_error",
-                                    generation_id=generation.id,
-                                    submission_id=submission.id,
-                                    generation_attempt_id=current_attempt_id,
-                                    submission_attempt_id=submission.generation_attempt_id,
-                                    generation_started_at=(
-                                        str(generation.started_at) if generation.started_at else None
-                                    ),
-                                    submission_attempt_started_at=(
-                                        submission.response.get("generation_attempt_started_at")
-                                        if isinstance(submission.response, dict)
-                                        else None
-                                    ),
-                                )
-                                still_processing += 1
-                                still_processing_ids.append(generation.id)
-                                continue
-
-                            # Guard against stale no-job-id submissions from a prior
-                            # attempt. A newer attempt may already be PROCESSING but
-                            # still in dispatch stagger before creating its next
-                            # ProviderSubmission row.
-                            latest_submission_is_stale = _is_stale_unsubmitted_error_submission(
-                                generation,
-                                submission,
-                            )
-                            if latest_submission_is_stale:
-                                logger.info(
-                                    "generation_skip_stale_unsubmitted_submission_error",
-                                    generation_id=generation.id,
-                                    submission_id=submission.id,
-                                    generation_started_at=(
-                                        str(generation.started_at) if generation.started_at else None
-                                    ),
-                                    submission_submitted_at=(
-                                        str(submission.submitted_at) if submission.submitted_at else None
-                                    ),
-                                    submission_responded_at=(
-                                        str(submission.responded_at) if submission.responded_at else None
-                                    ),
-                                )
-                                still_processing += 1
-                                still_processing_ids.append(generation.id)
-                                continue
-
-                            submit_error = None
-                            if isinstance(submission.response, dict):
-                                submit_error = (
-                                    submission.response.get("error_message")
-                                    or submission.response.get("error")
-                                )
-                            error_code = _map_submit_error_to_generation_error_code(submission)
-                            final_error = (
-                                str(submit_error)
-                                if submit_error
-                                else "Generation failed before provider job ID was assigned"
-                            )
-                            logger.warning(
-                                "generation_failed_unsubmitted_submission_error",
-                                generation_id=generation.id,
-                                submission_id=submission.id,
-                                submission_status=submission.status,
-                                error=final_error,
-                                error_code=error_code,
-                            )
-                            await generation_service.mark_failed(
-                                generation.id,
-                                final_error,
-                                error_code=error_code,
-                            )
-
-                            try:
-                                billing_service = GenerationBillingService(db)
-                                generation_model = await db.get(Generation, generation.id)
-                                if generation_model is not None:
-                                    await billing_service.finalize_billing(
-                                        generation=generation_model,
-                                        final_submission=submission,
-                                        account=account,
-                                    )
-                            except Exception as billing_err:
-                                logger.warning(
-                                    "billing_finalization_error",
-                                    generation_id=generation.id,
-                                    error=str(billing_err),
-                                )
-
-                            refreshed_account = await db.get(ProviderAccount, account.id)
-                            if refreshed_account is not None:
-                                account = refreshed_account
-                            account.total_videos_failed += 1
-                            account.failure_streak += 1
-                            account.success_rate = account.calculate_success_rate()
-                            account = await account_service.release_account(account.id)
-
-                            failed += 1
-                            continue
-
-                        # Retry/no-job-id edge case: a newer submission may have
-                        # failed before getting a provider job id while an older
-                        # valid submission is still the actual in-flight job.
-                        # Poll the previous valid submission instead of calling
-                        # provider.check_status(None) and looping forever.
-                        if previous_valid_submission is not None:
-                            latest_submission = submission
-                            if latest_submission.status == "error":
-                                latest_error_submission_without_job_id = latest_submission
-                            submission = previous_valid_submission
-                            if submission.account_id != account.id:
-                                fallback_account = await db.get(ProviderAccount, submission.account_id)
-                                if fallback_account:
-                                    account = fallback_account
-                                else:
-                                    logger.error(
-                                        "account_not_found_previous_valid_submission",
-                                        generation_id=generation.id,
-                                        latest_submission_id=latest_submission.id,
-                                        polling_submission_id=submission.id,
-                                        account_id=submission.account_id,
-                                    )
-                                    await generation_service.mark_failed(
-                                        generation.id,
-                                        "Account not found for previous valid provider submission",
-                                    )
-                                    failed += 1
-                                    continue
-
-                            logger.info(
-                                "generation_poll_using_previous_valid_submission",
-                                generation_id=generation.id,
-                                latest_submission_id=latest_submission.id,
-                                latest_submission_status=latest_submission.status,
-                                polling_submission_id=submission.id,
-                                polling_provider_job_id=submission.provider_job_id,
-                                polling_submitted_at=(
-                                    str(submission.submitted_at) if submission.submitted_at else None
-                                ),
-                            )
-
-                    if (
-                        latest_error_submission_without_job_id is not None
-                        and generation.started_at
-                        and generation.started_at < mixed_submission_timeout_threshold
-                    ):
-                        logger.warning(
-                            "generation_timeout_mixed_submissions",
-                            generation_id=generation.id,
-                            started_at=str(generation.started_at),
-                            timeout_minutes=MIXED_SUBMISSION_TIMEOUT_MINUTES,
-                            latest_submission_id=latest_error_submission_without_job_id.id,
-                            latest_submission_status=latest_error_submission_without_job_id.status,
-                            polling_submission_id=submission.id,
-                            polling_provider_job_id=submission.provider_job_id,
-                        )
-                        await generation_service.mark_failed(
-                            generation.id,
-                            (
-                                "Generation stuck after mixed provider submissions "
-                                f"(timed out after {MIXED_SUBMISSION_TIMEOUT_MINUTES} minutes)"
-                            ),
-                        )
-
-                        try:
-                            billing_service = GenerationBillingService(db)
-                            generation_model = await db.get(Generation, generation.id)
-                            if generation_model is not None:
-                                await billing_service.finalize_billing(
-                                    generation=generation_model,
-                                    final_submission=latest_error_submission_without_job_id,
-                                    account=account,
-                                )
-                        except Exception as billing_err:
-                            logger.warning(
-                                "billing_finalization_error",
-                                generation_id=generation.id,
-                                error=str(billing_err),
-                            )
-
-                        refreshed_account = await db.get(ProviderAccount, account.id)
-                        if refreshed_account is not None:
-                            account = refreshed_account
-                        account.total_videos_failed += 1
-                        account.failure_streak += 1
-                        account.success_rate = account.calculate_success_rate()
-                        account = await account_service.release_account(account.id)
-
-                        failed += 1
-                        continue
-
-                    # Fail jobs that never got a provider_job_id after the short timeout
-                    # (submission to provider failed; no point polling for 2 hours)
-                    if (
-                        not submission.provider_job_id
-                        and generation.started_at
-                        and generation.started_at < unsubmitted_timeout_threshold
-                    ):
-                        logger.warning(
-                            "generation_timeout_unsubmitted",
-                            generation_id=generation.id,
-                            started_at=str(generation.started_at),
-                            timeout_minutes=UNSUBMITTED_TIMEOUT_MINUTES,
-                        )
-                        await generation_service.mark_failed(
-                            generation.id,
-                            f"Generation failed: never submitted to provider (timed out after {UNSUBMITTED_TIMEOUT_MINUTES} minutes)",
-                        )
-
-                        try:
-                            billing_service = GenerationBillingService(db)
-                            generation_model = await db.get(Generation, generation.id)
-                            if generation_model is not None:
-                                await billing_service.finalize_billing(
-                                    generation=generation_model,
-                                    final_submission=submission,
-                                    account=account,
-                                )
-                        except Exception as billing_err:
-                            logger.warning(
-                                "billing_finalization_error",
-                                generation_id=generation.id,
-                                error=str(billing_err),
-                            )
-
-                        # Track failure stats on account
-                        refreshed_account = await db.get(ProviderAccount, account.id)
-                        if refreshed_account is not None:
-                            account = refreshed_account
-                        account.total_videos_failed += 1
-                        account.failure_streak += 1
-                        account.success_rate = account.calculate_success_rate()
-
-                        account = await account_service.release_account(account.id)
-
-                        failed += 1
-                        continue
-
-                    if generation.started_at and generation.started_at < timeout_threshold:
-                        logger.warning("generation_timeout", generation_id=generation.id, started_at=str(generation.started_at))
-                        await generation_service.mark_failed(generation.id, f"Generation timed out after {TIMEOUT_HOURS} hours")
-
-                        # Finalize billing as skipped (no charge for timed-out generations)
-                        try:
-                            billing_service = GenerationBillingService(db)
-                            generation_model = await db.get(Generation, generation.id)
-                            if generation_model is not None:
-                                await billing_service.finalize_billing(
-                                    generation=generation_model,
-                                    final_submission=submission,
-                                    account=account,
-                                )
-                        except Exception as billing_err:
-                            logger.warning(
-                                "billing_finalization_error",
-                                generation_id=generation.id,
-                                error=str(billing_err)
-                            )
-
-                        # Track failure stats on account
-                        refreshed_account = await db.get(ProviderAccount, account.id)
-                        if refreshed_account is not None:
-                            account = refreshed_account
-                        account.total_videos_failed += 1
-                        account.failure_streak += 1
-                        account.success_rate = account.calculate_success_rate()
-
-                        # Decrement account's concurrent job count and wake pinned waiters
-                        account = await account_service.release_account(account.id)
-
-                        failed += 1
-                        continue
-
-                    try:
-                        submission_model = await db.get(ProviderSubmission, submission.id)
-                        if submission_model is None:
-                            logger.warning(
-                                "generation_submission_missing_before_poll",
-                                generation_id=generation_id,
-                                submission_id=submission.id,
-                            )
-                            still_processing += 1
-                            still_processing_ids.append(generation_id)
-                            continue
-
-                        status_result = await provider_service.check_status(
-                            submission=submission_model,
-                            account=account,
-                            operation_type=generation_operation_type,
-                            poll_cache=poll_status_cache,
-                        )
-                        submission = submission_model
-
-                        # Include provider's raw status/metadata for debugging
-                        provider_status = None
-                        if status_result.metadata and isinstance(status_result.metadata, dict):
-                            provider_status = status_result.metadata.get("provider_status")
-
-                        # Use info level so status is visible even when debug is filtered
-                        logger.info(
-                            "generation_status",
-                            generation_id=generation.id,
-                            status=str(status_result.status),
-                            progress=status_result.progress,
-                            provider_status=str(provider_status) if provider_status is not None else None,
-                        )
-                        worker_debug.provider(
-                            "generation_status",
-                            generation_id=generation.id,
-                            status=str(status_result.status),
-                            progress=status_result.progress,
-                            provider_status=str(provider_status) if provider_status is not None else None,
-                        )
-
-                        # Handle status
-                        if status_result.status == ProviderStatus.COMPLETED:
-                            # Re-check: generation may have been cancelled while we polled
-                            generation_model = await db.get(Generation, generation.id)
-                            if generation_model and generation_model.status == GenerationStatus.CANCELLED:
-                                logger.info("generation_cancelled_during_poll", generation_id=generation.id)
-                                account = await account_service.release_account(account.id)
-                                completed += 1
-                                continue
-                            if generation_model is None:
-                                logger.warning(
-                                    "generation_not_found_during_poll",
-                                    generation_id=generation.id,
-                                )
-                                account = await account_service.release_account(account.id)
-                                failed += 1
-                                continue
-
-                            # Refresh submission to get updated response from check_status
-                            await db.refresh(submission)
-                            # Create asset from submission
-                            asset = await asset_service.create_from_submission(
-                                submission=submission,
-                                generation=generation_model
-                            )
-                            logger.info("generation_completed", generation_id=generation.id, asset_id=asset.id)
-                            worker_debug.worker(
-                                "generation_completed",
-                                generation_id=generation.id,
-                                asset_id=asset.id,
-                            )
-
-                            # Mark generation as completed
-                            await generation_service.mark_completed(generation.id, asset.id)
-
-                            # Finalize billing (idempotent - safe to re-run)
-                            # This handles credit deduction and updates Generation.billing fields
-                            try:
-                                billing_service = GenerationBillingService(db)
-                                billing_generation = await db.get(Generation, generation.id)
-                                if billing_generation is not None:
-                                    await billing_service.finalize_billing(
-                                        generation=billing_generation,
-                                        final_submission=submission,
-                                        account=account,
-                                        actual_duration=status_result.duration_sec,
-                                    )
-                            except Exception as billing_err:
-                                logger.warning(
-                                    "billing_finalization_error",
-                                    generation_id=generation.id,
-                                    error=str(billing_err)
-                                )
-
-                            # Track generation stats on account
-                            refreshed_account = await db.get(ProviderAccount, account.id)
-                            if refreshed_account is not None:
-                                account = refreshed_account
-                            account.total_videos_generated += 1
-                            account.videos_today += 1
-                            account.failure_streak = 0
-                            account.last_used = datetime.now(timezone.utc)
-                            if status_result.duration_sec:
-                                account.update_ema_generation_time(status_result.duration_sec)
-                            account.success_rate = account.calculate_success_rate()
-
-                            # Decrement account's concurrent job count and wake pinned waiters
-                            account = await account_service.release_account(account.id)
-
-                            # Refresh credits from provider to sync actual balance
-                            await refresh_account_credits(account, account_service, logger)
-
-                            completed += 1
-
-                        elif status_result.status in {
-                            ProviderStatus.FAILED,
-                            ProviderStatus.FILTERED,
-                            ProviderStatus.CANCELLED,
-                        }:
-                            # Re-check: generation may have been cancelled while we polled
-                            generation_model = await db.get(Generation, generation.id)
-                            if generation_model and generation_model.status == GenerationStatus.CANCELLED:
-                                logger.info("generation_cancelled_during_poll", generation_id=generation.id)
-                                account = await account_service.release_account(account.id)
-                                failed += 1
-                                continue
-
-                            # Mark this attempt as failed
-                            logger.warning(
-                                "generation_failed_provider",
-                                generation_id=generation.id,
-                                status=str(status_result.status),
-                                error=status_result.error_message,
-                            )
-                            error_text = (
-                                status_result.error_message
-                                or f"Provider reported terminal status: {status_result.status.value}"
-                            )
-                            error_code = (
-                                GenerationErrorCode.CONTENT_FILTERED.value
-                                if status_result.status == ProviderStatus.FILTERED
-                                else None
-                            )
-                            await generation_service.mark_failed(
-                                generation.id,
-                                error_text,
-                                error_code=error_code,
-                            )
-
-                            # Finalize billing as skipped (no charge for failed generations)
-                            try:
-                                billing_service = GenerationBillingService(db)
-                                billing_generation = await db.get(Generation, generation.id)
-                                if billing_generation is not None:
-                                    await billing_service.finalize_billing(
-                                        generation=billing_generation,
-                                        final_submission=submission,
-                                        account=account,
-                                    )
-                            except Exception as billing_err:
-                                logger.warning(
-                                    "billing_finalization_error",
-                                    generation_id=generation.id,
-                                    error=str(billing_err)
-                                )
-
-                            # Track failure stats on account
-                            refreshed_account = await db.get(ProviderAccount, account.id)
-                            if refreshed_account is not None:
-                                account = refreshed_account
-                            account.total_videos_failed += 1
-                            account.failure_streak += 1
-                            account.success_rate = account.calculate_success_rate()
-
-                            # Decrement account's concurrent job count and wake pinned waiters
-                            account = await account_service.release_account(account.id)
-
-                            # Refresh credits from provider to sync actual balance
-                            # (Pixverse auto-refunds for failed/filtered generations)
-                            await refresh_account_credits(account, account_service, logger)
-
-                            failed += 1
-
-                            # Poll-time terminal retries are owned by the
-                            # job:failed event auto-retry handler. Do not also
-                            # requeue here, or poller and event-handler race to
-                            # retry the same generation.
-                            logger.debug(
-                                "auto_retry_delegated_to_event_handler",
-                                generation_id=generation.id,
-                                status=str(status_result.status),
-                                error_code=error_code,
-                            )
-
-                        elif status_result.status == ProviderStatus.PROCESSING:
-                            still_processing += 1
-                            still_processing_ids.append(generation.id)
-
-                        else:
-                            logger.debug("generation_pending", generation_id=generation.id)
-                            still_processing += 1
-                            still_processing_ids.append(generation.id)
-
-                    except ProviderError as e:
-                        # Provider error during status check (auth, session, API).
-                        # Fail the generation so the auto-retry handler can re-queue
-                        # it with a fresh session.  Leaving it in PROCESSING forever
-                        # blocks the account's capacity counter.
-                        logger.warning(
-                            "provider_check_error_failing",
-                            generation_id=generation.id,
-                            error=str(e),
-                            error_type=e.__class__.__name__,
-                        )
-                        try:
-                            await generation_service.mark_failed(
-                                generation.id,
-                                f"Status check failed: {e}",
-                                error_code=getattr(e, 'error_code', None) or "poll_provider_error",
-                            )
-                            account = await account_service.release_account(account.id)
-                            failed += 1
-                        except Exception as mark_err:
-                            logger.error(
-                                "provider_check_error_mark_failed_error",
-                                generation_id=generation.id,
-                                error=str(mark_err),
-                            )
-                            still_processing += 1
-
-                except Exception as e:
-                    logger.error("poll_generation_error", generation_id=generation.id, error=str(e), exc_info=True)
-                    worker_debug.worker(
-                        "poll_generation_error",
-                        generation_id=generation.id,
-                        error=str(e),
-                    )
-                    # Continue with next generation
+                if _poll_result.outcome == 'completed':
+                    completed += 1
+                elif _poll_result.outcome == 'failed':
+                    failed += 1
+                elif _poll_result.outcome == 'still_processing':
+                    still_processing += 1
+                    still_processing_ids.append(_poll_result.generation_id)
+                if _poll_result.missing_provider_job:
+                    missing_provider_job_generation_ids.append(_poll_result.generation_id)
 
             # ===== POLL ANALYSES =====
             analysis_service = AnalysisService(db)

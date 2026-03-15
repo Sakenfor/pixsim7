@@ -220,6 +220,7 @@ class Generation(SQLModel, table=True):
         Index("idx_generation_user_status_created", "user_id", "status", "created_at"),
         Index("idx_generation_status_created", "status", "created_at"),
         Index("idx_generation_priority_created", "priority", "created_at"),
+        Index("idx_generation_status_started_at", "status", "started_at"),
     )
 
     # Validators to handle uppercase DB values (legacy data)

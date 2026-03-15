@@ -134,6 +134,7 @@ class ProviderSubmission(SQLModel, table=True):
         ),
         Index("idx_submission_status_submitted", "status", "submitted_at"),
         Index("idx_submission_provider_job", "provider_id", "provider_job_id"),
+        Index("idx_submission_generation_status", "generation_id", "status"),
     )
 
     def __repr__(self):
