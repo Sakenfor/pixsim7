@@ -66,85 +66,53 @@ async def _get_generation_wait_reasons(
         return {}
 
 
-async def _get_latest_submission_payloads(
+class _SubmissionMetadata:
+    """Combined submission metadata for a batch of generation IDs (single query)."""
+
+    def __init__(self):
+        self.payloads: Dict[int, Dict[str, Any]] = {}
+        self.provider_job_ids: Dict[int, Optional[str]] = {}
+        self.attempt_counts: Dict[int, int] = {}
+
+
+async def _get_submission_metadata(
     db: DatabaseSession,
     generation_ids: List[int],
-) -> Dict[int, Dict[str, Any]]:
-    """Return latest provider submission payload for each generation ID."""
-    from sqlmodel import select
-    from pixsim7.backend.main.domain.providers import ProviderSubmission
-
-    if not generation_ids:
-        return {}
-
-    result = await db.execute(
-        select(ProviderSubmission.generation_id, ProviderSubmission.payload)
-        .where(ProviderSubmission.generation_id.in_(generation_ids))
-        .where(ProviderSubmission.analysis_id.is_(None))
-        .order_by(
-            ProviderSubmission.generation_id.asc(),
-            ProviderSubmission.retry_attempt.desc(),
-            ProviderSubmission.id.desc(),
-        )
-    )
-
-    payloads: Dict[int, Dict[str, Any]] = {}
-    for generation_id, payload in result.fetchall():
-        if generation_id in payloads or not isinstance(payload, dict):
-            continue
-        payloads[generation_id] = payload
-    return payloads
-
-
-async def _get_latest_submission_provider_job_ids(
-    db: DatabaseSession,
-    generation_ids: List[int],
-) -> Dict[int, Optional[str]]:
-    """Return provider_job_id from the latest provider submission per generation ID."""
-    from sqlmodel import select
-    from pixsim7.backend.main.domain.providers import ProviderSubmission
-
-    if not generation_ids:
-        return {}
-
-    result = await db.execute(
-        select(ProviderSubmission.generation_id, ProviderSubmission.provider_job_id)
-        .where(ProviderSubmission.generation_id.in_(generation_ids))
-        .where(ProviderSubmission.analysis_id.is_(None))
-        .order_by(
-            ProviderSubmission.generation_id.asc(),
-            ProviderSubmission.retry_attempt.desc(),
-            ProviderSubmission.id.desc(),
-        )
-    )
-
-    job_ids: Dict[int, Optional[str]] = {}
-    for generation_id, provider_job_id in result.fetchall():
-        if generation_id in job_ids:
-            continue
-        job_ids[generation_id] = provider_job_id
-    return job_ids
-
-
-async def _get_generation_attempt_counts(
-    db: DatabaseSession,
-    generation_ids: List[int],
-) -> Dict[int, int]:
-    """Return provider submission counts per generation ID (analysis submissions excluded)."""
+) -> _SubmissionMetadata:
+    """Fetch payload, provider_job_id, and attempt count in a single query."""
     from sqlmodel import select
     from sqlalchemy import func
     from pixsim7.backend.main.domain.providers import ProviderSubmission
 
+    meta = _SubmissionMetadata()
     if not generation_ids:
-        return {}
+        return meta
 
+    # One query: latest submission per generation (payload + job_id)
     result = await db.execute(
-        select(ProviderSubmission.generation_id, func.count(ProviderSubmission.id))
+        select(
+            ProviderSubmission.generation_id,
+            ProviderSubmission.payload,
+            ProviderSubmission.provider_job_id,
+        )
         .where(ProviderSubmission.generation_id.in_(generation_ids))
         .where(ProviderSubmission.analysis_id.is_(None))
-        .group_by(ProviderSubmission.generation_id)
+        .order_by(
+            ProviderSubmission.generation_id.asc(),
+            ProviderSubmission.retry_attempt.desc(),
+            ProviderSubmission.id.desc(),
+        )
     )
-    return {int(gid): int(count or 0) for gid, count in result.fetchall()}
+
+    for generation_id, payload, provider_job_id in result.fetchall():
+        if generation_id not in meta.payloads and isinstance(payload, dict):
+            meta.payloads[generation_id] = payload
+        if generation_id not in meta.provider_job_ids:
+            meta.provider_job_ids[generation_id] = provider_job_id
+        # Count all rows per generation
+        meta.attempt_counts[generation_id] = meta.attempt_counts.get(generation_id, 0) + 1
+
+    return meta
 
 
 # ===== CREATE GENERATION =====
@@ -708,19 +676,8 @@ async def list_generations(
             )
             account_emails = {row[0]: row[1] for row in result.fetchall()}
 
-        # Attach latest provider submission payloads (exact params sent to provider).
-        latest_payloads = await _get_latest_submission_payloads(
-            db,
-            [g.id for g in generations],
-        )
-        latest_provider_job_ids = await _get_latest_submission_provider_job_ids(
-            db,
-            [g.id for g in generations],
-        )
-        attempt_counts = await _get_generation_attempt_counts(
-            db,
-            [g.id for g in generations],
-        )
+        # Single query for all submission metadata (replaces 3 separate queries)
+        submission_meta = await _get_submission_metadata(db, [g.id for g in generations])
 
         # Fetch wait reasons for pending generations
         pending_ids = [g.id for g in generations if g.status == "pending"]
@@ -732,9 +689,9 @@ async def list_generations(
             resp = GenerationResponse.model_validate(g)
             if g.account_id and g.account_id in account_emails:
                 resp.account_email = account_emails[g.account_id]
-            resp.latest_submission_payload = latest_payloads.get(g.id)
-            resp.latest_submission_provider_job_id = latest_provider_job_ids.get(g.id)
-            resp.attempt_count = attempt_counts.get(g.id, 0)
+            resp.latest_submission_payload = submission_meta.payloads.get(g.id)
+            resp.latest_submission_provider_job_id = submission_meta.provider_job_ids.get(g.id)
+            resp.attempt_count = submission_meta.attempt_counts.get(g.id, 0)
             resp.wait_reason = wait_reasons.get(g.id)
             responses.append(resp)
 

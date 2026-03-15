@@ -286,10 +286,10 @@ class WorkerSettings:
 
     # Cron jobs (periodic tasks)
     cron_jobs = [
-        # Poll job statuses every 10 seconds
+        # Poll job statuses every 5 seconds
         cron(
             poll_job_statuses,
-            second={0, 10, 20, 30, 40, 50},  # Every 10 seconds
+            second={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},  # Every 5 seconds
             run_at_startup=True,  # Run immediately on startup
         ),
         # Run automation loops every 30 seconds

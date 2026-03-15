@@ -185,6 +185,23 @@ async def handle_event(event: Event) -> None:
                 retry_incremented = False
             else:
                 generation.retry_count += 1
+
+            # If pause was requested, land in PAUSED instead of re-queuing
+            if getattr(generation, "pause_requested", False):
+                generation.status = GenerationStatus.PAUSED
+                generation.pause_requested = False
+                generation.started_at = None
+                generation.completed_at = None
+                generation.updated_at = datetime.now(timezone.utc)
+                await db.commit()
+                await db.refresh(generation)
+                logger.info(
+                    "auto_retry_paused_by_request",
+                    generation_id=generation.id,
+                    retry_attempt=generation.retry_count,
+                )
+                return
+
             generation.status = GenerationStatus.PENDING
             generation.started_at = None
             generation.completed_at = None

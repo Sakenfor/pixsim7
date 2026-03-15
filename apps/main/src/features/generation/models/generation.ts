@@ -18,8 +18,8 @@ import type {
 // Re-export types that don't need mapping (enums, etc.)
 export type { OperationType };
 
-// Extend API status with queued (API may emit this even if OpenAPI doesn't).
-export type GenerationStatus = ApiGenerationStatus | 'queued';
+// Extend API status with values the backend emits but OpenAPI hasn't regenerated yet.
+export type GenerationStatus = ApiGenerationStatus | 'queued' | 'paused';
 
 /**
  * Embedded entity reference in API responses.
@@ -55,6 +55,7 @@ export interface GenerationModel {
   errorMessage: string | null;
   errorCode: string | null;
   retryCount: number;
+  pauseRequested: boolean;
   attemptCount: number | null;
   priority: number;
   waitReason: string | null;
@@ -203,6 +204,7 @@ export function fromGenerationResponse(response: GenerationResponse): Generation
     errorMessage: response.error_message,
     errorCode: response.error_code ?? null,
     retryCount: response.retry_count,
+    pauseRequested: (response as { pause_requested?: boolean }).pause_requested ?? false,
     attemptCount,
     priority: response.priority,
     waitReason: (response as { wait_reason?: string | null }).wait_reason ?? null,
@@ -398,6 +400,7 @@ export function createPendingGeneration(options: CreatePendingGenerationOptions)
     errorMessage: null,
     errorCode: null,
     retryCount: 0,
+    pauseRequested: false,
     attemptCount: null,
     priority: 5,
     waitReason: null,

@@ -785,7 +785,7 @@ function GenerationGroupSection({
     </span>
   );
 
-  const pausableIds = useMemo(() => group.items.filter(g => g.status === 'pending').map(g => g.id), [group.items]);
+  const pausableIds = useMemo(() => group.items.filter(g => g.status === 'pending' || (g.status === 'processing' && !g.pauseRequested)).map(g => g.id), [group.items]);
   const pausedIds = useMemo(() => group.items.filter(g => g.status === 'paused').map(g => g.id), [group.items]);
 
   const batchCancelAction = activeIds.length >= 2 ? (
@@ -830,12 +830,6 @@ function GenerationGroupSection({
 
   const handleCopyPrompt = () => {
     if (fullPrompt) navigator.clipboard.writeText(fullPrompt);
-    setMenuOpen(false);
-  };
-
-  const handleLoadToQuickGenGroup = () => {
-    const sample = group.items[0];
-    if (sample) onLoadToQuickGen(sample);
     setMenuOpen(false);
   };
 
@@ -893,13 +887,6 @@ function GenerationGroupSection({
               Copy prompt
             </DropdownItem>
           )}
-          <DropdownItem
-            icon={<Icon name="edit" size={12} />}
-            onClick={handleLoadToQuickGenGroup}
-          >
-            Load to Quick Generate
-          </DropdownItem>
-          <DropdownDivider />
           <DropdownItem
             icon={<Icon name="pencil" size={12} />}
             onClick={handleReplacePromptInGroup}
@@ -1023,7 +1010,7 @@ function GenerationItem({ generation, onRetry, onCancel, onPause, onResume, onDe
   const isPaused = generation.status === 'paused';
   const canRetry = generation.status === 'failed' || generation.status === 'cancelled';
   const canCancel = isActive;
-  const canPause = generation.status === 'pending';
+  const canPause = generation.status === 'pending' || (generation.status === 'processing' && !generation.pauseRequested);
   const canResume = isPaused;
   const canDelete = isTerminal;
   const activityBadge = useMemo(() => {
@@ -1358,7 +1345,7 @@ function GenerationItem({ generation, onRetry, onCancel, onPause, onResume, onDe
               onClick={handlePauseClick}
               disabled={isPausing}
               className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
-              title="Pause generation"
+              title={generation.status === 'processing' ? 'Pause after current attempt' : 'Pause generation'}
             >
               <Icon
                 name="pause"
@@ -1366,6 +1353,11 @@ function GenerationItem({ generation, onRetry, onCancel, onPause, onResume, onDe
                 className={`text-amber-600 dark:text-amber-400 ${isPausing ? 'opacity-50' : ''}`}
               />
             </button>
+          )}
+          {generation.pauseRequested && (
+            <span className="px-1 py-0.5 rounded text-[9px] font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" title="Will pause after current attempt">
+              pausing
+            </span>
           )}
           {canResume && (
             <button

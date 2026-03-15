@@ -264,21 +264,22 @@ class GenerationLifecycleService:
 
     async def pause_generation(self, generation_id: int, user: User) -> Generation:
         """
-        Pause a pending generation (user request).
+        Pause a generation.
 
-        Only PENDING generations can be paused — PROCESSING ones are already
-        running on the provider and cannot be held.
+        - PENDING → immediately transitions to PAUSED.
+        - PROCESSING → sets pause_requested flag; auto-retry will land in
+          PAUSED instead of PENDING when the current attempt finishes.
 
         Args:
             generation_id: Generation ID
             user: User requesting pause
 
         Returns:
-            Paused generation
+            Updated generation (PAUSED or PROCESSING with pause_requested)
 
         Raises:
             ResourceNotFoundError: Generation not found
-            InvalidOperationError: Cannot pause (wrong user, already terminal, or processing)
+            InvalidOperationError: Cannot pause (wrong user or already terminal)
         """
         generation = await self._get_generation(generation_id)
         self._check_ownership(generation, user, "pause")
@@ -289,9 +290,17 @@ class GenerationLifecycleService:
         if generation.status == GenerationStatus.PAUSED:
             return generation  # idempotent
 
+        if generation.status == GenerationStatus.PROCESSING:
+            generation.pause_requested = True
+            generation.updated_at = datetime.now(timezone.utc)
+            await self.db.commit()
+            await self.db.refresh(generation)
+            logger.info(f"Generation {generation_id} flagged for pause after current attempt")
+            return generation
+
         if generation.status != GenerationStatus.PENDING:
             raise InvalidOperationError(
-                f"Only pending generations can be paused (current: {generation.status.value})"
+                f"Cannot pause generation in status {generation.status.value}"
             )
 
         return await self.update_status(generation_id, GenerationStatus.PAUSED)
@@ -319,6 +328,7 @@ class GenerationLifecycleService:
                 f"Only paused generations can be resumed (current: {generation.status.value})"
             )
 
+        generation.pause_requested = False
         generation = await self.update_status(generation_id, GenerationStatus.PENDING)
 
         # Publish resumed event for WebSocket

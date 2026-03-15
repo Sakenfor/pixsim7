@@ -237,6 +237,9 @@ class GenerationCreationService:
 
         # === PHASE 8: Content Rating Enforcement ===
         # Validate content rating against world/user constraints
+        # Fetch user preferences once (used for content rating + validation settings)
+        user_preferences = await fetch_user_preferences(self.db, user.id) or {}
+
         if params.get("social_context"):
             # Fetch world_meta from database
             player_context = params.get("player_context") or {}
@@ -247,9 +250,6 @@ class GenerationCreationService:
             world_meta = None
             if world_id:
                 world_meta = await fetch_world_meta(self.db, world_id)
-
-            # Fetch user preferences from database
-            user_preferences = await fetch_user_preferences(self.db, user.id)
 
             # Validate content rating
             is_valid, violation_msg, clamped_context = self._validate_content_rating(
@@ -268,23 +268,13 @@ class GenerationCreationService:
                 params = params.copy()
                 params["social_context"] = clamped_context
                 logger.info(f"Content rating clamped: {violation_msg}")
-                # TODO: Emit event for dev tools to track violations
-                # await event_bus.publish(CONTENT_RATING_CLAMPED, {
-                #     "generation_id": ...,  # Will be available after creation
-                #     "violation": violation_msg,
-                #     "original_rating": clamped_context.get("_originalRating"),
-                #     "clamped_rating": clamped_context.get("contentRating"),
-                # })
 
         # Canonicalize params (using existing parameter mappers)
         canonical_params = await self._canonicalize_params(
             params, operation_type, provider_id
         )
 
-        # Fetch user preferences for validation settings
-        # (may already be fetched above for content rating, but fetch_user_preferences is idempotent)
-        user_prefs = await fetch_user_preferences(self.db, user.id) or {}
-        validate_vocabs = user_prefs.get("validateCompositionVocabs", False)
+        validate_vocabs = user_preferences.get("validateCompositionVocabs", False)
 
         # Derive inputs from params
         inputs = self._extract_inputs(params, operation_type, validate_vocabs=validate_vocabs)
