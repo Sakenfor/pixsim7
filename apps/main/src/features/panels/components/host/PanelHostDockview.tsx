@@ -20,7 +20,7 @@ import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { usePanelCatalogBootstrap } from "../../hooks/usePanelCatalogBootstrap";
 
-import { resolveScopedOutOfLayoutPanelIds, resolveScopedPanelIds } from "./panelHostDockScope";
+import { resolveScopeDiscoveredPanelIds, resolveScopedOutOfLayoutPanelIds, resolveScopedPanelIds } from "./panelHostDockScope";
 
 type DockviewPanelPosition = Parameters<DockviewApi["addPanel"]>[0]["position"];
 
@@ -184,16 +184,24 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
     const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
     const [resetKey, setResetKey] = useState(0);
     const [dockviewHost, setDockviewHost] = useState<DockviewHost | null>(null);
+    const scopeOptions = useMemo(() => ({
+      dockId,
+      panels,
+      excludePanels,
+      allowedPanels,
+      allowedCategories,
+      hostSettingScopes,
+    }), [dockId, panels, excludePanels, allowedPanels, allowedCategories, hostSettingScopes]);
+
+    // Panels that belong in the layout (explicit + availableIn)
     const scopedPanelIds = useMemo(() => {
-      return resolveScopedPanelIds(panelSelectors, {
-        dockId,
-        panels,
-        excludePanels,
-        allowedPanels,
-        allowedCategories,
-        hostSettingScopes,
-      });
-    }, [dockId, panels, excludePanels, allowedPanels, allowedCategories, hostSettingScopes]);
+      return resolveScopedPanelIds(panelSelectors, scopeOptions);
+    }, [scopeOptions]);
+
+    // Extra panels discoverable via shared scopes (context menu only, NOT added to layout)
+    const scopeDiscoveredIds = useMemo(() => {
+      return resolveScopeDiscoveredPanelIds(panelSelectors, scopeOptions);
+    }, [scopeOptions]);
     const scopedOutOfLayoutPanelIds = useMemo(() => {
       return resolveScopedOutOfLayoutPanelIds(panelSelectors, {
         dockId,
@@ -335,6 +343,7 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
           defaultLayout={defaultLayout}
           minPanelsForTabs={minPanelsForTabs}
           onReady={handleReady}
+          additionalContextMenuPanels={scopeDiscoveredIds.length > 0 ? scopeDiscoveredIds : undefined}
           enableContextMenu={enableContextMenu}
           capabilities={capabilities}
         />

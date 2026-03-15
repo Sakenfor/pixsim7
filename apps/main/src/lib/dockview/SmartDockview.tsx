@@ -195,6 +195,13 @@ interface SmartDockviewBaseProps<TContext = any> {
    */
   allowedCategories?: string[];
 
+  /**
+   * Additional panel IDs to include in the context menu's "Default Panels"
+   * submenu without adding them to the layout. Used by scope-auto-discovery
+   * (e.g. generation-scoped panels appearing in generationCapable hosts).
+   */
+  additionalContextMenuPanels?: string[];
+
   /** Optional: Component rendered in the right side of each group header */
   rightHeaderActionsComponent?: React.FunctionComponent<any>;
   /** Disable dockview's native floating groups (default: true — app uses custom floating panel system) */
@@ -370,6 +377,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     excludePanels = [],
     allowedPanels,
     allowedCategories,
+    additionalContextMenuPanels,
     rightHeaderActionsComponent,
     disableFloatingGroups = true,
   } = props;
@@ -581,9 +589,14 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const contextMenuActive = enableContextMenu && contextMenu !== null;
 
   // Scoped panel IDs — the panels this dockview instance was configured with
+  // plus any scope-discovered extras (for context menu only, not layout)
   const scopedPanelIds = useMemo(
-    () => resolvedPanelDefs.length > 0 ? resolvedPanelDefs.map(p => p.id) : undefined,
-    [resolvedPanelDefs],
+    () => {
+      const base = resolvedPanelDefs.length > 0 ? resolvedPanelDefs.map(p => p.id) : undefined;
+      if (!base || !additionalContextMenuPanels?.length) return base;
+      return [...base, ...additionalContextMenuPanels];
+    },
+    [resolvedPanelDefs, additionalContextMenuPanels],
   );
 
   // Panel registry for context menu "Add Panel" functionality

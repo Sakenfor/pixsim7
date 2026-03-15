@@ -55,18 +55,15 @@ function applyScopedFilters(
 }
 
 /**
- * Resolve panel definition IDs that should exist in this dock host.
- * Supports explicit panels mode and scoped dock host mode.
- *
- * When hostSettingScopes is provided, panels that share a settingScope
- * with the host are automatically included (e.g. generation-capable
- * panels appear in any generation-capable host).
+ * Resolve panel definition IDs that should exist in this dock host's layout.
+ * Does NOT include scope-auto-discovered panels — those go in the context
+ * menu only (see resolveScopeDiscoveredPanelIds).
  */
 export function resolveScopedPanelIds(
   source: PanelLookupSource,
   options: ScopedOutOfLayoutOptions
 ): string[] {
-  const { dockId, panels, hostSettingScopes } = options;
+  const { dockId, panels } = options;
 
   let basePanelIds: readonly string[];
 
@@ -78,26 +75,36 @@ export function resolveScopedPanelIds(
     basePanelIds = [];
   }
 
-  // Auto-include panels that share a settingScope with the host
-  if (hostSettingScopes?.length && source.getSettingScopes) {
-    const hostScopeSet = new Set(hostSettingScopes);
-    const baseSet = new Set(basePanelIds);
-    const extras: string[] = [];
+  return applyScopedFilters(source, basePanelIds, options);
+}
 
-    for (const panelId of source.getIds()) {
-      if (baseSet.has(panelId)) continue;
-      const panelScopes = source.getSettingScopes(panelId);
-      if (panelScopes?.some((s) => hostScopeSet.has(s))) {
-        extras.push(panelId);
-      }
-    }
+/**
+ * Resolve extra panel IDs that should appear in the context menu
+ * because they share a settingScope with the host.
+ *
+ * These panels are addable via right-click but NOT auto-added to the layout.
+ */
+export function resolveScopeDiscoveredPanelIds(
+  source: PanelLookupSource,
+  options: ScopedOutOfLayoutOptions
+): string[] {
+  const { hostSettingScopes } = options;
+  if (!hostSettingScopes?.length || !source.getSettingScopes) return [];
 
-    if (extras.length > 0) {
-      basePanelIds = [...basePanelIds, ...extras];
+  const basePanelIds = resolveScopedPanelIds(source, options);
+  const baseSet = new Set(basePanelIds);
+  const hostScopeSet = new Set(hostSettingScopes);
+  const extras: string[] = [];
+
+  for (const panelId of source.getIds()) {
+    if (baseSet.has(panelId)) continue;
+    const panelScopes = source.getSettingScopes(panelId);
+    if (panelScopes?.some((s) => hostScopeSet.has(s))) {
+      extras.push(panelId);
     }
   }
 
-  return applyScopedFilters(source, basePanelIds, options);
+  return applyScopedFilters(source, extras, options);
 }
 
 /**
