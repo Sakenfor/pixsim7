@@ -76,6 +76,20 @@ export async function cancelGeneration(id: number): Promise<GenerationResponse> 
 }
 
 /**
+ * Pause a pending generation
+ */
+export async function pauseGeneration(id: number): Promise<GenerationResponse> {
+  return generationsApi.pauseGeneration(id);
+}
+
+/**
+ * Resume a paused generation
+ */
+export async function resumeGeneration(id: number): Promise<GenerationResponse> {
+  return generationsApi.resumeGeneration(id);
+}
+
+/**
  * Retry a failed generation
  *
  * Creates a new generation with the same parameters.

@@ -46,6 +46,8 @@ const GRANULAR_STATUS_OPTIONS: StatusOption[] = [
   { value: 'cooldown', label: 'Cooldown', group: 'active', groupLabel: 'Active' },
   { value: 'yielding', label: 'Yielding', group: 'active', groupLabel: 'Active' },
   { value: 'retrying', label: 'Retrying', group: 'active', groupLabel: 'Active' },
+  // Paused
+  { value: 'paused', label: 'Paused', group: 'paused', groupLabel: 'Paused' },
   // Terminal
   { value: 'completed', label: 'Completed', group: 'terminal', groupLabel: 'Terminal' },
   { value: 'failed', label: 'Failed', group: 'terminal', groupLabel: 'Terminal' },

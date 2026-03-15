@@ -25,7 +25,9 @@ from pixsim7.backend.main.infrastructure.events.bus import (
     JOB_STARTED,
     JOB_COMPLETED,
     JOB_FAILED,
-    JOB_CANCELLED
+    JOB_CANCELLED,
+    JOB_PAUSED,
+    JOB_RESUMED,
 )
 from pixsim7.backend.main.services.generation.telemetry import GenerationTelemetryService
 
@@ -73,8 +75,7 @@ class GenerationLifecycleService:
         # Guard: prevent overwriting a terminal state with a different terminal state.
         # This stops the poller from writing COMPLETED/FAILED over CANCELLED (or vice versa).
         if generation.is_terminal and status != generation.status:
-            TERMINAL = {GenerationStatus.COMPLETED, GenerationStatus.FAILED, GenerationStatus.CANCELLED}
-            if status in TERMINAL:
+            if status in {GenerationStatus.COMPLETED, GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
                 logger.warning(
                     "update_status_skipped_terminal",
                     generation_id=generation_id,
@@ -128,45 +129,27 @@ class GenerationLifecycleService:
         await self.db.commit()
         await self.db.refresh(generation)
 
-        # Emit status change events (include user_id for WebSocket filtering)
-        if status == GenerationStatus.PROCESSING:
-            logger.info(f"[Lifecycle] Publishing JOB_STARTED event for generation {generation_id}")
-            await event_bus.publish(JOB_STARTED, {
-                "job_id": generation_id,
-                "generation_id": generation_id,
-                "user_id": generation.user_id,
-                "status": status.value
-            })
-            logger.info(f"[Lifecycle] JOB_STARTED event dispatched for generation {generation_id}")
-        elif status == GenerationStatus.COMPLETED:
-            logger.info(f"[Lifecycle] Publishing JOB_COMPLETED event for generation {generation_id}")
-            await event_bus.publish(JOB_COMPLETED, {
-                "job_id": generation_id,
-                "generation_id": generation_id,
-                "user_id": generation.user_id,
-                "status": status.value
-            })
-            logger.info(f"[Lifecycle] JOB_COMPLETED event published for generation {generation_id}")
-        elif status == GenerationStatus.FAILED:
-            logger.info(f"[Lifecycle] Publishing JOB_FAILED event for generation {generation_id}")
-            await event_bus.publish(JOB_FAILED, {
+        # Emit status change event (include user_id for WebSocket filtering)
+        _STATUS_EVENT_MAP = {
+            GenerationStatus.PROCESSING: JOB_STARTED,
+            GenerationStatus.COMPLETED: JOB_COMPLETED,
+            GenerationStatus.FAILED: JOB_FAILED,
+            GenerationStatus.CANCELLED: JOB_CANCELLED,
+            GenerationStatus.PAUSED: JOB_PAUSED,
+        }
+        event_type = _STATUS_EVENT_MAP.get(status)
+        if event_type:
+            payload = {
                 "job_id": generation_id,
                 "generation_id": generation_id,
                 "user_id": generation.user_id,
                 "status": status.value,
-                "error": error_message,
-                "error_code": error_code,
-            })
-            logger.info(f"[Lifecycle] JOB_FAILED event dispatched for generation {generation_id}")
-        elif status == GenerationStatus.CANCELLED:
-            logger.info(f"[Lifecycle] Publishing JOB_CANCELLED event for generation {generation_id}")
-            await event_bus.publish(JOB_CANCELLED, {
-                "job_id": generation_id,
-                "generation_id": generation_id,
-                "user_id": generation.user_id,
-                "status": status.value
-            })
-            logger.info(f"[Lifecycle] JOB_CANCELLED event dispatched for generation {generation_id}")
+            }
+            if status == GenerationStatus.FAILED:
+                payload["error"] = error_message
+                payload["error_code"] = error_code
+            logger.info(f"[Lifecycle] Publishing {event_type} for generation {generation_id}")
+            await event_bus.publish(event_type, payload)
 
         # === PHASE 7: Record telemetry for terminal states ===
         if generation.is_terminal:
@@ -238,10 +221,7 @@ class GenerationLifecycleService:
             InvalidOperationError: Cannot cancel (wrong user or completed)
         """
         generation = await self._get_generation(generation_id)
-
-        # Check authorization
-        if generation.user_id != user.id and not user.is_admin():
-            raise InvalidOperationError("Cannot cancel other users' generations")
+        self._check_ownership(generation, user, "cancel")
 
         # Check if can be cancelled
         if generation.is_terminal:
@@ -282,6 +262,87 @@ class GenerationLifecycleService:
 
         return await self.update_status(generation_id, GenerationStatus.CANCELLED)
 
+    async def pause_generation(self, generation_id: int, user: User) -> Generation:
+        """
+        Pause a pending generation (user request).
+
+        Only PENDING generations can be paused — PROCESSING ones are already
+        running on the provider and cannot be held.
+
+        Args:
+            generation_id: Generation ID
+            user: User requesting pause
+
+        Returns:
+            Paused generation
+
+        Raises:
+            ResourceNotFoundError: Generation not found
+            InvalidOperationError: Cannot pause (wrong user, already terminal, or processing)
+        """
+        generation = await self._get_generation(generation_id)
+        self._check_ownership(generation, user, "pause")
+
+        if generation.is_terminal:
+            raise InvalidOperationError(f"Generation already {generation.status.value}")
+
+        if generation.status == GenerationStatus.PAUSED:
+            return generation  # idempotent
+
+        if generation.status != GenerationStatus.PENDING:
+            raise InvalidOperationError(
+                f"Only pending generations can be paused (current: {generation.status.value})"
+            )
+
+        return await self.update_status(generation_id, GenerationStatus.PAUSED)
+
+    async def resume_generation(self, generation_id: int, user: User) -> Generation:
+        """
+        Resume a paused generation — moves it back to PENDING and re-enqueues.
+
+        Args:
+            generation_id: Generation ID
+            user: User requesting resume
+
+        Returns:
+            Resumed generation (status=pending)
+
+        Raises:
+            ResourceNotFoundError: Generation not found
+            InvalidOperationError: Not paused or wrong user
+        """
+        generation = await self._get_generation(generation_id)
+        self._check_ownership(generation, user, "resume")
+
+        if generation.status != GenerationStatus.PAUSED:
+            raise InvalidOperationError(
+                f"Only paused generations can be resumed (current: {generation.status.value})"
+            )
+
+        generation = await self.update_status(generation_id, GenerationStatus.PENDING)
+
+        # Publish resumed event for WebSocket
+        await event_bus.publish(JOB_RESUMED, {
+            "job_id": generation_id,
+            "generation_id": generation_id,
+            "user_id": generation.user_id,
+            "status": generation.status.value,
+        })
+
+        # Re-enqueue for processing
+        try:
+            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+            from pixsim7.backend.main.infrastructure.queue import enqueue_generation_fresh_job
+
+            arq_pool = await get_arq_pool()
+            await enqueue_generation_fresh_job(arq_pool, generation_id)
+            logger.info(f"Generation {generation_id} resumed and re-enqueued")
+        except Exception as e:
+            logger.error(f"Failed to re-enqueue resumed generation {generation_id}: {e}")
+            # Status is already PENDING — worker reconciliation will pick it up
+
+        return generation
+
     async def delete_generation(self, generation_id: int, user: User) -> None:
         """
         Delete generation permanently
@@ -295,10 +356,7 @@ class GenerationLifecycleService:
             InvalidOperationError: Cannot delete (wrong user or still active)
         """
         generation = await self._get_generation(generation_id)
-
-        # Check authorization
-        if generation.user_id != user.id and not user.is_admin():
-            raise InvalidOperationError("Cannot delete other users' generations")
+        self._check_ownership(generation, user, "delete")
 
         # Only allow deleting terminal generations
         if not generation.is_terminal:
@@ -318,6 +376,11 @@ class GenerationLifecycleService:
         logger.info(f"Generation {generation_id} deleted by user {user.id}")
 
     # ===== PRIVATE HELPERS =====
+
+    def _check_ownership(self, generation: Generation, user: User, action: str) -> None:
+        """Raise if user doesn't own the generation."""
+        if generation.user_id != user.id and not user.is_admin():
+            raise InvalidOperationError(f"Cannot {action} other users' generations")
 
     async def _get_generation(self, generation_id: int) -> Generation:
         """Get generation by ID or raise ResourceNotFoundError"""

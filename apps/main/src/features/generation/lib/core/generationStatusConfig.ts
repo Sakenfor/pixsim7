@@ -43,6 +43,12 @@ export const GENERATION_STATUS_CONFIG: Record<GenerationStatus, GenerationStatus
     color: 'blue',
     description: 'Generation in progress',
   },
+  paused: {
+    label: 'Paused',
+    icon: 'pause',
+    color: 'amber',
+    description: 'Generation paused',
+  },
   completed: {
     label: 'Completed',
     icon: 'check-circle',

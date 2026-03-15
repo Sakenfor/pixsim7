@@ -132,6 +132,14 @@ class GenerationService:
         """Delegate to lifecycle service"""
         return await self._lifecycle.cancel_generation(generation_id, user)
 
+    async def pause_generation(self, generation_id: int, user: User) -> Generation:
+        """Delegate to lifecycle service"""
+        return await self._lifecycle.pause_generation(generation_id, user)
+
+    async def resume_generation(self, generation_id: int, user: User) -> Generation:
+        """Delegate to lifecycle service"""
+        return await self._lifecycle.resume_generation(generation_id, user)
+
     async def delete_generation(self, generation_id: int, user: User) -> None:
         """Delegate to lifecycle service"""
         return await self._lifecycle.delete_generation(generation_id, user)

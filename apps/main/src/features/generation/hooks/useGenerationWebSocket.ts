@@ -395,6 +395,13 @@ class WebSocketManager {
             }).catch(err => {
               console.error('[WebSocket] Failed to fetch generation:', generationId, err);
             });
+          } else if (message.type === 'job:paused' || message.type === 'job:resumed') {
+            debugFlags.log('websocket', `Job ${message.type === 'job:paused' ? 'paused' : 'resumed'}`);
+            pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
+              addOrUpdateGeneration(fromGenerationResponse(data));
+            }).catch(err => {
+              console.error('[WebSocket] Failed to fetch generation:', generationId, err);
+            });
           }
         } else if (message.type === 'asset:created') {
           // Handle asset creation events (from any source: generation, upload, paused frame)

@@ -288,6 +288,8 @@ export function getStatusLabel(status: GenerationStatus): string {
       return 'Queued';
     case 'processing':
       return 'Processing';
+    case 'paused':
+      return 'Paused';
     case 'completed':
       return 'Completed';
     case 'failed':
@@ -308,6 +310,7 @@ export type GranularStatus =
   | 'starting' | 'submitting' | 'polling'           // from processing
   | 'yielding' | 'cooldown' | 'retrying'            // from pending/queued
   | 'accepted' | 'submitted' | 'queued'             // from pending/queued
+  | 'paused'                                         // paused (hold)
   | 'completed' | 'failed' | 'cancelled';           // terminal
 
 /**
@@ -338,7 +341,7 @@ export function resolveGranularStatus(g: Pick<
     return 'queued';
   }
 
-  // Terminal statuses pass through
+  // Paused and terminal statuses pass through
   return g.status as GranularStatus;
 }
 
@@ -352,6 +355,7 @@ const GRANULAR_STATUS_LABELS: Record<GranularStatus, string> = {
   accepted: 'Accepted',
   submitted: 'Submitted',
   queued: 'Queued',
+  paused: 'Paused',
   completed: 'Completed',
   failed: 'Failed',
   cancelled: 'Cancelled',

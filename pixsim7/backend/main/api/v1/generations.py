@@ -892,40 +892,57 @@ async def get_generation_batch(
         raise HTTPException(status_code=500, detail=f"Failed to get generation batch: {str(e)}")
 
 
-# ===== CANCEL GENERATION =====
+# ===== GENERATION LIFECYCLE ACTIONS (cancel / pause / resume) =====
 
-@router.post("/generations/{generation_id}/cancel", response_model=GenerationResponse)
-async def cancel_generation(
+async def _generation_lifecycle_action(
+    action: str,
     generation_id: int,
     req: Request,
-    user: CurrentUser,
-    generation_gateway: GenerationGatewaySvc,
-):
-    """
-    Cancel a pending or processing generation
-
-    Attempts to cancel the generation both locally and on the provider.
-    Only the generation owner or admin can cancel.
-    """
+    user,
+    generation_gateway,
+) -> GenerationResponse:
+    """Shared handler for cancel/pause/resume — proxy + service call + error mapping."""
     try:
         proxy = await generation_gateway.proxy(
-            req,
-            "POST",
-            f"/api/v1/generations/{generation_id}/cancel",
+            req, "POST", f"/api/v1/generations/{generation_id}/{action}",
         )
         if proxy.called:
             return GenerationResponse.model_validate(proxy.data)
 
-        generation_service = generation_gateway.local
-        generation = await generation_service.cancel_generation(generation_id, user)
+        service_method = getattr(generation_gateway.local, f"{action}_generation")
+        generation = await service_method(generation_id, user)
         return GenerationResponse.model_validate(generation)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidOperationError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
-        logger.error(f"Failed to cancel generation {generation_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to cancel generation: {str(e)}")
+        logger.error(f"Failed to {action} generation {generation_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to {action} generation: {str(e)}")
+
+
+@router.post("/generations/{generation_id}/cancel", response_model=GenerationResponse)
+async def cancel_generation(
+    generation_id: int, req: Request, user: CurrentUser, generation_gateway: GenerationGatewaySvc,
+):
+    """Cancel a pending or processing generation."""
+    return await _generation_lifecycle_action("cancel", generation_id, req, user, generation_gateway)
+
+
+@router.post("/generations/{generation_id}/pause", response_model=GenerationResponse)
+async def pause_generation(
+    generation_id: int, req: Request, user: CurrentUser, generation_gateway: GenerationGatewaySvc,
+):
+    """Pause a pending generation."""
+    return await _generation_lifecycle_action("pause", generation_id, req, user, generation_gateway)
+
+
+@router.post("/generations/{generation_id}/resume", response_model=GenerationResponse)
+async def resume_generation(
+    generation_id: int, req: Request, user: CurrentUser, generation_gateway: GenerationGatewaySvc,
+):
+    """Resume a paused generation."""
+    return await _generation_lifecycle_action("resume", generation_id, req, user, generation_gateway)
 
 
 # ===== RETRY GENERATION =====

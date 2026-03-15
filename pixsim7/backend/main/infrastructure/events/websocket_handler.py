@@ -98,6 +98,8 @@ def register_websocket_handlers():
     event_bus.subscribe("job:completed", broadcast_generation_event)
     event_bus.subscribe("job:failed", broadcast_generation_event)
     event_bus.subscribe("job:cancelled", broadcast_generation_event)
+    event_bus.subscribe("job:paused", broadcast_generation_event)
+    event_bus.subscribe("job:resumed", broadcast_generation_event)
 
     # Asset events
     event_bus.subscribe("asset:created", broadcast_asset_event)

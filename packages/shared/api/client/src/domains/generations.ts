@@ -88,6 +88,14 @@ export function createGenerationsApi(client: PixSimApiClient) {
       return client.post<GenerationResponse>(`/generations/${id}/cancel?_=cancel`);
     },
 
+    async pauseGeneration(id: number): Promise<GenerationResponse> {
+      return client.post<GenerationResponse>(`/generations/${id}/pause?_=pause`);
+    },
+
+    async resumeGeneration(id: number): Promise<GenerationResponse> {
+      return client.post<GenerationResponse>(`/generations/${id}/resume?_=resume`);
+    },
+
     async retryGeneration(id: number): Promise<GenerationResponse> {
       return client.post<GenerationResponse>(`/generations/${id}/retry?_=retry`);
     },

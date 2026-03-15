@@ -71,6 +71,7 @@ class GenerationStatus(str, Enum):
     """Generation execution status"""
     PENDING = "pending"
     PROCESSING = "processing"
+    PAUSED = "paused"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"

@@ -293,6 +293,8 @@ JOB_STARTED = "job:started"
 JOB_COMPLETED = "job:completed"
 JOB_FAILED = "job:failed"
 JOB_CANCELLED = "job:cancelled"
+JOB_PAUSED = "job:paused"
+JOB_RESUMED = "job:resumed"
 
 # Asset events
 ASSET_CREATED = "asset:created"

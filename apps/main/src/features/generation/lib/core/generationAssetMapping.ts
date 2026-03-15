@@ -15,7 +15,7 @@ import { getStatusConfig, getStatusTextColor } from './generationStatusConfig';
 
 export interface GenerationStatusInfo {
   generationId: number;
-  status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending' | 'queued' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
   providerId: string;
   operationType: string;
   errorMessage?: string | null;

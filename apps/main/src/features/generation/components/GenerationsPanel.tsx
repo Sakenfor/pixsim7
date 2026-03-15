@@ -7,7 +7,7 @@
 import { DisclosureSection, Dropdown, DropdownItem, DropdownDivider, FoldableJson, ToolbarToggleButton, ConfirmModal, PromptModal, useToast } from '@pixsim7/shared.ui';
 import { useMemo, useState, useCallback, useRef } from 'react';
 
-import { patchGenerationPrompt, retryGeneration, cancelGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
+import { patchGenerationPrompt, retryGeneration, cancelGeneration, pauseGeneration, resumeGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
 import { Icons, Icon } from '@lib/icons';
 
 import { useAsset, getAssetDisplayUrls } from '@features/assets';
@@ -256,6 +256,26 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
     }
   }, [toast]);
 
+  const handlePause = useCallback(async (id: number) => {
+    try {
+      const updated = await pauseGeneration(id);
+      useGenerationsStore.getState().addOrUpdate(fromGenerationResponse(updated));
+    } catch (error) {
+      console.error('Failed to pause generation:', error);
+      toast.error('Failed to pause generation');
+    }
+  }, [toast]);
+
+  const handleResume = useCallback(async (id: number) => {
+    try {
+      const updated = await resumeGeneration(id);
+      useGenerationsStore.getState().addOrUpdate(fromGenerationResponse(updated));
+    } catch (error) {
+      console.error('Failed to resume generation:', error);
+      toast.error('Failed to resume generation');
+    }
+  }, [toast]);
+
   const handleDelete = useCallback(async (id: number) => {
     if (!id) {
       console.error('Cannot delete generation: invalid id', id);
@@ -430,6 +450,8 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
                 viewMode={viewMode}
                 onRetry={handleRetry}
                 onCancel={handleCancel}
+                onPause={handlePause}
+                onResume={handleResume}
                 onDelete={handleDelete}
                 onOpenAsset={handleOpenAsset}
                 onLoadToQuickGen={handleLoadToQuickGen}
@@ -450,6 +472,8 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
                 generation={generation}
                 onRetry={handleRetry}
                 onCancel={handleCancel}
+                onPause={handlePause}
+                onResume={handleResume}
                 onDelete={handleDelete}
                 onOpenAsset={handleOpenAsset}
                 onLoadToQuickGen={handleLoadToQuickGen}
@@ -504,6 +528,8 @@ interface GenerationGroupSectionProps {
   depth?: number;
   onRetry: (id: number) => void;
   onCancel: (id: number) => void;
+  onPause: (id: number) => void;
+  onResume: (id: number) => void;
   onDelete: (id: number) => void;
   onOpenAsset: (assetId: number) => void;
   onLoadToQuickGen: (generation: GenerationModel) => void;
@@ -687,6 +713,8 @@ function GenerationGroupSection({
   depth = 0,
   onRetry,
   onCancel,
+  onPause,
+  onResume,
   onDelete,
   onOpenAsset,
   onLoadToQuickGen,
@@ -742,6 +770,11 @@ function GenerationGroupSection({
               {statusBadges.completed} done
             </span>
           )}
+          {(statusBadges.paused ?? 0) > 0 && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+              {statusBadges.paused} paused
+            </span>
+          )}
           {(statusBadges.failed ?? 0) > 0 && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">
               {statusBadges.failed} failed
@@ -752,6 +785,9 @@ function GenerationGroupSection({
     </span>
   );
 
+  const pausableIds = useMemo(() => group.items.filter(g => g.status === 'pending').map(g => g.id), [group.items]);
+  const pausedIds = useMemo(() => group.items.filter(g => g.status === 'paused').map(g => g.id), [group.items]);
+
   const batchCancelAction = activeIds.length >= 2 ? (
     <button
       onClick={(e) => {
@@ -759,10 +795,36 @@ function GenerationGroupSection({
         onBatchCancel(activeIds);
       }}
       disabled={isBatchCancelling}
-      className="px-2 py-0.5 text-[10px] font-medium rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
+      className="p-1 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
       title={`Cancel all ${activeIds.length} active generations`}
     >
-      {isBatchCancelling ? 'Cancelling...' : `Cancel ${activeIds.length}`}
+      <Icon name="x" size={12} />
+    </button>
+  ) : null;
+
+  const batchPauseAction = pausableIds.length >= 2 ? (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        for (const id of pausableIds) onPause(id);
+      }}
+      className="p-1 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors"
+      title={`Pause ${pausableIds.length} pending generations`}
+    >
+      <Icon name="pause" size={12} />
+    </button>
+  ) : null;
+
+  const batchResumeAction = pausedIds.length >= 1 ? (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        for (const id of pausedIds) onResume(id);
+      }}
+      className="p-1 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+      title={`Resume ${pausedIds.length} paused generation(s)`}
+    >
+      <Icon name="play" size={12} />
     </button>
   ) : null;
 
@@ -801,6 +863,8 @@ function GenerationGroupSection({
 
   const groupActions = (
     <span className="flex items-center gap-1">
+      {batchPauseAction}
+      {batchResumeAction}
       {batchCancelAction}
       <span className="relative" onMouseLeave={() => setMenuOpen(false)}>
         <button
@@ -889,6 +953,8 @@ function GenerationGroupSection({
               depth={depth + 1}
               onRetry={onRetry}
               onCancel={onCancel}
+              onPause={onPause}
+              onResume={onResume}
               onDelete={onDelete}
               onOpenAsset={onOpenAsset}
               onLoadToQuickGen={onLoadToQuickGen}
@@ -909,6 +975,8 @@ function GenerationGroupSection({
               generation={generation}
               onRetry={onRetry}
               onCancel={onCancel}
+              onPause={onPause}
+              onResume={onResume}
               onDelete={onDelete}
               onOpenAsset={onOpenAsset}
               onLoadToQuickGen={onLoadToQuickGen}
@@ -929,6 +997,8 @@ interface GenerationItemProps {
   generation: GenerationModel;
   onRetry: (id: number) => void;
   onCancel: (id: number) => void;
+  onPause: (id: number) => void;
+  onResume: (id: number) => void;
   onDelete: (id: number) => void;
   onOpenAsset: (assetId: number) => void;
   onLoadToQuickGen: (generation: GenerationModel) => void;
@@ -937,19 +1007,24 @@ interface GenerationItemProps {
 
 type ParamTab = 'raw' | 'canonical' | 'submitted';
 
-function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, onLoadToQuickGen, onStatusClick }: GenerationItemProps) {
+function GenerationItem({ generation, onRetry, onCancel, onPause, onResume, onDelete, onOpenAsset, onLoadToQuickGen, onStatusClick }: GenerationItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isPausing, setIsPausing] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [paramTab, setParamTab] = useState<ParamTab>('canonical');
   const statusDisplay = getGenerationStatusDisplay(generation.status);
   const isActive = isGenerationActive(generation.status);
   const granularStatus = resolveGranularStatus(generation);
   const isTerminal = generation.status === 'completed' || generation.status === 'failed' || generation.status === 'cancelled';
+  const isPaused = generation.status === 'paused';
   const canRetry = generation.status === 'failed' || generation.status === 'cancelled';
   const canCancel = isActive;
+  const canPause = generation.status === 'pending';
+  const canResume = isPaused;
   const canDelete = isTerminal;
   const activityBadge = useMemo(() => {
     const hasSubmitEvidence =
@@ -1070,6 +1145,26 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
       setIsCancelling(false);
     }
   }, [generation.id, onCancel]);
+
+  // Pause with loading state
+  const handlePauseClick = useCallback(async () => {
+    setIsPausing(true);
+    try {
+      await onPause(generation.id);
+    } finally {
+      setIsPausing(false);
+    }
+  }, [generation.id, onPause]);
+
+  // Resume with loading state
+  const handleResumeClick = useCallback(async () => {
+    setIsResuming(true);
+    try {
+      await onResume(generation.id);
+    } finally {
+      setIsResuming(false);
+    }
+  }, [generation.id, onResume]);
 
   // Delete with loading state
   const handleDeleteClick = useCallback(async () => {
@@ -1257,6 +1352,34 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
                 />
               </button>
             </>
+          )}
+          {canPause && (
+            <button
+              onClick={handlePauseClick}
+              disabled={isPausing}
+              className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
+              title="Pause generation"
+            >
+              <Icon
+                name="pause"
+                size={14}
+                className={`text-amber-600 dark:text-amber-400 ${isPausing ? 'opacity-50' : ''}`}
+              />
+            </button>
+          )}
+          {canResume && (
+            <button
+              onClick={handleResumeClick}
+              disabled={isResuming}
+              className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
+              title="Resume generation"
+            >
+              <Icon
+                name="play"
+                size={14}
+                className={`text-green-600 dark:text-green-400 ${isResuming ? 'opacity-50' : ''}`}
+              />
+            </button>
           )}
           {canCancel && (
             <button
