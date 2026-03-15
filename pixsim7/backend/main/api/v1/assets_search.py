@@ -25,7 +25,7 @@ from pixsim7.backend.main.shared.schemas.asset_schemas import (
 )
 from pixsim7.backend.main.services.asset.filter_registry import asset_filter_registry
 from pixsim7.backend.main.shared.upload_context_schema import UPLOAD_CONTEXT_SPEC
-from pixsim7.backend.main.api.v1.assets_helpers import build_asset_response_with_tags
+from pixsim7.backend.main.api.v1.assets_helpers import build_asset_response_with_tags, build_asset_responses_with_tags
 from pixsim_logging import get_logger
 
 router = APIRouter(tags=["assets-search"])
@@ -140,11 +140,8 @@ async def search_assets(
                 # Opaque format: created_at|id
                 next_cursor = f"{last.created_at.isoformat()}|{last.id}"
 
-        # Build responses with tags
-        asset_responses: list[AssetResponse] = []
-        for a in assets:
-            ar = await build_asset_response_with_tags(a, db)
-            asset_responses.append(ar)
+        # Build responses with tags (batch-loaded in single query)
+        asset_responses = await build_asset_responses_with_tags(assets, db)
 
         return AssetListResponse(
             assets=asset_responses,
@@ -249,11 +246,15 @@ async def list_asset_groups(
             elif kind == "sibling":
                 meta_map[key] = AssetGroupSiblingMeta.model_validate(payload)
 
+        # Batch-load tags for all preview assets across all groups
+        all_preview_assets = [a for g in groups for a in g.preview_assets]
+        all_preview_responses = await build_asset_responses_with_tags(all_preview_assets, db)
+        # Build a lookup by asset id
+        preview_response_map: dict[int, AssetResponse] = {ar.id: ar for ar in all_preview_responses}
+
         response_groups: list[AssetGroupSummary] = []
         for group in groups:
-            previews: list[AssetResponse] = []
-            for asset in group.preview_assets:
-                previews.append(await build_asset_response_with_tags(asset, db))
+            previews = [preview_response_map[a.id] for a in group.preview_assets if a.id in preview_response_map]
             response_groups.append(
                 AssetGroupSummary(
                     key=group.key,

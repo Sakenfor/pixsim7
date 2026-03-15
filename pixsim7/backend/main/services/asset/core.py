@@ -18,14 +18,15 @@ from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREA
 from pixsim7.backend.main.services.user.user_service import UserService
 
 from pixsim7.backend.main.services.asset._creation import AssetCreationMixin
-from pixsim7.backend.main.services.asset._search import AssetSearchMixin, AssetGroupResult
+from pixsim7.backend.main.services.asset._search import AssetGroupResult
+from pixsim7.backend.main.services.asset._search_groups import AssetGroupsMixin
 from pixsim7.backend.main.services.asset._deletion import AssetDeletionMixin
 
 # Re-export AssetGroupResult so existing imports from core.py keep working
 __all__ = ["AssetCoreService", "AssetGroupResult"]
 
 
-class AssetCoreService(AssetCreationMixin, AssetSearchMixin, AssetDeletionMixin):
+class AssetCoreService(AssetCreationMixin, AssetGroupsMixin, AssetDeletionMixin):
     """
     Core asset management operations
 

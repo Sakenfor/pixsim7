@@ -73,15 +73,15 @@ export function getAssetDownloadUrl(asset: AssetResponse): string {
 export function createAssetsApi(client: PixSimApiClient) {
   return {
     async searchAssets(request?: AssetSearchRequest): Promise<AssetListResponse> {
-      return client.post<AssetListResponse>('/assets/search', request || {});
+      return client.post<AssetListResponse>('/assets/search', request || {}, { timeout: 120_000 });
     },
 
     async listAssets(query?: AssetSearchRequest): Promise<AssetListResponse> {
-      return client.post<AssetListResponse>('/assets/search', query || {});
+      return client.post<AssetListResponse>('/assets/search', query || {}, { timeout: 120_000 });
     },
 
     async listAssetGroups(request: AssetGroupRequest): Promise<AssetGroupListResponse> {
-      return client.post<AssetGroupListResponse>('/assets/groups', request);
+      return client.post<AssetGroupListResponse>('/assets/groups', request, { timeout: 120_000 });
     },
 
     async getAsset(assetId: number): Promise<AssetResponse> {

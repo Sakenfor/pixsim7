@@ -413,6 +413,29 @@ class TagService:
         tags = result.scalars().all()
         return list(tags)
 
+    async def get_tags_for_assets(self, asset_ids: List[int]) -> dict[int, List[Tag]]:
+        """
+        Batch-load tags for multiple assets in a single query.
+
+        Returns:
+            Dict mapping asset_id -> list of tags (sorted by namespace, name)
+        """
+        if not asset_ids:
+            return {}
+
+        stmt = (
+            select(AssetTag.asset_id, Tag)
+            .join(Tag, AssetTag.tag_id == Tag.id)
+            .where(AssetTag.asset_id.in_(asset_ids))
+            .order_by(AssetTag.asset_id, Tag.namespace, Tag.name)
+        )
+
+        result = await self.db.execute(stmt)
+        tags_map: dict[int, List[Tag]] = {aid: [] for aid in asset_ids}
+        for asset_id, tag in result.all():
+            tags_map[asset_id].append(tag)
+        return tags_map
+
     async def replace_asset_tags(
         self,
         asset_id: int,
