@@ -2,12 +2,12 @@
  * PromptAuthoringEditor
  *
  * Center sub-panel: PromptComposer + version action buttons.
- * Includes a target selector dropdown for generation widgets and
- * separate Send / Send & Generate buttons.
+ * Compact generation controls: target selector, settings/assets shortcuts, Go button.
  */
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
+import { getDockviewApi, ensurePanels, findDockviewPanel } from '@lib/dockview';
 import { Icon } from '@lib/icons';
 
 import {
@@ -42,28 +42,57 @@ export function PromptAuthoringEditor() {
     refreshVersions,
   } = usePromptAuthoring();
 
+  const AUTHORING_DOCK_ID = 'dockview:prompt-authoring';
+
+  const toggleAuthoringPanel = useCallback((panelId: string) => {
+    const api = getDockviewApi(AUTHORING_DOCK_ID);
+    if (!api) return;
+    const existing = findDockviewPanel(api, panelId);
+    if (existing) {
+      existing.api.setActive();
+    } else {
+      ensurePanels(api, [panelId]);
+    }
+  }, []);
+
   const widgets = useCapabilityAll<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(() => {
     try { return localStorage.getItem('prompt-authoring:widgetId'); } catch { return null; }
   });
+  const [sendMenuOpen, setSendMenuOpen] = useState(false);
 
   // Resolve selected widget (fall back to first available)
   const selectedWidget = widgets.find((w) => w.provider.id === selectedWidgetId)
     ?? (widgets.length > 0 ? widgets[0] : null);
 
-  const sendToSelected = (andGenerate: boolean, openWidget = true) => {
+  const isLocalWidget = selectedWidget?.provider.id === 'generation-widget:prompt-authoring';
+
+  const handleGenerate = useCallback(() => {
+    const widget = selectedWidget?.value;
+    if (!widget?.generate || !editorText.trim()) return;
+    void widget.generate({ promptOverride: editorText });
+  }, [selectedWidget, editorText]);
+
+  const handleSendOnly = useCallback(() => {
     const widget = selectedWidget?.value;
     if (!widget?.scopeId || !editorText.trim()) return;
-    if (andGenerate && widget.generate) {
-      // Use promptOverride to inject prompt without touching widget UI state
+    const sessionStore = getGenerationSessionStore(widget.scopeId);
+    sessionStore.getState().setPrompt(editorText);
+    setSendMenuOpen(false);
+  }, [selectedWidget, editorText]);
+
+  const handleSendAndOpen = useCallback(() => {
+    const widget = selectedWidget?.value;
+    if (!widget?.scopeId || !editorText.trim()) return;
+    if (widget.generate) {
       void widget.generate({ promptOverride: editorText });
     } else {
-      // "Send" only — push to session store so user can review in widget
       const sessionStore = getGenerationSessionStore(widget.scopeId);
       sessionStore.getState().setPrompt(editorText);
     }
-    if (openWidget) widget.setOpen(true);
-  };
+    widget.setOpen(true);
+    setSendMenuOpen(false);
+  }, [selectedWidget, editorText]);
 
   const hasText = !!editorText.trim();
 
@@ -131,17 +160,19 @@ export function PromptAuthoringEditor() {
           )}
         </div>
 
-        {/* QuickGen: target selector + compact icon actions */}
+        {/* Generation controls: target selector + settings/assets shortcuts + Go */}
         {widgets.length > 0 && (
-          <div className="flex items-center gap-1 pt-1 border-t border-neutral-100 dark:border-neutral-800">
+          <div className="flex items-center gap-1.5 pt-1.5 border-t border-neutral-100 dark:border-neutral-800">
+            {/* Widget selector */}
             <select
               value={selectedWidget?.provider.id ?? ''}
               onChange={(e) => {
                 const id = e.target.value || null;
                 setSelectedWidgetId(id);
+                setSendMenuOpen(false);
                 try { if (id) localStorage.setItem('prompt-authoring:widgetId', id); } catch { /* ignore */ }
               }}
-              className="rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-1.5 py-1 text-[11px]"
+              className="min-w-0 flex-shrink rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-1.5 py-1 text-[11px]"
             >
               {widgets.map(({ provider }) => (
                 <option key={provider.id} value={provider.id}>
@@ -149,37 +180,75 @@ export function PromptAuthoringEditor() {
                 </option>
               ))}
             </select>
+
+            {/* Settings shortcut — toggle in authoring dockview */}
             <button
               type="button"
-              onClick={() => sendToSelected(false)}
-              disabled={!hasText || !selectedWidget}
-              title="Send prompt to selected widget"
-              className="p-1 rounded border border-neutral-200 dark:border-neutral-700 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-40"
+              onClick={() => toggleAuthoringPanel('quickgen-settings')}
+              title="Toggle generation settings"
+              className="p-1 rounded text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200"
             >
-              <Icon name="arrowRight" size={12} />
+              <Icon name="settings" size={12} />
             </button>
-            {selectedWidget?.value.generate && (
-              <>
+
+            {/* Asset input shortcut — toggle in authoring dockview */}
+            <button
+              type="button"
+              onClick={() => toggleAuthoringPanel('quickgen-asset')}
+              title="Toggle asset input"
+              className="p-1 rounded text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200"
+            >
+              <Icon name="image" size={12} />
+            </button>
+
+            <div className="flex-1" />
+
+            {/* Send menu (for external widgets) */}
+            {!isLocalWidget && (
+              <div className="relative">
                 <button
                   type="button"
-                  onClick={() => sendToSelected(true)}
+                  onClick={() => setSendMenuOpen(!sendMenuOpen)}
                   disabled={!hasText || !selectedWidget}
-                  title={`Send prompt & open ${selectedWidget.provider.label}`}
-                  className="p-1 rounded border border-neutral-200 dark:border-neutral-700 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-40"
+                  title="Send options"
+                  className="p-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-40"
                 >
-                  <Icon name="zap" size={12} />
+                  <Icon name="arrowRight" size={12} />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => sendToSelected(true, false)}
-                  disabled={!hasText || !selectedWidget}
-                  title={`Generate silently via ${selectedWidget.provider.label}`}
-                  className="p-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-40"
-                >
-                  <Icon name="play" size={12} />
-                </button>
-              </>
+                {sendMenuOpen && (
+                  <div className="absolute bottom-full right-0 mb-1 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded shadow-lg py-1 z-50 min-w-[140px]">
+                    <button
+                      type="button"
+                      onClick={handleSendOnly}
+                      disabled={!hasText}
+                      className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-40"
+                    >
+                      Send to prompt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSendAndOpen}
+                      disabled={!hasText}
+                      className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-40"
+                    >
+                      Send & generate
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
+
+            {/* Go button */}
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={!hasText || !selectedWidget?.value.generate}
+              title={`Generate via ${selectedWidget?.provider.label ?? 'selected generator'}`}
+              className="flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium bg-green-600 hover:bg-green-700 text-white disabled:opacity-40 disabled:hover:bg-green-600"
+            >
+              <Icon name="play" size={10} color="#fff" />
+              Go
+            </button>
           </div>
         )}
 
