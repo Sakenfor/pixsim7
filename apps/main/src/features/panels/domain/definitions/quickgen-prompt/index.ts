@@ -17,6 +17,7 @@ export default definePanel({
     order: 20,
   },
   settingScopes: ['generation'],
+  addPanelEquivalentIds: ['prompt-authoring-editor'],
   componentSettings: [QUICKGEN_PROMPT_COMPONENT_ID],
   supportsCompactMode: false,
   supportsMultipleInstances: false,

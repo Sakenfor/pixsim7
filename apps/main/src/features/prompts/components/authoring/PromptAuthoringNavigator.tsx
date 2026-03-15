@@ -35,6 +35,10 @@ export function PromptAuthoringNavigator() {
     versionsError,
     selectedVersionId,
     setSelectedVersionId,
+    setEditorText,
+    setInstructionInput,
+    setCommitMessageInput,
+    setVersionTagsInput,
   } = usePromptAuthoring();
 
   return (
@@ -160,7 +164,13 @@ export function PromptAuthoringNavigator() {
                 <button
                   key={version.id}
                   type="button"
-                  onClick={() => setSelectedVersionId(version.id)}
+                  onClick={() => {
+                    setSelectedVersionId(version.id);
+                    setEditorText(version.prompt_text ?? '');
+                    setCommitMessageInput(version.commit_message ?? '');
+                    setVersionTagsInput((version.tags ?? []).join(', '));
+                    setInstructionInput('');
+                  }}
                   className={clsx(
                     'w-full text-left px-2 py-1.5 rounded border text-xs',
                     selectedVersionId === version.id

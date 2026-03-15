@@ -238,17 +238,16 @@ export function AssetViewerDockview({
   const resolvedDockviewId = panelManagerId ?? DOCK_IDS.assetViewer;
   const {
     capabilities: dockCapabilities,
-    floatingPanelDefinitionIdSet: floatingPanelDefinitionIds,
     placementExclusions: floatingViewerPanelIds,
   } = useAppDockviewIntegration(resolvedDockviewId, viewerPanelIds);
   const useDockId = initializationComplete && scopedPanelIds.length > 0;
   const viewerDefaultLayout = useCallback(
     (api: DockviewApi) =>
       createDefaultLayout(api, {
-        excludePanelIds: floatingPanelDefinitionIds,
+        excludePanelIds: new Set(floatingViewerPanelIds),
         availablePanelIds: viewerPanelIdSet,
       }),
-    [floatingPanelDefinitionIds, viewerPanelIdSet]
+    [floatingViewerPanelIds, viewerPanelIdSet]
   );
 
   // Use ref for dockviewApi to avoid context recreation when API is set

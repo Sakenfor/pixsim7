@@ -152,15 +152,15 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
     const showLoadingPlaceholder = !initializationComplete && !panelsReady;
     const {
       capabilities: dockCapabilities,
-      floatingPanelDefinitionIdSet: floatingPanelDefinitionIds,
       placementExclusions: floatingQuickGenPanelIds,
     } = useAppDockviewIntegration(panelManagerId, panels);
 
     // Derive layout spec from included panels (excluding floating ones)
     const layoutSpec = useMemo(() => {
-      const included = panels.filter((id) => !floatingPanelDefinitionIds.has(id));
+      const excludedPanelIds = new Set(floatingQuickGenPanelIds);
+      const included = panels.filter((id) => !excludedPanelIds.has(id));
       return deriveLayoutSpec(included);
-    }, [panels, floatingPanelDefinitionIds]);
+    }, [floatingQuickGenPanelIds, panels]);
 
     // Position resolver for panels added after initial layout
     const resolvePanelPosition = useCallback(

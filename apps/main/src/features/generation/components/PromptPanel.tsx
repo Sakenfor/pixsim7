@@ -29,7 +29,7 @@ import {
 } from '@features/generation/lib/runContext';
 import { useAssetRegionStore, useCaptureRegionStore } from '@features/mediaViewer/stores/assetRegionStore';
 import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, GENERATION_SCOPE_ID } from '@features/panels';
-import { PromptComposer, useQuickGenerateController } from '@features/prompts';
+import { PromptComposerSurface, useQuickGenerateController } from '@features/prompts';
 
 import { useMaskOverlayStore } from '@/components/media/viewer/overlays/builtins/maskOverlayStore';
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
@@ -300,6 +300,68 @@ export function PromptPanel(props: QuickGenPanelProps) {
       return next;
     });
   }, [hasTransitionPrompt, setPrompt, setTransitionPrompts, transitionCount, transitionIndex]);
+  const handleTransitionDurationChange = useCallback((nextValue: number) => {
+    setTransitionDurations((prev) => {
+      const next = [...(prev ?? [])];
+      while (next.length < transitionCount) {
+        next.push(durationOptions[0]);
+      }
+      next[transitionIndex] = nextValue;
+      return next;
+    });
+  }, [durationOptions, setTransitionDurations, transitionCount, transitionIndex]);
+
+  const promptPlaceholder = useMemo(() => {
+    if (isTransitionMode) {
+      return transitionCount > 0 ? 'Describe the motion...' : 'Add one more image...';
+    }
+    return (hasAsset && OPERATION_METADATA[operationType as OperationType]?.promptPlaceholderWithAsset)
+      || OPERATION_METADATA[operationType as OperationType]?.promptPlaceholder
+      || 'Enter prompt...';
+  }, [hasAsset, isTransitionMode, operationType, transitionCount]);
+
+  const promptAdapter = useMemo(
+    () => ({
+      value: promptValue,
+      onChange: handlePromptChange,
+      maxChars,
+      runContextSeed: promptToolsRunContextSeed,
+      onPromptToolRunContextPatch: handlePromptToolRunContextPatch,
+      disabled: generating || (isTransitionMode && transitionCount === 0),
+      placeholder: promptPlaceholder,
+    }),
+    [
+      promptValue,
+      handlePromptChange,
+      maxChars,
+      promptToolsRunContextSeed,
+      handlePromptToolRunContextPatch,
+      generating,
+      isTransitionMode,
+      transitionCount,
+      promptPlaceholder,
+    ],
+  );
+
+  const transitionDisplay = useMemo(() => {
+    if (!isTransitionMode) return undefined;
+    return {
+      transitionCount,
+      transitionIndex,
+      currentDuration: currentTransitionDuration,
+      durationOptions,
+      onDurationChange: handleTransitionDurationChange,
+      disabled: generating,
+    };
+  }, [
+    currentTransitionDuration,
+    durationOptions,
+    generating,
+    handleTransitionDurationChange,
+    isTransitionMode,
+    transitionCount,
+    transitionIndex,
+  ]);
 
   const promptBoxLabel = dockviewId
     ? dockviewId.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()).trim()
@@ -325,64 +387,16 @@ export function PromptPanel(props: QuickGenPanelProps) {
 
 
   return (
-    <div className="h-full w-full p-2 flex flex-col gap-2">
-      <div
-        className={`flex-1 min-h-0 ${error ? 'ring-2 ring-red-500 rounded-lg' : ''}`}
-        style={{ transition: 'none', animation: 'none' }}
-      >
-        {isTransitionMode && (
-          <div className="flex items-center justify-between text-[10px] text-neutral-500 dark:text-neutral-400 mb-1">
-            <div>
-              {transitionCount > 0
-                ? `Transition ${transitionIndex + 1} -> ${transitionIndex + 2}`
-                : 'Add one more image to edit prompts'}
-            </div>
-            {transitionCount > 0 && (
-              <select
-                value={currentTransitionDuration}
-                onChange={(e) => {
-                  const nextValue = Number(e.target.value);
-                  setTransitionDurations((prev) => {
-                    const next = [...(prev ?? [])];
-                    while (next.length < transitionCount) {
-                      next.push(durationOptions[0]);
-                    }
-                    next[transitionIndex] = nextValue;
-                    return next;
-                  });
-                }}
-                disabled={generating}
-                className="px-2 py-0.5 text-[10px] rounded bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700"
-              >
-                {durationOptions.map((opt) => (
-                  <option key={opt} value={opt}>{opt}s</option>
-                ))}
-              </select>
-            )}
-          </div>
-        )}
-        <PromptComposer
-          value={promptValue}
-          onChange={handlePromptChange}
-          maxChars={maxChars}
-          runContextSeed={promptToolsRunContextSeed}
-          onPromptToolRunContextPatch={handlePromptToolRunContextPatch}
-          disabled={generating || (isTransitionMode && transitionCount === 0)}
-          variant={resolvedPromptSettings.variant}
-          showCounter={resolvedPromptSettings.showCounter}
-          resizable={resolvedPromptSettings.resizable}
-          minHeight={resolvedPromptSettings.minHeight}
-          placeholder={
-            isTransitionMode
-              ? (transitionCount > 0 ? 'Describe the motion...' : 'Add one more image...')
-              : (hasAsset && OPERATION_METADATA[operationType as OperationType]?.promptPlaceholderWithAsset)
-                || OPERATION_METADATA[operationType as OperationType]?.promptPlaceholder
-                || 'Enter prompt...'
-          }
-          className="h-full"
-        />
-      </div>
-      {/* Error is shown in GenerationSettingsPanel near Go button */}
-    </div>
+    <PromptComposerSurface
+      adapter={promptAdapter}
+      display={{
+        variant: resolvedPromptSettings.variant,
+        showCounter: resolvedPromptSettings.showCounter,
+        resizable: resolvedPromptSettings.resizable,
+        minHeight: resolvedPromptSettings.minHeight,
+        error,
+        transition: transitionDisplay,
+      }}
+    />
   );
 }

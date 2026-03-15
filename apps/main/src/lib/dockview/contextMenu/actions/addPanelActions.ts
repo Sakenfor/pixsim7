@@ -9,6 +9,7 @@
 import { menuActionsToCapabilityActions } from '@pixsim7/shared.ui.context-menu';
 
 import { registerActionsFromDefinitions } from '@lib/capabilities';
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { getDockWidgetByDockviewId, getDockWidgetPanelIds } from '@features/panels';
 import { useWorkspaceStore } from '@features/workspace';
@@ -18,6 +19,44 @@ import type { MenuAction, MenuActionContext } from '../types';
 
 import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
 import { addPanelInCurrentDockview, isPanelOpenInCurrentDockview } from './panelOpenUtils';
+
+function getScopedPanelIds(ctx: MenuActionContext): string[] | undefined {
+  const scoped = ctx.scopedPanelIds;
+  return scoped && scoped.length > 0 ? scoped : undefined;
+}
+
+function getAddPanelEquivalentIds(panelId: string): string[] {
+  const panelDef = panelSelectors.get(panelId) as { addPanelEquivalentIds?: unknown } | undefined;
+  if (!Array.isArray(panelDef?.addPanelEquivalentIds)) {
+    return [];
+  }
+  return panelDef.addPanelEquivalentIds.filter(
+    (value): value is string => typeof value === 'string' && value.length > 0,
+  );
+}
+
+function getPanelAddDisabledReason(
+  ctx: MenuActionContext,
+  panelId: string,
+  allowMultiple: boolean,
+  hasApi: boolean,
+): string | false {
+  if (!hasApi) return false;
+
+  if (isPanelOpenInCurrentDockview(ctx, panelId, allowMultiple)) {
+    return 'Already open';
+  }
+
+  if (allowMultiple) return false;
+
+  for (const equivalentId of getAddPanelEquivalentIds(panelId)) {
+    if (isPanelOpenInCurrentDockview(ctx, equivalentId, false)) {
+      return 'Already represented';
+    }
+  }
+
+  return false;
+}
 
 /**
  * Get panels grouped by category from the panel catalog
@@ -80,11 +119,13 @@ export function getDefaultScopePanelSubmenu(ctx: MenuActionContext, api: ReturnT
   const dockWidget = getDockWidgetByDockviewId(ctx.currentDockviewId);
   const scopeLabel = dockWidget?.label ?? ctx.currentDockviewId;
 
-  // Try dock zone registry first, then scoped panel IDs from SmartDockview
+  // Prefer scoped panel IDs from SmartDockview (actual host configuration),
+  // then fall back to dock zone registry defaults.
   const dockZonePanelIds = getDockWidgetPanelIds(ctx.currentDockviewId);
-  const scopedIds = dockZonePanelIds.length > 0
-    ? dockZonePanelIds
-    : (ctx as any).scopedPanelIds as string[] | undefined;
+  const scopedPanelIds = getScopedPanelIds(ctx);
+  const scopedIds = scopedPanelIds && scopedPanelIds.length > 0
+    ? scopedPanelIds
+    : dockZonePanelIds;
 
   if (!scopedIds?.length) return null;
 
@@ -99,10 +140,7 @@ export function getDefaultScopePanelSubmenu(ctx: MenuActionContext, api: ReturnT
         label: panel.title,
         icon: panel.icon,
         availableIn: ['background', 'tab', 'panel-content'] as const,
-        disabled: () =>
-          panel.supportsMultipleInstances
-            ? false
-            : api && isPanelOpenInCurrentDockview(ctx, panel.id, false) ? 'Already open' : false,
+        disabled: () => getPanelAddDisabledReason(ctx, panel.id, !!panel.supportsMultipleInstances, !!api),
         execute: () => addPanel(ctx, panel.id, !!panel.supportsMultipleInstances),
       } satisfies MenuAction;
     })
@@ -127,7 +165,7 @@ function addPanel(ctx: MenuActionContext, panelId: string, allowMultiple: boolea
   const registryEntry = ctx.panelRegistry?.getAll?.().find(p => p.id === panelId);
   const panelTitle = registryEntry?.title ?? panelId;
 
-  if (!allowMultiple && isPanelOpenInCurrentDockview(ctx, panelId, allowMultiple)) {
+  if (getPanelAddDisabledReason(ctx, panelId, allowMultiple, true)) {
     return;
   }
 
@@ -194,10 +232,7 @@ export const addPanelAction: MenuAction = {
           label: panel.title,
           icon: panel.icon,
           availableIn: ['background', 'tab', 'panel-content'] as const,
-          disabled: () =>
-            panel.supportsMultipleInstances
-              ? false
-              : api && isPanelOpenInCurrentDockview(ctx, panel.id, false) ? 'Already open' : false,
+          disabled: () => getPanelAddDisabledReason(ctx, panel.id, !!panel.supportsMultipleInstances, !!api),
           execute: () => addPanel(ctx, panel.id, !!panel.supportsMultipleInstances),
         })),
         execute: () => {},

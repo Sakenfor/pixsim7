@@ -25,15 +25,15 @@ export function DockviewWorkspace() {
   const isLocked = useWorkspaceStore((s) => s.isLocked);
   const {
     capabilities,
-    floatingPanelDefinitionIdSet: floatingPanelIds,
+    placementExclusions: floatingWorkspacePanelIds,
   } = useAppDockviewIntegration("workspace");
 
   // Apply the "default" builtin preset recipe (with ensurePanels safety-net)
   const defaultLayoutWithFloatingCheck = useCallback(
     (api: DockviewApi) => {
-      applyPreset(api, "default", floatingPanelIds);
+      applyPreset(api, "default", new Set(floatingWorkspacePanelIds));
     },
-    [floatingPanelIds]
+    [floatingWorkspacePanelIds]
   );
 
   // Initialize full workspace panel metadata on mount.

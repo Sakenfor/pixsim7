@@ -1,5 +1,9 @@
 export interface PanelCategoryLookup {
   category?: string;
+  scopeDiscoverable?: boolean;
+  orchestration?: {
+    type?: string;
+  };
 }
 
 export interface PanelLookupSource {
@@ -88,7 +92,7 @@ export function resolveScopeDiscoveredPanelIds(
   source: PanelLookupSource,
   options: ScopedOutOfLayoutOptions
 ): string[] {
-  const { hostSettingScopes } = options;
+  const { hostSettingScopes, dockId } = options;
   if (!hostSettingScopes?.length || !source.getSettingScopes) return [];
 
   const basePanelIds = resolveScopedPanelIds(source, options);
@@ -98,6 +102,12 @@ export function resolveScopeDiscoveredPanelIds(
 
   for (const panelId of source.getIds()) {
     if (baseSet.has(panelId)) continue;
+    if (dockId && panelId === dockId) continue;
+
+    const panel = source.get(panelId);
+    if (panel?.scopeDiscoverable === false) continue;
+    if (panel?.orchestration?.type === 'dockview-container') continue;
+
     const panelScopes = source.getSettingScopes(panelId);
     if (panelScopes?.some((s) => hostScopeSet.has(s))) {
       extras.push(panelId);

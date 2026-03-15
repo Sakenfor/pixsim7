@@ -5,9 +5,9 @@
  * Compact generation controls: target selector, settings/assets shortcuts, Go button.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
-import { getDockviewApi, ensurePanels, findDockviewPanel } from '@lib/dockview';
+import { buildFloatingOriginMetaRecord, readFloatingOriginMeta } from '@lib/dockview/floatingPanelInterop';
 import { Icon } from '@lib/icons';
 
 import {
@@ -16,9 +16,13 @@ import {
   useCapabilityAll,
 } from '@features/contextHub';
 import { getGenerationSessionStore } from '@features/generation/stores/generationScopeStores';
+import { useWorkspaceStore } from '@features/workspace';
+import { getFloatingDefinitionId } from '@features/workspace/lib/floatingPanelUtils';
 
 import { usePromptAuthoring, formatDate } from '../../context/PromptAuthoringContext';
-import { PromptComposer } from '../PromptComposer';
+import { PromptComposerSurface } from '../PromptComposerSurface';
+
+import { PROMPT_AUTHORING_QUICKGEN_DOCK_ID } from './promptAuthoringIds';
 
 export function PromptAuthoringEditor() {
   const {
@@ -42,28 +46,61 @@ export function PromptAuthoringEditor() {
     refreshVersions,
   } = usePromptAuthoring();
 
-  const AUTHORING_DOCK_ID = 'dockview:prompt-authoring';
-
-  const toggleAuthoringPanel = useCallback((panelId: string) => {
-    const api = getDockviewApi(AUTHORING_DOCK_ID);
-    if (!api) return;
-    const existing = findDockviewPanel(api, panelId);
-    if (existing) {
-      existing.api.setActive();
-    } else {
-      ensurePanels(api, [panelId]);
-    }
-  }, []);
-
   const widgets = useCapabilityAll<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
+  const dedupedWidgets = useMemo(() => {
+    const seen = new Set<string>();
+    return widgets.filter(({ provider }) => {
+      if (seen.has(provider.id)) return false;
+      seen.add(provider.id);
+      return true;
+    });
+  }, [widgets]);
+  const localAuthoringWidget = dedupedWidgets.find(
+    (widget) => widget.provider.id === 'generation-widget:prompt-authoring',
+  );
+  const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
+  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+  const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
+
+  const toggleQuickGenPanel = useCallback((panelId: 'quickgen-asset' | 'quickgen-settings') => {
+    const localWidget = localAuthoringWidget?.value;
+    if (!localWidget) return;
+
+    const existingFloatingPanel = floatingPanels.find((floatingPanel) => {
+      if (getFloatingDefinitionId(floatingPanel.id) !== panelId) return false;
+      const origin = readFloatingOriginMeta(floatingPanel.context);
+      return origin?.sourceDockviewId === PROMPT_AUTHORING_QUICKGEN_DOCK_ID;
+    });
+
+    if (existingFloatingPanel) {
+      closeFloatingPanel(existingFloatingPanel.id);
+      return;
+    }
+
+    openFloatingPanel(panelId, {
+      width: panelId === 'quickgen-settings' ? 520 : 640,
+      height: panelId === 'quickgen-settings' ? 440 : 520,
+      context: {
+        generationScopeId: localWidget.scopeId,
+        ...buildFloatingOriginMetaRecord({
+          sourceDockviewId: PROMPT_AUTHORING_QUICKGEN_DOCK_ID,
+          sourceGroupId: null,
+          sourceInstanceId: `${PROMPT_AUTHORING_QUICKGEN_DOCK_ID}:${panelId}`,
+          sourceDefinitionId: panelId,
+          sourceGroupRestoreHint: null,
+        }),
+      },
+    });
+  }, [closeFloatingPanel, floatingPanels, localAuthoringWidget, openFloatingPanel]);
+
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(() => {
     try { return localStorage.getItem('prompt-authoring:widgetId'); } catch { return null; }
   });
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
 
   // Resolve selected widget (fall back to first available)
-  const selectedWidget = widgets.find((w) => w.provider.id === selectedWidgetId)
-    ?? (widgets.length > 0 ? widgets[0] : null);
+  const selectedWidget = dedupedWidgets.find((w) => w.provider.id === selectedWidgetId)
+    ?? (dedupedWidgets.length > 0 ? dedupedWidgets[0] : null);
 
   const isLocalWidget = selectedWidget?.provider.id === 'generation-widget:prompt-authoring';
 
@@ -95,6 +132,15 @@ export function PromptAuthoringEditor() {
   }, [selectedWidget, editorText]);
 
   const hasText = !!editorText.trim();
+  const authoringPromptAdapter = useMemo(
+    () => ({
+      value: editorText,
+      onChange: setEditorText,
+      maxChars: 12000,
+      placeholder: 'Write or revise prompt prose...',
+    }),
+    [editorText, setEditorText],
+  );
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-white dark:bg-neutral-900/60">
@@ -161,7 +207,7 @@ export function PromptAuthoringEditor() {
         </div>
 
         {/* Generation controls: target selector + settings/assets shortcuts + Go */}
-        {widgets.length > 0 && (
+        {dedupedWidgets.length > 0 && (
           <div className="flex items-center gap-1.5 pt-1.5 border-t border-neutral-100 dark:border-neutral-800">
             {/* Widget selector */}
             <select
@@ -174,27 +220,27 @@ export function PromptAuthoringEditor() {
               }}
               className="min-w-0 flex-shrink rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-1.5 py-1 text-[11px]"
             >
-              {widgets.map(({ provider }) => (
+              {dedupedWidgets.map(({ provider }) => (
                 <option key={provider.id} value={provider.id}>
                   {provider.label}
                 </option>
               ))}
             </select>
 
-            {/* Settings shortcut — toggle in authoring dockview */}
+            {/* Settings shortcut — toggle in authoring quickgen dock */}
             <button
               type="button"
-              onClick={() => toggleAuthoringPanel('quickgen-settings')}
+              onClick={() => toggleQuickGenPanel('quickgen-settings')}
               title="Toggle generation settings"
               className="p-1 rounded text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200"
             >
               <Icon name="settings" size={12} />
             </button>
 
-            {/* Asset input shortcut — toggle in authoring dockview */}
+            {/* Asset input shortcut — toggle in authoring quickgen dock */}
             <button
               type="button"
-              onClick={() => toggleAuthoringPanel('quickgen-asset')}
+              onClick={() => toggleQuickGenPanel('quickgen-asset')}
               title="Toggle asset input"
               className="p-1 rounded text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200"
             >
@@ -258,16 +304,15 @@ export function PromptAuthoringEditor() {
       </div>
 
       <div className="flex-1 min-h-0 p-3">
-        <PromptComposer
-          value={editorText}
-          onChange={setEditorText}
-          maxChars={12000}
-          placeholder="Write or revise prompt prose..."
-          className="h-full"
-          variant="default"
-          showCounter
-          resizable
-          minHeight={260}
+        <PromptComposerSurface
+          adapter={authoringPromptAdapter}
+          display={{
+            variant: 'default',
+            showCounter: true,
+            resizable: true,
+            minHeight: 260,
+            containerClassName: 'h-full w-full flex flex-col',
+          }}
         />
       </div>
     </div>

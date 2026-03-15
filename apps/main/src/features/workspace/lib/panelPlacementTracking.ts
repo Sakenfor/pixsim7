@@ -6,6 +6,8 @@ import {
   type DockviewHost,
 } from "@pixsim7/shared.ui.dockview";
 
+import { readFloatingOriginMeta } from "@lib/dockview/floatingPanelInterop";
+
 import { useWorkspaceStore, type WorkspaceState } from "../stores/workspaceStore";
 
 import { getFloatingDefinitionId } from "./floatingPanelUtils";
@@ -18,6 +20,8 @@ type DockedDockSnapshot = {
 type PlacementSnapshot = {
   floatingDefinitionIds: string[];
   floatingDefinitionIdSet: ReadonlySet<string>;
+  floatingDefinitionIdSetGlobal: ReadonlySet<string>;
+  floatingDefinitionIdSetBySourceDockview: ReadonlyMap<string, ReadonlySet<string>>;
   dockedByDockview: ReadonlyMap<string, DockedDockSnapshot>;
 };
 
@@ -32,8 +36,39 @@ type DockviewTracker = {
   disposables: Disposable[];
 };
 
-function buildFloatingDefinitionIds(state: WorkspaceState): string[] {
-  return state.floatingPanels.map((panel) => getFloatingDefinitionId(panel.id));
+type FloatingPlacementEntry = {
+  definitionId: string;
+  sourceDockviewId: string | null;
+};
+
+function normalizeDockviewId(value: string | null | undefined): string {
+  return (value ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+}
+
+function readSourceDockviewIdFromFloatingContext(
+  context: Record<string, unknown> | undefined,
+): string | null {
+  if (!context) return null;
+  const origin = readFloatingOriginMeta(context);
+  const sourceDockviewId =
+    typeof origin?.sourceDockviewId === "string" ? origin.sourceDockviewId : null;
+  if (!sourceDockviewId) return null;
+  const normalized = normalizeDockviewId(sourceDockviewId);
+  return normalized.length > 0 ? normalized : null;
+}
+
+function buildFloatingPlacementEntries(state: WorkspaceState): FloatingPlacementEntry[] {
+  return state.floatingPanels.map((panel) => {
+    const definitionId = getFloatingDefinitionId(panel.id);
+    const sourceDockviewId = readSourceDockviewIdFromFloatingContext(
+      panel.context as Record<string, unknown> | undefined,
+    );
+    return { definitionId, sourceDockviewId };
+  });
+}
+
+function buildFloatingKey(entries: readonly FloatingPlacementEntry[]): string {
+  return entries.map((entry) => `${entry.definitionId}@${entry.sourceDockviewId ?? ""}`).join("\u0000");
 }
 
 function buildKey(ids: readonly string[]): string {
@@ -63,7 +98,7 @@ export function schedulePanelPlacementTask(fn: () => void): void {
 let started = false;
 let stopWorkspaceSubscription: (() => void) | null = null;
 let stopDockviewRegistrySubscription: (() => void) | null = null;
-let workspaceFloatingIds: string[] = [];
+let workspaceFloatingEntries: FloatingPlacementEntry[] = [];
 let workspaceFloatingKey = "";
 let dockviewTrackers = new Map<string, DockviewTracker>();
 let snapshotCache: PlacementSnapshot | null = null;
@@ -83,12 +118,12 @@ function notify(): void {
 }
 
 function refreshFloatingFromWorkspace(state: WorkspaceState): void {
-  const nextIds = buildFloatingDefinitionIds(state);
-  const nextKey = buildKey(nextIds);
+  const nextEntries = buildFloatingPlacementEntries(state);
+  const nextKey = buildFloatingKey(nextEntries);
   if (nextKey === workspaceFloatingKey) {
     return;
   }
-  workspaceFloatingIds = nextIds;
+  workspaceFloatingEntries = nextEntries;
   workspaceFloatingKey = nextKey;
   notify();
 }
@@ -193,6 +228,27 @@ function getSnapshot(): PlacementSnapshot {
     return snapshotCache;
   }
 
+  const floatingDefinitionIds = workspaceFloatingEntries.map((entry) => entry.definitionId);
+  const floatingDefinitionIdSet = new Set(floatingDefinitionIds);
+  const floatingDefinitionIdSetGlobal = new Set<string>();
+  const floatingDefinitionIdSetBySourceDockviewMutable = new Map<string, Set<string>>();
+
+  for (const entry of workspaceFloatingEntries) {
+    const sourceDockviewId = entry.sourceDockviewId;
+    if (!sourceDockviewId) {
+      floatingDefinitionIdSetGlobal.add(entry.definitionId);
+      continue;
+    }
+    const setForDockview = floatingDefinitionIdSetBySourceDockviewMutable.get(sourceDockviewId) ?? new Set<string>();
+    setForDockview.add(entry.definitionId);
+    floatingDefinitionIdSetBySourceDockviewMutable.set(sourceDockviewId, setForDockview);
+  }
+
+  const floatingDefinitionIdSetBySourceDockview = new Map<string, ReadonlySet<string>>();
+  for (const [dockviewId, ids] of floatingDefinitionIdSetBySourceDockviewMutable) {
+    floatingDefinitionIdSetBySourceDockview.set(dockviewId, ids);
+  }
+
   const dockedByDockview = new Map<string, DockedDockSnapshot>();
   for (const [dockviewId, tracker] of dockviewTrackers) {
     dockedByDockview.set(dockviewId, {
@@ -202,8 +258,10 @@ function getSnapshot(): PlacementSnapshot {
   }
 
   snapshotCache = {
-    floatingDefinitionIds: workspaceFloatingIds,
-    floatingDefinitionIdSet: new Set(workspaceFloatingIds),
+    floatingDefinitionIds,
+    floatingDefinitionIdSet,
+    floatingDefinitionIdSetGlobal,
+    floatingDefinitionIdSetBySourceDockview,
     dockedByDockview,
   };
   snapshotCacheVersion = snapshotVersion;
@@ -275,9 +333,18 @@ export function getExcludedFloatingPanelIds(panelIds: readonly string[]): string
  * Current policy: floating wins over docked layouts.
  * This method leaves room for future scope/dock-specific policy rules.
  */
-export function getDockPlacementExclusions(_dockviewId: string, panelIds: readonly string[]): string[] {
-  const floating = getSnapshot().floatingDefinitionIdSet;
-  return panelIds.filter((panelId) => floating.has(panelId));
+export function getDockPlacementExclusions(dockviewId: string, panelIds: readonly string[]): string[] {
+  const snapshot = getSnapshot();
+  const normalizedDockviewId = normalizeDockviewId(dockviewId);
+  const scopedFloatingIds =
+    normalizedDockviewId.length > 0
+      ? snapshot.floatingDefinitionIdSetBySourceDockview.get(normalizedDockviewId)
+      : undefined;
+
+  return panelIds.filter((panelId) => {
+    if (snapshot.floatingDefinitionIdSetGlobal.has(panelId)) return true;
+    return scopedFloatingIds?.has(panelId) ?? false;
+  });
 }
 
 export function getPanelPlacementDiagnostics(): PlacementDiagnostic[] {
@@ -331,7 +398,7 @@ export function resetPanelPlacementTrackingForTests(): void {
     disposeDockviewTracker(tracker);
   }
   dockviewTrackers = new Map();
-  workspaceFloatingIds = [];
+  workspaceFloatingEntries = [];
   workspaceFloatingKey = "";
   snapshotCache = null;
   snapshotVersion = 0;

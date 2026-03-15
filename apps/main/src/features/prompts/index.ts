@@ -52,6 +52,14 @@ export {
   type PromptComposerProps,
 } from './components/PromptComposer';
 
+export {
+  PromptComposerSurface,
+  type PromptComposerStateAdapter,
+  type PromptComposerSurfaceDisplay,
+  type PromptComposerSurfaceProps,
+  type PromptComposerTransitionDisplay,
+} from './components/PromptComposerSurface';
+
 // ============================================================================
 // Hooks
 // ============================================================================

@@ -147,6 +147,7 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
       widgetId,
       label,
       panelManagerId,
+      panelIds,
       priority,
       isOpen,
       setOpen,
@@ -186,7 +187,7 @@ const QuickGenWidgetInner = forwardRef<QuickGenPanelHostRef, QuickGenWidgetProps
     });
 
     // Step 4: Panel layout — panels, defaultLayout, resolvePanelPosition
-    const layout = useQuickGenPanelLayout({ showBlocks });
+    const layout = useQuickGenPanelLayout({ showBlocks, panelIds });
     const panelHostResetKey = useMemo(() => {
       const layoutShape = layout.panels.join('|');
       const usesTransitionLayout = operationType === 'video_transition';

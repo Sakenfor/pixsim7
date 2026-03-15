@@ -25,24 +25,48 @@ import { useGenerationScopeStores } from './useGenerationScope';
 export interface UseQuickGenPanelLayoutConfig {
   /** Include blocks panel in layout. CC: true, viewer: false */
   showBlocks?: boolean;
+  /**
+   * Optional explicit panel IDs. When this differs from the default preset for
+   * the current operation, transition-specific layout overrides are skipped.
+   */
+  panelIds?: readonly string[];
 }
 
 export function useQuickGenPanelLayout(config: UseQuickGenPanelLayoutConfig = {}) {
-  const { showBlocks = false } = config;
+  const { showBlocks = false, panelIds } = config;
   const { useSessionStore } = useGenerationScopeStores();
   const operationType = useSessionStore((s) => s.operationType);
 
   const metadata = OPERATION_METADATA[operationType];
-  const supportsInputs = (metadata?.acceptsInput?.length ?? 0) > 0;
+  const operationSupportsInputs = (metadata?.acceptsInput?.length ?? 0) > 0;
 
-  const panels = useMemo(() => {
-    if (supportsInputs) {
+  const defaultPanels = useMemo(() => {
+    if (operationSupportsInputs) {
       return showBlocks ? QUICKGEN_PRESETS.fullWithBlocks : QUICKGEN_PRESETS.full;
     }
     return showBlocks ? QUICKGEN_PRESETS.promptSettingsBlocks : QUICKGEN_PRESETS.promptSettings;
-  }, [supportsInputs, showBlocks]);
+  }, [operationSupportsInputs, showBlocks]);
+
+  const hasExplicitPanelIds = !!(panelIds && panelIds.length > 0);
+
+  const panels = useMemo(() => {
+    if (hasExplicitPanelIds) return [...(panelIds as readonly string[])];
+    return [...defaultPanels];
+  }, [hasExplicitPanelIds, panelIds, defaultPanels]);
+
+  const usesCustomPanelSet = useMemo(() => {
+    if (!hasExplicitPanelIds || !panelIds) return false;
+    if (panelIds.length !== defaultPanels.length) return true;
+    for (let i = 0; i < panelIds.length; i += 1) {
+      if (panelIds[i] !== defaultPanels[i]) return true;
+    }
+    return false;
+  }, [hasExplicitPanelIds, panelIds, defaultPanels]);
+
+  const supportsInputs = panels.includes(QUICKGEN_PANEL_IDS.asset);
 
   const defaultLayout = useMemo(() => {
+    if (usesCustomPanelSet) return undefined;
     if (operationType !== 'video_transition') return undefined;
 
     return (api: DockviewApi) => {
@@ -101,17 +125,18 @@ export function useQuickGenPanelLayout(config: UseQuickGenPanelLayoutConfig = {}
         });
       }
     };
-  }, [operationType, panels]);
+  }, [operationType, panels, usesCustomPanelSet]);
 
   const resolvePanelPosition = useCallback(
     (panelId: string, api: DockviewApi) => {
+      if (usesCustomPanelSet) return undefined;
       if (operationType !== 'video_transition') return undefined;
       if (panelId === QUICKGEN_PANEL_IDS.prompt && api.getPanel(QUICKGEN_PANEL_IDS.asset)) {
         return { direction: 'below' as const, referencePanel: QUICKGEN_PANEL_IDS.asset };
       }
       return undefined;
     },
-    [operationType],
+    [operationType, usesCustomPanelSet],
   );
 
   return {

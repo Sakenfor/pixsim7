@@ -23,6 +23,8 @@ import {
 import { useVersions } from '@lib/ui/versioning';
 import { createHmrSafeContext } from '@lib/utils';
 
+import { useGenerationScopeStores } from '@features/generation';
+
 // ── Types ──
 
 export type AssetScopeMode = 'version' | 'branch' | 'family';
@@ -172,7 +174,9 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
 
   // ── Editor state ──
-  const [editorText, setEditorText] = useState('');
+  const { useSessionStore } = useGenerationScopeStores();
+  const editorText = useSessionStore((s) => s.prompt);
+  const setEditorText = useSessionStore((s) => s.setPrompt);
   const [instructionInput, setInstructionInput] = useState('');
   const [commitMessageInput, setCommitMessageInput] = useState('');
   const [versionTagsInput, setVersionTagsInput] = useState('');
@@ -271,7 +275,7 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
     setVersionTagsInput((selectedVersion.tags ?? []).join(', '));
     setInstructionInput('');
     lastLoadedVersionIdRef.current = selectedVersion.id;
-  }, [selectedVersion]);
+  }, [selectedVersion, setEditorText]);
 
   // ── Asset scope ──
 
@@ -460,7 +464,7 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
       families, familiesLoading, familiesError, selectedFamilyId,
       newFamilyTitle, newFamilyPromptType, newFamilyCategory, newFamilyTagsInput,
       versions, versionsLoading, versionsError, selectedVersionId,
-      editorText, instructionInput, commitMessageInput, versionTagsInput,
+      editorText, setEditorText, instructionInput, commitMessageInput, versionTagsInput,
       scopeMode, scopeAssets, assetsLoading, assetsError,
       busyAction, statusMessage,
       selectedFamily, selectedVersion, targetVersionIds, truncatedVersionCount,

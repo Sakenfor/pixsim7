@@ -74,7 +74,7 @@ export interface PanelHostDockviewProps {
    * Setting scopes of the host panel. Panels sharing a scope are
    * auto-included in the context menu (e.g. generation settings panels
    * appear in any generationCapable host). Derived from the host panel
-   * definition's settingScopes if not provided.
+   * definition's settingScopes if not provided and the host is in dockId mode.
    */
   hostSettingScopes?: string[];
   /** Panel IDs that should not exist in the persisted/embedded layout. */
@@ -176,10 +176,13 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
     // Auto-derive hostSettingScopes from the parent panel definition when not explicit
     const hostSettingScopes = useMemo(() => {
       if (hostSettingScopesProp) return hostSettingScopesProp;
+      // Explicit panels mode should stay deterministic and not auto-discover
+      // scope siblings unless the caller opts in via hostSettingScopes prop.
+      if (panels && panels.length > 0) return undefined;
       if (!dockId) return undefined;
       const hostDef = panelSelectors.get(dockId);
       return (hostDef as any)?.settingScopes ?? undefined;
-    }, [hostSettingScopesProp, dockId]);
+    }, [hostSettingScopesProp, panels, dockId, bootstrap.catalogVersion]);
 
     const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
     const [resetKey, setResetKey] = useState(0);
@@ -334,8 +337,8 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
           panels={resolvedPanels}
           dockId={resolvedPanels ? undefined : dockId}
           excludePanels={resolvedPanels ? undefined : excludePanels}
-          allowedPanels={resolvedPanels ? undefined : allowedPanels}
-          allowedCategories={resolvedPanels ? undefined : allowedCategories}
+          allowedPanels={allowedPanels}
+          allowedCategories={allowedCategories}
           storageKey={storageKey}
           context={context}
           defaultPanelScopes={defaultPanelScopes}

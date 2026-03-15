@@ -130,9 +130,12 @@ export function applyWorkspacePreset(presetId: string): boolean {
   const api = host?.api;
   if (!api) return false;
 
+  const floatingIds = panelPlacementCoordinator.getFloatingPanelDefinitionIds();
+  const workspaceExcludedIds = panelPlacementCoordinator.getDockExclusions("workspace", floatingIds);
+
   return applyPreset(
     api,
     presetId,
-    panelPlacementCoordinator.getFloatingPanelDefinitionIdSet(),
+    new Set(workspaceExcludedIds),
   );
 }

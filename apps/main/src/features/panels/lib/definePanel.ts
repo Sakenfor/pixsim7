@@ -72,6 +72,12 @@ export interface DefinePanelOptions<TSettings = any> {
   // Visibility
   showWhen?: (context: WorkspaceContext) => boolean;
   requiresContext?: boolean;
+  /**
+   * Controls whether this panel is eligible for scope-based discovery
+   * in other hosts that share settingScopes.
+   * Defaults to true.
+   */
+  scopeDiscoverable?: boolean;
 
   // Capabilities
   supportsCompactMode?: boolean;
@@ -112,6 +118,8 @@ export interface DefinePanelOptions<TSettings = any> {
 
   // Sibling panels (related panels for quick-add dropdown)
   siblings?: string[];
+  /** Panel IDs considered equivalent for Add Panel "already represented" checks. */
+  addPanelEquivalentIds?: string[];
 
   // Optional sidebar navigation contribution metadata
   navigation?: PanelNavigationContribution;
@@ -166,6 +174,7 @@ export function definePanel<TSettings = any>(
     availableIn,
     showWhen,
     requiresContext = false,
+    scopeDiscoverable = true,
     supportsCompactMode = false,
     supportsMultipleInstances = false,
     instances,
@@ -188,6 +197,7 @@ export function definePanel<TSettings = any>(
     contextLabel,
     coreEditorRole,
     siblings,
+    addPanelEquivalentIds,
     navigation,
     internal = false,
     onMount,
@@ -252,6 +262,7 @@ export function definePanel<TSettings = any>(
     enabledByDefault,
     showWhen,
     requiresContext,
+    scopeDiscoverable,
     supportsCompactMode,
     supportsMultipleInstances: resolvedInstances.supportsMultipleInstances,
     maxInstances: resolvedInstances.maxInstances,
@@ -273,6 +284,7 @@ export function definePanel<TSettings = any>(
     contextLabel,
     coreEditorRole,
     siblings,
+    addPanelEquivalentIds,
     navigation,
     onMount,
     onUnmount,

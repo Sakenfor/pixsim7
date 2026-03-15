@@ -157,6 +157,13 @@ export interface PanelDefinition<TSettings = any> extends BasePanelDefinition {
   category: PanelCategory;
   tags: string[];
   description?: string;
+  /**
+   * Controls whether this panel is eligible for scope-based discovery
+   * (shared settingScope panels exposed in a host's context menu).
+   *
+   * Defaults to true.
+   */
+  scopeDiscoverable?: boolean;
 
   // Settings System
   /**
@@ -261,6 +268,13 @@ export interface PanelDefinition<TSettings = any> extends BasePanelDefinition {
    * Optional navigation contribution metadata for generated sidebar flyouts.
    */
   navigation?: PanelNavigationContribution;
+
+  /**
+   * Panel IDs that should be treated as equivalent for "Add Panel" checks.
+   * If any equivalent panel is already open in the same dockview, this panel
+   * is considered already represented and add actions should be disabled.
+   */
+  addPanelEquivalentIds?: string[];
 }
 
 function resolveInstancePolicy(

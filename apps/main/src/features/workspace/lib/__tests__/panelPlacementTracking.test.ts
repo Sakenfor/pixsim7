@@ -7,7 +7,7 @@ const trackingMocks = vi.hoisted(() => {
   const registryListeners = new Set<() => void>();
 
   const workspaceState = {
-    floatingPanels: [] as Array<{ id: string }>,
+    floatingPanels: [] as Array<{ id: string; context?: Record<string, unknown> }>,
   };
 
   function createApi(panels: TestPanel[]) {
@@ -48,8 +48,12 @@ const trackingMocks = vi.hoisted(() => {
     workspaceState,
     dockviewHosts,
     createApi,
-    setFloatingPanels(ids: string[]) {
-      workspaceState.floatingPanels = ids.map((id) => ({ id }));
+    setFloatingPanels(
+      entries: Array<string | { id: string; context?: Record<string, unknown> }>,
+    ) {
+      workspaceState.floatingPanels = entries.map((entry) =>
+        typeof entry === "string" ? { id: entry } : entry,
+      );
       for (const cb of workspaceListeners) cb(workspaceState);
     },
     setHosts(hosts: any[]) {
@@ -113,6 +117,27 @@ describe("panelPlacementTracking", () => {
     expect(
       tracking.getDockPlacementExclusions("workspace", ["quickGenerate", "inspector", "info"]),
     ).toEqual(["quickGenerate", "info"]);
+  });
+
+  it("applies dock-scoped floating exclusions by source dockview", async () => {
+    trackingMocks.setFloatingPanels([
+      {
+        id: "quickGenerate",
+        context: {
+          __floatingMeta: {
+            sourceDockviewId: "prompt-authoring-quickgen",
+          },
+        },
+      },
+    ]);
+    tracking = await import("../panelPlacementTracking");
+
+    expect(
+      tracking.getDockPlacementExclusions("prompt-authoring-quickgen", ["quickGenerate", "info"]),
+    ).toEqual(["quickGenerate"]);
+    expect(
+      tracking.getDockPlacementExclusions("asset-viewer", ["quickGenerate", "info"]),
+    ).toEqual([]);
   });
 
   it("reports placements across floating and docked dockviews", async () => {
