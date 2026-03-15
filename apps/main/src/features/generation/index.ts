@@ -60,6 +60,8 @@ export { useGenerationPresets } from './hooks/useGenerationPresets';
 export type { UseGenerationPresetsResult } from './hooks/useGenerationPresets';
 export { useProvideGenerationWidget } from './hooks/useProvideGenerationWidget';
 export type { UseProvideGenerationWidgetConfig } from './hooks/useProvideGenerationWidget';
+export { GenerationCapableHost } from './components/GenerationCapableHost';
+export type { GenerationCapableHostProps } from './components/GenerationCapableHost';
 export { useQuickGenPanelLayout } from './hooks/useQuickGenPanelLayout';
 export type { UseQuickGenPanelLayoutConfig } from './hooks/useQuickGenPanelLayout';
 export { useQuickGenScopeSync } from './hooks/useQuickGenScopeSync';

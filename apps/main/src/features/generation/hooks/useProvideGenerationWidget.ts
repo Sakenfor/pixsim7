@@ -33,6 +33,8 @@ export interface UseProvideGenerationWidgetConfig {
   isOpen: boolean;
   /** Open/close the widget host */
   setOpen: (open: boolean) => void;
+  /** Skip root-scope registration (for self-contained panels that don't need cross-scope discovery). */
+  localOnly?: boolean;
 }
 
 export function useProvideGenerationWidget(config: UseProvideGenerationWidgetConfig) {
@@ -89,10 +91,11 @@ export function useProvideGenerationWidget(config: UseProvideGenerationWidgetCon
 
   // Local: ensures this widget wins within its own scope (resolveProvider walks local → root,
   // takes first getBest — so local registration gives scope-proximity semantics).
-  // Root: makes the widget discoverable from sibling scopes (e.g. gallery) that don't have
-  // a direct parent-chain relationship.
   useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue]);
-  useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue], {
+  // Root: makes the widget discoverable from sibling scopes (e.g. gallery) that don't have
+  // a direct parent-chain relationship. localOnly widgets use a no-op key to skip this.
+  const rootCapKey = config.localOnly ? `${CAP_GENERATION_WIDGET}:noop` : CAP_GENERATION_WIDGET;
+  useProvideCapability(rootCapKey, generationWidgetProvider, [generationWidgetValue], {
     scope: 'root',
   });
 
