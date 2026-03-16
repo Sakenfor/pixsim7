@@ -93,6 +93,7 @@ export function useGameRuntime(): UseGameRuntimeReturn {
     runtimeRef.current = createGameRuntime(config);
   }
   const runtime = runtimeRef.current;
+  const ensureSessionInFlightRef = useRef(new Map<string, Promise<GameSessionDTO>>());
 
   // React state for reactive updates
   const [world, setWorld] = useState<GameWorldDetail | null>(null);
@@ -204,36 +205,51 @@ export function useGameRuntime(): UseGameRuntimeReturn {
   // Ensure a session exists for a world (delegates to runtime)
   const ensureSession = useCallback(
     async (worldId: number, options: GameRuntimeOptions = {}): Promise<GameSessionDTO> => {
-      setIsLoading(true);
-      setError(null);
+      const inFlightKey = `${worldId}:${options.sceneId ?? 'auto'}`;
+      const existingPromise = ensureSessionInFlightRef.current.get(inFlightKey);
+      if (existingPromise) {
+        return existingPromise;
+      }
 
-      try {
-        const sess = await runtime.ensureSessionForWorld(worldId, {
-          sceneId: options.sceneId,
-          sessionKind: options.sessionKind,
-          worldMode: options.worldMode,
-          turnDeltaSeconds: options.turnDeltaSeconds,
-          initialLocationId: options.initialLocationId,
-          initialFlags: options.initialFlags,
-        });
+      const ensurePromise = (async (): Promise<GameSessionDTO> => {
+        setIsLoading(true);
+        setError(null);
 
-        // Sync React state from runtime
-        const w = runtime.getWorld();
-        if (w) setWorld(w as GameWorldDetail);
+        try {
+          const sess = await runtime.ensureSessionForWorld(worldId, {
+            sceneId: options.sceneId,
+            sessionKind: options.sessionKind,
+            worldMode: options.worldMode,
+            turnDeltaSeconds: options.turnDeltaSeconds,
+            initialLocationId: options.initialLocationId,
+            initialFlags: options.initialFlags,
+          });
 
-        // Sync store with room mode (React-specific)
-        if (options.initialLocationId) {
-          setLocationId(options.initialLocationId);
-          storeEnterRoom(worldId, sess.id, `location:${options.initialLocationId}`);
+          // Sync React state from runtime
+          const w = runtime.getWorld();
+          if (w) setWorld(w as GameWorldDetail);
+
+          // Sync store with room mode (React-specific)
+          if (options.initialLocationId) {
+            setLocationId(options.initialLocationId);
+            storeEnterRoom(worldId, sess.id, `location:${options.initialLocationId}`);
+          }
+
+          return sess as GameSessionDTO;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setError(msg);
+          throw err;
+        } finally {
+          setIsLoading(false);
         }
+      })();
 
-        return sess as GameSessionDTO;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setError(msg);
-        throw err;
+      ensureSessionInFlightRef.current.set(inFlightKey, ensurePromise);
+      try {
+        return await ensurePromise;
       } finally {
-        setIsLoading(false);
+        ensureSessionInFlightRef.current.delete(inFlightKey);
       }
     },
     [runtime, storeEnterRoom]

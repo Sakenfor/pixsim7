@@ -213,6 +213,71 @@ class GameSessionService:
             raise ValueError("scene_missing_entry_node")
         return scene
 
+    async def _get_first_world_scene(self, world_id: int) -> Optional[GameScene]:
+        """
+        Get the first valid scene for a world (ordered by scene ID).
+        """
+        result = await self.db.execute(
+            select(GameScene)
+            .where(
+                GameScene.world_id == world_id,
+                GameScene.entry_node_id.is_not(None),
+            )
+            .order_by(GameScene.id.asc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def _resolve_scene_for_new_session(
+        self,
+        scene_id: int,
+        world_id: Optional[int],
+    ) -> GameScene:
+        """
+        Resolve scene for new session.
+
+        If the requested scene is invalid/unusable and a world_id is provided,
+        fall back to the first valid scene in that world.
+        """
+        async def _resolve_world_fallback_scene(
+            requested_scene_id: int,
+            reason: str,
+        ) -> GameScene:
+            assert world_id is not None
+            fallback_scene = await self._get_first_world_scene(world_id)
+            if not fallback_scene:
+                raise ValueError("world_scene_not_found")
+            logger.warning(
+                "Requested scene %s unusable for world session creation (reason=%s); "
+                "falling back to world %s scene %s",
+                requested_scene_id,
+                reason,
+                world_id,
+                fallback_scene.id,
+            )
+            return fallback_scene
+
+        # `scene_id <= 0` means "auto-resolve scene from world" when world is known.
+        if world_id is not None and scene_id <= 0:
+            return await _resolve_world_fallback_scene(scene_id, "scene_id_non_positive")
+
+        try:
+            scene = await self._get_scene(scene_id)
+        except ValueError as exc:
+            if str(exc) != "scene_not_found" or world_id is None:
+                raise
+
+            return await _resolve_world_fallback_scene(scene_id, "scene_not_found")
+
+        # Guard against cross-world scene/world mismatches.
+        if world_id is not None and scene.world_id != world_id:
+            return await _resolve_world_fallback_scene(
+                scene_id,
+                f"scene_world_mismatch:{scene.world_id}",
+            )
+
+        return scene
+
     async def create_session(
         self, *, user_id: int, scene_id: int, world_id: Optional[int] = None, flags: Optional[Dict[str, Any]] = None
     ) -> GameSession:
@@ -222,8 +287,6 @@ class GameSessionService:
         Validates world ownership if world_id is provided to ensure users
         can only create sessions for worlds they own.
         """
-        scene = await self._get_scene(scene_id)
-
         # Validate world ownership if world_id provided
         if world_id is not None:
             result = await self.db.execute(
@@ -234,6 +297,8 @@ class GameSessionService:
                 raise ValueError("world_not_found")
             if world.owner_user_id != user_id:
                 raise ValueError("world_access_denied")
+
+        scene = await self._resolve_scene_for_new_session(scene_id, world_id)
 
         session = GameSession(
             user_id=user_id,

@@ -1,10 +1,11 @@
 import { Button, Modal, FormField, Input, useToast } from '@pixsim7/shared.ui';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 
 import {
   createGameWorld,
   type GameLocationSummary,
 } from '@lib/api';
+import { buildWorldLabelMap } from '@lib/game/worldLabels';
 import { resolveGameLocations } from '@lib/resolvers';
 
 import {
@@ -34,6 +35,7 @@ export function WorldContextSelector() {
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
   const [showNewWorldDialog, setShowNewWorldDialog] = useState(false);
   const [newWorldName, setNewWorldName] = useState('');
+  const worldLabelsById = useMemo(() => buildWorldLabelMap(worlds), [worlds]);
   const toastRef = useRef(toast);
   const locationIdRef = useRef<number | null>(locationId);
 
@@ -127,7 +129,7 @@ export function WorldContextSelector() {
           <option value="">None</option>
           {worlds.map((world) => (
             <option key={world.id} value={world.id}>
-              {world.name}
+              {worldLabelsById.get(world.id) ?? world.name}
             </option>
           ))}
         </select>

@@ -5,6 +5,8 @@
  * These types define the contract for plugins that hook into the game tick lifecycle.
  */
 
+import type { GameSessionDTO, GameWorldDetail } from '@pixsim7/shared.types';
+
 // ============================================
 // Event Types
 // ============================================
@@ -45,24 +47,14 @@ export interface GameEvent {
 export interface GameTickContext {
   /** Current world ID */
   worldId: number;
-  /** Current world details (generic to avoid coupling to specific DTO) */
-  world: {
-    id: number;
-    name: string;
-    world_time: number;
-    [key: string]: unknown;
-  };
+  /** Current world details */
+  world: GameWorldDetail;
   /** World time in seconds (after advancement) */
   worldTimeSeconds: number;
   /** How many seconds were advanced */
   deltaSeconds: number;
   /** Current session (may be null) */
-  session: {
-    id: number;
-    flags?: Record<string, unknown>;
-    stats?: Record<string, unknown>;
-    [key: string]: unknown;
-  } | null;
+  session: GameSessionDTO | null;
   /** Current location ID (if in a room) */
   locationId: number | null;
   /** Whether this is turn-based mode */

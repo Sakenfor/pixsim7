@@ -39,6 +39,7 @@ import { Button, Panel, Badge, Select } from '@pixsim7/shared.ui';
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { buildWorldLabelMap } from '@lib/game/worldLabels';
 import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 import type { Scene, SessionFlags } from '@lib/registries';
 import { resolveGameLocations, resolveGameWorlds } from '@lib/resolvers';
@@ -290,6 +291,7 @@ export function Game2D() {
   const [npcPortraitAsset, setNpcPortraitAsset] = useState<AssetModel | null>(null);
   const [npcPortraitAssetId, setNpcPortraitAssetId] = useState<number | null>(null);
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
+  const worldLabelsById = useMemo(() => buildWorldLabelMap(worlds), [worlds]);
   const effectiveBackgroundAsset = roomNavBackgroundAsset ?? backgroundAsset;
   const backgroundUrls = useMemo(
     () => (effectiveBackgroundAsset ? getAssetDisplayUrls(effectiveBackgroundAsset) : null),
@@ -462,6 +464,8 @@ export function Game2D() {
           if (effectiveWorldId != null) {
             // Use runtime to ensure session for this world
             ensureSession(effectiveWorldId).catch((e) => {
+              const message = e instanceof Error ? e.message : String(e);
+              setError(`Failed to initialize world session: ${message}`);
               console.error('Failed to initialize world session', e);
             });
           }
@@ -482,6 +486,8 @@ export function Game2D() {
       // Use runtime to ensure session for the selected world
       await ensureSession(worldId);
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setError(`Failed to select world: ${message}`);
       console.error('Failed to select GameWorld for Game2D', e);
     }
   };
@@ -1098,7 +1104,7 @@ export function Game2D() {
                 <option value="">(local session)</option>
                 {worlds.map((w) => (
                   <option key={w.id} value={w.id}>
-                    {w.name}
+                    {worldLabelsById.get(w.id) ?? w.name}
                   </option>
                 ))}
               </Select>

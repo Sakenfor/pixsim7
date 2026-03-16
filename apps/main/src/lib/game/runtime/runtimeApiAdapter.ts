@@ -249,7 +249,16 @@ export const gameRuntimeApiClient: GameApiClient = {
     flags?: Record<string, unknown>,
     worldId?: number
   ): Promise<GameSessionDTO> {
-    return await createGameSession(toSceneId(sceneId), flags, worldId);
+    try {
+      return await createGameSession(toSceneId(sceneId), flags, worldId);
+    } catch (error: unknown) {
+      const detail =
+        (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      if (typeof detail === 'string' && detail.trim().length > 0) {
+        throw new Error(`createSession failed: ${detail}`);
+      }
+      throw error;
+    }
   },
 
   async updateSession(

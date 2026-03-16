@@ -850,10 +850,11 @@ export class GameRuntime implements IGameRuntime {
       }
     }
 
+    const autoSceneId = 0;
     this.log(
-      `No sceneId provided/inferred for world ${world.id}; using fallback sceneId=1`
+      `No sceneId provided/inferred for world ${world.id}; requesting server scene auto-resolution (sceneId=${autoSceneId})`
     );
-    return 1;
+    return autoSceneId;
   }
 
   /**

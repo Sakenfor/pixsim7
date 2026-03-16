@@ -229,10 +229,10 @@ export async function attemptSensualTouch(req: SensualTouchRequest): Promise<Sen
 }
 
 // =============================================================================
-// Dialogue Action Selection (behavior-driven)
+// Dialogue Primitive Selection (behavior-driven)
 // =============================================================================
 
-export interface BuildActionSelectionRequestFromBehaviorRequest {
+export interface BuildPrimitiveSelectionRequestFromBehaviorRequest {
   session_id: number;
   world_id: number;
   lead_npc_id: number;
@@ -251,7 +251,7 @@ export interface BuildActionSelectionRequestFromBehaviorRequest {
   max_duration?: number | null;
 }
 
-export interface ActionSelectionRequestPayload {
+export interface PrimitiveSelectionRequestPayload {
   location_tag?: string | null;
   pose?: string | null;
   intimacy_level?: string | null;
@@ -267,36 +267,36 @@ export interface ActionSelectionRequestPayload {
   world_id?: number | null;
 }
 
-export interface ActionSelectionResponsePayload {
+export interface PrimitiveSelectionResponsePayload {
   blocks: Array<Record<string, unknown>>;
   total_duration: number;
   resolved_images: Array<Record<string, unknown>>;
-  composition_assets: Record<string, unknown>;
+  composition_assets: Array<Record<string, unknown>>;
   compatibility_score: number;
   fallback_reason?: string | null;
   prompts: string[];
   segments: Array<Record<string, unknown>>;
 }
 
-export interface BuildActionSelectionRequestFromBehaviorResponse {
-  request: ActionSelectionRequestPayload;
+export interface BuildPrimitiveSelectionRequestFromBehaviorResponse {
+  request: PrimitiveSelectionRequestPayload;
   derived: Record<string, unknown>;
 }
 
-export async function buildActionSelectionRequestFromBehavior(
-  request: BuildActionSelectionRequestFromBehaviorRequest,
-): Promise<BuildActionSelectionRequestFromBehaviorResponse> {
-  return pixsimClient.post<BuildActionSelectionRequestFromBehaviorResponse>(
-    '/game/dialogue/actions/request-from-behavior',
+export async function buildPrimitiveSelectionRequestFromBehavior(
+  request: BuildPrimitiveSelectionRequestFromBehaviorRequest,
+): Promise<BuildPrimitiveSelectionRequestFromBehaviorResponse> {
+  return pixsimClient.post<BuildPrimitiveSelectionRequestFromBehaviorResponse>(
+    '/game/dialogue/primitives/request-from-behavior',
     request,
   );
 }
 
-export async function selectActionBlocksFromBehavior(
-  request: BuildActionSelectionRequestFromBehaviorRequest,
-): Promise<ActionSelectionResponsePayload> {
-  return pixsimClient.post<ActionSelectionResponsePayload>(
-    '/game/dialogue/actions/select-from-behavior',
+export async function selectPrimitiveBlocksFromBehavior(
+  request: BuildPrimitiveSelectionRequestFromBehaviorRequest,
+): Promise<PrimitiveSelectionResponsePayload> {
+  return pixsimClient.post<PrimitiveSelectionResponsePayload>(
+    '/game/dialogue/primitives/select-from-behavior',
     request,
   );
 }
