@@ -246,3 +246,136 @@ class TestCreateGenerationTemplateRollViaRunContext:
         assert response.status_code == 400
         assert "Invalid guidance_plan" in response.text
         local_service.create_generation.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_guidance_patch_is_promoted_to_guidance_plan(self, monkeypatch):
+        user_id = 42
+
+        local_service = SimpleNamespace(
+            db=SimpleNamespace(),
+            create_generation=AsyncMock(return_value=_fake_generation_response(user_id=user_id)),
+        )
+        gateway = SimpleNamespace(
+            proxy=AsyncMock(return_value=SimpleNamespace(called=False, data=None)),
+            local=local_service,
+        )
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1")
+        app.dependency_overrides[get_current_user] = lambda: _mock_user(user_id)
+        app.dependency_overrides[get_generation_gateway] = lambda: gateway
+
+        monkeypatch.setattr(generations_api, "get_client_identifier", AsyncMock(return_value="test-client"))
+        monkeypatch.setattr(generations_api.job_create_limiter, "check", AsyncMock())
+
+        request_payload = {
+            "config": {
+                "generationType": "text_to_video",
+                "purpose": "gap_fill",
+                "style": {},
+                "duration": {},
+                "constraints": {},
+                "strategy": "once",
+                "fallback": {"mode": "skip"},
+                "enabled": True,
+                "version": 1,
+                "prompt": "client prompt",
+                "run_context": {
+                    "guidance_patch": {
+                        "masked_transform": {
+                            "instruction": "fix hand anatomy",
+                            "strength": 6,
+                            "preserve_identity": True,
+                            "preserve_background": True,
+                            "mask": {"format": "asset_ref", "data": "asset:222"},
+                        }
+                    }
+                },
+            },
+            "provider_id": "pixverse",
+            "priority": 5,
+        }
+
+        async with _client(app) as c:
+            response = await c.post("/api/v1/generations", json=request_payload)
+
+        assert response.status_code == 201, response.text
+
+        create_call = local_service.create_generation.await_args
+        generation_config = create_call.kwargs["params"]["generation_config"]
+        run_context = generation_config["run_context"]
+        guidance_plan = run_context["guidance_plan"]
+        assert guidance_plan["version"] == 1
+        assert guidance_plan["masks"]["edit_mask"]["format"] == "asset_ref"
+        assert guidance_plan["masks"]["edit_mask"]["data"] == "asset:222"
+        assert guidance_plan["constraints"]["identity_strength"] == 1.0
+        assert guidance_plan["constraints"]["lock_camera"] is True
+        assert guidance_plan["prompt_tool_patch"]["masked_transform"]["instruction"] == "fix hand anatomy"
+
+    @pytest.mark.asyncio
+    async def test_composition_assets_patch_is_merged_into_generation_config(self, monkeypatch):
+        user_id = 42
+
+        local_service = SimpleNamespace(
+            db=SimpleNamespace(),
+            create_generation=AsyncMock(return_value=_fake_generation_response(user_id=user_id)),
+        )
+        gateway = SimpleNamespace(
+            proxy=AsyncMock(return_value=SimpleNamespace(called=False, data=None)),
+            local=local_service,
+        )
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1")
+        app.dependency_overrides[get_current_user] = lambda: _mock_user(user_id)
+        app.dependency_overrides[get_generation_gateway] = lambda: gateway
+
+        monkeypatch.setattr(generations_api, "get_client_identifier", AsyncMock(return_value="test-client"))
+        monkeypatch.setattr(generations_api.job_create_limiter, "check", AsyncMock())
+
+        request_payload = {
+            "config": {
+                "generationType": "image_to_image",
+                "purpose": "variation",
+                "style": {},
+                "duration": {},
+                "constraints": {},
+                "strategy": "once",
+                "fallback": {"mode": "skip"},
+                "enabled": True,
+                "version": 1,
+                "prompt": "client prompt",
+                "composition_assets": [
+                    {
+                        "asset": "asset:101",
+                        "role": "environment",
+                        "media_type": "image",
+                    }
+                ],
+                "run_context": {
+                    "composition_assets_patch": [
+                        {
+                            "asset_id": 202,
+                            "operation": "masked_transform_mask",
+                            "role": "mask",
+                        }
+                    ]
+                },
+            },
+            "provider_id": "pixverse",
+            "priority": 5,
+        }
+
+        async with _client(app) as c:
+            response = await c.post("/api/v1/generations", json=request_payload)
+
+        assert response.status_code == 201, response.text
+
+        create_call = local_service.create_generation.await_args
+        generation_config = create_call.kwargs["params"]["generation_config"]
+        composition_assets = generation_config["composition_assets"]
+        assert len(composition_assets) == 2
+        assert composition_assets[0]["asset"]["id"] == 101
+        assert composition_assets[1]["asset"]["id"] == 202
+        assert composition_assets[1]["role"] == "mask"
+        assert composition_assets[1]["influence_type"] == "mask"

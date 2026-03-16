@@ -8,6 +8,7 @@ import { useToastStore } from '@pixsim7/shared.ui';
 import { useState, useCallback } from 'react';
 
 import { getAsset, getAssetGenerationContext } from '@lib/api/assets';
+import { searchBlocks } from '@lib/api/blockTemplates';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 
 import { fromAssetResponse, toSelectedAsset, type AssetModel } from '@features/assets';
@@ -75,6 +76,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
   const [isExtending, setIsExtending] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isQuickGenerating, setIsQuickGenerating] = useState(false);
+  const [isGeneratingVariations, setIsGeneratingVariations] = useState(false);
   const [isInsertingPrompt, setIsInsertingPrompt] = useState(false);
 
   // Get generations store for seeding new generations
@@ -479,11 +481,133 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     submitDirectGeneration,
   ]);
 
+  /**
+   * Generate style variations: re-run the same generation with different
+   * style primitive texts appended to the original prompt.
+   *
+   * @param category - style primitive category to sweep (default: aesthetic_preset)
+   * @param blockIds - optional subset of block_ids; when omitted, all blocks in the category are used
+   */
+  const handleGenerateStyleVariations = useCallback(
+    async (category = 'aesthetic_preset', blockIds?: string[]) => {
+      if ((!data.sourceGenerationId && !data.hasGenerationContext) || isGeneratingVariations) return;
+
+      setIsGeneratingVariations(true);
+      try {
+        const ctx = await getAssetGenerationContext(id);
+        const {
+          params,
+          operationType: resolvedOperationType,
+          providerId,
+          prompt,
+          sourceAssetIds,
+        } = parseGenerationContext(ctx, operationType);
+
+        const sourceParams = stripSeedFromParams(params as Record<string, unknown>);
+
+        // Preserve source asset references (same logic as handleRegenerate)
+        if (
+          sourceAssetIds.length > 0
+          && !sourceParams.source_asset_ids
+          && !sourceParams.sourceAssetIds
+          && !sourceParams.source_asset_id
+          && !sourceParams.sourceAssetId
+        ) {
+          sourceParams.source_asset_ids = sourceAssetIds;
+        }
+        if (!sourceParams.composition_assets && sourceAssetIds.length > 0) {
+          const built = buildCompositionAssetsFromAssetIds(resolvedOperationType, sourceAssetIds);
+          if (built) {
+            sourceParams.composition_assets = built;
+          }
+        }
+
+        // Fetch style primitives for the requested category
+        const blocks = await searchBlocks({ category, limit: 20 });
+        const selectedBlocks = blockIds
+          ? blocks.filter((b) => blockIds.includes(b.block_id))
+          : blocks;
+
+        if (selectedBlocks.length === 0) {
+          useToastStore.getState().addToast({
+            type: 'info',
+            message: 'No style primitives found for this category.',
+            duration: 3000,
+          });
+          return;
+        }
+
+        const run = createGenerationRunDescriptor({
+          mode: 'style_variations',
+          metadata: {
+            source: 'useGenerationCardHandlers.styleVariations',
+            category,
+            source_asset_id: id,
+          },
+        });
+
+        // Submit one generation per style block
+        for (let i = 0; i < selectedBlocks.length; i++) {
+          const block = selectedBlocks[i];
+          const variantPrompt = `${prompt}\n\n${block.text}`;
+          const variantParams = { ...sourceParams, seed: nextRandomGenerationSeed() };
+
+          const result = await generateAsset({
+            prompt: variantPrompt,
+            providerId,
+            operationType: resolvedOperationType,
+            extraParams: variantParams,
+            runContext: createGenerationRunItemContext(run, {
+              itemIndex: i,
+              itemTotal: selectedBlocks.length,
+            }),
+          });
+
+          addOrUpdateGeneration(createPendingGeneration({
+            id: result.job_id,
+            operationType: resolvedOperationType,
+            providerId,
+            finalPrompt: variantPrompt,
+            params: variantParams,
+            status: result.status || 'pending',
+          }));
+
+          setWatchingGeneration(result.job_id);
+        }
+
+        useToastStore.getState().addToast({
+          type: 'success',
+          message: `Generating ${selectedBlocks.length} style variation${selectedBlocks.length === 1 ? '' : 's'}...`,
+          duration: 3000,
+        });
+      } catch (error) {
+        console.error('Failed to generate style variations:', error);
+        useToastStore.getState().addToast({
+          type: 'error',
+          message: `Failed to generate style variations: ${extractErrorMessage(error)}`,
+          duration: 4000,
+        });
+      } finally {
+        setIsGeneratingVariations(false);
+      }
+    },
+    [
+      id,
+      data.sourceGenerationId,
+      data.hasGenerationContext,
+      isGeneratingVariations,
+      operationType,
+      addOrUpdateGeneration,
+      setWatchingGeneration,
+    ],
+  );
+
   return {
     isQuickGenerating,
     isLoadingSource,
     isExtending,
     isRegenerating,
+    isGeneratingVariations,
     isInsertingPrompt,
     handleQuickGenerate,
     handleLoadToQuickGen,
@@ -491,6 +615,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     handleExtendWithSamePrompt,
     handleExtendWithActivePrompt,
     handleRegenerate,
+    handleGenerateStyleVariations,
     hydrateWidgetGenerationState,
   };
 }

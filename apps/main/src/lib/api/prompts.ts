@@ -18,6 +18,30 @@ const promptsApi = createPromptsApi(pixsimClient);
 
 export type { PromptFamilySummary, PromptFamilyDetail, PromptVersionSummary, PromptVersionDetail };
 
+export interface GenerationHintContract {
+  operation: string;
+  priority: number;
+  requires_input_asset?: boolean;
+  auto_bind?: string | null;
+  note?: string | null;
+  suggested_params?: Record<string, unknown> | null;
+}
+
+export interface PromptAuthoringModeContract {
+  id: string;
+  label: string;
+  description: string;
+  sequence_role?: string | null;
+  generation_hints: GenerationHintContract[];
+  recommended_tags: string[];
+  required_fields: string[];
+}
+
+export interface PromptAuthoringContractResponse {
+  version: string;
+  authoring_modes: PromptAuthoringModeContract[];
+}
+
 export const listPromptFamilies = (
   options?: ListFamiliesApiV1PromptsFamiliesGetParams,
 ): Promise<PromptFamilySummary[]> => promptsApi.listFamilies(options);
@@ -35,6 +59,13 @@ export const listPromptVersions = (
 
 export const getPromptVersion = (versionId: string): Promise<PromptVersionDetail> =>
   promptsApi.getVersion(versionId);
+
+export const getPromptAuthoringContract = (
+  audience: 'agent' | 'user' = 'user',
+): Promise<PromptAuthoringContractResponse> =>
+  pixsimClient.get<PromptAuthoringContractResponse>('/prompts/meta/authoring-contract', {
+    params: { audience },
+  });
 
 export const createPromptVersion = (
   familyId: string,

@@ -8,6 +8,7 @@ import { ActionHintBadge, ButtonGroup, DropdownItem, DropdownDivider, Popover, u
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 
 import { uploadAssetToProvider } from '@lib/api/assets';
+import { searchBlocks, type PromptBlockResponse } from '@lib/api/blockTemplates';
 import { getArrayParamLimits, type ParamSpec } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 import { resolveButtonState, makeAsyncStates, UPLOAD_BUTTON_STATES } from '@lib/ui/buttonStates';
@@ -180,6 +181,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     isLoadingSource,
     isExtending,
     isRegenerating,
+    isGeneratingVariations,
     isInsertingPrompt,
     handleQuickGenerate,
     handleLoadToQuickGen,
@@ -187,6 +189,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     handleExtendWithSamePrompt,
     handleExtendWithActivePrompt,
     handleRegenerate,
+    handleGenerateStyleVariations,
   } = useGenerationCardHandlers({
     inputAsset,
     operationType,
@@ -349,6 +352,15 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       void handleUploadToTarget(targetId);
     }
   }, [setDefaultUploadProvider, providerMenuMode, handleUploadToTarget]);
+
+  // Style variation picker state (lazy-loaded on hover)
+  const [styleBlocks, setStyleBlocks] = useState<PromptBlockResponse[] | null>(null);
+  const styleBlocksFetchedRef = useRef(false);
+  const fetchStyleBlocks = useCallback(() => {
+    if (styleBlocksFetchedRef.current) return;
+    styleBlocksFetchedRef.current = true;
+    void searchBlocks({ category: 'aesthetic_preset', limit: 20 }).then(setStyleBlocks);
+  }, []);
 
   const hasGenContext = data.sourceGenerationId || data.hasGenerationContext;
 
@@ -603,6 +615,52 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
           </button>
           {assetAcceptsInput && (
             <SourceAssetsPreview assetId={id} operationType={operationType} addInput={addInput} />
+          )}
+        </div>
+      ),
+      expandDelay: 150,
+      collapseDelay: 200,
+    });
+  }
+
+  // Style Variations button - generate same prompt with different style primitives
+  if (hasGenContext) {
+    const styleVarStates = makeAsyncStates('palette', 'Generate style variations', 'Generating variations...');
+    buttonItems.push({
+      id: 'style-variations',
+      ...resolveButtonState(styleVarStates, isGeneratingVariations ? 'busy' : 'idle'),
+      onClick: () => { void handleGenerateStyleVariations(); },
+      onMouseEnter: fetchStyleBlocks,
+      expandContent: (
+        <div className="flex flex-col rounded-xl bg-accent/95 backdrop-blur-sm shadow-2xl max-h-64 overflow-y-auto">
+          <div className="px-3 py-1.5 text-[10px] font-medium text-white/50 uppercase tracking-wider">
+            Aesthetic Presets
+          </div>
+          {!styleBlocks ? (
+            <div className="w-44 h-8 flex items-center justify-center">
+              <Icon name="loader" size={12} className="animate-spin text-white/40" />
+            </div>
+          ) : styleBlocks.length === 0 ? (
+            <div className="w-44 h-8 px-3 text-xs text-white/40 flex items-center">
+              No styles available
+            </div>
+          ) : (
+            styleBlocks.map((block) => {
+              const label = block.block_id.split('.').pop()?.replace(/_/g, ' ') ?? block.block_id;
+              return (
+                <button
+                  key={block.block_id}
+                  onClick={() => { void handleGenerateStyleVariations('aesthetic_preset', [block.block_id]); }}
+                  className="w-44 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 last:rounded-b-xl capitalize"
+                  title={block.text}
+                  disabled={isGeneratingVariations}
+                  type="button"
+                >
+                  <Icon name="sparkles" size={10} />
+                  <span className="truncate">{label}</span>
+                </button>
+              );
+            })
           )}
         </div>
       ),

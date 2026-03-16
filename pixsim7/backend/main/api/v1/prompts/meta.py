@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import get_current_user
@@ -30,8 +30,8 @@ from .schemas import CreatePromptFamilyRequest, CreatePromptVersionRequest
 
 router = APIRouter()
 
-PROMPT_ANALYSIS_CONTRACT_VERSION = "2026-03-13.1"
-PROMPT_AUTHORING_CONTRACT_VERSION = "2026-03-14.5"
+PROMPT_ANALYSIS_CONTRACT_VERSION = "2026-03-13.2"
+PROMPT_AUTHORING_CONTRACT_VERSION = "2026-03-16.1"
 PROMPT_ANALYZE_ENDPOINT = "/api/v1/prompts/analyze"
 PROMPT_CREATE_FAMILY_ENDPOINT = "/api/v1/prompts/families"
 PROMPT_LIST_FAMILIES_ENDPOINT = "/api/v1/prompts/families"
@@ -40,6 +40,7 @@ PROMPT_APPLY_EDIT_ENDPOINT = "/api/v1/prompts/versions/{version_id}/apply-edit"
 PROMPT_SEARCH_SIMILAR_ENDPOINT = "/api/v1/prompts/search/similar"
 BLOCK_TAG_DICTIONARY_ENDPOINT = "/api/v1/block-templates/meta/blocks/tag-dictionary"
 ONTOLOGY_USAGE_ENDPOINT = "/api/v1/dev/ontology/usage"
+_VALID_AUTHORING_AUDIENCES = {"agent", "user"}
 
 
 class PromptAnalyzerPresetContract(BaseModel):
@@ -105,6 +106,14 @@ class GenerationHintContract(BaseModel):
         ),
     )
     note: Optional[str] = Field(None, description="Optional context for this hint.")
+    suggested_params: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Optional generation parameter suggestions for this operation "
+            "(e.g. duration, aspect_ratio). UI should treat these as manual suggestions, "
+            "not hard overrides."
+        ),
+    )
 
 
 class PromptAuthoringModeContract(BaseModel):
@@ -259,6 +268,22 @@ def _extract_analyzer_presets(analyzer_config: Dict[str, Any]) -> List[PromptAna
     return presets
 
 
+def _normalize_authoring_audience(audience: Optional[str]) -> Optional[str]:
+    if audience is None:
+        return None
+
+    normalized = audience.strip().lower()
+    if not normalized:
+        return None
+    if normalized not in _VALID_AUTHORING_AUDIENCES:
+        allowed = ", ".join(sorted(_VALID_AUTHORING_AUDIENCES))
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid audience '{audience}'. Expected one of: {allowed}.",
+        )
+    return normalized
+
+
 @router.get("/meta/analysis-contract", response_model=PromptAnalysisContractResponse)
 async def get_prompt_analysis_contract(current_user=Depends(get_current_user)):
     """
@@ -322,7 +347,7 @@ async def get_prompt_analysis_contract(current_user=Depends(get_current_user)):
         {
             "field": "provider_hints.prompt_analysis",
             "status": "deprecated",
-            "behavior": "Rejected by create-version API (HTTP 400).",
+            "behavior": "Rejected by create-version API (HTTP 422).",
             "use_instead": "prompt_analysis field on prompt version payloads.",
         }
     ]
@@ -390,6 +415,8 @@ async def get_prompt_authoring_contract(
     2) create versions
     3) persist prompt_analysis from /prompts/analyze
     """
+    audience = _normalize_authoring_audience(audience)
+
     endpoints = [
         PromptAuthoringEndpointContract(
             id="prompts.list_families",
@@ -575,7 +602,12 @@ async def get_prompt_authoring_contract(
             description="Long-form initial scene prompt with style, setting, and cast setup.",
             sequence_role="initial",
             generation_hints=[
-                GenerationHintContract(operation="text_to_image", priority=1, requires_input_asset=False),
+                GenerationHintContract(
+                    operation="text_to_image",
+                    priority=1,
+                    requires_input_asset=False,
+                    suggested_params={"aspect_ratio": "16:9"},
+                ),
                 GenerationHintContract(operation="text_to_video", priority=2, requires_input_asset=False),
             ],
             recommended_tags=["sequence:initial", "intent:setup", "mode:scene_setup"],
@@ -590,6 +622,7 @@ async def get_prompt_authoring_contract(
                 GenerationHintContract(
                     operation="image_to_video", priority=1,
                     requires_input_asset=True, auto_bind="parent_output",
+                    suggested_params={"duration": 5},
                 ),
                 GenerationHintContract(
                     operation="image_to_image", priority=2,
@@ -656,7 +689,12 @@ async def get_prompt_authoring_contract(
             ),
             sequence_role="initial",
             generation_hints=[
-                GenerationHintContract(operation="text_to_image", priority=1, requires_input_asset=False),
+                GenerationHintContract(
+                    operation="text_to_image",
+                    priority=1,
+                    requires_input_asset=False,
+                    suggested_params={"aspect_ratio": "3:4"},
+                ),
                 GenerationHintContract(
                     operation="image_to_image", priority=2,
                     requires_input_asset=True, auto_bind="viewer_asset",

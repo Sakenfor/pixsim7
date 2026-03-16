@@ -16,7 +16,7 @@ import { useBlockTemplateStore } from '@features/prompts/stores/blockTemplateSto
 import { providerCapabilityRegistry } from '@features/providers';
 
 import { resolveMaxSlotsFromSpecs, resolveMaxSlotsForModel } from '@/components/media/SlotPicker';
-import { getFallbackOperation } from '@/types/operations';
+import { getFallbackOperation, type OperationType } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 
@@ -306,12 +306,18 @@ export function useQuickGenerateController() {
     errorShownForRef.current = null;
   }
 
+  /** Read operation from store at call-time so commands don't depend on stale closures. */
+  function getActiveOperationType(): OperationType {
+    const sessionState = (useSessionStore as any).getState?.();
+    return (sessionState?.operationType as OperationType | undefined) ?? operationType;
+  }
+
   /** Read current input state from store (avoids stale React hook values) */
-  function getInputState() {
+  function getInputState(activeOperationType: OperationType = getActiveOperationType()) {
     const inputState = (useInputStore as any).getState();
-    const currentInputs = inputState.inputsByOperation?.[operationType]?.items ?? [];
+    const currentInputs = inputState.inputsByOperation?.[activeOperationType]?.items ?? [];
     const currentInput = inputState.getCurrentInput
-      ? inputState.getCurrentInput(operationType)
+      ? inputState.getCurrentInput(activeOperationType)
       : null;
     const transitionInputs = inputState.inputsByOperation?.video_transition?.items ?? [];
     return { currentInputs, currentInput, transitionInputs };
@@ -367,19 +373,20 @@ export function useQuickGenerateController() {
 
   /** Build and validate a generation request, resolving the effective operation type */
   async function buildRequest(
+    activeOperationType: OperationType,
     dynamicParams: Record<string, any>,
     operationInputs: any[],
     currentInput: any,
     overrides?: { activeAsset?: ReturnType<typeof toSelectedAsset> | null; promptOverride?: string | null },
-  ): Promise<{ error: string } | { finalPrompt: string; params: any; effectiveOperationType: string; pickStateUpdates?: PickStateUpdate[] }> {
+  ): Promise<{ error: string } | { finalPrompt: string; params: any; effectiveOperationType: OperationType; pickStateUpdates?: PickStateUpdate[] }> {
     // Resolve prompt limit so buildGenerationRequest can clamp the prompt
-    const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', operationType);
+    const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', activeOperationType);
     const model = dynamicParams?.model as string | undefined;
     const maxChars = resolvePromptLimitForModel(providerId, model, opSpec?.parameters);
 
     // Clamp inputs to the model's max slot limit so we never send more assets than allowed
-    const maxSlots = resolveMaxSlotsFromSpecs(opSpec?.parameters, operationType, model)
-      ?? resolveMaxSlotsForModel(operationType, model);
+    const maxSlots = resolveMaxSlotsFromSpecs(opSpec?.parameters, activeOperationType, model)
+      ?? resolveMaxSlotsForModel(activeOperationType, model);
     const clampedInputs = operationInputs.length > maxSlots
       ? operationInputs.slice(0, maxSlots)
       : operationInputs;
@@ -391,7 +398,7 @@ export function useQuickGenerateController() {
       : bindings.lastSelectedAsset;
 
     const buildResult = await buildGenerationRequest({
-      operationType,
+      operationType: activeOperationType,
       prompt: overrides?.promptOverride ?? prompt,
       dynamicParams,
       operationInputs: clampedInputs,
@@ -412,25 +419,28 @@ export function useQuickGenerateController() {
     return {
       finalPrompt: buildResult.finalPrompt,
       params: buildResult.params,
-      effectiveOperationType: getFallbackOperation(operationType, hasAssetInput),
+      effectiveOperationType: getFallbackOperation(activeOperationType, hasAssetInput),
       pickStateUpdates: buildResult.pickStateUpdates,
     };
   }
 
   /** Persist pick state updates (sequential index / no_repeat history) and update display assets */
-  function applyPickStateUpdates(updates: PickStateUpdate[] | undefined) {
+  function applyPickStateUpdates(
+    updates: PickStateUpdate[] | undefined,
+    activeOperationType: OperationType = getActiveOperationType(),
+  ) {
     if (!updates || updates.length === 0) return;
     const inputStore = (useInputStore as any).getState();
     for (const update of updates) {
       // Persist strategy state
-      inputStore.updatePickState(operationType, update.inputId, {
+      inputStore.updatePickState(activeOperationType, update.inputId, {
         pickIndex: update.pickIndex,
         recentPicks: update.recentPicks,
       });
 
       // Update display asset to show the picked asset
       const state = (useInputStore as any).getState();
-      const existing = state.inputsByOperation?.[operationType];
+      const existing = state.inputsByOperation?.[activeOperationType];
       if (existing) {
         const item = existing.items.find((i: any) => i.id === update.inputId);
         if (item && item.asset.id !== update.pickedAssetId) {
@@ -442,7 +452,7 @@ export function useQuickGenerateController() {
           (useInputStore as any).setState({
             inputsByOperation: {
               ...state.inputsByOperation,
-              [operationType]: {
+              [activeOperationType]: {
                 ...existing,
                 items: existing.items.map((i: any) =>
                   i.id === update.inputId
@@ -518,7 +528,7 @@ export function useQuickGenerateController() {
 
   /** Submit a single generation to the API and seed the generations store */
   async function submitOne(
-    request: { finalPrompt: string; params: any; effectiveOperationType: string },
+    request: { finalPrompt: string; params: any; effectiveOperationType: OperationType },
     runContext?: GenerationRunContext,
   ) {
     const result = await generateAsset({
@@ -532,7 +542,7 @@ export function useQuickGenerateController() {
     const genId = result.job_id;
     addOrUpdateGeneration(createPendingGeneration({
       id: genId,
-      operationType,
+      operationType: request.effectiveOperationType,
       providerId,
       finalPrompt: request.finalPrompt,
       params: request.params,
@@ -584,7 +594,13 @@ export function useQuickGenerateController() {
         const resolvedPrimary = resolvedGroup[0] ?? primaryInput;
         const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
         await applyFrameExtraction(dynamicParams, resolvedPrimary, []);
-        const request = await buildRequest(dynamicParams, resolvedGroup, resolvedPrimary, { promptOverride: rolledOnce });
+        const request = await buildRequest(
+          operationType,
+          dynamicParams,
+          resolvedGroup,
+          resolvedPrimary,
+          { promptOverride: rolledOnce },
+        );
         if ('error' in request) {
           return { kind: 'skip', reason: request.error };
         }
@@ -684,8 +700,9 @@ export function useQuickGenerateController() {
   ): Promise<GenerationPipelineResult> {
     const burstCount = overrides?.count && overrides.count > 1 ? overrides.count : 1;
     const isBurst = burstCount > 1;
+    const activeOperationType = getActiveOperationType();
 
-    const { currentInputs, currentInput, transitionInputs } = getInputState();
+    const { currentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
     const dynamicParams = { ...bindings.dynamicParams, ...overrides?.paramOverrides };
 
     // Asset overrides: convert AssetModel[] to InputItems, bypassing store inputs
@@ -743,12 +760,18 @@ export function useQuickGenerateController() {
       const setCache = hasRandomEachRef ? await preResolveSetRefs(effectiveInputs) : new Map<string, AssetModel[]>();
 
       // Build a base request for validation (and reuse when no random_each refs)
-      const baseRequest = await buildRequest(dynamicParams, effectiveInputs, effectiveCurrentInput, requestOverrides);
+      const baseRequest = await buildRequest(
+        activeOperationType,
+        dynamicParams,
+        effectiveInputs,
+        effectiveCurrentInput,
+        requestOverrides,
+      );
       if ('error' in baseRequest) {
         throw new Error(baseRequest.error);
       }
 
-      recordInputHistory(operationType, effectiveInputs);
+      recordInputHistory(activeOperationType, effectiveInputs);
 
       for (let i = 0; i < burstCount; i++) {
         try {
@@ -758,7 +781,13 @@ export function useQuickGenerateController() {
           if (hasRandomEachRef) {
             const pickedInputs = prePickSetRefs(effectiveInputs, setCache);
             const pickedCurrent = pickedInputs.find((item: any) => item.id === effectiveCurrentInput?.id) ?? effectiveCurrentInput;
-            const freshRequest = await buildRequest(dynamicParams, pickedInputs, pickedCurrent, requestOverrides);
+            const freshRequest = await buildRequest(
+              activeOperationType,
+              dynamicParams,
+              pickedInputs,
+              pickedCurrent,
+              requestOverrides,
+            );
             if (!('error' in freshRequest)) {
               request = freshRequest;
             }
@@ -777,7 +806,7 @@ export function useQuickGenerateController() {
 
           logEvent('INFO', 'burst_generation_created', {
             generationId: genId,
-            operationType,
+            operationType: activeOperationType,
             providerId: providerId || 'pixverse',
             burstIndex: i + 1,
             burstTotal: burstCount,
@@ -797,7 +826,7 @@ export function useQuickGenerateController() {
       logEvent('INFO', 'burst_complete', {
         queued: generatedIds.length,
         total: burstCount,
-        operationType,
+        operationType: activeOperationType,
         providerId: providerId || 'pixverse',
       });
 
@@ -805,7 +834,13 @@ export function useQuickGenerateController() {
     }
 
     // ── Single generation path ──
-    const request = await buildRequest(dynamicParams, effectiveInputs, effectiveCurrentInput, requestOverrides);
+    const request = await buildRequest(
+      activeOperationType,
+      dynamicParams,
+      effectiveInputs,
+      effectiveCurrentInput,
+      requestOverrides,
+    );
     if ('error' in request) {
       throw new Error(request.error);
     }
@@ -823,11 +858,11 @@ export function useQuickGenerateController() {
       }),
     );
     setWatchingGeneration(genId);
-    recordInputHistory(operationType, effectiveInputs);
+    recordInputHistory(activeOperationType, effectiveInputs);
 
     logEvent('INFO', 'generation_created', {
       generationId: genId,
-      operationType,
+      operationType: activeOperationType,
       providerId: providerId || 'pixverse',
       status: 'pending',
     });
@@ -870,12 +905,13 @@ export function useQuickGenerateController() {
 
     resetForGeneration();
     const total = count;
+    const activeOperationType = getActiveOperationType();
     const generatedIds: number[] = [];
     const run = createGenerationRunDescriptor({ mode: 'quickgen_burst' });
     setQueueProgress({ queued: 0, total });
 
     try {
-      const { currentInputs, currentInput, transitionInputs } = getInputState();
+      const { currentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
       const baseDynamicParams = { ...bindings.dynamicParams, ...options?.overrideDynamicParams };
 
       await applyFrameExtraction(baseDynamicParams, currentInput, transitionInputs);
@@ -883,7 +919,7 @@ export function useQuickGenerateController() {
       const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
       const rollOnce = !useServerRolling ? await maybeRollTemplate() : null;
 
-      recordInputHistory(operationType, currentInputs);
+      recordInputHistory(activeOperationType, currentInputs);
 
       // Pre-resolve sets once for step 1 (step 2+ uses previous output, no set refs)
       const hasRandomEachRef = currentInputs.some(
@@ -921,6 +957,7 @@ export function useQuickGenerateController() {
           }
 
           const request = await buildRequest(
+            activeOperationType,
             dynamicParams,
             operationInputsForStep,
             currentInputForStep,

@@ -131,6 +131,8 @@ export interface ViewerToolPreset {
   requiresVideo?: boolean;
   /** Tool needs an async execution lifecycle. Manual tools are always sync. */
   isAsync?: boolean;
+  /** Optional prompt-tool preset ID used for prompt-box execution handoff. */
+  promptToolPresetId?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -208,6 +210,7 @@ export const PRESET_REMOVE_OBJECT: ViewerToolPreset = {
   requiresSelection: true,
   requiresImage: true,
   isAsync: true,
+  promptToolPresetId: 'edit/remove-object',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

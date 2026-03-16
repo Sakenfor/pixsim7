@@ -72,6 +72,10 @@ async def test_catalog_scope_builtin_includes_builtin_registry() -> None:
     preset_ids = {preset.id for preset in result}
     assert "rewrite/style-shift" in preset_ids
     assert "compose/reference-merge" in preset_ids
+    assert "edit/masked-transform" in preset_ids
+    assert "edit/change-clothes" in preset_ids
+    assert "edit/fix-anatomy" in preset_ids
+    assert "edit/remove-object" in preset_ids
 
 
 @pytest.mark.asyncio
@@ -147,6 +151,10 @@ async def test_catalog_scope_all_dedupes_self_and_shared_overlap(
     assert "user/shared-extra" in ids
     assert "rewrite/style-shift" in ids
     assert "compose/reference-merge" in ids
+    assert "edit/masked-transform" in ids
+    assert "edit/change-clothes" in ids
+    assert "edit/fix-anatomy" in ids
+    assert "edit/remove-object" in ids
 
 
 @pytest.mark.asyncio

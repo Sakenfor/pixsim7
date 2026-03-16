@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
+import { logEvent } from '@lib/utils/logging';
 
 import {
   executePromptTool,
@@ -20,6 +21,7 @@ interface BlockOverlayItem {
   id: string;
   role: string;
   text: string;
+  primitiveTags?: string[];
 }
 
 export interface PromptToolsApplyPayload {
@@ -36,6 +38,69 @@ export interface PromptToolsPanelProps {
   runContextSeed?: Record<string, unknown>;
   onApply: (payload: PromptToolsApplyPayload) => void;
 }
+
+type QuickParamFieldType = 'text' | 'number' | 'boolean' | 'select';
+
+interface QuickParamField {
+  key: string;
+  label: string;
+  type: QuickParamFieldType;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: Array<{ value: string; label: string }>;
+}
+
+const QUICK_PARAM_FIELDS_BY_PRESET: Record<string, QuickParamField[]> = {
+  'edit/masked-transform': [
+    { key: 'instruction', label: 'Instruction', type: 'text' },
+    { key: 'strength', label: 'Strength', type: 'number', min: 1, max: 10, step: 1 },
+    { key: 'preserve_identity', label: 'Preserve identity', type: 'boolean' },
+    { key: 'preserve_background', label: 'Preserve background', type: 'boolean' },
+  ],
+  'edit/change-clothes': [
+    { key: 'target_garment', label: 'Target garment', type: 'text' },
+    { key: 'new_clothes', label: 'New clothes', type: 'text' },
+    { key: 'material', label: 'Material', type: 'text' },
+    { key: 'color', label: 'Color', type: 'text' },
+    { key: 'strength', label: 'Strength', type: 'number', min: 1, max: 10, step: 1 },
+    { key: 'preserve_identity', label: 'Preserve identity', type: 'boolean' },
+    { key: 'preserve_background', label: 'Preserve background', type: 'boolean' },
+  ],
+  'edit/fix-anatomy': [
+    {
+      key: 'focus',
+      label: 'Focus',
+      type: 'select',
+      options: [
+        { value: 'hands and fingers', label: 'Hands and fingers' },
+        { value: 'arms and elbows', label: 'Arms and elbows' },
+        { value: 'face and jawline', label: 'Face and jawline' },
+        { value: 'full body', label: 'Full body' },
+      ],
+    },
+    {
+      key: 'quality',
+      label: 'Quality',
+      type: 'select',
+      options: [
+        { value: 'realistic', label: 'Realistic' },
+        { value: 'cinematic', label: 'Cinematic' },
+        { value: 'stylized', label: 'Stylized' },
+      ],
+    },
+    { key: 'strength', label: 'Strength', type: 'number', min: 1, max: 10, step: 1 },
+    { key: 'preserve_identity', label: 'Preserve identity', type: 'boolean' },
+    { key: 'preserve_background', label: 'Preserve background', type: 'boolean' },
+  ],
+  'edit/remove-object': [
+    { key: 'object', label: 'Object to remove', type: 'text' },
+    { key: 'cleanup', label: 'Cleanup instruction', type: 'text' },
+    { key: 'strength', label: 'Strength', type: 'number', min: 1, max: 10, step: 1 },
+    { key: 'preserve_identity', label: 'Preserve identity', type: 'boolean' },
+    { key: 'preserve_background', label: 'Preserve background', type: 'boolean' },
+  ],
+};
 
 function parseJsonObject(raw: string, label: string): Record<string, unknown> {
   const trimmed = raw.trim();
@@ -66,13 +131,50 @@ function parseBlockOverlay(overlay: Array<Record<string, unknown>> | undefined |
     if (!textCandidate) continue;
     const roleCandidate =
       (typeof item.role === 'string' && item.role.trim()) || DEFAULT_PROMPT_ROLE;
+    const primitiveTags =
+      Array.isArray(item.primitive_tags)
+        ? item.primitive_tags
+          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+          .map((value) => value.trim())
+        : Array.isArray(item.primitiveTags)
+          ? item.primitiveTags
+            .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+            .map((value) => value.trim())
+          : [];
     items.push({
       id: `overlay-block-${idCounter.current++}`,
       role: roleCandidate,
       text: textCandidate,
+      ...(primitiveTags.length > 0 ? { primitiveTags } : {}),
     });
   }
   return items.length > 0 ? items : null;
+}
+
+function coerceQuickParamValue(field: QuickParamField, value: unknown): unknown {
+  if (field.type === 'number') {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return field.min ?? 1;
+  }
+  if (field.type === 'boolean') {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value > 0;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      return ['1', 'true', 'yes', 'y', 'on'].includes(normalized);
+    }
+    return false;
+  }
+  if (field.type === 'select') {
+    const asString = typeof value === 'string' ? value : '';
+    const option = field.options?.find((entry) => entry.value === asString);
+    return option?.value ?? field.options?.[0]?.value ?? '';
+  }
+  return typeof value === 'string' ? value : '';
 }
 
 export function PromptToolsPanel({
@@ -94,8 +196,10 @@ export function PromptToolsPanel({
   const [runError, setRunError] = useState<string | null>(null);
   const [result, setResult] = useState<PromptToolExecuteResponse | null>(null);
   const [applyMode, setApplyMode] = useState<PromptToolApplyMode>('replace_text');
+  const [quickParams, setQuickParams] = useState<Record<string, unknown>>({});
 
   const promptTextRef = useRef(promptText);
+  const selectedPresetRef = useRef<string | null>(null);
   promptTextRef.current = promptText;
 
   const loadCatalog = useCallback(async () => {
@@ -130,8 +234,13 @@ export function PromptToolsPanel({
     }
     setRunning(true);
     setRunError(null);
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
     try {
-      const params = parseJsonObject(paramsText, 'Params');
+      const paramsJson = parseJsonObject(paramsText, 'Params');
+      const params = {
+        ...paramsJson,
+        ...quickParams,
+      };
       const runContextOverrides = parseJsonObject(contextText, 'Run context');
       const runContext = {
         ...(runContextSeed ?? {}),
@@ -145,13 +254,27 @@ export function PromptToolsPanel({
       });
       setResult(res);
       setApplyMode(res.block_overlay && res.block_overlay.length > 0 ? 'apply_all' : 'replace_text');
+      const finishedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      logEvent('INFO', 'prompt_tool_executed', {
+        preset_id: selectedId,
+        duration_ms: Math.max(0, Math.round(finishedAt - startedAt)),
+        has_block_overlay: !!(res.block_overlay && res.block_overlay.length > 0),
+        has_guidance_patch: !!res.guidance_patch,
+        has_composition_assets_patch: !!(
+          res.composition_assets_patch && res.composition_assets_patch.length > 0
+        ),
+      });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to execute prompt tool';
       setRunError(message);
+      logEvent('WARNING', 'prompt_tool_execution_failed', {
+        preset_id: selectedId,
+        error: message,
+      });
     } finally {
       setRunning(false);
     }
-  }, [disabled, selectedId, paramsText, contextText, runContextSeed]);
+  }, [disabled, selectedId, paramsText, quickParams, contextText, runContextSeed]);
 
   const handleApply = useCallback(() => {
     if (!result || disabled) return;
@@ -175,6 +298,28 @@ export function PromptToolsPanel({
     () => catalog.find((preset) => preset.id === selectedId) ?? null,
     [catalog, selectedId],
   );
+  const quickParamFields = useMemo(
+    () => (selectedId ? (QUICK_PARAM_FIELDS_BY_PRESET[selectedId] ?? []) : []),
+    [selectedId],
+  );
+
+  useEffect(() => {
+    if (!selectedTool) {
+      selectedPresetRef.current = null;
+      return;
+    }
+    if (selectedPresetRef.current === selectedTool.id) return;
+    selectedPresetRef.current = selectedTool.id;
+    setParamsText(JSON.stringify(selectedTool.defaults ?? {}, null, 2));
+    const nextQuickParams: Record<string, unknown> = {};
+    const fields = QUICK_PARAM_FIELDS_BY_PRESET[selectedTool.id] ?? [];
+    for (const field of fields) {
+      nextQuickParams[field.key] = coerceQuickParamValue(field, selectedTool.defaults?.[field.key]);
+    }
+    setQuickParams(nextQuickParams);
+    setRunError(null);
+    setResult(null);
+  }, [selectedTool]);
 
   const diffSegments = useMemo(() => {
     if (!result) return [];
@@ -253,8 +398,80 @@ export function PromptToolsPanel({
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        {quickParamFields.length > 0 && (
+          <div className="md:col-span-2 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/30 p-2">
+            <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200 mb-1.5">
+              Quick controls
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {quickParamFields.map((field) => {
+                const value = quickParams[field.key];
+                if (field.type === 'boolean') {
+                  return (
+                    <label
+                      key={field.key}
+                      className="text-[11px] text-neutral-600 dark:text-neutral-300 inline-flex items-center gap-2"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={Boolean(value)}
+                        disabled={disabled || running}
+                        onChange={(event) => setQuickParams((prev) => ({
+                          ...prev,
+                          [field.key]: event.target.checked,
+                        }))}
+                      />
+                      {field.label}
+                    </label>
+                  );
+                }
+                if (field.type === 'select') {
+                  return (
+                    <label key={field.key} className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                      {field.label}
+                      <select
+                        value={typeof value === 'string' ? value : ''}
+                        disabled={disabled || running}
+                        onChange={(event) => setQuickParams((prev) => ({
+                          ...prev,
+                          [field.key]: event.target.value,
+                        }))}
+                        className="mt-1 w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+                      >
+                        {(field.options ?? []).map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                }
+                return (
+                  <label key={field.key} className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                    {field.label}
+                    <input
+                      type={field.type === 'number' ? 'number' : 'text'}
+                      value={typeof value === 'number' ? String(value) : (typeof value === 'string' ? value : '')}
+                      min={field.type === 'number' ? field.min : undefined}
+                      max={field.type === 'number' ? field.max : undefined}
+                      step={field.type === 'number' ? field.step : undefined}
+                      disabled={disabled || running}
+                      onChange={(event) => {
+                        const raw = event.target.value;
+                        setQuickParams((prev) => ({
+                          ...prev,
+                          [field.key]: field.type === 'number' ? Number(raw) : raw,
+                        }));
+                      }}
+                      className="mt-1 w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <label className="text-[11px] text-neutral-600 dark:text-neutral-300">
-          Params (JSON)
+          Params overrides (JSON)
           <textarea
             value={paramsText}
             disabled={disabled || running}

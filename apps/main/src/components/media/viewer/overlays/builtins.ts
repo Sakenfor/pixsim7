@@ -2,6 +2,7 @@ import { AnnotationOverlayMain } from './builtins/annotationOverlay';
 import { CaptureOverlayMain } from './builtins/captureOverlay';
 import { MaskOverlayMain } from './builtins/maskOverlay';
 import { PoseBoardOverlayMain } from './builtins/poseOverlay';
+import { PromptToolsOverlayMain, PromptToolsOverlaySidebar } from './builtins/promptToolsOverlay';
 import { registerMediaOverlay } from './registry';
 
 registerMediaOverlay({
@@ -36,6 +37,19 @@ registerMediaOverlay({
   tone: 'blue',
   isAvailable: (asset) => asset.type === 'image',
   Main: MaskOverlayMain,
+});
+
+registerMediaOverlay({
+  id: 'prompt-tools',
+  label: 'Prompt Tools',
+  description: 'Run prompt editing tools on the current media context.',
+  icon: 'wand',
+  shortcut: 'T',
+  priority: 27,
+  tone: 'amber',
+  isAvailable: (asset) => asset.type === 'image',
+  Main: PromptToolsOverlayMain,
+  Sidebar: PromptToolsOverlaySidebar,
 });
 
 registerMediaOverlay({

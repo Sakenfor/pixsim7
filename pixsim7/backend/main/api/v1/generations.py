@@ -45,6 +45,159 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _as_mapping(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    return {}
+
+
+def _as_mapping_list(value: Any) -> List[Dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    rows: List[Dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, dict):
+            rows.append(dict(item))
+            continue
+        model_dump = getattr(item, "model_dump", None)
+        if callable(model_dump):
+            dumped = model_dump()
+            if isinstance(dumped, dict):
+                rows.append(dict(dumped))
+    return rows
+
+
+def _normalize_asset_ref(asset_value: Any) -> Optional[str]:
+    if asset_value is None or isinstance(asset_value, bool):
+        return None
+    if isinstance(asset_value, int):
+        return f"asset:{asset_value}" if asset_value > 0 else None
+    if isinstance(asset_value, float):
+        if asset_value.is_integer() and asset_value > 0:
+            return f"asset:{int(asset_value)}"
+        return None
+    if isinstance(asset_value, str):
+        text = asset_value.strip()
+        if not text:
+            return None
+        return text if text.startswith("asset:") else f"asset:{text}"
+    return None
+
+
+def _extract_asset_key(entry: Dict[str, Any]) -> Optional[str]:
+    for key in ("asset", "asset_id", "asset_ref", "assetId", "id"):
+        if key not in entry:
+            continue
+        normalized = _normalize_asset_ref(entry.get(key))
+        if normalized:
+            return normalized
+    return None
+
+
+def _merge_prompt_tool_composition_assets(
+    existing: Any,
+    patch_rows: Any,
+) -> Optional[List[Dict[str, Any]]]:
+    existing_rows = _as_mapping_list(existing)
+    patch_list = _as_mapping_list(patch_rows)
+    if not patch_list:
+        return existing_rows or None
+
+    merged = [dict(row) for row in existing_rows]
+    index_by_asset: Dict[str, int] = {}
+    for idx, row in enumerate(merged):
+        asset_key = _extract_asset_key(row)
+        if asset_key:
+            index_by_asset[asset_key] = idx
+
+    for patch_row in patch_list:
+        row = dict(patch_row)
+        asset_key = _extract_asset_key(row)
+        if not asset_key:
+            continue
+        row.setdefault("asset", asset_key)
+        row.setdefault("role", row.get("role") or "reference")
+        operation = row.get("operation")
+        if isinstance(operation, str) and operation:
+            row.setdefault(
+                "influence_type",
+                "mask" if "mask" in operation else "reference",
+            )
+
+        existing_idx = index_by_asset.get(asset_key)
+        if existing_idx is None:
+            if row.get("layer") is None:
+                row["layer"] = len(merged)
+            merged.append(row)
+            index_by_asset[asset_key] = len(merged) - 1
+            continue
+
+        prior = merged[existing_idx]
+        merged[existing_idx] = {
+            **prior,
+            **row,
+            "asset": prior.get("asset") or row.get("asset"),
+        }
+
+    return merged or None
+
+
+def _apply_prompt_tool_guidance_patch(
+    guidance_plan: Any,
+    guidance_patch: Any,
+) -> Optional[Dict[str, Any]]:
+    base_plan = _as_mapping(guidance_plan)
+    patch = _as_mapping(guidance_patch)
+    if not base_plan and not patch:
+        return None
+
+    normalized_plan: Dict[str, Any] = {
+        **base_plan,
+        "version": 1,
+    }
+    if not patch:
+        return normalized_plan
+
+    masked_transform = _as_mapping(patch.get("masked_transform"))
+    if masked_transform:
+        masks = _as_mapping(normalized_plan.get("masks"))
+        mask_payload = _as_mapping(masked_transform.get("mask"))
+        mask_format = mask_payload.get("format")
+        mask_data = mask_payload.get("data")
+        if (
+            isinstance(mask_format, str)
+            and mask_format in {"url", "base64", "asset_ref"}
+            and isinstance(mask_data, str)
+            and mask_data.strip()
+        ):
+            masks["edit_mask"] = {
+                "format": mask_format,
+                "data": mask_data.strip(),
+            }
+            normalized_plan["masks"] = masks
+
+        constraints = _as_mapping(normalized_plan.get("constraints"))
+        strength_raw = masked_transform.get("strength")
+        if isinstance(strength_raw, (int, float)):
+            strength = max(1.0, min(10.0, float(strength_raw))) / 10.0
+            constraints.setdefault("style_strength", round(strength, 2))
+        preserve_identity = masked_transform.get("preserve_identity")
+        if isinstance(preserve_identity, bool):
+            constraints.setdefault(
+                "identity_strength",
+                1.0 if preserve_identity else 0.6,
+            )
+        preserve_background = masked_transform.get("preserve_background")
+        if isinstance(preserve_background, bool):
+            constraints.setdefault("lock_camera", preserve_background)
+        if constraints:
+            normalized_plan["constraints"] = constraints
+
+    # Keep raw prompt-tool patch available for downstream formatting/analytics.
+    normalized_plan["prompt_tool_patch"] = patch
+    return normalized_plan
+
+
 async def _get_generation_wait_reasons(
     generation_ids: List[int],
 ) -> Dict[int, str]:
@@ -169,6 +322,35 @@ async def create_generation(
         # Roll block template from config.run_context (server-side template resolution)
         existing_run_context = (request.config.model_extra or {}).get("run_context") or {}
         run_context = existing_run_context if isinstance(existing_run_context, dict) else {}
+
+        # Prompt-tool lane normalization:
+        # 1) fold run_context.guidance_patch -> run_context.guidance_plan
+        # 2) fold run_context.composition_assets_patch -> config.composition_assets
+        guidance_plan_from_patch = _apply_prompt_tool_guidance_patch(
+            run_context.get("guidance_plan"),
+            run_context.get("guidance_patch"),
+        )
+        if guidance_plan_from_patch:
+            run_context["guidance_plan"] = guidance_plan_from_patch
+            if request.config.__pydantic_extra__ is None:
+                request.config.__pydantic_extra__ = {}
+            request.config.__pydantic_extra__["run_context"] = run_context
+
+        merged_composition_assets = _merge_prompt_tool_composition_assets(
+            request.config.composition_assets,
+            run_context.get("composition_assets_patch"),
+        )
+        if merged_composition_assets is not None:
+            from pixsim7.backend.main.shared.schemas.composition_schemas import CompositionAsset
+
+            validated_assets: List[CompositionAsset] = []
+            for row in merged_composition_assets:
+                try:
+                    validated_assets.append(CompositionAsset.model_validate(row))
+                except Exception:
+                    continue
+            request.config.composition_assets = validated_assets
+
         raw_block_template_id = run_context.get("block_template_id")
         block_template_id: Optional[UUID] = None
         if raw_block_template_id:
@@ -208,7 +390,13 @@ async def create_generation(
                 request.config.__pydantic_extra__["run_context"] = updated_run_context
 
         # === Guidance plan extraction & validation ===
-        raw_guidance_plan = run_context.get("guidance_plan")
+        effective_run_context = (
+            (request.config.__pydantic_extra__ or {}).get("run_context") or run_context
+        )
+        if not isinstance(effective_run_context, dict):
+            effective_run_context = run_context
+
+        raw_guidance_plan = effective_run_context.get("guidance_plan")
         if isinstance(raw_guidance_plan, dict):
             from pixsim7.backend.main.shared.schemas.guidance_plan import GuidancePlanV1
             from pixsim7.backend.main.services.guidance import validate_guidance_plan
@@ -238,7 +426,7 @@ async def create_generation(
                 )
             # Stash validated plan back (round-tripped through Pydantic)
             updated_run_context = dict(
-                (request.config.__pydantic_extra__ or {}).get("run_context") or run_context
+                effective_run_context
             )
             updated_run_context["guidance_plan"] = parsed_plan.model_dump()
             if request.config.__pydantic_extra__ is None:
@@ -571,12 +759,10 @@ async def get_generation(
         generation_service = generation_gateway.local
         generation = await generation_service.get_generation_for_user(generation_id, user)
         response = GenerationResponse.model_validate(generation)
-        latest_payloads = await _get_latest_submission_payloads(db, [generation.id])
-        latest_provider_job_ids = await _get_latest_submission_provider_job_ids(db, [generation.id])
-        attempt_counts = await _get_generation_attempt_counts(db, [generation.id])
-        response.latest_submission_payload = latest_payloads.get(generation.id)
-        response.latest_submission_provider_job_id = latest_provider_job_ids.get(generation.id)
-        response.attempt_count = attempt_counts.get(generation.id, 0)
+        sub_meta = await _get_submission_metadata(db, [generation.id])
+        response.latest_submission_payload = sub_meta.payloads.get(generation.id)
+        response.latest_submission_provider_job_id = sub_meta.provider_job_ids.get(generation.id)
+        response.attempt_count = sub_meta.attempt_counts.get(generation.id, 0)
 
         # Populate wait_reason for pending generations
         if generation.status == "pending":

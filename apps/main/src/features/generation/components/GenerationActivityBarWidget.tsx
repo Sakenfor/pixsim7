@@ -40,7 +40,7 @@ export function GenerationActivityBarWidget() {
   });
 
   const handleClick = useCallback(() => {
-    openFloatingPanel('recent-generations');
+    openFloatingPanel('generations');
   }, [openFloatingPanel]);
 
   const isActive = activeCount > 0;

@@ -130,21 +130,24 @@ export function GenerationSettingsPanel({
 
   // Non-passive wheel listener for burst count stepper (React onWheel is passive)
   const burstWheelRef = useRef<HTMLDivElement>(null);
+  const burstWheelStateRef = useRef({ generating, canGenerate, setBurstCount });
+  burstWheelStateRef.current = { generating, canGenerate, setBurstCount };
   useEffect(() => {
     const el = burstWheelRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
-      if (generating || !canGenerate) return;
+      const { generating: g, canGenerate: c, setBurstCount: set } = burstWheelStateRef.current;
+      if (g || !c) return;
       e.preventDefault();
       if (e.deltaY < 0) {
-        setBurstCount((c: number) => Math.min(50, c + 1));
+        set((v: number) => Math.min(50, v + 1));
       } else if (e.deltaY > 0) {
-        setBurstCount((c: number) => Math.max(1, c - 1));
+        set((v: number) => Math.max(1, v - 1));
       }
     };
     el.addEventListener('wheel', handler, { passive: false });
     return () => el.removeEventListener('wheel', handler);
-  }, [generating, canGenerate, setBurstCount]);
+  }, []);
 
   // Input count from scoped store
   const inputCount = useInputStore(s => s.inputsByOperation[operationType]?.items?.length ?? 0);

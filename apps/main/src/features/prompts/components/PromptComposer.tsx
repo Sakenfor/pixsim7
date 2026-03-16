@@ -13,6 +13,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { contextMenuAttrs, useRegisterContextData } from '@lib/dockview/contextMenu';
 import { Icon } from '@lib/icons';
+import { logEvent } from '@lib/utils/logging';
 
 import { openWorkspacePanel } from '@features/workspace';
 import { useWorkspaceStore } from '@features/workspace';
@@ -118,6 +119,17 @@ function truncate(text: string, maxLen: number) {
 
 function composePrompt(blocks: PromptBlockItem[]) {
   return composePromptFromBlocks(blocks);
+}
+
+function composeOverlayBlockText(item: {
+  text: string;
+  primitiveTags?: string[];
+}): string {
+  if (!item.primitiveTags || item.primitiveTags.length === 0) {
+    return item.text;
+  }
+  const tagLine = `[primitive_tags: ${item.primitiveTags.join(', ')}]`;
+  return `${tagLine}\n${item.text}`;
 }
 
 function resolveSequenceContext(response: AnalyzePromptResponse): SequenceContext | undefined {
@@ -613,10 +625,20 @@ export function PromptComposer({
         const nextBlocks: PromptBlockItem[] = payload.blockOverlay.map((item) => ({
           id: `block-${idCounterRef.current++}`,
           role: item.role,
-          text: item.text,
+          text: composeOverlayBlockText(item),
         }));
         flushSnapshot();
         updateBlocks([...blocks, ...nextBlocks]);
+        logEvent('INFO', 'prompt_tool_applied', {
+          mode: payload.mode,
+          applied_overlay_blocks: nextBlocks.length,
+          has_guidance_patch: !!(
+            payload.guidancePatch && Object.keys(payload.guidancePatch).length > 0
+          ),
+          has_composition_assets_patch: !!(
+            payload.compositionAssetsPatch && payload.compositionAssetsPatch.length > 0
+          ),
+        });
         setMode('blocks');
         setShowPromptTools(false);
         return;
@@ -645,6 +667,16 @@ export function PromptComposer({
       flushSnapshot();
       onChangeRef.current(nextText);
       onPromptToolRunContextPatch?.(runContextPatch);
+      logEvent('INFO', 'prompt_tool_applied', {
+        mode: payload.mode,
+        applied_overlay_blocks: payload.blockOverlay?.length ?? 0,
+        has_guidance_patch: !!(
+          payload.guidancePatch && Object.keys(payload.guidancePatch).length > 0
+        ),
+        has_composition_assets_patch: !!(
+          payload.compositionAssetsPatch && payload.compositionAssetsPatch.length > 0
+        ),
+      });
       if (mode === 'blocks') {
         lastComposedRef.current = null;
         void seedBlocksFromPrompt(nextText, { force: true });
@@ -658,7 +690,7 @@ export function PromptComposer({
         const nextBlocks: PromptBlockItem[] = payload.blockOverlay.map((item) => ({
           id: `block-${idCounterRef.current++}`,
           role: item.role,
-          text: item.text,
+          text: composeOverlayBlockText(item),
         }));
         updateBlocks([...blocks, ...nextBlocks]);
         setMode('blocks');

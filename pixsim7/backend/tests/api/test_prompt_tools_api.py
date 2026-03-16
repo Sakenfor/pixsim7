@@ -91,6 +91,10 @@ async def test_catalog_scope_builtin_lists_builtin_presets() -> None:
     preset_ids = {preset.id for preset in result.presets}
     assert "rewrite/style-shift" in preset_ids
     assert "compose/reference-merge" in preset_ids
+    assert "edit/masked-transform" in preset_ids
+    assert "edit/change-clothes" in preset_ids
+    assert "edit/fix-anatomy" in preset_ids
+    assert "edit/remove-object" in preset_ids
     assert result.scope == "builtin"
 
 
@@ -178,6 +182,64 @@ async def test_execute_normalizes_prompt_text_when_handler_omits_field(
     assert result.warnings == ["handler omitted prompt text"]
     assert result.provenance.preset_id == "rewrite/style-shift"
     assert result.provenance.model_id == "custom/model"
+
+
+@pytest.mark.asyncio
+async def test_execute_builtin_masked_transform_returns_context_patches() -> None:
+    result = await execute_prompt_tool(
+        request=PromptToolExecuteRequest(
+            preset_id="edit/masked-transform",
+            prompt_text="Portrait of a model standing in a studio.",
+            params={
+                "instruction": "change clothes to a red leather jacket",
+                "strength": 8,
+            },
+            run_context={
+                "primary_asset_id": 321,
+                "mask_asset": {"asset_id": 555},
+                "mask_regions": [{"id": "region-1", "label": "Jacket"}],
+            },
+        ),
+        current_user=_user(user_id=7, username="alice"),
+        db=_DummyDB(),
+    )
+
+    assert result.prompt_text.startswith("Portrait of a model")
+    assert result.provenance.preset_id == "edit/masked-transform"
+    assert result.provenance.model_id == "builtin/masked-transform-v1"
+    assert result.guidance_patch == {
+        "masked_transform": {
+            "instruction": "change clothes to a red leather jacket",
+            "strength": 8,
+            "preserve_identity": True,
+            "preserve_background": True,
+            "primary_asset_id": 321,
+            "mask": {"format": "asset_ref", "data": "asset:555"},
+        }
+    }
+    assert result.composition_assets_patch == [
+        {
+            "asset_id": 321,
+            "operation": "masked_transform_source",
+            "role": "primary",
+        },
+        {
+            "asset_id": 555,
+            "operation": "masked_transform_mask",
+            "role": "mask",
+        },
+    ]
+    assert result.block_overlay == [
+        {
+            "role": "instruction",
+            "text": "Masked transform: change clothes to a red leather jacket",
+            "preset_id": "edit/masked-transform",
+            "primitive_tags": [
+                "edit.masked_transform",
+                "intent.modify_region",
+            ],
+        }
+    ]
 
 
 @pytest.mark.asyncio
