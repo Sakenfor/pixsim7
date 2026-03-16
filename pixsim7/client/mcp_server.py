@@ -1,17 +1,18 @@
 """
-MCP stdio server — thin proxy between Claude CLI and PixSim API.
+MCP stdio server — dynamic proxy between Claude CLI and PixSim API.
 
-Spawned by Claude CLI via --mcp-config. Exposes PixSim API endpoints
-as MCP tools so Claude can query assets, generations, characters, etc.
+On startup, fetches the meta contract graph from /api/v1/meta/contracts
+and generates MCP tools from all sub_endpoints. Falls back to a generic
+call_api tool if the API is unreachable.
 
-The tool list is static (matching the user.assistant meta contract)
-with a generic call_api escape hatch for any endpoint.
+Tools are named {contract_id}/{endpoint_id} (e.g. plans.management/plans.create).
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import os
+import re
 import sys
 from typing import Any
 
@@ -36,177 +37,105 @@ API_TOKEN = os.environ.get("PIXSIM_API_TOKEN", "")
 server = Server("pixsim")
 
 
-# ── Tool definitions (mirrors user.assistant contract endpoints) ──
+# ── Dynamic tool registry (populated on startup) ──────────────────
 
-TOOLS: list[types.Tool] = [
-    types.Tool(
-        name="list_assets",
-        description="Browse and search user assets",
-        inputSchema={
+
+# Each entry: tool_name -> (method, path_template, summary)
+_dynamic_routes: dict[str, tuple[str, str, str]] = {}
+_dynamic_tools: list[types.Tool] = []
+_initialized = False
+
+
+def _path_params(path: str) -> list[str]:
+    """Extract {param} placeholders from a path template."""
+    return re.findall(r"\{(\w+)\}", path)
+
+
+def _build_input_schema(method: str, path: str) -> dict:
+    """Build a JSON schema for a tool based on its method and path params."""
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+
+    # Path parameters are always required
+    for param in _path_params(path):
+        properties[param] = {"type": "string", "description": f"Path parameter: {param}"}
+        required.append(param)
+
+    if method == "GET":
+        properties["params"] = {
             "type": "object",
-            "properties": {
-                "search": {"type": "string", "description": "Search query text"},
-                "media_type": {
-                    "type": "string",
-                    "enum": ["image", "video"],
-                    "description": "Filter by media type",
-                },
-                "limit": {"type": "integer", "description": "Max results (default 50)"},
-                "offset": {"type": "integer", "description": "Pagination offset"},
-            },
-        },
-    ),
-    types.Tool(
-        name="analyze_asset",
-        description="Run AI analysis on a specific asset",
-        inputSchema={
+            "description": "Query parameters",
+        }
+    elif method in ("POST", "PATCH", "PUT"):
+        properties["body"] = {
             "type": "object",
-            "properties": {
-                "asset_id": {"type": "integer", "description": "Asset ID to analyze"},
-            },
-            "required": ["asset_id"],
-        },
-    ),
-    types.Tool(
-        name="list_generations",
-        description="List generations with status and type filters",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": ["pending", "running", "completed", "failed", "cancelled"],
-                    "description": "Filter by generation status",
-                },
-                "operation_type": {"type": "string", "description": "Filter by operation type"},
-                "limit": {"type": "integer", "description": "Max results (default 50)"},
-                "offset": {"type": "integer", "description": "Pagination offset"},
-            },
-        },
-    ),
-    types.Tool(
-        name="create_generation",
-        description="Create a new image or video generation",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "body": {"type": "object", "description": "Full generation request body"},
-            },
-            "required": ["body"],
-        },
-    ),
-    types.Tool(
-        name="list_prompt_families",
-        description="Browse prompt families for authoring",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "prompt_type": {"type": "string", "description": "Filter by prompt type"},
-                "category": {"type": "string", "description": "Filter by category"},
-                "is_active": {"type": "boolean", "description": "Active only (default true)"},
-                "limit": {"type": "integer", "description": "Max results"},
-                "offset": {"type": "integer", "description": "Pagination offset"},
-            },
-        },
-    ),
-    types.Tool(
-        name="list_scenes",
-        description="List available game scenes",
-        inputSchema={"type": "object", "properties": {}},
-    ),
-    types.Tool(
-        name="list_characters",
-        description="List characters with optional filters",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "category": {"type": "string", "description": "Filter by character category"},
-                "species": {"type": "string", "description": "Filter by species"},
-                "limit": {"type": "integer", "description": "Max results"},
-                "offset": {"type": "integer", "description": "Pagination offset"},
-            },
-        },
-    ),
-    # ── Plan management tools ──
-    types.Tool(
-        name="get_plan_context",
-        description=(
-            "Get AI agent work context: current assignment, all active plans, "
-            "and available API actions. Start here for plan work."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "plan_id": {"type": "string", "description": "Request a specific plan (optional, auto-assigns if omitted)"},
-            },
-        },
-    ),
-    types.Tool(
-        name="create_plan",
-        description="Create a new plan with Document + PlanRegistry. Use parent_id for sub-plans.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "id": {"type": "string", "description": "Unique plan ID slug"},
-                "title": {"type": "string", "description": "Plan title"},
-                "summary": {"type": "string", "description": "Brief summary"},
-                "markdown": {"type": "string", "description": "Full plan content (markdown)"},
-                "plan_type": {
-                    "type": "string",
-                    "enum": ["feature", "bugfix", "refactor", "exploration", "task", "proposal"],
-                    "description": "Plan type (default: feature)",
-                },
-                "status": {"type": "string", "enum": ["active", "parked", "done", "blocked"], "description": "Initial status"},
-                "stage": {"type": "string", "description": "Free-form stage label"},
-                "owner": {"type": "string", "description": "Owner / lane"},
-                "priority": {"type": "string", "enum": ["high", "normal", "low"], "description": "Priority"},
-                "parent_id": {"type": "string", "description": "Parent plan ID for sub-plans"},
-                "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags"},
-                "code_paths": {"type": "array", "items": {"type": "string"}, "description": "Relevant code paths"},
-            },
-            "required": ["id", "title"],
-        },
-    ),
-    types.Tool(
-        name="list_plans",
-        description="List all plans, optionally filtered by status or owner",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "status": {"type": "string", "enum": ["active", "parked", "done", "blocked"], "description": "Filter by status"},
-                "owner": {"type": "string", "description": "Filter by owner (substring match)"},
-            },
-        },
-    ),
-    types.Tool(
-        name="get_plan",
-        description="Get full plan detail with markdown, checkpoints, children",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "plan_id": {"type": "string", "description": "Plan ID"},
-            },
-            "required": ["plan_id"],
-        },
-    ),
-    types.Tool(
-        name="update_plan",
-        description="Update plan fields: status, stage, owner, priority, summary, markdown",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "plan_id": {"type": "string", "description": "Plan ID to update"},
-                "status": {"type": "string", "enum": ["active", "parked", "done", "blocked"]},
-                "stage": {"type": "string", "description": "Free-form stage label"},
-                "owner": {"type": "string"},
-                "priority": {"type": "string", "enum": ["high", "normal", "low"]},
-                "summary": {"type": "string"},
-            },
-            "required": ["plan_id"],
-        },
-    ),
-    # ── Generic escape hatch ──
-    types.Tool(
+            "description": "Request body (JSON)",
+        }
+
+    schema: dict[str, Any] = {"type": "object", "properties": properties}
+    if required:
+        schema["required"] = required
+    return schema
+
+
+def _make_tool_name(endpoint_id: str) -> str:
+    """Convert endpoint ID to a clean tool name: plans.create -> plans_create."""
+    return endpoint_id.replace(".", "_")
+
+
+async def _fetch_contracts() -> list[dict]:
+    """Fetch contracts from meta API. Returns empty list on failure."""
+    try:
+        headers = {}
+        if API_TOKEN:
+            headers["Authorization"] = f"Bearer {API_TOKEN}"
+
+        async with httpx.AsyncClient(base_url=API_URL, timeout=10, headers=headers) as client:
+            resp = await client.get("/api/v1/meta/contracts")
+            if resp.status_code != 200:
+                print(f"[pixsim-mcp] Meta contracts returned {resp.status_code}", file=sys.stderr)
+                return []
+            data = resp.json()
+            return data.get("contracts", [])
+    except Exception as e:
+        print(f"[pixsim-mcp] Failed to fetch meta contracts: {e}", file=sys.stderr)
+        return []
+
+
+async def _init_tools() -> None:
+    """Populate dynamic tools from meta contracts."""
+    global _initialized
+    if _initialized:
+        return
+
+    contracts = await _fetch_contracts()
+
+    for contract in contracts:
+        contract_id = contract.get("id", "")
+        for ep in contract.get("sub_endpoints", []):
+            ep_id = ep.get("id", "")
+            method = ep.get("method", "GET")
+            path = ep.get("path", "")
+            summary = ep.get("summary", "")
+
+            if not ep_id or not path:
+                continue
+
+            # Skip non-API paths (e.g. filesystem references)
+            if not path.startswith("/"):
+                continue
+
+            tool_name = _make_tool_name(ep_id)
+
+            _dynamic_routes[tool_name] = (method, path, summary)
+            _dynamic_tools.append(types.Tool(
+                name=tool_name,
+                description=f"[{contract_id}] {summary}" if summary else f"{method} {path}",
+                inputSchema=_build_input_schema(method, path),
+            ))
+
+    # Always add the generic escape hatch
+    _dynamic_tools.append(types.Tool(
         name="call_api",
         description=(
             "Call any PixSim API endpoint directly. "
@@ -229,25 +158,14 @@ TOOLS: list[types.Tool] = [
             },
             "required": ["method", "path"],
         },
-    ),
-]
+    ))
 
-# Route table: tool name → (HTTP method, path template)
-ROUTES: dict[str, tuple[str, str]] = {
-    "list_assets": ("GET", "/api/v1/assets"),
-    "analyze_asset": ("POST", "/api/v1/assets/{asset_id}/analyze"),
-    "list_generations": ("GET", "/api/v1/generations"),
-    "create_generation": ("POST", "/api/v1/generations"),
-    "list_prompt_families": ("GET", "/api/v1/prompts/families"),
-    "list_scenes": ("GET", "/api/v1/game/scenes"),
-    "list_characters": ("GET", "/api/v1/characters"),
-    # Plans
-    "get_plan_context": ("GET", "/api/v1/dev/plans/agent-context"),
-    "create_plan": ("POST", "/api/v1/dev/plans"),
-    "list_plans": ("GET", "/api/v1/dev/plans"),
-    "get_plan": ("GET", "/api/v1/dev/plans/{plan_id}"),
-    "update_plan": ("PATCH", "/api/v1/dev/plans/update/{plan_id}"),
-}
+    _initialized = True
+    print(
+        f"[pixsim-mcp] Loaded {len(_dynamic_routes)} tools from "
+        f"{len(contracts)} contracts",
+        file=sys.stderr,
+    )
 
 
 # ── Handlers ──────────────────────────────────────────────────────
@@ -255,13 +173,16 @@ ROUTES: dict[str, tuple[str, str]] = {
 
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
-    return TOOLS
+    await _init_tools()
+    return _dynamic_tools
 
 
 @server.call_tool()
 async def handle_call_tool(
     name: str, arguments: dict[str, Any]
 ) -> list[types.TextContent]:
+    await _init_tools()
+
     # Generic escape-hatch tool
     if name == "call_api":
         return await _proxy(
@@ -271,13 +192,13 @@ async def handle_call_tool(
             body=arguments.get("body"),
         )
 
-    route = ROUTES.get(name)
+    route = _dynamic_routes.get(name)
     if not route:
         return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 
-    method, path_template = route
+    method, path_template, _summary = route
 
-    # Substitute path parameters (e.g. {asset_id}) from arguments
+    # Substitute path parameters from arguments
     path = path_template
     remaining = dict(arguments)
     for key in list(remaining):
@@ -286,7 +207,8 @@ async def handle_call_tool(
             path = path.replace(placeholder, str(remaining.pop(key)))
 
     if method == "GET":
-        return await _proxy(method="GET", path=path, query_params=remaining or None)
+        query = remaining.pop("params", None) or remaining or None
+        return await _proxy(method="GET", path=path, query_params=query)
     else:
         body = remaining.pop("body", remaining or None)
         return await _proxy(method=method, path=path, body=body)
