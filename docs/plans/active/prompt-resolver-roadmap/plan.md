@@ -1,6 +1,6 @@
 # Prompt Resolver Workbench Roadmap (Multi-Iteration Handoff)
 
-Last updated: 2026-03-10
+Last updated: 2026-03-16
 Owner: prompt-resolver lane
 Status: active
 Stage: multi_iteration
@@ -466,6 +466,28 @@ Revisit `prompt-resolver-next-v1.md` and potentially refine core interfaces if:
 - more than one resolver implementation exists and traces are not comparable
 - compiler enrichments require major type changes
 - compiler behavior becomes difficult to reason about because it is still endpoint-local helpers
+
+## Cross-Plan Dependencies
+
+### Block Primitives Evolution — Typed Planning IR (Phase 4)
+
+Phase 4 of `block-primitives-evolution` introduces `PromptPlanIR`, a typed intermediate
+representation that wraps `ResolutionRequest` / `ResolutionResult` output without modifying
+the resolver contract.
+
+Key integration notes:
+
+- The resolver contract (`resolution_core/types.py`) remains stable — IR consumes its
+  output, it does not modify or extend it.
+- `PlanBuilder` reads `ResolutionRequest.context`, `ResolutionResult.selected_by_target`,
+  and trace events to populate provenance fields.
+- Future compiler versions may emit IR directly instead of raw `ResolutionRequest`.
+- If the resolver trace format changes (new `TraceEvent.kind` values, structural changes
+  to `ResolutionTrace`), the IR provenance extraction in `PlanBuilder` must update
+  accordingly.
+
+Dependency direction: `block-primitives-evolution` depends on stable resolver contracts;
+resolver roadmap does not depend on IR.
 
 ## Nice-to-Have (Later, not urgent)
 

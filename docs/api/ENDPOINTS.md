@@ -756,15 +756,15 @@
 
 | Method | Path | Summary | Auth |
 |--------|------|---------|------|
-| `GET` | `/api/v1/game/dialogue/actions/blocks` | List Action Blocks | No |
-| `GET` | `/api/v1/game/dialogue/actions/concepts` | List Available Concepts | No |
-| `POST` | `/api/v1/game/dialogue/actions/generate` | Generate Action Block | No |
-| `POST` | `/api/v1/game/dialogue/actions/generate/creature` | Generate Creature Interaction | No |
-| `POST` | `/api/v1/game/dialogue/actions/next` | Select Or Generate Action | No |
-| `GET` | `/api/v1/game/dialogue/actions/poses` | List Pose Taxonomy | No |
-| `POST` | `/api/v1/game/dialogue/actions/select` | Select Action Blocks | No |
-| `GET` | `/api/v1/game/dialogue/actions/templates` | List Generation Templates | No |
-| `POST` | `/api/v1/game/dialogue/actions/test` | Test Generation Quality | No |
+| `GET` | `/api/v1/game/dialogue/primitives/blocks` | List Primitive Blocks | No |
+| `GET` | `/api/v1/game/dialogue/primitives/concepts` | List Available Concepts | No |
+| `POST` | `/api/v1/game/dialogue/primitives/generate` | Generate Primitive Block | No |
+| `POST` | `/api/v1/game/dialogue/primitives/generate/creature` | Generate Creature Interaction | No |
+| `POST` | `/api/v1/game/dialogue/primitives/next` | Select Or Generate Primitive | No |
+| `GET` | `/api/v1/game/dialogue/primitives/poses` | List Pose Taxonomy | No |
+| `POST` | `/api/v1/game/dialogue/primitives/select` | Select Primitive Blocks | No |
+| `GET` | `/api/v1/game/dialogue/primitives/templates` | List Generation Templates | No |
+| `POST` | `/api/v1/game/dialogue/primitives/test` | Test Generation Quality | No |
 | `POST` | `/api/v1/game/dialogue/next-line` | Generate Next Line | No |
 | `POST` | `/api/v1/game/dialogue/next-line/debug` | Generate Next Line Debug | No |
 
@@ -903,15 +903,15 @@
 
 | Method | Path | Summary | Auth |
 |--------|------|---------|------|
-| `GET` | `/api/v1/game/dialogue/actions/blocks` | List Action Blocks | No |
-| `GET` | `/api/v1/game/dialogue/actions/concepts` | List Available Concepts | No |
-| `POST` | `/api/v1/game/dialogue/actions/generate` | Generate Action Block | No |
-| `POST` | `/api/v1/game/dialogue/actions/generate/creature` | Generate Creature Interaction | No |
-| `POST` | `/api/v1/game/dialogue/actions/next` | Select Or Generate Action | No |
-| `GET` | `/api/v1/game/dialogue/actions/poses` | List Pose Taxonomy | No |
-| `POST` | `/api/v1/game/dialogue/actions/select` | Select Action Blocks | No |
-| `GET` | `/api/v1/game/dialogue/actions/templates` | List Generation Templates | No |
-| `POST` | `/api/v1/game/dialogue/actions/test` | Test Generation Quality | No |
+| `GET` | `/api/v1/game/dialogue/primitives/blocks` | List Primitive Blocks | No |
+| `GET` | `/api/v1/game/dialogue/primitives/concepts` | List Available Concepts | No |
+| `POST` | `/api/v1/game/dialogue/primitives/generate` | Generate Primitive Block | No |
+| `POST` | `/api/v1/game/dialogue/primitives/generate/creature` | Generate Creature Interaction | No |
+| `POST` | `/api/v1/game/dialogue/primitives/next` | Select Or Generate Primitive | No |
+| `GET` | `/api/v1/game/dialogue/primitives/poses` | List Pose Taxonomy | No |
+| `POST` | `/api/v1/game/dialogue/primitives/select` | Select Primitive Blocks | No |
+| `GET` | `/api/v1/game/dialogue/primitives/templates` | List Generation Templates | No |
+| `POST` | `/api/v1/game/dialogue/primitives/test` | Test Generation Quality | No |
 | `POST` | `/api/v1/game/dialogue/next-line` | Generate Next Line | No |
 | `POST` | `/api/v1/game/dialogue/next-line/debug` | Generate Next Line Debug | No |
 
@@ -1502,3 +1502,4 @@
 ---
 
 *This file is auto-generated. Do not edit manually.*
+

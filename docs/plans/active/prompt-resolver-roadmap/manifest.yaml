@@ -3,7 +3,7 @@ title: Prompt Resolver Roadmap
 status: active
 stage: multi_iteration
 owner: prompt-resolver lane
-last_updated: 2026-03-10
+last_updated: 2026-03-16
 summary: "Multi-iteration resolver workbench — parallel resolver, dev endpoints, tests."
 plan_path: ./plan.md
 code_paths:
@@ -17,4 +17,5 @@ companions:
   - ./companions/prompt-authoring-contract.md
 handoffs: []
 tags: []
-depends_on: []
+depends_on:
+  - block-primitives-evolution

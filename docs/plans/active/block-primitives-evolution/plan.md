@@ -1,6 +1,6 @@
 # Block Primitives Evolution
 
-Last updated: 2026-03-13
+Last updated: 2026-03-16
 Owner: block-primitives lane
 Status: active
 Stage: phase_0_baseline
@@ -180,6 +180,48 @@ Exit criteria:
 - No active runtime path depends on legacy selector-era action-block stack.
 - Naming/docs no longer imply multiple canonical primitive systems.
 
+### Phase 4: Typed Prompt Planning IR
+
+- [ ] New Pydantic models in `services/prompt/block/planning_ir/`.
+- [ ] `PromptPlanIR` wraps the existing `ResolutionRequest → ResolutionResult` flow (does NOT replace it).
+- [ ] Built by a `PlanBuilder` after resolution, before string rendering.
+- [ ] Deterministic hash via canonical JSON serialization + SHA256.
+- [ ] Provenance fields: primitive IDs, slot assignments, constraint decisions, fallback reasons.
+- [ ] Feature-flagged via `template_metadata.emit_plan_ir: true` (default false initially).
+
+Exit criteria:
+
+- IR round-trips (serialize → deserialize → compare).
+- Hash is deterministic across invocations for identical inputs.
+- Existing template roll tests pass without modification.
+
+### Phase 5: Closed-Loop Primitive Evaluator
+
+- [ ] New DB tables (main DB): `primitive_contributions`, `primitive_effectiveness_scores`.
+- [ ] `PrimitiveEvaluatorService` in `services/prompt/block/evaluator/`.
+- [ ] Records primitive contribution per generation run (links via `GenerationBatchItemManifest`).
+- [ ] Captures outcome signals from generation lifecycle (success/failure/retry/manual_edit).
+- [ ] Computes aggregate effectiveness scores with confidence intervals (Wilson score).
+
+Exit criteria:
+
+- End-to-end flow: primitives → IR → prompt → outcome → score.
+- Scores queryable via dev endpoints.
+
+### Phase 6: Vocabulary Governance
+
+- [ ] `VocabularyGovernanceService` in `services/prompt/block/vocabulary_governance.py`.
+- [ ] Builds on existing `tag_dictionary.py` normalization + `VocabularyRegistry`.
+- [ ] Adds: validation API, suggestion API, conflict detection, namespace rules.
+- [ ] New endpoint: `POST /api/v1/block-templates/meta/vocabulary/validate`.
+- [ ] New endpoint: `GET /api/v1/block-templates/meta/vocabulary/suggest`.
+
+Exit criteria:
+
+- Unknown tags/ontology IDs flagged with actionable messages.
+- Deprecated terms mapped to replacements.
+- API validates tags and ontology IDs against canonical vocabulary.
+
 ## Op Namespace Rules
 
 Each op signature declares an `op_namespace` — a lowercase dotted identifier
@@ -238,3 +280,4 @@ no underscores as segment separators.
 - 2026-03-13 (`uncommitted`): Wired prompt UI to consume sequence-role contract fields end-to-end (`promptAnalysisCache` + `useShadowAnalysis` + shadow overlay/side panel), so role/source/confidence surface directly without parsing candidate-level primitive metadata.
 - 2026-03-13 (`uncommitted`): Extended Block Matrix axis resolution with op-level keys (`op_id`, `signature_id`, `op_namespace`, `op_modalities`) including signature fallback derivation from canonical op-signature prefixes; added drift-report resolver tests and builtin matrix presets for op/signature coverage.
 - 2026-03-13 (`uncommitted`): Canonicalized op namespace matching: replaced `op_id_prefix` with `op_namespace` (lowercase dotted identifier, implicit dot boundary); normalized `subject.look_at` → `subject.look.apply`; added format validation regex and reverse coverage test; documented Op Namespace Rules in plan.
+- 2026-03-16 (`uncommitted`): Added Phase 4 (Typed Prompt Planning IR), Phase 5 (Closed-Loop Primitive Evaluator), and Phase 6 (Vocabulary Governance) to delivery roadmap.

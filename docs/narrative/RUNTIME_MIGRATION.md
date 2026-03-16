@@ -182,7 +182,7 @@ POST /api/v1/narrative-runtime/start
 ### Old Action Block API
 ```python
 # ❌ Deprecated (still works via shim)
-POST /api/v1/game_dialogue/actions/select
+POST /api/v1/game_dialogue/primitives/select
 {
     "locationTag": "bedroom",
     "intimacyLevel": "romantic"

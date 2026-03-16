@@ -153,7 +153,7 @@ Current behavior in code:
 
 - Scene Prep launch compiles template fanout requests and executes generation batches.
 - Scene Prep launch writes `scene_prep_*` provenance into `run_context`.
-- Scene Prep launch does not call `/api/v1/game/dialogue/actions/select` automatically.
+- Scene Prep launch does not call `/api/v1/game/dialogue/primitives/select` automatically.
 - `ActionSelectionContext` is built in the game dialogue backend endpoint path and fed into `DynamicSlotPlanner -> compiler_v1 -> next_v1`.
 
 Practical interpretation:
@@ -185,7 +185,7 @@ User -> ScenePrepPanel
 Runtime Selection Path (current)
 --------------------------------
 Game/Narrative Runtime or API caller
-     -> POST /api/v1/game/dialogue/actions/select
+     -> POST /api/v1/game/dialogue/primitives/select
      -> build ActionSelectionContext
      -> resolve_action_block_node(mode=query)
      -> DynamicSlotPlanner -> compiler_v1 -> next_v1

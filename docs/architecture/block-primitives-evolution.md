@@ -66,7 +66,7 @@ Deliberately simple:
 - `_CATEGORY_FALLBACK` in composition_role_inference.py maps primitive categories to composition roles
 - Block matrix panel supports viewing both sources
 - Primitives support `frame` field for spatial wrapping (e.g., `"{text} from the left side"`)
-- ScenePrep currently launches template fanout generation and records `scene_prep_*` provenance; it does not directly invoke `/api/v1/game/dialogue/actions/select`.
+- ScenePrep currently launches template fanout generation and records `scene_prep_*` provenance; it does not directly invoke `/api/v1/game/dialogue/primitives/select`.
 - Scene Prep panel state is authoring/runtime input only; `ActionSelectionContext` is runtime resolver input in backend game dialogue flow.
 - Dev/category apply + content pack block import now write `BlockPrimitive` rows.
 - Semantic pack export and dev ontology scan now read primitives for block catalog data.

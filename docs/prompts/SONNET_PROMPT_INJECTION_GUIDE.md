@@ -265,7 +265,7 @@ Before injecting any prompt, verify:
 After injection, test using:
 
 ```bash
-POST /api/v1/game/dialogue/actions/test
+POST /api/v1/game/dialogue/primitives/test
 {
   "original_prompt": "[your prompt]",
   "test_type": "custom_validation"

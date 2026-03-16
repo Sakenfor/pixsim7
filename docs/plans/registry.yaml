@@ -31,7 +31,7 @@ plans:
     status: active
     stage: phase_0_baseline
     owner: block-primitives lane
-    last_updated: 2026-03-10
+    last_updated: 2026-03-16
     code_paths:
       - tools/cue/prompt_packs
       - tools/codegen/generate-prompt-pack-schemas.ts
@@ -43,6 +43,9 @@ plans:
       - apps/main/src/features/prompts
       - docs/prompts/BLOCK_PRIMITIVES_API_AGENT_QUICKSTART.md
       - docs/architecture/block-primitives-evolution.md
+      - pixsim7/backend/main/services/prompt/block/planning_ir
+      - pixsim7/backend/main/services/prompt/block/evaluator
+      - pixsim7/backend/main/services/prompt/block/vocabulary_governance.py
     priority: normal
     summary: BlockPrimitive model, PromptBlock retirement, composition and migration paths.
   - id: contexthub-implementation
@@ -133,7 +136,7 @@ plans:
     status: active
     stage: multi_iteration
     owner: prompt-resolver lane
-    last_updated: 2026-03-10
+    last_updated: 2026-03-16
     code_paths:
       - apps/main/src/features/prompts
       - apps/main/src/features/promptResolverWorkbench

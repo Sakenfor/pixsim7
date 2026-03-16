@@ -122,6 +122,13 @@ jobs:
           CUE_BIN: tools/cue/bin/cue
         run: pnpm prompt-packs:check
 
+      - name: Meta contract conformance gate
+        run: |
+          python -m pytest \
+            pixsim7/backend/tests/api/test_meta_contracts_index.py \
+            pixsim7/backend/tests/api/test_prompts_analysis_contract_meta.py \
+            pixsim7/backend/tests/api/test_meta_contract_conformance.py
+
       - name: Stop backend
         if: always()
         run: |
