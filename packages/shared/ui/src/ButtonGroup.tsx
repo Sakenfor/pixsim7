@@ -301,27 +301,43 @@ export function ButtonGroup({
     return next;
   }, [items, wheelCycle, resolvedVisibleCount, windowOffset]);
 
-  const handleWheelCycle = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
-    if (!wheelCycle || resolvedVisibleCount >= items.length) return;
-    const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
-    if (Math.abs(delta) < 1) return;
+  // Use ref-based wheel listener with { passive: false } so preventDefault works
+  // (React registers onWheel/onWheelCapture as passive, making preventDefault a no-op).
+  const wheelCycleEnabled = wheelCycle && resolvedVisibleCount < items.length;
+  const wheelCycleEnabledRef = useRef(wheelCycleEnabled);
+  wheelCycleEnabledRef.current = wheelCycleEnabled;
+  const itemsLengthRef = useRef(items.length);
+  itemsLengthRef.current = items.length;
 
-    event.preventDefault();
-    event.stopPropagation();
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
 
-    const step = delta > 0 ? 1 : -1;
-    setWindowOffset((prev) => {
-      const next = prev + step;
-      if (next < 0) return items.length - 1;
-      if (next >= items.length) return 0;
-      return next;
-    });
-  }, [wheelCycle, resolvedVisibleCount, items.length]);
+    const handler = (event: WheelEvent) => {
+      if (!wheelCycleEnabledRef.current) return;
+      const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+      if (Math.abs(delta) < 1) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const step = delta > 0 ? 1 : -1;
+      const len = itemsLengthRef.current;
+      setWindowOffset((prev) => {
+        const next = prev + step;
+        if (next < 0) return len - 1;
+        if (next >= len) return 0;
+        return next;
+      });
+    };
+
+    el.addEventListener('wheel', handler, { passive: false, capture: true });
+    return () => el.removeEventListener('wheel', handler, { capture: true });
+  }, []);
 
   return (
     <div
       ref={rootRef}
-      onWheelCapture={handleWheelCycle}
       className={clsx(
         'flex shadow-lg',
         colorClass,

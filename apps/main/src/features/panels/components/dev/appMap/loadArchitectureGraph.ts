@@ -7,6 +7,7 @@
 
 import { createDevArchitectureApi } from '@pixsim7/shared.api.client/domains';
 import type { ArchitectureGraphV1 } from '@pixsim7/shared.api.model';
+
 import { pixsimClient } from '@lib/api/client';
 
 const devArchitectureApi = createDevArchitectureApi(pixsimClient);
@@ -32,8 +33,8 @@ export async function loadArchitectureGraph(): Promise<GraphLoadResult> {
   try {
     const graph = await devArchitectureApi.getArchitectureGraph();
     return { graph, loadSource: 'backend' };
-  } catch {
-    // Backend unreachable — fall through to local fallback
+  } catch (err) {
+    console.warn('[AppMap] Architecture graph fetch failed:', err);
   }
 
   // Fallback: build a minimal graph from the local artifact

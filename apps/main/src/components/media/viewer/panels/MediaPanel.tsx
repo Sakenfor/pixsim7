@@ -142,6 +142,8 @@ export function MediaPanel({ context }: MediaPanelProps) {
             ? undefined
             : overlay.id === 'mask'
               ? 'Image assets only'
+              : overlay.id === 'prompt-tools'
+              ? 'Image assets only'
               : 'Unavailable for this asset',
         };
       }),

@@ -127,14 +127,17 @@ export function useSidebarNav<
   const selectSection = useCallback(
     (sectionId: string) => {
       setActiveSectionId(sectionId as TSectionId);
-      setActiveChildId(undefined);
+      // Auto-select first child when section has children
+      const section = sections.find((s) => s.id === sectionId);
+      const firstChild = section?.children?.[0];
+      setActiveChildId(firstChild ? (firstChild.id as TChildId) : undefined);
       // Auto-expand if has children
       setExpandedSectionIds((prev) => {
         if (prev.has(sectionId)) return prev;
         return new Set([...prev, sectionId]);
       });
     },
-    [],
+    [sections],
   );
 
   const selectChild = useCallback(

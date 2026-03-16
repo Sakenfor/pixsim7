@@ -12,12 +12,12 @@ import { Button, Checkbox, useToast } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
-  buildActionSelectionRequestFromBehavior,
+  buildPrimitiveSelectionRequestFromBehavior,
   getGameLocation,
-  selectActionBlocksFromBehavior,
-  type ActionSelectionResponsePayload,
-  type BuildActionSelectionRequestFromBehaviorRequest,
-  type BuildActionSelectionRequestFromBehaviorResponse,
+  selectPrimitiveBlocksFromBehavior,
+  type PrimitiveSelectionResponsePayload,
+  type BuildPrimitiveSelectionRequestFromBehaviorRequest,
+  type BuildPrimitiveSelectionRequestFromBehaviorResponse,
 } from '@lib/api';
 import { getRoomNavigation } from '@lib/api/game';
 import { resolveGameNpcs } from '@lib/resolvers';
@@ -156,7 +156,7 @@ function blockId(block: Record<string, unknown>, index: number): string {
 function blockIntent(
   block: Record<string, unknown>,
   derived: Record<string, unknown>,
-  request: BuildActionSelectionRequestFromBehaviorRequest,
+  request: BuildPrimitiveSelectionRequestFromBehaviorRequest,
 ): string {
   const explicit = block.intent;
   if (typeof explicit === 'string' && explicit.trim()) return explicit.trim();
@@ -382,8 +382,8 @@ function buildRoomNavigationStepHints(args: {
 }
 
 function buildBeats(
-  selection: ActionSelectionResponsePayload,
-  request: BuildActionSelectionRequestFromBehaviorRequest,
+  selection: PrimitiveSelectionResponsePayload,
+  request: BuildPrimitiveSelectionRequestFromBehaviorRequest,
   derived: Record<string, unknown>,
   locationId: number | undefined,
   roomNavigationContext?: RoomNavigationPlanContext,
@@ -469,9 +469,9 @@ function buildBeats(
 }
 
 function buildScenePlanPreview(args: {
-  request: BuildActionSelectionRequestFromBehaviorRequest;
-  built: BuildActionSelectionRequestFromBehaviorResponse;
-  selection: ActionSelectionResponsePayload;
+  request: BuildPrimitiveSelectionRequestFromBehaviorRequest;
+  built: BuildPrimitiveSelectionRequestFromBehaviorResponse;
+  selection: PrimitiveSelectionResponsePayload;
   fallbackWorldTime: number | null;
   roomNavigation?: RoomNavigationData | null;
   roomNavigationOptions?: {
@@ -649,8 +649,8 @@ export function ScenePlanPanel() {
   const [roomNavigationBusy, setRoomNavigationBusy] = useState(false);
   const [roomNavigationError, setRoomNavigationError] = useState<string | null>(null);
 
-  const [builtRequest, setBuiltRequest] = useState<BuildActionSelectionRequestFromBehaviorResponse | null>(null);
-  const [selection, setSelection] = useState<ActionSelectionResponsePayload | null>(null);
+  const [builtRequest, setBuiltRequest] = useState<BuildPrimitiveSelectionRequestFromBehaviorResponse | null>(null);
+  const [selection, setSelection] = useState<PrimitiveSelectionResponsePayload | null>(null);
   const [scenePlan, setScenePlan] = useState<ScenePlan | null>(null);
 
   useEffect(() => {
@@ -777,7 +777,7 @@ export function ScenePlanPanel() {
   const roomNavigationStartCheckpointId =
     roomNavigation?.start_checkpoint_id ?? roomNavigationCheckpoints[0]?.id ?? '';
 
-  const buildRequest = (): BuildActionSelectionRequestFromBehaviorRequest | null => {
+  const buildRequest = (): BuildPrimitiveSelectionRequestFromBehaviorRequest | null => {
     const worldId = parseOptionalInt(worldIdInput) ?? defaultWorldId;
     const sessionId = parseOptionalInt(sessionIdInput) ?? defaultSessionId;
     const leadNpcId = parseOptionalInt(leadNpcIdInput);
@@ -833,7 +833,7 @@ export function ScenePlanPanel() {
     if (!request) return;
     setBusy(true);
     try {
-      const built = await buildActionSelectionRequestFromBehavior(request);
+      const built = await buildPrimitiveSelectionRequestFromBehavior(request);
       setBuiltRequest(built);
       toast.success('Built behavior-derived scene request');
     } catch (error) {
@@ -849,8 +849,8 @@ export function ScenePlanPanel() {
     setBusy(true);
     try {
       const [built, selected] = await Promise.all([
-        buildActionSelectionRequestFromBehavior(request),
-        selectActionBlocksFromBehavior(request),
+        buildPrimitiveSelectionRequestFromBehavior(request),
+        selectPrimitiveBlocksFromBehavior(request),
       ]);
       setBuiltRequest(built);
       setSelection(selected);

@@ -46,7 +46,7 @@ import {
 import { useProjectIndexStore, useProjectSessionStore, useWorldContextStore } from '@features/scene';
 import { openWorkspacePanel } from '@features/workspace';
 
-import { ActionSelectionDebugSection } from '@/components/game/ActionSelectionDebugSection';
+import { BlockPrimitivesDebugSection } from '@/components/game/BlockPrimitivesDebugSection';
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
 
 import type { ProjectInventoryEntityCategory } from './projectInventory';
@@ -1453,7 +1453,7 @@ export function ProjectPanel() {
           )}
 
           {activeSection === 'debug' && (
-            <ActionSelectionDebugSection
+            <BlockPrimitivesDebugSection
               defaultWorldId={worldId}
               defaultSessionId={runtimeSessionId}
             />

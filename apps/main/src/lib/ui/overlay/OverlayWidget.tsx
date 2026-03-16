@@ -200,6 +200,7 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
   // Handle click (only for wrapper-driven interaction)
   const handleClick = (e: React.MouseEvent) => {
     if (widget.interactive && !widget.handlesOwnInteraction) {
+      e.stopPropagation();
       onWidgetClick(widget.id, e);
     }
   };

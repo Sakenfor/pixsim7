@@ -1067,7 +1067,7 @@ function MaskToolsPanel() {
     setForceFullAlpha,
   } = useMaskOverlayStore();
 
-  const { manual, automatic } = useViewerToolPresets({ hasImage: true });
+  const { manual, automatic } = useViewerToolPresets({ hasImage: true, hasSelection: hasContent });
 
   const isManualPreset = activePresetId.startsWith('manual-');
 
