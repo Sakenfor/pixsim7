@@ -3,15 +3,12 @@ title: Bananza Project First Hardening
 status: active
 stage: rollout
 owner: bananza seed/runtime lane
-last_updated: 2026-03-10
-summary: "Seed data robustness and game runtime hardening for Bananza project."
+last_updated: '2026-03-16'
+priority: low
+summary: Seed data robustness and game runtime hardening for Bananza project.
 plan_path: ./plan.md
 code_paths:
-  - scripts/seeds/game/bananza
-  - pixsim7/backend/main/services/game
-  - pixsim7/backend/main/api/v1/game_worlds.py
-  - pixsim7/backend/main/api/v1/game_locations.py
-companions: []
-handoffs: []
-tags: []
-depends_on: []
+- scripts/seeds/game/bananza
+- pixsim7/backend/main/services/game
+- pixsim7/backend/main/api/v1/game_worlds.py
+- pixsim7/backend/main/api/v1/game_locations.py
