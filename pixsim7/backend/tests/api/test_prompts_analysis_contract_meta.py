@@ -4,6 +4,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from pixsim7.backend.main.api.v1.prompts.meta import (
     PROMPT_ANALYSIS_CONTRACT_VERSION,
@@ -56,6 +57,22 @@ async def test_prompt_analysis_contract_includes_deprecation_and_user_default_no
         if step.key == "user.preferences.analyzer.prompt_default_ids"
     )
     assert "prompt:local" in user_default_step.description
+
+
+@pytest.mark.asyncio
+async def test_prompt_contract_deprecation_behavior_is_consistent() -> None:
+    analysis = await get_prompt_analysis_contract(current_user=_user_with_defaults())
+    authoring = await get_prompt_authoring_contract(current_user=_user_with_defaults())
+
+    analysis_dep = next(
+        item for item in analysis.deprecations if item.get("field") == "provider_hints.prompt_analysis"
+    )
+    authoring_dep = next(
+        item for item in authoring.deprecations if item.get("field") == "provider_hints.prompt_analysis"
+    )
+
+    assert analysis_dep.get("behavior") == "Rejected by create-version API (HTTP 422)."
+    assert authoring_dep.get("behavior") == "Rejected by create-version API (HTTP 422)."
 
 
 @pytest.mark.asyncio
@@ -160,6 +177,27 @@ async def test_prompt_authoring_contract_filters_workflows_by_audience() -> None
 
 
 @pytest.mark.asyncio
+async def test_prompt_authoring_contract_normalizes_audience_value() -> None:
+    normalized = await get_prompt_authoring_contract(
+        current_user=_user_with_defaults(), audience=" Agent "
+    )
+    explicit = await get_prompt_authoring_contract(
+        current_user=_user_with_defaults(), audience="agent"
+    )
+
+    assert {wf.id for wf in normalized.workflows} == {wf.id for wf in explicit.workflows}
+
+
+@pytest.mark.asyncio
+async def test_prompt_authoring_contract_rejects_invalid_audience() -> None:
+    with pytest.raises(HTTPException) as exc:
+        await get_prompt_authoring_contract(current_user=_user_with_defaults(), audience="agents")
+
+    assert exc.value.status_code == 422
+    assert "Expected one of: agent, user." in str(exc.value.detail)
+
+
+@pytest.mark.asyncio
 async def test_prompt_authoring_contract_exposes_valid_values() -> None:
     result = await get_prompt_authoring_contract(current_user=_user_with_defaults())
 
@@ -196,11 +234,13 @@ async def test_prompt_authoring_modes_have_generation_hints() -> None:
     assert len(setup.generation_hints) >= 1
     assert setup.generation_hints[0].operation == "text_to_image"
     assert setup.generation_hints[0].requires_input_asset is False
+    assert setup.generation_hints[0].suggested_params == {"aspect_ratio": "16:9"}
 
     # scene_continuation prefers i2v with auto-bind
     cont = modes_by_id["scene_continuation"]
     assert cont.generation_hints[0].requires_input_asset is True
     assert cont.generation_hints[0].auto_bind == "parent_output"
+    assert cont.generation_hints[0].suggested_params == {"duration": 5}
 
     # patch_edit requires input asset
     patch = modes_by_id["patch_edit"]
@@ -223,6 +263,7 @@ async def test_prompt_authoring_modes_have_generation_hints() -> None:
     char = modes_by_id["character_design"]
     assert char.sequence_role == "initial"
     assert char.generation_hints[0].operation == "text_to_image"
+    assert char.generation_hints[0].suggested_params == {"aspect_ratio": "3:4"}
     assert char.generation_hints[1].operation == "image_to_image"
     assert char.generation_hints[1].auto_bind == "viewer_asset"
 
