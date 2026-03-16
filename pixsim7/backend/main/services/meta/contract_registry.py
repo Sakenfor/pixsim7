@@ -170,7 +170,7 @@ def _builtin_plans_management() -> MetaContract:
         id="plans.management",
         name="Plan Management",
         endpoint=None,
-        version="2.1.0",
+        version="2.2.0",
         auth_required=True,
         owner="devtools lane",
         summary=(
@@ -236,10 +236,69 @@ def _builtin_plans_management() -> MetaContract:
                 summary="Recent change activity across all plans (default 7-day lookback).",
             ),
             MetaContractEndpoint(
+                id="plans.settings_get",
+                method="GET",
+                path="/api/v1/dev/plans/settings",
+                summary="Read runtime plan mode flags, including DB-only mode.",
+            ),
+            MetaContractEndpoint(
+                id="plans.settings_update",
+                method="PATCH",
+                path="/api/v1/dev/plans/settings",
+                summary="Toggle runtime plan mode flags (admin, applies to current backend process).",
+            ),
+            MetaContractEndpoint(
                 id="plans.sync",
                 method="POST",
                 path="/api/v1/dev/plans/sync",
                 summary="Sync filesystem plan manifests into the DB (disabled when PLANS_DB_ONLY_MODE=1).",
+            ),
+        ],
+    )
+
+
+def _builtin_notifications() -> MetaContract:
+    return MetaContract(
+        id="notifications",
+        name="Notifications",
+        endpoint=None,
+        version="1.0.0",
+        auth_required=True,
+        owner="platform",
+        summary=(
+            "Broadcast and targeted notifications for plan events, feature "
+            "announcements, and agent actions."
+        ),
+        provides=[
+            "notification_list",
+            "notification_create",
+            "notification_read_status",
+        ],
+        relates_to=["plans.management"],
+        sub_endpoints=[
+            MetaContractEndpoint(
+                id="notifications.list",
+                method="GET",
+                path="/api/v1/notifications",
+                summary="List notifications for current user (broadcasts + targeted). Supports category filter and unread_only.",
+            ),
+            MetaContractEndpoint(
+                id="notifications.create",
+                method="POST",
+                path="/api/v1/notifications",
+                summary="Create a notification (broadcast or targeted to a user).",
+            ),
+            MetaContractEndpoint(
+                id="notifications.mark_read",
+                method="PATCH",
+                path="/api/v1/notifications/{notification_id}/read",
+                summary="Mark a single notification as read.",
+            ),
+            MetaContractEndpoint(
+                id="notifications.mark_all_read",
+                method="POST",
+                path="/api/v1/notifications/mark-all-read",
+                summary="Mark all notifications as read for the current user.",
             ),
         ],
     )
@@ -398,6 +457,7 @@ _BUILTIN_FACTORIES = {
     "prompts.authoring": _builtin_prompts_authoring,
     "blocks.discovery": _builtin_blocks_discovery,
     "plans.management": _builtin_plans_management,
+    "notifications": _builtin_notifications,
     "devtools.codegen": _builtin_devtools_codegen,
     "ui.catalog": _builtin_ui_catalog,
     "user.assistant": _builtin_user_assistant,

@@ -118,6 +118,7 @@ import {
   Blocks,
   ScanSearch,
   Activity,
+  Bell,
   Send,
   Undo2,
   Redo2,
@@ -354,6 +355,7 @@ export const Icons = {
 
   // Additional
   activity: Activity,
+  bell: Bell,
   undo2: Undo2,
   'undo-2': Undo2,
   undo: Undo2,

@@ -331,6 +331,20 @@ async def list_plans(
 
 
 # ── Sync endpoints ────────────────────────────────────────────────
+@router.get("/settings", response_model=PlanRuntimeSettingsResponse)
+async def get_plan_runtime_settings(
+    _user: CurrentUser,
+):
+    return {"plansDbOnlyMode": settings.plans_db_only_mode, "source": "runtime"}
+
+
+@router.patch("/settings", response_model=PlanRuntimeSettingsResponse)
+async def update_plan_runtime_settings(
+    payload: PlanRuntimeSettingsUpdateRequest,
+    _admin: CurrentAdminUser,
+):
+    settings.plans_db_only_mode = payload.plans_db_only_mode
+    return {"plansDbOnlyMode": settings.plans_db_only_mode, "source": "runtime"}
 
 
 @router.post("/sync", response_model=SyncResultResponse)
@@ -624,6 +638,12 @@ async def create_plan(
         updated_at=now,
     )
     db.add(plan)
+
+    # Emit notification
+    from pixsim7.backend.main.services.docs.plan_write import emit_plan_created_notification
+    actor_id = getattr(_admin, "id", None)
+    await emit_plan_created_notification(db, payload.id, payload.title, actor=f"user:{actor_id}")
+
     await db.commit()
 
     # Optional export to filesystem + git for dev plans
@@ -813,11 +833,24 @@ async def get_agent_context(
                 "description": "Create a new plan (Document + PlanRegistry). Use parent_id to create sub-plans under an initiative.",
             },
             {
+                "action": "get_plan_settings",
+                "method": "GET",
+                "url": "/dev/plans/settings",
+                "description": "Read runtime plan mode settings (DB-only mode).",
+            },
+            {
+                "action": "set_plan_settings",
+                "method": "PATCH",
+                "url": "/dev/plans/settings",
+                "body": '{"plans_db_only_mode": true}',
+                "description": "Toggle runtime DB-only mode for the current backend process (admin).",
+            },
+            {
                 "action": "update_status",
                 "method": "PATCH",
                 "url": "/dev/plans/update/{plan_id}",
                 "body": '{"status": "active|parked|done|blocked"}',
-                "description": "Change plan status (moves directory on disk + git commit)",
+                "description": "Change plan status.",
             },
             {
                 "action": "update_fields",

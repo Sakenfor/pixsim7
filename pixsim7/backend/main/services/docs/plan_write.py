@@ -1,5 +1,5 @@
 """
-Plan write service — DB-first with filesystem commit-back.
+Plan write service - DB-first with filesystem commit-back.
 
 Plans are backed by Document (shared fields) + PlanRegistry (plan-specific fields).
 The DB is the authority. Filesystem markdown is a convenience export.
@@ -22,7 +22,7 @@ from pixsim7.backend.main.services.docs.plans import (
     PlanEntry,
     get_plans_index,
 )
-from pixsim7.backend.main.shared.config import _resolve_repo_root
+from pixsim7.backend.main.shared.config import _resolve_repo_root, settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim_logging import get_logger
 
@@ -33,11 +33,25 @@ PLANS_DIR = "docs/plans"
 # Fields that can be updated via the API.
 # Doc fields go to Document, plan fields go to PlanRegistry.
 DOC_MUTABLE_FIELDS = frozenset({"title", "status", "owner", "summary", "markdown", "visibility"})
-PLAN_MUTABLE_FIELDS = frozenset({"stage", "priority"})
+PLAN_MUTABLE_FIELDS = frozenset(
+    {
+        "stage",
+        "priority",
+        "code_paths",
+        "companions",
+        "handoffs",
+        "depends_on",
+    }
+)
+LIST_MUTABLE_FIELDS = frozenset({"tags", "code_paths", "companions", "handoffs", "depends_on"})
 ALL_MUTABLE_FIELDS = DOC_MUTABLE_FIELDS | PLAN_MUTABLE_FIELDS
 
 VALID_STATUSES = ("active", "parked", "done", "blocked")
 VALID_PRIORITIES = ("high", "normal", "low")
+
+
+def _plans_db_only_mode() -> bool:
+    return bool(getattr(settings, "plans_db_only_mode", False))
 
 
 class PlanNotFoundError(ValueError):
@@ -365,6 +379,9 @@ async def _ensure_bundle(
     if bundle:
         return bundle
 
+    if _plans_db_only_mode():
+        raise PlanNotFoundError(f"Plan not found in DB: {plan_id}")
+
     # Bootstrap from filesystem
     index = get_plans_index(refresh=True)
     entry = index.get("entries", {}).get(plan_id)
@@ -431,6 +448,69 @@ async def _emit_events(
             ))
 
 
+async def _emit_plan_notification(
+    db: AsyncSession,
+    plan_id: str,
+    title: str,
+    changes: List[Dict[str, Any]],
+    actor: Optional[str] = None,
+) -> None:
+    """Emit a notification for significant plan changes."""
+    from pixsim7.backend.main.api.v1.notifications import emit_notification
+
+    # Only notify on significant changes (status, not markdown edits)
+    significant = [c for c in changes if c["field"] in ("status", "stage", "priority", "owner")]
+    if not significant:
+        return
+
+    parts = []
+    for c in significant:
+        if c["field"] == "status":
+            parts.append(f"status -> {c.get('new', '?')}")
+        else:
+            parts.append(f"{c['field']} -> {c.get('new', '?')}")
+
+    body = f"**{title}**: {', '.join(parts)}"
+    if actor:
+        body += f" (by {actor})"
+
+    await emit_notification(
+        db,
+        title=f"Plan updated: {title}",
+        body=body,
+        category="plan",
+        severity="info",
+        source=actor or "system",
+        ref_type="plan",
+        ref_id=plan_id,
+    )
+
+
+async def emit_plan_created_notification(
+    db: AsyncSession,
+    plan_id: str,
+    title: str,
+    actor: Optional[str] = None,
+) -> None:
+    """Emit a notification when a plan is created."""
+    from pixsim7.backend.main.api.v1.notifications import emit_notification
+
+    body = f"New plan: **{title}**"
+    if actor:
+        body += f" (by {actor})"
+
+    await emit_notification(
+        db,
+        title=f"Plan created: {title}",
+        body=body,
+        category="plan",
+        severity="success",
+        source=actor or "system",
+        ref_type="plan",
+        ref_id=plan_id,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -439,7 +519,7 @@ async def _emit_events(
 async def update_plan(
     db: AsyncSession,
     plan_id: str,
-    updates: Dict[str, str],
+    updates: Dict[str, Any],
     actor: Optional[str] = None,
 ) -> PlanUpdateResult:
     """
@@ -455,6 +535,14 @@ async def update_plan(
         raise ValueError(f"Invalid status '{updates['status']}'. Valid: {', '.join(VALID_STATUSES)}")
     if "priority" in updates and updates["priority"] not in VALID_PRIORITIES:
         raise ValueError(f"Invalid priority '{updates['priority']}'. Valid: {', '.join(VALID_PRIORITIES)}")
+    for key in LIST_MUTABLE_FIELDS:
+        if key in updates:
+            value = updates[key]
+            if value is None:
+                updates[key] = []
+                continue
+            if not isinstance(value, list) or any(not isinstance(v, str) for v in value):
+                raise ValueError(f"Invalid {key!r}: expected list[str]")
 
     bundle = await _ensure_bundle(db, plan_id)
     doc, plan = bundle.doc, bundle.plan
@@ -475,6 +563,18 @@ async def update_plan(
             if old_value != new_value:
                 changes.append({"field": "markdown"})
                 doc.markdown = new_value
+        elif key in LIST_MUTABLE_FIELDS:
+            old_list = old_value or []
+            new_list = new_value or []
+            if sorted(old_list) != sorted(new_list):
+                changes.append(
+                    {
+                        "field": key,
+                        "old": ", ".join(old_list),
+                        "new": ", ".join(new_list),
+                    }
+                )
+                setattr(target, key, new_list)
         elif old_str != new_value:
             changes.append({"field": key, "old": old_str, "new": new_value})
             setattr(target, key, new_value)
@@ -493,41 +593,42 @@ async def update_plan(
     doc.revision = (doc.revision or 0) + 1
     result.changes = changes
 
-    # Emit events
+    # Emit events + notification
     sha = None
     await _emit_events(db, plan_id, changes, None)
+    await _emit_plan_notification(db, plan_id, doc.title, changes, actor)
     await db.commit()
 
-    # Commit-back to filesystem
-    try:
-        new_scope = _status_to_scope(doc.status)
-        needs_move = new_scope != old_scope
+    # Optional commit-back to filesystem (disabled in DB-only mode)
+    if not _plans_db_only_mode():
+        try:
+            new_scope = _status_to_scope(doc.status)
+            needs_move = new_scope != old_scope
 
-        if needs_move:
-            _move_plan_directory(plan_id, old_scope, new_scope)
-            result.new_scope = new_scope
+            if needs_move:
+                _move_plan_directory(plan_id, old_scope, new_scope)
+                result.new_scope = new_scope
 
-        written_paths = export_plan_to_disk(bundle)
+            written_paths = export_plan_to_disk(bundle)
 
-        commit_parts = [f"plan({plan_id}):"]
-        for c in changes:
-            if c["field"] == "markdown":
-                commit_parts.append("content updated")
+            commit_parts = [f"plan({plan_id}):"]
+            for c in changes:
+                if c["field"] == "markdown":
+                    commit_parts.append("content updated")
+                else:
+                    commit_parts.append(f"{c['field']} {c.get('old', '')}->{c.get('new', '')}")
+            commit_msg = " ".join(commit_parts)
+            if actor:
+                commit_msg += f"\n\nActor: {actor}"
+
+            if needs_move:
+                sha = _git_commit_move(plan_id, old_scope, new_scope, commit_msg)
             else:
-                commit_parts.append(f"{c['field']} {c.get('old', '')}→{c.get('new', '')}")
-        commit_msg = " ".join(commit_parts)
-        if actor:
-            commit_msg += f"\n\nActor: {actor}"
+                sha = _git_commit(written_paths, commit_msg)
 
-        if needs_move:
-            sha = _git_commit_move(plan_id, old_scope, new_scope, commit_msg)
-        else:
-            sha = _git_commit(written_paths, commit_msg)
-
-        result.commit_sha = sha
-    except Exception as exc:
-        logger.warning("plan_commit_back_failed", plan_id=plan_id, error=str(exc))
-
+            result.commit_sha = sha
+        except Exception as exc:
+            logger.warning("plan_commit_back_failed", plan_id=plan_id, error=str(exc))
     # Invalidate filesystem cache
     import pixsim7.backend.main.services.docs.plans as plans_module
     plans_module._plans_cache = None
@@ -548,6 +649,8 @@ async def get_plan_bundle(db: AsyncSession, plan_id: str) -> Optional[PlanBundle
     bundle = await _load_bundle(db, plan_id)
     if bundle:
         return bundle
+    if _plans_db_only_mode():
+        return None
     return await _ensure_bundle(db, plan_id)
 
 
@@ -591,7 +694,10 @@ async def list_plan_bundles(db: AsyncSession) -> List[PlanBundle]:
             if r.document_id in doc_map
         ]
 
-    # DB empty — bootstrap from filesystem
+    # DB empty - optionally bootstrap from filesystem
+    if _plans_db_only_mode():
+        return []
+
     index = get_plans_index(refresh=True)
     entries = index.get("entries", {})
     if not entries:
@@ -671,6 +777,9 @@ def get_active_assignment() -> Optional[Dict[str, Any]]:
 
     Falls back to filesystem index (works even before DB bootstrap).
     """
+    if _plans_db_only_mode():
+        return None
+
     index = get_plans_index(refresh=True)
     entries = index.get("entries", {})
 
