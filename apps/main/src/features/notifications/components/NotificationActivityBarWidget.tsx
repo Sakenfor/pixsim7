@@ -117,6 +117,45 @@ function formatTimeAgo(iso: string): string {
 
 // ── Floating Panel ───────────────────────────────────────────────
 
+// ── Body renderer (inline links from **bold** segments) ──────────
+
+function NotificationBody({
+  body,
+  notification,
+  onNavigate,
+}: {
+  body: string;
+  notification: NotificationItem;
+  onNavigate: (n: NotificationItem) => void;
+}) {
+  // Parse **bold** segments into clickable links if notification has a ref
+  const parts = body.split(/(\*\*[^*]+\*\*)/g);
+
+  return (
+    <div className="text-[11px] text-neutral-400 mt-0.5 line-clamp-2">
+      {parts.map((part, i) => {
+        const boldMatch = part.match(/^\*\*(.+)\*\*$/);
+        if (boldMatch) {
+          const text = boldMatch[1];
+          if (notification.refType) {
+            return (
+              <button
+                key={i}
+                onClick={(e) => { e.stopPropagation(); onNavigate(notification); }}
+                className="font-semibold text-blue-400 hover:text-blue-300 hover:underline"
+              >
+                {text}
+              </button>
+            );
+          }
+          return <span key={i} className="font-semibold text-neutral-200">{text}</span>;
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </div>
+  );
+}
+
 // ── Navigation ───────────────────────────────────────────────────
 
 /** Map refType to a panel ID or action. Returns null if no navigation. */
@@ -191,15 +230,12 @@ function NotificationPanel({
         ) : (
           <div className="divide-y divide-neutral-800/50">
             {notifications.map((n) => (
-              <button
+              <div
                 key={n.id}
-                onClick={() => {
-                  if (!n.read) onMarkRead(n.id);
-                  if (n.refType) onNavigate(n);
-                }}
-                className={`w-full text-left px-3 py-2.5 hover:bg-neutral-800/40 transition-colors ${
-                  n.read ? 'opacity-60' : ''
-                } ${n.refType ? 'cursor-pointer' : ''}`}
+                onClick={() => { if (!n.read) onMarkRead(n.id); }}
+                className={`px-3 py-2.5 hover:bg-neutral-800/40 transition-colors ${
+                  n.read ? 'opacity-60' : 'cursor-pointer'
+                }`}
               >
                 <div className="flex items-start gap-2">
                   {/* Unread dot */}
@@ -230,16 +266,24 @@ function NotificationPanel({
                       </Badge>
                     </div>
                     {n.body && (
-                      <div className="text-[11px] text-neutral-400 mt-0.5 line-clamp-2">
-                        {n.body}
-                      </div>
+                      <NotificationBody body={n.body} notification={n} onNavigate={onNavigate} />
                     )}
-                    <div className="text-[10px] text-neutral-500 mt-0.5">
-                      {formatTimeAgo(n.createdAt)}
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-neutral-500">
+                        {formatTimeAgo(n.createdAt)}
+                      </span>
+                      {n.refType && n.refId && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onNavigate(n); }}
+                          className="text-[10px] text-blue-400 hover:text-blue-300 hover:underline"
+                        >
+                          Open {n.refType}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
