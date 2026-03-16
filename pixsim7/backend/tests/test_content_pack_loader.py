@@ -1588,6 +1588,9 @@ async def test_upsert_entities_rehomes_content_pack_rows_without_force(
         def __eq__(self, _other):
             return ("eq", _other)
 
+        def in_(self, _values):
+            return ("in", tuple(_values))
+
     class _Model:
         __name__ = "PromptBlock"
         block_id = _Column()
@@ -1600,8 +1603,15 @@ async def test_upsert_entities_rehomes_content_pack_rows_without_force(
         def __init__(self, row):
             self._row = row
 
-        def scalar_one_or_none(self):
-            return self._row
+        def scalars(self):
+            class _Scalars:
+                def __init__(self, row):
+                    self._row = row
+
+                def all(self):
+                    return [self._row] if self._row is not None else []
+
+            return _Scalars(self._row)
 
     row = SimpleNamespace(
         block_id="ie_lock_pose",
@@ -1657,6 +1667,9 @@ async def test_upsert_entities_rehome_can_be_disabled(
         def __eq__(self, _other):
             return ("eq", _other)
 
+        def in_(self, _values):
+            return ("in", tuple(_values))
+
     class _Model:
         __name__ = "BlockPrimitive"
         block_id = _Column()
@@ -1669,8 +1682,15 @@ async def test_upsert_entities_rehome_can_be_disabled(
         def __init__(self, row):
             self._row = row
 
-        def scalar_one_or_none(self):
-            return self._row
+        def scalars(self):
+            class _Scalars:
+                def __init__(self, row):
+                    self._row = row
+
+                def all(self):
+                    return [self._row] if self._row is not None else []
+
+            return _Scalars(self._row)
 
     row = SimpleNamespace(
         block_id="shared.pose.lock",
