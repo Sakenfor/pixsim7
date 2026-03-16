@@ -34,9 +34,7 @@ from pixsim7.backend.main.services.prompt.block.composition_layers import (
     order_layered_blocks as _order_layered_blocks,
     resolve_layer_budget_settings,
 )
-from pixsim7.backend.main.services.prompt.block.block_query import (
-    normalize_tag_query,
-)
+from pixsim7.backend.main.services.prompt.block.tag_query import normalize_tag_query
 from pixsim7.backend.main.services.prompt.block.block_primitive_query import (
     build_block_primitive_query,
 )
@@ -1850,6 +1848,29 @@ class BlockTemplateService:
         selected_block_string_ids = [str(b.get("block_id")) for b in selected_blocks if b.get("block_id")]
         template_id = str(template.id) if getattr(template, "id", None) is not None else None
 
+        # Optionally build Prompt Plan IR (feature-flagged).
+        plan_ir_data: Optional[Dict[str, Any]] = None
+        if metadata.get("emit_plan_ir"):
+            try:
+                from pixsim7.backend.main.services.prompt.block.planning_ir import PlanBuilder
+
+                plan_ir = PlanBuilder.build(
+                    resolution_request=compiled_request,
+                    resolution_result=resolver_result,
+                    slot_results=slot_results,
+                    selected_blocks=selected_blocks,
+                    assembled_prompt=assembled_prompt,
+                    composition_strategy=str(template.composition_strategy or "sequential"),
+                    template_id=template_id,
+                    template_slug=getattr(template, "slug", None),
+                    seed=seed,
+                    control_values=control_values,
+                    assembly_budget_report=assembly_budget_report,
+                )
+                plan_ir_data = plan_ir.model_dump()
+            except Exception as exc:
+                warnings.append(f"Plan IR build failed: {exc}")
+
         return {
             "success": True,
             "assembled_prompt": assembled_prompt,
@@ -1881,6 +1902,7 @@ class BlockTemplateService:
                 "character_bindings": effective_bindings if effective_bindings else None,
                 "characters_resolved": characters_resolved if characters_resolved else None,
                 "assembly_budget": assembly_budget_report,
+                "plan_ir": plan_ir_data,
             },
         }
 def _merge_tag_maps(

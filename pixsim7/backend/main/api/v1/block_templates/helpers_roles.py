@@ -84,6 +84,11 @@ def _infer_block_composition_role(block: Any) -> Optional[str]:
 
 def _to_block_response(block: Any) -> BlockResponse:
     tags = block.tags if isinstance(getattr(block, "tags", None), dict) else {}
+    block_metadata = (
+        block.block_metadata
+        if isinstance(getattr(block, "block_metadata", None), dict)
+        else {}
+    )
     raw_role = getattr(block, "role", None)
     inferred = infer_composition_role(
         role=raw_role,
@@ -120,6 +125,7 @@ def _to_block_response(block: Any) -> BlockResponse:
         default_intent=default_intent_text,
         text=text,
         tags=tags,
+        block_metadata=block_metadata,
         capabilities=normalize_capability_ids(getattr(block, "capabilities", None)),
         complexity_level=getattr(block, "complexity_level", None),
         package_name=package_name,

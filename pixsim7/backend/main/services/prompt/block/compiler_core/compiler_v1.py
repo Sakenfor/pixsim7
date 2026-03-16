@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from ..capabilities import derive_block_capabilities, normalize_capability_ids
-from ..block_query import normalize_tag_query
+from ..tag_query import normalize_tag_query
 from ..resolution_core.types import (
     CandidateBlock,
     ConstraintKind,

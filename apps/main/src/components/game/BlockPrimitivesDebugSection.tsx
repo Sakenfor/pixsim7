@@ -2,9 +2,9 @@ import { Button, useToast } from '@pixsim7/shared.ui';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
-  buildActionSelectionRequestFromBehavior,
-  type BuildActionSelectionRequestFromBehaviorRequest,
-  selectActionBlocksFromBehavior,
+  buildPrimitiveSelectionRequestFromBehavior,
+  type BuildPrimitiveSelectionRequestFromBehaviorRequest,
+  selectPrimitiveBlocksFromBehavior,
 } from '@lib/api';
 import { resolveGameNpcs } from '@lib/resolvers';
 
@@ -27,7 +27,7 @@ type DebugResult = {
   timestamp: number;
 };
 
-export interface ActionSelectionDebugSectionProps {
+export interface BlockPrimitivesDebugSectionProps {
   defaultWorldId?: number | null;
   defaultSessionId?: number | null;
   title?: string;
@@ -62,12 +62,12 @@ function addWorldTimeDelta(currentInput: string, deltaSeconds: number): string {
   return String(current + deltaSeconds);
 }
 
-export function ActionSelectionDebugSection({
+export function BlockPrimitivesDebugSection({
   defaultWorldId = null,
   defaultSessionId = null,
-  title = 'Action Selection Debug',
+  title = 'Block Primitives Debug',
   className,
-}: ActionSelectionDebugSectionProps) {
+}: BlockPrimitivesDebugSectionProps) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [sessionIdInput, setSessionIdInput] = useState('');
@@ -105,7 +105,7 @@ export function ActionSelectionDebugSection({
     const loadNpcs = async () => {
       try {
         const list = await resolveGameNpcs({}, {
-          consumerId: 'ActionSelectionDebugSection.loadNpcs',
+          consumerId: 'BlockPrimitivesDebugSection.loadNpcs',
         });
         if (cancelled) return;
 
@@ -151,7 +151,7 @@ export function ActionSelectionDebugSection({
     }
   };
 
-  const buildRequest = (): BuildActionSelectionRequestFromBehaviorRequest | null => {
+  const buildRequest = (): BuildPrimitiveSelectionRequestFromBehaviorRequest | null => {
     const sessionId = parseOptionalInt(sessionIdInput);
     if (sessionId == null || sessionId <= 0) {
       toast.warning('Enter a valid session ID');
@@ -203,7 +203,7 @@ export function ActionSelectionDebugSection({
 
     setBusy(true);
     try {
-      const payload = await buildActionSelectionRequestFromBehavior(request);
+      const payload = await buildPrimitiveSelectionRequestFromBehavior(request);
       setResult({ mode: 'build', payload, timestamp: Date.now() });
       toast.success('Built request from behavior context');
     } catch (error) {
@@ -219,7 +219,7 @@ export function ActionSelectionDebugSection({
 
     setBusy(true);
     try {
-      const payload = await selectActionBlocksFromBehavior(request);
+      const payload = await selectPrimitiveBlocksFromBehavior(request);
       setResult({ mode: 'select', payload, timestamp: Date.now() });
       toast.success(`Selection completed (${payload.blocks.length} block(s))`);
     } catch (error) {
@@ -233,7 +233,7 @@ export function ActionSelectionDebugSection({
     <div className={className ?? 'text-xs'}>
       <div className="font-semibold mb-2">{title}</div>
       <div className="text-neutral-600 dark:text-neutral-300 mb-2">
-        Build or run behavior-driven action selection for this context.
+        Build or run behavior-driven block primitive selection for this context.
       </div>
       <div className="text-neutral-600 dark:text-neutral-300 mb-3 space-y-1">
         <div>Default world: {defaultWorldId ?? 'N/A'}</div>
@@ -265,7 +265,7 @@ export function ActionSelectionDebugSection({
         <label className="flex flex-col gap-1">
           <span className="text-neutral-600 dark:text-neutral-300">Lead NPC ID</span>
           <input
-            list="action-selection-debug-npc-options"
+            list="block-primitives-debug-npc-options"
             value={leadNpcIdInput}
             onChange={(event) => setLeadNpcIdInput(event.target.value)}
             placeholder="Required"
@@ -275,7 +275,7 @@ export function ActionSelectionDebugSection({
         <label className="flex flex-col gap-1">
           <span className="text-neutral-600 dark:text-neutral-300">Partner NPC ID (optional)</span>
           <input
-            list="action-selection-debug-npc-options"
+            list="block-primitives-debug-npc-options"
             value={partnerNpcIdInput}
             onChange={(event) => setPartnerNpcIdInput(event.target.value)}
             placeholder="Optional"
@@ -284,7 +284,7 @@ export function ActionSelectionDebugSection({
         </label>
       </div>
 
-      <datalist id="action-selection-debug-npc-options">
+      <datalist id="block-primitives-debug-npc-options">
         {filteredNpcs.map((npc) => (
           <option key={npc.id} value={npc.id}>
             {npc.name}

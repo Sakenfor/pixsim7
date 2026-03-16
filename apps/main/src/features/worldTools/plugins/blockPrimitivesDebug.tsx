@@ -1,27 +1,27 @@
 /**
- * Action Selection Debug World Tool Plugin
+ * Block Primitives Debug World Tool Plugin
  *
- * Debugs behavior-driven action selection requests and outcomes.
+ * Debugs behavior-driven block primitive selection requests and outcomes.
  */
 
-import { ActionSelectionDebugSection } from '@/components/game/ActionSelectionDebugSection';
+import { BlockPrimitivesDebugSection } from '@/components/game/BlockPrimitivesDebugSection';
 
 import type { WorldToolPlugin } from '../lib/types';
 
-export const actionSelectionDebugTool: WorldToolPlugin = {
-  id: 'action-selection-debug',
-  name: 'Action Selection',
-  description: 'Build and run behavior-driven action selection requests',
+export const blockPrimitivesDebugTool: WorldToolPlugin = {
+  id: 'block-primitives-debug',
+  name: 'Block Primitives Debug',
+  description: 'Build and run behavior-driven block primitive selection requests',
   icon: 'target',
   category: 'debug',
 
   whenVisible: (context) => context.selectedWorldId !== null,
 
   render: (context) => (
-    <ActionSelectionDebugSection
+    <BlockPrimitivesDebugSection
       defaultWorldId={context.selectedWorldId}
       defaultSessionId={context.session?.id ?? null}
-      title="Action Selection Debug"
+      title="Block Primitives Debug"
     />
   ),
 };

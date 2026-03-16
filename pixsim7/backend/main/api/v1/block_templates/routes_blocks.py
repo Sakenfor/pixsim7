@@ -29,6 +29,9 @@ from pixsim7.backend.main.services.prompt.block.tag_dictionary import (
     get_canonical_block_tag_dictionary,
     get_block_tag_alias_key_map,
 )
+from pixsim7.backend.main.services.prompt.block.vocabulary_governance import (
+    VocabularyGovernanceService,
+)
 from .schemas import (
     BlockResponse,
     UpsertPrimitiveBlockRequest,
@@ -160,6 +163,12 @@ async def upsert_block_by_block_id(
         )
 
     tags_dict = dict(request.tags or {})
+    requested_block_metadata = request.block_metadata
+    block_metadata_dict = (
+        dict(requested_block_metadata)
+        if isinstance(requested_block_metadata, dict)
+        else None
+    )
     if not user_is_admin:
         if current_user.id is None:
             raise HTTPException(status_code=403, detail="User identity required")
@@ -199,8 +208,8 @@ async def upsert_block_by_block_id(
                 category=category,
                 text=text,
                 tags=tags_dict,
+                block_metadata=(block_metadata_dict if block_metadata_dict is not None else {}),
                 capabilities=capabilities,
-                block_metadata={},
                 source=request.source,
                 is_public=(request.is_public if user_is_admin else False),
                 avg_rating=request.avg_rating,
@@ -222,6 +231,8 @@ async def upsert_block_by_block_id(
         block.category = category
         block.text = text
         block.tags = tags_dict
+        if block_metadata_dict is not None:
+            block.block_metadata = block_metadata_dict
         block.capabilities = capabilities
         block.source = request.source
         block.is_public = (request.is_public if user_is_admin else False)
@@ -576,3 +587,63 @@ async def get_block_tag_dictionary(
         keys=responses,
         warnings=warnings,
     )
+
+
+@router.post("/meta/vocabulary/validate")
+async def validate_vocabulary(
+    request_body: Dict[str, Any],
+):
+    """Validate tags and ontology IDs against canonical vocabulary."""
+    service = VocabularyGovernanceService()
+    tags = request_body.get("tags") or {}
+    ontology_ids = request_body.get("ontology_ids") or []
+
+    tag_result = service.validate_tags(tags) if tags else None
+    ontology_result = service.validate_ontology_ids(ontology_ids) if ontology_ids else None
+
+    combined_valid = True
+    combined_entries = []
+    combined_warnings = []
+    combined_errors = []
+
+    if tag_result:
+        combined_valid = combined_valid and tag_result.valid
+        combined_entries.extend([e.model_dump() for e in tag_result.entries])
+        combined_warnings.extend(tag_result.warnings)
+        combined_errors.extend(tag_result.errors)
+
+    if ontology_result:
+        combined_valid = combined_valid and ontology_result.valid
+        combined_entries.extend([e.model_dump() for e in ontology_result.entries])
+        combined_warnings.extend(ontology_result.warnings)
+        combined_errors.extend(ontology_result.errors)
+
+    return {
+        "valid": combined_valid,
+        "entries": combined_entries,
+        "warnings": combined_warnings,
+        "errors": combined_errors,
+    }
+
+
+@router.get("/meta/vocabulary/suggest")
+async def suggest_vocabulary(
+    q: str = Query("", description="Partial tag key to suggest completions for"),
+    context: Optional[str] = Query(None, description="Optional context JSON"),
+):
+    """Suggest canonical tags based on partial input."""
+    import json as _json
+
+    service = VocabularyGovernanceService()
+    ctx = None
+    if context:
+        try:
+            ctx = _json.loads(context)
+        except (ValueError, TypeError):
+            ctx = None
+
+    suggestions = service.suggest_tags(q, context=ctx)
+    return {
+        "query": q,
+        "suggestions": [s.model_dump() for s in suggestions],
+    }

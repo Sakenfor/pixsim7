@@ -194,6 +194,7 @@ class BlockResponse(BaseModel):
     default_intent: Optional[str] = None
     text: str = ""
     tags: Dict[str, Any] = Field(default_factory=dict)
+    block_metadata: Dict[str, Any] = Field(default_factory=dict)
     capabilities: List[str] = Field(default_factory=list)
     complexity_level: Optional[str] = None
     package_name: Optional[str] = None
@@ -208,6 +209,7 @@ class UpsertPrimitiveBlockRequest(BaseModel):
     category: str = Field(..., min_length=1, max_length=64)
     text: str = Field(..., min_length=1)
     tags: Dict[str, Any] = Field(default_factory=dict)
+    block_metadata: Optional[Dict[str, Any]] = None
     capabilities: List[str] = Field(default_factory=list)
     source: Literal["system", "user", "imported"] = "imported"
     is_public: bool = True

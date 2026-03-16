@@ -1,8 +1,8 @@
 """BlockPrimitive query builder.
 
-Simplified version of block_query.py targeting the BlockPrimitive model
-in the separate pixsim7_blocks database. No role/kind/intent/complexity —
-primitives are categorized purely by category + tags.
+Targets the BlockPrimitive model in the separate pixsim7_blocks database.
+No role/kind/intent/complexity columns — primitives are categorized
+primarily by category + tags.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Any, Dict, Iterable, Optional
 from sqlalchemy import Select, and_, func, or_, select
 
 from pixsim7.backend.main.domain.blocks import BlockPrimitive
-from pixsim7.backend.main.services.prompt.block.block_query import normalize_tag_query
+from pixsim7.backend.main.services.prompt.block.tag_query import normalize_tag_query
 from pixsim7.backend.main.shared.composition import (
     CATEGORY_TO_COMPOSITION_ROLE,
     COMPOSITION_ROLE_ALIASES,
@@ -146,7 +146,7 @@ def build_block_primitive_query(
     if min_rating is not None:
         query = query.where(BlockPrimitive.avg_rating >= min_rating)
 
-    # Reuse the same tag normalization as PromptBlock queries
+    # Reuse shared tag normalization (legacy-agnostic).
     tag_groups = normalize_tag_query(tag_constraints=tag_constraints, tag_query=tag_query)
 
     for tag_key, tag_value in tag_groups["all"].items():

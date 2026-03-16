@@ -145,6 +145,6 @@ export {
   npcPresenceDebugTool,
   relationshipDiffDebugTool,
   worldThemeEditorTool,
-  actionSelectionDebugTool,
+  blockPrimitivesDebugTool,
   builtInWorldTools,
 } from './plugins';

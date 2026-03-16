@@ -5,7 +5,7 @@
  * Register your custom world tools here.
  */
 
-import { actionSelectionDebugTool } from './actionSelectionDebug';
+import { blockPrimitivesDebugTool } from './blockPrimitivesDebug';
 import { inventoryTool } from './inventory';
 import { moodDebugTool } from './moodDebug';
 import { npcBrainDebugTool } from './npcBrainDebug';
@@ -33,7 +33,7 @@ export {
   npcPresenceDebugTool,
   relationshipDiffDebugTool,
   worldThemeEditorTool,
-  actionSelectionDebugTool,
+  blockPrimitivesDebugTool,
 };
 
 // Export a helper to register all built-in tools
@@ -50,5 +50,5 @@ export const builtInWorldTools = [
   npcPresenceDebugTool,
   relationshipDiffDebugTool,
   worldThemeEditorTool,
-  actionSelectionDebugTool,
+  blockPrimitivesDebugTool,
 ];
