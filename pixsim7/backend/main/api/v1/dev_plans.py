@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import CurrentAdminUser, get_database
+from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, get_database
 from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry, PlanSyncRun
 from pixsim7.backend.main.services.docs.plans import get_plans_index
 from pixsim7.backend.main.services.docs.plan_sync import (
@@ -539,7 +539,7 @@ class PlanCreateResponse(BaseModel):
 @router.post("", response_model=PlanCreateResponse)
 async def create_plan(
     payload: PlanCreateRequest,
-    _admin: CurrentAdminUser,
+    _admin: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
     """Create a new plan: Document (shared fields) + PlanRegistry (plan-specific)."""
@@ -630,7 +630,7 @@ class PlanUpdateResponse(BaseModel):
 async def update_plan_endpoint(
     plan_id: str,
     payload: PlanUpdateRequest,
-    _admin: CurrentAdminUser,
+    _admin: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
     updates = {k: v for k, v in payload.dict().items() if v is not None}

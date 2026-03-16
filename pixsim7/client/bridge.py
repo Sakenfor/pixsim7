@@ -4,6 +4,7 @@ WebSocket bridge — connects the agent pool to the pixsim backend.
 Handles:
 - WebSocket connection lifecycle with auto-reconnect
 - Task dispatch from backend to agent pool
+- MCP config generation for Claude tool access
 - Heartbeat reporting for observability
 - Bridge status for local display
 """
@@ -11,6 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import sys
+import tempfile
 from typing import Optional
 
 try:
@@ -39,6 +43,7 @@ class Bridge:
         self._agent_id: Optional[str] = None
         self._connected = False
         self._tasks_handled = 0
+        self._mcp_config_path: Optional[str] = None
 
     @property
     def is_connected(self) -> bool:
@@ -78,11 +83,19 @@ class Bridge:
             self._agent_id = welcome.get("agent_id", "unknown")
             self._connected = True
 
-            # If server sent a system prompt, apply it to pool sessions
+            # Extract system prompt and generate MCP config
             server_system_prompt = welcome.get("system_prompt")
-            if server_system_prompt:
-                self._pool.set_system_prompt(server_system_prompt)
-                client_log(f"Received system prompt ({len(server_system_prompt)} chars)")
+            mcp_config_path = self._ensure_mcp_config()
+
+            if server_system_prompt or mcp_config_path:
+                await self._pool.configure(
+                    system_prompt=server_system_prompt,
+                    mcp_config_path=mcp_config_path,
+                )
+                if server_system_prompt:
+                    client_log(f"System prompt: {len(server_system_prompt)} chars")
+                if mcp_config_path:
+                    client_log(f"MCP config: {mcp_config_path}")
 
             client_log(f"Connected as {self._agent_id}")
             client_log(f"Pool: {self._pool.ready_count} ready, {self._pool.busy_count} busy")
@@ -98,6 +111,46 @@ class Bridge:
 
                 elif msg_type == "ping":
                     await ws.send(json.dumps({"type": "pong"}))
+
+    def _ensure_mcp_config(self) -> Optional[str]:
+        """Generate MCP config file pointing to the pixsim MCP server."""
+        if self._mcp_config_path and os.path.exists(self._mcp_config_path):
+            return self._mcp_config_path
+
+        # Derive HTTP base URL from WebSocket URL
+        api_url = self._url
+        for ws_scheme, http_scheme in [("wss://", "https://"), ("ws://", "http://")]:
+            if api_url.startswith(ws_scheme):
+                api_url = http_scheme + api_url[len(ws_scheme):]
+                break
+        # Strip path to get base URL (e.g. http://localhost:8000)
+        api_base = api_url.split("/api/")[0] if "/api/" in api_url else api_url
+
+        # Path to the MCP server script
+        mcp_server_script = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "mcp_server.py"
+        )
+
+        config = {
+            "mcpServers": {
+                "pixsim": {
+                    "command": sys.executable,
+                    "args": [mcp_server_script],
+                    "env": {
+                        "PIXSIM_API_URL": api_base,
+                        "PIXSIM_API_TOKEN": os.environ.get("PIXSIM_API_TOKEN", ""),
+                    },
+                }
+            }
+        }
+
+        # Write to temp file (persists for process lifetime)
+        fd, path = tempfile.mkstemp(suffix=".json", prefix="pixsim-mcp-")
+        with os.fdopen(fd, "w") as f:
+            json.dump(config, f, indent=2)
+
+        self._mcp_config_path = path
+        return path
 
     async def _handle_task(self, ws, msg: dict) -> None:
         """Handle an incoming task from the backend."""
