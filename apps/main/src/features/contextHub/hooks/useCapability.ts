@@ -142,11 +142,16 @@ export function useCapabilityAll<T>(key: CapabilityKey): Array<{ provider: Capab
     },
     () => {
       const all: Array<{ provider: CapabilityProvider<T>; value: T }> = [];
+      const seenProviders = new Set<CapabilityProvider<T>>();
       let current = hub;
       while (current) {
         const providers = current.registry.getAll<T>(key);
         for (const p of providers) {
           if (p.isAvailable && !p.isAvailable()) continue;
+          // A provider may be registered in both local + root scope to support
+          // nearest-scope resolution and global discovery. Keep one entry.
+          if (seenProviders.has(p)) continue;
+          seenProviders.add(p);
           all.push({ provider: p, value: p.getValue() });
         }
         current = current.parent;

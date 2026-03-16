@@ -1212,7 +1212,7 @@ async def seed_bananza_boat_slice_via_api(
     print("")
     print("Next step example:")
     print(
-        "  POST /api/v1/game/dialogue/actions/select with "
+        "  POST /api/v1/game/dialogue/primitives/select with "
         "lead_npc_id, partner_npc_id, world_id, location_tag, mood, pose"
     )
 

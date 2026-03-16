@@ -91,6 +91,7 @@ function AssetSetChip({
   onBrowseSet,
   selectedCount,
   onAddSelected,
+  onCreateSet,
 }: {
   chipKey: string;
   chipState: ReturnType<typeof useFilterChipState>;
@@ -102,6 +103,7 @@ function AssetSetChip({
   onBrowseSet: (set: ManualAssetSet) => void;
   selectedCount: number;
   onAddSelected: () => void;
+  onCreateSet: () => void;
 }) {
   const [rowMenu, setRowMenu] = useState<{ set: ManualAssetSet; x: number; y: number } | null>(null);
 
@@ -128,6 +130,14 @@ function AssetSetChip({
           <span className="w-4 text-center flex-shrink-0" title="Filter: show only assets in this set">F</span>
           <span className="w-4 text-center flex-shrink-0" title="Target: add assets to this set">T</span>
           <span className="flex-1">Set</span>
+          <button
+            type="button"
+            onClick={onCreateSet}
+            title="Create new set"
+            className="flex items-center justify-center w-4 h-4 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
+          >
+            <Icon name="plus" size={11} />
+          </button>
         </div>
         {manualSets.map((s) => {
           const isFiltered = filterSetIds.includes(s.id);
@@ -272,6 +282,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     [allSets],
   );
   const addAssetsToSet = useAssetSetStore((s) => s.addAssetsToSet);
+  const createSet = useAssetSetStore((s) => s.createSet);
   const activeManualSetId = useGalleryApplyTargetStore((s) => s.activeManualSetId);
   const setActiveManualSetId = useGalleryApplyTargetStore((s) => s.setActiveManualSetId);
   const clearActiveManualSetId = useGalleryApplyTargetStore((s) => s.clearActiveManualSetId);
@@ -988,6 +999,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     addAssetsToSet(activeManualSet.id, selectedAssets.map((asset) => asset.id));
   }, [activeManualSet, addAssetsToSet, selectedAssets]);
 
+  const handleCreateSet = useCallback(() => {
+    createSet({ name: 'New Set', kind: 'manual', assetIds: [] });
+  }, [createSet]);
+
   // Gallery tool context
   const galleryContext: GalleryToolContext = useMemo(
     () => ({
@@ -1295,6 +1310,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
                   onBrowseSet={browseSetInMiniGallery}
                   selectedCount={controller.selectedAssetIds.size}
                   onAddSelected={addSelectedToActiveManualSet}
+                  onCreateSet={handleCreateSet}
                 />
               }
             />
