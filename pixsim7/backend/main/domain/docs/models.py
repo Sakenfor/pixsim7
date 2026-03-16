@@ -12,6 +12,75 @@ from pixsim7.backend.main.shared.datetime_utils import utcnow
 PLAN_META_SCHEMA = "dev_meta"
 
 
+# =============================================================================
+# Document base (generic structured content)
+# =============================================================================
+
+
+class Document(SQLModel, table=True):
+    """Base entity for all structured content.
+
+    doc_type values: doc | audit | decision | guide | runbook | note
+    Plans will eventually extend this via document_id FK.
+    """
+
+    __tablename__ = "documents"
+    __table_args__ = {"schema": PLAN_META_SCHEMA}
+
+    id: str = Field(primary_key=True, max_length=120)
+    doc_type: str = Field(max_length=32, index=True)  # doc | audit | decision | guide | runbook | note
+    title: str = Field(max_length=255)
+    status: str = Field(default="draft", max_length=32, index=True)  # draft | active | archived
+    owner: str = Field(default="unassigned", max_length=120)
+    summary: Optional[str] = Field(default=None, sa_column=Column(Text))
+    markdown: Optional[str] = Field(default=None, sa_column=Column(Text))
+    user_id: Optional[int] = Field(default=None, index=True)
+    visibility: str = Field(default="private", max_length=32)  # private | shared | public
+    tags: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    extra: Optional[Dict] = Field(default=None, sa_column=Column(JSON))  # type-specific structured data
+    revision: int = Field(default=1)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class DocumentShare(SQLModel, table=True):
+    """Grants a specific user access to a document."""
+
+    __tablename__ = "document_shares"
+    __table_args__ = (
+        Index("idx_doc_shares_doc_user", "document_id", "user_id", unique=True),
+        {"schema": PLAN_META_SCHEMA},
+    )
+
+    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
+    document_id: str = Field(foreign_key=f"{PLAN_META_SCHEMA}.documents.id", max_length=120)
+    user_id: int = Field(index=True)
+    role: str = Field(default="viewer", max_length=32)
+    granted_by: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class DocumentEvent(SQLModel, table=True):
+    """Audit trail for document changes."""
+
+    __tablename__ = "document_events"
+    __table_args__ = {"schema": PLAN_META_SCHEMA}
+
+    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
+    document_id: str = Field(foreign_key=f"{PLAN_META_SCHEMA}.documents.id", index=True, max_length=120)
+    event_type: str = Field(max_length=64)
+    field: Optional[str] = Field(default=None, max_length=64)
+    old_value: Optional[str] = Field(default=None, sa_column=Column(Text))
+    new_value: Optional[str] = Field(default=None, sa_column=Column(Text))
+    actor: Optional[str] = Field(default=None, max_length=120)
+    timestamp: datetime = Field(default_factory=utcnow, index=True)
+
+
+# =============================================================================
+# Plan system (extends Document concept, will get document_id FK later)
+# =============================================================================
+
+
 class PlanSyncRun(SQLModel, table=True):
     """A single filesystem->DB sync attempt with aggregate counters."""
 
