@@ -1,0 +1,23 @@
+id: objectlink-prompt-context-expansion
+title: ObjectLink Prompt Context Expansion
+status: active
+stage: proposed
+owner: links/context lane
+last_updated: '2026-03-16'
+priority: normal
+summary: Expand ObjectLink + PromptContextService resolver coverage beyond NPC with
+  stronger mappings, loaders, and tests.
+plan_path: ./plan.md
+code_paths:
+- pixsim7/backend/main/services/links
+- pixsim7/backend/main/services/prompt/context
+- pixsim7/backend/main/services/refs
+- pixsim7/backend/main/startup.py
+- pixsim7/backend/tests/services/links
+- pixsim7/backend/tests/services/characters/test_prompt_context_service.py
+tags:
+- objectlink
+- prompt-context
+- resolver
+- links
+- contracts
