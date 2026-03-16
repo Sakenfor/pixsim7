@@ -24,6 +24,7 @@ interface NotificationItem {
   category: string;
   severity: string;
   source: string;
+  actorName: string | null;
   refType: string | null;
   refId: string | null;
   broadcast: boolean;
@@ -270,6 +271,7 @@ function NotificationPanel({
                     )}
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-[10px] text-neutral-500">
+                        {n.actorName && <>{n.actorName} &middot; </>}
                         {formatTimeAgo(n.createdAt)}
                       </span>
                       {n.refType && n.refId && (

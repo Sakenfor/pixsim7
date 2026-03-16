@@ -29,6 +29,7 @@ class NotificationResponse(BaseModel):
     category: str
     severity: str
     source: str
+    actorName: Optional[str] = None
     refType: Optional[str] = None
     refId: Optional[str] = None
     broadcast: bool
@@ -63,6 +64,7 @@ def _to_response(n: Notification) -> dict:
         "category": n.category,
         "severity": n.severity,
         "source": n.source,
+        "actorName": n.actor_name,
         "refType": n.ref_type,
         "refId": n.ref_id,
         "broadcast": n.broadcast,
@@ -129,12 +131,14 @@ async def create_notification(
 ):
     """Create a notification (broadcast or targeted)."""
     now = utcnow()
+    actor_name = user.display_name or user.username
     n = Notification(
         title=payload.title,
         body=payload.body,
         category=payload.category,
         severity=payload.severity,
         source=f"user:{user.id}",
+        actor_name=actor_name,
         ref_type=payload.ref_type,
         ref_id=payload.ref_id,
         broadcast=payload.broadcast,
@@ -194,6 +198,7 @@ async def emit_notification(
     ref_id: Optional[str] = None,
     broadcast: bool = True,
     user_id: Optional[int] = None,
+    actor_name: Optional[str] = None,
 ) -> Notification:
     """Create a notification from backend code (plan hooks, agents, etc.)."""
     n = Notification(
@@ -202,6 +207,7 @@ async def emit_notification(
         category=category,
         severity=severity,
         source=source,
+        actor_name=actor_name,
         ref_type=ref_type,
         ref_id=ref_id,
         broadcast=broadcast,

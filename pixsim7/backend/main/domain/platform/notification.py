@@ -27,6 +27,7 @@ class Notification(SQLModel, table=True):
     category: str = Field(default="system", max_length=32)  # plan | feature | system | agent
     severity: str = Field(default="info", max_length=16)  # info | success | warning | error
     source: str = Field(default="system", max_length=120)  # user:{id} | agent:{session} | system
+    actor_name: Optional[str] = Field(default=None, max_length=120)  # resolved display name
     ref_type: Optional[str] = Field(default=None, max_length=32)  # plan | document | generation
     ref_id: Optional[str] = Field(default=None, max_length=120)
     broadcast: bool = Field(default=True)
