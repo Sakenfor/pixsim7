@@ -11,6 +11,8 @@ import { createPortal } from 'react-dom';
 import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
 
+import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+
 import { NavIcon } from '@/components/navigation/ActivityBar';
 
 // ── Types ────────────────────────────────────────────────────────
@@ -115,17 +117,39 @@ function formatTimeAgo(iso: string): string {
 
 // ── Floating Panel ───────────────────────────────────────────────
 
+// ── Navigation ───────────────────────────────────────────────────
+
+/** Map refType to a panel ID or action. Returns null if no navigation. */
+function getNavigationTarget(n: NotificationItem): { panelId: string; width?: number; height?: number } | null {
+  if (!n.refType) return null;
+
+  switch (n.refType) {
+    case 'plan':
+      return { panelId: 'dev-tool:plans', width: 900, height: 600 };
+    case 'generation':
+      return { panelId: 'generation-history', width: 800, height: 500 };
+    case 'document':
+      return { panelId: 'dev-tool:plans', width: 900, height: 600 };
+    default:
+      return null;
+  }
+}
+
+// ── Floating Panel ───────────────────────────────────────────────
+
 function NotificationPanel({
   notifications,
   unreadCount,
   onMarkRead,
   onMarkAllRead,
+  onNavigate,
   onClose,
 }: {
   notifications: NotificationItem[];
   unreadCount: number;
   onMarkRead: (id: string) => void;
   onMarkAllRead: () => void;
+  onNavigate: (n: NotificationItem) => void;
   onClose: () => void;
 }) {
   return (
@@ -169,10 +193,13 @@ function NotificationPanel({
             {notifications.map((n) => (
               <button
                 key={n.id}
-                onClick={() => !n.read && onMarkRead(n.id)}
+                onClick={() => {
+                  if (!n.read) onMarkRead(n.id);
+                  if (n.refType) onNavigate(n);
+                }}
                 className={`w-full text-left px-3 py-2.5 hover:bg-neutral-800/40 transition-colors ${
                   n.read ? 'opacity-60' : ''
-                }`}
+                } ${n.refType ? 'cursor-pointer' : ''}`}
               >
                 <div className="flex items-start gap-2">
                   {/* Unread dot */}
@@ -225,6 +252,7 @@ function NotificationPanel({
 
 export function NotificationActivityBarWidget() {
   const { notifications, unreadCount, markRead, markAllRead, refresh } = useNotifications();
+  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const [panelOpen, setPanelOpen] = useState(false);
   const triggerRef = useRef<HTMLDivElement>(null);
 
@@ -240,6 +268,20 @@ export function NotificationActivityBarWidget() {
   const handleClose = useCallback(() => {
     setPanelOpen(false);
   }, []);
+
+  const handleNavigate = useCallback(
+    (n: NotificationItem) => {
+      const target = getNavigationTarget(n);
+      if (target) {
+        openFloatingPanel(target.panelId as any, {
+          width: target.width ?? 800,
+          height: target.height ?? 500,
+        });
+        setPanelOpen(false);
+      }
+    },
+    [openFloatingPanel],
+  );
 
   // Refresh when panel opens
   useEffect(() => {
@@ -286,6 +328,7 @@ export function NotificationActivityBarWidget() {
             unreadCount={unreadCount}
             onMarkRead={markRead}
             onMarkAllRead={markAllRead}
+            onNavigate={handleNavigate}
             onClose={handleClose}
           />
         </NotificationPanelPortal>
