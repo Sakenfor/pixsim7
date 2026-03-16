@@ -21,6 +21,7 @@ from .schema import (
     ChoiceNode,
     ActionNode,
     ActionBlockNode,
+    PrimitiveNode,
     SceneNode,
     BranchNode,
     WaitNode,
@@ -53,7 +54,9 @@ from .ecs_helpers import (
 # Action Block Resolver
 from .action_block_resolver import (
     ActionBlockSequence,
+    PrimitiveBlockSequence,
     resolve_action_block_node,
+    resolve_primitive_node,
     prepare_generation_from_sequence,
     should_launch_immediately,
 )
@@ -84,6 +87,7 @@ __all__ = [
     "ChoiceNode",
     "ActionNode",
     "ActionBlockNode",
+    "PrimitiveNode",
     "SceneNode",
     "BranchNode",
     "WaitNode",
@@ -112,7 +116,9 @@ __all__ = [
 
     # Unified Narrative Runtime - Action Block Resolver
     "ActionBlockSequence",
+    "PrimitiveBlockSequence",
     "resolve_action_block_node",
+    "resolve_primitive_node",
     "prepare_generation_from_sequence",
     "should_launch_immediately",
 

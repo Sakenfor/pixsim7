@@ -1,5 +1,8 @@
 /**
- * Action Blocks API Client (web wrapper)
+ * Legacy Action Blocks API Client (web wrapper)
+ *
+ * Deprecated: primitive/block-template flows should use `blockTemplates.ts`.
+ * This wrapper is kept only for compatibility with older callsites.
  *
  * Delegates to environment-neutral domain client in @pixsim7/shared.api.client.
  */

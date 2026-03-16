@@ -81,6 +81,10 @@ class ActionBlockSequence:
     composition: str = "sequential"
 
 
+# Primitives-first alias retained for newer integrations.
+PrimitiveBlockSequence = ActionBlockSequence
+
+
 def _coerce_str_list(value: Any) -> List[str]:
     if value is None:
         return []
@@ -296,6 +300,17 @@ async def resolve_action_block_node(
             db,
         )
     raise ValueError(f"Unknown ActionBlockNode mode: {node.mode}")
+
+
+async def resolve_primitive_node(
+    node: ActionBlockNode,
+    context: Dict[str, Any],
+    db: AsyncSession,
+) -> PrimitiveBlockSequence:
+    """
+    Primitives-first alias for resolving a narrative action block node.
+    """
+    return await resolve_action_block_node(node, context, db)
 
 
 async def _resolve_direct_blocks(

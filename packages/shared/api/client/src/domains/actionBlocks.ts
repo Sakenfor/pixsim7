@@ -1,3 +1,9 @@
+/**
+ * Legacy Action Blocks domain client.
+ *
+ * Deprecated: primitives-first code should use block-template/primitive APIs.
+ * Kept for compatibility with older API consumers.
+ */
 import type { PixSimApiClient } from '../client';
 import type {
   ActionBlockResponse,
@@ -67,4 +73,3 @@ export function createActionBlocksApi(client: PixSimApiClient) {
     },
   };
 }
-

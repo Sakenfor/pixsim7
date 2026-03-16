@@ -39,6 +39,7 @@ from pixsim7.backend.main.domain.narrative import (
     ChoiceNode,
     ActionNode,
     ActionBlockNode,
+    PrimitiveNode,
     SceneNode,
     BranchNode,
     WaitNode,
@@ -66,7 +67,9 @@ from pixsim7.backend.main.domain.narrative import (
     get_stack_depth,
     # Action Block Resolver
     ActionBlockSequence,
+    PrimitiveBlockSequence,
     resolve_action_block_node,
+    resolve_primitive_node,
     prepare_generation_from_sequence,
     should_launch_immediately,
     # Integration Helpers
@@ -106,6 +109,7 @@ __all__ = [
     "ChoiceNode",
     "ActionNode",
     "ActionBlockNode",
+    "PrimitiveNode",
     "SceneNode",
     "BranchNode",
     "WaitNode",
@@ -135,7 +139,9 @@ __all__ = [
     "get_stack_depth",
     # Action Block Resolver
     "ActionBlockSequence",
+    "PrimitiveBlockSequence",
     "resolve_action_block_node",
+    "resolve_primitive_node",
     "prepare_generation_from_sequence",
     "should_launch_immediately",
     # Integration Helpers

@@ -210,6 +210,10 @@ class ActionBlockNode(NarrativeNodeBase):
     )
 
 
+# Primitives-first alias for compatibility with new naming.
+PrimitiveNode = ActionBlockNode
+
+
 class SceneNode(NarrativeNodeBase):
     """Scene node - transitions to a different scene"""
 

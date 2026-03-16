@@ -1,7 +1,7 @@
 """
 Game Dialogue Plugin
 
-Provides narrative and action block generation for NPC dialogues.
+Provides narrative and primitive block generation for NPC dialogues.
 Converted from api/v1/game_dialogue.py to plugin format.
 """
 
@@ -24,12 +24,12 @@ from pixsim7.backend.main.domain.game.core.models import (
 )
 from pixsim7.backend.main.domain.narrative import (
     NarrativeEngine,
-    resolve_action_block_node,
+    resolve_primitive_node,
 )
 from pixsim7.backend.main.domain.narrative.runtime_action_assembly import (
     composition_assets_from_resolved_images,
 )
-from pixsim7.backend.main.domain.narrative.schema import ActionBlockNode
+from pixsim7.backend.main.domain.narrative.schema import PrimitiveNode
 from pixsim7.backend.main.domain.narrative.action_blocks.types_unified import (
     ActionSelectionContext,
     BranchIntent,
@@ -58,7 +58,7 @@ manifest = PluginManifest(
     id="game_dialogue",
     name="Game Dialogue & Narrative",
     version="1.0.0",
-    description="Provides narrative engine and action block generation for NPC dialogues and interactions",
+    description="Provides narrative engine and primitive block generation for NPC dialogues and interactions",
     author="PixSim Team",
     kind="feature",
     prefix="/api/v1/game/dialogue",
@@ -97,7 +97,7 @@ def _convert_previous_segment(data: Optional['PreviousSegmentInput']) -> Optiona
     )
 
 
-def _build_generation_request(req: 'GenerateActionBlockRequest') -> GenerationRequest:
+def _build_generation_request(req: 'GeneratePrimitiveBlockRequest') -> GenerationRequest:
     """Create a GenerationRequest from API input."""
     try:
         content_rating = ContentRating(req.content_rating)
@@ -123,7 +123,7 @@ async def _persist_generated_block(
     source: str,
     user_id: int,
     previous_segment: Optional['PreviousSegmentInput'] = None,
-    selection: Optional['ActionSelectionRequest'] = None
+    selection: Optional['PrimitiveSelectionRequest'] = None
 ) -> None:
     """Store the generated block in the DB cache and register it in memory."""
     meta: Dict[str, Any] = {
@@ -643,8 +643,8 @@ async def _resolve_location_for_npc(
     return None, None
 
 
-class ActionSelectionRequest(BaseModel):
-    """Request for selecting action blocks."""
+class PrimitiveSelectionRequest(BaseModel):
+    """Request for selecting primitive blocks."""
     location_tag: Optional[str] = None
     pose: Optional[str] = None
     intimacy_level: Optional[str] = None
@@ -662,8 +662,8 @@ class ActionSelectionRequest(BaseModel):
     world_id: Optional[int] = None
 
 
-class ActionSelectionResponse(BaseModel):
-    """Response containing selected action blocks."""
+class PrimitiveSelectionResponse(BaseModel):
+    """Response containing selected primitive blocks."""
     blocks: List[Dict[str, Any]]
     total_duration: float
     resolved_images: List[Dict[str, Any]]
@@ -674,8 +674,8 @@ class ActionSelectionResponse(BaseModel):
     segments: List[Dict[str, Any]]
 
 
-class BuildActionSelectionRequestFromBehaviorRequest(BaseModel):
-    """Build an ActionSelectionRequest using behavior + schedule/session state."""
+class BuildPrimitiveSelectionRequestFromBehaviorRequest(BaseModel):
+    """Build a PrimitiveSelectionRequest using behavior + schedule/session state."""
 
     session_id: int
     world_id: int
@@ -695,15 +695,15 @@ class BuildActionSelectionRequestFromBehaviorRequest(BaseModel):
     max_duration: Optional[float] = None
 
 
-class BuildActionSelectionRequestFromBehaviorResponse(BaseModel):
-    """Built action-selection request plus derived behavior context."""
+class BuildPrimitiveSelectionRequestFromBehaviorResponse(BaseModel):
+    """Built primitive-selection request plus derived behavior context."""
 
-    request: ActionSelectionRequest
+    request: PrimitiveSelectionRequest
     derived: Dict[str, Any]
 
 
-class GenerateActionBlockRequest(BaseModel):
-    """Request for generating a new action block dynamically."""
+class GeneratePrimitiveBlockRequest(BaseModel):
+    """Request for generating a new primitive block dynamically."""
     concept_type: str  # e.g., "creature_interaction", "position_maintenance"
     parameters: Dict[str, Any]
     content_rating: Optional[str] = "sfw"
@@ -714,37 +714,38 @@ class GenerateActionBlockRequest(BaseModel):
     previous_segment: Optional[PreviousSegmentInput] = None
 
 
-class GenerateActionBlockResponse(BaseModel):
-    """Response containing the generated action block."""
+class GeneratePrimitiveBlockResponse(BaseModel):
+    """Response containing the generated primitive block."""
     success: bool
-    action_block: Optional[Dict[str, Any]] = None
+    primitive_block: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
     generation_time: float
     template_used: Optional[str] = None
 
 
-class ActionNextRequest(BaseModel):
+class PrimitiveNextRequest(BaseModel):
     """Combined request that prefers library selection but can fall back to generation."""
-    selection: ActionSelectionRequest
-    generation: Optional[GenerateActionBlockRequest] = None
+    selection: PrimitiveSelectionRequest
+    generation: Optional[GeneratePrimitiveBlockRequest] = None
     compatibility_threshold: float = 0.8
     prefer_generation: bool = False
 
 
-class ActionNextResponse(BaseModel):
+class PrimitiveNextResponse(BaseModel):
     """Response describing whether library or generation was used."""
     mode: Literal["library", "generation"]
-    selection: Optional[ActionSelectionResponse] = None
+    selection: Optional[PrimitiveSelectionResponse] = None
     generated_block: Optional[Dict[str, Any]] = None
     generation_info: Optional[Dict[str, Any]] = None
     generation_error: Optional[str] = None
 
 
-async def _build_action_selection_request_from_behavior(
-    req: BuildActionSelectionRequestFromBehaviorRequest,
+
+async def _build_primitive_selection_request_from_behavior(
+    req: BuildPrimitiveSelectionRequestFromBehaviorRequest,
     db: DatabaseSession,
     user: CurrentUser,
-) -> tuple[ActionSelectionRequest, Dict[str, Any]]:
+) -> tuple[PrimitiveSelectionRequest, Dict[str, Any]]:
     session = await db.get(GameSession, int(req.session_id))
     if not session or session.user_id != user.id:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -799,7 +800,7 @@ async def _build_action_selection_request_from_behavior(
         if scene_intent_tag not in required_tags:
             required_tags.append(scene_intent_tag)
 
-    built = ActionSelectionRequest(
+    built = PrimitiveSelectionRequest(
         location_tag=location_tag,
         pose=req.pose,
         intimacy_level=req.intimacy_level,
@@ -829,11 +830,11 @@ async def _build_action_selection_request_from_behavior(
     return built, derived
 
 
-async def _run_action_selection(
-    req: ActionSelectionRequest,
+async def _run_primitive_selection(
+    req: PrimitiveSelectionRequest,
     db: DatabaseSession,
     user: CurrentUser,
-) -> ActionSelectionResponse:
+) -> PrimitiveSelectionResponse:
     """Execute selection via primitives runtime resolver and return a response."""
     computed_intimacy_level = req.intimacy_level
     computed_mood = req.mood
@@ -914,8 +915,8 @@ async def _run_action_selection(
         maxDuration=req.max_duration
     )
 
-    node = ActionBlockNode(
-        id=f"plugin_action_select_{req.lead_npc_id}",
+    node = PrimitiveNode(
+        id=f"plugin_primitive_select_{req.lead_npc_id}",
         mode="query",
         query={
             "location": context.locationTag,
@@ -935,11 +936,11 @@ async def _run_action_selection(
         "previous_block_id": req.previous_block_id,
         "world": {"id": req.world_id, "meta": world_meta} if req.world_id is not None else {"meta": world_meta},
     }
-    sequence = await resolve_action_block_node(node, runtime_context, db)
+    sequence = await resolve_primitive_node(node, runtime_context, db)
     resolved_images: List[Dict[str, Any]] = []
     composition_assets = composition_assets_from_resolved_images(resolved_images)
 
-    return ActionSelectionResponse(
+    return PrimitiveSelectionResponse(
         blocks=sequence.blocks,
         total_duration=sequence.total_duration,
         resolved_images=resolved_images,
@@ -952,67 +953,67 @@ async def _run_action_selection(
 
 
 @router.post(
-    "/actions/request-from-behavior",
-    response_model=BuildActionSelectionRequestFromBehaviorResponse,
+    "/primitives/request-from-behavior",
+    response_model=BuildPrimitiveSelectionRequestFromBehaviorResponse,
 )
-async def build_action_selection_request_from_behavior(
-    req: BuildActionSelectionRequestFromBehaviorRequest,
+async def build_primitive_selection_request_from_behavior(
+    req: BuildPrimitiveSelectionRequestFromBehaviorRequest,
     db: DatabaseSession,
     user: CurrentUser,
-) -> BuildActionSelectionRequestFromBehaviorResponse:
+) -> BuildPrimitiveSelectionRequestFromBehaviorResponse:
     """
-    Build ActionSelectionRequest from runtime behavior/schedule context.
+    Build primitive selection request from runtime behavior/schedule context.
 
     This endpoint does not run selection itself; it returns the normalized
-    request payload for `/actions/select`.
+    request payload for `/primitives/select`.
     """
-    built, derived = await _build_action_selection_request_from_behavior(req, db, user)
-    return BuildActionSelectionRequestFromBehaviorResponse(request=built, derived=derived)
+    built, derived = await _build_primitive_selection_request_from_behavior(req, db, user)
+    return BuildPrimitiveSelectionRequestFromBehaviorResponse(request=built, derived=derived)
 
 
-@router.post("/actions/select-from-behavior", response_model=ActionSelectionResponse)
-async def select_action_blocks_from_behavior(
-    req: BuildActionSelectionRequestFromBehaviorRequest,
+@router.post("/primitives/select-from-behavior", response_model=PrimitiveSelectionResponse)
+async def select_primitive_blocks_from_behavior(
+    req: BuildPrimitiveSelectionRequestFromBehaviorRequest,
     db: DatabaseSession,
     user: CurrentUser,
-) -> ActionSelectionResponse:
+) -> PrimitiveSelectionResponse:
     """
-    Build ActionSelectionRequest from behavior context and immediately run selection.
+    Build primitive selection request from behavior context and immediately run selection.
     """
-    built, _ = await _build_action_selection_request_from_behavior(req, db, user)
-    return await _run_action_selection(built, db, user)
+    built, _ = await _build_primitive_selection_request_from_behavior(req, db, user)
+    return await _run_primitive_selection(built, db, user)
 
 
-@router.post("/actions/select", response_model=ActionSelectionResponse)
-async def select_action_blocks(
-    req: ActionSelectionRequest,
+@router.post("/primitives/select", response_model=PrimitiveSelectionResponse)
+async def select_primitive_blocks(
+    req: PrimitiveSelectionRequest,
     db: DatabaseSession,
     user: CurrentUser,
-) -> ActionSelectionResponse:
+) -> PrimitiveSelectionResponse:
     """
-    Select appropriate action blocks for visual generation.
+    Select appropriate primitive blocks for visual generation.
 
     Layering:
     1. This API layer handles session/world context gathering
-    2. It distills that into a clean ActionSelectionContext
+    2. It distills that into a clean selection context
     3. The pure selector works with the distilled context only
 
     This keeps the selector module pure and testable without DB dependencies.
     """
-    return await _run_action_selection(req, db, user)
+    return await _run_primitive_selection(req, db, user)
 
 
-@router.post("/actions/next", response_model=ActionNextResponse)
-async def select_or_generate_action(
-    req: ActionNextRequest,
+@router.post("/primitives/next", response_model=PrimitiveNextResponse)
+async def select_or_generate_primitive(
+    req: PrimitiveNextRequest,
     db: DatabaseSession,
     user: CurrentUser,
     generator: DynamicBlockGenerator = Depends(get_block_generator)
-) -> ActionNextResponse:
+) -> PrimitiveNextResponse:
     """
     Try to use library blocks first, falling back to dynamic generation when needed.
     """
-    selection_result = await _run_action_selection(
+    selection_result = await _run_primitive_selection(
         req.selection,
         db,
         user,
@@ -1025,7 +1026,7 @@ async def select_or_generate_action(
     )
 
     if not should_generate or not req.generation:
-        return ActionNextResponse(
+        return PrimitiveNextResponse(
             mode="library",
             selection=selection_result
         )
@@ -1034,7 +1035,7 @@ async def select_or_generate_action(
     gen_result = generator.generate_block(gen_request)
 
     if not gen_result.success or not gen_result.action_block:
-        return ActionNextResponse(
+        return PrimitiveNextResponse(
             mode="library",
             selection=selection_result,
             generation_error=gen_result.error_message or "generation_failed"
@@ -1043,7 +1044,7 @@ async def select_or_generate_action(
     await _persist_generated_block(
         db,
         gen_result.action_block,
-        source="api:actions/next",
+        source="api:primitives/next",
         user_id=user.id,
         previous_segment=req.generation.previous_segment if req.generation else None,
         selection=req.selection
@@ -1054,7 +1055,7 @@ async def select_or_generate_action(
         "template_used": gen_result.template_used
     }
 
-    return ActionNextResponse(
+    return PrimitiveNextResponse(
         mode="generation",
         selection=selection_result,
         generated_block=gen_result.action_block,
@@ -1062,8 +1063,8 @@ async def select_or_generate_action(
     )
 
 
-@router.get("/actions/blocks")
-async def list_action_blocks(
+@router.get("/primitives/blocks")
+async def list_primitive_blocks(
     location: Optional[str] = None,
     intimacy_level: Optional[str] = None,
     mood: Optional[str] = None,
@@ -1072,8 +1073,7 @@ async def list_action_blocks(
     """
     List available primitive blocks, optionally filtered by criteria.
 
-    This endpoint is useful for debugging and for UI tools that need
-    to show available actions.
+    This endpoint is useful for debugging and for UI tools that need to show available primitives.
     """
     tags_all: Dict[str, Any] = {}
     if location:
@@ -1121,7 +1121,7 @@ async def list_action_blocks(
     }
 
 
-@router.get("/actions/poses")
+@router.get("/primitives/poses")
 async def list_pose_taxonomy(
     category: Optional[str] = None,
     user: CurrentUser = None,
@@ -1189,17 +1189,17 @@ class TestGenerationResponse(BaseModel):
     test_passed: bool
 
 
-@router.post("/actions/generate", response_model=GenerateActionBlockResponse)
-async def generate_action_block(
-    req: GenerateActionBlockRequest,
+@router.post("/primitives/generate", response_model=GeneratePrimitiveBlockResponse)
+async def generate_primitive_block(
+    req: GeneratePrimitiveBlockRequest,
     db: DatabaseSession,
     user: CurrentUser,
     generator: DynamicBlockGenerator = Depends(get_block_generator)
-) -> GenerateActionBlockResponse:
+) -> GeneratePrimitiveBlockResponse:
     """
-    Generate a new action block dynamically using templates and concepts.
+    Generate a new primitive block dynamically using templates and concepts.
 
-    This endpoint allows creation of novel action blocks without pre-defining
+    This endpoint allows creation of novel primitive blocks without pre-defining
     them in JSON files. It uses the concept library and template system to
     generate appropriate prompts.
     """
@@ -1212,29 +1212,29 @@ async def generate_action_block(
         await _persist_generated_block(
             db,
             result.action_block,
-            source="api:actions/generate",
+            source="api:primitives/generate",
             user_id=user.id,
             previous_segment=req.previous_segment
         )
 
-    return GenerateActionBlockResponse(
+    return GeneratePrimitiveBlockResponse(
         success=result.success,
-        action_block=result.action_block,
+        primitive_block=result.action_block,
         error_message=result.error_message,
         generation_time=result.generation_time,
         template_used=result.template_used
     )
 
 
-@router.post("/actions/generate/creature", response_model=GenerateActionBlockResponse)
+@router.post("/primitives/generate/creature", response_model=GeneratePrimitiveBlockResponse)
 async def generate_creature_interaction(
     req: GenerateCreatureInteractionRequest,
     db: DatabaseSession,
     user: CurrentUser,
     generator: DynamicBlockGenerator = Depends(get_block_generator)
-) -> GenerateActionBlockResponse:
+) -> GeneratePrimitiveBlockResponse:
     """
-    Generate a creature interaction action block.
+    Generate a creature interaction primitive block.
 
     This is a specialized endpoint for generating creature-based interactions
     with simplified parameters.
@@ -1245,7 +1245,7 @@ async def generate_creature_interaction(
     try:
         creature_type = CreatureType(req.creature_type)
     except ValueError:
-        return GenerateActionBlockResponse(
+        return GeneratePrimitiveBlockResponse(
             success=False,
             error_message=f"Unknown creature type: {req.creature_type}",
             generation_time=0.0
@@ -1270,28 +1270,28 @@ async def generate_creature_interaction(
         await _persist_generated_block(
             db,
             result.action_block,
-            source="api:actions/generate/creature",
+            source="api:primitives/generate/creature",
             user_id=user.id,
             previous_segment=req.previous_segment
         )
 
-    return GenerateActionBlockResponse(
+    return GeneratePrimitiveBlockResponse(
         success=result.success,
-        action_block=result.action_block,
+        primitive_block=result.action_block,
         error_message=result.error_message,
         generation_time=result.generation_time,
         template_used=result.template_used
     )
 
 
-@router.post("/actions/test", response_model=TestGenerationResponse)
+@router.post("/primitives/test", response_model=TestGenerationResponse)
 async def test_generation_quality(
     req: TestGenerationRequest,
     user: CurrentUser,
     generator: DynamicBlockGenerator = Depends(get_block_generator)
 ) -> TestGenerationResponse:
     """
-    Test the quality of action block generation.
+    Test the quality of primitive block generation.
 
     This endpoint tests whether the generation system can accurately recreate
     complex prompts from templates, helping to validate the template system.
@@ -1339,10 +1339,10 @@ async def test_generation_quality(
             key_phrases_matched=0,
             total_key_phrases=0,
             test_passed=False
-        )
+    )
 
 
-@router.get("/actions/templates")
+@router.get("/primitives/templates")
 async def list_generation_templates(
     template_type: Optional[str] = None,
     user: CurrentUser = None
@@ -1388,7 +1388,7 @@ async def list_generation_templates(
     }
 
 
-@router.get("/actions/concepts")
+@router.get("/primitives/concepts")
 async def list_available_concepts(
     concept_type: Optional[str] = None,
     user: CurrentUser = None
