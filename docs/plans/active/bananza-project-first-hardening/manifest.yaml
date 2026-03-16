@@ -4,7 +4,7 @@ status: active
 stage: rollout
 owner: bananza seed/runtime lane
 last_updated: '2026-03-16'
-priority: low
+priority: high
 summary: Seed data robustness and game runtime hardening for Bananza project.
 plan_path: ./plan.md
 code_paths:
