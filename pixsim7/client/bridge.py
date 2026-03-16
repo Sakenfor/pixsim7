@@ -61,13 +61,17 @@ class Bridge:
             client_log("Install with: pip install websockets", error=True)
             return
 
-        while True:
+        self._shutdown_requested = False
+        while not self._shutdown_requested:
             try:
                 await self._connect_and_serve()
             except KeyboardInterrupt:
                 break
             except Exception as e:
                 self._connected = False
+                if self._shutdown_requested:
+                    client_log("Shutdown requested, not reconnecting.")
+                    break
                 client_log(f"Connection error: {e}", error=True)
                 client_log("Reconnecting in 5s...")
                 await asyncio.sleep(5)
@@ -111,6 +115,11 @@ class Bridge:
                 raw = await ws.recv()
                 msg = json.loads(raw)
                 msg_type = msg.get("type", "")
+
+                if msg_type == "shutdown":
+                    client_log("Shutdown requested by server.")
+                    self._shutdown_requested = True
+                    return
 
                 if msg_type == "task":
                     await self._handle_task(ws, msg)
@@ -196,14 +205,21 @@ class Bridge:
             session_id, response = await self._pool.send_message(prompt)
             self._tasks_handled += 1
 
+            # Get the Claude session UUID for resume support
+            session = next((s for s in self._pool.sessions if s.session_id == session_id), None)
+            claude_session_id = session.claude_session_id if session else None
+
             preview = response[:120].replace('\n', ' ')
             client_log(f"[task:{task_id[:8]}] Done via {session_id} ({len(response)} chars): {preview}")
 
-            await ws.send(json.dumps({
+            result_msg: dict = {
                 "type": "result",
                 "task_id": task_id,
                 "edited_prompt": response,
-            }))
+            }
+            if claude_session_id:
+                result_msg["claude_session_id"] = claude_session_id
+            await ws.send(json.dumps(result_msg))
 
         except Exception as e:
             client_log(f"[task:{task_id[:8]}] Error: {e}", error=True)

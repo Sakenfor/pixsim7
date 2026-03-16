@@ -45,12 +45,14 @@ class ClaudeSession:
         claude_command: str = "claude",
         system_prompt: str | None = None,
         mcp_config_path: str | None = None,
+        resume_session_id: str | None = None,
     ):
         self.session_id = session_id
         self._extra_args = extra_args or []
         self._claude_command = claude_command
         self._system_prompt = system_prompt
         self._mcp_config_path = mcp_config_path
+        self._resume_session_id = resume_session_id
         self._process: Optional[asyncio.subprocess.Process] = None
         self._reader_task: Optional[asyncio.Task] = None
         self._stderr_task: Optional[asyncio.Task] = None
@@ -86,6 +88,8 @@ class ClaudeSession:
             "--input-format", "stream-json",
             "--verbose",
         ]
+        if self._resume_session_id:
+            cmd.extend(["--resume", self._resume_session_id])
         if self._system_prompt:
             cmd.extend(["--append-system-prompt", self._system_prompt])
         if self._mcp_config_path:

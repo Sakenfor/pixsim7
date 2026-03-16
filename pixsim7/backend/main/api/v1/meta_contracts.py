@@ -534,6 +534,8 @@ async def terminate_agent(agent_id: str) -> TerminateAgentResponse:
         return TerminateAgentResponse(ok=False, agent_id=agent_id, message="Agent not found")
 
     try:
+        # Tell the bridge to shut down gracefully (don't reconnect)
+        await agent.websocket.send_json({"type": "shutdown"})
         await agent.websocket.close(code=1000, reason="Terminated by admin")
     except Exception:
         pass
@@ -580,6 +582,7 @@ async def generate_cli_token(
 class StartBridgeRequest(BaseModel):
     pool_size: int = Field(1, ge=1, le=5, description="Number of Claude sessions")
     claude_args: Optional[str] = Field(None, description="Extra args for Claude CLI")
+    resume_session_id: Optional[str] = Field(None, description="Claude session UUID to resume")
 
 
 class StartBridgeResponse(BaseModel):
@@ -612,6 +615,8 @@ async def start_server_bridge(payload: StartBridgeRequest) -> StartBridgeRespons
     repo_root = str(_resolve_repo_root())
 
     cmd = [sys.executable, "-m", "pixsim7.client", "--pool-size", str(payload.pool_size)]
+    if payload.resume_session_id:
+        cmd.extend(["--resume-session", payload.resume_session_id])
     if payload.claude_args:
         cmd.extend(payload.claude_args.split())
 
@@ -673,6 +678,7 @@ class SendMessageResponse(BaseModel):
     response: Optional[str] = None
     error: Optional[str] = None
     duration_ms: Optional[int] = None
+    claude_session_id: Optional[str] = Field(None, description="Claude session UUID (for resume)")
 
 
 @router.post("/agents/bridge/send", response_model=SendMessageResponse)
@@ -818,6 +824,7 @@ async def _send_via_bridge(
             ok=True,
             agent_id=agent.agent_id,
             response=response_text,
+            claude_session_id=result.get("claude_session_id"),
             duration_ms=duration_ms,
         )
     except Exception as e:

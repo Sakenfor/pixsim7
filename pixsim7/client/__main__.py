@@ -27,9 +27,13 @@ def _cmd_bridge(args, claude_args: list[str]) -> None:
     print("       PixSim AI Client")
     print("  ==================================")
     print()
+    resume = getattr(args, 'resume_session', None)
+
     print(f"  Backend:    {args.url}")
     print(f"  Pool size:  {args.pool_size}")
     print(f"  Timeout:    {args.timeout}s")
+    if resume:
+        print(f"  Resume:     {resume}")
     if claude_args:
         print(f"  Claude args: {' '.join(claude_args)}")
     print()
@@ -40,6 +44,8 @@ def _cmd_bridge(args, claude_args: list[str]) -> None:
         claude_command=args.claude_command,
         auto_restart=not args.no_auto_restart,
     )
+    if resume:
+        pool._resume_session_id = resume
 
     bridge = Bridge(
         pool=pool,
@@ -138,6 +144,7 @@ def main() -> None:
     parser.add_argument("--pool-size", type=int, default=1, help="Number of parallel Claude sessions (default: 1)")
     parser.add_argument("--timeout", type=int, default=120, help="Task execution timeout in seconds (default: 120)")
     parser.add_argument("--claude-command", default="claude", help="Claude CLI executable (default: claude)")
+    parser.add_argument("--resume-session", default=None, help="Claude session UUID to resume")
     parser.add_argument("--no-auto-restart", action="store_true", help="Disable automatic restart of crashed sessions")
 
     args, claude_args = parser.parse_known_args()

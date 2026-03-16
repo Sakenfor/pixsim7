@@ -29,6 +29,7 @@ class AgentPool:
         self._auto_restart = auto_restart
         self._system_prompt: Optional[str] = None
         self._mcp_config_path: Optional[str] = None
+        self._resume_session_id: Optional[str] = None
         self._sessions: Dict[str, ClaudeSession] = {}
         self._health_task: Optional[asyncio.Task] = None
 
@@ -55,6 +56,7 @@ class AgentPool:
         self,
         system_prompt: str | None = None,
         mcp_config_path: str | None = None,
+        resume_session_id: str | None = None,
     ) -> None:
         """Update pool configuration and restart sessions if anything changed."""
         changed = False
@@ -65,6 +67,9 @@ class AgentPool:
         if mcp_config_path and mcp_config_path != self._mcp_config_path:
             self._mcp_config_path = mcp_config_path
             changed = True
+        if resume_session_id is not None and resume_session_id != self._resume_session_id:
+            self._resume_session_id = resume_session_id or None
+            changed = True
 
         if not changed:
             return
@@ -73,6 +78,7 @@ class AgentPool:
         for session in self._sessions.values():
             session._system_prompt = self._system_prompt
             session._mcp_config_path = self._mcp_config_path
+            session._resume_session_id = self._resume_session_id
             if session.is_alive:
                 client_log(f"[{session.session_id}] Restarting with updated config")
                 await session.restart()
@@ -88,6 +94,7 @@ class AgentPool:
                 claude_command=self._claude_command,
                 system_prompt=self._system_prompt,
                 mcp_config_path=self._mcp_config_path,
+                resume_session_id=self._resume_session_id,
             )
             self._sessions[session_id] = session
 

@@ -237,3 +237,101 @@ async def get_ai_interactions(
         for i in interactions
     ]
     return AiInteractionsResponse(interactions=items)
+
+
+# ===== MODEL CATALOG & CAPABILITY DEFAULTS =====
+
+
+class AiModelResponse(BaseModel):
+    id: str
+    label: str
+    provider_id: Optional[str] = None
+    capabilities: List[str] = Field(default_factory=list)
+    supported_methods: List[str] = Field(default_factory=list)
+    description: Optional[str] = None
+
+
+class AiModelsListResponse(BaseModel):
+    models: List[AiModelResponse]
+
+
+class CapabilityDefaultEntry(BaseModel):
+    model_id: str
+    method: Optional[str] = None
+
+
+@router.get("/models", response_model=AiModelsListResponse)
+async def list_ai_models() -> AiModelsListResponse:
+    """List all registered AI models with their capabilities and supported methods."""
+    from pixsim7.backend.main.services.ai_model.registry import ai_model_registry
+
+    items = []
+    for m in ai_model_registry.values():
+        if m.kind.value in ("llm", "both"):
+            items.append(AiModelResponse(
+                id=m.id,
+                label=m.label,
+                provider_id=m.provider_id,
+                capabilities=list(m.capabilities),
+                supported_methods=list(m.supported_methods),
+                description=m.description,
+            ))
+    return AiModelsListResponse(models=items)
+
+
+@router.get("/defaults")
+async def get_capability_defaults(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_database),
+) -> dict[str, CapabilityDefaultEntry]:
+    """Get per-capability model+method defaults for the current user."""
+    from pixsim7.backend.main.shared.schemas.ai_model_schemas import AiModelCapability
+    from pixsim7.backend.main.services.ai_model.defaults import get_default_model
+
+    result = {}
+    for cap in AiModelCapability:
+        # Skip non-LLM capabilities
+        if cap.value in ("prompt_parse", "embedding"):
+            continue
+        model_id, method = await get_default_model(db, cap, "user", str(user.id))
+        result[cap.value] = CapabilityDefaultEntry(model_id=model_id, method=method)
+
+    return result
+
+
+@router.patch("/defaults")
+async def update_capability_defaults(
+    payload: dict[str, CapabilityDefaultEntry],
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_database),
+) -> dict[str, str]:
+    """Update per-capability model+method defaults for the current user."""
+    from pixsim7.backend.main.shared.schemas.ai_model_schemas import AiModelCapability
+    from pixsim7.backend.main.services.ai_model.defaults import set_default_model, AiModelDefault
+    from sqlalchemy.dialects.postgresql import insert
+    from sqlalchemy.sql import func
+
+    updated = []
+    for cap_str, entry in payload.items():
+        try:
+            cap = AiModelCapability(cap_str)
+        except ValueError:
+            continue
+
+        # Upsert
+        stmt = insert(AiModelDefault).values(
+            scope_type="user",
+            scope_id=str(user.id),
+            capability=cap.value,
+            model_id=entry.model_id,
+            method=entry.method,
+        )
+        stmt = stmt.on_conflict_do_update(
+            constraint='uq_ai_model_defaults_scope_capability',
+            set_={'model_id': entry.model_id, 'method': entry.method, 'updated_at': func.now()}
+        )
+        await db.execute(stmt)
+        updated.append(cap_str)
+
+    await db.commit()
+    return {"updated": updated}
