@@ -80,6 +80,14 @@ class OpenAiLlmProvider:
     def provider_id(self) -> str:
         return "openai-llm"
 
+    @property
+    def method(self) -> str:
+        return "api"
+
+    @property
+    def provider(self) -> str:
+        return "openai"
+
     def __init__(self):
         if not OPENAI_AVAILABLE:
             raise ImportError("openai package not installed. Run: pip install openai")
@@ -172,6 +180,14 @@ class AnthropicLlmProvider:
     def provider_id(self) -> str:
         return "anthropic-llm"
 
+    @property
+    def method(self) -> str:
+        return "api"
+
+    @property
+    def provider(self) -> str:
+        return "anthropic"
+
     def __init__(self):
         if not ANTHROPIC_AVAILABLE:
             raise ImportError("anthropic package not installed. Run: pip install anthropic")
@@ -262,6 +278,14 @@ class LocalLlmProvider:
     @property
     def provider_id(self) -> str:
         return "local-llm"
+
+    @property
+    def method(self) -> str:
+        return "local"
+
+    @property
+    def provider(self) -> str | None:
+        return None
 
     async def edit_prompt(
         self,
@@ -446,6 +470,14 @@ class CommandLlmProvider:
     @property
     def provider_id(self) -> str:
         return "cmd-llm"
+
+    @property
+    def method(self) -> str:
+        return "cmd"
+
+    @property
+    def provider(self) -> str | None:
+        return None
 
     def _parse_shell_args(self, args_str: str) -> list[str]:
         """
@@ -743,6 +775,14 @@ class RemoteCommandLlmProvider:
     @property
     def provider_id(self) -> str:
         return "remote-cmd-llm"
+
+    @property
+    def method(self) -> str:
+        return "remote"
+
+    @property
+    def provider(self) -> str | None:
+        return None
 
     async def edit_prompt(
         self,

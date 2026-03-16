@@ -111,12 +111,19 @@ const ALL_SHORTCUTS: Shortcut[] = SHORTCUT_GROUPS.flatMap((g) => g.shortcuts);
 // Component
 // =============================================================================
 
+interface StartBridgeResponse {
+  ok: boolean;
+  pid: number | null;
+  message: string;
+}
+
 export function AIAssistantPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  const [bridgeStarting, setBridgeStarting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Poll bridge status
@@ -170,6 +177,18 @@ export function AIAssistantPanel() {
       setSending(false);
     }
   }, [sending]);
+
+  const startBridge = useCallback(async () => {
+    setBridgeStarting(true);
+    try {
+      await pixsimClient.post<StartBridgeResponse>('/meta/agents/bridge/start', {
+        pool_size: 1,
+        claude_args: '--dangerously-skip-permissions',
+      });
+    } catch { /* ignore */ }
+    // Give the bridge a few seconds to connect, then poll will pick it up
+    setTimeout(() => setBridgeStarting(false), 5000);
+  }, []);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -241,11 +260,21 @@ export function AIAssistantPanel() {
         )}
 
         {messages.length === 0 && connected === 0 && (
-          <EmptyState
-            message="AI assistant is offline"
-            description="An agent session needs to be running to use the assistant"
-            size="sm"
-          />
+          <div className="flex flex-col items-center justify-center gap-3 py-8">
+            <EmptyState
+              message="AI assistant is offline"
+              description="Start an agent bridge to connect"
+              size="sm"
+            />
+            <Button
+              size="sm"
+              onClick={startBridge}
+              disabled={bridgeStarting}
+            >
+              <Icon name="play" size={12} className="mr-1.5" />
+              {bridgeStarting ? 'Starting...' : 'Start Bridge'}
+            </Button>
+          </div>
         )}
 
         {messages.map((msg, i) => (

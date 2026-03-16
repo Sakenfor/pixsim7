@@ -8,6 +8,11 @@ from typing import Optional
 
 
 _CANONICAL_PROVIDER_IDS = {
+    "openai",
+    "anthropic",
+    "local",
+    "cmd",
+    # Legacy IDs still accepted
     "anthropic-llm",
     "openai-llm",
     "local-llm",
@@ -15,23 +20,36 @@ _CANONICAL_PROVIDER_IDS = {
 }
 
 _PROVIDER_ALIASES = {
-    "anthropic": "anthropic-llm",
-    "openai": "openai-llm",
-    "local": "local-llm",
-    "cmd": "cmd-llm",
+    # Legacy → clean
+    "anthropic-llm": "anthropic",
+    "openai-llm": "openai",
+    "local-llm": "local",
+    "cmd-llm": "cmd",
+    "remote-cmd-llm": "remote",  # method, not provider — handled separately
 }
 
 
 def normalize_llm_provider_id(provider_id: Optional[str]) -> Optional[str]:
-    """Normalize provider IDs to canonical ``*-llm`` values."""
+    """Normalize provider IDs to clean names (openai, anthropic, local, cmd).
+
+    Also accepts legacy ``*-llm`` values for backward compatibility.
+    """
     if not isinstance(provider_id, str):
         return None
     normalized = provider_id.strip().lower()
     if not normalized:
         return None
+    # Already clean
+    if normalized in ("openai", "anthropic", "local", "cmd"):
+        return normalized
+    # Legacy alias
+    alias = _PROVIDER_ALIASES.get(normalized)
+    if alias:
+        return alias
+    # Still in canonical set (legacy IDs)
     if normalized in _CANONICAL_PROVIDER_IDS:
         return normalized
-    return _PROVIDER_ALIASES.get(normalized)
+    return None
 
 
 def resolve_llm_provider_id(

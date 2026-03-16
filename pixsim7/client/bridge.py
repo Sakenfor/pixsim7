@@ -44,6 +44,7 @@ class Bridge:
         self._connected = False
         self._tasks_handled = 0
         self._mcp_config_path: Optional[str] = None
+        self._token_file_path: Optional[str] = None
 
     @property
     def is_connected(self) -> bool:
@@ -83,9 +84,14 @@ class Bridge:
             self._agent_id = welcome.get("agent_id", "unknown")
             self._connected = True
 
+            # Determine scope: user-scoped bridge vs shared/dev bridge
+            user_id = welcome.get("user_id")
+            scope = "user" if user_id else "dev"
+            service_token = welcome.get("service_token", "")
+
             # Extract system prompt and generate MCP config
             server_system_prompt = welcome.get("system_prompt")
-            mcp_config_path = self._ensure_mcp_config()
+            mcp_config_path = self._ensure_mcp_config(scope=scope, token=service_token)
 
             if server_system_prompt or mcp_config_path:
                 await self._pool.configure(
@@ -112,7 +118,7 @@ class Bridge:
                 elif msg_type == "ping":
                     await ws.send(json.dumps({"type": "pong"}))
 
-    def _ensure_mcp_config(self) -> Optional[str]:
+    def _ensure_mcp_config(self, scope: str = "dev", token: str = "") -> Optional[str]:
         """Generate MCP config file pointing to the pixsim MCP server."""
         if self._mcp_config_path and os.path.exists(self._mcp_config_path):
             return self._mcp_config_path
@@ -131,6 +137,13 @@ class Bridge:
             os.path.dirname(os.path.abspath(__file__)), "mcp_server.py"
         )
 
+        # Create a token file that the bridge updates per-request
+        # and the MCP server reads on each API call (fresh auth)
+        token_fd, token_file = tempfile.mkstemp(suffix=".token", prefix="pixsim-mcp-")
+        with os.fdopen(token_fd, "w") as f:
+            f.write(token)  # Seed with the bridge service token
+        self._token_file_path = token_file
+
         config = {
             "mcpServers": {
                 "pixsim": {
@@ -138,7 +151,9 @@ class Bridge:
                     "args": [mcp_server_script],
                     "env": {
                         "PIXSIM_API_URL": api_base,
-                        "PIXSIM_API_TOKEN": os.environ.get("PIXSIM_API_TOKEN", ""),
+                        "PIXSIM_API_TOKEN": token,
+                        "PIXSIM_TOKEN_FILE": token_file,
+                        "PIXSIM_SCOPE": scope,
                     },
                 }
             }
@@ -159,6 +174,15 @@ class Bridge:
         prompt = msg.get("instruction") or msg.get("prompt", "")
 
         client_log(f"[task:{task_id[:8]}] {task_type}: {prompt[:80]}...")
+
+        # Write per-request user token so MCP server uses fresh auth
+        user_token = msg.get("user_token")
+        if user_token and self._token_file_path:
+            try:
+                with open(self._token_file_path, "w") as f:
+                    f.write(user_token)
+            except OSError:
+                pass
 
         # Report busy
         await ws.send(json.dumps({

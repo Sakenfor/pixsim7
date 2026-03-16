@@ -297,11 +297,30 @@ interface StartBridgeResponse {
   message: string;
 }
 
+interface CliTokenResponse {
+  token: string;
+  expires_in_hours: number;
+  scope: string;
+  command: string;
+}
+
+const MODELS = [
+  { id: 'sonnet', label: 'Sonnet', desc: 'Fast, good balance' },
+  { id: 'opus', label: 'Opus', desc: 'Most capable' },
+  { id: 'haiku', label: 'Haiku', desc: 'Fastest, lightweight' },
+] as const;
+
 function ActiveSessionsView() {
   const [sessions, setSessions] = useState<AgentSessionsResponse | null>(null);
   const [bridges, setBridges] = useState<BridgeStatusResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [bridgeAction, setBridgeAction] = useState('');
+  const [cliToken, setCliToken] = useState<CliTokenResponse | null>(null);
+  const [tokenCopied, setTokenCopied] = useState(false);
+
+  // Bridge config
+  const [poolSize, setPoolSize] = useState(1);
+  const [model, setModel] = useState('sonnet');
+  const [skipPermissions, setSkipPermissions] = useState(true);
 
   const load = useCallback(async () => {
     try {
@@ -312,22 +331,23 @@ function ActiveSessionsView() {
       setSessions(s);
       setBridges(b);
     } catch { /* ignore */ }
-    setLoading(false);
   }, []);
 
   const startServerBridge = useCallback(async () => {
     setBridgeAction('starting');
     try {
+      const args = [`--model ${model}`];
+      if (skipPermissions) args.push('--dangerously-skip-permissions');
       const res = await pixsimClient.post<StartBridgeResponse>('/meta/agents/bridge/start', {
-        pool_size: 1,
-        claude_args: '--dangerously-skip-permissions',
+        pool_size: poolSize,
+        claude_args: args.join(' '),
       });
       setBridgeAction(res.message);
       setTimeout(() => { void load(); setBridgeAction(''); }, 3000);
     } catch (e) {
       setBridgeAction(e instanceof Error ? e.message : 'Failed');
     }
-  }, [load]);
+  }, [load, poolSize, model, skipPermissions]);
 
   const stopServerBridge = useCallback(async () => {
     setBridgeAction('stopping');
@@ -353,45 +373,148 @@ function ActiveSessionsView() {
     } catch { /* ignore */ }
   }, [load]);
 
-  if (loading && !sessions && !bridges) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <EmptyState message="Loading sessions..." icon={<Icon name="loader" size={20} />} />
-      </div>
-    );
-  }
+  const generateCliToken = useCallback(async () => {
+    try {
+      const res = await pixsimClient.post<CliTokenResponse>(
+        '/meta/agents/cli-token',
+        undefined,
+        { params: { scope: 'dev', hours: 48 } },
+      );
+      setCliToken(res);
+      setTokenCopied(false);
+    } catch { /* ignore */ }
+  }, []);
+
+  const copyCommand = useCallback(() => {
+    if (!cliToken) return;
+    navigator.clipboard.writeText(cliToken.command).then(() => {
+      setTokenCopied(true);
+      setTimeout(() => setTokenCopied(false), 2000);
+    });
+  }, [cliToken]);
 
   const bridgeAgents = bridges?.agents ?? [];
   const activeSessionList = sessions?.active ?? [];
-  const hasAnything = bridgeAgents.length > 0 || activeSessionList.length > 0;
-
-  if (!hasAnything) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <EmptyState message="No active agents or bridges" description="Start a bridge from the launcher or run python -m pixsim7.client" />
-      </div>
-    );
-  }
 
   return (
     <div className="p-4 space-y-4">
       {/* Server bridge controls */}
-      <div className="flex items-center gap-2">
-        <SectionHeader>Server Bridge</SectionHeader>
-        <div className="ml-auto flex items-center gap-2">
-          {bridgeAgents.length === 0 ? (
+      <SectionHeader>Server Bridge</SectionHeader>
+
+      {bridgeAgents.length === 0 ? (
+        <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+          {/* Config row */}
+          <div className="px-4 py-3 bg-neutral-50 dark:bg-neutral-900 space-y-2.5">
+            {/* Model */}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-neutral-500 w-14 shrink-0">Model</span>
+              <div className="flex gap-1">
+                {MODELS.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setModel(m.id)}
+                    className={`px-2 py-1 text-[11px] rounded transition-colors ${
+                      model === m.id
+                        ? 'bg-accent text-white'
+                        : 'border border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                    }`}
+                    title={m.desc}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Pool size */}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-neutral-500 w-14 shrink-0">Sessions</span>
+              <div className="flex gap-1">
+                {[1, 2, 3].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setPoolSize(n)}
+                    className={`w-7 h-7 text-[11px] rounded transition-colors ${
+                      poolSize === n
+                        ? 'bg-accent text-white'
+                        : 'border border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                    }`}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Skip permissions toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-neutral-500 w-14 shrink-0">Options</span>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={skipPermissions}
+                  onChange={(e) => setSkipPermissions(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded border-neutral-300 accent-accent"
+                />
+                <span className="text-[11px] text-neutral-500">Skip permissions</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Start button */}
+          <div className="px-4 py-2.5 flex items-center justify-between">
+            <span className="text-[10px] text-neutral-400">
+              {poolSize} {model} session{poolSize > 1 ? 's' : ''}
+            </span>
             <Button size="sm" onClick={startServerBridge} disabled={bridgeAction === 'starting'}>
               {bridgeAction === 'starting' ? 'Starting...' : 'Start Bridge'}
             </Button>
-          ) : (
-            <Button size="sm" variant="ghost" onClick={stopServerBridge} disabled={bridgeAction === 'stopping'}>
-              Stop Bridge
-            </Button>
-          )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Badge color="green" className="text-[10px]">
+            {bridgeAgents.length} running
+          </Badge>
+          <div className="ml-auto">
+            <Button size="sm" variant="ghost" onClick={stopServerBridge} disabled={bridgeAction === 'stopping'}>
+              {bridgeAction === 'stopping' ? 'Stopping...' : 'Stop Bridge'}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {bridgeAction && bridgeAction !== 'starting' && bridgeAction !== 'stopping' && (
         <div className="text-xs text-neutral-500">{bridgeAction}</div>
+      )}
+
+      {/* CLI Token */}
+      <div className="flex items-center gap-2">
+        <SectionHeader>CLI Token</SectionHeader>
+        <div className="ml-auto">
+          <Button size="sm" variant="ghost" onClick={generateCliToken}>
+            <Icon name="key" size={12} className="mr-1" />
+            Generate
+          </Button>
+        </div>
+      </div>
+      {cliToken && (
+        <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+          <div className="px-4 py-2.5 bg-neutral-50 dark:bg-neutral-900 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Badge color="green" className="text-[10px]">scope: {cliToken.scope}</Badge>
+              <span className="text-[10px] text-neutral-400">expires in {cliToken.expires_in_hours}h</span>
+            </div>
+            <Button size="sm" variant="ghost" onClick={copyCommand}>
+              {tokenCopied ? 'Copied!' : 'Copy Command'}
+            </Button>
+          </div>
+          <div className="px-4 py-2">
+            <pre className="text-[10px] text-neutral-500 dark:text-neutral-400 whitespace-pre-wrap break-all font-mono bg-neutral-100 dark:bg-neutral-900 rounded p-2">
+              {cliToken.command}
+            </pre>
+          </div>
+        </div>
       )}
 
       {/* Connected bridges */}

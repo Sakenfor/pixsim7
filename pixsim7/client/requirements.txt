@@ -1,0 +1,4 @@
+# PixSim AI Client Dependencies
+websockets>=12.0
+httpx>=0.25.0
+mcp>=1.0.0

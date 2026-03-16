@@ -44,11 +44,13 @@ class ClaudeSession:
         extra_args: list[str] | None = None,
         claude_command: str = "claude",
         system_prompt: str | None = None,
+        mcp_config_path: str | None = None,
     ):
         self.session_id = session_id
         self._extra_args = extra_args or []
         self._claude_command = claude_command
         self._system_prompt = system_prompt
+        self._mcp_config_path = mcp_config_path
         self._process: Optional[asyncio.subprocess.Process] = None
         self._reader_task: Optional[asyncio.Task] = None
         self._stderr_task: Optional[asyncio.Task] = None
@@ -86,6 +88,8 @@ class ClaudeSession:
         ]
         if self._system_prompt:
             cmd.extend(["--append-system-prompt", self._system_prompt])
+        if self._mcp_config_path:
+            cmd.extend(["--mcp-config", self._mcp_config_path])
         cmd.extend(self._extra_args)
 
         client_log(f"[{self.session_id}] Starting: {' '.join(cmd)}")

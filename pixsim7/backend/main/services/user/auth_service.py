@@ -336,6 +336,10 @@ class AuthService:
         except (ValueError, KeyError) as e:
             raise AuthenticationError(f"Invalid token: {e}")
 
+        # Bridge service tokens skip session tracking entirely
+        if payload.get("purpose") == "bridge":
+            return payload
+
         result = await self.db.execute(
             select(UserSession).where(UserSession.token_id == jti)
         )
@@ -388,6 +392,18 @@ class AuthService:
             user_id = int(payload["sub"])
         except (ValueError, KeyError) as e:
             raise AuthenticationError(f"Invalid token: {e}")
+
+        # Bridge service tokens (sub=0) return a synthetic User
+        if user_id == 0 and payload.get("purpose") == "bridge":
+            return User(
+                id=0,
+                email="bridge@service.local",
+                username="bridge",
+                password_hash="",
+                role=payload.get("role", "admin"),
+                is_active=True,
+                permissions=payload.get("permissions", []),
+            )
 
         # Get user
         user = await self.users.get_user(user_id)

@@ -38,6 +38,7 @@ class MetaContract:
     auth_required: bool = True
     owner: str = ""
     summary: str = ""
+    audience: List[str] = field(default_factory=lambda: ["user", "dev"])
     provides: List[str] = field(default_factory=list)
     relates_to: List[str] = field(default_factory=list)
     sub_endpoints: List[MetaContractEndpoint] = field(default_factory=list)
@@ -169,7 +170,7 @@ def _builtin_plans_management() -> MetaContract:
         id="plans.management",
         name="Plan Management",
         endpoint=None,
-        version="2.0.0",
+        version="2.1.0",
         auth_required=True,
         owner="devtools lane",
         summary=(
@@ -220,7 +221,7 @@ def _builtin_plans_management() -> MetaContract:
                 id="plans.update",
                 method="PATCH",
                 path="/api/v1/dev/plans/update/{plan_id}",
-                summary="Update plan fields: status, stage, owner, priority, summary, markdown.",
+                summary="Update plan fields: title/status/stage/owner/priority/summary/markdown plus tags, code paths, companions, handoffs, and dependencies.",
             ),
             MetaContractEndpoint(
                 id="plans.documents",
@@ -238,7 +239,7 @@ def _builtin_plans_management() -> MetaContract:
                 id="plans.sync",
                 method="POST",
                 path="/api/v1/dev/plans/sync",
-                summary="Sync filesystem plan manifests into the DB.",
+                summary="Sync filesystem plan manifests into the DB (disabled when PLANS_DB_ONLY_MODE=1).",
             ),
         ],
     )
@@ -252,6 +253,7 @@ def _builtin_devtools_codegen() -> MetaContract:
         version="1.0.0",
         auth_required=True,
         owner="devtools lane",
+        audience=["dev"],
         summary=(
             "Code generation tasks, database migrations, and developer utilities. "
             "Tasks discovered from tools/codegen/manifest.ts."
@@ -293,6 +295,7 @@ def _builtin_ui_catalog() -> MetaContract:
         version="1.0.0",
         auth_required=False,
         owner="frontend lane",
+        audience=["dev"],
         summary=(
             "Machine-readable catalog of shared UI components, hooks, icons, "
             "and composition patterns. Prevents ad-hoc inline UI."

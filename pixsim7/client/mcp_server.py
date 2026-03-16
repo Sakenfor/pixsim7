@@ -33,6 +33,37 @@ except ImportError:
 
 API_URL = os.environ.get("PIXSIM_API_URL", "http://localhost:8000")
 API_TOKEN = os.environ.get("PIXSIM_API_TOKEN", "")
+API_TOKEN_FILE = os.environ.get("PIXSIM_TOKEN_FILE", "")  # Per-request token file
+API_SCOPE = os.environ.get("PIXSIM_SCOPE", "")  # "user" or "dev"; empty = all
+
+
+def _get_token() -> str:
+    """Read the freshest token.
+
+    Priority: per-request token file > env var > ~/.pixsim/token
+    """
+    # 1. Per-request token file (written by bridge before each task)
+    if API_TOKEN_FILE:
+        try:
+            with open(API_TOKEN_FILE, "r") as f:
+                token = f.read().strip()
+                if token:
+                    return token
+        except OSError:
+            pass
+    # 2. Env var (set at MCP server startup)
+    if API_TOKEN:
+        return API_TOKEN
+    # 3. Persistent login token (~/.pixsim/token)
+    try:
+        from pathlib import Path
+        stored = Path.home() / ".pixsim" / "token"
+        token = stored.read_text().strip()
+        if token:
+            return token
+    except (OSError, FileNotFoundError):
+        pass
+    return ""
 
 server = Server("pixsim")
 
@@ -86,12 +117,16 @@ def _make_tool_name(endpoint_id: str) -> str:
 async def _fetch_contracts() -> list[dict]:
     """Fetch contracts from meta API. Returns empty list on failure."""
     try:
+        token = _get_token()
         headers = {}
-        if API_TOKEN:
-            headers["Authorization"] = f"Bearer {API_TOKEN}"
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
 
         async with httpx.AsyncClient(base_url=API_URL, timeout=10, headers=headers) as client:
-            resp = await client.get("/api/v1/meta/contracts")
+            params = {}
+            if API_SCOPE:
+                params["audience"] = API_SCOPE
+            resp = await client.get("/api/v1/meta/contracts", params=params)
             if resp.status_code != 200:
                 print(f"[pixsim-mcp] Meta contracts returned {resp.status_code}", file=sys.stderr)
                 return []
@@ -227,9 +262,10 @@ async def _proxy(
 ) -> list[types.TextContent]:
     """Proxy a request to the PixSim API and return the result."""
     try:
+        token = _get_token()
         headers = {}
-        if API_TOKEN:
-            headers["Authorization"] = f"Bearer {API_TOKEN}"
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
 
         async with httpx.AsyncClient(base_url=API_URL, timeout=60, headers=headers) as client:
             resp = await client.request(

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, get_database
 from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry, PlanSyncRun
+from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.services.docs.plans import get_plans_index
 from pixsim7.backend.main.services.docs.plan_sync import (
     PlanSyncLockedError,
@@ -183,6 +184,15 @@ class PlanSyncRetentionResponse(BaseModel):
     runsDeleted: int
 
 
+class PlanRuntimeSettingsResponse(BaseModel):
+    plansDbOnlyMode: bool
+    source: str = "runtime"
+
+
+class PlanRuntimeSettingsUpdateRequest(BaseModel):
+    plans_db_only_mode: bool = Field(..., description="Toggle DB-only plan mode for this running backend instance.")
+
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 
@@ -290,6 +300,7 @@ def _run_to_entry(run: PlanSyncRun) -> dict:
 
 @router.get("", response_model=PlansIndexResponse)
 async def list_plans(
+    _user: CurrentUser,
     status: Optional[str] = Query(None, description="Filter by status (active, done, parked)"),
     owner: Optional[str] = Query(None, description="Filter by owner (substring match)"),
     refresh: bool = Query(False),
@@ -328,6 +339,12 @@ async def trigger_sync(
     commit_sha: Optional[str] = Query(None, description="Current git commit SHA"),
     db: AsyncSession = Depends(get_database),
 ):
+    if settings.plans_db_only_mode:
+        raise HTTPException(
+            status_code=409,
+            detail="Plan manifest sync is disabled in DB-only mode.",
+        )
+
     actor_id = getattr(_admin, "id", None)
     actor = f"user:{actor_id}" if actor_id is not None else "user:unknown"
     try:
@@ -352,6 +369,7 @@ async def trigger_sync(
 
 @router.get("/sync-runs", response_model=PlanSyncRunsResponse)
 async def list_sync_runs(
+    _user: CurrentUser,
     status: Optional[str] = Query(None, description="Filter by run status (success, failed, running)"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -391,6 +409,7 @@ async def run_sync_retention(
 @router.get("/sync-runs/{run_id}", response_model=PlanSyncRunEntry)
 async def get_sync_run(
     run_id: UUID,
+    _user: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
     row = await db.get(PlanSyncRun, run_id)
@@ -404,6 +423,7 @@ async def get_sync_run(
 
 @router.get("/registry", response_model=PlanRegistryListResponse)
 async def list_registry(
+    _user: CurrentUser,
     status: Optional[str] = Query(None),
     owner: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_database),
@@ -422,6 +442,7 @@ async def list_registry(
 @router.get("/registry/{plan_id}", response_model=PlanRegistryEntry)
 async def get_registry_plan(
     plan_id: str,
+    _user: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
     bundle = await get_plan_bundle(db, plan_id)
@@ -433,6 +454,7 @@ async def get_registry_plan(
 @router.get("/registry/{plan_id}/events", response_model=PlanEventsResponse)
 async def get_plan_events(
     plan_id: str,
+    _user: CurrentUser,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_database),
@@ -471,6 +493,7 @@ async def get_plan_events(
 
 @router.get("/activity", response_model=PlanActivityResponse)
 async def get_activity(
+    _user: CurrentUser,
     days: int = Query(7, ge=1, le=90),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_database),
@@ -526,6 +549,9 @@ class PlanCreateRequest(BaseModel):
     visibility: str = Field("public", description="private | shared | public")
     tags: Optional[List[str]] = Field(None)
     code_paths: Optional[List[str]] = Field(None)
+    companions: Optional[List[str]] = Field(None)
+    handoffs: Optional[List[str]] = Field(None)
+    depends_on: Optional[List[str]] = Field(None)
     parent_id: Optional[str] = Field(None, description="Parent plan ID for sub-plans")
 
 
@@ -590,6 +616,9 @@ async def create_plan(
         priority=payload.priority,
         task_scope=payload.task_scope,
         code_paths=payload.code_paths or [],
+        companions=payload.companions or [],
+        handoffs=payload.handoffs or [],
+        depends_on=payload.depends_on or [],
         scope=payload.status if payload.status in ("active", "done", "parked") else "active",
         created_at=now,
         updated_at=now,
@@ -597,9 +626,9 @@ async def create_plan(
     db.add(plan)
     await db.commit()
 
-    # Export to filesystem + git for dev plans
+    # Optional export to filesystem + git for dev plans
     commit_sha = None
-    if payload.task_scope == "plan":
+    if payload.task_scope == "plan" and not settings.plans_db_only_mode:
         try:
             bundle = PlanBundle(plan=plan, doc=doc)
             paths = export_plan_to_disk(bundle)
@@ -612,11 +641,19 @@ async def create_plan(
 
 
 class PlanUpdateRequest(BaseModel):
+    title: Optional[str] = Field(None, description="Plan title")
     status: Optional[str] = Field(None, description="active | parked | done | blocked")
     stage: Optional[str] = Field(None, description="Free-form stage label")
     owner: Optional[str] = Field(None, description="Owner / lane")
     priority: Optional[str] = Field(None, description="high | normal | low")
     summary: Optional[str] = Field(None, description="Plan summary")
+    markdown: Optional[str] = Field(None, description="Plan markdown content")
+    visibility: Optional[str] = Field(None, description="private | shared | public")
+    tags: Optional[List[str]] = Field(None)
+    code_paths: Optional[List[str]] = Field(None)
+    companions: Optional[List[str]] = Field(None)
+    handoffs: Optional[List[str]] = Field(None)
+    depends_on: Optional[List[str]] = Field(None)
 
 
 class PlanUpdateResponse(BaseModel):
@@ -710,6 +747,7 @@ class AgentContextResponse(BaseModel):
 
 @router.get("/agent-context", response_model=AgentContextResponse)
 async def get_agent_context(
+    _user: CurrentUser,
     plan_id: Optional[str] = Query(None, description="Request a specific plan instead of auto-assignment"),
     db: AsyncSession = Depends(get_database),
 ):
@@ -771,7 +809,7 @@ async def get_agent_context(
                 "action": "create_plan",
                 "method": "POST",
                 "url": "/dev/plans",
-                "body": '{"id": "slug", "title": "...", "summary": "...", "markdown": "...", "plan_type": "feature|bugfix|refactor|exploration|task", "status": "active", "stage": "proposed", "owner": "unassigned", "priority": "normal", "parent_id": null, "tags": [], "code_paths": []}',
+                "body": '{"id": "slug", "title": "...", "summary": "...", "markdown": "...", "plan_type": "feature|bugfix|refactor|exploration|task", "status": "active", "stage": "proposed", "owner": "unassigned", "priority": "normal", "parent_id": null, "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
                 "description": "Create a new plan (Document + PlanRegistry). Use parent_id to create sub-plans under an initiative.",
             },
             {
@@ -785,7 +823,7 @@ async def get_agent_context(
                 "action": "update_fields",
                 "method": "PATCH",
                 "url": "/dev/plans/update/{plan_id}",
-                "body": '{"stage": "...", "priority": "high|normal|low", "owner": "...", "summary": "...", "status": "..."}',
+                "body": '{"title": "...", "status": "active|parked|done|blocked", "stage": "...", "priority": "high|normal|low", "owner": "...", "summary": "...", "visibility": "public|shared|private", "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
                 "description": "Update any combination of plan fields in a single call",
             },
             {
@@ -837,6 +875,7 @@ class PlanDocumentsResponse(BaseModel):
 @router.get("/documents/{plan_id}", response_model=PlanDocumentsResponse)
 async def get_plan_documents_endpoint(
     plan_id: str,
+    _user: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
     docs = await get_plan_documents(db, plan_id)
@@ -858,6 +897,7 @@ async def get_plan_documents_endpoint(
 @router.get("/{plan_id}", response_model=PlanDetailResponse)
 async def get_plan(
     plan_id: str,
+    _user: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
     from pixsim7.backend.main.services.docs.plan_write import load_children

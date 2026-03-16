@@ -30,6 +30,7 @@ class AiModelDefault(Base):
     scope_id = Column(String(100), nullable=True)    # ID for user/workspace, NULL for global
     capability = Column(String(50), nullable=False)  # "prompt_edit", "prompt_parse", etc.
     model_id = Column(String(100), nullable=False)   # "openai:gpt-4o-mini", etc.
+    method = Column(String(20), nullable=True)        # "api", "cmd", "remote", "local" — NULL = model default
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -40,11 +41,14 @@ class AiModelDefault(Base):
 
 
 # In-memory fallback defaults (used if database is unavailable or no entry exists)
-FALLBACK_DEFAULTS = {
-    AiModelCapability.PROMPT_EDIT: "openai:gpt-4o-mini",
-    AiModelCapability.PROMPT_PARSE: "prompt-dsl:simple",
-    AiModelCapability.TAG_SUGGEST: "openai:gpt-4o-mini",
-    AiModelCapability.EMBEDDING: "openai:text-embedding-3-small",
+# Fallback defaults: capability → (model_id, method)
+# method=None means "use model's default/first supported_method"
+FALLBACK_DEFAULTS: dict[AiModelCapability, tuple[str, str | None]] = {
+    AiModelCapability.PROMPT_EDIT: ("openai:gpt-4o-mini", None),
+    AiModelCapability.PROMPT_PARSE: ("prompt-dsl:simple", None),
+    AiModelCapability.TAG_SUGGEST: ("openai:gpt-4o-mini", None),
+    AiModelCapability.EMBEDDING: ("openai:text-embedding-3-small", None),
+    AiModelCapability.ASSISTANT_CHAT: ("anthropic:claude-3.5", "remote"),
 }
 
 
@@ -53,9 +57,9 @@ async def get_default_model(
     capability: AiModelCapability,
     scope_type: str = "global",
     scope_id: Optional[str] = None
-) -> str:
+) -> tuple[str, str | None]:
     """
-    Get the default model ID for a given capability and scope.
+    Get the default (model_id, method) for a given capability and scope.
 
     Args:
         db: Database session
@@ -64,10 +68,9 @@ async def get_default_model(
         scope_id: ID for user/workspace scope, None for global
 
     Returns:
-        Model ID string (e.g., "openai:gpt-4o-mini")
+        Tuple of (model_id, method). method is None if not specified.
     """
     try:
-        # Query database for default
         stmt = select(AiModelDefault).where(
             and_(
                 AiModelDefault.scope_type == scope_type,
@@ -79,18 +82,18 @@ async def get_default_model(
         default = result.scalar_one_or_none()
 
         if default:
-            return default.model_id
+            return default.model_id, default.method
 
         # Fall back to global if user/workspace scope not found
         if scope_type != "global":
             return await get_default_model(db, capability, "global", None)
 
     except Exception:
-        # If database query fails, use fallback
         pass
 
     # Use in-memory fallback
-    return FALLBACK_DEFAULTS.get(capability, "prompt-dsl:simple")
+    fallback = FALLBACK_DEFAULTS.get(capability, ("prompt-dsl:simple", None))
+    return fallback
 
 
 async def get_all_defaults(

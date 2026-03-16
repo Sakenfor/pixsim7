@@ -64,14 +64,20 @@ class RemoteCommandBridge:
 
         logger.info("remote_agent_connected", agent_id=agent_id, agent_type=agent_type, user_id=user_id)
 
-        # Build system prompt based on user scope
+        # Build system prompt — always provide it so agents know the available APIs
         system_prompt = None
-        if user_id is not None:
-            try:
-                from pixsim7.backend.main.api.v1.meta_contracts import _build_user_system_prompt
-                system_prompt = _build_user_system_prompt()
-            except Exception:
-                pass
+        try:
+            from pixsim7.backend.main.api.v1.meta_contracts import _build_user_system_prompt
+            system_prompt = _build_user_system_prompt()
+        except Exception:
+            pass
+
+        # Mint a scoped service token for the bridge to call API endpoints
+        service_token = None
+        try:
+            service_token = _mint_bridge_token(user_id)
+        except Exception:
+            logger.warning("bridge_token_mint_failed", agent_id=agent_id)
 
         welcome: dict = {
             "type": "connected",
@@ -81,6 +87,8 @@ class RemoteCommandBridge:
         }
         if system_prompt:
             welcome["system_prompt"] = system_prompt
+        if service_token:
+            welcome["service_token"] = service_token
 
         await websocket.send_json(welcome)
 
@@ -207,6 +215,46 @@ class RemoteCommandBridge:
             future.set_exception(RuntimeError(error))
             return True
         return False
+
+
+def _mint_bridge_token(user_id: Optional[int], hours: int = 24) -> Optional[str]:
+    """Mint a service token for bridge/CLI use.
+
+    The token skips session tracking (purpose=bridge) so it doesn't pollute
+    the UserSession table.  The auth layer recognizes purpose=bridge tokens
+    and skips session-revocation checks.
+    """
+    from datetime import timedelta
+    from pixsim7.backend.main.shared.auth import create_access_token
+
+    ttl = timedelta(hours=hours)
+
+    if user_id is not None:
+        return create_access_token(
+            data={
+                "sub": str(user_id),
+                "purpose": "bridge",
+                "role": "user",
+                "is_admin": False,
+                "permissions": [],
+                "is_active": True,
+            },
+            expires_delta=ttl,
+        )
+    else:
+        # Shared bridge: admin-level service token.
+        # sub=0 signals a service identity (no real user row).
+        return create_access_token(
+            data={
+                "sub": "0",
+                "purpose": "bridge",
+                "role": "admin",
+                "is_admin": True,
+                "permissions": [],
+                "is_active": True,
+            },
+            expires_delta=ttl,
+        )
 
 
 # Global singleton

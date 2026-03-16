@@ -15,12 +15,12 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import get_database
+from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
 from pixsim7.backend.main.domain.docs.models import AgentActivityLog
 from pixsim7.backend.main.services.meta.contract_registry import (
     meta_contract_registry,
@@ -67,6 +67,10 @@ class ContractIndexEntry(BaseModel):
     auth_required: bool
     owner: str
     summary: str
+    audience: List[str] = Field(
+        default_factory=list,
+        description="Who this contract is for: 'user', 'dev', or both.",
+    )
     provides: List[str] = Field(
         default_factory=list,
         description="Capabilities this contract surface exposes.",
@@ -93,13 +97,20 @@ class ContractsIndexResponse(BaseModel):
 
 
 @router.get("/contracts", response_model=ContractsIndexResponse)
-async def list_contract_endpoints() -> ContractsIndexResponse:
+async def list_contract_endpoints(
+    audience: Optional[str] = Query(
+        None,
+        description="Filter by audience: 'user' or 'dev'. Omit for all.",
+    ),
+) -> ContractsIndexResponse:
     """
     Contract discovery graph with live agent activity overlay.
 
     Each contract declares `provides` (capabilities) and `relates_to`
     (other contract IDs), forming a navigable discovery graph.
     `active_agents` shows which agents are currently working on each surface.
+
+    Pass `?audience=user` to only get user-facing contracts (excludes dev tooling).
     """
     _sync_prompt_contract_versions()
 
@@ -107,6 +118,10 @@ async def list_contract_endpoints() -> ContractsIndexResponse:
 
     contracts = []
     for c in meta_contract_registry.values():
+        # Filter by audience if requested
+        if audience and audience not in c.audience:
+            continue
+
         agents_on_contract = [
             AgentPresence(
                 session_id=s.session_id,
@@ -129,6 +144,7 @@ async def list_contract_endpoints() -> ContractsIndexResponse:
             auth_required=c.auth_required,
             owner=c.owner,
             summary=c.summary,
+            audience=c.audience,
             provides=c.provides,
             relates_to=c.relates_to,
             sub_endpoints=[
@@ -526,6 +542,41 @@ async def terminate_agent(agent_id: str) -> TerminateAgentResponse:
     return TerminateAgentResponse(ok=True, agent_id=agent_id, message="Disconnected")
 
 
+class CliTokenResponse(BaseModel):
+    token: str
+    expires_in_hours: int
+    scope: str
+    command: str = Field(description="Ready-to-paste Claude CLI command")
+
+
+@router.post("/agents/cli-token", response_model=CliTokenResponse)
+async def generate_cli_token(
+    user: CurrentUser,
+    scope: str = Query("dev", description="Tool scope: 'user' or 'dev'"),
+    hours: int = Query(24, ge=1, le=168, description="Token lifetime in hours (max 7 days)"),
+) -> CliTokenResponse:
+    """Generate a CLI token for standalone Claude use with MCP tools.
+
+    Mint from the AI Agents panel, paste into terminal.
+    """
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import _mint_bridge_token
+    token = _mint_bridge_token(user.id, hours=hours)
+    if not token:
+        raise HTTPException(status_code=500, detail="Failed to generate token")
+
+    command = (
+        f'PIXSIM_API_TOKEN="{token}" PIXSIM_SCOPE="{scope}" '
+        f"claude --mcp-config pixsim-mcp.json"
+    )
+
+    return CliTokenResponse(
+        token=token,
+        expires_in_hours=hours,
+        scope=scope,
+        command=command,
+    )
+
+
 class StartBridgeRequest(BaseModel):
     pool_size: int = Field(1, ge=1, le=5, description="Number of Claude sessions")
     claude_args: Optional[str] = Field(None, description="Extra args for Claude CLI")
@@ -629,50 +680,140 @@ async def send_message_to_agent(
     payload: SendMessageRequest,
     authorization: Optional[str] = None,
 ) -> SendMessageResponse:
-    """Send a message to a connected remote agent and wait for the response.
+    """Send a message to the AI assistant.
 
-    Routes to the authenticated user's bridge first, falls back to shared bridges.
+    Routes based on the user's configured assistant_chat provider:
+    - remote-cmd-llm: dispatches to the Claude CLI bridge (MCP tools)
+    - openai-llm / anthropic-llm: calls the API directly (text chat)
     """
-    from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
     import time
 
-    # Resolve user for routing
+    from pixsim7.backend.main.api.dependencies import get_auth_service, _extract_bearer_token
+
+    # Resolve user
     user_id: Optional[int] = None
+    raw_token: Optional[str] = None
     if authorization:
         try:
-            from pixsim7.backend.main.api.dependencies import get_auth_service, _extract_bearer_token
-            token = _extract_bearer_token(authorization)
+            raw_token = _extract_bearer_token(authorization)
             auth_service = get_auth_service()
-            user = await auth_service.verify_token(token)
+            user = await auth_service.verify_token(raw_token)
             user_id = user.id if user else None
         except Exception:
             pass
+
+    # Resolve provider, model, and delivery method for assistant_chat
+    provider_id, model_id, method = await _resolve_assistant_provider(user_id)
+
+    start = time.monotonic()
+
+    # ── Bridge path (method=remote) ──
+    if method == "remote":
+        return await _send_via_bridge(
+            payload=payload,
+            user_id=user_id,
+            raw_token=raw_token,
+            start=start,
+        )
+
+    # ── Direct API path (method=api) ──
+    return await _send_via_direct_api(
+        payload=payload,
+        provider_id=provider_id,
+        model_id=model_id,
+        user_id=user_id,
+        start=start,
+    )
+
+
+# =============================================================================
+# Internal helpers — assistant routing
+# =============================================================================
+
+
+async def _resolve_assistant_provider(user_id: Optional[int]) -> tuple[str, str, str]:
+    """Resolve (provider_id, model_id, method) for assistant_chat capability."""
+    from pixsim7.backend.main.shared.schemas.ai_model_schemas import AiModelCapability
+    from pixsim7.backend.main.services.ai_model.defaults import FALLBACK_DEFAULTS
+    from pixsim7.backend.main.services.ai_model.registry import ai_model_registry
+
+    fallback_model, fallback_method = FALLBACK_DEFAULTS.get(
+        AiModelCapability.ASSISTANT_CHAT, ("anthropic:claude-3.5", "remote")
+    )
+
+    # Try user-scoped default
+    if user_id is not None:
+        try:
+            from pixsim7.backend.main.api.dependencies import get_database
+            from pixsim7.backend.main.services.ai_model.defaults import get_default_model
+
+            db = get_database()
+            model_id, method = await get_default_model(
+                db, AiModelCapability.ASSISTANT_CHAT, "user", str(user_id)
+            )
+            model = ai_model_registry.get_or_none(model_id)
+            if model and model.provider_id:
+                resolved_method = method or (model.supported_methods[0] if model.supported_methods else "api")
+                return model.provider_id, model_id, resolved_method
+        except Exception:
+            pass
+
+    # Global default
+    model = ai_model_registry.get_or_none(fallback_model)
+    if model and model.provider_id:
+        resolved_method = fallback_method or (model.supported_methods[0] if model.supported_methods else "api")
+        return model.provider_id, fallback_model, resolved_method
+
+    return "anthropic", fallback_model, fallback_method or "remote"
+
+
+async def _send_via_bridge(
+    payload: SendMessageRequest,
+    user_id: Optional[int],
+    raw_token: Optional[str],
+    start: float,
+) -> SendMessageResponse:
+    """Route message through the Claude CLI bridge (MCP tools)."""
+    import time
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
 
     if not remote_cmd_bridge.has_available:
         return SendMessageResponse(
             ok=False,
             agent_id="",
-            error="No remote agents connected. Run: python scripts/agent_bridge.py",
+            error="No bridge running. Start one from the AI Agents panel.",
         )
 
     agent = remote_cmd_bridge.get_available_agent(user_id=user_id)
     if not agent:
+        if user_id is not None:
+            return SendMessageResponse(
+                ok=False,
+                agent_id="",
+                error="No bridge available for your account. Start a user-scoped bridge or ask an admin.",
+            )
         return SendMessageResponse(ok=False, agent_id="", error="All agents are busy")
 
-    task_payload = {
+    task_payload: dict = {
         "task": "message",
         "prompt": payload.message,
         "instruction": payload.message,
         "model": payload.model,
         "context": payload.context or {},
     }
+    if raw_token and user_id is not None:
+        task_payload["user_token"] = raw_token
 
-    start = time.monotonic()
     try:
-        result = await remote_cmd_bridge.dispatch_task(task_payload, timeout=payload.timeout, user_id=user_id)
+        result = await remote_cmd_bridge.dispatch_task(
+            task_payload, timeout=payload.timeout, user_id=user_id
+        )
         duration_ms = int((time.monotonic() - start) * 1000)
-
-        response_text = result.get("edited_prompt") or result.get("response") or result.get("output", "")
+        response_text = (
+            result.get("edited_prompt")
+            or result.get("response")
+            or result.get("output", "")
+        )
         return SendMessageResponse(
             ok=True,
             agent_id=agent.agent_id,
@@ -689,40 +830,102 @@ async def send_message_to_agent(
         )
 
 
+async def _send_via_direct_api(
+    payload: SendMessageRequest,
+    provider_id: str,
+    model_id: str,
+    user_id: Optional[int],
+    start: float,
+) -> SendMessageResponse:
+    """Route message directly through an LLM API (no bridge, no tools)."""
+    import time
+
+    system_prompt = _build_user_system_prompt()
+
+    try:
+        from pixsim7.backend.main.services.llm.providers import get_provider
+        from pixsim7.backend.main.services.llm.models import LLMRequest
+
+        # Provider IDs are now clean names (openai, anthropic)
+        provider_name = provider_id
+        if not provider_name:
+            return SendMessageResponse(
+                ok=False,
+                agent_id="direct",
+                error=f"Direct API not supported for provider: {provider_id}",
+            )
+
+        # Extract model name from registry ID (e.g. "openai:gpt-4" -> "gpt-4")
+        model_name = model_id.split(":", 1)[-1] if ":" in model_id else model_id
+
+        provider = get_provider(provider_name)
+        request = LLMRequest(
+            prompt=payload.message,
+            system_prompt=system_prompt,
+            model=model_name,
+            max_tokens=2048,
+        )
+        response = await provider.generate(request)
+
+        duration_ms = int((time.monotonic() - start) * 1000)
+        return SendMessageResponse(
+            ok=True,
+            agent_id="direct",
+            response=response.text,
+            duration_ms=duration_ms,
+        )
+    except Exception as e:
+        duration_ms = int((time.monotonic() - start) * 1000)
+        return SendMessageResponse(
+            ok=False,
+            agent_id="direct",
+            error=str(e),
+            duration_ms=duration_ms,
+        )
+
+
 # =============================================================================
-# Internal helpers
+# Internal helpers — system prompt
 # =============================================================================
 
 
 def _build_user_system_prompt() -> str:
-    """Build a system prompt that includes available API endpoints for the user agent."""
+    """Build a system prompt for the user-facing AI assistant.
+
+    The assistant has MCP tools for API access, so the prompt focuses on
+    behaviour and context rather than listing raw endpoints.
+    """
     contract = meta_contract_registry.get_or_none("user.assistant")
 
     lines = [
         "You are an AI assistant for the PixSim application.",
         "You help users with their assets, generations, scenes, characters, and prompts.",
         "",
-        "You have access to the following API endpoints on the user's behalf.",
-        "Use these to answer questions and perform actions. The base URL is already configured.",
+        "You have MCP tools available that let you query and interact with the PixSim API.",
+        "Use these tools to answer questions with real data — do not guess or say you lack access.",
         "",
     ]
-
-    if contract and contract.sub_endpoints:
-        lines.append("Available API endpoints:")
-        for ep in contract.sub_endpoints:
-            lines.append(f"  {ep.method} {ep.path} — {ep.summary}")
-        lines.append("")
 
     if contract and contract.provides:
         lines.append(f"Your capabilities: {', '.join(contract.provides)}")
         lines.append("")
 
+    if contract and contract.sub_endpoints:
+        lines.append("Reference — API endpoints backing your tools:")
+        for ep in contract.sub_endpoints:
+            lines.append(f"  {ep.method} {ep.path} — {ep.summary}")
+        lines.append("")
+        lines.append(
+            "For endpoints not covered by a specific tool, use the call_api tool."
+        )
+        lines.append("")
+
     lines.extend([
         "Guidelines:",
-        "- When the user asks to list or browse something, use the appropriate GET endpoint.",
-        "- When the user asks to create or modify something, use POST/PATCH endpoints.",
-        "- Always confirm before making changes.",
-        "- If you don't have an endpoint for what the user asks, say so clearly.",
+        "- When the user asks about status, counts, or lists — use the appropriate tool to fetch live data.",
+        "- When the user asks to create or modify something — use tools, then confirm the result.",
+        "- Always confirm before making destructive changes.",
+        "- If a tool call fails, report the error clearly.",
         "- Be concise and helpful.",
     ])
 

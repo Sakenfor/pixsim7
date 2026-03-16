@@ -28,6 +28,7 @@ class AgentPool:
         self._claude_command = claude_command
         self._auto_restart = auto_restart
         self._system_prompt: Optional[str] = None
+        self._mcp_config_path: Optional[str] = None
         self._sessions: Dict[str, ClaudeSession] = {}
         self._health_task: Optional[asyncio.Task] = None
 
@@ -50,9 +51,31 @@ class AgentPool:
                 return session
         return None
 
-    def set_system_prompt(self, prompt: str) -> None:
-        """Set system prompt for future sessions. Existing sessions keep their prompt."""
-        self._system_prompt = prompt
+    async def configure(
+        self,
+        system_prompt: str | None = None,
+        mcp_config_path: str | None = None,
+    ) -> None:
+        """Update pool configuration and restart sessions if anything changed."""
+        changed = False
+
+        if system_prompt and system_prompt != self._system_prompt:
+            self._system_prompt = system_prompt
+            changed = True
+        if mcp_config_path and mcp_config_path != self._mcp_config_path:
+            self._mcp_config_path = mcp_config_path
+            changed = True
+
+        if not changed:
+            return
+
+        # Propagate to existing sessions and restart
+        for session in self._sessions.values():
+            session._system_prompt = self._system_prompt
+            session._mcp_config_path = self._mcp_config_path
+            if session.is_alive:
+                client_log(f"[{session.session_id}] Restarting with updated config")
+                await session.restart()
 
     async def start(self) -> int:
         """Start all sessions in the pool. Returns number of successfully started sessions."""
@@ -64,6 +87,7 @@ class AgentPool:
                 extra_args=self._claude_args,
                 claude_command=self._claude_command,
                 system_prompt=self._system_prompt,
+                mcp_config_path=self._mcp_config_path,
             )
             self._sessions[session_id] = session
 
