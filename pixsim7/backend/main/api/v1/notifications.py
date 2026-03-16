@@ -12,7 +12,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
-from pixsim7.backend.main.domain.docs.models import Notification
+from pixsim7.backend.main.domain.platform.notification import Notification
 from pixsim7.backend.main.domain.user import User
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
