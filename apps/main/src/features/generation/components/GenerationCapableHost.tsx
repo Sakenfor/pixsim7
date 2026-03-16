@@ -2,22 +2,23 @@
  * GenerationCapableHost
  *
  * Lightweight wrapper that provides CAP_GENERATION_WIDGET within a
- * generation scope. Use this for panels that declare `generationCapable: true`
- * and need generation capability without the full QuickGenWidget layout system.
+ * generation scope. Use this for panels that declare
+ * `consumesCapabilities: ['generation:scope']` and need generation
+ * capability without the full QuickGenWidget layout system.
  *
  * Handles:
  * - Capability bridge (registers CAP_GENERATION_WIDGET locally)
  * - Generation controller (useQuickGenerateController)
  *
  * Does NOT handle:
- * - Generation scope provider (comes from `generationCapable: true` on panel definition)
+ * - Generation scope provider (comes from `consumesCapabilities: ['generation:scope']` on panel definition)
  * - Panel layout (the consumer renders its own PanelHostDockview or content)
  * - Generate UI (consumer adds quickgen-settings panel or builds custom UI)
  *
  * @example
  * ```tsx
  * // Panel definition:
- * definePanel({ id: 'my-panel', generationCapable: true, ... })
+ * definePanel({ id: 'my-panel', consumesCapabilities: ['generation:scope'], ... })
  *
  * // Panel component:
  * function MyPanel() {

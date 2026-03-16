@@ -10,7 +10,7 @@ export default definePanel({
   tags: ['generation', 'history', 'quickgen'],
   icon: 'clock',
   description: 'Asset history panel for quick generation workflows',
-  settingScopes: ['generation'],
+  consumesCapabilities: ['generation:scope'],
   supportsCompactMode: true,
   supportsMultipleInstances: false,
   internal: true,

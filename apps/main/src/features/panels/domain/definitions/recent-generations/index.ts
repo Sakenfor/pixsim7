@@ -10,7 +10,7 @@ export default definePanel({
   tags: ['generation', 'recent', 'output'],
   icon: 'sparkles',
   description: 'Browse recently generated assets',
-  settingScopes: ['generation'],
+  consumesCapabilities: ['generation:scope'],
   supportsCompactMode: true,
   supportsMultipleInstances: false,
   internal: true,

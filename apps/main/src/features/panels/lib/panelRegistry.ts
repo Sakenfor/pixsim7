@@ -5,7 +5,8 @@
  * Part of Task 50 Phase 50.3 - Plugin-based Panel Registry
  */
 
-import type { BasePanelDefinition, PanelRegistryLike, PanelInstancePolicy } from "@pixsim7/shared.ui.panels";
+import type { BasePanelDefinition, PanelRegistryLike, PanelInstancePolicy, CapabilityDeclaration } from "@pixsim7/shared.ui.panels";
+import { getCapabilityKeys } from "@pixsim7/shared.ui.panels";
 import type { ComponentType } from "react";
 
 import type { EditorContext } from "@lib/context/editorContext";
@@ -520,4 +521,49 @@ export function getPanelsForScope(scope: string): PanelDefinition[] {
  */
 export function getPanelIdsForScope(scope: string): string[] {
   return getPanelsForScope(scope).map(p => p.id);
+}
+
+/**
+ * Get panels compatible with a host based on capability negotiation.
+ *
+ * Two gates:
+ * 1. **Policy gate** (`availableIn`): If declared, the host must be in the list.
+ *    Panels without `availableIn` pass this gate for any host.
+ * 2. **Technical gate** (`consumesCapabilities`): The host must provide every
+ *    capability the panel consumes. Panels without `consumesCapabilities` pass.
+ *
+ * @param hostId - Dockview scope ID of the host
+ * @param hostCapabilities - Capability keys the host provides
+ * @returns Compatible panels, sorted by order
+ */
+export function getCompatiblePanels(
+  hostId: string,
+  hostCapabilities: CapabilityDeclaration[],
+): PanelDefinition[] {
+  const hostCapKeys = new Set(getCapabilityKeys(hostCapabilities));
+
+  return panelRegistry
+    .getAll()
+    .filter(panel => {
+      // Gate 1: Policy — am I allowed here?
+      if (panel.availableIn?.length && !panel.availableIn.includes(hostId)) {
+        return false;
+      }
+
+      // Gate 2: Technical — does the host provide what I need?
+      const needs = getCapabilityKeys(panel.consumesCapabilities);
+      return needs.every(cap => hostCapKeys.has(cap));
+    })
+    .sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+}
+
+/**
+ * Get compatible panel IDs for a host.
+ * @see getCompatiblePanels
+ */
+export function getCompatiblePanelIds(
+  hostId: string,
+  hostCapabilities: CapabilityDeclaration[],
+): string[] {
+  return getCompatiblePanels(hostId, hostCapabilities).map(p => p.id);
 }

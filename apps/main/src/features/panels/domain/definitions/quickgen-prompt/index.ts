@@ -16,7 +16,7 @@ export default definePanel({
     modules: ['generation-page'],
     order: 20,
   },
-  settingScopes: ['generation'],
+  consumesCapabilities: ['generation:scope'],
   addPanelEquivalentIds: ['prompt-authoring-editor'],
   componentSettings: [QUICKGEN_PROMPT_COMPONENT_ID],
   supportsCompactMode: false,

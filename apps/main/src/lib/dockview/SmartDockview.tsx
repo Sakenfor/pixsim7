@@ -198,7 +198,7 @@ interface SmartDockviewBaseProps<TContext = any> {
   /**
    * Additional panel IDs to include in the context menu's "Default Panels"
    * submenu without adding them to the layout. Used by scope-auto-discovery
-   * (e.g. generation-scoped panels appearing in generationCapable hosts).
+   * (e.g. generation-scoped panels appearing in generation-capable hosts).
    */
   additionalContextMenuPanels?: string[];
 

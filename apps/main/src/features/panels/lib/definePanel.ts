@@ -90,9 +90,9 @@ export interface DefinePanelOptions<TSettings = any> {
   scopes?: string[];
 
   /**
-   * Shorthand: auto-adds 'generation' to settingScopes so the panel
-   * gets its own GenerationScopeProvider (settings, input, session stores).
-   * Panel can then call useGenerationScopeStores() and executeGeneration().
+   * @deprecated Use `consumesCapabilities: ['generation:scope']` instead.
+   * Shorthand that auto-adds 'generation' to settingScopes.
+   * Kept for backward compatibility — maps to consumesCapabilities internally.
    */
   generationCapable?: boolean;
 
@@ -207,11 +207,27 @@ export function definePanel<TSettings = any>(
   const resolvedContexts = availability?.docks ?? availableIn ?? contexts;
   let resolvedSettingScopes = settingScopes ?? scopes;
 
-  // Auto-add 'generation' scope when generationCapable is declared
+  // Backward compat: generationCapable maps to consumesCapabilities
+  let resolvedConsumes = consumesCapabilities;
   if (generationCapable) {
+    resolvedConsumes = resolvedConsumes ? [...resolvedConsumes] : [];
+    const keys = resolvedConsumes.map((d) => (typeof d === 'string' ? d : d.key));
+    if (!keys.includes('generation:scope')) {
+      resolvedConsumes.push('generation:scope');
+    }
+  }
+
+  // Auto-derive settingScopes from consumesCapabilities.
+  // Capability keys like "generation:scope" map to scope ID "generation".
+  if (resolvedConsumes?.length) {
     resolvedSettingScopes = resolvedSettingScopes ? [...resolvedSettingScopes] : [];
-    if (!resolvedSettingScopes.includes('generation')) {
-      resolvedSettingScopes.push('generation');
+    for (const cap of resolvedConsumes) {
+      const key = typeof cap === 'string' ? cap : cap.key;
+      // Convention: "scopeId:detail" → extract scopeId before ":"
+      const scopeId = key.includes(':') ? key.split(':')[0] : key;
+      if (scopeId && !resolvedSettingScopes.includes(scopeId)) {
+        resolvedSettingScopes.push(scopeId);
+      }
     }
   }
 
@@ -267,7 +283,7 @@ export function definePanel<TSettings = any>(
     supportsMultipleInstances: resolvedInstances.supportsMultipleInstances,
     maxInstances: resolvedInstances.maxInstances,
     instances,
-    consumesCapabilities,
+    consumesCapabilities: resolvedConsumes,
     providesCapabilities,
     settingScopes: resolvedSettingScopes,
     scopes,

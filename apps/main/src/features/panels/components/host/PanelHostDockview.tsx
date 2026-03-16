@@ -73,10 +73,17 @@ export interface PanelHostDockviewProps {
   /**
    * Setting scopes of the host panel. Panels sharing a scope are
    * auto-included in the context menu (e.g. generation settings panels
-   * appear in any generationCapable host). Derived from the host panel
+   * appear in any generation-capable host). Derived from the host panel
    * definition's settingScopes if not provided and the host is in dockId mode.
    */
   hostSettingScopes?: string[];
+  /**
+   * Capability keys the host provides. Panels whose consumesCapabilities
+   * are all satisfied by these keys become discoverable in the context menu.
+   * Auto-derived from the host panel definition's providesCapabilities if not
+   * provided and the host is in dockId mode.
+   */
+  hostCapabilityKeys?: string[];
   /** Panel IDs that should not exist in the persisted/embedded layout. */
   excludeFromLayout?: readonly string[];
   /** Storage key for persisting layout. */
@@ -147,6 +154,7 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
       allowedPanels,
       allowedCategories,
       hostSettingScopes: hostSettingScopesProp,
+      hostCapabilityKeys: hostCapabilityKeysProp,
       excludeFromLayout,
       resolvePanelTitle,
       resolvePanelPosition,
@@ -184,6 +192,17 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
       return (hostDef as any)?.settingScopes ?? undefined;
     }, [hostSettingScopesProp, panels, dockId, bootstrap.catalogVersion]);
 
+    // Auto-derive hostCapabilityKeys from the parent panel definition when not explicit
+    const hostCapabilityKeys = useMemo(() => {
+      if (hostCapabilityKeysProp) return hostCapabilityKeysProp;
+      if (panels && panels.length > 0) return undefined;
+      if (!dockId) return undefined;
+      const hostDef = panelSelectors.get(dockId);
+      const caps = (hostDef as any)?.providesCapabilities as Array<string | { key: string }> | undefined;
+      if (!caps?.length) return undefined;
+      return caps.map((d: string | { key: string }) => (typeof d === 'string' ? d : d.key));
+    }, [hostCapabilityKeysProp, panels, dockId, bootstrap.catalogVersion]);
+
     const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
     const [resetKey, setResetKey] = useState(0);
     const [dockviewHost, setDockviewHost] = useState<DockviewHost | null>(null);
@@ -194,7 +213,8 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
       allowedPanels,
       allowedCategories,
       hostSettingScopes,
-    }), [dockId, panels, excludePanels, allowedPanels, allowedCategories, hostSettingScopes]);
+      hostCapabilityKeys,
+    }), [dockId, panels, excludePanels, allowedPanels, allowedCategories, hostSettingScopes, hostCapabilityKeys]);
 
     // Panels that belong in the layout (explicit + availableIn)
     const scopedPanelIds = useMemo(() => {

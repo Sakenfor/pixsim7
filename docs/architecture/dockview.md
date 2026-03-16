@@ -57,32 +57,36 @@ Panels are added in order; each positions relative to a `ref` panel via `directi
 3. In the parent's component, render `<PanelHostDockview dockId="my-container" layoutSpec={[...]} />`
 4. Done — sub-panels are auto-discovered, layout is declarative
 
-### Scope-Driven Panel Discovery
+### Capability Negotiation
 
-Panels can declare `settingScopes` (e.g. `['generation']`) to opt into provider wrapping and cross-panel discovery. When a `PanelHostDockview`'s parent panel shares a scope, matching panels are **automatically included** in the right-click "Add Panel" context menu — no manual `panels` or `availableIn` wiring needed.
+Panels declare what they need (`consumesCapabilities`) and hosts declare what they provide (`providesCapabilities`). Two gates control panel visibility:
+
+1. **Policy gate** (`availableIn`): If set, the panel only appears in listed docks.
+2. **Technical gate** (`consumesCapabilities`): The host must provide every capability the panel consumes.
 
 **How it works:**
-1. Host panel declares `generationCapable: true` (or `settingScopes: ['generation']`)
-2. `PanelHostDockview` auto-derives `hostSettingScopes` from the parent panel definition
-3. `resolveScopedPanelIds()` scans all panel definitions — any panel with a matching `settingScopes` entry is auto-included
-4. Those panels appear in the context menu alongside the explicit `panels` list
+1. Host panel declares `providesCapabilities: ['generation:scope']` (or just `consumesCapabilities` — auto-derived to `settingScopes`)
+2. `PanelHostDockview` auto-derives `hostCapabilityKeys` from the parent panel's `providesCapabilities`
+3. `resolveScopeDiscoveredPanelIds()` scans all panel definitions — any panel whose `consumesCapabilities` are all satisfied is auto-included in the context menu
+4. `consumesCapabilities: ['generation:scope']` auto-derives `settingScopes: ['generation']` (part before `:` becomes scope ID), which triggers provider wrapping via `ScopeHost`
 
-**Example:** `prompt-authoring` host has `generationCapable: true`. `quickgen-settings` has `settingScopes: ['generation']`. Result: settings panel appears in prompt-authoring's context menu automatically.
+**Example:** `prompt-authoring` host has `providesCapabilities: ['generation:scope', 'prompt:family']`. `quickgen-settings` has `consumesCapabilities: ['generation:scope']`. Result: settings panel auto-appears in prompt-authoring's context menu.
 
-Source: `panelHostDockScope.ts` (`hostSettingScopes` option).
+Source: `panelHostDockScope.ts` (`hostCapabilityKeys` + `hostSettingScopes` options).
 
 ### Capability Badges
 
-Dockview tabs show small icon badges for panels that declare certain scopes. Badges are data-driven — the tab component reads `settingScopes` from the panel definition and looks up matching badges in `capabilityBadges.ts`.
+Dockview tabs show small icon badges for panels that declare capabilities. Badges are data-driven — the tab component reads `settingScopes` (auto-derived from `consumesCapabilities`) and looks up matching badges in `capabilityBadges.ts`.
 
 Built-in: `generation` scope → ⚡ icon. Extensible via `registerCapabilityBadge()`.
 
 Source: `apps/main/src/lib/dockview/capabilityBadges.ts`.
 
 ### Panel Authoring Checklist
-- Set `availableIn: ['dock-id']` to scope a sub-panel to a specific dock.
+- Set `availableIn: ['dock-id']` to scope a sub-panel to a specific dock (policy).
+- Set `consumesCapabilities` to declare what context the panel needs (technical).
+- Set `providesCapabilities` on host/container panels so sub-panels auto-discover.
 - Set `category` for menu grouping.
-- Use `generationCapable: true` for panels that need their own generation scope.
 - Prefer `instances: "single" | "multiple" | { max }` over `supportsMultipleInstances`.
 - Use `layoutSpec` for default layout; fall back to `defaultLayout` function for complex dynamic layouts.
 - Panel titles auto-resolve from the registry — no need for custom `resolvePanelTitle` unless overriding.

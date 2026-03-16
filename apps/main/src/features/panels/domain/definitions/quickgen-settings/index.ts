@@ -16,7 +16,7 @@ export default definePanel({
     modules: ['generation-page'],
     order: 30,
   },
-  settingScopes: ['generation'],
+  consumesCapabilities: ['generation:scope'],
   componentSettings: [QUICKGEN_SETTINGS_COMPONENT_ID],
   supportsCompactMode: false,
   supportsMultipleInstances: false,

@@ -56,8 +56,8 @@ definePanel({
   // Capabilities
   supportsCompactMode?: false;
   supportsMultipleInstances?: false;
-  generationCapable?: false;  // Auto-adds 'generation' to settingScopes
-  settingScopes?: [];         // Scope IDs for provider wrapping + cross-panel discovery
+  consumesCapabilities?: [];  // What this panel needs to function (e.g. ['generation:scope'])
+  providesCapabilities?: [];  // What this panel provides to sub-panels
 
   // Settings
   defaultSettings?: {};
@@ -68,44 +68,54 @@ definePanel({
 });
 ```
 
-## Generation-Capable Panels
+## Capability Negotiation
 
-Panels that need their own generation scope (model, quality, settings) use `generationCapable`:
+Panels declare what they need (`consumesCapabilities`) and hosts declare what they provide
+(`providesCapabilities`). Two gates control visibility:
+
+1. **Policy gate** (`availableIn`): If set, the panel only appears in listed docks.
+2. **Technical gate** (`consumesCapabilities`): The host must provide every capability the panel consumes.
 
 ```typescript
+// Host panel — declares what it provides
 export default definePanel({
   id: 'prompt-authoring',
   title: 'Prompt Authoring',
   component: PromptAuthoringWorkbenchHost,
-  generationCapable: true,  // Gets own GenerationScopeProvider + ⚡ tab badge
+  consumesCapabilities: ['generation:scope'],   // needs generation context to function
+  providesCapabilities: ['generation:scope', 'prompt:family'],  // provides these to sub-panels
+  // ...
+});
+
+// Sub-panel — declares what it needs
+export default definePanel({
+  id: 'quickgen-settings',
+  title: 'QuickGen Settings',
+  component: QuickGenSettingsPanel,
+  consumesCapabilities: ['generation:scope'],   // auto-discovers into any generation-capable host
   // ...
 });
 ```
 
-This is shorthand for `settingScopes: ['generation']`. The framework:
-1. Wraps the panel with `GenerationScopeProvider` (via `ScopeHost`)
-2. Shows a ⚡ capability badge on the dockview tab
-3. Auto-includes other generation-scoped panels (like settings) in the right-click context menu
+### How it works
+
+- `consumesCapabilities: ['generation:scope']` auto-derives `settingScopes: ['generation']`
+  (the part before `:` becomes the scope ID)
+- The framework wraps the panel with the matching scope provider (e.g. `GenerationScopeProvider`)
+- Shows a ⚡ capability badge on the dockview tab
+- Panels sharing a capability with the host auto-appear in its right-click context menu
 
 Inside the panel component, use `useGenerationScopeStores()` to access the scoped stores.
 
-## Setting Scopes & Capability Badges
+### Capability Badges
 
-`settingScopes` declares which provider scopes a panel needs. The `ScopeHost` automatically
-wraps the panel with matching scope providers. Additionally:
-
-- **Context menu auto-inclusion**: When a dockview host has `settingScopes`, panels sharing
-  a scope are automatically available in its "Add Panel" context menu. No manual wiring needed.
-- **Tab badges**: Each scope can register a capability badge (icon + tooltip) via
-  `registerCapabilityBadge()` in `@lib/dockview/capabilityBadges.ts`. Badges appear on
-  dockview tabs next to the panel title.
+Each scope can register a badge (icon + tooltip) via `registerCapabilityBadge()`.
 
 Built-in badges:
 | Scope | Icon | Tooltip |
 |-------|------|---------|
 | `generation` | ⚡ | Generation-capable |
 
-To add a custom badge for a new scope:
 ```typescript
 import { registerCapabilityBadge } from '@lib/dockview/capabilityBadges';
 registerCapabilityBadge({ scopeId: 'analytics', icon: 'barChart', tooltip: 'Has analytics' });

@@ -12,6 +12,8 @@ export interface PanelLookupSource {
   get(id: string): PanelCategoryLookup | undefined;
   /** Return settingScopes for a panel definition (if available). */
   getSettingScopes?(id: string): string[] | undefined;
+  /** Return consumesCapabilities keys for a panel definition (if available). */
+  getConsumedCapabilityKeys?(id: string): string[] | undefined;
 }
 
 export interface ScopedOutOfLayoutOptions {
@@ -22,6 +24,8 @@ export interface ScopedOutOfLayoutOptions {
   allowedCategories?: string[];
   /** Setting scopes of the host panel. Panels sharing a scope are auto-included. */
   hostSettingScopes?: string[];
+  /** Capability keys the host provides. Panels whose consumesCapabilities are all satisfied are eligible. */
+  hostCapabilityKeys?: string[];
 }
 
 function applyScopedFilters(
@@ -84,7 +88,8 @@ export function resolveScopedPanelIds(
 
 /**
  * Resolve extra panel IDs that should appear in the context menu
- * because they share a settingScope with the host.
+ * because they share a settingScope with the host OR because their
+ * consumesCapabilities are satisfied by the host's providesCapabilities.
  *
  * These panels are addable via right-click but NOT auto-added to the layout.
  */
@@ -92,12 +97,15 @@ export function resolveScopeDiscoveredPanelIds(
   source: PanelLookupSource,
   options: ScopedOutOfLayoutOptions
 ): string[] {
-  const { hostSettingScopes, dockId } = options;
-  if (!hostSettingScopes?.length || !source.getSettingScopes) return [];
+  const { hostSettingScopes, hostCapabilityKeys, dockId } = options;
+  const hasScopeDiscovery = hostSettingScopes?.length && source.getSettingScopes;
+  const hasCapabilityDiscovery = hostCapabilityKeys?.length && source.getConsumedCapabilityKeys;
+  if (!hasScopeDiscovery && !hasCapabilityDiscovery) return [];
 
   const basePanelIds = resolveScopedPanelIds(source, options);
   const baseSet = new Set(basePanelIds);
-  const hostScopeSet = new Set(hostSettingScopes);
+  const hostScopeSet = hostSettingScopes ? new Set(hostSettingScopes) : new Set<string>();
+  const hostCapSet = hostCapabilityKeys ? new Set(hostCapabilityKeys) : new Set<string>();
   const extras: string[] = [];
 
   for (const panelId of source.getIds()) {
@@ -108,8 +116,24 @@ export function resolveScopeDiscoveredPanelIds(
     if (panel?.scopeDiscoverable === false) continue;
     if (panel?.orchestration?.type === 'dockview-container') continue;
 
-    const panelScopes = source.getSettingScopes(panelId);
-    if (panelScopes?.some((s) => hostScopeSet.has(s))) {
+    // Match by shared settingScopes (existing behavior)
+    let matched = false;
+    if (hasScopeDiscovery) {
+      const panelScopes = source.getSettingScopes!(panelId);
+      if (panelScopes?.some((s) => hostScopeSet.has(s))) {
+        matched = true;
+      }
+    }
+
+    // Match by capability negotiation: panel's consumesCapabilities all satisfied by host
+    if (!matched && hasCapabilityDiscovery) {
+      const needs = source.getConsumedCapabilityKeys!(panelId);
+      if (needs && needs.length > 0 && needs.every((cap) => hostCapSet.has(cap))) {
+        matched = true;
+      }
+    }
+
+    if (matched) {
       extras.push(panelId);
     }
   }

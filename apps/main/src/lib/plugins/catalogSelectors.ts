@@ -498,6 +498,12 @@ export const panelSelectors = {
     const panel = this.get(id);
     return panel?.settingScopes ?? undefined;
   },
+
+  getConsumedCapabilityKeys(id: string): string[] | undefined {
+    const panel = this.get(id);
+    if (!panel?.consumesCapabilities?.length) return undefined;
+    return panel.consumesCapabilities.map((d) => (typeof d === 'string' ? d : d.key));
+  },
 };
 
 // ============================================================================

@@ -47,8 +47,6 @@ import { JourneysView } from './appMap/JourneysView';
 import { loadArchitectureGraph, type GraphLoadSource } from './appMap/loadArchitectureGraph';
 import { PluginsView } from './appMap/PluginsView';
 import { RegistriesView } from './appMap/RegistriesView';
-import { StatsView } from './appMap/StatsView';
-
 // Other panels
 import { BackendArchitecturePanel } from './BackendArchitecturePanel';
 import { CapabilityTestingPanel } from './CapabilityTestingPanel';
@@ -117,7 +115,7 @@ class AppMapErrorBoundary extends Component<
 // Section Types
 // =============================================================================
 
-type SectionId = 'features' | 'plugins' | 'registries' | 'graph' | 'journeys' | 'testing' | 'stats' | 'backend';
+type SectionId = 'features' | 'plugins' | 'registries' | 'graph' | 'journeys' | 'testing' | 'backend';
 
 const SECTIONS = [
   {
@@ -136,7 +134,6 @@ const SECTIONS = [
     children: [
       { id: 'journeys' as SectionId, label: 'Journeys' },
       { id: 'testing' as SectionId, label: 'Testing' },
-      { id: 'stats' as SectionId, label: 'Statistics' },
       { id: 'backend' as SectionId, label: 'Backend' },
     ],
   },
@@ -297,7 +294,6 @@ export function AppMapPanel() {
   const pluginCounts = useMemo(() => getPluginCounts(displayedPlugins), [displayedPlugins]);
   const originCounts = useMemo(() => getOriginCounts(displayedPlugins), [displayedPlugins]);
   const pluginHealth = useMemo(() => getPluginHealth(displayedPlugins), [displayedPlugins]);
-  const featureUsageStats = useMemo(() => getFeatureUsageStats(displayedPlugins), [displayedPlugins]);
   const docsUrl = useMemo(() => {
     const envUrl = import.meta.env.VITE_DOCS_URL as string | undefined;
     if (envUrl && envUrl.trim()) {
@@ -395,7 +391,6 @@ export function AppMapPanel() {
           : allRoutes.length,
         pluginCounts,
         originCounts,
-        featureUsageStats,
       },
     };
 
@@ -507,6 +502,10 @@ export function AppMapPanel() {
                 onFamilyFilterChange={setFamilyFilter}
                 onOriginFilterChange={setOriginFilter}
                 onSearchQueryChange={setSearchQuery}
+                pluginCounts={pluginCounts}
+                originCounts={originCounts}
+                pluginHealth={pluginHealth}
+                featureCount={displayedFeatures.length}
               />
             )}
 
@@ -523,17 +522,6 @@ export function AppMapPanel() {
                 features={allFeatures}
                 routes={allRoutes}
                 actions={allActions}
-              />
-            )}
-
-            {activeSection === 'stats' && (
-              <StatsView
-                pluginCounts={pluginCounts}
-                originCounts={originCounts}
-                pluginHealth={pluginHealth}
-                featureUsageStats={featureUsageStats}
-                allFeatures={displayedFeatures}
-                allActions={useGraphFeatures ? [] : allActions}
               />
             )}
 
@@ -591,32 +579,6 @@ function getOriginCounts(
   });
 
   return counts;
-}
-
-function getFeatureUsageStats(
-  plugins: UnifiedPluginDescriptor[]
-): Record<string, { consumers: number; providers: number; total: number }> {
-  const stats: Record<string, { consumers: number; providers: number; total: number }> = {};
-
-  plugins.forEach((plugin) => {
-    plugin.consumesFeatures?.forEach((feature) => {
-      if (!stats[feature]) {
-        stats[feature] = { consumers: 0, providers: 0, total: 0 };
-      }
-      stats[feature].consumers++;
-      stats[feature].total++;
-    });
-
-    plugin.providesFeatures?.forEach((feature) => {
-      if (!stats[feature]) {
-        stats[feature] = { consumers: 0, providers: 0, total: 0 };
-      }
-      stats[feature].providers++;
-      stats[feature].total++;
-    });
-  });
-
-  return stats;
 }
 
 function getPluginHealth(plugins: UnifiedPluginDescriptor[]): {

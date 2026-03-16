@@ -10,7 +10,8 @@ export default definePanel({
   tags: ['prompts', 'authoring', 'versioning', 'editor', 'quickgen'],
   icon: 'gitBranch',
   description: 'Version-aware prompt authoring with integrated generation.',
-  generationCapable: true,
+  consumesCapabilities: ['generation:scope'],
+  providesCapabilities: ['generation:scope', 'prompt:family'],
   supportsCompactMode: false,
   supportsMultipleInstances: false,
   orchestration: {

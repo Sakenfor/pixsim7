@@ -1,5 +1,6 @@
-import { definePanel } from '../../../lib/definePanel';
 import { QuickGeneratePanel } from '@features/panels/components/helpers';
+
+import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'quickGenerate',
@@ -10,7 +11,7 @@ export default definePanel({
   icon: 'sparkles',
   description: 'Quick generation panel that adapts to current context (asset or scene)',
   availableIn: ['asset-viewer'],
-  settingScopes: ['generation'],
+  consumesCapabilities: ['generation:scope'],
   showWhen: (context) => !!(context.currentAsset || context.currentSceneId),
   requiresContext: true,
   defaultSettings: {},

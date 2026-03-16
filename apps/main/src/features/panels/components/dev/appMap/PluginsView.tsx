@@ -1,7 +1,8 @@
 /**
  * PluginsView - Plugin Ecosystem tab for App Map
  *
- * Shows all registered plugins with filtering by family and origin.
+ * Shows all registered plugins with filtering by family and origin,
+ * plus a collapsible summary header with aggregate stats (formerly the Statistics tab).
  */
 
 import { FilterPillGroup, SearchInput } from '@pixsim7/shared.ui';
@@ -14,6 +15,20 @@ import type {
   UnifiedPluginOrigin,
 } from '@lib/plugins/types';
 
+interface PluginHealthSummary {
+  totalPlugins: number;
+  metadataHealth: {
+    withDescription: number;
+    withCategory: number;
+    withTags: number;
+    withVersion: number;
+  };
+  issues: {
+    experimental: number;
+    deprecated: number;
+  };
+}
+
 interface PluginsViewProps {
   allPlugins: UnifiedPluginDescriptor[];
   filteredPlugins: UnifiedPluginDescriptor[];
@@ -23,6 +38,11 @@ interface PluginsViewProps {
   onFamilyFilterChange: (family: UnifiedPluginFamily | 'all') => void;
   onOriginFilterChange: (origin: UnifiedPluginOrigin | 'all') => void;
   onSearchQueryChange: (query: string) => void;
+  // Stats (absorbed from StatsView)
+  pluginCounts: Record<string, number>;
+  originCounts: Record<string, number>;
+  pluginHealth: PluginHealthSummary;
+  featureCount: number;
 }
 
 const PLUGIN_ORIGINS: Array<UnifiedPluginOrigin | 'all'> = [
@@ -53,7 +73,13 @@ export function PluginsView({
   onFamilyFilterChange,
   onOriginFilterChange,
   onSearchQueryChange,
+  pluginCounts,
+  originCounts,
+  pluginHealth,
+  featureCount,
 }: PluginsViewProps) {
+  const [showStats, setShowStats] = useState(false);
+
   const familyOptions = useMemo(() => {
     const families = Array.from(new Set(allPlugins.map((plugin) => plugin.family))).sort();
     return ['all', ...families] as Array<UnifiedPluginFamily | 'all'>;
@@ -61,6 +87,71 @@ export function PluginsView({
 
   return (
     <div className="flex flex-col h-full">
+      {/* Compact stats bar */}
+      <div className="border-b border-neutral-200 dark:border-neutral-700 px-4 py-2 flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400">
+        <span><strong className="text-neutral-700 dark:text-neutral-200">{pluginHealth.totalPlugins}</strong> plugins</span>
+        <span><strong className="text-neutral-700 dark:text-neutral-200">{featureCount}</strong> features</span>
+        <span><strong className="text-neutral-700 dark:text-neutral-200">{Object.keys(pluginCounts).length}</strong> families</span>
+        {pluginHealth.issues.experimental > 0 && (
+          <span className="px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300">
+            {pluginHealth.issues.experimental} experimental
+          </span>
+        )}
+        {pluginHealth.issues.deprecated > 0 && (
+          <span className="px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300">
+            {pluginHealth.issues.deprecated} deprecated
+          </span>
+        )}
+        <button
+          onClick={() => setShowStats((v) => !v)}
+          className="ml-auto text-[10px] text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300"
+        >
+          {showStats ? 'Hide details' : 'Details'}
+        </button>
+      </div>
+
+      {/* Expandable stats details */}
+      {showStats && (
+        <div className="border-b border-neutral-200 dark:border-neutral-700 px-4 py-3 space-y-3 bg-neutral-50/50 dark:bg-neutral-900/50">
+          {/* By family */}
+          <div>
+            <div className="text-[10px] font-semibold uppercase text-neutral-400 dark:text-neutral-500 mb-1">By Family</div>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+              {Object.entries(pluginCounts)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([family, count]) => (
+                  <span key={family} className="text-neutral-600 dark:text-neutral-400">
+                    {family} <strong className="text-neutral-800 dark:text-neutral-200">{count}</strong>
+                  </span>
+                ))}
+            </div>
+          </div>
+          {/* By origin */}
+          <div>
+            <div className="text-[10px] font-semibold uppercase text-neutral-400 dark:text-neutral-500 mb-1">By Origin</div>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+              {Object.entries(originCounts)
+                .filter(([, count]) => count > 0)
+                .map(([origin, count]) => (
+                  <span key={origin} className="text-neutral-600 dark:text-neutral-400">
+                    {origin} <strong className="text-neutral-800 dark:text-neutral-200">{count}</strong>
+                  </span>
+                ))}
+            </div>
+          </div>
+          {/* Metadata health */}
+          <div>
+            <div className="text-[10px] font-semibold uppercase text-neutral-400 dark:text-neutral-500 mb-1">Metadata Health</div>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-neutral-600 dark:text-neutral-400">
+              <span>description: {pluginHealth.metadataHealth.withDescription}/{pluginHealth.totalPlugins}</span>
+              <span>category: {pluginHealth.metadataHealth.withCategory}/{pluginHealth.totalPlugins}</span>
+              <span>tags: {pluginHealth.metadataHealth.withTags}/{pluginHealth.totalPlugins}</span>
+              <span>version: {pluginHealth.metadataHealth.withVersion}/{pluginHealth.totalPlugins}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="border-b border-neutral-200 dark:border-neutral-700 p-4 space-y-3">
         {/* Search */}
@@ -153,7 +244,7 @@ function PluginCard({ plugin }: { plugin: UnifiedPluginDescriptor }) {
               </p>
             )}
           </div>
-          <span className="text-neutral-400">{expanded ? '▼' : '▶'}</span>
+          <span className="text-neutral-400">{expanded ? '\u25BC' : '\u25B6'}</span>
         </div>
       </button>
 

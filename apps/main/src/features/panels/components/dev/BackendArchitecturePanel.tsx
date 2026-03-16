@@ -1,7 +1,7 @@
 import { FilterPillGroup } from "@pixsim7/shared.ui";
 import React, { useState, useEffect } from "react";
 
-import { BACKEND_BASE } from "@lib/api/client";
+import { API_BASE_URL } from "@lib/api/client";
 
 interface BackendArchitectureData {
   version: string;
@@ -61,7 +61,7 @@ export function BackendArchitecturePanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<
-    "services" | "routes" | "capabilities" | "permissions"
+    "services" | "capabilities"
   >("services");
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export function BackendArchitecturePanel() {
   const fetchArchitectureData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${BACKEND_BASE}/dev/architecture/map`);
+      const response = await fetch(`${API_BASE_URL}/dev/architecture/map`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -160,9 +160,7 @@ export function BackendArchitecturePanel() {
         <FilterPillGroup
           options={[
             { value: 'services' as const, label: 'Service Composition' },
-            { value: 'routes' as const, label: 'Routes & Capabilities' },
             { value: 'capabilities' as const, label: 'Capability APIs' },
-            { value: 'permissions' as const, label: 'Permission Matrix' },
           ]}
           value={activeView}
           onChange={(v) => v && setActiveView(v)}
@@ -172,14 +170,8 @@ export function BackendArchitecturePanel() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {activeView === "services" && <ServicesView services={data.services} />}
-        {activeView === "routes" && (
-          <RoutesView routes={data.routes} plugins={data.plugins} />
-        )}
         {activeView === "capabilities" && (
           <CapabilitiesView capabilities={data.capabilities} />
-        )}
-        {activeView === "permissions" && (
-          <PermissionsView plugins={data.plugins} metrics={data.metrics} />
         )}
       </div>
     </div>
@@ -287,128 +279,6 @@ function ServicesView({ services }: ServicesViewProps) {
 }
 
 // ============================================================================
-// Routes View
-// ============================================================================
-
-interface RoutesViewProps {
-  routes: BackendArchitectureData["routes"];
-  plugins: BackendArchitectureData["plugins"];
-}
-
-function RoutesView({ routes, plugins }: RoutesViewProps) {
-  // Group routes by tag
-  const routesByTag: Record<string, typeof routes> = {};
-  routes.forEach((route) => {
-    route.tags.forEach((tag) => {
-      if (!routesByTag[tag]) routesByTag[tag] = [];
-      routesByTag[tag].push(route);
-    });
-  });
-
-  const tags = Object.keys(routesByTag).sort();
-
-  // Find plugin for a given route path
-  const findPluginForRoute = (path: string) => {
-    // Simple heuristic: match path prefix to plugin ID
-    return plugins.find(
-      (p) => path.includes(p.id.replace("_", "-")) || path.includes(p.id),
-    );
-  };
-
-  return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
-          API Routes & Plugin Mapping
-        </h3>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-          All registered FastAPI routes grouped by tag, with plugin permissions.
-        </p>
-      </div>
-
-      <div className="space-y-6">
-        {tags.map((tag) => (
-          <div key={tag}>
-            <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-2 flex items-center gap-2">
-              <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-xs">
-                {tag}
-              </span>
-              <span className="text-neutral-500 dark:text-neutral-400">
-                ({routesByTag[tag].length} routes)
-              </span>
-            </h4>
-            <div className="space-y-1">
-              {routesByTag[tag].map((route, idx) => {
-                const plugin = findPluginForRoute(route.path);
-                return (
-                  <div
-                    key={idx}
-                    className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-md border border-neutral-200 dark:border-neutral-700"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex gap-1">
-                        {route.methods.map((method) => (
-                          <span
-                            key={method}
-                            className={`px-2 py-0.5 rounded text-xs font-mono font-semibold ${
-                              method === "GET"
-                                ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
-                                : method === "POST"
-                                  ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
-                                  : method === "PUT" || method === "PATCH"
-                                    ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300"
-                                    : method === "DELETE"
-                                      ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300"
-                                      : "bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
-                            }`}
-                          >
-                            {method}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <code className="text-sm font-mono text-neutral-900 dark:text-neutral-100">
-                          {route.path}
-                        </code>
-                        {plugin && (
-                          <div className="mt-1 flex items-center gap-2">
-                            <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                              Plugin: {plugin.name}
-                            </span>
-                            {plugin.permissions.length > 0 && (
-                              <div className="flex gap-1 flex-wrap">
-                                {plugin.permissions.map((perm) => (
-                                  <span
-                                    key={perm}
-                                    className="text-xs px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded font-mono"
-                                  >
-                                    {perm}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {routes.length === 0 && (
-        <div className="text-center py-12 text-neutral-500 dark:text-neutral-400">
-          No routes found
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================================
 // Capabilities View
 // ============================================================================
 
@@ -493,111 +363,6 @@ function CapabilitiesView({ capabilities }: CapabilitiesViewProps) {
       {capabilities.length === 0 && (
         <div className="text-center py-12 text-neutral-500 dark:text-neutral-400">
           No capabilities found
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================================
-// Permissions View
-// ============================================================================
-
-interface PermissionsViewProps {
-  plugins: BackendArchitectureData["plugins"];
-  metrics: BackendArchitectureData["metrics"];
-}
-
-function PermissionsView({ plugins, metrics }: PermissionsViewProps) {
-  // Get all unique permissions
-  const allPermissions = Array.from(
-    new Set(plugins.flatMap((p) => p.permissions)),
-  ).sort();
-
-  // Build permission matrix
-  const matrix: Array<{
-    permission: string;
-    count: number;
-    plugins: string[];
-  }> = allPermissions.map((perm) => ({
-    permission: perm,
-    count: metrics.permission_usage[perm] || 0,
-    plugins: plugins
-      .filter((p) => p.permissions.includes(perm))
-      .map((p) => p.name),
-  }));
-
-  return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
-          Permission Matrix
-        </h3>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-          Shows which permissions are declared by which plugins. PluginContext
-          checks these permissions before allowing capability API operations.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <MetricCard
-          label="Unique Permissions"
-          value={metrics.unique_permissions}
-          sublabel="declared"
-          icon="🔐"
-        />
-        <MetricCard
-          label="Total Uses"
-          value={Object.values(metrics.permission_usage).reduce(
-            (a, b) => a + b,
-            0,
-          )}
-          sublabel="across plugins"
-          icon="📊"
-        />
-        <MetricCard
-          label="Modernized Plugins"
-          value={metrics.modernized_plugins}
-          sublabel={`of ${metrics.total_plugins}`}
-          icon="✅"
-        />
-      </div>
-
-      <div className="space-y-2">
-        {matrix
-          .sort((a, b) => b.count - a.count)
-          .map((item) => (
-            <div
-              key={item.permission}
-              className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-md border border-neutral-200 dark:border-neutral-700"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-3">
-                  <code className="text-sm font-mono font-semibold text-neutral-900 dark:text-neutral-100">
-                    {item.permission}
-                  </code>
-                  <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
-                    {item.count} {item.count === 1 ? "plugin" : "plugins"}
-                  </span>
-                </div>
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                {item.plugins.map((plugin) => (
-                  <span
-                    key={plugin}
-                    className="text-xs px-2 py-1 bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded"
-                  >
-                    {plugin}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ))}
-      </div>
-
-      {allPermissions.length === 0 && (
-        <div className="text-center py-12 text-neutral-500 dark:text-neutral-400">
-          No permissions found
         </div>
       )}
     </div>

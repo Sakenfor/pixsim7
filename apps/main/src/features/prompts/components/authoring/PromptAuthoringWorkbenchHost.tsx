@@ -4,7 +4,7 @@
  * Top-level component for the standalone Prompt Authoring panel.
  * Wraps QuickGenWidget + PromptAuthoringProvider + PanelHostDockview.
  *
- * The panel definition has `generationCapable: true` which provides the
+ * The panel definition has `consumesCapabilities: ['generation:scope']` which provides the
  * generation scope. QuickGenWidget owns that scope and capability bridge;
  * PromptAuthoringProvider lives inside it so authoring text uses the same
  * canonical generation prompt state as quickgen.

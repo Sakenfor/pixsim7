@@ -1,5 +1,6 @@
-import { definePanel } from '../../../lib/definePanel';
 import { MediaPanel } from '@/components/media/viewer/panels/MediaPanel';
+
+import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'media-preview',
@@ -12,5 +13,5 @@ export default definePanel({
   availableIn: ['asset-viewer'],
   supportsCompactMode: false,
   supportsMultipleInstances: true,
-  settingScopes: ['preview'],
+  consumesCapabilities: ['preview:scope'],
 });
