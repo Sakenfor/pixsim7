@@ -1,9 +1,8 @@
 """
 Dev Plans API — DB-first plan management.
 
-The DB (PlanRegistry) is the primary authority for plan state and content.
-Filesystem markdown is a convenience export committed to git for history.
-On first access, plans are auto-bootstrapped from filesystem into DB.
+Plans are backed by Document (shared fields) + PlanRegistry (plan-specific fields).
+The DB is authoritative. Filesystem markdown is a convenience export.
 """
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -21,12 +20,15 @@ from pixsim7.backend.main.services.docs.plan_sync import (
     sync_plans,
 )
 from pixsim7.backend.main.services.docs.plan_write import (
+    PlanBundle,
     PlanNotFoundError,
     PlanWriteError,
+    export_plan_to_disk,
     get_active_assignment,
+    get_plan_bundle,
     get_plan_documents,
-    get_plan_from_db,
-    list_plans_from_db,
+    list_plan_bundles,
+    make_document_id,
     update_plan,
 )
 
@@ -36,9 +38,20 @@ router = APIRouter(prefix="/dev/plans", tags=["dev", "plans"])
 # ── Response models ──────────────────────────────────────────────
 
 
+class PlanChildSummary(BaseModel):
+    """Minimal child plan reference."""
+    id: str
+    title: str
+    status: str
+    stage: str
+    priority: str
+
+
 class PlanSummary(BaseModel):
     """Compact plan entry for list responses."""
     id: str
+    documentId: Optional[str] = None
+    parentId: Optional[str] = None
     title: str
     status: str
     stage: str
@@ -47,29 +60,32 @@ class PlanSummary(BaseModel):
     priority: str
     summary: str
     scope: str
+    planType: str = "feature"
+    visibility: str = "public"
+    target: Optional[Dict] = None
+    checkpoints: Optional[List[Dict]] = None
     codePaths: List[str] = Field(default_factory=list)
     companions: List[str] = Field(default_factory=list)
     handoffs: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     dependsOn: List[str] = Field(default_factory=list)
+    children: List[PlanChildSummary] = Field(default_factory=list)
 
 
 class PlansIndexResponse(BaseModel):
-    """All plans with manifest metadata."""
     version: str
     generatedAt: Optional[str] = None
     plans: List[PlanSummary] = Field(default_factory=list)
 
 
 class PlanDetailResponse(PlanSummary):
-    """Single plan with full markdown content."""
     planPath: str = ""
     markdown: str = ""
 
 
 class PlanRegistryEntry(BaseModel):
-    """DB-backed plan registry entry."""
     id: str
+    documentId: Optional[str] = None
     title: str
     status: str
     stage: str
@@ -170,45 +186,68 @@ class PlanSyncRetentionResponse(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────────
 
 
-def _entry_to_summary(entry) -> dict:
-    return {
-        "id": entry.id,
-        "title": entry.title,
-        "status": entry.status,
-        "stage": entry.stage,
-        "owner": entry.owner,
-        "lastUpdated": entry.last_updated,
-        "priority": entry.priority,
-        "summary": entry.summary,
-        "scope": entry.scope,
-        "codePaths": entry.code_paths,
-        "companions": entry.companions,
-        "handoffs": entry.handoffs,
-        "tags": entry.tags,
-        "dependsOn": entry.depends_on,
+def _bundle_to_summary(b: PlanBundle, children: Optional[List[PlanBundle]] = None) -> dict:
+    """Build summary dict from PlanBundle (Document + PlanRegistry)."""
+    doc, plan = b.doc, b.plan
+    result = {
+        "id": plan.id,
+        "documentId": doc.id,
+        "parentId": plan.parent_id,
+        "title": doc.title,
+        "status": doc.status,
+        "stage": plan.stage,
+        "owner": doc.owner,
+        "lastUpdated": (plan.updated_at or doc.updated_at).date().isoformat() if (plan.updated_at or doc.updated_at) else "",
+        "priority": plan.priority,
+        "summary": doc.summary or "",
+        "scope": plan.scope,
+        "planType": plan.plan_type,
+        "visibility": doc.visibility,
+        "target": plan.target,
+        "checkpoints": plan.checkpoints,
+        "codePaths": plan.code_paths or [],
+        "companions": plan.companions or [],
+        "handoffs": plan.handoffs or [],
+        "tags": doc.tags or [],
+        "dependsOn": plan.depends_on or [],
+        "children": [],
     }
+    if children:
+        result["children"] = [
+            {
+                "id": c.id,
+                "title": c.doc.title,
+                "status": c.doc.status,
+                "stage": c.plan.stage,
+                "priority": c.plan.priority,
+            }
+            for c in children
+        ]
+    return result
 
 
-def _row_to_registry_entry(row: PlanRegistry) -> dict:
+def _bundle_to_registry_entry(b: PlanBundle) -> dict:
+    doc, plan = b.doc, b.plan
     return {
-        "id": row.id,
-        "title": row.title,
-        "status": row.status,
-        "stage": row.stage,
-        "owner": row.owner,
-        "revision": row.revision,
-        "priority": row.priority,
-        "summary": row.summary,
-        "scope": row.scope,
-        "codePaths": row.code_paths or [],
-        "companions": row.companions or [],
-        "handoffs": row.handoffs or [],
-        "tags": row.tags or [],
-        "dependsOn": row.depends_on or [],
-        "manifestHash": row.manifest_hash,
-        "lastSyncedAt": row.last_synced_at.isoformat() if row.last_synced_at else None,
-        "createdAt": row.created_at.isoformat() if row.created_at else None,
-        "updatedAt": row.updated_at.isoformat() if row.updated_at else None,
+        "id": plan.id,
+        "documentId": doc.id,
+        "title": doc.title,
+        "status": doc.status,
+        "stage": plan.stage,
+        "owner": doc.owner,
+        "revision": doc.revision,
+        "priority": plan.priority,
+        "summary": doc.summary or "",
+        "scope": plan.scope,
+        "codePaths": plan.code_paths or [],
+        "companions": plan.companions or [],
+        "handoffs": plan.handoffs or [],
+        "tags": doc.tags or [],
+        "dependsOn": plan.depends_on or [],
+        "manifestHash": plan.manifest_hash,
+        "lastSyncedAt": plan.last_synced_at.isoformat() if plan.last_synced_at else None,
+        "createdAt": plan.created_at.isoformat() if plan.created_at else None,
+        "updatedAt": plan.updated_at.isoformat() if plan.updated_at else None,
     }
 
 
@@ -246,30 +285,7 @@ def _run_to_entry(run: PlanSyncRun) -> dict:
     }
 
 
-# ── DB-first endpoints ───────────────────────────────────────────
-
-
-def _row_to_summary(row: PlanRegistry) -> dict:
-    return {
-        "id": row.id,
-        "title": row.title,
-        "status": row.status,
-        "stage": row.stage,
-        "owner": row.owner,
-        "lastUpdated": row.updated_at.date().isoformat() if row.updated_at else "",
-        "priority": row.priority,
-        "summary": row.summary,
-        "scope": row.scope,
-        "planType": row.plan_type,
-        "visibility": row.visibility,
-        "target": row.target,
-        "checkpoints": row.checkpoints,
-        "codePaths": row.code_paths or [],
-        "companions": row.companions or [],
-        "handoffs": row.handoffs or [],
-        "tags": row.tags or [],
-        "dependsOn": row.depends_on or [],
-    }
+# ── List endpoint ─────────────────────────────────────────────────
 
 
 @router.get("", response_model=PlansIndexResponse)
@@ -279,15 +295,22 @@ async def list_plans(
     refresh: bool = Query(False),
     db: AsyncSession = Depends(get_database),
 ):
-    rows = await list_plans_from_db(db)
+    bundles = await list_plan_bundles(db)
+
+    # Build parent->children index
+    children_map: dict[str, list[PlanBundle]] = {}
+    for b in bundles:
+        pid = b.plan.parent_id
+        if pid:
+            children_map.setdefault(pid, []).append(b)
 
     plans = []
-    for row in sorted(rows, key=lambda r: r.id):
-        if status and row.status != status:
+    for b in sorted(bundles, key=lambda b: b.id):
+        if status and b.doc.status != status:
             continue
-        if owner and owner.lower() not in row.owner.lower():
+        if owner and owner.lower() not in b.doc.owner.lower():
             continue
-        plans.append(_row_to_summary(row))
+        plans.append(_bundle_to_summary(b, children=children_map.get(b.id)))
 
     return {
         "version": "1",
@@ -296,7 +319,7 @@ async def list_plans(
     }
 
 
-# ── DB-backed endpoints (before catch-all /{plan_id}) ────────────
+# ── Sync endpoints ────────────────────────────────────────────────
 
 
 @router.post("/sync", response_model=SyncResultResponse)
@@ -305,7 +328,6 @@ async def trigger_sync(
     commit_sha: Optional[str] = Query(None, description="Current git commit SHA"),
     db: AsyncSession = Depends(get_database),
 ):
-    """Sync filesystem manifests into the DB, detecting and recording changes."""
     actor_id = getattr(_admin, "id", None)
     actor = f"user:{actor_id}" if actor_id is not None else "user:unknown"
     try:
@@ -351,11 +373,7 @@ async def run_sync_retention(
     db: AsyncSession = Depends(get_database),
 ):
     try:
-        result = await prune_plan_sync_history(
-            db,
-            retention_days=days,
-            dry_run=dry_run,
-        )
+        result = await prune_plan_sync_history(db, retention_days=days, dry_run=dry_run)
     except PlanSyncLockedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
@@ -381,21 +399,24 @@ async def get_sync_run(
     return _run_to_entry(row)
 
 
+# ── Registry endpoints ────────────────────────────────────────────
+
+
 @router.get("/registry", response_model=PlanRegistryListResponse)
 async def list_registry(
     status: Optional[str] = Query(None),
     owner: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_database),
 ):
-    """List all plans from the DB registry."""
-    stmt = select(PlanRegistry).order_by(PlanRegistry.id)
-    if status:
-        stmt = stmt.where(PlanRegistry.status == status)
-    if owner:
-        stmt = stmt.where(PlanRegistry.owner.ilike(f"%{owner}%"))
-
-    rows = (await db.execute(stmt)).scalars().all()
-    return {"plans": [_row_to_registry_entry(r) for r in rows]}
+    bundles = await list_plan_bundles(db)
+    result = []
+    for b in sorted(bundles, key=lambda b: b.id):
+        if status and b.doc.status != status:
+            continue
+        if owner and owner.lower() not in b.doc.owner.lower():
+            continue
+        result.append(_bundle_to_registry_entry(b))
+    return {"plans": result}
 
 
 @router.get("/registry/{plan_id}", response_model=PlanRegistryEntry)
@@ -403,11 +424,10 @@ async def get_registry_plan(
     plan_id: str,
     db: AsyncSession = Depends(get_database),
 ):
-    """Get a single plan from the DB registry."""
-    row = await db.get(PlanRegistry, plan_id)
-    if not row:
+    bundle = await get_plan_bundle(db, plan_id)
+    if not bundle:
         raise HTTPException(status_code=404, detail=f"Plan not in registry: {plan_id}")
-    return _row_to_registry_entry(row)
+    return _bundle_to_registry_entry(bundle)
 
 
 @router.get("/registry/{plan_id}/events", response_model=PlanEventsResponse)
@@ -417,9 +437,8 @@ async def get_plan_events(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_database),
 ):
-    """Get the event audit trail for a specific plan."""
-    row = await db.get(PlanRegistry, plan_id)
-    if not row:
+    plan = await db.get(PlanRegistry, plan_id)
+    if not plan:
         raise HTTPException(status_code=404, detail=f"Plan not in registry: {plan_id}")
 
     stmt = (
@@ -456,8 +475,8 @@ async def get_activity(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_database),
 ):
-    """Unified activity feed across all plans."""
     from datetime import datetime, timedelta, timezone
+    from pixsim7.backend.main.domain.docs.models import Document
 
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=days)
 
@@ -469,15 +488,15 @@ async def get_activity(
     )
     events = (await db.execute(stmt)).scalars().all()
 
-    # Batch-fetch plan titles
+    # Batch-fetch plan titles from Documents via PlanRegistry
     plan_ids = {ev.plan_id for ev in events}
     titles: dict[str, str] = {}
     if plan_ids:
         rows = (
             await db.execute(
-                select(PlanRegistry.id, PlanRegistry.title).where(
-                    PlanRegistry.id.in_(plan_ids)
-                )
+                select(PlanRegistry.id, Document.title)
+                .join(Document, PlanRegistry.document_id == Document.id)
+                .where(PlanRegistry.id.in_(plan_ids))
             )
         ).all()
         titles = {r[0]: r[1] for r in rows}
@@ -494,7 +513,6 @@ async def get_activity(
 
 
 class PlanCreateRequest(BaseModel):
-    """Create a new plan."""
     id: str = Field(..., min_length=1, max_length=120, description="Unique plan ID (slug)")
     title: str = Field(..., min_length=1, max_length=255)
     plan_type: str = Field("feature", description="proposal | feature | bugfix | refactor | exploration | task")
@@ -508,10 +526,12 @@ class PlanCreateRequest(BaseModel):
     visibility: str = Field("public", description="private | shared | public")
     tags: Optional[List[str]] = Field(None)
     code_paths: Optional[List[str]] = Field(None)
+    parent_id: Optional[str] = Field(None, description="Parent plan ID for sub-plans")
 
 
 class PlanCreateResponse(BaseModel):
     planId: str
+    documentId: str
     created: bool
     commitSha: Optional[str] = None
 
@@ -522,55 +542,76 @@ async def create_plan(
     _admin: CurrentAdminUser,
     db: AsyncSession = Depends(get_database),
 ):
-    """Create a new plan in the DB. Optionally exports to filesystem + git."""
-    from pixsim7.backend.main.domain.docs.models import PlanRegistry
-    from pixsim7.backend.main.services.docs.plan_write import _export_plan_to_disk, _git_commit
+    """Create a new plan: Document (shared fields) + PlanRegistry (plan-specific)."""
+    from pixsim7.backend.main.domain.docs.models import Document, PlanRegistry
+    from pixsim7.backend.main.services.docs.plan_write import _git_commit
+    from pixsim7.backend.main.shared.datetime_utils import utcnow
 
     # Check for duplicate
     existing = await db.get(PlanRegistry, payload.id)
     if existing:
         raise HTTPException(status_code=409, detail=f"Plan already exists: {payload.id}")
 
-    from pixsim7.backend.main.shared.datetime_utils import utcnow
     now = utcnow()
+    doc_id = make_document_id(payload.id)
 
-    row = PlanRegistry(
-        id=payload.id,
+    # Create Document (shared fields)
+    doc = Document(
+        id=doc_id,
+        doc_type="plan",
         title=payload.title,
-        plan_type=payload.plan_type,
         status=payload.status,
-        stage=payload.stage,
         owner=payload.owner,
-        priority=payload.priority,
         summary=payload.summary,
         markdown=payload.markdown,
-        task_scope=payload.task_scope,
+        user_id=getattr(_admin, "id", None),
         visibility=payload.visibility,
         tags=payload.tags or [],
-        code_paths=payload.code_paths or [],
-        scope=payload.status if payload.status in ("active", "done", "parked") else "active",
         revision=1,
         created_at=now,
         updated_at=now,
     )
-    db.add(row)
+    db.add(doc)
+    await db.flush()
+
+    # Validate parent exists if specified
+    if payload.parent_id:
+        parent = await db.get(PlanRegistry, payload.parent_id)
+        if not parent:
+            raise HTTPException(status_code=400, detail=f"Parent plan not found: {payload.parent_id}")
+
+    # Create PlanRegistry (plan-specific fields)
+    plan = PlanRegistry(
+        id=payload.id,
+        document_id=doc_id,
+        parent_id=payload.parent_id,
+        plan_type=payload.plan_type,
+        stage=payload.stage,
+        priority=payload.priority,
+        task_scope=payload.task_scope,
+        code_paths=payload.code_paths or [],
+        scope=payload.status if payload.status in ("active", "done", "parked") else "active",
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(plan)
     await db.commit()
 
     # Export to filesystem + git for dev plans
     commit_sha = None
     if payload.task_scope == "plan":
         try:
-            paths = _export_plan_to_disk(row)
+            bundle = PlanBundle(plan=plan, doc=doc)
+            paths = export_plan_to_disk(bundle)
             actor_id = getattr(_admin, "id", None)
             commit_sha = _git_commit(paths, f"plan({payload.id}): created\n\nActor: user:{actor_id}")
         except Exception:
-            pass  # DB is the authority, filesystem is convenience
+            pass  # DB is the authority
 
-    return PlanCreateResponse(planId=row.id, created=True, commitSha=commit_sha)
+    return PlanCreateResponse(planId=plan.id, documentId=doc_id, created=True, commitSha=commit_sha)
 
 
 class PlanUpdateRequest(BaseModel):
-    """Partial update for plan fields."""
     status: Optional[str] = Field(None, description="active | parked | done | blocked")
     stage: Optional[str] = Field(None, description="Free-form stage label")
     owner: Optional[str] = Field(None, description="Owner / lane")
@@ -585,56 +626,6 @@ class PlanUpdateResponse(BaseModel):
     newScope: Optional[str] = None
 
 
-class AgentPlanDocument(BaseModel):
-    docType: str
-    path: str
-    title: str
-    markdown: Optional[str] = None
-
-
-class AgentPlanContext(BaseModel):
-    """Full plan context for an AI agent."""
-    id: str
-    title: str
-    status: str
-    stage: str
-    owner: str
-    priority: str
-    summary: str
-    markdown: Optional[str] = None
-    codePaths: List[str] = Field(default_factory=list)
-    companions: List[str] = Field(default_factory=list)
-    handoffs: List[str] = Field(default_factory=list)
-    tags: List[str] = Field(default_factory=list)
-    dependsOn: List[str] = Field(default_factory=list)
-    documents: List[AgentPlanDocument] = Field(default_factory=list)
-
-
-class AgentPlanSummary(BaseModel):
-    """Compact plan summary for agent awareness of other plans."""
-    id: str
-    title: str
-    status: str
-    stage: str
-    owner: str
-    priority: str
-    summary: str
-    dependsOn: List[str] = Field(default_factory=list)
-
-
-class AgentContextResponse(BaseModel):
-    """Everything an AI agent needs to start working on a plan."""
-    assignment: Optional[AgentPlanContext] = Field(
-        None, description="The plan the agent should work on (highest priority active)"
-    )
-    activePlans: List[AgentPlanSummary] = Field(
-        default_factory=list, description="All active plans for dependency awareness"
-    )
-    availableActions: List[Dict[str, str]] = Field(
-        default_factory=list, description="API actions the agent can take"
-    )
-
-
 @router.patch("/update/{plan_id}", response_model=PlanUpdateResponse)
 async def update_plan_endpoint(
     plan_id: str,
@@ -642,10 +633,6 @@ async def update_plan_endpoint(
     _admin: CurrentAdminUser,
     db: AsyncSession = Depends(get_database),
 ):
-    """Update plan status, stage, owner, priority, or summary.
-
-    Writes to manifest.yaml, commits to git, and updates DB + events.
-    """
     updates = {k: v for k, v in payload.dict().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -670,43 +657,83 @@ async def update_plan_endpoint(
     )
 
 
+# ── Agent context ─────────────────────────────────────────────────
+
+
+class AgentPlanDocument(BaseModel):
+    docType: str
+    path: str
+    title: str
+    markdown: Optional[str] = None
+
+
+class AgentPlanContext(BaseModel):
+    id: str
+    documentId: Optional[str] = None
+    title: str
+    status: str
+    stage: str
+    owner: str
+    priority: str
+    summary: str
+    markdown: Optional[str] = None
+    codePaths: List[str] = Field(default_factory=list)
+    companions: List[str] = Field(default_factory=list)
+    handoffs: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
+    dependsOn: List[str] = Field(default_factory=list)
+    documents: List[AgentPlanDocument] = Field(default_factory=list)
+
+
+class AgentPlanSummary(BaseModel):
+    id: str
+    title: str
+    status: str
+    stage: str
+    owner: str
+    priority: str
+    summary: str
+    dependsOn: List[str] = Field(default_factory=list)
+
+
+class AgentContextResponse(BaseModel):
+    assignment: Optional[AgentPlanContext] = None
+    activePlans: List[AgentPlanSummary] = Field(default_factory=list)
+    availableActions: List[Dict[str, str]] = Field(default_factory=list)
+    discovery: Dict[str, str] = Field(
+        default_factory=lambda: {
+            "metaContracts": "/api/v1/meta/contracts",
+            "hint": "GET /api/v1/meta/contracts for full API surface discovery across all domains (prompts, blocks, plans, codegen, ui, assistant).",
+        }
+    )
+
+
 @router.get("/agent-context", response_model=AgentContextResponse)
 async def get_agent_context(
     plan_id: Optional[str] = Query(None, description="Request a specific plan instead of auto-assignment"),
     db: AsyncSession = Depends(get_database),
 ):
-    """Full context for an AI agent to work on a plan.
+    all_bundles = await list_plan_bundles(db)
 
-    Returns:
-    - **assignment**: The plan to work on (with full markdown + companion/handoff docs)
-    - **activePlans**: All active plans for dependency awareness
-    - **availableActions**: API endpoints the agent can call to update plan state
-    """
-    # Get all plans from DB (auto-bootstraps if needed)
-    all_rows = await list_plans_from_db(db)
-
-    # Active plans summary
     active_plans = [
         AgentPlanSummary(
-            id=r.id, title=r.title, status=r.status, stage=r.stage,
-            owner=r.owner, priority=r.priority, summary=r.summary,
-            dependsOn=r.depends_on or [],
+            id=b.id, title=b.doc.title, status=b.doc.status, stage=b.plan.stage,
+            owner=b.doc.owner, priority=b.plan.priority, summary=b.doc.summary or "",
+            dependsOn=b.plan.depends_on or [],
         )
-        for r in all_rows if r.status == "active"
+        for b in all_bundles if b.doc.status == "active"
     ]
 
-    # Determine assignment
     assignment: Optional[AgentPlanContext] = None
 
     if plan_id:
-        target = next((r for r in all_rows if r.id == plan_id), None)
+        target = next((b for b in all_bundles if b.id == plan_id), None)
     else:
-        # Auto-assign: highest priority active plan
         priority_rank = {"high": 0, "normal": 1, "low": 2}
-        candidates = [r for r in all_rows if r.status == "active"]
-        candidates.sort(key=lambda r: (
-            priority_rank.get(r.priority, 1),
-            r.updated_at.isoformat() if r.updated_at else "",
+        candidates = [b for b in all_bundles if b.doc.status == "active"]
+        candidates.sort(key=lambda b: (
+            priority_rank.get(b.plan.priority, 1),
+            b.plan.updated_at.isoformat() if b.plan.updated_at else "",
         ))
         target = candidates[0] if candidates else None
 
@@ -714,18 +741,19 @@ async def get_agent_context(
         docs = await get_plan_documents(db, target.id)
         assignment = AgentPlanContext(
             id=target.id,
-            title=target.title,
-            status=target.status,
-            stage=target.stage,
-            owner=target.owner,
-            priority=target.priority,
-            summary=target.summary,
-            markdown=target.markdown,
-            codePaths=target.code_paths or [],
-            companions=target.companions or [],
-            handoffs=target.handoffs or [],
-            tags=target.tags or [],
-            dependsOn=target.depends_on or [],
+            documentId=target.document_id,
+            title=target.doc.title,
+            status=target.doc.status,
+            stage=target.plan.stage,
+            owner=target.doc.owner,
+            priority=target.plan.priority,
+            summary=target.doc.summary or "",
+            markdown=target.doc.markdown,
+            codePaths=target.plan.code_paths or [],
+            companions=target.plan.companions or [],
+            handoffs=target.plan.handoffs or [],
+            tags=target.doc.tags or [],
+            dependsOn=target.plan.depends_on or [],
             documents=[
                 AgentPlanDocument(
                     docType=d.doc_type, path=d.path,
@@ -740,6 +768,13 @@ async def get_agent_context(
         activePlans=active_plans,
         availableActions=[
             {
+                "action": "create_plan",
+                "method": "POST",
+                "url": "/dev/plans",
+                "body": '{"id": "slug", "title": "...", "summary": "...", "markdown": "...", "plan_type": "feature|bugfix|refactor|exploration|task", "status": "active", "stage": "proposed", "owner": "unassigned", "priority": "normal", "parent_id": null, "tags": [], "code_paths": []}',
+                "description": "Create a new plan (Document + PlanRegistry). Use parent_id to create sub-plans under an initiative.",
+            },
+            {
                 "action": "update_status",
                 "method": "PATCH",
                 "url": "/dev/plans/update/{plan_id}",
@@ -747,18 +782,11 @@ async def get_agent_context(
                 "description": "Change plan status (moves directory on disk + git commit)",
             },
             {
-                "action": "update_stage",
+                "action": "update_fields",
                 "method": "PATCH",
                 "url": "/dev/plans/update/{plan_id}",
-                "body": '{"stage": "free-form stage label"}',
-                "description": "Update plan stage to reflect progress",
-            },
-            {
-                "action": "update_priority",
-                "method": "PATCH",
-                "url": "/dev/plans/update/{plan_id}",
-                "body": '{"priority": "high|normal|low"}',
-                "description": "Change plan priority",
+                "body": '{"stage": "...", "priority": "high|normal|low", "owner": "...", "summary": "...", "status": "..."}',
+                "description": "Update any combination of plan fields in a single call",
             },
             {
                 "action": "update_markdown",
@@ -768,6 +796,18 @@ async def get_agent_context(
                 "description": "Update plan prose content",
             },
             {
+                "action": "list_plans",
+                "method": "GET",
+                "url": "/dev/plans?status=active",
+                "description": "List all plans, optionally filtered by status or owner",
+            },
+            {
+                "action": "get_plan",
+                "method": "GET",
+                "url": "/dev/plans/{plan_id}",
+                "description": "Get full plan detail with markdown, checkpoints, children",
+            },
+            {
                 "action": "get_documents",
                 "method": "GET",
                 "url": "/dev/plans/documents/{plan_id}",
@@ -775,6 +815,9 @@ async def get_agent_context(
             },
         ],
     )
+
+
+# ── Plan documents endpoint ───────────────────────────────────────
 
 
 class PlanDocumentEntry(BaseModel):
@@ -796,25 +839,20 @@ async def get_plan_documents_endpoint(
     plan_id: str,
     db: AsyncSession = Depends(get_database),
 ):
-    """Get companion and handoff documents for a plan."""
     docs = await get_plan_documents(db, plan_id)
     return PlanDocumentsResponse(
         planId=plan_id,
         documents=[
             PlanDocumentEntry(
-                id=str(d.id),
-                planId=d.plan_id,
-                docType=d.doc_type,
-                path=d.path,
-                title=d.title,
-                markdown=d.markdown,
+                id=str(d.id), planId=d.plan_id, docType=d.doc_type,
+                path=d.path, title=d.title, markdown=d.markdown,
             )
             for d in docs
         ],
     )
 
 
-# ── Catch-all: plan by ID (DB-first, must be last) ──────────────
+# ── Catch-all: plan by ID (must be last) ─────────────────────────
 
 
 @router.get("/{plan_id}", response_model=PlanDetailResponse)
@@ -822,12 +860,16 @@ async def get_plan(
     plan_id: str,
     db: AsyncSession = Depends(get_database),
 ):
-    row = await get_plan_from_db(db, plan_id)
-    if not row:
+    from pixsim7.backend.main.services.docs.plan_write import load_children
+
+    bundle = await get_plan_bundle(db, plan_id)
+    if not bundle:
         raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
 
+    children = await load_children(db, plan_id)
+
     return {
-        **_row_to_summary(row),
-        "planPath": row.plan_path or "",
-        "markdown": row.markdown or "",
+        **_bundle_to_summary(bundle, children=children),
+        "planPath": bundle.plan.plan_path or "",
+        "markdown": bundle.doc.markdown or "",
     }

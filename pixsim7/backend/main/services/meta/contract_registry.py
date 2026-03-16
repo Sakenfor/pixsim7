@@ -169,38 +169,58 @@ def _builtin_plans_management() -> MetaContract:
         id="plans.management",
         name="Plan Management",
         endpoint=None,
-        version="1.0.0",
+        version="2.0.0",
         auth_required=True,
         owner="devtools lane",
         summary=(
-            "Plan registry: browse, update status/stage/priority, view "
-            "companion/handoff docs, agent work assignment."
+            "Plan registry backed by Document base entity. Create, browse, "
+            "update plans with hierarchy (parent/children), checkpoints, "
+            "companion docs, and AI agent work assignment."
         ),
         provides=[
             "plan_registry",
+            "plan_creation",
+            "plan_hierarchy",
             "plan_status_management",
             "plan_documents",
+            "plan_activity",
+            "plan_sync",
             "agent_assignment",
         ],
         relates_to=["devtools.codegen", "ui.catalog"],
         sub_endpoints=[
             MetaContractEndpoint(
+                id="plans.agent_context",
+                method="GET",
+                path="/api/v1/dev/plans/agent-context",
+                summary=(
+                    "Start here. Full work package for AI agent: current assignment, "
+                    "all active plans, and available API actions with request schemas."
+                ),
+            ),
+            MetaContractEndpoint(
+                id="plans.create",
+                method="POST",
+                path="/api/v1/dev/plans",
+                summary="Create a new plan (Document + PlanRegistry). Supports parent_id for sub-plans.",
+            ),
+            MetaContractEndpoint(
                 id="plans.list",
                 method="GET",
                 path="/api/v1/dev/plans",
-                summary="List all plans (DB-first, auto-bootstraps from filesystem).",
+                summary="List all plans with children, filterable by status/owner.",
             ),
             MetaContractEndpoint(
                 id="plans.detail",
                 method="GET",
                 path="/api/v1/dev/plans/{plan_id}",
-                summary="Get plan with full metadata and markdown content.",
+                summary="Get plan with full metadata, markdown, checkpoints, and children.",
             ),
             MetaContractEndpoint(
                 id="plans.update",
                 method="PATCH",
                 path="/api/v1/dev/plans/update/{plan_id}",
-                summary="Update plan status, stage, owner, priority, or markdown.",
+                summary="Update plan fields: status, stage, owner, priority, summary, markdown.",
             ),
             MetaContractEndpoint(
                 id="plans.documents",
@@ -209,10 +229,16 @@ def _builtin_plans_management() -> MetaContract:
                 summary="Companion and handoff documents for a plan.",
             ),
             MetaContractEndpoint(
-                id="plans.agent_context",
+                id="plans.activity",
                 method="GET",
-                path="/api/v1/dev/plans/agent-context",
-                summary="Full work package for AI agent: assignment + docs + available actions.",
+                path="/api/v1/dev/plans/activity",
+                summary="Recent change activity across all plans (default 7-day lookback).",
+            ),
+            MetaContractEndpoint(
+                id="plans.sync",
+                method="POST",
+                path="/api/v1/dev/plans/sync",
+                summary="Sync filesystem plan manifests into the DB.",
             ),
         ],
     )

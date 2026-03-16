@@ -20,24 +20,24 @@ PLAN_META_SCHEMA = "dev_meta"
 class Document(SQLModel, table=True):
     """Base entity for all structured content.
 
-    doc_type values: doc | audit | decision | guide | runbook | note
-    Plans will eventually extend this via document_id FK.
+    doc_type values: doc | plan | audit | decision | guide | runbook | note
+    For plans: status uses plan vocabulary (active/parked/done/blocked).
     """
 
     __tablename__ = "documents"
     __table_args__ = {"schema": PLAN_META_SCHEMA}
 
     id: str = Field(primary_key=True, max_length=120)
-    doc_type: str = Field(max_length=32, index=True)  # doc | audit | decision | guide | runbook | note
+    doc_type: str = Field(max_length=32, index=True)
     title: str = Field(max_length=255)
-    status: str = Field(default="draft", max_length=32, index=True)  # draft | active | archived
+    status: str = Field(default="draft", max_length=32, index=True)
     owner: str = Field(default="unassigned", max_length=120)
     summary: Optional[str] = Field(default=None, sa_column=Column(Text))
     markdown: Optional[str] = Field(default=None, sa_column=Column(Text))
     user_id: Optional[int] = Field(default=None, index=True)
-    visibility: str = Field(default="private", max_length=32)  # private | shared | public
+    visibility: str = Field(default="private", max_length=32)
     tags: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
-    extra: Optional[Dict] = Field(default=None, sa_column=Column(JSON))  # type-specific structured data
+    extra: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
     revision: int = Field(default=1)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
@@ -77,7 +77,7 @@ class DocumentEvent(SQLModel, table=True):
 
 
 # =============================================================================
-# Plan system (extends Document concept, will get document_id FK later)
+# Plan system (extends Document via document_id FK)
 # =============================================================================
 
 
@@ -104,40 +104,42 @@ class PlanSyncRun(SQLModel, table=True):
 
 
 class PlanRegistry(SQLModel, table=True):
-    """Unified task/plan store.
+    """Plan extension table — plan-specific fields only.
 
-    Serves both dev plans (task_scope='plan') and user tasks (task_scope='user').
-    The DB is the authority for state. Filesystem markdown is a convenience
-    export for dev plans committed to git.
+    Shared fields (title, status, owner, summary, markdown, tags, etc.)
+    live on the linked Document (document_id FK).
     """
 
     __tablename__ = "plan_registry"
-    __table_args__ = (
-        Index("idx_plan_registry_scope_user", "task_scope", "user_id"),
-        {"schema": PLAN_META_SCHEMA},
-    )
+    __table_args__ = {"schema": PLAN_META_SCHEMA}
 
     id: str = Field(primary_key=True, max_length=120)
-    title: str = Field(max_length=255)
-    status: str = Field(default="active", max_length=32, index=True)
+    document_id: str = Field(
+        foreign_key=f"{PLAN_META_SCHEMA}.documents.id",
+        max_length=120,
+        index=True,
+    )
+
+    # Hierarchy
+    parent_id: Optional[str] = Field(
+        default=None,
+        foreign_key=f"{PLAN_META_SCHEMA}.plan_registry.id",
+        max_length=120,
+        index=True,
+    )
+
+    # Plan-specific fields
     stage: str = Field(default="unknown", max_length=64, index=True)
-    owner: str = Field(default="unassigned", max_length=120, index=True)
-    revision: int = Field(default=1)
     priority: str = Field(default="normal", max_length=32)
-    summary: str = Field(default="", sa_column=Column(Text))
     scope: str = Field(default="", max_length=32)
-    task_scope: str = Field(default="plan", max_length=32)  # plan | user | system
-    plan_type: str = Field(default="feature", max_length=32)  # proposal | feature | bugfix | refactor | exploration | task
-    user_id: Optional[int] = Field(default=None, index=True)  # NULL = shared/system
-    visibility: str = Field(default="public", max_length=32)  # private | shared | public
+    task_scope: str = Field(default="plan", max_length=32, index=True)  # plan | user | system
+    plan_type: str = Field(default="feature", max_length=32)
     target: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
     checkpoints: Optional[List[Dict]] = Field(default=None, sa_column=Column(JSON))
-    markdown: Optional[str] = Field(default=None, sa_column=Column(Text))
     plan_path: Optional[str] = Field(default=None, max_length=512)
     code_paths: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
     companions: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
     handoffs: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
-    tags: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
     depends_on: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
     manifest_hash: str = Field(default="", max_length=64)
     last_synced_at: Optional[datetime] = Field(default=None)
@@ -159,23 +161,6 @@ class PlanDocument(SQLModel, table=True):
     markdown: Optional[str] = Field(default=None, sa_column=Column(Text))
     created_at: datetime = Field(default_factory=utcnow, index=True)
     updated_at: datetime = Field(default_factory=utcnow, index=True)
-
-
-class PlanShare(SQLModel, table=True):
-    """Grants a specific user access to a plan."""
-
-    __tablename__ = "plan_shares"
-    __table_args__ = (
-        Index("idx_plan_shares_plan_user", "plan_id", "user_id", unique=True),
-        {"schema": PLAN_META_SCHEMA},
-    )
-
-    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
-    plan_id: str = Field(foreign_key=f"{PLAN_META_SCHEMA}.plan_registry.id", max_length=120)
-    user_id: int = Field(index=True)
-    role: str = Field(default="viewer", max_length=32)  # viewer | commenter | contributor | editor | maintainer | admin
-    granted_by: Optional[int] = Field(default=None)
-    created_at: datetime = Field(default_factory=utcnow)
 
 
 class AgentActivityLog(SQLModel, table=True):

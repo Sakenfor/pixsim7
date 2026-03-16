@@ -52,8 +52,18 @@ interface PlanTarget {
   paths?: string[];
 }
 
+interface PlanChildSummary {
+  id: string;
+  title: string;
+  status: string;
+  stage: string;
+  priority: string;
+}
+
 interface PlanSummary {
   id: string;
+  documentId: string | null;
+  parentId: string | null;
   title: string;
   status: string;
   stage: string;
@@ -71,6 +81,7 @@ interface PlanSummary {
   handoffs: string[];
   tags: string[];
   dependsOn: string[];
+  children: PlanChildSummary[];
 }
 
 interface PlanDetail extends PlanSummary {
@@ -467,6 +478,33 @@ function PlanDetailView({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Sub-plans */}
+      {detail.children.length > 0 && (
+        <div>
+          <SectionHeader>Sub-plans ({detail.children.length})</SectionHeader>
+          <div className="mt-2 space-y-1">
+            {detail.children.map((child) => (
+              <div
+                key={child.id}
+                className="flex items-center gap-2 px-2 py-1.5 rounded-md border border-neutral-200 dark:border-neutral-700 text-xs"
+              >
+                <Badge color={STATUS_COLORS[child.status] ?? 'gray'} className="text-[10px]">{child.status}</Badge>
+                <span className="font-medium text-neutral-800 dark:text-neutral-200 flex-1 truncate">{child.title}</span>
+                <span className="text-neutral-400">{child.stage}</span>
+                <Badge color={PRIORITY_COLORS[child.priority] ?? 'gray'} className="text-[10px]">{child.priority}</Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Parent reference */}
+      {detail.parentId && (
+        <div className="text-xs text-neutral-500 dark:text-neutral-400">
+          Parent: <span className="font-mono">{detail.parentId}</span>
         </div>
       )}
 

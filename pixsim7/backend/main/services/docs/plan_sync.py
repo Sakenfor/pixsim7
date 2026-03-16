@@ -2,8 +2,7 @@
 Plan sync service.
 
 Compares filesystem manifests against DB state, detects changes,
-writes PlanEvent audit entries, and updates PlanRegistry rows.
-The filesystem (manifest.yaml) remains the source of truth.
+writes PlanEvent audit entries, and updates Document + PlanRegistry rows.
 """
 from __future__ import annotations
 
@@ -16,15 +15,24 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry, PlanSyncRun
+from pixsim7.backend.main.domain.docs.models import Document, PlanEvent, PlanRegistry, PlanSyncRun
 from pixsim7.backend.main.services.docs.plans import PlanEntry, build_plans_index
+from pixsim7.backend.main.services.docs.plan_write import (
+    PlanBundle,
+    _apply_entry_to_doc,
+    _apply_entry_to_plan,
+    make_document_id,
+)
 from pixsim7.backend.main.shared.config import _resolve_repo_root
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim_logging import get_logger
 
 logger = get_logger()
 
-TRACKED_FIELDS = ("title", "status", "stage", "owner", "priority", "summary", "scope")
+# Shared fields tracked on Document
+TRACKED_DOC_FIELDS = ("title", "status", "owner", "summary")
+# Plan-specific fields tracked on PlanRegistry
+TRACKED_PLAN_FIELDS = ("stage", "priority", "scope")
 TRACKED_LIST_FIELDS = ("code_paths", "companions", "handoffs", "tags", "depends_on")
 PLAN_SYNC_ADVISORY_LOCK_KEY = 760_003_001
 
@@ -88,46 +96,40 @@ async def _acquire_sync_lock(db: AsyncSession) -> None:
 
 
 def _diff_entry(
-    existing: PlanRegistry, entry: PlanEntry
+    bundle: PlanBundle, entry: PlanEntry,
 ) -> List[Tuple[str, str, str]]:
     """Return list of (field, old_value, new_value) for changed fields."""
     changes: List[Tuple[str, str, str]] = []
 
-    for f in TRACKED_FIELDS:
-        old_val = getattr(existing, f, None)
+    # Doc fields (shared)
+    for f in TRACKED_DOC_FIELDS:
+        old_val = getattr(bundle.doc, f, None)
         new_val = getattr(entry, f, None)
         old_str = str(old_val) if old_val is not None else ""
         new_str = str(new_val) if new_val is not None else ""
         if old_str != new_str:
             changes.append((f, old_str, new_str))
 
+    # Plan fields
+    for f in TRACKED_PLAN_FIELDS:
+        old_val = getattr(bundle.plan, f, None)
+        new_val = getattr(entry, f, None)
+        old_str = str(old_val) if old_val is not None else ""
+        new_str = str(new_val) if new_val is not None else ""
+        if old_str != new_str:
+            changes.append((f, old_str, new_str))
+
+    # List fields: tags on doc, rest on plan
     for f in TRACKED_LIST_FIELDS:
-        old_val = getattr(existing, f, None) or []
+        if f == "tags":
+            old_val = getattr(bundle.doc, f, None) or []
+        else:
+            old_val = getattr(bundle.plan, f, None) or []
         new_val = getattr(entry, f, None) or []
         if sorted(old_val) != sorted(new_val):
             changes.append((f, _stringify(old_val), _stringify(new_val)))
 
     return changes
-
-
-def _apply_entry_to_row(row: PlanRegistry, entry: PlanEntry, manifest_hash: str) -> None:
-    row.title = entry.title
-    row.status = entry.status
-    row.stage = entry.stage
-    row.owner = entry.owner
-    row.priority = entry.priority
-    row.summary = entry.summary
-    row.scope = entry.scope
-    row.markdown = entry.markdown
-    row.plan_path = entry.plan_path
-    row.code_paths = entry.code_paths
-    row.companions = entry.companions
-    row.handoffs = entry.handoffs
-    row.tags = entry.tags
-    row.depends_on = entry.depends_on
-    row.manifest_hash = manifest_hash
-    row.last_synced_at = utcnow()
-    row.updated_at = utcnow()
 
 
 def _apply_result_to_run(run: PlanSyncRun, result: SyncResult) -> None:
@@ -183,9 +185,19 @@ async def sync_plans(
                 "Plan manifest index contains errors. Run docs:plans:check and fix manifests before sync."
             )
 
-        # Load current DB state
-        rows = (await db.execute(select(PlanRegistry))).scalars().all()
-        db_plans: Dict[str, PlanRegistry] = {r.id: r for r in rows}
+        # Load current DB state (plans + docs)
+        plan_rows = (await db.execute(select(PlanRegistry))).scalars().all()
+        doc_ids = [r.document_id for r in plan_rows]
+        doc_rows = (
+            await db.execute(select(Document).where(Document.id.in_(doc_ids)))
+        ).scalars().all() if doc_ids else []
+        doc_map = {d.id: d for d in doc_rows}
+
+        db_bundles: Dict[str, PlanBundle] = {}
+        for r in plan_rows:
+            d = doc_map.get(r.document_id)
+            if d:
+                db_bundles[r.id] = PlanBundle(plan=r, doc=d)
 
         now = utcnow()
 
@@ -194,55 +206,65 @@ async def sync_plans(
             manifest_path = _find_manifest_path(plan_id, entry.scope)
             m_hash = compute_manifest_hash(manifest_path) if manifest_path else ""
 
-            if plan_id not in db_plans:
-                row = PlanRegistry(id=plan_id, revision=1, created_at=now)
-                _apply_entry_to_row(row, entry, m_hash)
-                db.add(row)
-
-                db.add(
-                    PlanEvent(
-                        run_id=sync_run.id,
-                        plan_id=plan_id,
-                        event_type="created",
-                        new_value=entry.status,
-                        commit_sha=commit_sha,
-                        timestamp=now,
-                    )
+            if plan_id not in db_bundles:
+                # New plan — create Document + PlanRegistry
+                doc_id = make_document_id(plan_id)
+                doc = Document(
+                    id=doc_id, doc_type="plan",
+                    title=entry.title, status=entry.status, owner=entry.owner,
+                    summary=entry.summary, markdown=entry.markdown,
+                    visibility="public", tags=entry.tags,
+                    revision=1, created_at=now, updated_at=now,
                 )
+                db.add(doc)
+                await db.flush()
+
+                plan = PlanRegistry(
+                    id=plan_id, document_id=doc_id,
+                    stage=entry.stage, priority=entry.priority, scope=entry.scope,
+                    plan_path=entry.plan_path, code_paths=entry.code_paths,
+                    companions=entry.companions, handoffs=entry.handoffs,
+                    depends_on=entry.depends_on, manifest_hash=m_hash,
+                    last_synced_at=now, created_at=now, updated_at=now,
+                )
+                db.add(plan)
+
+                db.add(PlanEvent(
+                    run_id=sync_run.id, plan_id=plan_id,
+                    event_type="created", new_value=entry.status,
+                    commit_sha=commit_sha, timestamp=now,
+                ))
                 result.created += 1
                 result.events += 1
                 result.details.append({"plan_id": plan_id, "action": "created"})
                 continue
 
-            existing = db_plans[plan_id]
-            if existing.manifest_hash == m_hash and m_hash and existing.status != "removed":
-                existing.last_synced_at = now
+            bundle = db_bundles[plan_id]
+            existing_plan = bundle.plan
+
+            if existing_plan.manifest_hash == m_hash and m_hash and bundle.doc.status != "removed":
+                existing_plan.last_synced_at = now
                 result.unchanged += 1
                 continue
 
-            changes = _diff_entry(existing, entry)
+            changes = _diff_entry(bundle, entry)
             if not changes:
-                existing.manifest_hash = m_hash
-                existing.last_synced_at = now
+                existing_plan.manifest_hash = m_hash
+                existing_plan.last_synced_at = now
                 result.unchanged += 1
                 continue
 
-            existing.revision = (existing.revision or 0) + 1
-            _apply_entry_to_row(existing, entry, m_hash)
+            bundle.doc.revision = (bundle.doc.revision or 0) + 1
+            _apply_entry_to_doc(bundle.doc, entry)
+            _apply_entry_to_plan(existing_plan, entry, m_hash)
 
             for field_name, old_val, new_val in changes:
-                db.add(
-                    PlanEvent(
-                        run_id=sync_run.id,
-                        plan_id=plan_id,
-                        event_type="field_changed",
-                        field=field_name,
-                        old_value=old_val,
-                        new_value=new_val,
-                        commit_sha=commit_sha,
-                        timestamp=now,
-                    )
-                )
+                db.add(PlanEvent(
+                    run_id=sync_run.id, plan_id=plan_id,
+                    event_type="field_changed", field=field_name,
+                    old_value=old_val, new_value=new_val,
+                    commit_sha=commit_sha, timestamp=now,
+                ))
                 _record_changed_field(result, field_name)
                 result.events += 1
 
@@ -254,26 +276,21 @@ async def sync_plans(
             })
 
         # Detect removed plans (in DB but not on filesystem)
-        for plan_id, row in db_plans.items():
-            if plan_id not in fs_entries and row.status != "removed":
-                old_status = row.status
-                row.status = "removed"
-                row.revision = (row.revision or 0) + 1
-                row.updated_at = now
-                row.last_synced_at = now
+        for plan_id, bundle in db_bundles.items():
+            if plan_id not in fs_entries and bundle.doc.status != "removed":
+                old_status = bundle.doc.status
+                bundle.doc.status = "removed"
+                bundle.doc.revision = (bundle.doc.revision or 0) + 1
+                bundle.doc.updated_at = now
+                bundle.plan.updated_at = now
+                bundle.plan.last_synced_at = now
 
-                db.add(
-                    PlanEvent(
-                        run_id=sync_run.id,
-                        plan_id=plan_id,
-                        event_type="removed",
-                        field="status",
-                        old_value=old_status,
-                        new_value="removed",
-                        commit_sha=commit_sha,
-                        timestamp=now,
-                    )
-                )
+                db.add(PlanEvent(
+                    run_id=sync_run.id, plan_id=plan_id,
+                    event_type="removed", field="status",
+                    old_value=old_status, new_value="removed",
+                    commit_sha=commit_sha, timestamp=now,
+                ))
                 result.removed += 1
                 _record_changed_field(result, "status")
                 result.events += 1
