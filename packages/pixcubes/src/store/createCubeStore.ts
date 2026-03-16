@@ -14,7 +14,9 @@ import type {
   ExtendedCubeStore,
   MinimizedPanelData,
   Formation,
+  FormationPattern,
 } from '../types';
+import { calculateFormation } from '../formations/cubeFormations';
 
 let cubeCounter = 0;
 
@@ -132,7 +134,8 @@ export function createExtendedCubeStore(storageKey = 'pixcubes-store') {
     minimizePanelToCube: (
       panelId: string,
       position: CubePosition,
-      size: { width: number; height: number }
+      size: { width: number; height: number },
+      context?: Record<string, any>,
     ) => {
       const cube: ControlCube = {
         id: generateCubeId(),
@@ -145,12 +148,41 @@ export function createExtendedCubeStore(storageKey = 'pixcubes-store') {
           panelId,
           originalPosition: position,
           originalSize: size,
+          context,
         },
       };
       set((state) => ({
         cubes: { ...state.cubes, [cube.id]: cube },
       }));
       return cube.id;
+    },
+
+    arrangeMinimizedPanels: (pattern: FormationPattern = 'dock') => {
+      const cubes = get().cubes;
+      const panelCubeIds = Object.keys(cubes).filter(
+        (id) => cubes[id].minimizedPanel != null,
+      );
+
+      if (panelCubeIds.length < 2) return;
+
+      const positions = calculateFormation({
+        pattern,
+        cubeCount: panelCubeIds.length,
+        spacing: 100,
+      });
+
+      set((state) => {
+        const updatedCubes = { ...state.cubes };
+        panelCubeIds.forEach((id, i) => {
+          if (positions[i]) {
+            updatedCubes[id] = {
+              ...updatedCubes[id],
+              position: positions[i],
+            };
+          }
+        });
+        return { cubes: updatedCubes };
+      });
     },
 
     restorePanelFromCube: (cubeId: string): MinimizedPanelData | null => {

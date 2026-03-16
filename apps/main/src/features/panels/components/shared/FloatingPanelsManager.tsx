@@ -9,6 +9,8 @@ import { devToolSelectors, panelSelectors } from "@lib/plugins/catalogSelectors"
 import { hmrSingleton } from "@lib/utils/hmrSafe";
 
 import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@features/contextHub";
+import { useCubeSettingsStore } from "@features/cubes/stores/cubeSettingsStore";
+import { useCubeStore } from "@features/cubes/useCubeStore";
 import { useProjectSessionStore } from "@features/scene";
 import { useWorkspaceStore, type FloatingPanelState } from "@features/workspace";
 import { getFloatingDefinitionId } from "@features/workspace/lib/floatingPanelUtils";
@@ -202,7 +204,7 @@ interface FloatingPanelProps {
 
 const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, catalogVersion }: FloatingPanelProps) {
   void catalogVersion;
-  const minimizeFloatingPanel = useWorkspaceStore((s) => s.minimizeFloatingPanel);
+  const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
   const updateFloatingPanelPosition = useWorkspaceStore(
     (s) => s.updateFloatingPanelPosition
   );
@@ -212,8 +214,22 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
   const bringFloatingPanelToFront = useWorkspaceStore(
     (s) => s.bringFloatingPanelToFront
   );
+  const minimizePanelToCube = useCubeStore((s) => s.minimizePanelToCube);
+  const cubesVisible = useCubeSettingsStore((s) => s.visible);
+  const setCubesVisible = useCubeSettingsStore((s) => s.setVisible);
   const activeProjectId = useProjectSessionStore((s) => s.currentProjectId);
   const activeProjectName = useProjectSessionStore((s) => s.currentProjectName);
+
+  const handleMinimizeToCube = useCallback(() => {
+    minimizePanelToCube(
+      panel.id,
+      { x: panel.x, y: panel.y },
+      { width: panel.width, height: panel.height },
+      panel.context,
+    );
+    closeFloatingPanel(panel.id);
+    if (!cubesVisible) setCubesVisible(true);
+  }, [panel.id, panel.x, panel.y, panel.width, panel.height, panel.context, minimizePanelToCube, closeFloatingPanel, cubesVisible, setCubesVisible]);
 
   // Resolve definition ID (strips ::N suffix for multi-instance floating panels)
   const definitionId = getFloatingDefinitionId(panel.id);
@@ -389,10 +405,7 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
       ref={rndRef}
       key={panel.id}
       position={{ x: panel.x, y: panel.y }}
-      size={panel.minimized
-        ? { width: panel.width, height: 34 }
-        : { width: panel.width, height: panel.height }
-      }
+      size={{ width: panel.width, height: panel.height }}
       onDragStart={handleDragStart}
       onDrag={handleDrag}
       onDragStop={handleDragStop}
@@ -405,44 +418,37 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
         updateFloatingPanelPosition(panel.id, position.x, position.y);
       }}
       onMouseDown={() => bringFloatingPanelToFront(panel.id)}
-      minWidth={panel.minimized ? 120 : 200}
-      minHeight={panel.minimized ? 34 : 200}
-      enableResizing={!panel.minimized}
+      minWidth={200}
+      minHeight={200}
       bounds="window"
       dragHandleClassName="floating-panel-header"
       style={{ zIndex: 10100 + panel.zIndex }}
       className="floating-panel"
     >
-      <div className={`h-full flex flex-col bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-300 dark:border-neutral-700 overflow-hidden ${panel.minimized ? "rounded-full" : "rounded-lg"}`}>
+      <div className="h-full flex flex-col bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-300 dark:border-neutral-700 overflow-hidden rounded-lg">
         {/* Header */}
         <div
-          className={`floating-panel-header flex items-center justify-between cursor-move select-none ${
-            panel.minimized
-              ? "px-3 py-1 bg-neutral-800 dark:bg-neutral-800"
-              : "px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border-b dark:border-neutral-700"
-          }`}
-          onDoubleClick={() => minimizeFloatingPanel(panel.id)}
+          className="floating-panel-header flex items-center justify-between cursor-move select-none px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border-b dark:border-neutral-700"
+          onDoubleClick={handleMinimizeToCube}
         >
           <div className="flex items-center gap-2 min-w-0">
-            <span className={`font-semibold text-neutral-800 dark:text-neutral-200 truncate ${panel.minimized ? "text-xs" : "text-sm"}`}>
+            <span className="font-semibold text-neutral-800 dark:text-neutral-200 truncate text-sm">
               {title}
             </span>
-            {!panel.minimized && panelCategoryBadge && (
+            {panelCategoryBadge && (
               <span className="shrink-0 px-1.5 py-0.5 text-[10px] bg-neutral-200/70 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded font-medium uppercase tracking-wide">
                 {panelCategoryBadge}
               </span>
             )}
-            {!panel.minimized && (
-              <span className="shrink-0 px-1.5 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded font-medium">
-                FLOATING
-              </span>
-            )}
-            {!panel.minimized && panelContextSummary && (
+            <span className="shrink-0 px-1.5 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded font-medium">
+              FLOATING
+            </span>
+            {panelContextSummary && (
               <span className="shrink-0 text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
                 {panelContextSummary}
               </span>
             )}
-            {!panel.minimized && originLabel && (
+            {originLabel && (
               <span className="shrink-0 text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
                 From {originLabel}
               </span>
@@ -450,64 +456,50 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
           </div>
           <div className="flex items-center shrink-0">
             <IconButton
-              size={panel.minimized ? "sm" : "md"}
+              size="md"
               rounded="md"
-              icon={<Icon name={panel.minimized ? "maximize2" : "minus"} size={panel.minimized ? 10 : 12} />}
-              onClick={() => minimizeFloatingPanel(panel.id)}
-              className={
-                panel.minimized
-                  ? "text-neutral-300 hover:text-blue-400"
-                  : "text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-              }
-              title={panel.minimized ? "Restore panel" : "Minimize panel"}
+              icon={<Icon name="minus" size={12} />}
+              onClick={handleMinimizeToCube}
+              className="text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+              title="Minimize to cube"
             />
             {canReturnToOrigin && (
               <IconButton
-                size={panel.minimized ? "sm" : "md"}
+                size="md"
                 rounded="md"
-                icon={<Icon name="log-in" size={panel.minimized ? 10 : 12} />}
+                icon={<Icon name="log-in" size={12} />}
                 onClick={() => {
                   panelPlacementCoordinator.closeFloatingPanelWithReturn(panel.id);
                 }}
-                className={
-                  panel.minimized
-                    ? "text-neutral-300 hover:text-emerald-400"
-                    : "text-neutral-500 dark:text-neutral-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 hover:text-emerald-700 dark:hover:text-emerald-400"
-                }
+                className="text-neutral-500 dark:text-neutral-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 hover:text-emerald-700 dark:hover:text-emerald-400"
                 title={originLabel ? `Return to ${originLabel}` : "Return to original dock"}
               />
             )}
             <IconButton
-              size={panel.minimized ? "sm" : "md"}
+              size="md"
               rounded="md"
-              icon={<Icon name="x" size={panel.minimized ? 10 : 12} />}
+              icon={<Icon name="x" size={12} />}
               onClick={() => {
                 panelPlacementCoordinator.closeFloatingPanel(panel.id);
               }}
-              className={
-                panel.minimized
-                  ? "text-neutral-300 hover:text-red-400"
-                  : "text-neutral-500 dark:text-neutral-400 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400"
-              }
+              className="text-neutral-500 dark:text-neutral-400 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400"
               title="Close floating panel"
             />
           </div>
         </div>
-        {/* Content — hidden when minimized */}
-        {!panel.minimized && (
-          <div className="flex-1 overflow-auto">
-            <ContextHubHost hostId={floatingInstanceId}>
-              <FloatingPanelContextProvider
-                context={panelContext}
-                instanceId={floatingInstanceId}
-              >
-                <PanelErrorBoundary panelId={definitionId}>
-                  {renderPanelContent()}
-                </PanelErrorBoundary>
-              </FloatingPanelContextProvider>
-            </ContextHubHost>
-          </div>
-        )}
+        {/* Content */}
+        <div className="flex-1 overflow-auto">
+          <ContextHubHost hostId={floatingInstanceId}>
+            <FloatingPanelContextProvider
+              context={panelContext}
+              instanceId={floatingInstanceId}
+            >
+              <PanelErrorBoundary panelId={definitionId}>
+                {renderPanelContent()}
+              </PanelErrorBoundary>
+            </FloatingPanelContextProvider>
+          </ContextHubHost>
+        </div>
       </div>
     </Rnd>
   );

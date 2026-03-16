@@ -52,6 +52,7 @@ export interface MinimizedPanelData {
   panelId: string;
   originalPosition: CubePosition;
   originalSize: { width: number; height: number };
+  context?: Record<string, any>;
 }
 
 /** Individual cube state */
@@ -176,9 +177,13 @@ export interface ExtendedCubeStore extends CubeStore {
   minimizePanelToCube: (
     panelId: string,
     position: CubePosition,
-    size: { width: number; height: number }
+    size: { width: number; height: number },
+    context?: Record<string, any>,
   ) => string;
   restorePanelFromCube: (cubeId: string) => MinimizedPanelData | null;
+
+  /** Arrange only minimized-panel cubes in a formation (no-op if < 2) */
+  arrangeMinimizedPanels: (pattern?: FormationPattern) => void;
 
   // Pinned assets
   pinnedAssets: string[];

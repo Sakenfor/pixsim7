@@ -2,21 +2,20 @@
  * Cube Widget Overlay
  *
  * Renders all cubes from the store as draggable 3D cubes.
- * Cubes are spawned on-demand via context menu ("Spawn as Cube").
+ * Minimized panel cubes are grouped into a single MinimizedPanelStack.
  *
  * Keyboard shortcuts:
  * - Ctrl+Shift+C: Toggle cube visibility
  */
 
 import { clsx } from 'clsx';
-import { useEffect, useCallback } from 'react';
-
-import { useWorkspaceStore } from '@features/workspace';
+import { useEffect, useMemo } from 'react';
 
 import { moduleRegistry } from '@app/modules';
 
-import { getCubeFaceContent, getMinimizedPanelFaceContent } from './components/CubeFaceContent';
+import { getCubeFaceContent } from './components/CubeFaceContent';
 import { DraggableCube } from './components/DraggableCube';
+import { MinimizedPanelStack } from './components/MinimizedPanelStack';
 import { useCubeSettingsStore } from './stores/cubeSettingsStore';
 import { useCubeStore } from './useCubeStore';
 
@@ -27,34 +26,12 @@ export function CubeWidgetOverlay() {
   const toggleVisible = useCubeSettingsStore((s) => s.toggleVisible);
 
   const cubes = useCubeStore((s) => s.cubes);
-  const restorePanelFromCube = useCubeStore((s) => s.restorePanelFromCube);
-  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
   useEffect(() => {
     void moduleRegistry.initializeModule('cubes').catch((error) => {
       console.warn('[CubeWidgetOverlay] Failed to initialize cubes module:', error);
     });
   }, []);
-
-  const handleCubeClick = useCallback(
-    (cubeId: string) => {
-      const cube = cubes[cubeId];
-      if (!cube) return;
-
-      if (cube.minimizedPanel) {
-        const panelData = restorePanelFromCube(cubeId);
-        if (panelData) {
-          openFloatingPanel(panelData.panelId, {
-            x: panelData.originalPosition.x,
-            y: panelData.originalPosition.y,
-            width: panelData.originalSize.width,
-            height: panelData.originalSize.height,
-          });
-        }
-      }
-    },
-    [cubes, restorePanelFromCube, openFloatingPanel]
-  );
 
   // Ctrl+Shift+C to toggle visibility
   useEffect(() => {
@@ -70,28 +47,41 @@ export function CubeWidgetOverlay() {
   }, [toggleVisible]);
 
   const allCubes = Object.values(cubes);
-  if (allCubes.length === 0) return null;
+
+  // Split cubes into regular cubes and minimized-panel cubes
+  const { regularCubes, panelCubes } = useMemo(() => {
+    const regular = allCubes.filter((c) => !c.minimizedPanel);
+    const panels = allCubes.filter((c) => c.minimizedPanel != null);
+    return { regularCubes: regular, panelCubes: panels };
+  }, [allCubes]);
+
+  if (regularCubes.length === 0 && panelCubes.length === 0) return null;
 
   return (
-    <div
-      className={clsx(
-        'fixed inset-0 pointer-events-none z-40 transition-all duration-300',
-        visible ? 'opacity-100' : 'opacity-0 translate-y-12'
+    <>
+      {/* Regular cubes — visibility-toggled layer */}
+      {regularCubes.length > 0 && (
+        <div
+          className={clsx(
+            'fixed inset-0 pointer-events-none z-40 transition-all duration-300',
+            visible ? 'opacity-100' : 'opacity-0 translate-y-12',
+          )}
+        >
+          {regularCubes.map((cube) => (
+            <DraggableCube
+              key={cube.id}
+              cubeId={cube.id}
+              size={CUBE_SIZE}
+              faceContent={getCubeFaceContent(cube.type)}
+            />
+          ))}
+        </div>
       )}
-    >
-      {allCubes.map((cube) => (
-        <DraggableCube
-          key={cube.id}
-          cubeId={cube.id}
-          size={CUBE_SIZE}
-          faceContent={
-            cube.minimizedPanel
-              ? getMinimizedPanelFaceContent(cube.minimizedPanel.panelId)
-              : getCubeFaceContent(cube.type)
-          }
-          onFaceClick={() => handleCubeClick(cube.id)}
-        />
-      ))}
-    </div>
+
+      {/* Minimized panel stack — always visible when panels are minimized */}
+      {panelCubes.length > 0 && (
+        <MinimizedPanelStack panelCubes={panelCubes} />
+      )}
+    </>
   );
 }
