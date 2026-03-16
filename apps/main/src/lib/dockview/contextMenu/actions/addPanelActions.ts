@@ -35,6 +35,22 @@ function getAddPanelEquivalentIds(panelId: string): string[] {
   );
 }
 
+/**
+ * Check reverse equivalence: is any open panel in this dockview declaring
+ * `panelId` as one of its equivalents?
+ */
+function isRepresentedByOpenPanel(ctx: MenuActionContext, panelId: string): boolean {
+  const allPanels = ctx.panelRegistry?.getAll?.() ?? [];
+  for (const panel of allPanels) {
+    if (panel.id === panelId) continue;
+    const equivalents = getAddPanelEquivalentIds(panel.id);
+    if (equivalents.includes(panelId) && isPanelOpenInCurrentDockview(ctx, panel.id, false)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function getPanelAddDisabledReason(
   ctx: MenuActionContext,
   panelId: string,
@@ -49,10 +65,16 @@ function getPanelAddDisabledReason(
 
   if (allowMultiple) return false;
 
+  // Forward: candidate declares equivalents that are already open
   for (const equivalentId of getAddPanelEquivalentIds(panelId)) {
     if (isPanelOpenInCurrentDockview(ctx, equivalentId, false)) {
       return 'Already represented';
     }
+  }
+
+  // Reverse: an open panel declares this candidate as its equivalent
+  if (isRepresentedByOpenPanel(ctx, panelId)) {
+    return 'Already represented';
   }
 
   return false;

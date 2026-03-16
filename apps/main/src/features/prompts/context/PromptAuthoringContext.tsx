@@ -13,10 +13,12 @@ import {
   applyPromptEdit,
   createPromptFamily,
   createPromptVersion,
+  getPromptAuthoringContract,
   getPromptVersionAssets,
   listPromptFamilies,
   listPromptVersions,
   type PromptFamilySummary,
+  type PromptAuthoringModeContract,
   type PromptVersionAsset,
   type PromptVersionSummary,
 } from '@lib/api/prompts';
@@ -80,6 +82,7 @@ export interface PromptAuthoringState {
   statusMessage: string | null;
 
   // Derived
+  authoringModes: PromptAuthoringModeContract[];
   selectedFamily: PromptFamilySummary | null;
   selectedVersion: PromptVersionSummary | null;
   targetVersionIds: string[];
@@ -92,6 +95,8 @@ export interface PromptAuthoringState {
   handleCreateFamily: () => Promise<void>;
   handleCreateVersion: () => Promise<void>;
   handleApplyEdit: () => Promise<void>;
+  /** Hydrate all editor fields from a version object. */
+  hydrateFromVersion: (version: PromptVersionSummary) => void;
 }
 
 // ── Utilities ──
@@ -172,6 +177,7 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsError, setVersionsError] = useState<string | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [authoringModes, setAuthoringModes] = useState<PromptAuthoringModeContract[]>([]);
 
   // ── Editor state ──
   const { useSessionStore } = useGenerationScopeStores();
@@ -193,6 +199,20 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
 
   const lastLoadedVersionIdRef = useRef<string | null>(null);
   const { versions: versionTimeline } = useVersions('prompt', selectedFamilyId);
+
+  // ── Version hydration ──
+  // Single definition of "what it means to load a version into the editor".
+  // Called by the auto-sync effect (guarded by lastLoadedVersionIdRef) and
+  // exposed to consumers for explicit reloads (e.g. Navigator version click).
+  const hydrateFromVersion = useCallback(
+    (version: PromptVersionSummary) => {
+      setEditorText(version.prompt_text ?? '');
+      setCommitMessageInput(version.commit_message ?? '');
+      setVersionTagsInput((version.tags ?? []).join(', '));
+      setInstructionInput('');
+    },
+    [setEditorText],
+  );
 
   // ── Derived ──
   const selectedFamily = useMemo(
@@ -265,17 +285,30 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
   }, [refreshVersions, selectedFamilyId]);
 
   useEffect(() => {
+    let cancelled = false;
+    void getPromptAuthoringContract('user')
+      .then((contract) => {
+        if (cancelled) return;
+        setAuthoringModes(contract.authoring_modes ?? []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAuthoringModes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!selectedVersion) {
       lastLoadedVersionIdRef.current = null;
       return;
     }
     if (lastLoadedVersionIdRef.current === selectedVersion.id) return;
-    setEditorText(selectedVersion.prompt_text ?? '');
-    setCommitMessageInput(selectedVersion.commit_message ?? '');
-    setVersionTagsInput((selectedVersion.tags ?? []).join(', '));
-    setInstructionInput('');
+    hydrateFromVersion(selectedVersion);
     lastLoadedVersionIdRef.current = selectedVersion.id;
-  }, [selectedVersion, setEditorText]);
+  }, [selectedVersion, hydrateFromVersion]);
 
   // ── Asset scope ──
 
@@ -456,9 +489,10 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
       commitMessageInput, setCommitMessageInput, versionTagsInput, setVersionTagsInput,
       scopeMode, setScopeMode, scopeAssets, assetsLoading, assetsError,
       busyAction, statusMessage,
-      selectedFamily, selectedVersion, targetVersionIds, truncatedVersionCount,
+      authoringModes, selectedFamily, selectedVersion, targetVersionIds, truncatedVersionCount,
       refreshFamilies, refreshVersions, refreshScopeAssets,
       handleCreateFamily, handleCreateVersion, handleApplyEdit,
+      hydrateFromVersion,
     }),
     [
       families, familiesLoading, familiesError, selectedFamilyId,
@@ -467,9 +501,10 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
       editorText, setEditorText, instructionInput, commitMessageInput, versionTagsInput,
       scopeMode, scopeAssets, assetsLoading, assetsError,
       busyAction, statusMessage,
-      selectedFamily, selectedVersion, targetVersionIds, truncatedVersionCount,
+      authoringModes, selectedFamily, selectedVersion, targetVersionIds, truncatedVersionCount,
       refreshFamilies, refreshVersions, refreshScopeAssets,
       handleCreateFamily, handleCreateVersion, handleApplyEdit,
+      hydrateFromVersion,
     ],
   );
 

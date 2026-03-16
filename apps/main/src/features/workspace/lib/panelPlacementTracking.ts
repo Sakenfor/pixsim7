@@ -42,7 +42,7 @@ type FloatingPlacementEntry = {
 };
 
 function normalizeDockviewId(value: string | null | undefined): string {
-  return (value ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+  return (value ?? "").trim();
 }
 
 function readSourceDockviewIdFromFloatingContext(
@@ -324,6 +324,11 @@ export function getPanelPlacements(panelId: string): PanelPlacement[] {
   return placements;
 }
 
+/**
+ * @deprecated Use `getDockPlacementExclusions(dockviewId, panelIds)` instead.
+ * This function ignores source-dockview scoping and returns ALL floating panels
+ * that match, which can cause cross-dock panel stealing.
+ */
 export function getExcludedFloatingPanelIds(panelIds: readonly string[]): string[] {
   const floating = getSnapshot().floatingDefinitionIdSet;
   return panelIds.filter((panelId) => floating.has(panelId));

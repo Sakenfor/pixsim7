@@ -4,7 +4,7 @@ import { readFloatingOriginMeta } from "@lib/dockview/floatingPanelInterop";
 
 import { panelPlacementCoordinator } from "../lib/panelPlacementCoordinator";
 
-import { useDockPlacementExclusions, useFloatingPanelDefinitionIdSet } from "./useFloatingPanelPlacement";
+import { useDockPlacementExclusions } from "./useFloatingPanelPlacement";
 
 type FloatPanelHandler = (dockviewPanelId: string, panel: any, options?: any) => void;
 
@@ -12,7 +12,6 @@ export interface AppDockviewIntegration {
   capabilities: {
     floatPanelHandler: FloatPanelHandler;
   };
-  floatingPanelDefinitionIdSet: Set<string>;
   placementExclusions: string[];
 }
 
@@ -34,7 +33,6 @@ export function useAppDockviewIntegration(
   dockviewId: string | undefined,
   panelIds: readonly string[] = []
 ): AppDockviewIntegration {
-  const floatingPanelDefinitionIdSet = useFloatingPanelDefinitionIdSet();
   const placementExclusions = useDockPlacementExclusions(dockviewId, panelIds);
 
   const capabilities = useMemo(
@@ -57,7 +55,6 @@ export function useAppDockviewIntegration(
 
   return {
     capabilities,
-    floatingPanelDefinitionIdSet,
     placementExclusions,
   };
 }

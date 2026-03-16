@@ -10,7 +10,7 @@
  * canonical generation prompt state as quickgen.
  */
 
-import { useState } from 'react';
+import { useCallback } from 'react';
 
 import { QuickGenWidget } from '@features/generation';
 import { PanelHostDockview, type LayoutSpecEntry } from '@features/panels/components/host/PanelHostDockview';
@@ -35,8 +35,15 @@ const LAYOUT_SPEC: LayoutSpecEntry[] = [
   { id: PANEL_IDS[2], direction: 'right', ref: PANEL_IDS[1] },
 ];
 
+// Embedded QuickGen panel host is always hidden — authoring toolbar opens
+// asset/settings as floating panels instead. isOpen/setOpen kept for
+// QuickGenWidget's CAP_GENERATION_WIDGET protocol compliance.
+const NOOP_SET_OPEN = () => {};
+
 export function PromptAuthoringWorkbenchHost() {
-  const [isQuickGenOpen, setQuickGenOpen] = useState(false);
+  // Stable noop — QuickGenWidget requires setOpen but nothing in the
+  // authoring flow calls it (toolbar uses floating panels directly).
+  const setOpen = useCallback(NOOP_SET_OPEN, []);
 
   return (
     <QuickGenWidget
@@ -45,14 +52,12 @@ export function PromptAuthoringWorkbenchHost() {
       panelManagerId={PROMPT_AUTHORING_QUICKGEN_DOCK_ID}
       panelIds={PROMPT_AUTHORING_QUICKGEN_PANEL_IDS}
       priority={5}
-      isOpen={isQuickGenOpen}
-      setOpen={setQuickGenOpen}
+      isOpen={false}
+      setOpen={setOpen}
       provideContext={false}
       storageKeyPrefix="prompt-authoring-quickgen"
       className="h-full flex flex-col"
-      panelHostClassName={isQuickGenOpen
-        ? 'h-[280px] min-h-[220px] border-t border-neutral-200 dark:border-neutral-800'
-        : 'hidden'}
+      panelHostClassName="hidden"
       minPanelsForTabs={2}
     >
       {() => (

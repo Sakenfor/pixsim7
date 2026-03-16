@@ -66,6 +66,10 @@ export const panelPlacementCoordinator = {
     return getPanelPlacements(panelId);
   },
 
+  /**
+   * @deprecated Use `getDockExclusions(dockviewId, panelIds)` instead.
+   * This ignores source-dockview scoping.
+   */
   getExcludedPanelIds(panelIds: readonly string[]): string[] {
     return getExcludedFloatingPanelIds(panelIds);
   },
