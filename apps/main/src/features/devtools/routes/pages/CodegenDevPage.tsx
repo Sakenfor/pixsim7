@@ -1,7 +1,16 @@
+import {
+  Badge,
+  EmptyState,
+  SectionHeader,
+  SidebarContentLayout,
+  type SidebarContentLayoutSection,
+  useSidebarNav,
+  useTheme,
+} from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { Icon } from '@lib/icons';
 import { canRunCodegen } from '@lib/auth';
+import { Icon } from '@lib/icons';
 
 import { useAuthStore } from '@/stores/authStore';
 
@@ -21,7 +30,6 @@ import {
   type MigrationHeadResponse,
 } from './codegenApi';
 
-type Tab = 'codegen' | 'migrations';
 type RunState = 'idle' | 'loading' | 'error';
 
 // ---------------------------------------------------------------------------
@@ -77,30 +85,8 @@ function formatMigrationOutput(response: MigrationRunResponse): string {
 }
 
 function getRequestedTaskIdFromQuery(): string {
-  if (typeof window === 'undefined') {
-    return '';
-  }
-  const raw = new URLSearchParams(window.location.search).get('task') ?? '';
-  return raw.trim();
-}
-
-// ---------------------------------------------------------------------------
-// Tab Button
-// ---------------------------------------------------------------------------
-
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-        active
-          ? 'border-amber-500 text-amber-600 dark:text-amber-400'
-          : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
-      }`}
-    >
-      {children}
-    </button>
-  );
+  if (typeof window === 'undefined') return '';
+  return (new URLSearchParams(window.location.search).get('task') ?? '').trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -124,67 +110,22 @@ function OutputPanel({ output, onDismiss }: { output: string; onDismiss: () => v
 }
 
 // ---------------------------------------------------------------------------
-// Code Generation Section
+// Codegen Task Detail
 // ---------------------------------------------------------------------------
 
-function CodegenSection() {
-  const requestedTaskId = useMemo(getRequestedTaskIdFromQuery, []);
-
-  const [tasks, setTasks] = useState<CodegenTask[]>([]);
-  const [tasksLoading, setTasksLoading] = useState(false);
-  const [tasksError, setTasksError] = useState('');
-  const [selectedTaskId, setSelectedTaskId] = useState('');
-
+function CodegenTaskDetail({ task }: { task: CodegenTask }) {
   const [runState, setRunState] = useState<RunState>('idle');
   const [runError, setRunError] = useState('');
   const [output, setOutput] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
 
-  const selectedTask = useMemo(
-    () => tasks.find((task) => task.id === selectedTaskId) ?? null,
-    [tasks, selectedTaskId],
-  );
-
-  const loadTasks = useCallback(async () => {
-    setTasksLoading(true);
-    setTasksError('');
-    try {
-      const response = await listCodegenTasks();
-      setTasks(response.tasks);
-      setSelectedTaskId((prev) => {
-        if (prev && response.tasks.some((task) => task.id === prev)) {
-          return prev;
-        }
-        const requested = requestedTaskId && response.tasks.find((task) => task.id === requestedTaskId)?.id;
-        if (requested) {
-          return requested;
-        }
-        return response.tasks.find((task) => task.id === 'app-map')?.id ?? response.tasks[0]?.id ?? '';
-      });
-    } catch (error) {
-      setTasksError(extractErrorMessage(error) || 'Failed to load codegen tasks');
-    } finally {
-      setTasksLoading(false);
-    }
-  }, [requestedTaskId]);
-
-  useEffect(() => {
-    void loadTasks();
-  }, [loadTasks]);
-
-  const runSelectedTask = useCallback(
+  const runTask = useCallback(
     async (check: boolean) => {
-      if (!selectedTaskId) {
-        return;
-      }
       setRunState('loading');
       setRunError('');
       setOutput('');
       try {
-        const response = await runCodegenTask({
-          task_id: selectedTaskId,
-          check,
-        });
+        const response = await runCodegenTask({ task_id: task.id, check });
         setOutput(formatOutput(response));
         setRunState(response.ok ? 'idle' : 'error');
       } catch (error) {
@@ -192,153 +133,97 @@ function CodegenSection() {
         setRunState('error');
       }
     },
-    [selectedTaskId],
+    [task.id],
   );
 
   const copyCommand = useCallback(
     async (check: boolean) => {
-      if (!selectedTaskId) {
-        return;
-      }
       try {
-        await navigator.clipboard.writeText(buildCommand(selectedTaskId, check));
+        await navigator.clipboard.writeText(buildCommand(task.id, check));
         setCopyStatus(check ? 'Check command copied' : 'Run command copied');
       } catch {
         setCopyStatus('Clipboard is unavailable in this browser context');
       }
     },
-    [selectedTaskId],
+    [task.id],
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-neutral-500 dark:text-neutral-400">
-          Execute tasks from <code>tools/codegen/manifest.ts</code> through backend devtools APIs.
-        </p>
+    <div className="p-4 space-y-4">
+      <div className="space-y-1">
+        <div className="text-lg font-semibold">{task.id}</div>
+        <div className="text-sm text-neutral-500 dark:text-neutral-400">
+          {task.description}
+        </div>
+        <div className="text-xs text-neutral-500">
+          Script: <code>{task.script}</code>
+        </div>
+        {task.groups.length > 0 && (
+          <div className="flex gap-1 pt-1">
+            {task.groups.map((g) => (
+              <Badge key={g} color="gray" className="text-[10px]">{g}</Badge>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
         <button
-          onClick={() => void loadTasks()}
-          disabled={tasksLoading || runState === 'loading'}
+          onClick={() => void runTask(false)}
+          disabled={runState === 'loading'}
+          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium rounded-md transition-colors"
+        >
+          Run
+        </button>
+        <button
+          onClick={() => void runTask(true)}
+          disabled={runState === 'loading' || !task.supports_check}
           className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"
         >
-          Refresh
+          Check
+        </button>
+        <button
+          onClick={() => void copyCommand(false)}
+          disabled={runState === 'loading'}
+          className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"
+        >
+          Copy run cmd
+        </button>
+        <button
+          onClick={() => void copyCommand(true)}
+          disabled={runState === 'loading' || !task.supports_check}
+          className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"
+        >
+          Copy check cmd
         </button>
       </div>
 
-      {tasksError && (
+      {copyStatus && (
+        <div className="text-xs text-neutral-500 dark:text-neutral-400">{copyStatus}</div>
+      )}
+
+      {runError && (
         <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-800 dark:text-red-200">
-          {tasksError}
+          {runError}
         </div>
       )}
 
-      <section className="grid grid-cols-1 lg:grid-cols-[2fr,3fr] gap-4">
-        <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-          <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-sm font-medium">
-            Tasks
-          </div>
-          <div className="max-h-[26rem] overflow-auto">
-            {tasksLoading ? (
-              <div className="p-3 text-sm text-neutral-500">Loading tasks...</div>
-            ) : tasks.length === 0 ? (
-              <div className="p-3 text-sm text-neutral-500">No codegen tasks found.</div>
-            ) : (
-              tasks.map((task) => (
-                <button
-                  key={task.id}
-                  onClick={() => setSelectedTaskId(task.id)}
-                  className={`w-full text-left p-3 border-b border-neutral-100 dark:border-neutral-800/70 hover:bg-neutral-50 dark:hover:bg-neutral-900/70 ${
-                    task.id === selectedTaskId ? 'bg-amber-50 dark:bg-amber-900/10' : ''
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-medium text-sm">{task.id}</div>
-                    <div className="text-[11px] text-neutral-500">
-                      {task.supports_check ? 'check' : 'run'}
-                    </div>
-                  </div>
-                  <div className="mt-1 text-xs text-neutral-500 line-clamp-2">{task.description}</div>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-4 space-y-4">
-          {selectedTask ? (
-            <>
-              <div className="space-y-1">
-                <div className="text-lg font-semibold">{selectedTask.id}</div>
-                <div className="text-sm text-neutral-500 dark:text-neutral-400">
-                  {selectedTask.description}
-                </div>
-                <div className="text-xs text-neutral-500">
-                  Script: <code>{selectedTask.script}</code>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => void runSelectedTask(false)}
-                  disabled={runState === 'loading'}
-                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium rounded-md transition-colors"
-                >
-                  Run
-                </button>
-                <button
-                  onClick={() => void runSelectedTask(true)}
-                  disabled={runState === 'loading' || !selectedTask.supports_check}
-                  className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"
-                >
-                  Check
-                </button>
-                <button
-                  onClick={() => void copyCommand(false)}
-                  disabled={runState === 'loading'}
-                  className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"
-                >
-                  Copy run cmd
-                </button>
-                <button
-                  onClick={() => void copyCommand(true)}
-                  disabled={runState === 'loading' || !selectedTask.supports_check}
-                  className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"
-                >
-                  Copy check cmd
-                </button>
-              </div>
-
-              {copyStatus && (
-                <div className="text-xs text-neutral-500 dark:text-neutral-400">{copyStatus}</div>
-              )}
-
-              {runError && (
-                <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-800 dark:text-red-200">
-                  {runError}
-                </div>
-              )}
-
-              {output && (
-                <OutputPanel
-                  output={output}
-                  onDismiss={() => {
-                    setOutput('');
-                    setRunError('');
-                    setRunState('idle');
-                  }}
-                />
-              )}
-            </>
-          ) : (
-            <div className="text-sm text-neutral-500">Select a task to run.</div>
-          )}
-        </div>
-      </section>
+      {output && (
+        <OutputPanel
+          output={output}
+          onDismiss={() => {
+            setOutput('');
+            setRunError('');
+            setRunState('idle');
+          }}
+        />
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Database Migrations Section
+// Migration Scope Detail
 // ---------------------------------------------------------------------------
 
 function ConfigRow({ label, value }: { label: string; value: string }) {
@@ -348,6 +233,138 @@ function ConfigRow({ label, value }: { label: string; value: string }) {
         {label}
       </span>
       <code className="text-xs text-neutral-700 dark:text-neutral-300 break-all">{value}</code>
+    </div>
+  );
+}
+
+function MigrationScopeDetail({
+  detail,
+  allDetails,
+}: {
+  detail: MigrationScopeDetail | null;
+  allDetails: MigrationScopeDetail[];
+}) {
+  const [heads, setHeads] = useState<Record<string, MigrationHeadResponse>>({});
+  const [headLoadingScopes, setHeadLoadingScopes] = useState<Set<string>>(new Set());
+  const [runState, setRunState] = useState<RunState>('idle');
+  const [runError, setRunError] = useState('');
+  const [output, setOutput] = useState('');
+  const [runningScope, setRunningScope] = useState<string | null>(null);
+
+  const busy = runState === 'loading';
+
+  const checkHead = useCallback(async (scope: string) => {
+    setHeadLoadingScopes((prev) => new Set(prev).add(scope));
+    try {
+      const response = await getMigrationHead(scope);
+      setHeads((prev) => ({ ...prev, [scope]: response }));
+    } catch (error) {
+      setHeads((prev) => ({
+        ...prev,
+        [scope]: { scope, current_head: null, is_head: false, error: extractErrorMessage(error) || 'Failed' },
+      }));
+    } finally {
+      setHeadLoadingScopes((prev) => {
+        const next = new Set(prev);
+        next.delete(scope);
+        return next;
+      });
+    }
+  }, []);
+
+  const handleRunMigration = useCallback(async (scope: MigrationScope) => {
+    setRunState('loading');
+    setRunError('');
+    setOutput('');
+    setRunningScope(scope);
+    try {
+      const response = await runMigration({ scope });
+      setOutput(formatMigrationOutput(response));
+      setRunState(response.ok ? 'idle' : 'error');
+    } catch (error) {
+      setRunError(extractErrorMessage(error) || 'Failed to run migration');
+      setRunState('error');
+    } finally {
+      setRunningScope(null);
+    }
+  }, []);
+
+  // "all" overview — show all scopes
+  if (!detail) {
+    return (
+      <div className="p-4 space-y-4">
+        <SectionHeader
+          trailing={
+            <div className="flex gap-2">
+              <button
+                onClick={() => void Promise.all(allDetails.map((d) => checkHead(d.scope)))}
+                disabled={busy}
+                className="px-2.5 py-1 text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 font-medium rounded transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"
+              >
+                Check All Heads
+              </button>
+              <button
+                onClick={() => void handleRunMigration('all')}
+                disabled={busy}
+                className="px-2.5 py-1 text-xs bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-medium rounded transition-colors"
+              >
+                {runningScope === 'all' ? 'Running...' : 'Migrate All'}
+              </button>
+            </div>
+          }
+        >
+          All Scopes
+        </SectionHeader>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {allDetails.map((d) => (
+            <ScopeCard
+              key={d.scope}
+              detail={d}
+              head={heads[d.scope] ?? null}
+              headLoading={headLoadingScopes.has(d.scope)}
+              busy={busy}
+              onCheckHead={() => void checkHead(d.scope)}
+              onRun={() => void handleRunMigration(d.scope as MigrationScope)}
+            />
+          ))}
+        </div>
+
+        {runError && (
+          <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-800 dark:text-red-200">
+            {runError}
+          </div>
+        )}
+
+        {output && (
+          <OutputPanel output={output} onDismiss={() => { setOutput(''); setRunError(''); setRunState('idle'); }} />
+        )}
+      </div>
+    );
+  }
+
+  // Single scope detail
+  const head = heads[detail.scope] ?? null;
+  return (
+    <div className="p-4 space-y-4">
+      <ScopeCard
+        detail={detail}
+        head={head}
+        headLoading={headLoadingScopes.has(detail.scope)}
+        busy={busy}
+        onCheckHead={() => void checkHead(detail.scope)}
+        onRun={() => void handleRunMigration(detail.scope as MigrationScope)}
+      />
+
+      {runError && (
+        <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-800 dark:text-red-200">
+          {runError}
+        </div>
+      )}
+
+      {output && (
+        <OutputPanel output={output} onDismiss={() => { setOutput(''); setRunError(''); setRunState('idle'); }} />
+      )}
     </div>
   );
 }
@@ -371,9 +388,9 @@ function ScopeCard({
     <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
       <div className="px-4 py-2.5 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 flex items-center justify-between">
         <div className="font-medium text-sm">{detail.scope}</div>
-        <div className="text-[11px] text-neutral-500">
+        <Badge color="gray" className="text-[10px]">
           {detail.migration_count} migration{detail.migration_count !== 1 ? 's' : ''}
-        </div>
+        </Badge>
       </div>
       <div className="p-4 space-y-3">
         <div className="space-y-1.5">
@@ -393,10 +410,10 @@ function ScopeCard({
                   <span className="text-neutral-500">Head:</span>{' '}
                   <code className="text-neutral-700 dark:text-neutral-300">{head.current_head ?? '(none)'}</code>
                   {head.is_head && (
-                    <span className="ml-1.5 text-green-600 dark:text-green-400 font-medium">(up to date)</span>
+                    <Badge color="green" className="ml-1.5 text-[10px]">up to date</Badge>
                   )}
                   {!head.is_head && head.current_head && (
-                    <span className="ml-1.5 text-amber-600 dark:text-amber-400 font-medium">(behind)</span>
+                    <Badge color="orange" className="ml-1.5 text-[10px]">behind</Badge>
                   )}
                 </>
               )}
@@ -425,158 +442,6 @@ function ScopeCard({
   );
 }
 
-function MigrationsSection() {
-  const [status, setStatus] = useState<MigrationStatusResponse | null>(null);
-  const [statusLoading, setStatusLoading] = useState(false);
-  const [statusError, setStatusError] = useState('');
-
-  const [heads, setHeads] = useState<Record<string, MigrationHeadResponse>>({});
-  const [headLoadingScopes, setHeadLoadingScopes] = useState<Set<string>>(new Set());
-
-  const [runState, setRunState] = useState<RunState>('idle');
-  const [runError, setRunError] = useState('');
-  const [output, setOutput] = useState('');
-  const [runningScope, setRunningScope] = useState<string | null>(null);
-
-  const loadStatus = useCallback(async () => {
-    setStatusLoading(true);
-    setStatusError('');
-    try {
-      const response = await getMigrationStatus();
-      setStatus(response);
-    } catch (error) {
-      setStatusError(extractErrorMessage(error) || 'Failed to load migration status');
-    } finally {
-      setStatusLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadStatus();
-  }, [loadStatus]);
-
-  const checkHead = useCallback(async (scope: string) => {
-    setHeadLoadingScopes((prev) => new Set(prev).add(scope));
-    try {
-      const response = await getMigrationHead(scope);
-      setHeads((prev) => ({ ...prev, [scope]: response }));
-    } catch (error) {
-      setHeads((prev) => ({
-        ...prev,
-        [scope]: { scope, current_head: null, is_head: false, error: extractErrorMessage(error) || 'Failed' },
-      }));
-    } finally {
-      setHeadLoadingScopes((prev) => {
-        const next = new Set(prev);
-        next.delete(scope);
-        return next;
-      });
-    }
-  }, []);
-
-  const checkAllHeads = useCallback(async () => {
-    if (!status?.scope_details) return;
-    await Promise.all(status.scope_details.map((d) => checkHead(d.scope)));
-  }, [status, checkHead]);
-
-  const handleRunMigration = useCallback(async (scope: MigrationScope) => {
-    setRunState('loading');
-    setRunError('');
-    setOutput('');
-    setRunningScope(scope);
-    try {
-      const response = await runMigration({ scope });
-      setOutput(formatMigrationOutput(response));
-      setRunState(response.ok ? 'idle' : 'error');
-    } catch (error) {
-      setRunError(extractErrorMessage(error) || 'Failed to run migration');
-      setRunState('error');
-    } finally {
-      setRunningScope(null);
-    }
-  }, []);
-
-  const busy = runState === 'loading';
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-neutral-500 dark:text-neutral-400">
-          Run Alembic database migrations via <code>scripts/migrate_all.py</code>.
-        </p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => void checkAllHeads()}
-            disabled={statusLoading || busy || !status?.scope_details?.length}
-            className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"
-          >
-            Check All Heads
-          </button>
-          <button
-            onClick={() => void handleRunMigration('all')}
-            disabled={busy}
-            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium rounded-md transition-colors"
-          >
-            {runningScope === 'all' ? 'Running All...' : 'Migrate All'}
-          </button>
-          <button
-            onClick={() => void loadStatus()}
-            disabled={statusLoading || busy}
-            className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"
-          >
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      {statusError && (
-        <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-800 dark:text-red-200">
-          {statusError}
-        </div>
-      )}
-
-      {statusLoading ? (
-        <div className="p-3 text-sm text-neutral-500">Loading migration status...</div>
-      ) : status && !status.available ? (
-        <div className="px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md text-sm text-yellow-800 dark:text-yellow-200">
-          Migration script not found. Ensure <code>scripts/migrate_all.py</code> exists in the repository root.
-        </div>
-      ) : status?.scope_details?.length ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {status.scope_details.map((detail) => (
-            <ScopeCard
-              key={detail.scope}
-              detail={detail}
-              head={heads[detail.scope] ?? null}
-              headLoading={headLoadingScopes.has(detail.scope)}
-              busy={busy}
-              onCheckHead={() => void checkHead(detail.scope)}
-              onRun={() => void handleRunMigration(detail.scope as MigrationScope)}
-            />
-          ))}
-        </div>
-      ) : null}
-
-      {runError && (
-        <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-800 dark:text-red-200">
-          {runError}
-        </div>
-      )}
-
-      {output && (
-        <OutputPanel
-          output={output}
-          onDismiss={() => {
-            setOutput('');
-            setRunError('');
-            setRunState('idle');
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
@@ -584,48 +449,189 @@ function MigrationsSection() {
 export function CodegenDevPage() {
   const user = useAuthStore((s) => s.user);
   const canAccessCodegen = canRunCodegen(user);
-  const [activeTab, setActiveTab] = useState<Tab>('codegen');
+  const { theme: variant } = useTheme();
+
+  const requestedTaskId = useMemo(getRequestedTaskIdFromQuery, []);
+
+  // Codegen tasks from API
+  const [tasks, setTasks] = useState<CodegenTask[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [tasksError, setTasksError] = useState('');
+
+  // Migration status from API
+  const [migrationStatus, setMigrationStatus] = useState<MigrationStatusResponse | null>(null);
+  const [migrationLoading, setMigrationLoading] = useState(false);
+  const [migrationError, setMigrationError] = useState('');
+
+  const loadTasks = useCallback(async () => {
+    setTasksLoading(true);
+    setTasksError('');
+    try {
+      const response = await listCodegenTasks();
+      setTasks(response.tasks);
+    } catch (error) {
+      setTasksError(extractErrorMessage(error) || 'Failed to load codegen tasks');
+    } finally {
+      setTasksLoading(false);
+    }
+  }, []);
+
+  const loadMigrations = useCallback(async () => {
+    setMigrationLoading(true);
+    setMigrationError('');
+    try {
+      const response = await getMigrationStatus();
+      setMigrationStatus(response);
+    } catch (error) {
+      setMigrationError(extractErrorMessage(error) || 'Failed to load migration status');
+    } finally {
+      setMigrationLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadTasks();
+    void loadMigrations();
+  }, [loadTasks, loadMigrations]);
+
+  // Build sidebar sections
+  const sections = useMemo<SidebarContentLayoutSection[]>(() => {
+    const result: SidebarContentLayoutSection[] = [];
+
+    // Codegen tasks section
+    const codegenChildren = tasks.map((task) => ({
+      id: `task:${task.id}`,
+      label: task.id,
+      icon: <Icon name={task.supports_check ? 'checkCircle' : 'play'} size={12} />,
+    }));
+    result.push({
+      id: 'codegen',
+      label: `Code Generation (${tasks.length})`,
+      icon: <Icon name="code" size={13} />,
+      children: codegenChildren.length > 0 ? codegenChildren : undefined,
+    });
+
+    // Migrations section
+    const scopeDetails = migrationStatus?.scope_details ?? [];
+    const migrationChildren = [
+      { id: 'migration:all', label: 'All Scopes', icon: <Icon name="layers" size={12} /> },
+      ...scopeDetails.map((d) => ({
+        id: `migration:${d.scope}`,
+        label: d.scope,
+        icon: <Icon name="database" size={12} />,
+      })),
+    ];
+    result.push({
+      id: 'migrations',
+      label: `Migrations (${scopeDetails.length})`,
+      icon: <Icon name="database" size={13} />,
+      children: migrationChildren,
+    });
+
+    return result;
+  }, [tasks, migrationStatus]);
+
+  const nav = useSidebarNav({
+    sections,
+    initial: requestedTaskId ? `task:${requestedTaskId}` : undefined,
+    storageKey: 'codegen-dev:nav',
+  });
 
   if (!canAccessCodegen) {
     return (
-      <div className="mx-auto max-w-5xl p-6 space-y-4 min-h-screen">
-        <header className="border-b border-neutral-200 dark:border-neutral-800 pb-4">
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <Icon name="code" size={22} className="text-amber-500" />
-            Developer Tasks
-          </h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2">
-            The <code>devtools.codegen</code> permission is required to access developer tasks.
-          </p>
-        </header>
+      <div className="flex items-center justify-center h-full">
+        <EmptyState
+          message="Permission required"
+          description="The devtools.codegen permission is required to access developer tasks."
+          icon={<Icon name="lock" size={24} />}
+        />
+      </div>
+    );
+  }
+
+  // Resolve active content
+  const activeId = nav.activeId;
+  let content: React.ReactNode;
+
+  if (activeId.startsWith('task:')) {
+    const taskId = activeId.slice(5);
+    const task = tasks.find((t) => t.id === taskId);
+    content = task ? (
+      <CodegenTaskDetail key={task.id} task={task} />
+    ) : (
+      <div className="p-4">
+        <EmptyState message={tasksLoading ? 'Loading tasks...' : 'Task not found'} />
+      </div>
+    );
+  } else if (activeId.startsWith('migration:')) {
+    const scopeId = activeId.slice(10);
+    const scopeDetails = migrationStatus?.scope_details ?? [];
+    const detail = scopeId === 'all' ? null : scopeDetails.find((d) => d.scope === scopeId) ?? null;
+    content = migrationLoading ? (
+      <div className="p-4">
+        <EmptyState message="Loading migration status..." />
+      </div>
+    ) : (
+      <MigrationScopeDetail detail={detail} allDetails={scopeDetails} />
+    );
+  } else if (activeId === 'codegen') {
+    // Section header selected, no child — show overview
+    content = tasksLoading ? (
+      <div className="p-4">
+        <EmptyState message="Loading tasks..." />
+      </div>
+    ) : tasksError ? (
+      <div className="p-4">
+        <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-800 dark:text-red-200">
+          {tasksError}
+        </div>
+      </div>
+    ) : (
+      <div className="p-4">
+        <EmptyState message="Select a codegen task from the sidebar" />
+      </div>
+    );
+  } else if (activeId === 'migrations') {
+    content = migrationLoading ? (
+      <div className="p-4">
+        <EmptyState message="Loading migration status..." />
+      </div>
+    ) : migrationError ? (
+      <div className="p-4">
+        <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md text-sm text-red-800 dark:text-red-200">
+          {migrationError}
+        </div>
+      </div>
+    ) : (
+      <div className="p-4">
+        <EmptyState message="Select a migration scope from the sidebar" />
+      </div>
+    );
+  } else {
+    content = (
+      <div className="p-4">
+        <EmptyState message="Select an item from the sidebar" />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-6 space-y-6 min-h-screen">
-      <header className="border-b border-neutral-200 dark:border-neutral-800 pb-0">
-        <div className="space-y-2 pb-4">
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <Icon name="code" size={22} className="text-amber-500" />
-            Developer Tasks
-          </h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            Code generation, database migrations, and other developer tasks.
-          </p>
-        </div>
-        <div className="flex gap-0">
-          <TabButton active={activeTab === 'codegen'} onClick={() => setActiveTab('codegen')}>
-            Code Generation
-          </TabButton>
-          <TabButton active={activeTab === 'migrations'} onClick={() => setActiveTab('migrations')}>
-            Database Migrations
-          </TabButton>
-        </div>
-      </header>
-
-      {activeTab === 'codegen' && <CodegenSection />}
-      {activeTab === 'migrations' && <MigrationsSection />}
-    </div>
+    <SidebarContentLayout
+      sections={sections}
+      activeSectionId={nav.activeSectionId}
+      activeChildId={nav.activeChildId}
+      onSelectSection={nav.selectSection}
+      onSelectChild={nav.selectChild}
+      expandedSectionIds={nav.expandedSectionIds}
+      onToggleExpand={nav.toggleExpand}
+      sidebarWidth="w-48"
+      variant={variant}
+      collapsible
+      expandedWidth={192}
+      persistKey="codegen-dev-sidebar"
+      contentClassName="overflow-y-auto"
+    >
+      {content}
+    </SidebarContentLayout>
   );
 }

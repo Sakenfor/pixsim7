@@ -22,6 +22,9 @@ const SqlQueryExplorerPanel = lazy(() => import('@features/panels/components/dev
 const LogViewerPanel = lazy(() => import('@features/panels/components/dev/LogViewerPanel').then(m => ({ default: m.LogViewerPanel })));
 const TestOverviewPanel = lazy(() => import('@features/panels/components/dev/TestOverviewPanel').then(m => ({ default: m.TestOverviewPanel })));
 const CodegenDevPage = lazy(() => import('../routes/pages/CodegenDevPage').then(m => ({ default: m.CodegenDevPage })));
+const ContentMapPanel = lazy(() => import('@features/panels/components/dev/ContentMapPanel').then(m => ({ default: m.ContentMapPanel })));
+const PlansPanel = lazy(() => import('@features/panels/components/dev/PlansPanel').then(m => ({ default: m.PlansPanel })));
+const AgentObservabilityPanel = lazy(() => import('@features/panels/components/dev/AgentObservabilityPanel').then(m => ({ default: m.AgentObservabilityPanel })));
 
 // ============================================================================
 // Session & World State Tools
@@ -94,6 +97,34 @@ export const docBrowserTool = defineDevTool({
   category: 'graph',
   panelComponent: DocBrowserPanel,
   tags: ['docs', 'documentation', 'plans', 'architecture', 'search'],
+});
+
+export const plansTool = defineDevTool({
+  id: 'plans',
+  label: 'Plans',
+  updatedAt: '2026-03-16T00:00:00Z',
+  changeNote: 'New plan registry browser with metadata, markdown, sync, and event history.',
+  featureHighlights: ['Browse plans by status, view markdown, sync registry, activity feed.'],
+  description: 'Browse and manage plan registry — manifests, sync, events',
+  icon: 'clipboard',
+  category: 'graph',
+  panelComponent: PlansPanel,
+  tags: ['plans', 'registry', 'architecture', 'roadmap', 'sync'],
+  safeForNonDev: true,
+});
+
+export const agentObservabilityTool = defineDevTool({
+  id: 'agent-observability',
+  label: 'AI Agents',
+  updatedAt: '2026-03-16T00:00:00Z',
+  changeNote: 'Live contract graph with agent presence, session history, and utilization stats.',
+  featureHighlights: ['Contract graph overlay', 'Agent session tracking', 'Activity history', 'Utilization stats'],
+  description: 'AI agent observability — live activity, contract graph, session history',
+  icon: 'activity',
+  category: 'graph',
+  panelComponent: AgentObservabilityPanel,
+  tags: ['agents', 'ai', 'observability', 'contracts', 'meta', 'sessions'],
+  safeForNonDev: true,
 });
 
 // ============================================================================
@@ -245,4 +276,22 @@ export const codegenTool = defineDevTool({
       defaultValue: false,
     },
   ],
+});
+
+// ============================================================================
+// Content Map
+// ============================================================================
+
+export const contentMapTool = defineDevTool({
+  id: 'content-map',
+  label: 'Content Map',
+  updatedAt: '2026-03-15T00:00:00Z',
+  changeNote: 'Birds-eye view of all content sources with live summaries.',
+  featureHighlights: ['Browse packs, primitives, vocabularies, plugins in one place.'],
+  description: 'Map of all content sources: packs, primitives, vocabularies, plugins',
+  icon: 'map',
+  category: 'prompts',
+  panelComponent: ContentMapPanel,
+  tags: ['content', 'packs', 'primitives', 'vocabularies', 'map', 'inventory', 'plugins'],
+  safeForNonDev: true,
 });

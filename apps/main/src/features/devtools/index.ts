@@ -29,5 +29,6 @@ export {
   logViewerTool,
   testOverviewTool,
   codegenTool,
+  contentMapTool,
   builtInDevTools,
 } from './plugins';

@@ -2,12 +2,12 @@
  * Dev Tools Panel
  *
  * Main navigation and discovery panel for developer tools.
- * Shows all registered dev tools grouped by category with search/filter.
+ * Left sidebar for category navigation, content area for tool cards.
  */
 
 import type { DevToolDefinition, DevToolCategory } from "@pixsim7/shared.devtools.core";
-import { PanelShell } from "@pixsim7/shared.ui";
-import { useState, useMemo } from "react";
+import { Badge, Checkbox, EmptyState, SearchInput, SectionHeader, SidebarContentLayout, type SidebarContentLayoutSection, useSidebarNav, useTheme } from "@pixsim7/shared.ui";
+import { useState, useMemo, useEffect } from "react";
 
 import { useDevToolContext } from "@lib/dev/devtools/devToolContext";
 import { Icon, IconBadge, type IconName } from "@lib/icons";
@@ -16,15 +16,15 @@ import { devToolSelectors } from "@lib/plugins/catalogSelectors";
 import { useWorkspaceStore } from "@features/workspace";
 
 
-const CATEGORY_LABELS: Record<DevToolCategory, string> = {
-  session: "Session & World",
-  plugins: "Plugin Development",
-  graph: "Architecture & Graphs",
-  generation: "Content Generation",
-  world: "World Tools",
-  debug: "Debug & Diagnostics",
-  prompts: "Prompts & Packs",
-  misc: "Miscellaneous",
+const CATEGORY_META: Record<DevToolCategory, { label: string; icon: IconName }> = {
+  session: { label: "Session & World", icon: "globe" },
+  generation: { label: "Generation", icon: "image" },
+  prompts: { label: "Prompts & Packs", icon: "fileText" },
+  plugins: { label: "Plugins", icon: "plug" },
+  graph: { label: "Architecture", icon: "graph" },
+  debug: { label: "Debug", icon: "wrench" },
+  world: { label: "World Tools", icon: "map" },
+  misc: { label: "Misc", icon: "grid" },
 };
 
 const CATEGORY_ORDER: DevToolCategory[] = [
@@ -37,6 +37,21 @@ const CATEGORY_ORDER: DevToolCategory[] = [
   "world",
   "misc",
 ];
+
+/** Map category to icon variant for visual distinction */
+const CATEGORY_VARIANTS: Record<
+  DevToolCategory | "misc",
+  "primary" | "secondary" | "success" | "warning" | "info" | "error"
+> = {
+  session: "info",
+  generation: "success",
+  plugins: "secondary",
+  graph: "primary",
+  world: "warning",
+  debug: "error",
+  prompts: "success",
+  misc: "muted" as any,
+};
 
 function parseUpdatedAt(value?: string): number {
   if (!value) return 0;
@@ -62,187 +77,186 @@ function sortToolsByRecency(tools: DevToolDefinition[]): DevToolDefinition[] {
   });
 }
 
+type NavId = DevToolCategory | "recent";
+
 export function DevToolsPanel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showExperimental, setShowExperimental] = useState(false);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const { addRecentTool, recentTools, clearRecentTools } = useDevToolContext();
+  const { theme: variant } = useTheme();
 
-  const allTools = useMemo(() => sortToolsByRecency(devToolSelectors.getAll()), []);
+  const [allTools, setAllTools] = useState(() => sortToolsByRecency(devToolSelectors.getAll()));
 
-  const filteredTools = useMemo(() => {
-    let tools = allTools;
-
-    // Filter by search query
-    if (searchQuery.trim()) {
-      tools = devToolSelectors.search(searchQuery);
-    }
-
-    // Filter experimental tools unless showExperimental is enabled
-    if (!showExperimental) {
-      tools = tools.filter((tool) => tool.safeForNonDev !== false);
-    }
-
-    return sortToolsByRecency(tools);
-  }, [allTools, searchQuery, showExperimental]);
-
-  // Group tools by category
-  const toolsByCategory = useMemo(() => {
-    const grouped = new Map<DevToolCategory | "misc", DevToolDefinition[]>();
-
-    filteredTools.forEach((tool) => {
-      const category = tool.category ?? "misc";
-      if (!grouped.has(category)) {
-        grouped.set(category, []);
-      }
-      grouped.get(category)!.push(tool);
+  useEffect(() => {
+    return devToolSelectors.subscribe(() => {
+      setAllTools(sortToolsByRecency(devToolSelectors.getAll()));
     });
+  }, []);
 
-    return grouped;
-  }, [filteredTools]);
+  // Build visible tools (respecting experimental toggle)
+  const visibleTools = useMemo(() => {
+    if (showExperimental) return allTools;
+    return allTools.filter((tool) => tool.safeForNonDev !== false);
+  }, [allTools, showExperimental]);
+
+  // Count tools per category for sidebar badges
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const tool of visibleTools) {
+      const cat = tool.category ?? "misc";
+      counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    }
+    return counts;
+  }, [visibleTools]);
+
+  // Build sidebar sections from categories that have tools
+  const sections = useMemo<SidebarContentLayoutSection[]>(() => {
+    const result: SidebarContentLayoutSection[] = [];
+
+    if (recentTools.length > 0) {
+      result.push({
+        id: "recent",
+        label: "Recent",
+        icon: <Icon name="clock" size={13} />,
+      });
+    }
+
+    for (const cat of CATEGORY_ORDER) {
+      const count = categoryCounts.get(cat) ?? 0;
+      if (count === 0) continue;
+      const meta = CATEGORY_META[cat];
+      result.push({
+        id: cat,
+        label: `${meta.label} (${count})`,
+        icon: <Icon name={meta.icon} size={13} />,
+      });
+    }
+
+    return result;
+  }, [recentTools.length, categoryCounts]);
+
+  const nav = useSidebarNav<NavId, never>({
+    sections,
+    initial: recentTools.length > 0 ? "recent" : CATEGORY_ORDER.find((c) => (categoryCounts.get(c) ?? 0) > 0) ?? "debug",
+    storageKey: "dev-tools:nav",
+  });
+
+  // Get tools for the active category (or recent tools)
+  const activeTools = useMemo(() => {
+    if (nav.activeId === "recent") {
+      return recentTools
+        .map((id) => devToolSelectors.get(id))
+        .filter((t): t is DevToolDefinition => !!t);
+    }
+
+    const categoryTools = visibleTools.filter(
+      (tool) => (tool.category ?? "misc") === nav.activeId
+    );
+
+    if (!searchQuery.trim()) return sortToolsByRecency(categoryTools);
+
+    const lq = searchQuery.toLowerCase();
+    return sortToolsByRecency(
+      categoryTools.filter(
+        (tool) =>
+          tool.label.toLowerCase().includes(lq) ||
+          tool.description?.toLowerCase().includes(lq) ||
+          tool.tags?.some((t) => t.toLowerCase().includes(lq))
+      )
+    );
+  }, [nav.activeId, visibleTools, recentTools, searchQuery]);
 
   const handleOpenTool = (tool: DevToolDefinition) => {
-    // Add to recent tools
     addRecentTool(tool.id);
 
     if (tool.panelComponent) {
-      // Open as floating panel using a special dev-tool panel ID
-      // The panel ID format is: dev-tool:<toolId>
       const panelId = `dev-tool:${tool.id}` as any;
-
       openFloatingPanel(panelId, {
         width: 800,
         height: 600,
-        context: {
-          toolId: tool.id,
-          toolDefinition: tool,
-        },
+        context: { toolId: tool.id, toolDefinition: tool },
       });
     } else if (tool.routePath) {
-      // Navigate to route
       window.location.href = tool.routePath;
     }
   };
 
+  const activeCategory = nav.activeId as NavId;
+  const activeMeta = activeCategory !== "recent" ? CATEGORY_META[activeCategory] : null;
+
   return (
-    <PanelShell
-      className="dev-tools-panel bg-gray-900 text-gray-100"
-      header={
-        <div className="p-4 border-b border-gray-700">
-          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <IconBadge name="wrench" size={18} variant="primary" />
-            Dev Tools
-          </h2>
+    <SidebarContentLayout
+      sections={sections}
+      activeSectionId={nav.activeSectionId}
+      onSelectSection={nav.selectSection}
+      sidebarWidth="w-40"
+      variant={variant}
+      collapsible
+      expandedWidth={160}
+      persistKey="dev-tools-sidebar"
+      className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+      contentClassName="overflow-y-auto"
+    >
+      {/* Content header */}
+      <div className="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 p-3 space-y-2">
+        <SectionHeader
+          trailing={activeCategory === "recent" ? (
+            <button
+              onClick={clearRecentTools}
+              className="text-xs text-gray-500 hover:text-gray-300"
+            >
+              Clear
+            </button>
+          ) : undefined}
+        >
+          {activeMeta && <Icon name={activeMeta.icon} size={14} className="inline-block mr-1 align-middle" />}
+          {activeCategory === "recent" ? "Recently Used" : activeMeta?.label ?? activeCategory}
+        </SectionHeader>
 
-          {/* Search */}
-          <input
-            type="text"
-            placeholder="Search dev tools..."
+        <div className="flex items-center gap-2">
+          <SearchInput
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onChange={setSearchQuery}
+            placeholder="Filter..."
+            size="sm"
           />
-
-          {/* Show experimental toggle */}
-          <label className="flex items-center gap-2 mt-3 text-sm cursor-pointer">
-            <input
-              type="checkbox"
+          <label className="flex items-center gap-1 text-[11px] text-gray-500 cursor-pointer whitespace-nowrap" title="Show experimental tools">
+            <Checkbox
               checked={showExperimental}
               onChange={(e) => setShowExperimental(e.target.checked)}
-              className="w-4 h-4 rounded"
+              size="sm"
             />
-            <span className="text-gray-400">Show experimental tools</span>
+            Exp
           </label>
         </div>
-      }
-      bodyClassName="p-4 space-y-6"
-    >
-        {/* Recent Tools */}
-        {recentTools.length > 0 && !searchQuery && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                Recently Used
-              </h3>
-              <button
-                onClick={clearRecentTools}
-                className="text-xs text-gray-500 hover:text-gray-300"
-              >
-                Clear
-              </button>
-            </div>
-            <div className="space-y-2">
-              {recentTools.map((toolId) => {
-                const tool = devToolSelectors.get(toolId);
-                if (!tool) return null;
-                return (
-                  <DevToolCard
-                    key={toolId}
-                    tool={tool}
-                    onOpen={handleOpenTool}
-                  />
-                );
-              })}
-            </div>
-          </div>
+      </div>
+
+      {/* Tool cards */}
+      <div className="p-3 space-y-2">
+        {activeTools.map((tool) => (
+          <DevToolCard key={tool.id} tool={tool} onOpen={handleOpenTool} />
+        ))}
+
+        {activeTools.length === 0 && (
+          <EmptyState
+            message={searchQuery ? "No matching tools" : "No tools in this category"}
+            size="sm"
+          />
         )}
-
-        {CATEGORY_ORDER.map((category) => {
-          const tools = toolsByCategory.get(category);
-          if (!tools || tools.length === 0) return null;
-
-          return (
-            <div key={category} className="space-y-2">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                {CATEGORY_LABELS[category] ?? category}
-              </h3>
-              <div className="space-y-2">
-                {tools.map((tool) => (
-                  <DevToolCard
-                    key={tool.id}
-                    tool={tool}
-                    onOpen={handleOpenTool}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Empty state */}
-        {filteredTools.length === 0 && (
-          <div className="text-center py-8 text-gray-500">
-            <p>No dev tools found.</p>
-            {searchQuery && (
-              <p className="text-sm mt-2">
-                Try a different search query or clear the search.
-              </p>
-            )}
-          </div>
-        )}
-    </PanelShell>
+      </div>
+    </SidebarContentLayout>
   );
 }
+
+// ---------------------------------------------------------------------------
+// DevToolCard
+// ---------------------------------------------------------------------------
 
 interface DevToolCardProps {
   tool: DevToolDefinition;
   onOpen: (tool: DevToolDefinition) => void;
 }
-
-/** Map category to icon variant for visual distinction */
-const CATEGORY_VARIANTS: Record<
-  DevToolCategory | "misc",
-  "primary" | "secondary" | "success" | "warning" | "info" | "error"
-> = {
-  session: "info",
-  generation: "success",
-  plugins: "secondary",
-  graph: "primary",
-  world: "warning",
-  debug: "error",
-  prompts: "success",
-  misc: "muted" as any,
-};
 
 function DevToolCard({ tool, onOpen }: DevToolCardProps) {
   const hasAction = !!(tool.routePath || tool.panelComponent);
@@ -255,13 +269,12 @@ function DevToolCard({ tool, onOpen }: DevToolCardProps) {
       onClick={() => onOpen(tool)}
       disabled={!hasAction}
       className={`
-        w-full text-left p-3 rounded-lg border border-gray-700 bg-gray-800
+        w-full text-left p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800
         transition-all group
-        ${hasAction ? "hover:bg-gray-700/50 hover:border-gray-600 cursor-pointer" : "opacity-50 cursor-not-allowed"}
+        ${hasAction ? "hover:bg-gray-100 dark:hover:bg-gray-700/50 hover:border-gray-300 dark:hover:border-gray-600 cursor-pointer" : "opacity-50 cursor-not-allowed"}
       `}
     >
       <div className="flex items-start gap-3">
-        {/* Icon with badge */}
         {tool.icon && (
           <IconBadge
             name={tool.icon as IconName}
@@ -271,9 +284,8 @@ function DevToolCard({ tool, onOpen }: DevToolCardProps) {
           />
         )}
 
-        {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm text-gray-100">{tool.label}</div>
+          <div className="font-medium text-sm text-gray-900 dark:text-gray-100">{tool.label}</div>
           {tool.description && (
             <div className="text-xs text-gray-400 mt-1 line-clamp-2">
               {tool.description}
@@ -289,37 +301,27 @@ function DevToolCard({ tool, onOpen }: DevToolCardProps) {
           {(updatedAtLabel || highlights.length > 0 || (tool.tags && tool.tags.length > 0)) && (
             <div className="flex flex-wrap gap-1 mt-2">
               {updatedAtLabel && (
-                <span className="px-1.5 py-0.5 bg-blue-500/15 text-blue-300 rounded text-[10px]">
-                  Updated {updatedAtLabel}
-                </span>
+                <Badge color="blue" className="text-[10px]">Updated {updatedAtLabel}</Badge>
               )}
               {highlights.slice(0, 2).map((item) => (
-                <span
-                  key={item}
-                  className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-300 rounded text-[10px]"
-                  title={item}
-                >
+                <Badge key={item} color="green" className="text-[10px]">
                   {item}
-                </span>
+                </Badge>
               ))}
               {highlights.length > 2 && (
-                <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-300 rounded text-[10px]">
+                <Badge color="green" className="text-[10px]">
                   +{highlights.length - 2} more
-                </span>
+                </Badge>
               )}
               {(tool.tags ?? []).slice(0, 3).map((tag) => (
-                <span
-                  key={tag}
-                  className="px-1.5 py-0.5 bg-gray-700/50 text-gray-400 rounded text-[10px]"
-                >
+                <Badge key={tag} color="gray" className="text-[10px]">
                   {tag}
-                </span>
+                </Badge>
               ))}
             </div>
           )}
         </div>
 
-        {/* Action indicator */}
         {hasAction && (
           <div className="flex-shrink-0 text-gray-600 group-hover:text-gray-400 transition-colors">
             <Icon

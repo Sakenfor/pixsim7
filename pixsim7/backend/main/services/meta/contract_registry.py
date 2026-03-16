@@ -62,7 +62,7 @@ def _builtin_prompts_analysis(version: str = "unknown") -> MetaContract:
             "catalog, deprecations, and examples."
         ),
         provides=["prompt_analysis", "analyzer_catalog", "analyzer_presets"],
-        relates_to=["prompts.authoring"],
+        relates_to=["prompts.authoring", "plans.management"],
     )
 
 
@@ -84,7 +84,7 @@ def _builtin_prompts_authoring(version: str = "unknown") -> MetaContract:
             "authoring_workflows",
             "valid_values",
         ],
-        relates_to=["prompts.analysis", "blocks.discovery"],
+        relates_to=["prompts.analysis", "blocks.discovery", "user.assistant"],
     )
 
 
@@ -106,8 +106,11 @@ def _builtin_blocks_discovery() -> MetaContract:
             "block_matrix",
             "content_packs",
             "composition_roles",
+            "vocabulary_governance",
+            "planning_ir",
+            "primitive_effectiveness",
         ],
-        relates_to=["prompts.authoring", "prompts.analysis"],
+        relates_to=["prompts.authoring", "prompts.analysis", "plans.management"],
         sub_endpoints=[
             MetaContractEndpoint(
                 id="blocks.tag_dictionary",
@@ -145,6 +148,218 @@ def _builtin_blocks_discovery() -> MetaContract:
                 path="/api/v1/block-templates/blocks/tags",
                 summary="Compact tag key to values index.",
             ),
+            MetaContractEndpoint(
+                id="blocks.vocabulary_validate",
+                method="POST",
+                path="/api/v1/block-templates/meta/vocabulary/validate",
+                summary="Validate tags and ontology IDs against canonical vocabulary.",
+            ),
+            MetaContractEndpoint(
+                id="blocks.vocabulary_suggest",
+                method="GET",
+                path="/api/v1/block-templates/meta/vocabulary/suggest",
+                summary="Suggest canonical tags based on partial input.",
+            ),
+        ],
+    )
+
+
+def _builtin_plans_management() -> MetaContract:
+    return MetaContract(
+        id="plans.management",
+        name="Plan Management",
+        endpoint=None,
+        version="1.0.0",
+        auth_required=True,
+        owner="devtools lane",
+        summary=(
+            "Plan registry: browse, update status/stage/priority, view "
+            "companion/handoff docs, agent work assignment."
+        ),
+        provides=[
+            "plan_registry",
+            "plan_status_management",
+            "plan_documents",
+            "agent_assignment",
+        ],
+        relates_to=["devtools.codegen", "ui.catalog"],
+        sub_endpoints=[
+            MetaContractEndpoint(
+                id="plans.list",
+                method="GET",
+                path="/api/v1/dev/plans",
+                summary="List all plans (DB-first, auto-bootstraps from filesystem).",
+            ),
+            MetaContractEndpoint(
+                id="plans.detail",
+                method="GET",
+                path="/api/v1/dev/plans/{plan_id}",
+                summary="Get plan with full metadata and markdown content.",
+            ),
+            MetaContractEndpoint(
+                id="plans.update",
+                method="PATCH",
+                path="/api/v1/dev/plans/update/{plan_id}",
+                summary="Update plan status, stage, owner, priority, or markdown.",
+            ),
+            MetaContractEndpoint(
+                id="plans.documents",
+                method="GET",
+                path="/api/v1/dev/plans/documents/{plan_id}",
+                summary="Companion and handoff documents for a plan.",
+            ),
+            MetaContractEndpoint(
+                id="plans.agent_context",
+                method="GET",
+                path="/api/v1/dev/plans/agent-context",
+                summary="Full work package for AI agent: assignment + docs + available actions.",
+            ),
+        ],
+    )
+
+
+def _builtin_devtools_codegen() -> MetaContract:
+    return MetaContract(
+        id="devtools.codegen",
+        name="Developer Tasks & Codegen",
+        endpoint=None,
+        version="1.0.0",
+        auth_required=True,
+        owner="devtools lane",
+        summary=(
+            "Code generation tasks, database migrations, and developer utilities. "
+            "Tasks discovered from tools/codegen/manifest.ts."
+        ),
+        provides=[
+            "codegen_tasks",
+            "migration_management",
+            "test_runner",
+        ],
+        relates_to=["plans.management"],
+        sub_endpoints=[
+            MetaContractEndpoint(
+                id="codegen.tasks",
+                method="GET",
+                path="/api/v1/devtools/codegen/tasks",
+                summary="List available codegen tasks.",
+            ),
+            MetaContractEndpoint(
+                id="codegen.run",
+                method="POST",
+                path="/api/v1/devtools/codegen/run",
+                summary="Execute a codegen task.",
+            ),
+            MetaContractEndpoint(
+                id="codegen.migrations_status",
+                method="GET",
+                path="/api/v1/devtools/codegen/migrations/status",
+                summary="Database migration status across all scopes.",
+            ),
+        ],
+    )
+
+
+def _builtin_ui_catalog() -> MetaContract:
+    return MetaContract(
+        id="ui.catalog",
+        name="UI Component Catalog",
+        endpoint=None,
+        version="1.0.0",
+        auth_required=False,
+        owner="frontend lane",
+        summary=(
+            "Machine-readable catalog of shared UI components, hooks, icons, "
+            "and composition patterns. Prevents ad-hoc inline UI."
+        ),
+        provides=[
+            "ui_components",
+            "ui_hooks",
+            "ui_icons",
+            "ui_patterns",
+            "agent_guidance",
+        ],
+        relates_to=["devtools.codegen", "plans.management"],
+        sub_endpoints=[
+            MetaContractEndpoint(
+                id="ui.catalog_file",
+                method="GET",
+                path="docs/ui-component-catalog.generated.json",
+                summary="Generated catalog JSON (filesystem, not an API endpoint).",
+            ),
+        ],
+    )
+
+
+def _builtin_user_assistant() -> MetaContract:
+    return MetaContract(
+        id="user.assistant",
+        name="User AI Assistant",
+        endpoint=None,
+        version="1.0.0",
+        auth_required=True,
+        owner="user-experience lane",
+        summary=(
+            "User-facing AI assistant capabilities: asset management, "
+            "generation, scene editing, character work, and project help."
+        ),
+        provides=[
+            "asset_browsing",
+            "asset_editing",
+            "generation_assistance",
+            "scene_management",
+            "character_assistance",
+            "prompt_authoring",
+        ],
+        relates_to=["prompts.authoring", "blocks.discovery"],
+        sub_endpoints=[
+            MetaContractEndpoint(
+                id="user.assets.list",
+                method="GET",
+                path="/api/v1/assets",
+                summary="Browse and search user assets with filters.",
+            ),
+            MetaContractEndpoint(
+                id="user.assets.analyze",
+                method="POST",
+                path="/api/v1/assets/{asset_id}/analyze",
+                summary="Run AI analysis on an asset.",
+            ),
+            MetaContractEndpoint(
+                id="user.generations.create",
+                method="POST",
+                path="/api/v1/generations",
+                summary="Create a new generation (image/video).",
+            ),
+            MetaContractEndpoint(
+                id="user.generations.list",
+                method="GET",
+                path="/api/v1/generations",
+                summary="List user's generations with status.",
+            ),
+            MetaContractEndpoint(
+                id="user.prompts.families",
+                method="GET",
+                path="/api/v1/prompts/families",
+                summary="Browse prompt families for authoring.",
+            ),
+            MetaContractEndpoint(
+                id="user.scenes.list",
+                method="GET",
+                path="/api/v1/game/scenes",
+                summary="List available scenes.",
+            ),
+            MetaContractEndpoint(
+                id="user.characters.list",
+                method="GET",
+                path="/api/v1/characters",
+                summary="List characters in the current world.",
+            ),
+            MetaContractEndpoint(
+                id="user.assistant.send",
+                method="POST",
+                path="/api/v1/meta/agents/bridge/send",
+                summary="Send a message to the AI assistant.",
+            ),
         ],
     )
 
@@ -153,6 +368,10 @@ _BUILTIN_FACTORIES = {
     "prompts.analysis": _builtin_prompts_analysis,
     "prompts.authoring": _builtin_prompts_authoring,
     "blocks.discovery": _builtin_blocks_discovery,
+    "plans.management": _builtin_plans_management,
+    "devtools.codegen": _builtin_devtools_codegen,
+    "ui.catalog": _builtin_ui_catalog,
+    "user.assistant": _builtin_user_assistant,
 }
 
 

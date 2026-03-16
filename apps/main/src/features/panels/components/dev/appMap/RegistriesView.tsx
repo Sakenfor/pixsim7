@@ -659,10 +659,18 @@ function RegistryItemList({
   registry: RegistryInfo;
   searchQuery: string;
 }) {
-  // Subscribe to registry changes
+  // Subscribe to registry changes — snapshot must be referentially stable
+  const snapshotRef = useRef<{ key: string; value: Identifiable[] }>({ key: '', value: [] });
   const items = useSyncExternalStore(
     registry.subscribe,
-    () => registry.getItems()
+    () => {
+      const current = registry.getItems();
+      const key = current.map((i) => i.id).join(',');
+      if (key !== snapshotRef.current.key) {
+        snapshotRef.current = { key, value: current };
+      }
+      return snapshotRef.current.value;
+    }
   );
 
   const filteredItems = useMemo(() => {

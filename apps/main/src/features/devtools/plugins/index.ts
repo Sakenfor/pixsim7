@@ -12,6 +12,8 @@ import {
   capabilityTestingTool,
   appMapTool,
   docBrowserTool,
+  plansTool,
+  agentObservabilityTool,
   gizmoSurfacesTool,
   promptImporterTool,
   blockFitTool,
@@ -20,6 +22,7 @@ import {
   logViewerTool,
   testOverviewTool,
   codegenTool,
+  contentMapTool,
 } from './tools';
 
 // Export all plugins individually
@@ -29,6 +32,8 @@ export {
   capabilityTestingTool,
   appMapTool,
   docBrowserTool,
+  plansTool,
+  agentObservabilityTool,
   gizmoSurfacesTool,
   promptImporterTool,
   blockFitTool,
@@ -37,6 +42,7 @@ export {
   logViewerTool,
   testOverviewTool,
   codegenTool,
+  contentMapTool,
 };
 
 // Export array of built-in dev tools for bulk registration
@@ -50,6 +56,8 @@ export const builtInDevTools = [
   // Architecture & Graph
   appMapTool,
   docBrowserTool,
+  plansTool,
+  agentObservabilityTool,
 
   // Gizmo & Surface Management
   gizmoSurfacesTool,
@@ -72,4 +80,7 @@ export const builtInDevTools = [
 
   // Codegen
   codegenTool,
+
+  // Content Map
+  contentMapTool,
 ];

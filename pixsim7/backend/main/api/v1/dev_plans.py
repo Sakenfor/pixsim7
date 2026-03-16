@@ -1,8 +1,9 @@
 """
-Dev Plans API
+Dev Plans API — DB-first plan management.
 
-Provides access to the plan registry: manifest metadata, plan markdown,
-companions, handoffs, DB-backed sync, and event history.
+The DB (PlanRegistry) is the primary authority for plan state and content.
+Filesystem markdown is a convenience export committed to git for history.
+On first access, plans are auto-bootstrapped from filesystem into DB.
 """
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -18,6 +19,15 @@ from pixsim7.backend.main.services.docs.plan_sync import (
     PlanSyncLockedError,
     prune_plan_sync_history,
     sync_plans,
+)
+from pixsim7.backend.main.services.docs.plan_write import (
+    PlanNotFoundError,
+    PlanWriteError,
+    get_active_assignment,
+    get_plan_documents,
+    get_plan_from_db,
+    list_plans_from_db,
+    update_plan,
 )
 
 router = APIRouter(prefix="/dev/plans", tags=["dev", "plans"])
@@ -236,7 +246,30 @@ def _run_to_entry(run: PlanSyncRun) -> dict:
     }
 
 
-# ── Filesystem endpoints ─────────────────────────────────────────
+# ── DB-first endpoints ───────────────────────────────────────────
+
+
+def _row_to_summary(row: PlanRegistry) -> dict:
+    return {
+        "id": row.id,
+        "title": row.title,
+        "status": row.status,
+        "stage": row.stage,
+        "owner": row.owner,
+        "lastUpdated": row.updated_at.date().isoformat() if row.updated_at else "",
+        "priority": row.priority,
+        "summary": row.summary,
+        "scope": row.scope,
+        "planType": row.plan_type,
+        "visibility": row.visibility,
+        "target": row.target,
+        "checkpoints": row.checkpoints,
+        "codePaths": row.code_paths or [],
+        "companions": row.companions or [],
+        "handoffs": row.handoffs or [],
+        "tags": row.tags or [],
+        "dependsOn": row.depends_on or [],
+    }
 
 
 @router.get("", response_model=PlansIndexResponse)
@@ -244,21 +277,21 @@ async def list_plans(
     status: Optional[str] = Query(None, description="Filter by status (active, done, parked)"),
     owner: Optional[str] = Query(None, description="Filter by owner (substring match)"),
     refresh: bool = Query(False),
+    db: AsyncSession = Depends(get_database),
 ):
-    index = get_plans_index(refresh=refresh)
-    entries = index.get("entries", {})
+    rows = await list_plans_from_db(db)
 
     plans = []
-    for entry in sorted(entries.values(), key=lambda e: e.id):
-        if status and entry.status != status:
+    for row in sorted(rows, key=lambda r: r.id):
+        if status and row.status != status:
             continue
-        if owner and owner.lower() not in entry.owner.lower():
+        if owner and owner.lower() not in row.owner.lower():
             continue
-        plans.append(_entry_to_summary(entry))
+        plans.append(_row_to_summary(row))
 
     return {
-        "version": index.get("version", "1"),
-        "generatedAt": index.get("generated_at"),
+        "version": "1",
+        "generatedAt": None,
         "plans": plans,
     }
 
@@ -457,23 +490,268 @@ async def get_activity(
     }
 
 
-# ── Catch-all: filesystem plan by ID (must be last) ─────────────
+# ── Write endpoints ──────────────────────────────────────────────
+
+
+class PlanUpdateRequest(BaseModel):
+    """Partial update for plan fields."""
+    status: Optional[str] = Field(None, description="active | parked | done | blocked")
+    stage: Optional[str] = Field(None, description="Free-form stage label")
+    owner: Optional[str] = Field(None, description="Owner / lane")
+    priority: Optional[str] = Field(None, description="high | normal | low")
+    summary: Optional[str] = Field(None, description="Plan summary")
+
+
+class PlanUpdateResponse(BaseModel):
+    planId: str
+    changes: List[Dict[str, Any]] = Field(default_factory=list)
+    commitSha: Optional[str] = None
+    newScope: Optional[str] = None
+
+
+class AgentPlanDocument(BaseModel):
+    docType: str
+    path: str
+    title: str
+    markdown: Optional[str] = None
+
+
+class AgentPlanContext(BaseModel):
+    """Full plan context for an AI agent."""
+    id: str
+    title: str
+    status: str
+    stage: str
+    owner: str
+    priority: str
+    summary: str
+    markdown: Optional[str] = None
+    codePaths: List[str] = Field(default_factory=list)
+    companions: List[str] = Field(default_factory=list)
+    handoffs: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
+    dependsOn: List[str] = Field(default_factory=list)
+    documents: List[AgentPlanDocument] = Field(default_factory=list)
+
+
+class AgentPlanSummary(BaseModel):
+    """Compact plan summary for agent awareness of other plans."""
+    id: str
+    title: str
+    status: str
+    stage: str
+    owner: str
+    priority: str
+    summary: str
+    dependsOn: List[str] = Field(default_factory=list)
+
+
+class AgentContextResponse(BaseModel):
+    """Everything an AI agent needs to start working on a plan."""
+    assignment: Optional[AgentPlanContext] = Field(
+        None, description="The plan the agent should work on (highest priority active)"
+    )
+    activePlans: List[AgentPlanSummary] = Field(
+        default_factory=list, description="All active plans for dependency awareness"
+    )
+    availableActions: List[Dict[str, str]] = Field(
+        default_factory=list, description="API actions the agent can take"
+    )
+
+
+@router.patch("/update/{plan_id}", response_model=PlanUpdateResponse)
+async def update_plan_endpoint(
+    plan_id: str,
+    payload: PlanUpdateRequest,
+    _admin: CurrentAdminUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Update plan status, stage, owner, priority, or summary.
+
+    Writes to manifest.yaml, commits to git, and updates DB + events.
+    """
+    updates = {k: v for k, v in payload.dict().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    actor_id = getattr(_admin, "id", None)
+    actor = f"user:{actor_id}" if actor_id is not None else "user:unknown"
+
+    try:
+        result = await update_plan(db, plan_id, updates, actor=actor)
+    except PlanNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PlanWriteError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return PlanUpdateResponse(
+        planId=result.plan_id,
+        changes=result.changes,
+        commitSha=result.commit_sha,
+        newScope=result.new_scope,
+    )
+
+
+@router.get("/agent-context", response_model=AgentContextResponse)
+async def get_agent_context(
+    plan_id: Optional[str] = Query(None, description="Request a specific plan instead of auto-assignment"),
+    db: AsyncSession = Depends(get_database),
+):
+    """Full context for an AI agent to work on a plan.
+
+    Returns:
+    - **assignment**: The plan to work on (with full markdown + companion/handoff docs)
+    - **activePlans**: All active plans for dependency awareness
+    - **availableActions**: API endpoints the agent can call to update plan state
+    """
+    # Get all plans from DB (auto-bootstraps if needed)
+    all_rows = await list_plans_from_db(db)
+
+    # Active plans summary
+    active_plans = [
+        AgentPlanSummary(
+            id=r.id, title=r.title, status=r.status, stage=r.stage,
+            owner=r.owner, priority=r.priority, summary=r.summary,
+            dependsOn=r.depends_on or [],
+        )
+        for r in all_rows if r.status == "active"
+    ]
+
+    # Determine assignment
+    assignment: Optional[AgentPlanContext] = None
+
+    if plan_id:
+        target = next((r for r in all_rows if r.id == plan_id), None)
+    else:
+        # Auto-assign: highest priority active plan
+        priority_rank = {"high": 0, "normal": 1, "low": 2}
+        candidates = [r for r in all_rows if r.status == "active"]
+        candidates.sort(key=lambda r: (
+            priority_rank.get(r.priority, 1),
+            r.updated_at.isoformat() if r.updated_at else "",
+        ))
+        target = candidates[0] if candidates else None
+
+    if target:
+        docs = await get_plan_documents(db, target.id)
+        assignment = AgentPlanContext(
+            id=target.id,
+            title=target.title,
+            status=target.status,
+            stage=target.stage,
+            owner=target.owner,
+            priority=target.priority,
+            summary=target.summary,
+            markdown=target.markdown,
+            codePaths=target.code_paths or [],
+            companions=target.companions or [],
+            handoffs=target.handoffs or [],
+            tags=target.tags or [],
+            dependsOn=target.depends_on or [],
+            documents=[
+                AgentPlanDocument(
+                    docType=d.doc_type, path=d.path,
+                    title=d.title, markdown=d.markdown,
+                )
+                for d in docs
+            ],
+        )
+
+    return AgentContextResponse(
+        assignment=assignment,
+        activePlans=active_plans,
+        availableActions=[
+            {
+                "action": "update_status",
+                "method": "PATCH",
+                "url": "/dev/plans/update/{plan_id}",
+                "body": '{"status": "active|parked|done|blocked"}',
+                "description": "Change plan status (moves directory on disk + git commit)",
+            },
+            {
+                "action": "update_stage",
+                "method": "PATCH",
+                "url": "/dev/plans/update/{plan_id}",
+                "body": '{"stage": "free-form stage label"}',
+                "description": "Update plan stage to reflect progress",
+            },
+            {
+                "action": "update_priority",
+                "method": "PATCH",
+                "url": "/dev/plans/update/{plan_id}",
+                "body": '{"priority": "high|normal|low"}',
+                "description": "Change plan priority",
+            },
+            {
+                "action": "update_markdown",
+                "method": "PATCH",
+                "url": "/dev/plans/update/{plan_id}",
+                "body": '{"markdown": "full plan markdown content"}',
+                "description": "Update plan prose content",
+            },
+            {
+                "action": "get_documents",
+                "method": "GET",
+                "url": "/dev/plans/documents/{plan_id}",
+                "description": "Fetch companion and handoff documents for a plan",
+            },
+        ],
+    )
+
+
+class PlanDocumentEntry(BaseModel):
+    id: str
+    planId: str
+    docType: str
+    path: str
+    title: str
+    markdown: Optional[str] = None
+
+
+class PlanDocumentsResponse(BaseModel):
+    planId: str
+    documents: List[PlanDocumentEntry] = Field(default_factory=list)
+
+
+@router.get("/documents/{plan_id}", response_model=PlanDocumentsResponse)
+async def get_plan_documents_endpoint(
+    plan_id: str,
+    db: AsyncSession = Depends(get_database),
+):
+    """Get companion and handoff documents for a plan."""
+    docs = await get_plan_documents(db, plan_id)
+    return PlanDocumentsResponse(
+        planId=plan_id,
+        documents=[
+            PlanDocumentEntry(
+                id=str(d.id),
+                planId=d.plan_id,
+                docType=d.doc_type,
+                path=d.path,
+                title=d.title,
+                markdown=d.markdown,
+            )
+            for d in docs
+        ],
+    )
+
+
+# ── Catch-all: plan by ID (DB-first, must be last) ──────────────
 
 
 @router.get("/{plan_id}", response_model=PlanDetailResponse)
 async def get_plan(
     plan_id: str,
-    refresh: bool = Query(False),
+    db: AsyncSession = Depends(get_database),
 ):
-    index = get_plans_index(refresh=refresh)
-    entries = index.get("entries", {})
-    entry = entries.get(plan_id)
-
-    if not entry:
+    row = await get_plan_from_db(db, plan_id)
+    if not row:
         raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
 
     return {
-        **_entry_to_summary(entry),
-        "planPath": entry.plan_path,
-        "markdown": entry.markdown,
+        **_row_to_summary(row),
+        "planPath": row.plan_path or "",
+        "markdown": row.markdown or "",
     }

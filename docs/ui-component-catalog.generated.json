@@ -1,7 +1,25 @@
 {
   "$schema": "ui-component-catalog",
-  "generatedAt": "2026-03-15",
-  "description": "Auto-generated catalog of shared UI components. Use these instead of writing inline UI with raw Tailwind classes.",
+  "generatedAt": "2026-03-16",
+  "description": "Auto-generated catalog of shared UI components, icons, and theme tokens. Use these instead of writing inline UI with raw Tailwind classes.",
+  "agentGuidance": {
+    "rules": [
+      "Before writing any inline UI element, check this catalog for an existing shared component.",
+      "If a component has a \"useInsteadOf\" field, NEVER use the described ad-hoc pattern.",
+      "Use the \"patterns\" section to find the right combination of components for common layouts.",
+      "Import from \"@pixsim7/shared.ui\" — do not duplicate component logic inline."
+    ],
+    "checklistBeforeCoding": [
+      "Search input needed? → SearchInput (not raw <input>)",
+      "Empty list state? → EmptyState (not inline \"No items\" text)",
+      "Section label? → SectionHeader (not ad-hoc <h3>/<div>)",
+      "Small colored label? → Badge (not inline <span> with color classes)",
+      "Checkbox? → Checkbox (not raw <input type=\"checkbox\">)",
+      "Filter pills/tabs? → FilterPillGroup (not custom pill bar)",
+      "Sidebar + content layout? → SidebarContentLayout + useSidebarNav",
+      "Tooltip? → Tooltip (not title attribute or custom hover div)"
+    ]
+  },
   "componentCount": 69,
   "hookCount": 14,
   "package": "@pixsim7/shared.ui",
@@ -22,15 +40,13 @@
           "name": "colorClass",
           "type": "string",
           "required": false,
-          "description": "Background color class.",
-          "default": ":"
+          "description": "Background color class."
         },
         {
           "name": "borderClass",
           "type": "string",
           "required": false,
-          "description": "Border color class.",
-          "default": ":"
+          "description": "Border color class."
         },
         {
           "name": "className",
@@ -66,7 +82,8 @@
           "description": ""
         }
       ],
-      "examples": []
+      "examples": [],
+      "useInsteadOf": "inline <span> elements with bg-*/text-* color pill styling"
     },
     {
       "name": "Button",
@@ -74,7 +91,8 @@
       "sourceFile": "packages/shared/ui/src/Button.tsx",
       "description": "",
       "props": [],
-      "examples": []
+      "examples": [],
+      "useInsteadOf": "raw <button> with hand-rolled variant/size styling"
     },
     {
       "name": "ButtonGroup",
@@ -177,7 +195,8 @@
       "sourceFile": "packages/shared/ui/src/Checkbox.tsx",
       "description": "",
       "props": [],
-      "examples": []
+      "examples": [],
+      "useInsteadOf": "raw <input type=\"checkbox\"> with manual styling"
     },
     {
       "name": "ConfirmModal",
@@ -283,7 +302,7 @@
       "name": "DisclosureGroupContext",
       "kind": "component",
       "sourceFile": "packages/shared/ui/src/disclosure/DisclosureSection.tsx",
-      "description": "",
+      "description": "DisclosureSection - React component for collapsible content sections A ready-to-use component that combines the disclosure state with proper styling, animations, and accessibility.",
       "props": [],
       "examples": []
     },
@@ -485,8 +504,7 @@
           "name": "closeOnOutsideClick",
           "type": "boolean",
           "required": false,
-          "description": "Close when clicking outside (",
-          "default": "true"
+          "description": "Close when clicking outside (default true)"
         },
         {
           "name": "className",
@@ -759,7 +777,8 @@
       "examples": [
         "* <FilterPillGroup\n *   options={[\n *     { value: 'world-tool', label: 'World Tools', count: 5 },\n *     { value: 'helper', label: 'Helpers', count: 3 },\n *   ]}\n *   value={familyFilter}\n *   onChange={setFamilyFilter}\n *   allLabel=\"All\"\n * />\n *",
         "* <FilterPillGroup\n *   options={families.map(f => ({ value: f, label: f }))}\n *   value={selected}\n *   onChange={setSelected}\n * />\n *"
-      ]
+      ],
+      "useInsteadOf": "custom pill/tab filter bars with manual active-state styling"
     },
     {
       "name": "Fold",
@@ -777,8 +796,8 @@
           "name": "summary",
           "type": "React.ReactNode",
           "required": false,
-          "description": "Summary shown when folded (\"...\" or truncated content)",
-          "default": "to"
+          "description": "Summary shown when folded ( or truncated content)",
+          "default": "\"...\""
         },
         {
           "name": "isOpen",
@@ -955,7 +974,7 @@
       "name": "FoldGroupContext",
       "kind": "component",
       "sourceFile": "packages/shared/ui/src/disclosure/Fold.tsx",
-      "description": "",
+      "description": "Fold - Inline text/content folding component Unlike DisclosureSection (UI panels), Fold is designed for inline use within text content, similar to code folding in IDEs. Use cases: - Fold sentences/paragraphs in parsed prompts - Collapse nested parameters in JSON/config views - Hide verbose sections inline while showing a summary",
       "props": [],
       "examples": []
     },
@@ -1264,7 +1283,7 @@
       "name": "KEY_ALIASES",
       "kind": "component",
       "sourceFile": "packages/shared/ui/src/shortcuts.ts",
-      "description": "",
+      "description": "Keyboard Shortcut Parsing Utilities Pure TypeScript utilities for parsing keyboard shortcut strings into structured shortcut definitions.",
       "props": [],
       "examples": []
     },
@@ -1341,13 +1360,14 @@
           "description": ""
         }
       ],
-      "examples": []
+      "examples": [],
+      "useInsteadOf": "custom portal-based dialog overlays"
     },
     {
       "name": "MODIFIER_ALIASES",
       "kind": "component",
       "sourceFile": "packages/shared/ui/src/shortcuts.ts",
-      "description": "",
+      "description": "Keyboard Shortcut Parsing Utilities Pure TypeScript utilities for parsing keyboard shortcut strings into structured shortcut definitions.",
       "props": [],
       "examples": []
     },
@@ -1440,7 +1460,7 @@
       "name": "PanelShell",
       "kind": "component",
       "sourceFile": "packages/shared/ui/src/PanelShell.tsx",
-      "description": "",
+      "description": "PanelShell Structural skeleton for panel content inside dockview or standalone contexts. Enforces the flex-column contract (header shrink-0, body flex-1 min-h-0 with overflow) so consumers never forget min-h-0 or overflow-y-auto. Sidebar slots are purely structural — they provide shrink-0 + width + min-h-0. The sidebar *content* controls its own appearance (background, borders, scroll). This keeps PanelShell composable with OverlaySidePanel, SidebarPaneShell, or plain JSX. Usage: // Single sidebar (left) <PanelShell header={<Toolbar />} sidebar={<NavTree />} sidebarWidth=\"w-56\"> <MyContent /> </PanelShell> // Dual sidebars (overlay-style) <PanelShell sidebar={<ToolsPanel />} sidebarWidth=\"w-32\" sidebarRight={<LayersPanel />} sidebarRightWidth=\"w-40\" bodyScroll={false} > <Canvas /> </PanelShell> // No sidebar, dockview body <PanelShell header={<CompactBar />} bodyScroll={false}> <PanelHostDockview ... /> </PanelShell>",
       "props": [
         {
           "name": "children",
@@ -1470,8 +1490,7 @@
           "name": "sidebarWidth",
           "type": "string",
           "required": false,
-          "description": "Tailwind width class for the left sidebar.",
-          "default": "'w-48'"
+          "description": "Tailwind width class for the left sidebar."
         },
         {
           "name": "sidebarRight",
@@ -1483,15 +1502,14 @@
           "name": "sidebarRightWidth",
           "type": "string",
           "required": false,
-          "description": "Tailwind width class for the right sidebar.",
-          "default": "'w-48'"
+          "description": "Tailwind width class for the right sidebar."
         },
         {
           "name": "bodyScroll",
           "type": "boolean",
           "required": false,
           "description": "Whether the body area scrolls vertically. Set to false when the body manages its own scroll (e.g. a nested dockview or canvas).",
-          "default": "true"
+          "default": "true."
         },
         {
           "name": "bodyClassName",
@@ -1512,7 +1530,7 @@
       "name": "Popover",
       "kind": "component",
       "sourceFile": "packages/shared/ui/src/Popover.tsx",
-      "description": "",
+      "description": "Popover — canonical component for click-triggered floating content. Composes PortalFloat (positioning + portal) with dismissal behaviours (click-outside, Escape key). Use this for settings panels, menus, or any rich content anchored to a trigger element. For hover-triggered flyouts that already use `useHoverExpand`, using `<PortalFloat>` directly with `clamp` is usually sufficient.",
       "props": [
         {
           "name": "anchor",
@@ -1530,14 +1548,14 @@
           "name": "align",
           "type": "AnchorAlign",
           "required": false,
-          "description": "Cross-axis alignment (",
+          "description": "Cross-axis alignment",
           "default": "'center'"
         },
         {
           "name": "offset",
           "type": "number",
           "required": false,
-          "description": "Gap between anchor and content in px (",
+          "description": "Gap between anchor and content in px",
           "default": "8"
         },
         {
@@ -1556,14 +1574,14 @@
           "name": "closeOnClickOutside",
           "type": "boolean",
           "required": false,
-          "description": "Close when clicking outside the popover + trigger (",
+          "description": "Close when clicking outside the popover + trigger",
           "default": "true"
         },
         {
           "name": "closeOnEscape",
           "type": "boolean",
           "required": false,
-          "description": "Close when pressing Escape (",
+          "description": "Close when pressing Escape",
           "default": "true"
         },
         {
@@ -1576,14 +1594,14 @@
           "name": "clamp",
           "type": "boolean",
           "required": false,
-          "description": "Clamp content within viewport bounds (",
+          "description": "Clamp content within viewport bounds",
           "default": "true"
         },
         {
           "name": "viewportMargin",
           "type": "number",
           "required": false,
-          "description": "Minimum margin from viewport edges when clamping, in px (",
+          "description": "Minimum margin from viewport edges when clamping, in px",
           "default": "8"
         },
         {
@@ -1641,14 +1659,14 @@
           "name": "align",
           "type": "AnchorAlign",
           "required": false,
-          "description": "Cross-axis alignment (",
+          "description": "Cross-axis alignment",
           "default": "'center'"
         },
         {
           "name": "offset",
           "type": "number",
           "required": false,
-          "description": "Gap between anchor and content in px (",
+          "description": "Gap between anchor and content in px",
           "default": "8"
         },
         {
@@ -1685,14 +1703,14 @@
           "name": "clamp",
           "type": "boolean",
           "required": false,
-          "description": "Clamp content within viewport bounds after render (",
+          "description": "Clamp content within viewport bounds after render",
           "default": "false"
         },
         {
           "name": "viewportMargin",
           "type": "number",
           "required": false,
-          "description": "Minimum margin from viewport edges when clamping, in px (",
+          "description": "Minimum margin from viewport edges when clamping, in px",
           "default": "8"
         }
       ],
@@ -1809,8 +1827,8 @@
           "name": "resizable",
           "type": "boolean",
           "required": false,
-          "description": "Allow vertical resize. false for backwards compat",
-          "default": "to"
+          "description": "Allow vertical resize.  for backwards compat",
+          "default": "false"
         },
         {
           "name": "minHeight",
@@ -1822,8 +1840,8 @@
           "name": "enforceLimit",
           "type": "boolean",
           "required": false,
-          "description": "If true, hard-truncate input at maxChars. If false, allow exceeding limit with visual warning. false.",
-          "default": "to"
+          "description": "If true, hard-truncate input at maxChars. If false, allow exceeding limit with visual warning.",
+          "default": "false."
         }
       ],
       "examples": []
@@ -1898,8 +1916,7 @@
           "name": "rows",
           "type": "number",
           "required": false,
-          "description": "Rows for textarea (",
-          "default": "4"
+          "description": "Rows for textarea (default 4)"
         }
       ],
       "examples": []
@@ -1940,8 +1957,7 @@
           "name": "debounceMs",
           "type": "number",
           "required": false,
-          "description": "Debounce delay in ms. 0 = no debounce (",
-          "default": ")"
+          "description": "Debounce delay in ms. 0 = no debounce (default)."
         },
         {
           "name": "size",
@@ -1971,7 +1987,8 @@
       "examples": [
         "* <SearchInput\n *   value={query}\n *   onChange={setQuery}\n *   placeholder=\"Search plugins...\"\n * />\n *",
         "* <SearchInput\n *   value={query}\n *   onChange={setQuery}\n *   placeholder=\"Search...\"\n *   debounceMs={300}\n * />\n *"
-      ]
+      ],
+      "useInsteadOf": "raw <input type=\"text\"> with hand-rolled search/filter styling"
     },
     {
       "name": "SectionHeader",
@@ -2232,9 +2249,16 @@
           "type": "SidebarPaneShellProps['detachable']",
           "required": false,
           "description": "Enable detach/dock-back support."
+        },
+        {
+          "name": "autoHideTitle",
+          "type": "boolean",
+          "required": false,
+          "description": "Hide title when inside a floating panel or when dockview tabs are visible."
         }
       ],
-      "examples": []
+      "examples": [],
+      "useInsteadOf": "hand-rolled flex sidebar + content layouts with manual resize/collapse"
     },
     {
       "name": "SidebarPaneShell",
@@ -2288,22 +2312,19 @@
           "name": "bodyScrollable",
           "type": "boolean",
           "required": false,
-          "description": "When false, body uses overflow-hidden and no padding (for children that manage their own scrolling).",
-          "default": "true"
+          "description": "When false, body uses overflow-hidden and no padding (for children that manage their own scrolling)."
         },
         {
           "name": "collapsible",
           "type": "boolean",
           "required": false,
-          "description": "Enable collapse toggle.",
-          "default": "false"
+          "description": "Enable collapse toggle."
         },
         {
           "name": "expandedWidth",
           "type": "number",
           "required": false,
-          "description": "Width in px when expanded (used when collapsible=true, replaces widthClassName).",
-          "default": "192"
+          "description": "Width in px when expanded (used when collapsible=true, replaces widthClassName)."
         },
         {
           "name": "persistKey",
@@ -2315,8 +2336,7 @@
           "name": "defaultCollapsed",
           "type": "boolean",
           "required": false,
-          "description": "Initial collapsed state.",
-          "default": "false"
+          "description": "Initial collapsed state."
         },
         {
           "name": "collapsed",
@@ -2329,6 +2349,12 @@
           "type": "(v: boolean) => void",
           "required": false,
           "description": "Callback when collapsed state changes."
+        },
+        {
+          "name": "autoHideTitle",
+          "type": "boolean",
+          "required": false,
+          "description": "When true, hide the title when the sidebar is inside a container that already shows a title (floating panel or visible dockview tab bar)."
         },
         {
           "name": "detachable",
@@ -2349,7 +2375,8 @@
           "description": "Called when user clicks the dock-back button on the collapsed rail."
         }
       ],
-      "examples": []
+      "examples": [],
+      "useInsteadOf": "ad-hoc sidebar wrapper divs with manual title/collapse logic"
     },
     {
       "name": "StatCard",
@@ -2628,14 +2655,14 @@
           "name": "columns",
           "type": "2 | 3 | 4 | 5",
           "required": false,
-          "description": "Number of columns (",
+          "description": "Number of columns",
           "default": "3"
         },
         {
           "name": "size",
           "type": "'xs' | 'sm' | 'md' | 'lg'",
           "required": false,
-          "description": "Thumbnail size preset (",
+          "description": "Thumbnail size preset",
           "default": "'sm'"
         },
         {
@@ -2654,7 +2681,7 @@
           "name": "oneIndexed",
           "type": "boolean",
           "required": false,
-          "description": "Use 1-based numbering (",
+          "description": "Use 1-based numbering",
           "default": "true"
         },
         {
@@ -2840,7 +2867,8 @@
           "description": "Keyboard shortcut to display"
         }
       ],
-      "examples": []
+      "examples": [],
+      "useInsteadOf": "title attributes or custom hover popover divs"
     },
     {
       "name": "useDetachableSidebarNav",
@@ -2999,7 +3027,7 @@
       "name": "useDragReorder",
       "kind": "hook",
       "sourceFile": "packages/shared/ui/src/useDragReorder.ts",
-      "description": "",
+      "description": "Shared hook for HTML5 drag-and-drop list reordering. Handles state, dataTransfer, and event wiring. Consumers provide the reorder callback and optional cross-list serialization. Usage: const { draggedIndex, dragOverIndex, getDragItemProps, getDropTargetProps } = useDragReorder({ onReorder }); // Draggable + droppable items: <div {...getDragItemProps(idx)} /> // Drop-only targets (empty slots, end zones): <div {...getDropTargetProps(idx)} />",
       "props": [
         {
           "name": "onReorder",
@@ -3075,7 +3103,7 @@
           "name": "immediate",
           "type": "boolean",
           "required": false,
-          "description": "Whether to call onResize on every mouse move (true) or only on mouse up (false) @"
+          "description": "Whether to call onResize on every mouse move (true) or only on mouse up (false) @default true"
         }
       ],
       "examples": [
@@ -3112,15 +3140,13 @@
           "name": "defaultAllExpanded",
           "type": "boolean",
           "required": false,
-          "description": "Start all expandable sections open.",
-          "default": "true"
+          "description": "Start all expandable sections open."
         },
         {
           "name": "defaultExpandedIds",
           "type": "TSectionId[]",
           "required": false,
-          "description": "Section ids to start expanded (ignored when is true).",
-          "default": "AllExpanded"
+          "description": "Section ids to start expanded (ignored when defaultAllExpanded is true)."
         },
         {
           "name": "storageKey",
@@ -3163,5 +3189,270 @@
       "props": [],
       "examples": []
     }
-  ]
+  ],
+  "patterns": [
+    {
+      "name": "Sidebar navigation panel",
+      "description": "Panel with left sidebar for category/section navigation and scrollable content area. Use for any tool discovery, settings, or browsable list UI.",
+      "components": [
+        "SidebarContentLayout",
+        "useSidebarNav",
+        "useTheme",
+        "SearchInput",
+        "SectionHeader",
+        "EmptyState"
+      ],
+      "example": "const { theme } = useTheme();\nconst nav = useSidebarNav({ sections, initial: \"first\", storageKey: \"my-panel:nav\" });\n\n<SidebarContentLayout\n  sections={sections}\n  activeSectionId={nav.activeSectionId}\n  onSelectSection={nav.selectSection}\n  variant={theme}\n  collapsible\n  persistKey=\"my-panel-sidebar\"\n>\n  <SectionHeader>Title</SectionHeader>\n  <SearchInput value={query} onChange={setQuery} placeholder=\"Filter...\" size=\"sm\" />\n  {items.length === 0 && <EmptyState message=\"No items found\" />}\n</SidebarContentLayout>"
+    },
+    {
+      "name": "Filterable list with badges",
+      "description": "List with category filter pills, search, and items showing status/tag badges. Use for plugin lists, tool catalogs, registry views.",
+      "components": [
+        "FilterPillGroup",
+        "SearchInput",
+        "Badge",
+        "EmptyState"
+      ],
+      "example": "<FilterPillGroup options={categories} value={filter} onChange={setFilter} allLabel=\"All\" />\n<SearchInput value={query} onChange={setQuery} />\n{items.map(item => (\n  <div key={item.id}>\n    {item.label}\n    <Badge color=\"blue\">{item.status}</Badge>\n    {item.tags.map(t => <Badge key={t} color=\"gray\">{t}</Badge>)}\n  </div>\n))}\n{items.length === 0 && <EmptyState message=\"No items match\" />}"
+    },
+    {
+      "name": "Sidebar pane (standalone)",
+      "description": "Single sidebar panel with title, optional collapse, and scrollable body. Use for sidebar panels that don't need multi-section navigation.",
+      "components": [
+        "SidebarPaneShell",
+        "SectionHeader",
+        "EmptyState"
+      ],
+      "example": "<SidebarPaneShell title=\"My Panel\" collapsible persistKey=\"my-panel\">\n  <SectionHeader>Section</SectionHeader>\n  {content}\n</SidebarPaneShell>"
+    }
+  ],
+  "icons": {
+    "sourceFile": "apps/main/src/lib/icons.tsx",
+    "names": [
+      "activity",
+      "add",
+      "alert-circle",
+      "alertCircle",
+      "alertTriangle",
+      "analysis",
+      "archive",
+      "arrow-down",
+      "arrow-left",
+      "arrow-right",
+      "arrow-right-left",
+      "arrow-up",
+      "arrow-up-down",
+      "arrowDown",
+      "arrowLeft",
+      "arrowRight",
+      "arrowRightLeft",
+      "arrowUp",
+      "arrowUpDown",
+      "audio",
+      "bar-chart",
+      "barChart",
+      "blocks",
+      "bot",
+      "box",
+      "brain",
+      "camera",
+      "check",
+      "check-circle",
+      "check-square",
+      "checkCircle",
+      "checkSquare",
+      "chevronDown",
+      "chevronLeft",
+      "chevronRight",
+      "chevronUp",
+      "clapperboard",
+      "clipboard",
+      "clipboard-paste",
+      "clipboardList",
+      "clipboardPaste",
+      "clock",
+      "clock-history",
+      "close",
+      "cloud",
+      "code",
+      "columns",
+      "copy",
+      "cpu",
+      "cubeBack",
+      "cubeBottom",
+      "cubeFront",
+      "cubeLeft",
+      "cubeRight",
+      "cubeTop",
+      "cursorClick",
+      "cut",
+      "database",
+      "delete",
+      "download",
+      "drama",
+      "edit",
+      "error",
+      "external-link",
+      "externalLink",
+      "eye",
+      "eyeOff",
+      "file-code",
+      "fileCode",
+      "fileQuestion",
+      "fileText",
+      "film",
+      "filter",
+      "flask",
+      "folder",
+      "folder-open",
+      "folderOpen",
+      "folderTree",
+      "gamepad",
+      "gauge",
+      "git-branch",
+      "globe",
+      "google-drive",
+      "graph",
+      "grid",
+      "grid-3x3",
+      "hand",
+      "hash",
+      "heart",
+      "history",
+      "home",
+      "image",
+      "info",
+      "key",
+      "layers",
+      "layout",
+      "layoutGrid",
+      "library",
+      "lightbulb",
+      "link",
+      "listFilter",
+      "listPlus",
+      "loader",
+      "loading",
+      "lock",
+      "log-in",
+      "log-out",
+      "logIn",
+      "logOut",
+      "map",
+      "maximize-2",
+      "maximize2",
+      "minimize-2",
+      "minimize2",
+      "minus",
+      "more-horizontal",
+      "more-vertical",
+      "moreHorizontal",
+      "moreVertical",
+      "mousePointer",
+      "move",
+      "move-left",
+      "move-right",
+      "moveLeft",
+      "moveRight",
+      "package",
+      "paintbrush",
+      "palette",
+      "pause",
+      "penTool",
+      "pencil",
+      "pin",
+      "play",
+      "plug",
+      "plus",
+      "plus-square",
+      "plusSquare",
+      "prompt",
+      "prompts",
+      "quest",
+      "radio",
+      "redo",
+      "redo-2",
+      "redo2",
+      "refresh",
+      "refreshCw",
+      "remove",
+      "rotate-ccw",
+      "rotateCcw",
+      "rows",
+      "save",
+      "search",
+      "settings",
+      "shield",
+      "shuffle",
+      "sliders",
+      "sparkles",
+      "square",
+      "star",
+      "stop",
+      "success",
+      "tag",
+      "tags",
+      "target",
+      "trash",
+      "trash-2",
+      "trash2",
+      "undo",
+      "undo-2",
+      "undo2",
+      "unlock",
+      "unpin",
+      "upload",
+      "user",
+      "users",
+      "video",
+      "wand",
+      "wand-2",
+      "wand2",
+      "warning",
+      "wrench",
+      "x",
+      "x-circle",
+      "xCircle",
+      "zap",
+      "zoom-in",
+      "zoomIn",
+      "ℹ️",
+      "✨",
+      "📦"
+    ],
+    "count": 190,
+    "usage": "Import { Icon, IconName } from \"@lib/icons\". Use <Icon name=\"iconName\" size={16} />. For white icons on colored backgrounds use color=\"#fff\" prop."
+  },
+  "theme": {
+    "sourceFile": "apps/main/src/features/appearance/stores/appearanceStore.ts",
+    "colorSchemes": [
+      "light",
+      "dark",
+      "system"
+    ],
+    "accentColors": [
+      "blue",
+      "purple",
+      "emerald",
+      "rose",
+      "amber"
+    ],
+    "sidebarVariants": [
+      "light",
+      "dark"
+    ],
+    "hooks": [
+      {
+        "name": "useTheme",
+        "from": "@pixsim7/shared.ui",
+        "description": "Returns { theme: \"light\" | \"dark\", toggle }. Use theme as variant prop for SidebarContentLayout and similar."
+      },
+      {
+        "name": "useAppearanceStore",
+        "from": "@features/appearance",
+        "description": "Full appearance state: colorScheme, accentColor, iconTheme, buttonStyle."
+      }
+    ],
+    "usage": "Use useTheme().theme as variant prop for sidebar/nav components. Use dark: Tailwind prefix for theme-aware styling (e.g., \"bg-white dark:bg-gray-900\"). Tailwind dark mode strategy is class-based (.dark on <html>)."
+  }
 }

@@ -118,6 +118,8 @@ def _apply_entry_to_row(row: PlanRegistry, entry: PlanEntry, manifest_hash: str)
     row.priority = entry.priority
     row.summary = entry.summary
     row.scope = entry.scope
+    row.markdown = entry.markdown
+    row.plan_path = entry.plan_path
     row.code_paths = entry.code_paths
     row.companions = entry.companions
     row.handoffs = entry.handoffs

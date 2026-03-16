@@ -118,6 +118,7 @@ import {
   Blocks,
   ScanSearch,
   Activity,
+  Send,
   Undo2,
   Redo2,
   Wand2,
@@ -343,6 +344,8 @@ export const Icons = {
   '📦': Package,  // Emoji alias
 
   // Prompts & Analysis
+  messageSquare: MessageSquare,
+  send: Send,
   prompt: MessageSquare,
   prompts: MessageSquare,
   analysis: ScanSearch,

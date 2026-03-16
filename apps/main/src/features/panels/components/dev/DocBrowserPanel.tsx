@@ -7,10 +7,21 @@
  */
 
 import type { DocIndexEntry } from '@pixsim7/shared.types';
-import { Button, SidebarContentLayout } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Badge,
+  Button,
+  EmptyState,
+  SearchInput,
+  SectionHeader,
+  SidebarContentLayout,
+  type SidebarContentLayoutSection,
+  useSidebarNav,
+  useTheme,
+} from '@pixsim7/shared.ui';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
+import { Icon } from '@lib/icons';
 
 import {
   ensureBuiltInTestCatalogRegistered,
@@ -48,8 +59,6 @@ function groupByFolder(entries: DocIndexEntry[]): Record<string, DocIndexEntry[]
 
 /**
  * Match test suites whose `covers` paths overlap with the given code paths.
- * Uses prefix matching: a suite covering "pixsim7/backend/main/services/ownership"
- * matches a doc linking to "pixsim7/backend/main/services/ownership/policies.py".
  */
 function findRelatedSuites(
   codePaths: string[],
@@ -106,19 +115,20 @@ function RelatedTests({ docEntry }: { docEntry: DocIndexEntry | undefined }) {
 
   return (
     <div className="border-t border-neutral-200 dark:border-neutral-800 mt-4 pt-3">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-xs font-semibold uppercase text-neutral-500 dark:text-neutral-400">
-          Related Tests ({relatedSuites.length})
-        </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => openWorkspacePanel('dev-tool:test-overview')}
-        >
-          Open Test Overview
-        </Button>
-      </div>
-      <div className="space-y-1">
+      <SectionHeader
+        trailing={
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => openWorkspacePanel('dev-tool:test-overview')}
+          >
+            Open Test Overview
+          </Button>
+        }
+      >
+        Related Tests ({relatedSuites.length})
+      </SectionHeader>
+      <div className="space-y-1 mt-2">
         {relatedSuites.map((suite) => (
           <div
             key={suite.id}
@@ -133,13 +143,9 @@ function RelatedTests({ docEntry }: { docEntry: DocIndexEntry | undefined }) {
               </div>
             </div>
             {suite.kind && (
-              <span className="shrink-0 px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-[10px]">
-                {suite.kind}
-              </span>
+              <Badge color="gray" className="text-[10px] shrink-0">{suite.kind}</Badge>
             )}
-            <span className="shrink-0 px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-[10px]">
-              {suite.layer}
-            </span>
+            <Badge color="gray" className="text-[10px] shrink-0">{suite.layer}</Badge>
           </div>
         ))}
       </div>
@@ -155,8 +161,8 @@ export function DocBrowserPanel() {
   const [entries, setEntries] = useState<DocIndexEntry[]>([]);
   const [indexError, setIndexError] = useState<string | null>(null);
   const [loadingIndex, setLoadingIndex] = useState(true);
-  const [selectedDocPath, setSelectedDocPath] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const { theme: variant } = useTheme();
 
   // Load doc index on mount
   useEffect(() => {
@@ -199,119 +205,99 @@ export function DocBrowserPanel() {
   }, [entries, searchQuery]);
 
   const grouped = useMemo(() => groupByFolder(filteredEntries), [filteredEntries]);
-  const folders = useMemo(() => Object.keys(grouped).sort(), [grouped]);
 
-  // Build sidebar sections from folders
-  const sections = useMemo(
-    () => folders.map((folder) => ({ id: folder, label: folder.split('/').pop() || folder })),
-    [folders],
-  );
+  // Build sidebar sections: folders as sections, docs as children
+  const sections = useMemo<SidebarContentLayoutSection[]>(() => {
+    const folders = Object.keys(grouped).sort();
+    return folders.map((folder) => ({
+      id: folder,
+      label: folder.split('/').pop() || folder,
+      icon: <Icon name="folder" size={12} />,
+      children: grouped[folder].map((entry) => ({
+        id: `doc:${entry.path}`,
+        label: entry.title,
+      })),
+    }));
+  }, [grouped]);
 
-  const [activeFolder, setActiveFolder] = useState<string | null>(null);
-  const initialFolderRef = useRef(false);
+  const nav = useSidebarNav({
+    sections,
+    storageKey: 'doc-browser:nav',
+  });
 
-  // Auto-select first folder once entries load
-  useEffect(() => {
-    if (!initialFolderRef.current && folders.length > 0) {
-      initialFolderRef.current = true;
-      setActiveFolder(folders[0]);
-    }
-  }, [folders]);
+  // Resolve selected doc path from nav
+  const selectedDocPath = nav.activeChildId?.startsWith('doc:')
+    ? nav.activeChildId.slice(4)
+    : null;
 
-  const handleSelectDoc = useCallback((path: string) => {
-    setSelectedDocPath(path);
-  }, []);
-
-  const activeFolderEntries = activeFolder ? (grouped[activeFolder] ?? []) : [];
-
-  // Find index entry for current doc (for code links → test matching)
   const selectedEntry = useMemo(
     () => (selectedDocPath ? entries.find((e) => e.path === selectedDocPath) : undefined),
     [entries, selectedDocPath],
   );
 
-  return (
-    <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-950">
-      {/* Search bar */}
-      <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-800">
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search docs..."
-          className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-700"
-        />
+  const handleNavigateDoc = useCallback(
+    (path: string) => {
+      nav.navigate(`doc:${path}`);
+    },
+    [nav],
+  );
+
+  if (loadingIndex) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <EmptyState message="Loading docs index..." icon={<Icon name="loader" size={20} />} />
       </div>
+    );
+  }
 
-      {loadingIndex && (
-        <div className="p-3 text-xs text-neutral-500 dark:text-neutral-400">
-          Loading docs index...
+  if (indexError) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <EmptyState message="Failed to load docs" description={indexError} icon={<Icon name="alertCircle" size={20} />} />
+      </div>
+    );
+  }
+
+  return (
+    <SidebarContentLayout
+      sections={sections}
+      activeSectionId={nav.activeSectionId}
+      activeChildId={nav.activeChildId}
+      onSelectSection={nav.selectSection}
+      onSelectChild={nav.selectChild}
+      expandedSectionIds={nav.expandedSectionIds}
+      onToggleExpand={nav.toggleExpand}
+      sidebarTitle={
+        <SearchInput
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search docs..."
+          size="sm"
+        />
+      }
+      sidebarWidth="w-52"
+      variant={variant}
+      collapsible
+      expandedWidth={208}
+      persistKey="doc-browser-sidebar"
+      contentClassName="overflow-y-auto"
+    >
+      {selectedDocPath ? (
+        <div className="p-4">
+          <DocViewer
+            docPath={selectedDocPath}
+            onNavigateDoc={handleNavigateDoc}
+          />
+          <RelatedTests docEntry={selectedEntry} />
+        </div>
+      ) : (
+        <div className="flex items-center justify-center h-full">
+          <EmptyState
+            message={filteredEntries.length === 0 ? 'No docs match your search' : 'Select a doc to view'}
+            icon={<Icon name="fileText" size={20} />}
+          />
         </div>
       )}
-
-      {indexError && (
-        <div className="p-3 text-xs text-red-600 dark:text-red-400">
-          {indexError}
-        </div>
-      )}
-
-      {!loadingIndex && !indexError && (
-        <SidebarContentLayout
-          sections={sections}
-          activeSectionId={activeFolder ?? ''}
-          onSelectSection={setActiveFolder}
-          sidebarWidth="w-36"
-          variant="light"
-        >
-          <div className="flex h-full">
-            {/* Doc list for active folder */}
-            <div className="w-56 shrink-0 border-r border-neutral-200 dark:border-neutral-800 overflow-y-auto">
-              <div className="p-2 space-y-0.5">
-                {activeFolderEntries.map((entry) => (
-                  <button
-                    key={entry.path}
-                    onClick={() => handleSelectDoc(entry.path)}
-                    className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors ${
-                      selectedDocPath === entry.path
-                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200'
-                        : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
-                    }`}
-                  >
-                    <div className="font-medium truncate">{entry.title}</div>
-                    {entry.summary && (
-                      <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate mt-0.5">
-                        {entry.summary}
-                      </div>
-                    )}
-                  </button>
-                ))}
-                {activeFolderEntries.length === 0 && (
-                  <div className="text-xs text-neutral-500 dark:text-neutral-400 px-2 py-1">
-                    No docs in this folder
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Doc viewer + related tests */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {selectedDocPath ? (
-                <>
-                  <DocViewer
-                    docPath={selectedDocPath}
-                    onNavigateDoc={handleSelectDoc}
-                  />
-                  <RelatedTests docEntry={selectedEntry} />
-                </>
-              ) : (
-                <div className="flex items-center justify-center h-full text-xs text-neutral-500 dark:text-neutral-400">
-                  Select a doc to view
-                </div>
-              )}
-            </div>
-          </div>
-        </SidebarContentLayout>
-      )}
-    </div>
+    </SidebarContentLayout>
   );
 }

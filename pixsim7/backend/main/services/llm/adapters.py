@@ -728,3 +728,80 @@ class CommandLlmProvider:
                 f"Permission denied executing: {cmd_executable}. "
                 "Ensure the command has execute permissions."
             )
+
+
+class RemoteCommandLlmProvider:
+    """
+    Remote command LLM provider — same contract as CommandLlmProvider
+    but executes on the user's machine via WebSocket.
+
+    The user connects a terminal with a bridge script. When a task arrives,
+    it's sent over WebSocket to the user's terminal, which runs the command
+    locally and returns the result.
+    """
+
+    @property
+    def provider_id(self) -> str:
+        return "remote-cmd-llm"
+
+    async def edit_prompt(
+        self,
+        *,
+        model_id: str,
+        prompt_before: str,
+        context: dict | None = None,
+        account: ProviderAccount | None = None,
+        instance_config: dict | None = None,
+    ) -> str:
+        from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
+
+        if not remote_cmd_bridge.has_available:
+            raise ProviderError(
+                "No remote agents connected. Run the agent bridge script to connect."
+            )
+
+        timeout = 120
+        if instance_config:
+            timeout = int(instance_config.get("timeout", 120))
+
+        system_prompt = build_edit_prompt_system()
+        instruction = build_edit_prompt_user(prompt_before, context)
+
+        task_payload = {
+            "task": "edit_prompt",
+            "prompt": prompt_before,
+            "instruction": instruction,
+            "system_prompt": system_prompt,
+            "model": model_id,
+            "context": context or {},
+        }
+
+        logger.info(
+            "RemoteCommandLlmProvider: dispatching to remote agent, "
+            f"model={model_id}, timeout={timeout}s"
+        )
+
+        try:
+            result = await remote_cmd_bridge.dispatch_task(task_payload, timeout=timeout)
+        except RuntimeError as e:
+            raise ProviderError(str(e))
+        except TimeoutError as e:
+            raise ProviderError(str(e))
+        except ConnectionError as e:
+            raise ProviderError(f"Remote agent disconnected: {e}")
+
+        if "error" in result:
+            raise ProviderError(f"Remote agent error: {result['error']}")
+
+        edited_prompt = result.get("edited_prompt")
+        if not edited_prompt:
+            raise ProviderError(
+                f"Remote agent returned no 'edited_prompt'. Keys: {list(result.keys())}"
+            )
+
+        logger.info(
+            "RemoteCommandLlmProvider: prompt edited, "
+            f"{len(prompt_before)} -> {len(edited_prompt)} chars"
+        )
+
+        return str(edited_prompt).strip()

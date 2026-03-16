@@ -13,6 +13,7 @@ try:
     from ..widgets.git_workflow_widget import GitWorkflowWidget
     from ..widgets.git_tools_widget import GitToolsWidget
     from ..widgets.log_management_widget import LogManagementWidget
+    from ..widgets.ai_agents_widget import AIAgentsWidget
     from ..widgets.settings_panel import SettingsPanel
     from ..widgets.tab_builder import TabBuilder
 except ImportError:
@@ -22,6 +23,7 @@ except ImportError:
     from widgets.git_workflow_widget import GitWorkflowWidget
     from widgets.git_tools_widget import GitToolsWidget
     from widgets.log_management_widget import LogManagementWidget
+    from widgets.ai_agents_widget import AIAgentsWidget
     from widgets.settings_panel import SettingsPanel
     from widgets.tab_builder import TabBuilder
 
@@ -76,6 +78,11 @@ class ToolsTab:
         builder.add_page(
             "Codegen",
             lambda: CodegenToolsWidget(),
+            category="Development"
+        )
+        builder.add_page(
+            "AI Agents",
+            lambda: AIAgentsWidget(parent=None, notify_target=launcher),
             category="Development"
         )
 
