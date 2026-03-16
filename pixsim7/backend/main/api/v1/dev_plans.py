@@ -493,6 +493,82 @@ async def get_activity(
 # ── Write endpoints ──────────────────────────────────────────────
 
 
+class PlanCreateRequest(BaseModel):
+    """Create a new plan."""
+    id: str = Field(..., min_length=1, max_length=120, description="Unique plan ID (slug)")
+    title: str = Field(..., min_length=1, max_length=255)
+    plan_type: str = Field("feature", description="proposal | feature | bugfix | refactor | exploration | task")
+    status: str = Field("active", description="active | parked | done | blocked")
+    stage: str = Field("proposed", description="Free-form stage label")
+    owner: str = Field("unassigned", description="Owner / lane")
+    priority: str = Field("normal", description="high | normal | low")
+    summary: str = Field("", description="Plan summary")
+    markdown: Optional[str] = Field(None, description="Plan content")
+    task_scope: str = Field("plan", description="plan | user | system")
+    visibility: str = Field("public", description="private | shared | public")
+    tags: Optional[List[str]] = Field(None)
+    code_paths: Optional[List[str]] = Field(None)
+
+
+class PlanCreateResponse(BaseModel):
+    planId: str
+    created: bool
+    commitSha: Optional[str] = None
+
+
+@router.post("", response_model=PlanCreateResponse)
+async def create_plan(
+    payload: PlanCreateRequest,
+    _admin: CurrentAdminUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Create a new plan in the DB. Optionally exports to filesystem + git."""
+    from pixsim7.backend.main.domain.docs.models import PlanRegistry
+    from pixsim7.backend.main.services.docs.plan_write import _export_plan_to_disk, _git_commit
+
+    # Check for duplicate
+    existing = await db.get(PlanRegistry, payload.id)
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Plan already exists: {payload.id}")
+
+    from pixsim7.backend.main.shared.datetime_utils import utcnow
+    now = utcnow()
+
+    row = PlanRegistry(
+        id=payload.id,
+        title=payload.title,
+        plan_type=payload.plan_type,
+        status=payload.status,
+        stage=payload.stage,
+        owner=payload.owner,
+        priority=payload.priority,
+        summary=payload.summary,
+        markdown=payload.markdown,
+        task_scope=payload.task_scope,
+        visibility=payload.visibility,
+        tags=payload.tags or [],
+        code_paths=payload.code_paths or [],
+        scope=payload.status if payload.status in ("active", "done", "parked") else "active",
+        revision=1,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(row)
+    await db.commit()
+
+    # Export to filesystem + git for dev plans
+    commit_sha = None
+    if payload.task_scope == "plan":
+        try:
+            paths = _export_plan_to_disk(row)
+            actor_id = getattr(_admin, "id", None)
+            commit_sha = _git_commit(paths, f"plan({payload.id}): created\n\nActor: user:{actor_id}")
+        except Exception:
+            pass  # DB is the authority, filesystem is convenience
+
+    return PlanCreateResponse(planId=row.id, created=True, commitSha=commit_sha)
+
+
 class PlanUpdateRequest(BaseModel):
     """Partial update for plan fields."""
     status: Optional[str] = Field(None, description="active | parked | done | blocked")
