@@ -5,7 +5,9 @@
  * Compact generation controls: target selector, settings/assets shortcuts, Go button.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Popover } from '@pixsim7/shared.ui';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 
 import { buildFloatingOriginMetaRecord, readFloatingOriginMeta } from '@lib/dockview/floatingPanelInterop';
 import { Icon } from '@lib/icons';
@@ -35,6 +37,102 @@ import {
 import { PromptComposerSurface } from '../PromptComposerSurface';
 
 import { PROMPT_AUTHORING_QUICKGEN_DOCK_ID } from './promptAuthoringIds';
+
+/** Portaled popover for the generation-policy sparkles icon. */
+function GenerationPolicyPopover({
+  prioritizedOperation,
+  activeWidgetOperation,
+  preferredGenerationHint,
+  suggestedParamsEntries,
+  applySuggestedOperation,
+  applySuggestedSettings,
+  canApplySuggestedSettings,
+  selectedWidget,
+}: {
+  prioritizedOperation: OperationType | null;
+  activeWidgetOperation: OperationType | null;
+  preferredGenerationHint: { requiresInputAsset: boolean; autoBind: string | null; note: string | null };
+  suggestedParamsEntries: [string, unknown][];
+  applySuggestedOperation: () => void;
+  applySuggestedSettings: () => void;
+  canApplySuggestedSettings: boolean;
+  selectedWidget: { value?: { setOperationType?: (op: OperationType) => void } } | null | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="list-none cursor-pointer select-none rounded border border-neutral-200 dark:border-neutral-700 p-1 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200"
+        title="Generation policy — how prompt hints and QuickGen settings combine"
+      >
+        <Icon name="sparkles" size={12} />
+      </button>
+      <Popover
+        anchor={triggerRef.current}
+        placement="bottom"
+        align="start"
+        offset={4}
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+        className="w-80 max-w-[calc(100vw-2rem)] rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg p-3 space-y-2"
+      >
+        <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200">Prompt-derived generation intent</div>
+        {prioritizedOperation ? (
+          <div className="space-y-1 text-[11px] text-neutral-600 dark:text-neutral-300">
+            <div>
+              Suggested op: <span className="font-medium text-neutral-700 dark:text-neutral-200">{formatOperationTypeShort(prioritizedOperation)}</span>
+              {activeWidgetOperation && (
+                <span className="ml-2 text-[10px] text-neutral-500 dark:text-neutral-400">
+                  (current: {formatOperationTypeShort(activeWidgetOperation)})
+                </span>
+              )}
+            </div>
+            <div>
+              Input asset required: {preferredGenerationHint.requiresInputAsset ? 'Yes' : 'No'}
+            </div>
+            {preferredGenerationHint.autoBind && (
+              <div>Auto-bind hint: {preferredGenerationHint.autoBind}</div>
+            )}
+            {preferredGenerationHint.note && (
+              <div className="text-[10px] text-neutral-500 dark:text-neutral-400">{preferredGenerationHint.note}</div>
+            )}
+            <button
+              type="button"
+              onClick={applySuggestedOperation}
+              disabled={!selectedWidget?.value?.setOperationType || !prioritizedOperation}
+              className="rounded border border-neutral-200 dark:border-neutral-700 px-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-60"
+            >
+              Apply suggested op
+            </button>
+            {suggestedParamsEntries.length > 0 && (
+              <button
+                type="button"
+                onClick={applySuggestedSettings}
+                disabled={!canApplySuggestedSettings}
+                className="rounded border border-neutral-200 dark:border-neutral-700 px-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-60"
+              >
+                Apply suggested settings (missing-only)
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+            No prompt-mode hints resolved for current tags/family.
+          </div>
+        )}
+        <div className="pt-2 border-t border-neutral-200 dark:border-neutral-700 text-[10px] text-neutral-500 dark:text-neutral-400">
+          QuickGen settings remain user-controlled. Generate enforces operation intent + asset requirement from prompt hints.
+        </div>
+      </Popover>
+    </>
+  );
+}
 
 function parseTagsInput(value: string): string[] {
   const seen = new Set<string>();
@@ -275,6 +373,40 @@ export function PromptAuthoringEditor() {
     });
   }, [selectedWidget, suggestedParamsEntries]);
 
+  // Reactive override status for inline param badges
+  type ParamStatus = 'will-apply' | 'match' | 'conflict';
+  const [paramOverrideStatus, setParamOverrideStatus] = useState<
+    Record<string, { status: ParamStatus; currentValue?: unknown }>
+  >({});
+  const suggestedParamsEntriesRef = useRef(suggestedParamsEntries);
+  suggestedParamsEntriesRef.current = suggestedParamsEntries;
+  useEffect(() => {
+    const widget = selectedWidget?.value;
+    if (!widget?.scopeId || suggestedParamsEntries.length === 0) {
+      setParamOverrideStatus({});
+      return;
+    }
+    const store = getGenerationSettingsStore(widget.scopeId);
+    const compute = () => {
+      const currentParams = store.getState().params ?? {};
+      const result: Record<string, { status: ParamStatus; currentValue?: unknown }> = {};
+      for (const [key, value] of suggestedParamsEntriesRef.current) {
+        if (value === undefined) continue;
+        const current = currentParams[key];
+        if (current === undefined || current === null || current === '') {
+          result[key] = { status: 'will-apply' };
+        } else if (String(current) === String(value)) {
+          result[key] = { status: 'match' };
+        } else {
+          result[key] = { status: 'conflict', currentValue: current };
+        }
+      }
+      setParamOverrideStatus(result);
+    };
+    compute();
+    return store.subscribe(compute);
+  }, [selectedWidget, suggestedParamsEntries]);
+
   const handleGenerate = useCallback(() => {
     const widget = selectedWidget?.value;
     if (!widget || !editorText.trim()) return;
@@ -393,183 +525,52 @@ export function PromptAuthoringEditor() {
               ? `Selected: v${selectedVersion.version_number} | ${selectedVersion.id.slice(0, 8)} | ${formatDate(selectedVersion.created_at)}`
               : 'No version selected'}
           </span>
+          {/* Generation policy: icon + inline color-coded param badges */}
+          <GenerationPolicyPopover
+            prioritizedOperation={prioritizedOperation}
+            activeWidgetOperation={activeWidgetOperation}
+            preferredGenerationHint={preferredGenerationHint}
+            suggestedParamsEntries={suggestedParamsEntries}
+            applySuggestedOperation={applySuggestedOperation}
+            applySuggestedSettings={applySuggestedSettings}
+            canApplySuggestedSettings={canApplySuggestedSettings}
+            selectedWidget={selectedWidget}
+          />
           {prioritizedOperation && (
-            <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              Priority op: {formatOperationTypeShort(prioritizedOperation)}
+            <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">
+              {formatOperationTypeShort(prioritizedOperation)}
             </span>
           )}
-          <details className="relative">
-            <summary
-              className="list-none cursor-pointer select-none rounded border border-neutral-200 dark:border-neutral-700 px-2 py-1 text-[11px] text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-              title="How prompt hints and QuickGen settings combine"
-            >
-              Generation policy
-            </summary>
-            <div className="absolute left-0 top-full mt-1 w-80 max-w-[calc(100vw-2rem)] rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-50 p-3 space-y-2">
-              <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200">Prompt-derived generation intent</div>
-              {prioritizedOperation ? (
-                <div className="space-y-1 text-[11px] text-neutral-600 dark:text-neutral-300">
-                  <div>
-                    Suggested op: <span className="font-medium text-neutral-700 dark:text-neutral-200">{formatOperationTypeShort(prioritizedOperation)}</span>
-                  </div>
-                  <div>
-                    Input asset required: {preferredGenerationHint.requiresInputAsset ? 'Yes' : 'No'}
-                  </div>
-                  {preferredGenerationHint.autoBind && (
-                    <div>Auto-bind hint: {preferredGenerationHint.autoBind}</div>
-                  )}
-                  {preferredGenerationHint.note && (
-                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400">{preferredGenerationHint.note}</div>
-                  )}
-                  {activeWidgetOperation && (
-                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                      Current op: {formatOperationTypeShort(activeWidgetOperation)}
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={applySuggestedOperation}
-                    disabled={!selectedWidget?.value?.setOperationType || !prioritizedOperation}
-                    className="rounded border border-neutral-200 dark:border-neutral-700 px-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-60"
-                  >
-                    Apply suggested op
-                  </button>
-                  {suggestedParamsEntries.length > 0 && (
-                    <>
-                      <div className="pt-1 border-t border-neutral-200 dark:border-neutral-700 text-[10px] text-neutral-500 dark:text-neutral-400">
-                        Suggested settings (manual, missing-only):
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {suggestedParamsEntries.map(([key, value]) => (
-                          <span
-                            key={key}
-                            className="inline-flex items-center rounded border border-neutral-200 dark:border-neutral-700 px-1.5 py-0.5 text-[10px] text-neutral-600 dark:text-neutral-300"
-                          >
-                            {key}: {formatSuggestedParamValue(value)}
-                          </span>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={applySuggestedSettings}
-                        disabled={!canApplySuggestedSettings}
-                        className="rounded border border-neutral-200 dark:border-neutral-700 px-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-60"
-                      >
-                        Apply suggested settings
-                      </button>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  No prompt-mode hints resolved for current tags/family.
-                </div>
-              )}
-              <div className="pt-2 border-t border-neutral-200 dark:border-neutral-700 text-[10px] text-neutral-500 dark:text-neutral-400">
-                QuickGen settings remain user-controlled (model, aspect ratio, resolution, advanced params). Generate only enforces operation intent + asset requirement from prompt hints.
-              </div>
-            </div>
-          </details>
-          <details className="relative">
-            <summary
-              className="list-none cursor-pointer select-none rounded border border-neutral-200 dark:border-neutral-700 px-2 py-1 text-[11px] text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-              title="Draft metadata for next save"
-            >
-              Draft metadata
-            </summary>
-            <div className="absolute left-0 top-full mt-1 w-80 max-w-[calc(100vw-2rem)] rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-50 p-3 space-y-2">
-              <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200">Draft metadata (next save)</div>
-              <div className="space-y-1">
-                <div className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Draft version note (next save)</div>
-                <input
-                  value={commitMessageInput}
-                  onChange={(e) => setCommitMessageInput(e.target.value)}
-                  placeholder="Describe this revision..."
-                  className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
-                />
-              </div>
-              <div className="space-y-1 border-t border-neutral-200 dark:border-neutral-700 pt-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Draft tags (next save)</div>
-                  {selectedTags.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setVersionTagsInput('')}
-                      className="rounded border border-neutral-200 dark:border-neutral-700 px-1.5 py-0.5 text-[10px] text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <input
-                    value={tagDraft}
-                    onChange={(e) => setTagDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key !== 'Enter') return;
-                      e.preventDefault();
-                      if (!addVersionTag(tagDraft)) return;
-                      setTagDraft('');
-                    }}
-                    placeholder="Add tag..."
-                    className="min-w-0 flex-1 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!addVersionTag(tagDraft)) return;
-                      setTagDraft('');
-                    }}
-                    className="rounded border border-neutral-200 dark:border-neutral-700 px-2 py-1 text-[11px] text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-                  >
-                    Add
-                  </button>
-                </div>
-                {selectedTags.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-1">
-                    {selectedTags.map((tag) => (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => toggleVersionTag(tag)}
-                        className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-300"
-                        title={`Remove tag: ${tag}`}
-                      >
-                        <span className="max-w-[150px] truncate">{tag}</span>
-                        <Icon name="x" size={10} />
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                    No draft tags selected for next save.
-                  </div>
+          {suggestedParamsEntries.map(([key, value]) => {
+            const info = paramOverrideStatus[key];
+            const status = info?.status ?? 'will-apply';
+            const badgeClass =
+              status === 'match'
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-300'
+                : status === 'conflict'
+                  ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300'
+                  : 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300';
+            const tooltip =
+              status === 'match'
+                ? `${key} already set to ${formatSuggestedParamValue(value)}`
+                : status === 'conflict'
+                  ? `${key}: suggested ${formatSuggestedParamValue(value)}, current ${formatSuggestedParamValue(info?.currentValue)}`
+                  : `${key}: ${formatSuggestedParamValue(value)} (will apply)`;
+            return (
+              <span
+                key={key}
+                title={tooltip}
+                className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] font-medium ${badgeClass}`}
+              >
+                {status === 'match' && <Icon name="check" size={9} />}
+                {status === 'conflict' && <Icon name="alertCircle" size={9} />}
+                {key.replace('aspect_ratio', 'ratio')}: {formatSuggestedParamValue(value)}
+                {status === 'conflict' && (
+                  <span className="opacity-70">({formatSuggestedParamValue(info?.currentValue)})</span>
                 )}
-                {availableVersionTags.length > 0 && (
-                  <div className="max-h-24 overflow-auto rounded border border-neutral-200 dark:border-neutral-700 p-1 space-y-1">
-                    {availableVersionTags.map(([tag, count]) => {
-                      const selected = selectedTags.includes(tag);
-                      return (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => toggleVersionTag(tag)}
-                          className={`w-full text-left px-2 py-1 rounded text-[11px] border ${
-                            selected
-                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-300'
-                              : 'border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-                          }`}
-                        >
-                          <span className="truncate">{tag}</span>
-                          <span className="ml-2 text-[10px] opacity-70">({count})</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          </details>
+              </span>
+            );
+          })}
         </div>
 
         {/* Generation controls: target selector + settings/assets shortcuts + Go */}
@@ -663,6 +664,111 @@ export function PromptAuthoringEditor() {
             </button>
           </div>
         )}
+
+        {/* Draft metadata — collapsed by default */}
+        <details className="relative pt-1.5 border-t border-neutral-100 dark:border-neutral-800">
+          <summary
+            className="list-none cursor-pointer select-none flex items-center gap-1 text-[11px] text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+            title="Draft metadata for next save"
+          >
+            <Icon name="tag" size={10} />
+            <span>Draft metadata</span>
+            {selectedTags.length > 0 && (
+              <span className="text-[10px] text-neutral-400 dark:text-neutral-500">({selectedTags.length})</span>
+            )}
+          </summary>
+          <div className="mt-1.5 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-2.5 space-y-2">
+            <div className="space-y-1">
+              <div className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Version note</div>
+              <input
+                value={commitMessageInput}
+                onChange={(e) => setCommitMessageInput(e.target.value)}
+                placeholder="Describe this revision..."
+                className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+              />
+            </div>
+            <div className="space-y-1 border-t border-neutral-200 dark:border-neutral-700 pt-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Tags</div>
+                {selectedTags.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setVersionTagsInput('')}
+                    className="rounded border border-neutral-200 dark:border-neutral-700 px-1.5 py-0.5 text-[10px] text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                <input
+                  value={tagDraft}
+                  onChange={(e) => setTagDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    if (!addVersionTag(tagDraft)) return;
+                    setTagDraft('');
+                  }}
+                  placeholder="Add tag..."
+                  className="min-w-0 flex-1 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!addVersionTag(tagDraft)) return;
+                    setTagDraft('');
+                  }}
+                  className="rounded border border-neutral-200 dark:border-neutral-700 px-2 py-1 text-[11px] text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                >
+                  Add
+                </button>
+              </div>
+              {selectedTags.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-1">
+                  {selectedTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleVersionTag(tag)}
+                      className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-300"
+                      title={`Remove tag: ${tag}`}
+                    >
+                      <span className="max-w-[150px] truncate">{tag}</span>
+                      <Icon name="x" size={10} />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  No draft tags selected.
+                </div>
+              )}
+              {availableVersionTags.length > 0 && (
+                <div className="max-h-24 overflow-auto rounded border border-neutral-200 dark:border-neutral-700 p-1 space-y-1">
+                  {availableVersionTags.map(([tag, count]) => {
+                    const selected = selectedTags.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => toggleVersionTag(tag)}
+                        className={`w-full text-left px-2 py-1 rounded text-[11px] border ${
+                          selected
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-300'
+                            : 'border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                        }`}
+                      >
+                        <span className="truncate">{tag}</span>
+                        <span className="ml-2 text-[10px] opacity-70">({count})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </details>
 
         {statusMessage && (
           <div className="text-[11px] text-neutral-600 dark:text-neutral-300">{statusMessage}</div>
