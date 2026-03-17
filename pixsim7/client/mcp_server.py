@@ -5,7 +5,8 @@ On startup, fetches the meta contract graph from /api/v1/meta/contracts
 and generates MCP tools from all sub_endpoints. Falls back to a generic
 call_api tool if the API is unreachable.
 
-Tools are named {contract_id}/{endpoint_id} (e.g. plans.management/plans.create).
+Tools are named {contract_id}__{endpoint_id}
+(e.g. plans_management__plans_create).
 """
 from __future__ import annotations
 
@@ -71,9 +72,10 @@ server = Server("pixsim")
 # ── Dynamic tool registry (populated on startup) ──────────────────
 
 
-# Each entry: tool_name -> (method, path_template, summary)
-_dynamic_routes: dict[str, tuple[str, str, str]] = {}
+# Each entry: tool_name -> metadata for proxying/invocation.
+_dynamic_routes: dict[str, dict[str, Any]] = {}
 _dynamic_tools: list[types.Tool] = []
+_tool_aliases: dict[str, str] = {}
 _initialized = False
 
 
@@ -109,29 +111,50 @@ def _build_input_schema(method: str, path: str) -> dict:
     return schema
 
 
-def _make_tool_name(endpoint_id: str) -> str:
-    """Convert endpoint ID to a clean tool name: plans.create -> plans_create."""
+def _sanitize_tool_fragment(value: str) -> str:
+    """Normalize contract/endpoint IDs for MCP tool names."""
+    normalized = value.lower().replace(".", "_").replace("/", "_")
+    normalized = re.sub(r"[^a-z0-9_]+", "_", normalized)
+    normalized = normalized.strip("_")
+    return normalized or "endpoint"
+
+
+def _make_tool_name(contract_id: str, endpoint_id: str) -> str:
+    """Build a stable tool name from contract and endpoint IDs."""
+    return f"{_sanitize_tool_fragment(contract_id)}__{_sanitize_tool_fragment(endpoint_id)}"
+
+
+def _make_legacy_tool_name(endpoint_id: str) -> str:
+    """Backward-compatible endpoint-only name."""
     return endpoint_id.replace(".", "_")
+
+
+def _unique_tool_name(base_name: str, seen: set[str]) -> str:
+    """Deduplicate tool names if two endpoints sanitize to the same key."""
+    if base_name not in seen:
+        return base_name
+    index = 2
+    while f"{base_name}_{index}" in seen:
+        index += 1
+    return f"{base_name}_{index}"
 
 
 async def _fetch_contracts() -> list[dict]:
     """Fetch contracts from meta API. Returns empty list on failure."""
     try:
         token = _get_token()
-        headers = {}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        client = _get_client()
 
-        async with httpx.AsyncClient(base_url=API_URL, timeout=10, headers=headers) as client:
-            params = {}
-            if API_SCOPE:
-                params["audience"] = API_SCOPE
-            resp = await client.get("/api/v1/meta/contracts", params=params)
-            if resp.status_code != 200:
-                print(f"[pixsim-mcp] Meta contracts returned {resp.status_code}", file=sys.stderr)
-                return []
-            data = resp.json()
-            return data.get("contracts", [])
+        params = {}
+        if API_SCOPE:
+            params["audience"] = API_SCOPE
+        resp = await client.get("/api/v1/meta/contracts", params=params, headers=headers)
+        if resp.status_code != 200:
+            print(f"[pixsim-mcp] Meta contracts returned {resp.status_code}", file=sys.stderr)
+            return []
+        data = resp.json()
+        return data.get("contracts", [])
     except Exception as e:
         print(f"[pixsim-mcp] Failed to fetch meta contracts: {e}", file=sys.stderr)
         return []
@@ -144,6 +167,7 @@ async def _init_tools() -> None:
         return
 
     contracts = await _fetch_contracts()
+    seen_tool_names: set[str] = set()
 
     for contract in contracts:
         contract_id = contract.get("id", "")
@@ -152,6 +176,7 @@ async def _init_tools() -> None:
             method = ep.get("method", "GET")
             path = ep.get("path", "")
             summary = ep.get("summary", "")
+            availability = ep.get("availability") or {}
 
             if not ep_id or not path:
                 continue
@@ -160,14 +185,37 @@ async def _init_tools() -> None:
             if not path.startswith("/"):
                 continue
 
-            tool_name = _make_tool_name(ep_id)
+            # Skip endpoints explicitly marked disabled in runtime metadata.
+            if availability.get("status") == "disabled":
+                continue
 
-            _dynamic_routes[tool_name] = (method, path, summary)
+            base_tool_name = _make_tool_name(contract_id, ep_id)
+            tool_name = _unique_tool_name(base_tool_name, seen_tool_names)
+            seen_tool_names.add(tool_name)
+
+            input_schema = ep.get("input_schema")
+            if not isinstance(input_schema, dict):
+                input_schema = _build_input_schema(method, path)
+
+            _dynamic_routes[tool_name] = {
+                "method": method,
+                "path_template": path,
+                "summary": summary,
+            }
             _dynamic_tools.append(types.Tool(
                 name=tool_name,
                 description=f"[{contract_id}] {summary}" if summary else f"{method} {path}",
-                inputSchema=_build_input_schema(method, path),
+                inputSchema=input_schema,
             ))
+
+            # Backward-compat alias for previously endpoint-only names.
+            legacy_name = _make_legacy_tool_name(ep_id)
+            if (
+                legacy_name != tool_name
+                and legacy_name not in _dynamic_routes
+                and legacy_name not in _tool_aliases
+            ):
+                _tool_aliases[legacy_name] = tool_name
 
     # Always add the generic escape hatch
     _dynamic_tools.append(types.Tool(
@@ -227,11 +275,13 @@ async def handle_call_tool(
             body=arguments.get("body"),
         )
 
-    route = _dynamic_routes.get(name)
+    resolved_name = _tool_aliases.get(name, name)
+    route = _dynamic_routes.get(resolved_name)
     if not route:
         return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 
-    method, path_template, _summary = route
+    method = route["method"]
+    path_template = route["path_template"]
 
     # Substitute path parameters from arguments
     path = path_template
@@ -253,6 +303,16 @@ async def handle_call_tool(
 
 MAX_RESPONSE_CHARS = 8000
 
+# Persistent client — reuses TCP connections across tool calls
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(base_url=API_URL, timeout=60)
+    return _http_client
+
 
 async def _proxy(
     method: str,
@@ -263,31 +323,30 @@ async def _proxy(
     """Proxy a request to the PixSim API and return the result."""
     try:
         token = _get_token()
-        headers = {}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        client = _get_client()
 
-        async with httpx.AsyncClient(base_url=API_URL, timeout=60, headers=headers) as client:
-            resp = await client.request(
-                method=method.upper(),
-                url=path,
-                params=query_params,
-                json=body,
-            )
+        resp = await client.request(
+            method=method.upper(),
+            url=path,
+            params=query_params,
+            json=body,
+            headers=headers,
+        )
 
-            try:
-                data = resp.json()
-                text = json.dumps(data, indent=2, default=str)
-            except Exception:
-                text = resp.text
+        try:
+            data = resp.json()
+            text = json.dumps(data, indent=2, default=str)
+        except Exception:
+            text = resp.text
 
-            if resp.status_code >= 400:
-                text = f"HTTP {resp.status_code}: {text}"
+        if resp.status_code >= 400:
+            text = f"HTTP {resp.status_code}: {text}"
 
-            if len(text) > MAX_RESPONSE_CHARS:
-                text = text[:MAX_RESPONSE_CHARS] + "\n... (truncated)"
+        if len(text) > MAX_RESPONSE_CHARS:
+            text = text[:MAX_RESPONSE_CHARS] + "\n... (truncated)"
 
-            return [types.TextContent(type="text", text=text)]
+        return [types.TextContent(type="text", text=text)]
 
     except httpx.TimeoutException:
         return [types.TextContent(type="text", text=f"Timeout: {method} {path}")]

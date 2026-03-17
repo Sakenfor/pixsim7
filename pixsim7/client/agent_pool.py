@@ -74,14 +74,18 @@ class AgentPool:
         if not changed:
             return
 
-        # Propagate to existing sessions and restart
+        # Propagate config to sessions — restart idle ones now, defer busy ones
         for session in self._sessions.values():
             session._system_prompt = self._system_prompt
             session._mcp_config_path = self._mcp_config_path
             session._resume_session_id = self._resume_session_id
             if session.is_alive:
-                client_log(f"[{session.session_id}] Restarting with updated config")
-                await session.restart()
+                if session.state == SessionState.BUSY:
+                    session._pending_restart = True
+                    client_log(f"[{session.session_id}] Config updated, will restart when idle")
+                else:
+                    client_log(f"[{session.session_id}] Restarting with updated config")
+                    await session.restart()
 
     async def start(self) -> int:
         """Start all sessions in the pool. Returns number of successfully started sessions."""

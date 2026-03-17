@@ -62,6 +62,7 @@ class ClaudeSession:
         self._last_error: Optional[str] = None
         self.claude_session_id: Optional[str] = None  # UUID from Claude's init event
         self.claude_model: Optional[str] = None
+        self._pending_restart: bool = False
 
     @property
     def is_alive(self) -> bool:
@@ -231,6 +232,12 @@ class ClaudeSession:
                     self.stats.total_duration_ms += duration
                     self.stats.last_activity = datetime.now(timezone.utc)
                     self.state = SessionState.READY
+                    # Deferred restart: config changed while busy
+                    if self._pending_restart:
+                        self._pending_restart = False
+                        from pixsim7.client.log import client_log
+                        client_log(f"[{self.session_id}] Applying deferred restart")
+                        asyncio.ensure_future(self.restart())
                     return result_text or "(empty response)"
 
                 elif event_type == "system":
