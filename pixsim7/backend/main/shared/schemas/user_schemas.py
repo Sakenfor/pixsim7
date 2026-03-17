@@ -129,6 +129,17 @@ class SimilarityChecks(BaseModel):
     )
 
 
+class NotificationCategoryPref(BaseModel):
+    """Per-category notification preference. granularity='off' means disabled."""
+
+    model_config = ConfigDict(extra="allow")
+
+    granularity: str = Field(
+        default="all",
+        description="Granularity level: 'all', 'off', or category-specific like 'failures_only', 'status_only', 'errors_only'",
+    )
+
+
 class UserPreferences(BaseModel):
     """Structured user preferences payload stored in users.preferences JSON."""
 
@@ -138,7 +149,7 @@ class UserPreferences(BaseModel):
     cubes: Any = None
     workspace: Any = None
     theme: str | None = None
-    notifications: Any = None
+    notifications: Dict[str, NotificationCategoryPref] | None = None
 
     # Structured sections
     debug: DebugPreferences | None = None
@@ -187,6 +198,14 @@ class UpdateUserPreferencesRequest(BaseModel):
 class UpdateUserPermissionsRequest(BaseModel):
     """Admin request to replace a user's explicit permissions."""
     permissions: List[str] = Field(default_factory=list)
+
+
+class AdminUpdateUserRequest(BaseModel):
+    """Admin request to update a user's profile, role, or password."""
+    role: Literal["admin", "user", "guest"] | None = None
+    is_active: bool | None = None
+    password: str | None = Field(None, min_length=6, max_length=128)
+    permissions: List[str] | None = None
 
 
 # ===== RESPONSE SCHEMAS =====

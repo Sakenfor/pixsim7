@@ -3,7 +3,7 @@ Notifications API — lightweight broadcast/targeted notifications.
 
 Used by plan hooks, agents, and system for event announcements.
 """
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Set
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,7 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
 from pixsim7.backend.main.domain.platform.notification import Notification
 from pixsim7.backend.main.domain.user import User
+from pixsim7.backend.main.services.notifications.notification_categories import (
+    notification_category_registry,
+)
 from pixsim7.backend.main.shared.datetime_utils import utcnow
+from pixsim7.backend.main.shared.schemas.user_schemas import (
+    NotificationCategoryPref,
+    UserPreferences,
+)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -53,6 +60,27 @@ class NotificationCreateRequest(BaseModel):
     user_id: Optional[int] = Field(None, description="Target user (null = broadcast)")
 
 
+class CategoryGranularityOptionResponse(BaseModel):
+    id: str
+    label: str
+    description: str = ""
+
+
+class CategoryResponse(BaseModel):
+    id: str
+    label: str
+    description: str = ""
+    icon: str = "bell"
+    defaultGranularity: str = "all"
+    granularityOptions: List[CategoryGranularityOptionResponse] = Field(default_factory=list)
+    sortOrder: int = 100
+    currentGranularity: str = "all"
+
+
+class CategoriesListResponse(BaseModel):
+    categories: List[CategoryResponse]
+
+
 # ── Helpers ───────────────────────────────────────────────────────
 
 
@@ -81,7 +109,99 @@ def _user_filter(user: User):
     )
 
 
+def _get_user_notification_prefs(user: User) -> Dict[str, NotificationCategoryPref]:
+    """Extract typed notification preferences from user, falling back to empty."""
+    raw_prefs = getattr(user, "preferences", None) or {}
+    notif_prefs = raw_prefs.get("notifications")
+    if not isinstance(notif_prefs, dict):
+        return {}
+    result: Dict[str, NotificationCategoryPref] = {}
+    for cat_id, pref_data in notif_prefs.items():
+        if isinstance(pref_data, dict):
+            result[cat_id] = NotificationCategoryPref.model_validate(pref_data)
+    return result
+
+
+def _resolve_granularity(category_id: str, user_prefs: Dict[str, NotificationCategoryPref]) -> str:
+    """Resolve effective granularity for a category: user pref > registry default."""
+    if category_id in user_prefs:
+        return user_prefs[category_id].granularity
+    spec = notification_category_registry.get_or_none(category_id)
+    if spec is not None:
+        return spec.default_granularity
+    return "all"
+
+
+def _get_suppressed_categories(user: User) -> Set[str]:
+    """Categories with effective granularity 'off' — excluded at SQL level."""
+    user_prefs = _get_user_notification_prefs(user)
+    suppressed: Set[str] = set()
+    for spec in notification_category_registry.get_sorted():
+        granularity = _resolve_granularity(spec.id, user_prefs)
+        if granularity == "off":
+            suppressed.add(spec.id)
+    return suppressed
+
+
+def _apply_granularity_filter(
+    rows: List[Notification],
+    user: User,
+) -> List[Notification]:
+    """Apply intermediate granularity filters (failures_only, status_only, errors_only)."""
+    user_prefs = _get_user_notification_prefs(user)
+    filtered: List[Notification] = []
+    for n in rows:
+        granularity = _resolve_granularity(n.category, user_prefs)
+        if granularity == "off":
+            continue
+        if granularity == "all" or granularity == "all_changes":
+            filtered.append(n)
+            continue
+        # Intermediate granularity filters
+        if granularity == "failures_only":
+            if n.severity in ("error", "warning"):
+                filtered.append(n)
+        elif granularity == "errors_only":
+            if n.severity == "error":
+                filtered.append(n)
+        elif granularity == "status_only":
+            # Status-only: let through severity=info (status changes) and errors
+            if n.severity in ("info", "error", "warning"):
+                filtered.append(n)
+        else:
+            # Unknown granularity — pass through
+            filtered.append(n)
+    return filtered
+
+
 # ── Endpoints ─────────────────────────────────────────────────────
+
+
+@router.get("/categories", response_model=CategoriesListResponse)
+async def list_categories(user: CurrentUser):
+    """List all notification categories with defaults and user's current selections."""
+    user_prefs = _get_user_notification_prefs(user)
+    categories: List[CategoryResponse] = []
+    for spec in notification_category_registry.get_sorted():
+        current = _resolve_granularity(spec.id, user_prefs)
+        categories.append(
+            CategoryResponse(
+                id=spec.id,
+                label=spec.label,
+                description=spec.description,
+                icon=spec.icon,
+                defaultGranularity=spec.default_granularity,
+                granularityOptions=[
+                    CategoryGranularityOptionResponse(
+                        id=opt.id, label=opt.label, description=opt.description
+                    )
+                    for opt in spec.granularity_options
+                ],
+                sortOrder=spec.sort_order,
+                currentGranularity=current,
+            )
+        )
+    return CategoriesListResponse(categories=categories)
 
 
 @router.get("", response_model=NotificationListResponse)
@@ -89,6 +209,7 @@ async def list_notifications(
     user: CurrentUser,
     category: Optional[str] = Query(None),
     unread_only: bool = Query(False),
+    include_suppressed: bool = Query(False),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_database),
@@ -106,15 +227,30 @@ async def list_notifications(
     if unread_only:
         stmt = stmt.where(Notification.read == False)  # noqa: E712
 
-    rows = (await db.execute(stmt)).scalars().all()
+    # SQL-level suppression of "off" categories
+    if not include_suppressed:
+        suppressed = _get_suppressed_categories(user)
+        if suppressed:
+            stmt = stmt.where(Notification.category.notin_(suppressed))
 
-    # Unread count
+    rows = list((await db.execute(stmt)).scalars().all())
+
+    # Python-level intermediate granularity filtering
+    if not include_suppressed:
+        rows = _apply_granularity_filter(rows, user)
+
+    # Unread count (also respects suppression)
     count_stmt = (
         select(func.count())
         .select_from(Notification)
         .where(_user_filter(user))
         .where(Notification.read == False)  # noqa: E712
     )
+    if not include_suppressed:
+        suppressed = _get_suppressed_categories(user)
+        if suppressed:
+            count_stmt = count_stmt.where(Notification.category.notin_(suppressed))
+
     unread = (await db.execute(count_stmt)).scalar_one() or 0
 
     return NotificationListResponse(

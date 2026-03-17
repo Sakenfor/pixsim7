@@ -12,7 +12,7 @@ contracts via the CONTRACTS_REGISTER hook.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from pixsim7.backend.main.lib.registry.simple import SimpleRegistry
 
@@ -25,6 +25,19 @@ class MetaContractEndpoint:
     method: str
     path: str
     summary: str
+    auth_required: Optional[bool] = None
+    requires_admin: bool = False
+    permissions: List[str] = field(default_factory=list)
+    availability: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "status": "available",
+            "reason": None,
+            "conditions": [],
+        }
+    )
+    input_schema: Optional[Dict[str, Any]] = None
+    output_schema: Optional[Dict[str, Any]] = None
+    tags: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -198,60 +211,203 @@ def _builtin_plans_management() -> MetaContract:
                     "Start here. Full work package for AI agent: current assignment, "
                     "all active plans, and available API actions with request schemas."
                 ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "params": {
+                            "type": "object",
+                            "properties": {
+                                "plan_id": {
+                                    "type": "string",
+                                    "description": "Optional specific plan to fetch instead of auto-assignment.",
+                                },
+                            },
+                        },
+                    },
+                },
+                tags=["agent", "planning"],
             ),
             MetaContractEndpoint(
                 id="plans.create",
                 method="POST",
                 path="/api/v1/dev/plans",
                 summary="Create a new plan (Document + PlanRegistry). Supports parent_id for sub-plans.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "body": {
+                            "type": "object",
+                            "required": ["id", "title"],
+                            "properties": {
+                                "id": {"type": "string"},
+                                "title": {"type": "string"},
+                                "plan_type": {"type": "string"},
+                                "status": {"type": "string"},
+                                "stage": {"type": "string"},
+                                "owner": {"type": "string"},
+                                "priority": {"type": "string"},
+                                "summary": {"type": "string"},
+                                "markdown": {"type": "string"},
+                                "task_scope": {"type": "string"},
+                                "visibility": {"type": "string"},
+                                "target": {"type": "object"},
+                                "checkpoints": {"type": "array", "items": {"type": "object"}},
+                                "tags": {"type": "array", "items": {"type": "string"}},
+                                "code_paths": {"type": "array", "items": {"type": "string"}},
+                                "companions": {"type": "array", "items": {"type": "string"}},
+                                "handoffs": {"type": "array", "items": {"type": "string"}},
+                                "depends_on": {"type": "array", "items": {"type": "string"}},
+                                "parent_id": {"type": "string"},
+                            },
+                        },
+                    },
+                    "required": ["body"],
+                },
+                tags=["create", "planning"],
             ),
             MetaContractEndpoint(
                 id="plans.list",
                 method="GET",
                 path="/api/v1/dev/plans",
                 summary="List all plans with children, filterable by status/owner.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "params": {
+                            "type": "object",
+                            "properties": {
+                                "status": {"type": "string"},
+                                "owner": {"type": "string"},
+                                "refresh": {"type": "boolean"},
+                            },
+                        },
+                    },
+                },
+                tags=["list", "planning"],
             ),
             MetaContractEndpoint(
                 id="plans.detail",
                 method="GET",
                 path="/api/v1/dev/plans/{plan_id}",
                 summary="Get plan with full metadata, markdown, checkpoints, and children.",
+                tags=["read", "planning"],
             ),
             MetaContractEndpoint(
                 id="plans.update",
                 method="PATCH",
                 path="/api/v1/dev/plans/update/{plan_id}",
                 summary="Update plan fields: title/status/stage/owner/priority/summary/markdown plus tags, code paths, companions, handoffs, and dependencies.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "plan_id": {"type": "string"},
+                        "body": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "status": {"type": "string"},
+                                "stage": {"type": "string"},
+                                "task_scope": {"type": "string"},
+                                "plan_type": {"type": "string"},
+                                "owner": {"type": "string"},
+                                "priority": {"type": "string"},
+                                "summary": {"type": "string"},
+                                "markdown": {"type": "string"},
+                                "visibility": {"type": "string"},
+                                "target": {"type": "object"},
+                                "checkpoints": {"type": "array", "items": {"type": "object"}},
+                                "tags": {"type": "array", "items": {"type": "string"}},
+                                "code_paths": {"type": "array", "items": {"type": "string"}},
+                                "companions": {"type": "array", "items": {"type": "string"}},
+                                "handoffs": {"type": "array", "items": {"type": "string"}},
+                                "depends_on": {"type": "array", "items": {"type": "string"}},
+                                "patch": {"type": "object"},
+                            },
+                        },
+                    },
+                    "required": ["plan_id", "body"],
+                },
+                tags=["update", "planning"],
             ),
             MetaContractEndpoint(
                 id="plans.documents",
                 method="GET",
                 path="/api/v1/dev/plans/documents/{plan_id}",
                 summary="Companion and handoff documents for a plan.",
+                tags=["read", "docs", "planning"],
             ),
             MetaContractEndpoint(
                 id="plans.activity",
                 method="GET",
                 path="/api/v1/dev/plans/activity",
                 summary="Recent change activity across all plans (default 7-day lookback).",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "params": {
+                            "type": "object",
+                            "properties": {
+                                "days": {"type": "integer"},
+                                "limit": {"type": "integer"},
+                            },
+                        },
+                    },
+                },
+                tags=["activity", "planning"],
             ),
             MetaContractEndpoint(
                 id="plans.settings_get",
                 method="GET",
                 path="/api/v1/dev/plans/settings",
                 summary="Read runtime plan mode flags, including DB-only mode.",
+                tags=["settings", "planning"],
             ),
             MetaContractEndpoint(
                 id="plans.settings_update",
                 method="PATCH",
                 path="/api/v1/dev/plans/settings",
                 summary="Toggle runtime plan mode flags (admin, applies to current backend process).",
+                requires_admin=True,
+                permissions=["admin"],
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "body": {
+                            "type": "object",
+                            "required": ["plans_db_only_mode"],
+                            "properties": {
+                                "plans_db_only_mode": {"type": "boolean"},
+                            },
+                        },
+                    },
+                    "required": ["body"],
+                },
+                tags=["settings", "admin", "planning"],
             ),
             MetaContractEndpoint(
                 id="plans.sync",
                 method="POST",
                 path="/api/v1/dev/plans/sync",
                 summary="Sync filesystem plan manifests into the DB (disabled when PLANS_DB_ONLY_MODE=1).",
+                requires_admin=True,
+                permissions=["admin"],
+                availability={
+                    "status": "conditional",
+                    "reason": "Only available when DB-only mode is disabled.",
+                    "conditions": ["settings.plans_db_only_mode == false"],
+                },
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "params": {
+                            "type": "object",
+                            "properties": {
+                                "commit_sha": {"type": "string"},
+                            },
+                        },
+                    },
+                },
+                tags=["sync", "admin", "planning"],
             ),
         ],
     )
@@ -262,25 +418,33 @@ def _builtin_notifications() -> MetaContract:
         id="notifications",
         name="Notifications",
         endpoint=None,
-        version="1.0.0",
+        version="1.1.0",
         auth_required=True,
         owner="platform",
         summary=(
             "Broadcast and targeted notifications for plan events, feature "
-            "announcements, and agent actions."
+            "announcements, and agent actions. Per-category preferences with "
+            "granularity control."
         ),
         provides=[
             "notification_list",
             "notification_create",
             "notification_read_status",
+            "notification_categories",
         ],
         relates_to=["plans.management"],
         sub_endpoints=[
             MetaContractEndpoint(
+                id="notifications.categories",
+                method="GET",
+                path="/api/v1/notifications/categories",
+                summary="List all notification categories with defaults and user's current granularity selections.",
+            ),
+            MetaContractEndpoint(
                 id="notifications.list",
                 method="GET",
                 path="/api/v1/notifications",
-                summary="List notifications for current user (broadcasts + targeted). Supports category filter and unread_only.",
+                summary="List notifications for current user (broadcasts + targeted). Supports category filter, unread_only, and include_suppressed.",
             ),
             MetaContractEndpoint(
                 id="notifications.create",
@@ -402,15 +566,25 @@ def _builtin_user_assistant() -> MetaContract:
         sub_endpoints=[
             MetaContractEndpoint(
                 id="user.assets.list",
-                method="GET",
-                path="/api/v1/assets",
+                method="POST",
+                path="/api/v1/assets/search",
                 summary="Browse and search user assets with filters.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "body": {
+                            "type": "object",
+                            "description": "AssetSearchRequest payload (filters, pagination, query).",
+                        },
+                    },
+                    "required": ["body"],
+                },
             ),
             MetaContractEndpoint(
                 id="user.assets.analyze",
                 method="POST",
-                path="/api/v1/assets/{asset_id}/analyze",
-                summary="Run AI analysis on an asset.",
+                path="/api/v1/assets/{asset_id}/enrich",
+                summary="Run asset enrichment/analysis for a single asset.",
             ),
             MetaContractEndpoint(
                 id="user.generations.create",
@@ -433,8 +607,8 @@ def _builtin_user_assistant() -> MetaContract:
             MetaContractEndpoint(
                 id="user.scenes.list",
                 method="GET",
-                path="/api/v1/game/scenes",
-                summary="List available scenes.",
+                path="/api/v1/game/scenes/{scene_id}",
+                summary="Fetch a scene graph by scene ID.",
             ),
             MetaContractEndpoint(
                 id="user.characters.list",

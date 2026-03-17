@@ -10,7 +10,6 @@
 
 export { SettingsPanel } from './components/SettingsPanel';
 export { MediaCardConfigPage } from './components/MediaCardConfigPage';
-export { PanelConfigurationPanel } from './components/PanelConfigurationPanel';
 export { WorkspaceProfileManager } from './components/WorkspaceProfileManager';
 
 // ============================================================================
@@ -99,6 +98,7 @@ export { registerGenerationSettings } from './lib/schemas/generation.settings';
 export { registerPromptSettings } from './lib/schemas/prompts.settings';
 export { registerPanelSettings } from './lib/schemas/panel.settings';
 export { registerTaggingSettings } from './lib/schemas/tagging.settings';
+export { registerNotificationSettings } from './lib/schemas/notification.settings';
 export { registerIconSettings } from './lib/schemas/icon.settings';
 export { registerThemeSettings } from './lib/schemas/theme.settings';
 // Note: registerAssetSettings, registerMediaSettings, registerGallerySettings removed - now unified in registerLibrarySettings
