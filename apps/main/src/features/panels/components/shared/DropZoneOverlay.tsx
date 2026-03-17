@@ -5,6 +5,7 @@
  * over the workspace area.
  */
 
+import { Z } from "@pixsim7/shared.ui";
 import type { DropZone } from "@pixsim7/shared.ui.dockview";
 import { createPortal } from "react-dom";
 
@@ -106,7 +107,7 @@ export function DropZoneOverlay({
         top: workspaceRect.y,
         width: workspaceRect.width,
         height: workspaceRect.height,
-        zIndex: 10099, // Below floating panels at 10100+
+        zIndex: Z.floatDropZone,
       }}
     >
       {zones.map(({ zone, style }) => {

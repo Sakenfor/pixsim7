@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import type { Toast as ToastType } from './useToast';
 import { useToastStore } from './useToast';
+import { Z } from './zIndex';
 
 interface ToastProps {
   toast: ToastType;
@@ -106,7 +107,8 @@ export function ToastContainer() {
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"
+      className="fixed bottom-4 right-4 flex flex-col gap-2 pointer-events-none"
+      style={{ zIndex: Z.globalToast }}
       aria-live="polite"
       aria-atomic="false"
     >

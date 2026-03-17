@@ -14,6 +14,8 @@ import React, { useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 
+import { Z } from './zIndex';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -197,8 +199,8 @@ export function PortalFloat({
   return createPortal(
     <div
       ref={ref}
-      className={clsx('fixed z-popover', className)}
-      style={{ zIndex: 9999, ...positionStyle, ...extraStyle }}
+      className={clsx('fixed', className)}
+      style={{ zIndex: Z.floatOverlay, ...positionStyle, ...extraStyle }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >

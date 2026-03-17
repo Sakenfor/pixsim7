@@ -112,7 +112,7 @@ export function DropZoneOverlay({
         width,
         height,
         pointerEvents: 'none',
-        zIndex: 10099, // Below floating panels (10100+)
+        zIndex: 10099, // Z.floatDropZone — keep in sync with packages/shared/ui/src/zIndex.ts
       }}
       data-drop-zone-overlay
     >

@@ -83,17 +83,25 @@ const preset = {
         'elevation-5': '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
       },
       zIndex: {
-        // Standardized z-index scale for consistent layering
-        // Use these instead of arbitrary values like z-[100]
+        // Standardized z-index scale — see packages/shared/ui/src/zIndex.ts
+        // for the canonical reference. Keep these values in sync.
         'base': '0',
-        'dropdown': '50',         // Dropdowns, popovers
-        'sticky': '100',          // Sticky headers, toolbars
-        'fixed': '500',           // Fixed UI elements
-        'modal-backdrop': '1000', // Modal backdrops
-        'modal': '1001',          // Modal dialogs
-        'popover': '1002',        // Popovers over modals
-        'tooltip': '1003',        // Tooltips (highest UI layer)
-        'toast': '9999',          // Toast notifications (always on top)
+        'dropdown': '50',              // Dropdowns, inline popovers
+        'sticky': '100',               // Sticky headers, toolbars
+        'fixed': '500',                // Fixed UI elements
+        'modal-backdrop': '1000',      // Modal backdrops (below floating panels)
+        'modal': '1001',               // Modal dialogs (below floating panels)
+        'popover': '1002',             // Popovers over modals
+        'tooltip': '1003',             // Tooltips
+        // ── floating panel boundary ──
+        'float-drop-zone': '10099',    // Drop-zone overlay (below floating panels)
+        'float-panel': '10100',        // Floating panels base
+        'float-overlay': '10200',      // Overlays above floating panels
+        'float-overlay-popover': '10201', // Popovers from float-overlay elements
+        // ── top-level blocking UI ──
+        'global-backdrop': '10300',    // Modal backdrop above everything
+        'global-modal': '10301',       // Modals/confirms above everything
+        'global-toast': '10400',       // Toast notifications (always on top)
       },
     },
   },

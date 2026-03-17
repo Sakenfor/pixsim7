@@ -1,3 +1,4 @@
+import { Z } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface ViewerState {
@@ -76,7 +77,8 @@ export function ExternalMediaViewer() {
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/85"
+      className="fixed inset-0 flex flex-col items-center justify-center bg-black/85"
+      style={{ zIndex: Z.globalModal }}
       onClick={close}
     >
       {/* Close button */}

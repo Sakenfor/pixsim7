@@ -1,6 +1,8 @@
+import { Z } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
+
 
 import type { ParamSpec } from '@lib/generation-ui';
 
@@ -143,10 +145,11 @@ export function AdvancedSettingsPopover({
   const popoverContent = isOpen && position && (
     <div
       ref={popoverRef}
-      className="fixed w-56 bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden z-popover"
+      className="fixed w-56 bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden"
       style={{
         top: position.top,
         left: position.left,
+        zIndex: Z.floatOverlay,
       }}
     >
       <div className="px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">

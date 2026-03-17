@@ -1,4 +1,4 @@
-import { IconButton } from "@pixsim7/shared.ui";
+import { IconButton, Z } from "@pixsim7/shared.ui";
 import { memo, useCallback, useState, useRef, useEffect } from "react";
 import { Rnd } from "react-rnd";
 
@@ -217,10 +217,17 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
   const minimizePanelToCube = useCubeStore((s) => s.minimizePanelToCube);
   const cubesVisible = useCubeSettingsStore((s) => s.visible);
   const setCubesVisible = useCubeSettingsStore((s) => s.setVisible);
+  const cubeDockPosition = useCubeSettingsStore((s) => s.dockPosition);
   const activeProjectId = useProjectSessionStore((s) => s.currentProjectId);
   const activeProjectName = useProjectSessionStore((s) => s.currentProjectName);
 
   const handleMinimizeToCube = useCallback(() => {
+    // Only send to cube when it's free-floating (undocked).
+    // When docked, just close the panel normally.
+    if (cubeDockPosition !== 'floating') {
+      closeFloatingPanel(panel.id);
+      return;
+    }
     minimizePanelToCube(
       panel.id,
       { x: panel.x, y: panel.y },
@@ -229,7 +236,7 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
     );
     closeFloatingPanel(panel.id);
     if (!cubesVisible) setCubesVisible(true);
-  }, [panel.id, panel.x, panel.y, panel.width, panel.height, panel.context, minimizePanelToCube, closeFloatingPanel, cubesVisible, setCubesVisible]);
+  }, [panel.id, panel.x, panel.y, panel.width, panel.height, panel.context, minimizePanelToCube, closeFloatingPanel, cubesVisible, setCubesVisible, cubeDockPosition]);
 
   // Resolve definition ID (strips ::N suffix for multi-instance floating panels)
   const definitionId = getFloatingDefinitionId(panel.id);
@@ -422,7 +429,7 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
       minHeight={200}
       bounds="window"
       dragHandleClassName="floating-panel-header"
-      style={{ zIndex: 10100 + panel.zIndex }}
+      style={{ zIndex: Z.floatPanel + panel.zIndex }}
       className="floating-panel"
     >
       <div className="h-full flex flex-col bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-300 dark:border-neutral-700 overflow-hidden rounded-lg">
@@ -509,13 +516,27 @@ export function FloatingPanelsManager() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
   const [catalogVersion, setCatalogVersion] = useState(0);
 
+  // Defer rendering persisted floating panels until the panel catalog has
+  // been populated.  Without this guard, panels mount before definitions are
+  // registered, render empty/recovery UI, and even after definitions arrive
+  // the component content can stay in a broken state.
+  const [catalogReady, setCatalogReady] = useState(() => panelSelectors.size > 0);
+
   // HMR resilience: force memoized FloatingPanel instances to re-render when
   // panel definitions are re-registered in the plugin catalog.
   useEffect(() => {
     return panelSelectors.subscribe(() => {
+      if (!catalogReady) setCatalogReady(true);
       setCatalogVersion((v) => v + 1);
     });
-  }, []);
+  }, [catalogReady]);
+
+  // Safety fallback: if the catalog never fires (edge case), render after 3s
+  useEffect(() => {
+    if (catalogReady) return;
+    const timer = setTimeout(() => setCatalogReady(true), 3000);
+    return () => clearTimeout(timer);
+  }, [catalogReady]);
 
   // Track drag state across all panels to show the overlay
   const [dragState, setDragState] = useState<{
@@ -541,16 +562,19 @@ export function FloatingPanelsManager() {
     });
   }, []);
 
+  // Don't render floating panels until panel definitions are available.
+  // The DropZoneOverlay is always safe to render.
   return (
     <>
-      {floatingPanels.map((panel) => (
-        <FloatingPanel
-          key={panel.id}
-          panel={panel}
-          onDragStateChange={handleDragStateChange}
-          catalogVersion={catalogVersion}
-        />
-      ))}
+      {catalogReady &&
+        floatingPanels.map((panel) => (
+          <FloatingPanel
+            key={panel.id}
+            panel={panel}
+            onDragStateChange={handleDragStateChange}
+            catalogVersion={catalogVersion}
+          />
+        ))}
       <DropZoneOverlay
         isDragging={dragState.isDragging}
         activeZone={dragState.activeZone}

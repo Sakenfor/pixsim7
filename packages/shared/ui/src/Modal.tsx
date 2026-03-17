@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 
+import { Z } from './zIndex';
+
 export interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -56,7 +58,8 @@ export function Modal({
 
   const modalContent = (
     <div
-      className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
+      style={{ zIndex: Z.globalModal }}
       onClick={onClose}
       role="dialog"
       aria-modal="true"

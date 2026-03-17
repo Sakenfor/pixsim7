@@ -1,3 +1,4 @@
+import { Z } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { type ReactNode, useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -64,7 +65,7 @@ export function FloatingToolPanel({
       minHeight={minHeight}
       bounds="window"
       dragHandleClassName={DRAG_HANDLE_CLASS}
-      style={{ zIndex: 10200 }}
+      style={{ zIndex: Z.floatOverlay }}
     >
       <div className="flex flex-col h-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-2xl overflow-hidden">
         {/* Header — drag handle */}

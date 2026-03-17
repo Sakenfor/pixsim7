@@ -1,4 +1,4 @@
-import { Panel } from "@pixsim7/shared.ui";
+import { Panel, Z } from "@pixsim7/shared.ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { create } from "zustand";
@@ -541,7 +541,8 @@ export function PropertiesPopup() {
   return createPortal(
     <div
       ref={popupRef}
-      className="fixed z-[10200]"
+      className="fixed"
+      style={{ zIndex: Z.floatOverlay }}
       style={{ left: `${coords.x}px`, top: `${coords.y}px` }}
       data-properties-popup
     >

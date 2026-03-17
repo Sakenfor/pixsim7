@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Dropdown, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
+import { Dropdown, DropdownDivider, DropdownItem, Z } from '@pixsim7/shared.ui';
 import { useContextMenu } from './useContextMenu';
 import type { MenuItem } from './types';
 
@@ -101,7 +101,8 @@ export function ContextMenuPortal({ renderIcon = defaultRenderIcon }: ContextMen
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-[10200]"
+      className="fixed"
+      style={{ zIndex: Z.floatOverlay }}
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
@@ -266,7 +267,8 @@ function MenuItemComponent({ item, onClose, depth = 0, renderIcon }: MenuItemCom
       {hasChildren && showChildren && submenuPos && (
         <div
           ref={submenuRef}
-          className="fixed z-[10201]"
+          className="fixed"
+          style={{ zIndex: Z.floatOverlayPopover }}
           style={{ left: submenuPos.x, top: submenuPos.y }}
           data-context-menu
           onMouseEnter={() => {

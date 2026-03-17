@@ -6,6 +6,7 @@
  */
 
 import type { DevToolDefinition } from '@pixsim7/shared.devtools.core';
+import { Z } from '@pixsim7/shared.ui';
 import { useState, useMemo, useEffect, useRef } from 'react';
 
 import { useDevToolContext } from '@lib/dev/devtools/devToolContext';
@@ -101,7 +102,8 @@ export function DevToolQuickAccess() {
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-start justify-center pt-[20vh] bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 flex items-start justify-center pt-[20vh] bg-black/50 backdrop-blur-sm"
+      style={{ zIndex: Z.globalModal }}
       onClick={closeQuickAccess}
     >
       <div
