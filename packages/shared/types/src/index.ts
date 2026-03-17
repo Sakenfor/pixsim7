@@ -105,6 +105,15 @@ export * from './game'
 export * from './interactions'
 
 // ===================
+// Selection Types
+// ===================
+
+export * from './selection'
+
+// Namespace export for organized access
+export * as Selection from './selection'
+
+// ===================
 // Generic Surface Gizmo Types
 // ===================
 

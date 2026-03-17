@@ -23,6 +23,7 @@
  */
 
 import type { NpcId, WorldId, SessionId, LocationId, SceneId } from './ids';
+import type { Selectable } from './selection';
 import type {
   EntityRef,
   GameSessionResponse,
@@ -243,6 +244,8 @@ export interface GameObjectBase {
   tags?: string[];
   /** Optional metadata for extensions */
   meta?: Record<string, unknown>;
+  /** Selection protocol (opt-in). Objects with this field participate in selection. */
+  selection?: Selectable;
 }
 
 /**

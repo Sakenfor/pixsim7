@@ -18,6 +18,8 @@ import type {
   ResolveTemplateResponse,
   ResolveBatchResponse,
   TemplateKind,
+  SelectionAction,
+  SelectionEvent,
 } from '@pixsim7/shared.types';
 import type { NpcRelationshipState } from '../core/types';
 import type { StatSource } from '../session/statAdapters';
@@ -317,6 +319,7 @@ export interface GameRuntimeEvents {
   worldTimeAdvanced: WorldTimeAdvancedEvent;
   interactionExecuted: InteractionExecutedEvent;
   tickCompleted: TickCompletedEvent;
+  selectionChanged: SelectionEvent;
   error: RuntimeErrorEvent;
 }
 
@@ -452,6 +455,10 @@ export type GameInputIntent =
     }
   | {
       type: 'saveSession';
+    }
+  | {
+      type: 'selection';
+      action: SelectionAction;
     };
 
 // ===================
