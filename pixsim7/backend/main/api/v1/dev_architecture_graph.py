@@ -23,8 +23,10 @@ from .dev_architecture_contract import (
     ArchitectureGraphV1,
     ArchitectureLink,
     BackendSourceInfo,
+    CapabilityNode,
     DriftWarning,
     FrontendSourceInfo,
+    RegistryDescriptor,
 )
 
 
@@ -82,15 +84,152 @@ def discover_backend_source() -> tuple[ArchitectureGraphBackend, BackendSourceIn
     capabilities = discover_capabilities()
     services = discover_services()
     plugins = discover_plugin_manifests()
+    registry_descriptors = build_registry_descriptors(routes, capabilities, services, plugins)
+    runtime_registries = build_runtime_registry_descriptors()
 
     backend = ArchitectureGraphBackend(
         routes=routes,
         capability_apis=capabilities,
         services=services,
         plugins=plugins,
+        registries=registry_descriptors,
+        registry_descriptors=registry_descriptors,
+        runtime_registries=runtime_registries,
     )
     source = BackendSourceInfo(generated_at=now)
     return backend, source
+
+
+def build_registry_descriptors(
+    routes: list[dict[str, Any]],
+    capabilities: list[dict[str, Any]],
+    services: list[dict[str, Any]],
+    plugins: list[dict[str, Any]],
+) -> list[RegistryDescriptor]:
+    """Build coarse registry descriptors for backend architecture views."""
+    registries: list[RegistryDescriptor] = [
+        RegistryDescriptor(
+            id="routes",
+            name="Route Registry",
+            category="routes",
+            backing_source="fastapi-runtime-introspection",
+            layer="backend",
+            scope="catalog",
+            update_mode="snapshot",
+            item_count=len(routes),
+            description="All discovered FastAPI routes.",
+        ),
+        RegistryDescriptor(
+            id="capability-apis",
+            name="Capability API Registry",
+            category="capabilities",
+            backing_source="capability-manifest",
+            layer="backend",
+            scope="catalog",
+            update_mode="snapshot",
+            item_count=len(capabilities),
+            description="Capability APIs exposed through plugin context.",
+        ),
+        RegistryDescriptor(
+            id="services",
+            name="Service Manifest Registry",
+            category="services",
+            backing_source="service-manifest",
+            layer="backend",
+            scope="catalog",
+            update_mode="snapshot",
+            item_count=len(services),
+            description="Backend service composition manifest entries.",
+        ),
+        RegistryDescriptor(
+            id="backend-plugins",
+            name="Backend Plugin Manifest Registry",
+            category="plugins",
+            backing_source="route-manifests",
+            layer="backend",
+            scope="catalog",
+            update_mode="snapshot",
+            item_count=len(plugins),
+            description="Backend route plugins discovered from manifest.py files.",
+        ),
+    ]
+
+    by_kind: dict[str, int] = {}
+    for plugin in plugins:
+        kind = str(plugin.get("kind") or "unknown")
+        by_kind[kind] = by_kind.get(kind, 0) + 1
+
+    for kind in sorted(by_kind.keys()):
+        registries.append(
+            RegistryDescriptor(
+                id=f"backend-plugins:{kind}",
+                name=f"Backend Plugins ({kind})",
+                category="plugins",
+                backing_source="route-manifests",
+                layer="backend",
+                scope="catalog",
+                update_mode="snapshot",
+                item_count=by_kind[kind],
+                family=kind,
+                description=f"Backend route plugins grouped by kind={kind}.",
+            )
+        )
+
+    return registries
+
+
+def build_runtime_registry_descriptors() -> list[RegistryDescriptor]:
+    """Runtime registries are currently frontend-local and not backend-introspected."""
+    return []
+
+
+def build_capability_nodes(
+    frontend: ArchitectureGraphFrontend,
+    backend: ArchitectureGraphBackend,
+) -> list[CapabilityNode]:
+    """Build capability nodes so dep graphs can distinguish capabilities vs feature nodes."""
+    nodes: dict[str, CapabilityNode] = {}
+
+    frontend_feature_ids = {entry.id for entry in frontend.entries}
+
+    for capability in backend.capability_apis:
+        node_id = f"capability:{capability.name}"
+        nodes[node_id] = CapabilityNode(
+            id=node_id,
+            label=capability.name,
+            category="feature_capability",
+            owner=capability.category,
+            source="backend.capability_apis",
+        )
+
+    for plugin in backend.plugins:
+        for provided in plugin.provides_capabilities:
+            node_id = f"capability:{provided}"
+            if node_id in nodes:
+                continue
+            nodes[node_id] = CapabilityNode(
+                id=node_id,
+                label=provided,
+                category="plugin_capability",
+                owner=plugin.id,
+                source="backend.plugins",
+            )
+
+        for feature_id in plugin.provides_features:
+            if feature_id not in frontend_feature_ids:
+                continue
+            node_id = f"feature-capability:{feature_id}"
+            if node_id in nodes:
+                continue
+            nodes[node_id] = CapabilityNode(
+                id=node_id,
+                label=feature_id,
+                category="feature_capability",
+                owner=plugin.id,
+                source="backend.plugins",
+            )
+
+    return [nodes[key] for key in sorted(nodes.keys())]
 
 
 def build_links(
@@ -133,6 +272,48 @@ def build_links(
                 "status": status,
             }))
 
+    # Link backend plugins to declared capabilities and frontend features.
+    frontend_feature_ids = {entry.id for entry in frontend.entries}
+    seen_capability_links: set[tuple[str, str]] = set()
+    for plugin in backend.plugins:
+        plugin_ref = f"plugin:{plugin.id}"
+
+        for capability in plugin.provides_capabilities:
+            to_ref = f"capability:{capability}"
+            key = (plugin_ref, to_ref)
+            if key in seen_capability_links:
+                continue
+            seen_capability_links.add(key)
+            links.append(ArchitectureLink(**{
+                "from": plugin_ref,
+                "to": to_ref,
+                "kind": "plugin_to_capability",
+                "status": "resolved",
+                "direction": "provides",
+            }))
+
+        feature_directions: dict[str, set[str]] = {}
+        for feature_id in plugin.consumes_features:
+            if feature_id not in feature_directions:
+                feature_directions[feature_id] = set()
+            feature_directions[feature_id].add("consumes")
+        for feature_id in plugin.provides_features:
+            if feature_id not in feature_directions:
+                feature_directions[feature_id] = set()
+            feature_directions[feature_id].add("provides")
+
+        for feature_id in sorted(feature_directions.keys()):
+            to_ref = f"frontend:{feature_id}"
+            direction_values = feature_directions[feature_id]
+            direction = "unknown" if len(direction_values) != 1 else next(iter(direction_values))
+            links.append(ArchitectureLink(**{
+                "from": plugin_ref,
+                "to": to_ref,
+                "kind": "plugin_to_feature",
+                "status": "resolved" if feature_id in frontend_feature_ids else "unresolved",
+                "direction": direction,
+            }))
+
     return links
 
 
@@ -155,6 +336,7 @@ def build_architecture_graph() -> ArchitectureGraphV1:
     backend, backend_source = discover_backend_source()
 
     links = build_links(frontend, backend)
+    capability_nodes = build_capability_nodes(frontend, backend)
     metrics = build_metrics(frontend, backend, warnings)
 
     return ArchitectureGraphV1(
@@ -165,6 +347,7 @@ def build_architecture_graph() -> ArchitectureGraphV1:
         ),
         frontend=frontend,
         backend=backend,
+        capability_nodes=capability_nodes,
         links=links,
         metrics=metrics,
     )

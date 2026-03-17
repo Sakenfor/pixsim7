@@ -78,6 +78,18 @@ class BackendPluginInfo(BaseModel):
     description: str
     permissions: List[str] = Field(default_factory=list)
     path: str
+    kind: Optional[str] = None
+    family: Optional[str] = None
+    origin: Optional[str] = None
+    category: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    dependencies: List[str] = Field(default_factory=list)
+    enabled: Optional[bool] = None
+    required: Optional[bool] = None
+    provides_capabilities: List[str] = Field(default_factory=list)
+    consumes_features: List[str] = Field(default_factory=list)
+    provides_features: List[str] = Field(default_factory=list)
+    status: Optional[str] = None
 
 
 class ArchitectureMetrics(BaseModel):
@@ -295,6 +307,22 @@ def discover_plugin_manifests() -> List[Dict[str, Any]]:
 
     plugins = []
 
+    def _extract_string(field: str, content: str, default: str = "") -> str:
+        match = re.search(rf'{field}\s*=\s*["\']([^"\']+)["\']', content)
+        return match.group(1) if match else default
+
+    def _extract_list(field: str, content: str) -> List[str]:
+        match = re.search(rf'{field}\s*=\s*\[(.*?)\]', content, re.DOTALL)
+        if not match:
+            return []
+        return re.findall(r'["\']([^"\']+)["\']', match.group(1))
+
+    def _extract_bool(field: str, content: str, default: bool) -> bool:
+        match = re.search(rf'{field}\s*=\s*(True|False)', content)
+        if not match:
+            return default
+        return match.group(1) == "True"
+
     # Scan for manifest.py files
     for manifest_file in routes_dir.rglob("manifest.py"):
         try:
@@ -303,30 +331,22 @@ def discover_plugin_manifests() -> List[Dict[str, Any]]:
                 content = f.read()
 
             # Extract plugin ID
-            id_match = re.search(r'id\s*=\s*["\']([^"\']+)["\']', content)
-            if not id_match:
+            plugin_id = _extract_string("id", content)
+            if not plugin_id:
                 continue
 
-            plugin_id = id_match.group(1)
-
-            # Extract name
-            name_match = re.search(r'name\s*=\s*["\']([^"\']+)["\']', content)
-            name = name_match.group(1) if name_match else plugin_id
-
-            # Extract version
-            version_match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', content)
-            version = version_match.group(1) if version_match else "1.0.0"
-
-            # Extract description
-            desc_match = re.search(r'description\s*=\s*["\']([^"\']+)["\']', content)
-            description = desc_match.group(1) if desc_match else ""
-
-            # Extract permissions
-            permissions = []
-            perm_match = re.search(r'permissions\s*=\s*\[(.*?)\]', content, re.DOTALL)
-            if perm_match:
-                perm_content = perm_match.group(1)
-                permissions = re.findall(r'["\']([^"\']+)["\']', perm_content)
+            name = _extract_string("name", content, plugin_id)
+            version = _extract_string("version", content, "1.0.0")
+            description = _extract_string("description", content, "")
+            kind = _extract_string("kind", content, "route")
+            tags = _extract_list("tags", content)
+            dependencies = _extract_list("dependencies", content)
+            provides_capabilities = _extract_list("provides", content)
+            permissions = _extract_list("permissions", content)
+            consumes_features = _extract_list("consumes_features", content)
+            provides_features = _extract_list("provides_features", content)
+            enabled = _extract_bool("enabled", content, True)
+            required = _extract_bool("required", content, False)
 
             # Try to get relative path, fall back to resolved path if not possible
             try:
@@ -341,6 +361,18 @@ def discover_plugin_manifests() -> List[Dict[str, Any]]:
                 "description": description,
                 "permissions": permissions,
                 "path": manifest_path,
+                "kind": kind,
+                "family": kind,
+                "origin": "backend-manifest",
+                "category": tags[0] if tags else kind,
+                "tags": tags,
+                "dependencies": dependencies,
+                "enabled": enabled,
+                "required": required,
+                "provides_capabilities": provides_capabilities,
+                "consumes_features": consumes_features,
+                "provides_features": provides_features,
+                "status": "enabled" if enabled else "disabled",
             })
         except Exception as e:
             # Skip files that can't be parsed

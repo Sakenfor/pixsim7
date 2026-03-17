@@ -1,8 +1,5 @@
 import dagre from "@dagrejs/dagre";
 import React, { useMemo, useState, useCallback } from "react";
-
-import { Icon } from "@lib/icons";
-
 import ReactFlow, {
   type Node,
   type Edge,
@@ -16,13 +13,19 @@ import ReactFlow, {
   type NodeTypes,
 } from "reactflow";
 
+import { Icon } from "@lib/icons";
+
+
 import "reactflow/dist/style.css";
 import { type FeatureCapability } from "@lib/capabilities";
 import type { UnifiedPluginDescriptor, UnifiedPluginFamily } from "@lib/plugins/descriptor";
 
+import type { ArchitectureLink } from "@pixsim7/shared.api.model";
+
 interface DependencyGraphPanelProps {
   features: FeatureCapability[];
   plugins: UnifiedPluginDescriptor[];
+  backendLinks?: ArchitectureLink[];
 }
 
 const NODE_WIDTH = 200;
@@ -68,12 +71,139 @@ const FAMILY_FEATURE_MAP: Record<UnifiedPluginFamily, {
   "overlay-widget":  { consumes: ["workspace"],         provides: ["ui-overlay"] },
 };
 
-/** Merge family defaults with per-plugin overrides (deduped). */
-function resolvePluginFeatures(plugin: UnifiedPluginDescriptor) {
+/** Prefer explicit plugin dependencies; fall back to family defaults when absent. */
+function resolvePluginFeaturesInferred(plugin: UnifiedPluginDescriptor) {
+  const explicitConsumes = plugin.consumesFeatures ?? [];
+  const explicitProvides = plugin.providesFeatures ?? [];
+  if (explicitConsumes.length > 0 || explicitProvides.length > 0) {
+    return {
+      consumes: [...new Set(explicitConsumes)],
+      provides: [...new Set(explicitProvides)],
+      unknown: [],
+    };
+  }
+
   const familyDefaults = FAMILY_FEATURE_MAP[plugin.family] ?? { consumes: [], provides: [] };
-  const consumes = new Set([...familyDefaults.consumes, ...(plugin.consumesFeatures ?? [])]);
-  const provides = new Set([...familyDefaults.provides, ...(plugin.providesFeatures ?? [])]);
-  return { consumes: [...consumes], provides: [...provides] };
+  const consumes = new Set(familyDefaults.consumes);
+  const provides = new Set(familyDefaults.provides);
+  return { consumes: [...consumes], provides: [...provides], unknown: [] };
+}
+
+type PluginFeatureResolution = { consumes: string[]; provides: string[]; unknown: string[] };
+type PluginFeatureResolver = (plugin: UnifiedPluginDescriptor) => PluginFeatureResolution;
+type LinkDirection = "consumes" | "provides" | "unknown";
+
+function normalizeDirection(link: ArchitectureLink): LinkDirection {
+  if (link.direction === "consumes" || link.direction === "provides" || link.direction === "unknown") {
+    return link.direction;
+  }
+  return "unknown";
+}
+
+function mergeDirection(existing: LinkDirection, incoming: LinkDirection): LinkDirection {
+  if (existing === incoming) return existing;
+  return "unknown";
+}
+
+function buildBackendFeatureLinkMap(links: ArchitectureLink[]): Map<string, Map<string, LinkDirection>> {
+  const byPlugin = new Map<string, Map<string, LinkDirection>>();
+
+  for (const link of links) {
+    if (link.kind !== "plugin_to_feature") continue;
+    if (!link.from.startsWith("plugin:")) continue;
+    if (!link.to.startsWith("frontend:")) continue;
+
+    const pluginId = link.from.slice("plugin:".length);
+    const featureId = link.to.slice("frontend:".length);
+    if (!pluginId || !featureId) continue;
+
+    if (!byPlugin.has(pluginId)) {
+      byPlugin.set(pluginId, new Map<string, LinkDirection>());
+    }
+
+    const direction = normalizeDirection(link);
+    const featureDirectionMap = byPlugin.get(pluginId)!;
+    const existingDirection = featureDirectionMap.get(featureId);
+    if (!existingDirection) {
+      featureDirectionMap.set(featureId, direction);
+    } else {
+      featureDirectionMap.set(featureId, mergeDirection(existingDirection, direction));
+    }
+  }
+
+  return byPlugin;
+}
+
+function resolvePluginFeaturesFromBackendLinks(
+  plugin: UnifiedPluginDescriptor,
+  linksByPluginId: Map<string, Map<string, LinkDirection>>,
+): PluginFeatureResolution {
+  const explicitConsumes = new Set(plugin.consumesFeatures ?? []);
+  const explicitProvides = new Set(plugin.providesFeatures ?? []);
+  const linkedFeatures = linksByPluginId.get(plugin.id) ?? new Map<string, LinkDirection>();
+
+  if (linkedFeatures.size === 0) {
+    return {
+      consumes: [...explicitConsumes],
+      provides: [...explicitProvides],
+      unknown: [],
+    };
+  }
+
+  const consumes = new Set<string>();
+  const provides = new Set<string>();
+  const unknown = new Set<string>();
+
+  for (const [featureId, direction] of linkedFeatures.entries()) {
+    if (direction === "consumes") {
+      consumes.add(featureId);
+      continue;
+    }
+    if (direction === "provides") {
+      provides.add(featureId);
+      continue;
+    }
+
+    const hasExplicitConsume = explicitConsumes.has(featureId);
+    const hasExplicitProvide = explicitProvides.has(featureId);
+    if (hasExplicitConsume && !hasExplicitProvide) {
+      consumes.add(featureId);
+      continue;
+    }
+    if (hasExplicitProvide && !hasExplicitConsume) {
+      provides.add(featureId);
+      continue;
+    }
+    unknown.add(featureId);
+  }
+
+  for (const featureId of explicitConsumes) {
+    if (provides.has(featureId)) {
+      provides.delete(featureId);
+      unknown.add(featureId);
+      continue;
+    }
+    if (!unknown.has(featureId)) {
+      consumes.add(featureId);
+    }
+  }
+
+  for (const featureId of explicitProvides) {
+    if (consumes.has(featureId)) {
+      consumes.delete(featureId);
+      unknown.add(featureId);
+      continue;
+    }
+    if (!unknown.has(featureId)) {
+      provides.add(featureId);
+    }
+  }
+
+  return {
+    consumes: [...consumes],
+    provides: [...provides],
+    unknown: [...unknown],
+  };
 }
 
 // ============================================================================
@@ -132,18 +262,22 @@ interface PartitionResult {
 function partitionByConnectivity(
   features: FeatureCapability[],
   plugins: UnifiedPluginDescriptor[],
+  resolvePluginFeatures: PluginFeatureResolver,
 ): PartitionResult {
   const connectedFeatureIds = new Set<string>();
   const connectedPluginIndices = new Set<number>();
   const featureIdSet = new Set(features.map((f) => f.id));
 
   plugins.forEach((plugin, idx) => {
-    const { consumes, provides } = resolvePluginFeatures(plugin);
+    const { consumes, provides, unknown } = resolvePluginFeatures(plugin);
     let hasEdge = false;
     for (const fId of consumes) {
       if (featureIdSet.has(fId)) { connectedFeatureIds.add(fId); hasEdge = true; }
     }
     for (const fId of provides) {
+      if (featureIdSet.has(fId)) { connectedFeatureIds.add(fId); hasEdge = true; }
+    }
+    for (const fId of unknown) {
       if (featureIdSet.has(fId)) { connectedFeatureIds.add(fId); hasEdge = true; }
     }
     if (hasEdge) connectedPluginIndices.add(idx);
@@ -173,6 +307,7 @@ function partitionByConnectivity(
 function buildGroupedGraph(
   features: FeatureCapability[],
   plugins: UnifiedPluginDescriptor[],
+  resolvePluginFeatures: PluginFeatureResolver,
 ) {
   const g = new dagre.graphlib.Graph({ compound: true });
   g.setDefaultEdgeLabel(() => ({}));
@@ -250,7 +385,7 @@ function buildGroupedGraph(
       },
     });
 
-    const { consumes, provides } = resolvePluginFeatures(plugin);
+    const { consumes, provides, unknown } = resolvePluginFeatures(plugin);
 
     for (const featureId of consumes) {
       if (!g.hasNode(`feature-${featureId}`)) continue;
@@ -277,6 +412,22 @@ function buildGroupedGraph(
         target: `feature-${featureId}`,
         type: "smoothstep",
         style: { stroke: "#10b981", opacity: 0.6 },
+      });
+      const ek = `${nodeId}->feature-${featureId}`;
+      if (!dagreEdgeSet.has(ek)) {
+        dagreEdgeSet.add(ek);
+        g.setEdge(nodeId, `feature-${featureId}`);
+      }
+    }
+
+    for (const featureId of unknown) {
+      if (!g.hasNode(`feature-${featureId}`)) continue;
+      edges.push({
+        id: `${pluginId}-relates-${featureId}`,
+        source: `plugin-${pluginId}`,
+        target: `feature-${featureId}`,
+        type: "smoothstep",
+        style: { stroke: "#f59e0b", opacity: 0.65, strokeDasharray: "4 3" },
       });
       const ek = `${nodeId}->feature-${featureId}`;
       if (!dagreEdgeSet.has(ek)) {
@@ -363,9 +514,9 @@ function buildGroupedGraph(
 /**
  * DependencyGraphPanel - Visualizes relationships between features and plugins.
  *
- * Edges are derived from `FAMILY_FEATURE_MAP` (keyed by the required `family`
- * field), so every plugin gets edges automatically.  Per-plugin
- * `consumesFeatures`/`providesFeatures` are merged on top as overrides.
+ * Backend mode uses backend-authored `plugin_to_feature` links (with direction).
+ * Inferred mode uses explicit plugin dependencies first, and only then
+ * falls back to `FAMILY_FEATURE_MAP`.
  *
  * Plugins whose resolved edges don't match any existing feature are shown
  * in a collapsible orphan sidebar.
@@ -373,24 +524,60 @@ function buildGroupedGraph(
 export function DependencyGraphPanel({
   features,
   plugins,
+  backendLinks = [],
 }: DependencyGraphPanelProps) {
+  const hasBackendLinks = useMemo(
+    () => backendLinks.some((link) => link.kind === "plugin_to_feature"),
+    [backendLinks],
+  );
+  const [edgeSource, setEdgeSource] = useState<"inferred" | "backend">(() => {
+    if (typeof window === "undefined") return "inferred";
+    const stored = window.localStorage.getItem("app-map:dep-graph-edge-source");
+    return stored === "backend" ? "backend" : "inferred";
+  });
   const [showOrphans, setShowOrphans] = useState(false);
   const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set());
 
+  const backendLinksByPluginId = useMemo(
+    () => buildBackendFeatureLinkMap(backendLinks),
+    [backendLinks],
+  );
+
+  const resolvePluginFeatures = useCallback<PluginFeatureResolver>(
+    (plugin) => {
+      if (edgeSource === "backend" && hasBackendLinks) {
+        return resolvePluginFeaturesFromBackendLinks(plugin, backendLinksByPluginId);
+      }
+      return resolvePluginFeaturesInferred(plugin);
+    },
+    [edgeSource, hasBackendLinks, backendLinksByPluginId],
+  );
+
+  React.useEffect(() => {
+    if (edgeSource === "backend" && !hasBackendLinks) {
+      setEdgeSource("inferred");
+    }
+  }, [edgeSource, hasBackendLinks]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("app-map:dep-graph-edge-source", edgeSource);
+  }, [edgeSource]);
+
   const { connectedFeatures, connectedPlugins, orphanFeatures, orphanPlugins } = useMemo(
-    () => partitionByConnectivity(features, plugins),
-    [features, plugins],
+    () => partitionByConnectivity(features, plugins, resolvePluginFeatures),
+    [features, plugins, resolvePluginFeatures],
   );
 
   const { allNodes, allEdges, featureCategories, pluginFamilies } = useMemo(() => {
-    const result = buildGroupedGraph(connectedFeatures, connectedPlugins);
+    const result = buildGroupedGraph(connectedFeatures, connectedPlugins, resolvePluginFeatures);
     return {
       allNodes: result.nodes,
       allEdges: result.edges,
       featureCategories: result.featureCategories,
       pluginFamilies: result.pluginFamilies,
     };
-  }, [connectedFeatures, connectedPlugins]);
+  }, [connectedFeatures, connectedPlugins, resolvePluginFeatures]);
 
   // Filter out hidden groups and their children
   const { visibleNodes, visibleEdges } = useMemo(() => {
@@ -483,6 +670,33 @@ export function DependencyGraphPanel({
     <div className="w-full h-full bg-neutral-50 dark:bg-neutral-900 flex flex-col">
       {/* Toolbar */}
       <div className="flex-none border-b border-neutral-200 dark:border-neutral-700 px-3 py-2 flex flex-wrap gap-x-3 gap-y-1.5 items-center text-xs overflow-x-auto">
+        <div className="inline-flex rounded border border-neutral-300 dark:border-neutral-600 p-0.5">
+          <button
+            onClick={() => setEdgeSource("inferred")}
+            className={`px-2 py-0.5 rounded ${
+              edgeSource === "inferred"
+                ? "bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                : "text-neutral-500 dark:text-neutral-400"
+            }`}
+          >
+            Inferred
+          </button>
+          <button
+            onClick={() => setEdgeSource("backend")}
+            disabled={!hasBackendLinks}
+            title={hasBackendLinks ? "Use backend-authored plugin links" : "Backend plugin links unavailable"}
+            className={`px-2 py-0.5 rounded ${
+              edgeSource === "backend"
+                ? "bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                : "text-neutral-500 dark:text-neutral-400"
+            } disabled:opacity-40 disabled:cursor-not-allowed`}
+          >
+            Backend
+          </button>
+        </div>
+
+        <div className="h-4 border-l border-neutral-300 dark:border-neutral-600" />
+
         {featureCategories.length > 0 && (
           <>
             <span className="font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
@@ -582,7 +796,7 @@ export function DependencyGraphPanel({
             </ReactFlow>
           ) : (
             <div className="flex items-center justify-center h-full text-neutral-500 dark:text-neutral-400 text-sm">
-              No dependency edges found. All {totalOrphans} nodes are unconnected.
+              No dependency edges found ({edgeSource} mode). All {totalOrphans} nodes are unconnected.
             </div>
           )}
         </div>

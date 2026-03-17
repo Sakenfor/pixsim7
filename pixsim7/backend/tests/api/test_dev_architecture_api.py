@@ -70,6 +70,7 @@ async def test_graph_returns_valid_schema():
     assert "sources" in data
     assert "frontend" in data
     assert "backend" in data
+    assert "capability_nodes" in data
     assert "links" in data
     assert "metrics" in data
 
@@ -83,6 +84,20 @@ async def test_graph_returns_valid_schema():
     assert isinstance(backend["plugins"], list)
     assert isinstance(backend["services"], list)
     assert isinstance(backend["capability_apis"], list)
+    assert isinstance(backend["registries"], list)
+    assert isinstance(backend["registry_descriptors"], list)
+    assert isinstance(backend["runtime_registries"], list)
+    assert isinstance(data["capability_nodes"], list)
+
+    if backend["registry_descriptors"]:
+        sample = backend["registry_descriptors"][0]
+        assert sample["layer"] in ("backend", "frontend")
+        assert sample["scope"] in ("catalog", "runtime")
+        assert sample["update_mode"] in ("snapshot", "push", "poll")
+
+    plugin_feature_links = [link for link in data["links"] if link.get("kind") == "plugin_to_feature"]
+    for link in plugin_feature_links:
+        assert link.get("direction") in ("consumes", "provides", "unknown")
 
     # Metrics
     metrics = data["metrics"]

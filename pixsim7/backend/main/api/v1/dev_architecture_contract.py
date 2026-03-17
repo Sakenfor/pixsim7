@@ -89,6 +89,39 @@ class BackendPluginInfo(BaseModel):
     description: str
     permissions: List[str] = Field(default_factory=list)
     path: str
+    kind: Optional[str] = None
+    family: Optional[str] = None
+    origin: Optional[str] = None
+    category: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    dependencies: List[str] = Field(default_factory=list)
+    enabled: Optional[bool] = None
+    required: Optional[bool] = None
+    provides_capabilities: List[str] = Field(default_factory=list)
+    consumes_features: List[str] = Field(default_factory=list)
+    provides_features: List[str] = Field(default_factory=list)
+    status: Optional[Literal["enabled", "disabled"]] = None
+
+
+class RegistryDescriptor(BaseModel):
+    id: str
+    name: str
+    category: Literal["plugins", "routes", "capabilities", "services", "runtime", "other"]
+    backing_source: str
+    layer: Literal["backend", "frontend"] = "backend"
+    scope: Literal["catalog", "runtime"] = "catalog"
+    update_mode: Literal["snapshot", "push", "poll"] = "snapshot"
+    item_count: int = 0
+    family: Optional[str] = None
+    description: Optional[str] = None
+
+
+class CapabilityNode(BaseModel):
+    id: str
+    label: str
+    category: Literal["plugin_capability", "feature_capability", "service_capability"] = "plugin_capability"
+    owner: Optional[str] = None
+    source: Optional[str] = None
 
 
 class ArchitectureGraphBackend(BaseModel):
@@ -96,6 +129,11 @@ class ArchitectureGraphBackend(BaseModel):
     plugins: List[BackendPluginInfo] = Field(default_factory=list)
     services: List[ServiceInfo] = Field(default_factory=list)
     capability_apis: List[CapabilityInfo] = Field(default_factory=list)
+    # Backward-compatible aggregate list (legacy consumers).
+    registries: List[RegistryDescriptor] = Field(default_factory=list)
+    # Preferred split: static catalog descriptors vs runtime registries.
+    registry_descriptors: List[RegistryDescriptor] = Field(default_factory=list)
+    runtime_registries: List[RegistryDescriptor] = Field(default_factory=list)
 
 
 # --- Links & metrics ---
@@ -103,8 +141,9 @@ class ArchitectureGraphBackend(BaseModel):
 class ArchitectureLink(BaseModel):
     from_: str = Field(alias="from")
     to: str
-    kind: Literal["frontend_to_backend", "plugin_to_capability", "service_to_route"]
+    kind: Literal["frontend_to_backend", "plugin_to_capability", "plugin_to_feature", "service_to_route"]
     status: Literal["resolved", "unresolved", "stale"]
+    direction: Optional[Literal["consumes", "provides", "unknown"]] = None
 
     model_config = {"populate_by_name": True}
 
@@ -129,5 +168,6 @@ class ArchitectureGraphV1(BaseModel):
     sources: ArchitectureGraphSources
     frontend: ArchitectureGraphFrontend
     backend: ArchitectureGraphBackend
+    capability_nodes: List[CapabilityNode] = Field(default_factory=list)
     links: List[ArchitectureLink] = Field(default_factory=list)
     metrics: ArchitectureGraphMetrics

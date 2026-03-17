@@ -115,7 +115,80 @@ class AppMapErrorBoundary extends Component<
 // Section Types
 // =============================================================================
 
-type SectionId = 'features' | 'plugins' | 'registries' | 'graph' | 'journeys' | 'testing' | 'backend';
+type SectionId = 'features' | 'plugins' | 'registries' | 'journeys' | 'testing' | 'backend';
+
+const KNOWN_PLUGIN_FAMILIES: readonly UnifiedPluginFamily[] = [
+  'world-tool',
+  'helper',
+  'interaction',
+  'gallery-tool',
+  'brain-tool',
+  'gallery-surface',
+  'node-type',
+  'renderer',
+  'ui-plugin',
+  'scene-view',
+  'control-center',
+  'graph-editor',
+  'dev-tool',
+  'workspace-panel',
+  'dock-widget',
+  'gizmo-surface',
+  'generation-ui',
+] as const;
+
+const KNOWN_PLUGIN_ORIGINS: readonly UnifiedPluginOrigin[] = [
+  'builtin',
+  'plugin-dir',
+  'ui-bundle',
+  'dev-project',
+] as const;
+
+function toUnifiedFamily(rawFamily?: string | null, rawKind?: string | null): UnifiedPluginFamily {
+  const candidate = rawFamily ?? rawKind ?? '';
+  if ((KNOWN_PLUGIN_FAMILIES as readonly string[]).includes(candidate)) {
+    return candidate as UnifiedPluginFamily;
+  }
+
+  // Backend plugin kinds don't map 1:1 to frontend families yet.
+  // Use a best-effort mapping and rely on explicit consumes/provides edges.
+  if (rawKind === 'tools') return 'dev-tool';
+  return 'helper';
+}
+
+function toUnifiedOrigin(rawOrigin?: string | null): UnifiedPluginOrigin {
+  if ((KNOWN_PLUGIN_ORIGINS as readonly string[]).includes(rawOrigin ?? '')) {
+    return rawOrigin as UnifiedPluginOrigin;
+  }
+  if (rawOrigin === 'backend-manifest') {
+    return 'builtin';
+  }
+  return 'plugin-dir';
+}
+
+function deriveGraphFeatureCategory(entry: {
+  id: string;
+  frontend?: string[] | null;
+  routes?: string[] | null;
+}): string {
+  const frontendPaths = entry.frontend ?? [];
+  for (const path of frontendPaths) {
+    const match = path.match(/\/features\/([^/]+)\//);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  const firstRoute = (entry.routes ?? [])[0];
+  if (firstRoute) {
+    const segment = firstRoute.split('/').filter(Boolean)[0];
+    if (segment && !segment.startsWith(':')) {
+      return segment;
+    }
+  }
+
+  return entry.id || 'architecture';
+}
 
 const SECTIONS = [
   {
@@ -125,7 +198,6 @@ const SECTIONS = [
       { id: 'features' as SectionId, label: 'Features' },
       { id: 'plugins' as SectionId, label: 'Plugins' },
       { id: 'registries' as SectionId, label: 'Registries' },
-      { id: 'graph' as SectionId, label: 'Dep Graph' },
     ],
   },
   {
@@ -144,7 +216,14 @@ const SECTIONS = [
 // =============================================================================
 
 export function AppMapPanel() {
+  type GraphRegistryList = NonNullable<ArchitectureGraphV1['backend']['registries']>;
+
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
+  const [pluginViewMode, setPluginViewMode] = useState<'list' | 'graph'>(() => {
+    if (typeof window === 'undefined') return 'list';
+    const stored = window.localStorage.getItem('app-map:plugin-view-mode');
+    return stored === 'graph' ? 'graph' : 'list';
+  });
   const [familyFilter, setFamilyFilter] = useState<UnifiedPluginFamily | 'all'>('all');
   const [originFilter, setOriginFilter] = useState<UnifiedPluginOrigin | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -162,6 +241,11 @@ export function AppMapPanel() {
       setGraphSource(result.loadSource);
     });
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('app-map:plugin-view-mode', pluginViewMode);
+  }, [pluginViewMode]);
 
   // Devtools codegen link (permission + DEV mode)
   const user = useAuthStore((s) => s.user);
@@ -199,6 +283,18 @@ export function AppMapPanel() {
   const graphEntries = graphData?.frontend?.entries ?? [];
   const graphPlugins = graphData?.backend?.plugins ?? [];
   const graphWarnings = graphData?.metrics?.drift_warnings ?? [];
+  const backendRegistryDescriptors = useMemo<GraphRegistryList>(() => {
+    const backend = graphData?.backend as
+      | (ArchitectureGraphV1['backend'] & { registry_descriptors?: GraphRegistryList })
+      | undefined;
+    return backend?.registry_descriptors ?? backend?.registries ?? [];
+  }, [graphData]);
+  const backendRuntimeRegistries = useMemo<GraphRegistryList>(() => {
+    const backend = graphData?.backend as
+      | (ArchitectureGraphV1['backend'] & { runtime_registries?: GraphRegistryList })
+      | undefined;
+    return backend?.runtime_registries ?? [];
+  }, [graphData]);
   const useGraphFeatures = graphEntries.length > 0;
   const useGraphPlugins = graphPlugins.length > 0;
 
@@ -222,7 +318,11 @@ export function AppMapPanel() {
       id: entry.id,
       name: entry.label || entry.id,
       description: 'Feature metadata from ArchitectureGraph',
-      category: 'architecture',
+      category: deriveGraphFeatureCategory({
+        id: entry.id,
+        frontend: entry.frontend,
+        routes: entry.routes,
+      }),
       appMap: {
         docs: entry.docs ?? [],
         frontend: entry.frontend ?? [],
@@ -242,14 +342,22 @@ export function AppMapPanel() {
       name: plugin.name,
       description: plugin.description,
       version: plugin.version,
-      family: 'helper',
-      origin: 'plugin-dir',
-      category: 'backend',
-      tags: ['backend-route-plugin'],
+      family: toUnifiedFamily(plugin.family, plugin.kind),
+      origin: toUnifiedOrigin(plugin.origin),
+      category: plugin.category ?? 'backend',
+      tags: [
+        ...(plugin.tags ?? []),
+        ...(plugin.kind ? [`kind:${plugin.kind}`] : []),
+      ],
       permissions: plugin.permissions ?? [],
-      canDisable: true,
-      isActive: true,
-      isBuiltin: true,
+      canDisable: !plugin.required,
+      isActive: plugin.status !== 'disabled',
+      isBuiltin: plugin.origin === 'backend-manifest' || plugin.origin === 'builtin',
+      consumesFeatures: plugin.consumes_features ?? [],
+      providesFeatures: plugin.provides_features ?? [],
+      dependencies: plugin.dependencies ?? [],
+      deprecated: plugin.enabled === false,
+      deprecationMessage: plugin.enabled === false ? 'Disabled in backend manifest' : undefined,
     }));
   }, [graphPlugins]);
 
@@ -493,26 +601,67 @@ export function AppMapPanel() {
             )}
 
             {activeSection === 'plugins' && (
-              <PluginsView
-                allPlugins={displayedPlugins}
-                filteredPlugins={filteredPlugins}
-                familyFilter={familyFilter}
-                originFilter={originFilter}
-                searchQuery={searchQuery}
-                onFamilyFilterChange={setFamilyFilter}
-                onOriginFilterChange={setOriginFilter}
-                onSearchQueryChange={setSearchQuery}
-                pluginCounts={pluginCounts}
-                originCounts={originCounts}
-                pluginHealth={pluginHealth}
-                featureCount={displayedFeatures.length}
-              />
+              <div className="flex h-full flex-col">
+                <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-700 px-4 py-2">
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Plugin view
+                  </div>
+                  <div className="inline-flex rounded-md border border-neutral-200 dark:border-neutral-700 p-0.5">
+                    <button
+                      onClick={() => setPluginViewMode('list')}
+                      className={`px-2 py-1 text-xs rounded ${
+                        pluginViewMode === 'list'
+                          ? 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                          : 'text-neutral-600 dark:text-neutral-300'
+                      }`}
+                    >
+                      List
+                    </button>
+                    <button
+                      onClick={() => setPluginViewMode('graph')}
+                      className={`px-2 py-1 text-xs rounded ${
+                        pluginViewMode === 'graph'
+                          ? 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                          : 'text-neutral-600 dark:text-neutral-300'
+                      }`}
+                    >
+                      Graph
+                    </button>
+                  </div>
+                </div>
+
+                <div className="min-h-0 flex-1">
+                  {pluginViewMode === 'list' ? (
+                    <PluginsView
+                      allPlugins={displayedPlugins}
+                      filteredPlugins={filteredPlugins}
+                      familyFilter={familyFilter}
+                      originFilter={originFilter}
+                      searchQuery={searchQuery}
+                      onFamilyFilterChange={setFamilyFilter}
+                      onOriginFilterChange={setOriginFilter}
+                      onSearchQueryChange={setSearchQuery}
+                      pluginCounts={pluginCounts}
+                      originCounts={originCounts}
+                      pluginHealth={pluginHealth}
+                      featureCount={displayedFeatures.length}
+                    />
+                  ) : (
+                    <DependencyGraphPanel
+                      features={displayedFeatures}
+                      plugins={displayedPlugins}
+                      backendLinks={graphData?.links ?? []}
+                    />
+                  )}
+                </div>
+              </div>
             )}
 
-            {activeSection === 'registries' && <RegistriesView />}
-
-            {activeSection === 'graph' && (
-              <DependencyGraphPanel features={displayedFeatures} plugins={displayedPlugins} />
+            {activeSection === 'registries' && (
+              <RegistriesView
+                backendRegistryDescriptors={backendRegistryDescriptors}
+                backendRuntimeRegistries={backendRuntimeRegistries}
+              />
             )}
 
             {activeSection === 'journeys' && <JourneysView />}

@@ -6,6 +6,7 @@
  */
 
 import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '@pixsim7/game.engine';
+import type { RegistryDescriptor } from '@pixsim7/shared.api.model';
 import { FilterPillGroup } from '@pixsim7/shared.ui';
 import { useState, useMemo, useRef, useSyncExternalStore, useEffect } from 'react';
 
@@ -39,6 +40,98 @@ import type { WorldToolPlugin } from '@features/worldTools/lib/types';
 
 import { mediaOverlayRegistry, type MediaOverlayTool } from '@/components/media/viewer/overlays';
 
+type RuntimeRegistryCategory = 'tools' | 'surfaces' | 'interactions' | 'resolvers' | 'other';
+type RegistrySourceMode = 'runtime' | 'backend';
+type BackendRegistryCategory = 'plugins' | 'routes' | 'capabilities' | 'services' | 'runtime' | 'other';
+type RegistryLayer = 'backend' | 'frontend';
+type RegistryScope = 'catalog' | 'runtime';
+type RegistryUpdateMode = 'snapshot' | 'push' | 'poll';
+
+interface RegistryDescriptorLike extends RegistryDescriptor {
+  layer?: RegistryLayer | null;
+  scope?: RegistryScope | null;
+  update_mode?: RegistryUpdateMode | null;
+}
+
+interface BackendRegistryViewModel {
+  id: string;
+  name: string;
+  description: string;
+  category: BackendRegistryCategory;
+  backingSource: string;
+  layer: RegistryLayer;
+  scope: RegistryScope;
+  updateMode: RegistryUpdateMode;
+  itemCount: number;
+  family?: string | null;
+}
+
+interface RegistriesViewProps {
+  backendRegistryDescriptors?: RegistryDescriptorLike[];
+  backendRuntimeRegistries?: RegistryDescriptorLike[];
+}
+
+const BACKEND_CATEGORY_VALUES: readonly BackendRegistryCategory[] = [
+  'plugins',
+  'routes',
+  'capabilities',
+  'services',
+  'runtime',
+  'other',
+] as const;
+
+function coerceBackendCategory(raw: string | null | undefined): BackendRegistryCategory {
+  if ((BACKEND_CATEGORY_VALUES as readonly string[]).includes(raw ?? '')) {
+    return raw as BackendRegistryCategory;
+  }
+  return 'other';
+}
+
+function normalizeBackendRegistry(
+  raw: RegistryDescriptorLike,
+  fallbackScope: RegistryScope,
+): BackendRegistryViewModel {
+  return {
+    id: raw.id,
+    name: raw.name,
+    description: raw.description ?? '',
+    category: coerceBackendCategory(raw.category),
+    backingSource: raw.backing_source,
+    layer: raw.layer ?? 'backend',
+    scope: raw.scope ?? fallbackScope,
+    updateMode: raw.update_mode ?? 'snapshot',
+    itemCount: raw.item_count ?? 0,
+    family: raw.family ?? null,
+  };
+}
+
+function getInteractionRegistryItems(): Identifiable[] {
+  return interactionRegistry.getAll().map((plugin) => ({
+    id: plugin.id,
+    ...plugin,
+  }));
+}
+
+function createPollingSubscribe(
+  getItems: () => Identifiable[],
+  intervalMs = 1500,
+): (cb: () => void) => () => void {
+  return (cb) => {
+    let previous = JSON.stringify(getItems());
+    const interval = globalThis.setInterval(() => {
+      const current = JSON.stringify(getItems());
+      if (current !== previous) {
+        previous = current;
+        cb();
+      }
+    }, intervalMs);
+
+    return () => {
+      globalThis.clearInterval(interval);
+    };
+  };
+}
+
 
 /**
  * Registry metadata for display
@@ -48,7 +141,7 @@ interface RegistryInfo {
   name: string;
   description: string;
   icon: string;
-  category: 'tools' | 'surfaces' | 'interactions' | 'resolvers' | 'other';
+  category: RuntimeRegistryCategory;
   getItems: () => Identifiable[];
   subscribe: (cb: () => void) => () => void;
   renderItem: (item: Identifiable) => React.ReactNode;
@@ -136,16 +229,87 @@ const REGISTRIES: RegistryInfo[] = [
     description: 'Game interactions from plugins (pickpocket, stealth, etc.)',
     icon: '🎮',
     category: 'interactions',
-    getItems: () => interactionRegistry.getAll().map((p) => ({ id: p.id, ...p })),
-    // Note: InteractionRegistry doesn't have subscribe yet - items won't auto-update
-    subscribe: () => () => {},
+    getItems: getInteractionRegistryItems,
+    // InteractionRegistry currently lacks subscribe; poll as a bridge until native events exist.
+    subscribe: createPollingSubscribe(getInteractionRegistryItems, 1500),
     renderItem: (item) => (
       <InteractionPluginItem plugin={item as unknown as InteractionPlugin<BaseInteractionConfig>} />
     ),
   },
 ];
 
-export function RegistriesView() {
+function formatRegistryCategoryLabel(value: string): string {
+  return value
+    .split('-')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
+export function RegistriesView({
+  backendRegistryDescriptors = [],
+  backendRuntimeRegistries = [],
+}: RegistriesViewProps) {
+  const backendRegistries = useMemo<BackendRegistryViewModel[]>(() => {
+    const descriptors = backendRegistryDescriptors.map((item) =>
+      normalizeBackendRegistry(item, 'catalog')
+    );
+    const runtime = backendRuntimeRegistries.map((item) =>
+      normalizeBackendRegistry(item, 'runtime')
+    );
+    return [...descriptors, ...runtime];
+  }, [backendRegistryDescriptors, backendRuntimeRegistries]);
+  const hasBackendRegistries = backendRegistries.length > 0;
+  const [sourceMode, setSourceMode] = useState<RegistrySourceMode>('runtime');
+
+  useEffect(() => {
+    if (sourceMode === 'backend' && !hasBackendRegistries) {
+      setSourceMode('runtime');
+    }
+  }, [sourceMode, hasBackendRegistries]);
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-700 px-4 py-2">
+        <div className="text-xs text-neutral-500 dark:text-neutral-400">
+          Registry source
+        </div>
+        <div className="inline-flex rounded-md border border-neutral-200 dark:border-neutral-700 p-0.5">
+          <button
+            onClick={() => setSourceMode('runtime')}
+            className={`px-2 py-1 text-xs rounded ${
+              sourceMode === 'runtime'
+                ? 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                : 'text-neutral-600 dark:text-neutral-300'
+            }`}
+          >
+            Runtime
+          </button>
+          <button
+            onClick={() => setSourceMode('backend')}
+            disabled={!hasBackendRegistries}
+            className={`px-2 py-1 text-xs rounded ${
+              sourceMode === 'backend'
+                ? 'bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                : 'text-neutral-600 dark:text-neutral-300'
+            } disabled:opacity-40 disabled:cursor-not-allowed`}
+            title={hasBackendRegistries ? 'Backend registry descriptors' : 'No backend registry descriptors available'}
+          >
+            Backend
+          </button>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1">
+        {sourceMode === 'backend' ? (
+          <BackendRegistriesPanel registries={backendRegistries} />
+        ) : (
+          <RuntimeRegistriesPanel />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RuntimeRegistriesPanel() {
   const [selectedRegistryId, setSelectedRegistryId] = useState<string | null>(
     REGISTRIES[0]?.id ?? null
   );
@@ -168,7 +332,7 @@ export function RegistriesView() {
           <FilterPillGroup
             options={(['tools', 'surfaces', 'interactions', 'resolvers'] as const).map((cat) => ({
               value: cat,
-              label: cat.charAt(0).toUpperCase() + cat.slice(1),
+              label: formatRegistryCategoryLabel(cat),
             }))}
             value={categoryFilter === 'all' ? null : categoryFilter}
             onChange={(v) => setCategoryFilter(v ?? 'all')}
@@ -235,6 +399,173 @@ export function RegistriesView() {
             Select a registry to view items
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function BackendRegistriesPanel({ registries }: { registries: BackendRegistryViewModel[] }) {
+  const [selectedRegistryId, setSelectedRegistryId] = useState<string | null>(
+    registries[0]?.id ?? null
+  );
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | BackendRegistryCategory>('all');
+
+  const categories = useMemo<BackendRegistryCategory[]>(() => {
+    const set = new Set<BackendRegistryCategory>();
+    for (const registry of registries) {
+      set.add(registry.category);
+    }
+    return Array.from(set.values()).sort((a, b) => a.localeCompare(b));
+  }, [registries]);
+
+  const filteredRegistries = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return registries.filter((registry) => {
+      if (categoryFilter !== 'all' && registry.category !== categoryFilter) {
+        return false;
+      }
+      if (!query) return true;
+      return (
+        registry.name.toLowerCase().includes(query) ||
+        registry.id.toLowerCase().includes(query) ||
+        registry.description.toLowerCase().includes(query) ||
+        registry.backingSource.toLowerCase().includes(query) ||
+        (registry.family?.toLowerCase().includes(query) ?? false) ||
+        registry.scope.toLowerCase().includes(query) ||
+        registry.layer.toLowerCase().includes(query)
+      );
+    });
+  }, [registries, categoryFilter, searchQuery]);
+
+  useEffect(() => {
+    const isStillVisible = filteredRegistries.some((registry) => registry.id === selectedRegistryId);
+    if (!isStillVisible) {
+      setSelectedRegistryId(filteredRegistries[0]?.id ?? null);
+    }
+  }, [filteredRegistries, selectedRegistryId]);
+
+  const selectedRegistry = filteredRegistries.find((registry) => registry.id === selectedRegistryId) ?? null;
+  const totalItems = registries.reduce((sum, registry) => sum + registry.itemCount, 0);
+
+  return (
+    <div className="flex h-full">
+      <div className="w-1/3 border-r border-neutral-200 dark:border-neutral-700 flex flex-col">
+        <div className="p-3 border-b border-neutral-200 dark:border-neutral-700">
+          <FilterPillGroup
+            options={categories.map((category) => ({
+              value: category,
+              label: formatRegistryCategoryLabel(category),
+            }))}
+            value={categoryFilter === 'all' ? null : categoryFilter}
+            onChange={(value) => setCategoryFilter((value as BackendRegistryCategory | null) ?? 'all')}
+            allLabel="All"
+          />
+        </div>
+        <div className="p-3 border-b border-neutral-200 dark:border-neutral-700">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search descriptors..."
+            className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {filteredRegistries.map((registry) => (
+            <button
+              key={registry.id}
+              onClick={() => setSelectedRegistryId(registry.id)}
+              className={`w-full text-left p-3 rounded-md border transition-colors ${
+                selectedRegistryId === registry.id
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                  : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-medium text-sm text-neutral-900 dark:text-neutral-100">
+                  {registry.name}
+                </div>
+                <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                  {registry.itemCount}
+                </div>
+              </div>
+              <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                {registry.id}
+              </div>
+              <div className="mt-2 flex gap-1 flex-wrap">
+                <span className="px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-[10px] text-neutral-600 dark:text-neutral-300">
+                  {registry.scope}
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-[10px] text-neutral-600 dark:text-neutral-300">
+                  {registry.layer}
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-[10px] text-neutral-600 dark:text-neutral-300">
+                  {registry.updateMode}
+                </span>
+              </div>
+            </button>
+          ))}
+          {filteredRegistries.length === 0 && (
+            <div className="text-sm text-neutral-500 dark:text-neutral-400 text-center py-6">
+              No backend registry descriptors match the current filter.
+            </div>
+          )}
+        </div>
+        <div className="p-3 border-t border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 text-xs text-neutral-600 dark:text-neutral-400">
+          <span className="font-medium">{totalItems}</span> total items across{' '}
+          <span className="font-medium">{registries.length}</span> descriptors
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {selectedRegistry ? (
+          <>
+            <div className="p-4 border-b border-neutral-200 dark:border-neutral-700">
+              <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                {selectedRegistry.name}
+              </h2>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                {selectedRegistry.description || 'No description provided.'}
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <BackendRegistryField label="ID" value={selectedRegistry.id} mono />
+              <BackendRegistryField label="Category" value={selectedRegistry.category} />
+              <BackendRegistryField label="Layer" value={selectedRegistry.layer} />
+              <BackendRegistryField label="Scope" value={selectedRegistry.scope} />
+              <BackendRegistryField label="Update mode" value={selectedRegistry.updateMode} />
+              <BackendRegistryField label="Backing source" value={selectedRegistry.backingSource} mono />
+              <BackendRegistryField label="Item count" value={String(selectedRegistry.itemCount)} />
+              {selectedRegistry.family ? (
+                <BackendRegistryField label="Family" value={selectedRegistry.family} />
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-center h-full text-neutral-500 dark:text-neutral-400">
+            Select a backend descriptor to view metadata
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BackendRegistryField({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded-md p-3 bg-white dark:bg-neutral-900">
+      <div className="text-xs text-neutral-500 dark:text-neutral-400">{label}</div>
+      <div className={`text-sm text-neutral-900 dark:text-neutral-100 ${mono ? 'font-mono' : ''}`}>
+        {value}
       </div>
     </div>
   );
