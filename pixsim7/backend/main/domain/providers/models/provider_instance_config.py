@@ -19,6 +19,7 @@ class ProviderInstanceConfigKind(str, Enum):
     """Kinds of provider instance configs supported by the system."""
     LLM = "llm"
     ANALYZER = "analyzer"
+    ASSISTANT = "assistant"
 
 
 class ProviderInstanceConfig(SQLModel, table=True):

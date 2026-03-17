@@ -7,7 +7,7 @@ Currently Claude-only but designed to support other agent types.
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from pixsim7.client.claude_session import ClaudeSession, SessionState
 from pixsim7.client.log import client_log
@@ -124,7 +124,13 @@ class AgentPool:
 
         client_log("Pool stopped")
 
-    async def send_message(self, message: str, timeout: int = 120) -> tuple[str, str]:
+    async def send_message(
+        self,
+        message: str,
+        timeout: int = 120,
+        images: list[dict] | None = None,
+        on_progress: "Callable[[str, str], None] | None" = None,
+    ) -> tuple[str, str]:
         """
         Route a message to an available session.
         Returns (session_id, response).
@@ -136,7 +142,7 @@ class AgentPool:
                 f"ready: {self.ready_count}, busy: {self.busy_count})"
             )
 
-        response = await session.send_message(message, timeout=timeout)
+        response = await session.send_message(message, timeout=timeout, images=images, on_progress=on_progress)
         return session.session_id, response
 
     async def _health_monitor(self) -> None:

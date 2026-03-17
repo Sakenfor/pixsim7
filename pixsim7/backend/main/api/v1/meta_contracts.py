@@ -28,9 +28,11 @@ from pixsim7.backend.main.services.meta.contract_registry import (
 from pixsim7.backend.main.services.meta.agent_sessions import (
     agent_session_registry,
 )
+from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 router = APIRouter(prefix="/meta", tags=["meta"])
+CONTRACTS_INDEX_VERSION = "2026-03-16.2"
 
 
 # =============================================================================
@@ -38,11 +40,54 @@ router = APIRouter(prefix="/meta", tags=["meta"])
 # =============================================================================
 
 
+class EndpointAvailabilityEntry(BaseModel):
+    status: str = Field(
+        "available",
+        description="Runtime availability: available | conditional | disabled.",
+    )
+    reason: Optional[str] = Field(
+        None,
+        description="Human-readable reason for conditional/disabled state.",
+    )
+    conditions: List[str] = Field(
+        default_factory=list,
+        description="Machine-readable condition hints.",
+    )
+
+
 class ContractEndpointEntry(BaseModel):
     id: str
     method: str
     path: str
     summary: str
+    auth_required: bool = Field(
+        True,
+        description="Whether auth is required for this endpoint. Inherits contract-level auth by default.",
+    )
+    requires_admin: bool = Field(
+        False,
+        description="Whether this endpoint requires admin privileges.",
+    )
+    permissions: List[str] = Field(
+        default_factory=list,
+        description="Permission scopes required by this endpoint.",
+    )
+    availability: EndpointAvailabilityEntry = Field(
+        default_factory=EndpointAvailabilityEntry,
+        description="Runtime availability metadata.",
+    )
+    input_schema: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional JSON-schema-like input contract for MCP/tool generation.",
+    )
+    output_schema: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional JSON-schema-like output contract.",
+    )
+    tags: List[str] = Field(
+        default_factory=list,
+        description="Endpoint tags for discovery/filtering.",
+    )
 
 
 class AgentPresence(BaseModel):
@@ -96,6 +141,28 @@ class ContractsIndexResponse(BaseModel):
     total_active_agents: int = 0
 
 
+def _resolve_endpoint_availability(
+    contract_id: str,
+    endpoint_id: str,
+    availability: Dict[str, Any] | None,
+) -> EndpointAvailabilityEntry:
+    """Apply runtime-aware availability overrides."""
+    payload = dict(availability or {})
+    payload.setdefault("status", "available")
+    payload.setdefault("reason", None)
+    payload.setdefault("conditions", [])
+
+    # Runtime override: filesystem sync endpoint is disabled in DB-only mode.
+    if contract_id == "plans.management" and endpoint_id == "plans.sync":
+        if settings.plans_db_only_mode:
+            payload["status"] = "disabled"
+            payload["reason"] = "Disabled while plans DB-only mode is enabled."
+        elif payload.get("status") == "disabled":
+            payload["status"] = "conditional"
+
+    return EndpointAvailabilityEntry(**payload)
+
+
 @router.get("/contracts", response_model=ContractsIndexResponse)
 async def list_contract_endpoints(
     audience: Optional[str] = Query(
@@ -113,13 +180,14 @@ async def list_contract_endpoints(
     Pass `?audience=user` to only get user-facing contracts (excludes dev tooling).
     """
     _sync_prompt_contract_versions()
+    audience_filter = audience.strip() if isinstance(audience, str) else None
 
     active_sessions = agent_session_registry.get_active()
 
     contracts = []
     for c in meta_contract_registry.values():
         # Filter by audience if requested
-        if audience and audience not in c.audience:
+        if audience_filter and audience_filter not in c.audience:
             continue
 
         agents_on_contract = [
@@ -151,6 +219,15 @@ async def list_contract_endpoints(
                 ContractEndpointEntry(
                     id=ep.id, method=ep.method,
                     path=ep.path, summary=ep.summary,
+                    auth_required=c.auth_required if ep.auth_required is None else ep.auth_required,
+                    requires_admin=ep.requires_admin,
+                    permissions=ep.permissions,
+                    availability=_resolve_endpoint_availability(
+                        c.id, ep.id, ep.availability
+                    ),
+                    input_schema=ep.input_schema,
+                    output_schema=ep.output_schema,
+                    tags=ep.tags,
                 )
                 for ep in c.sub_endpoints
             ],
@@ -158,7 +235,7 @@ async def list_contract_endpoints(
         ))
 
     return ContractsIndexResponse(
-        version="2026-03-16.1",
+        version=CONTRACTS_INDEX_VERSION,
         generated_at=datetime.now(timezone.utc).isoformat(),
         contracts=contracts,
         total_active_agents=len(active_sessions),
@@ -595,10 +672,14 @@ _server_bridge_process: Optional[Any] = None
 
 
 @router.post("/agents/bridge/start", response_model=StartBridgeResponse)
-async def start_server_bridge(payload: StartBridgeRequest) -> StartBridgeResponse:
-    """Start a server-managed agent bridge (admin action).
+async def start_server_bridge(
+    payload: StartBridgeRequest,
+    authorization: Optional[str] = Header(None),
+) -> StartBridgeResponse:
+    """Start a server-managed agent bridge.
 
-    Spawns python -m pixsim7.client as a background subprocess on the server.
+    If authenticated, creates a user-scoped bridge with the user's token.
+    Otherwise creates a shared/admin bridge.
     """
     global _server_bridge_process
     import subprocess
@@ -611,10 +692,37 @@ async def start_server_bridge(payload: StartBridgeRequest) -> StartBridgeRespons
             message=f"Bridge already running (PID: {_server_bridge_process.pid})",
         )
 
+    # Resolve user for scoping
+    from pixsim7.backend.main.api.dependencies import get_auth_service, _extract_bearer_token
+    user_id: Optional[int] = None
+    bridge_token: Optional[str] = None
+    if authorization:
+        try:
+            raw_token = _extract_bearer_token(authorization)
+            auth_service = get_auth_service()
+            user = await auth_service.verify_token(raw_token)
+            user_id = user.id if user else None
+        except Exception:
+            pass
+
+    # Mint a bridge token so the subprocess connects as this user
+    if user_id is not None:
+        try:
+            from pixsim7.backend.main.services.llm.remote_cmd_bridge import _mint_bridge_token
+            bridge_token = _mint_bridge_token(user_id)
+        except Exception:
+            pass
+
     from pixsim7.backend.main.shared.config import _resolve_repo_root
     repo_root = str(_resolve_repo_root())
 
-    cmd = [sys.executable, "-m", "pixsim7.client", "--pool-size", str(payload.pool_size)]
+    # Build the WS URL with token for user-scoped bridge
+    backend_port = os.environ.get("BACKEND_PORT", "8000")
+    ws_url = f"ws://localhost:{backend_port}/api/v1/ws/agent-cmd"
+    if bridge_token:
+        ws_url += f"?token={bridge_token}"
+
+    cmd = [sys.executable, "-m", "pixsim7.client", "--url", ws_url, "--pool-size", str(payload.pool_size)]
     if payload.resume_session_id:
         cmd.extend(["--resume-session", payload.resume_session_id])
     if payload.claude_args:
@@ -633,10 +741,11 @@ async def start_server_bridge(payload: StartBridgeRequest) -> StartBridgeRespons
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        scope = f"user:{user_id}" if user_id else "shared"
         return StartBridgeResponse(
             ok=True,
             pid=_server_bridge_process.pid,
-            message=f"Bridge started (PID: {_server_bridge_process.pid})",
+            message=f"Bridge started ({scope}, PID: {_server_bridge_process.pid})",
         )
     except Exception as e:
         return StartBridgeResponse(ok=False, message=str(e))
@@ -670,6 +779,8 @@ class SendMessageRequest(BaseModel):
     model: str = Field("default", description="Model identifier to pass to the agent")
     context: Optional[Dict[str, Any]] = Field(None, description="Optional context dict")
     timeout: int = Field(120, ge=10, le=600, description="Timeout in seconds")
+    asset_ids: Optional[List[int]] = Field(None, description="Asset IDs to include as images (vision)")
+    assistant_id: Optional[str] = Field(None, description="Assistant profile to use (resolves persona + model + scope)")
 
 
 class SendMessageResponse(BaseModel):
@@ -708,6 +819,22 @@ async def send_message_to_agent(
         except Exception:
             pass
 
+    # Resolve assistant profile (persona, model override, tool scope)
+    profile_prompt: Optional[str] = None
+    if user_id is not None:
+        try:
+            from pixsim7.backend.main.api.dependencies import get_database
+            from pixsim7.backend.main.services.assistant.assistant_service import resolve_user_profile
+            db = get_database()
+            profile = await resolve_user_profile(db, user_id, payload.assistant_id)
+            if profile:
+                profile_prompt = profile.system_prompt
+                # Profile can override model/method
+                if profile.model_id:
+                    payload.model = profile.model_id
+        except Exception:
+            pass
+
     # Resolve provider, model, and delivery method for assistant_chat
     provider_id, model_id, method = await _resolve_assistant_provider(user_id)
 
@@ -720,6 +847,7 @@ async def send_message_to_agent(
             user_id=user_id,
             raw_token=raw_token,
             start=start,
+            profile_prompt=profile_prompt,
         )
 
     # ── Direct API path (method=api) ──
@@ -729,6 +857,7 @@ async def send_message_to_agent(
         model_id=model_id,
         user_id=user_id,
         start=start,
+        profile_prompt=profile_prompt,
     )
 
 
@@ -778,6 +907,7 @@ async def _send_via_bridge(
     user_id: Optional[int],
     raw_token: Optional[str],
     start: float,
+    profile_prompt: Optional[str] = None,
 ) -> SendMessageResponse:
     """Route message through the Claude CLI bridge (MCP tools)."""
     import time
@@ -809,6 +939,22 @@ async def _send_via_bridge(
     }
     if raw_token and user_id is not None:
         task_payload["user_token"] = raw_token
+    if profile_prompt:
+        task_payload["profile_prompt"] = profile_prompt
+
+    # Attach asset images for vision
+    if payload.asset_ids:
+        is_local = agent.metadata.get("local", False) or _is_local_agent(agent)
+        if is_local:
+            # Same machine — send file paths, bridge reads directly
+            image_paths = await _resolve_asset_image_paths(payload.asset_ids)
+            if image_paths:
+                task_payload["image_paths"] = image_paths
+        else:
+            # Remote bridge — send base64 data
+            images = await _fetch_asset_images_b64(payload.asset_ids)
+            if images:
+                task_payload["images"] = images
 
     try:
         result = await remote_cmd_bridge.dispatch_task(
@@ -843,11 +989,14 @@ async def _send_via_direct_api(
     model_id: str,
     user_id: Optional[int],
     start: float,
+    profile_prompt: Optional[str] = None,
 ) -> SendMessageResponse:
     """Route message directly through an LLM API (no bridge, no tools)."""
     import time
 
     system_prompt = _build_user_system_prompt()
+    if profile_prompt:
+        system_prompt += f"\n\nPersona: {profile_prompt}"
 
     try:
         from pixsim7.backend.main.services.llm.providers import get_provider
@@ -889,6 +1038,90 @@ async def _send_via_direct_api(
             error=str(e),
             duration_ms=duration_ms,
         )
+
+
+# =============================================================================
+# Internal helpers — asset images for vision
+# =============================================================================
+
+
+def _is_local_agent(agent: "RemoteAgent") -> bool:
+    """Check if the agent is connected from localhost."""
+    try:
+        peer = agent.websocket.client
+        if peer and hasattr(peer, 'host'):
+            return peer.host in ("127.0.0.1", "::1", "localhost")
+    except Exception:
+        pass
+    # Server-managed bridges are always local
+    return agent.agent_id.startswith("shared-") or agent.user_id is None
+
+
+async def _fetch_asset_images_b64(
+    asset_ids: List[int], max_images: int = 4, max_size_bytes: int = 5_000_000
+) -> List[Dict[str, str]]:
+    """Fetch assets as base64 for remote bridges."""
+    import base64
+    from pathlib import Path
+
+    images: List[Dict[str, str]] = []
+    try:
+        from pixsim7.backend.main.api.dependencies import get_database
+        from pixsim7.backend.main.domain.assets.models import Asset
+        db = get_database()
+
+        for asset_id in asset_ids[:max_images]:
+            asset = await db.get(Asset, asset_id)
+            if not asset or not asset.local_path:
+                continue
+            mime = asset.mime_type or ""
+            if not mime.startswith("image/"):
+                continue
+            path = Path(asset.local_path)
+            if not path.exists() or path.stat().st_size > max_size_bytes:
+                continue
+            data = base64.b64encode(path.read_bytes()).decode("ascii")
+            images.append({"media_type": mime, "data": data})
+    except Exception:
+        pass
+    return images
+
+
+async def _resolve_asset_image_paths(
+    asset_ids: List[int], max_images: int = 4
+) -> List[Dict[str, str]]:
+    """Resolve asset IDs to local file paths for vision.
+
+    Returns list of {"path": "/abs/path/to/image.png", "media_type": "image/png"}.
+    The bridge reads files directly — no base64 over the network.
+    """
+    from pathlib import Path
+
+    results: List[Dict[str, str]] = []
+    try:
+        from pixsim7.backend.main.api.dependencies import get_database
+        from pixsim7.backend.main.domain.assets.models import Asset
+        db = get_database()
+
+        for asset_id in asset_ids[:max_images]:
+            asset = await db.get(Asset, asset_id)
+            if not asset or not asset.local_path:
+                continue
+
+            mime = asset.mime_type or ""
+            if not mime.startswith("image/"):
+                continue
+
+            path = Path(asset.local_path)
+            if not path.exists():
+                continue
+
+            results.append({"path": str(path.resolve()), "media_type": mime})
+
+    except Exception:
+        pass
+
+    return results
 
 
 # =============================================================================

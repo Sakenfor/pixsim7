@@ -193,6 +193,11 @@ class Bridge:
             except OSError:
                 pass
 
+        # Prepend profile persona prompt if provided
+        profile_prompt = msg.get("profile_prompt")
+        if profile_prompt:
+            prompt = f"[Persona: {profile_prompt}]\n\n{prompt}"
+
         # Report busy
         await ws.send(json.dumps({
             "type": "heartbeat",
@@ -202,7 +207,29 @@ class Bridge:
         }))
 
         try:
-            session_id, response = await self._pool.send_message(prompt)
+            # Images: either pre-encoded base64 or local file paths to read
+            images = msg.get("images")  # [{media_type, data}] — already base64
+            image_paths = msg.get("image_paths")  # [{path, media_type}] — local files
+
+            if image_paths and not images:
+                images = self._read_local_images(image_paths)
+
+            # Progress callback — sends heartbeats with live status
+            async def send_progress(event_type: str, detail: str):
+                try:
+                    await ws.send(json.dumps({
+                        "type": "heartbeat",
+                        "status": "active",
+                        "action": event_type,
+                        "detail": detail,
+                    }))
+                except Exception:
+                    pass
+
+            def on_progress(event_type: str, detail: str):
+                asyncio.ensure_future(send_progress(event_type, detail))
+
+            session_id, response = await self._pool.send_message(prompt, images=images, on_progress=on_progress)
             self._tasks_handled += 1
 
             # Get the Claude session UUID for resume support
@@ -228,6 +255,27 @@ class Bridge:
                 "task_id": task_id,
                 "error": str(e),
             }))
+
+    @staticmethod
+    def _read_local_images(image_paths: list[dict]) -> list[dict]:
+        """Read local image files and return base64-encoded content blocks."""
+        import base64
+        from pathlib import Path
+
+        images = []
+        for entry in image_paths:
+            try:
+                path = Path(entry["path"])
+                if not path.exists() or path.stat().st_size > 5_000_000:
+                    continue
+                data = base64.b64encode(path.read_bytes()).decode("ascii")
+                images.append({
+                    "media_type": entry.get("media_type", "image/png"),
+                    "data": data,
+                })
+            except Exception:
+                continue
+        return images
 
     def status(self) -> dict:
         """Bridge status summary."""

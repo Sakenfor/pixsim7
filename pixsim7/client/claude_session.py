@@ -11,7 +11,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Callable, Optional
 
 from pixsim7.client.log import client_log
 
@@ -159,8 +159,21 @@ class ClaudeSession:
         await asyncio.sleep(1)
         return await self.start()
 
-    async def send_message(self, message: str, timeout: int = 120) -> str:
-        """Send a message and wait for the complete response."""
+    async def send_message(
+        self,
+        message: str,
+        timeout: int = 120,
+        images: list[dict] | None = None,
+        on_progress: "Callable[[str, str], None] | None" = None,
+    ) -> str:
+        """Send a message and wait for the complete response.
+
+        Args:
+            message: Text message
+            timeout: Seconds to wait
+            images: Optional list of {"media_type": "image/png", "data": "<base64>"}
+            on_progress: Optional callback(event_type, detail) for intermediate events
+        """
         if not self.is_alive or not self._process or not self._process.stdin:
             raise RuntimeError(f"Session {self.session_id} is not running")
 
@@ -173,12 +186,24 @@ class ClaudeSession:
             except asyncio.QueueEmpty:
                 break
 
+        # Build content blocks
+        content: list[dict] = [{"type": "text", "text": message}]
+        for img in (images or []):
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": img.get("media_type", "image/png"),
+                    "data": img["data"],
+                },
+            })
+
         # Claude stream-json input format
         msg = json.dumps({
             "type": "user",
             "message": {
                 "role": "user",
-                "content": [{"type": "text", "text": message}],
+                "content": content,
             },
         }) + "\n"
 
@@ -224,7 +249,25 @@ class ClaudeSession:
                     self.state = SessionState.READY
                     raise RuntimeError(f"Claude error: {error_msg}")
 
-                # Skip other intermediate events (assistant, rate_limit_event)
+                elif event_type == "assistant":
+                    # Intermediate content — tool calls, thinking, partial text
+                    content_block = event.get("message", {}).get("content", [{}])
+                    if content_block:
+                        block = content_block[0] if isinstance(content_block, list) else content_block
+                        block_type = block.get("type", "")
+                        if block_type == "tool_use":
+                            detail = f"Using tool: {block.get('name', '?')}"
+                            if on_progress:
+                                on_progress("tool_use", detail)
+                        elif block_type == "thinking":
+                            if on_progress:
+                                on_progress("thinking", "Thinking...")
+                        elif block_type == "text":
+                            text = block.get("text", "")
+                            if on_progress and text:
+                                on_progress("streaming", text[:100])
+
+                # Skip other events (rate_limit_event, content_block_delta, etc.)
 
         except asyncio.TimeoutError:
             self.stats.errors += 1

@@ -394,7 +394,9 @@ function ActiveSessionsView() {
   }, [cliToken]);
 
   const bridgeAgents = bridges?.agents ?? [];
-  const activeSessionList = sessions?.active ?? [];
+  // Filter out sessions that are already shown as bridge agents (same agent_id)
+  const bridgeAgentIds = new Set(bridgeAgents.map((a) => a.agent_id));
+  const activeSessionList = (sessions?.active ?? []).filter((s) => !bridgeAgentIds.has(s.session_id));
 
   return (
     <div className="p-4 space-y-4">
@@ -548,6 +550,21 @@ function ActiveSessionsView() {
                     </Button>
                   </div>
                 </div>
+                {/* Show current activity from heartbeat session if available */}
+                {(() => {
+                  const session = (sessions?.active ?? []).find((s) => s.session_id === agent.agent_id);
+                  if (!session || !session.current_action) return null;
+                  return (
+                    <div className="px-4 py-1.5 text-xs">
+                      <span className="text-neutral-500">
+                        {session.current_action === 'thinking' ? 'Thinking...' :
+                         session.current_action === 'tool_use' ? session.current_detail :
+                         session.current_action === 'streaming' ? 'Generating...' :
+                         session.current_detail || session.current_action}
+                      </span>
+                    </div>
+                  );
+                })()}
                 <div className="px-4 py-1.5 text-[10px] text-neutral-400">
                   Connected {formatTimestamp(agent.connected_at)}
                 </div>

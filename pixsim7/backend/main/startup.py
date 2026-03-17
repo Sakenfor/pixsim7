@@ -170,6 +170,21 @@ async def setup_database_and_seed() -> None:
             msg="Continuing startup without content packs"
         )
 
+    # Assistant profile seeding is OPTIONAL
+    try:
+        from pixsim7.backend.main.services.assistant.assistant_service import seed_default_profiles
+        async with get_async_session() as db:
+            count = await seed_default_profiles(db)
+            if count:
+                logger.info("assistant_profiles_seeded", count=count)
+    except Exception as e:
+        logger.warning(
+            "assistant_profile_seed_failed",
+            error=str(e),
+            error_type=e.__class__.__name__,
+            msg="Continuing startup without assistant profiles"
+        )
+
 
 async def setup_system_config() -> None:
     """

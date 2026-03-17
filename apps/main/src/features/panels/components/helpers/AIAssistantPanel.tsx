@@ -25,6 +25,7 @@ import { Icon, type IconName } from '@lib/icons';
 interface BridgeStatus { connected: number; available: number }
 interface SendResponse { ok: boolean; agent_id: string; response: string | null; error: string | null; duration_ms: number | null; claude_session_id?: string | null }
 interface StartBridgeResponse { ok: boolean; pid: number | null; message: string }
+interface AssistantProfile { assistant_id: string; name: string; icon: string | null; is_default: boolean; is_global: boolean }
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'error';
@@ -404,6 +405,11 @@ export function AIAssistantPanel() {
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [bridgeStarting, setBridgeStarting] = useState(false);
   const [actionPickerOpen, setActionPickerOpen] = useState(false);
+  const [attachedAssets, setAttachedAssets] = useState<Array<{ id: number; name: string; thumbnailUrl?: string }>>([]);
+  const [profiles, setProfiles] = useState<AssistantProfile[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [showProfilePicker, setShowProfilePicker] = useState(false);
+  const profilePickerRef = useRef<HTMLDivElement>(null);
   const [sessions, setSessions] = useState<SessionEntry[]>(loadSessions);
   const [activeSessionId, setActiveSessionIdState] = useState<string | null>(getActiveSessionId);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
@@ -431,6 +437,25 @@ export function AIAssistantPanel() {
     setActiveSessionId(null);
   }, []);
 
+  // Load assistant profiles
+  useEffect(() => {
+    pixsimClient.get<AssistantProfile[]>('/assistants')
+      .then((data) => {
+        setProfiles(data);
+        const def = data.find((p) => p.is_default);
+        if (def && !activeProfileId) setActiveProfileId(def.assistant_id);
+      })
+      .catch(() => {});
+  }, []);// eslint-disable-line react-hooks/exhaustive-deps
+
+  // Close profile picker on outside click
+  useEffect(() => {
+    if (!showProfilePicker) return;
+    const handler = (e: MouseEvent) => { if (profilePickerRef.current && !profilePickerRef.current.contains(e.target as Node)) setShowProfilePicker(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showProfilePicker]);
+
   // Close session picker on outside click
   useEffect(() => {
     if (!showSessionPicker) return;
@@ -456,7 +481,13 @@ export function AIAssistantPanel() {
     setMessages((prev) => [...prev, { role: 'user', text, timestamp: new Date() }]);
     setSending(true);
     try {
-      const res = await pixsimClient.post<SendResponse>('/meta/agents/bridge/send', { message: text, timeout: 120 });
+      const body: Record<string, unknown> = { message: text, timeout: 120 };
+      if (activeProfileId) body.assistant_id = activeProfileId;
+      if (attachedAssets.length > 0) {
+        body.asset_ids = attachedAssets.map((a) => a.id);
+        setAttachedAssets([]);
+      }
+      const res = await pixsimClient.post<SendResponse>('/meta/agents/bridge/send', body);
       if (res.ok && res.response) {
         setMessages((prev) => [...prev, { role: 'assistant', text: res.response!, duration_ms: res.duration_ms ?? undefined, timestamp: new Date() }]);
         if (res.claude_session_id) trackSession(res.claude_session_id);
@@ -468,7 +499,7 @@ export function AIAssistantPanel() {
     } finally {
       setSending(false);
     }
-  }, [sending, trackSession]);
+  }, [sending, trackSession, attachedAssets, activeProfileId]);
 
   const retryLast = useCallback(() => {
     // Find the last user message before the error
@@ -569,6 +600,15 @@ export function AIAssistantPanel() {
               <Icon name="trash" size={12} />
             </button>
           )}
+          {connected > 0 && (
+            <button
+              onClick={() => { pixsimClient.post('/meta/agents/bridge/stop').catch(() => {}); }}
+              className="text-neutral-400 hover:text-red-500 transition-colors"
+              title="Stop bridge"
+            >
+              <Icon name="square" size={10} />
+            </button>
+          )}
           <Badge color={connected > 0 ? 'green' : 'gray'} className="text-[10px]">
             {connected > 0 ? 'Connected' : 'Offline'}
           </Badge>
@@ -631,12 +671,114 @@ export function AIAssistantPanel() {
       {/* Input area */}
       <div className="relative border-t border-neutral-200 dark:border-neutral-800 p-2">
         <ActionPicker open={actionPickerOpen} onClose={() => setActionPickerOpen(false)} onSelect={(p) => void sendMessage(p)} disabled={connected === 0 || sending} />
+
+        {/* Attached assets strip */}
+        {attachedAssets.length > 0 && (
+          <div className="flex gap-1.5 mb-1.5 px-1">
+            {attachedAssets.map((a) => (
+              <div key={a.id} className="relative group">
+                <div className="w-10 h-10 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 overflow-hidden flex items-center justify-center">
+                  {a.thumbnailUrl ? (
+                    <img src={a.thumbnailUrl} alt={a.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <Icon name="image" size={14} className="text-neutral-400" />
+                  )}
+                </div>
+                <button
+                  onClick={() => setAttachedAssets(attachedAssets.filter((x) => x.id !== a.id))}
+                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Remove"
+                >
+                  <Icon name="x" size={8} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex gap-1.5 items-end">
+          {/* Action picker */}
           <button onClick={() => setActionPickerOpen(!actionPickerOpen)} disabled={connected === 0}
             className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${actionPickerOpen ? 'bg-accent text-white' : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-600'}`}
             title="Browse actions">
             <Icon name="plus" size={16} />
           </button>
+
+          {/* Attach image — simple ID input for now, can be replaced with asset picker */}
+          <button
+            onClick={() => {
+              const idStr = prompt('Asset ID to attach (number):');
+              if (!idStr) return;
+              const id = parseInt(idStr, 10);
+              if (isNaN(id) || attachedAssets.some((a) => a.id === id)) return;
+              setAttachedAssets([...attachedAssets, { id, name: `Asset #${id}` }]);
+            }}
+            disabled={connected === 0 || attachedAssets.length >= 4}
+            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-600 transition-colors disabled:opacity-30"
+            title="Attach image asset"
+          >
+            <Icon name="image" size={15} />
+          </button>
+
+          {/* Profile picker */}
+          {profiles.length > 1 && (
+            <div className="relative shrink-0" ref={profilePickerRef}>
+              <button
+                onClick={() => setShowProfilePicker(!showProfilePicker)}
+                className={`h-8 flex items-center gap-1 px-1.5 rounded-lg text-[10px] transition-colors ${
+                  showProfilePicker
+                    ? 'bg-accent text-white'
+                    : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                }`}
+                title={profiles.find((p) => p.assistant_id === activeProfileId)?.name || 'Select profile'}
+              >
+                <Icon
+                  name={(profiles.find((p) => p.assistant_id === activeProfileId)?.icon || 'messageSquare') as IconName}
+                  size={12}
+                />
+              </button>
+
+              {showProfilePicker && (
+                <div className="absolute bottom-full left-0 mb-1 w-44 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20 overflow-hidden">
+                  {profiles.map((p) => (
+                    <button
+                      key={p.assistant_id}
+                      onClick={() => { setActiveProfileId(p.assistant_id); setShowProfilePicker(false); }}
+                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors ${
+                        p.assistant_id === activeProfileId ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400' : 'text-neutral-600 dark:text-neutral-400'
+                      }`}
+                    >
+                      <Icon name={(p.icon || 'messageSquare') as IconName} size={12} className="shrink-0" />
+                      <span className="truncate">{p.name}</span>
+                      {p.is_global && <span className="text-[8px] text-neutral-400 shrink-0 ml-auto">built-in</span>}
+                    </button>
+                  ))}
+                  {/* Add new profile */}
+                  <button
+                    onClick={() => {
+                      const name = prompt('Profile name:');
+                      if (!name) return;
+                      const id = `assistant:${name.toLowerCase().replace(/\s+/g, '-')}`;
+                      pixsimClient.post<AssistantProfile>('/assistants', {
+                        assistant_id: id,
+                        name,
+                        icon: 'user',
+                      }).then((p) => {
+                        setProfiles([...profiles, p]);
+                        setActiveProfileId(p.assistant_id);
+                        setShowProfilePicker(false);
+                      }).catch(() => {});
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 border-t border-neutral-100 dark:border-neutral-800"
+                  >
+                    <Icon name="plus" size={10} className="shrink-0" />
+                    <span>New profile</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
             placeholder={connected > 0 ? 'Ask something... (Enter to send)' : 'No agent connected'}
             disabled={connected === 0 || sending} rows={1}
@@ -644,7 +786,7 @@ export function AIAssistantPanel() {
             style={{ minHeight: '36px', maxHeight: '120px' }}
             onInput={(e) => { const el = e.currentTarget; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }}
           />
-          <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || !input.trim()} className="shrink-0">
+          <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || (!input.trim() && attachedAssets.length === 0)} className="shrink-0">
             <Icon name="send" size={14} />
           </Button>
         </div>
