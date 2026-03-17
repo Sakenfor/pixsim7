@@ -38,7 +38,15 @@ export function MediaPanel({ context }: MediaPanelProps) {
   const imageRef = useRef<HTMLImageElement>(null);
   const [fitMode, setFitMode] = useState<FitMode>('contain');
   const [zoom, setZoom] = useState(100);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
   const [mediaDimensions, setMediaDimensions] = useState<{ width: number; height: number } | undefined>();
+
+  // Refs for reading latest state in event handlers (avoid stale closures)
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const panRef = useRef(pan);
+  panRef.current = pan;
 
   // Resolve viewer context (from prop or fallback selection)
   const { resolvedContext } = useViewerContext({ context });
@@ -186,9 +194,121 @@ export function MediaPanel({ context }: MediaPanelProps) {
     [scopes, activeScopeId],
   );
 
-  const zoomIn = () => setZoom(Math.min(zoom + 25, 400));
-  const zoomOut = () => setZoom(Math.max(zoom - 25, 25));
-  const resetZoom = () => setZoom(100);
+  // Reset zoom/pan on asset change
+  useEffect(() => {
+    setZoom(100);
+    setPan({ x: 0, y: 0 });
+  }, [asset?.id]);
+
+  // Button zoom — zoom around center, adjust pan proportionally
+  const zoomIn = useCallback(() => {
+    const cur = zoomRef.current;
+    const next = Math.min(cur + 25, 400);
+    if (next === cur) return;
+    setZoom(next);
+    if (next <= 100) {
+      setPan({ x: 0, y: 0 });
+    } else {
+      const ratio = next / cur;
+      setPan((p) => ({ x: p.x * ratio, y: p.y * ratio }));
+    }
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    const cur = zoomRef.current;
+    const next = Math.max(cur - 25, 25);
+    if (next === cur) return;
+    setZoom(next);
+    if (next <= 100) {
+      setPan({ x: 0, y: 0 });
+    } else {
+      const ratio = next / cur;
+      setPan((p) => ({ x: p.x * ratio, y: p.y * ratio }));
+    }
+  }, []);
+
+  const resetZoom = useCallback(() => {
+    setZoom(100);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  // Cursor-centered scroll-to-zoom (viewing mode only)
+  const mediaContainerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = mediaContainerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (effectiveOverlayMode !== 'none') return;
+      e.preventDefault();
+
+      const rect = el.getBoundingClientRect();
+      const cx = rect.width / 2;
+      const cy = rect.height / 2;
+      const dx = e.clientX - rect.left - cx;
+      const dy = e.clientY - rect.top - cy;
+
+      const prevZoom = zoomRef.current;
+      const factor = e.deltaY < 0 ? 1.08 : 1 / 1.08;
+      const newZoom = Math.max(25, Math.min(400, Math.round(prevZoom * factor)));
+      if (newZoom === prevZoom) return;
+
+      const ratio = newZoom / prevZoom;
+      const prev = panRef.current;
+
+      setZoom(newZoom);
+      if (newZoom <= 100) {
+        setPan({ x: 0, y: 0 });
+      } else {
+        setPan({
+          x: dx + (prev.x - dx) * ratio,
+          y: dy + (prev.y - dy) * ratio,
+        });
+      }
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [effectiveOverlayMode]);
+
+  // Drag-to-pan when zoomed in
+  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const isZoomed = zoom > 100;
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const el = mediaContainerRef.current;
+    if (!el) return;
+    el.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      panX: panRef.current.x,
+      panY: panRef.current.y,
+    };
+    setIsDragging(true);
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    setPan({
+      x: dragRef.current.panX + (e.clientX - dragRef.current.startX),
+      y: dragRef.current.panY + (e.clientY - dragRef.current.startY),
+    });
+  }, []);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    setIsDragging(false);
+    mediaContainerRef.current?.releasePointerCapture(e.pointerId);
+  }, []);
+
+  // Fit mode change resets pan
+  const handleFitModeChange = useCallback((mode: FitMode) => {
+    setFitMode(mode);
+    setPan({ x: 0, y: 0 });
+  }, []);
 
   const handleToggleOverlay = useCallback((id: string) => {
     const entering = overlayMode !== id;
@@ -239,6 +359,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
 
   const toggleFitModeCb = useCallback(() => {
     setFitMode((prev) => (prev === 'contain' ? 'actual' : 'contain'));
+    setPan({ x: 0, y: 0 });
   }, []);
 
   const toggleFavoriteCb = useCallback(() => {
@@ -255,7 +376,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
   }), [navigatePrev, navigateNext, resolvedContext.closeViewer, toggleFitModeCb, toggleFavoriteCb]);
 
   const viewerGesture = useViewerGestures(viewerGestureCtx);
-  const gesturesActive = viewerGesture.enabled && effectiveOverlayMode === 'none';
+  const gesturesActive = viewerGesture.enabled && effectiveOverlayMode === 'none' && !isZoomed;
 
   if (!asset) {
     return (
@@ -288,10 +409,20 @@ export function MediaPanel({ context }: MediaPanelProps) {
           isMoveActive={isMoveActive}
         />
 
-        {/* Media/overlay display with gesture support */}
+        {/* Media/overlay display with gesture support + pan/zoom */}
         <div
-          className="flex-1 min-w-0 relative flex flex-col"
+          ref={mediaContainerRef}
+          className={`flex-1 min-w-0 relative flex flex-col${
+            isZoomed && effectiveOverlayMode === 'none'
+              ? isDragging ? ' cursor-grabbing' : ' cursor-grab'
+              : ''
+          }`}
           {...(gesturesActive ? viewerGesture.gestureHandlers : {})}
+          {...(isZoomed && effectiveOverlayMode === 'none' ? {
+            onPointerDown: handlePointerDown,
+            onPointerMove: handlePointerMove,
+            onPointerUp: handlePointerUp,
+          } : {})}
         >
           {hasViewerOverlay ? (
             <OverlayContainer
@@ -315,6 +446,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
                 settings={settings}
                 fitMode={fitMode}
                 zoom={zoom}
+                pan={pan}
                 videoRef={videoRef}
                 imageRef={imageRef}
               />
@@ -337,6 +469,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
                 settings={settings}
                 fitMode={fitMode}
                 zoom={zoom}
+                pan={pan}
                 videoRef={videoRef}
                 imageRef={imageRef}
               />
@@ -384,7 +517,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
         onZoomOut={zoomOut}
         onResetZoom={resetZoom}
         fitMode={fitMode}
-        onFitModeChange={setFitMode}
+        onFitModeChange={handleFitModeChange}
         isMaximized={isMaximized}
         onToggleMaximize={toggleMaximize}
         isOverlayActive={effectiveOverlayMode !== 'none'}

@@ -23,11 +23,12 @@ interface MediaDisplayProps {
   settings: ViewerSettings;
   fitMode: FitMode;
   zoom: number;
+  pan: { x: number; y: number };
   videoRef?: RefObject<HTMLVideoElement>;
   imageRef?: RefObject<HTMLImageElement>;
 }
 
-export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef, imageRef }: MediaDisplayProps) {
+export function MediaDisplay({ asset, settings, fitMode, zoom, pan, videoRef, imageRef }: MediaDisplayProps) {
   const fallbackVideoRef = useRef<HTMLVideoElement>(null);
   const fallbackImageRef = useRef<HTMLImageElement>(null);
   const resolvedVideoRef = videoRef ?? fallbackVideoRef;
@@ -77,7 +78,7 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef, imageRe
 
   return (
     <div
-      className="flex-1 flex items-center justify-center p-2 min-h-0 bg-neutral-50 dark:bg-neutral-950 overflow-auto"
+      className="flex-1 flex items-center justify-center p-2 min-h-0 bg-neutral-50 dark:bg-neutral-950 overflow-hidden"
       {...contextMenuProps}
     >
       {asset.type === 'video' ? (
@@ -86,7 +87,7 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef, imageRe
             ref={resolvedVideoRef}
             src={resolvedMediaUrl}
             className={`${getFitClass()} rounded-lg transition-opacity ${videoReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-            style={{ transform: `scale(${zoom / 100})` }}
+            style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})` }}
             controls={videoReady}
             autoPlay={settings.autoPlayVideos}
             loop={settings.loopVideos}
@@ -107,7 +108,7 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef, imageRe
           src={resolvedMediaUrl}
           alt={asset.name}
           className={`${getFitClass()} rounded-lg`}
-          style={{ transform: `scale(${zoom / 100})` }}
+          style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})` }}
           draggable={false}
         />
       )}
