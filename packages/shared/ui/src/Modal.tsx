@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 
@@ -23,17 +23,26 @@ export function Modal({
 }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
 
+  // Lock body scroll before paint to avoid scrollbar-jump (modal shifts right
+  // when the scrollbar disappears). Compensate with padding so layout doesn't shift.
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.paddingRight = '';
+    };
+  }, [isOpen]);
+
   useEffect(() => {
     if (isOpen) {
-      // Focus trap
       modalRef.current?.focus();
-
-      // Prevent scroll on body
-      document.body.style.overflow = 'hidden';
-
-      return () => {
-        document.body.style.overflow = '';
-      };
     }
   }, [isOpen]);
 
@@ -58,8 +67,8 @@ export function Modal({
 
   const modalContent = (
     <div
-      className="fixed inset-0 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
-      style={{ zIndex: Z.globalModal }}
+      className="fixed inset-0 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      style={{ zIndex: Z.globalModal, animation: 'fade-in 0.15s ease-out' }}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -68,9 +77,10 @@ export function Modal({
       <div
         ref={modalRef}
         className={clsx(
-          'relative bg-white dark:bg-gray-800 rounded-lg shadow-elevation-4 w-full animate-scale-in',
+          'relative bg-white dark:bg-gray-800 rounded-lg shadow-elevation-4 w-full',
           sizeStyles[size]
         )}
+        style={{ animation: 'fade-in 0.15s ease-out' }}
         onClick={(e) => e.stopPropagation()}
         tabIndex={-1}
       >

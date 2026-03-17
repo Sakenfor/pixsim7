@@ -102,8 +102,8 @@ export function ContextMenuPortal({ renderIcon = defaultRenderIcon }: ContextMen
     <div
       ref={menuRef}
       className="fixed"
-      style={{ zIndex: Z.floatOverlay }}
       style={{
+        zIndex: Z.floatOverlay,
         left: `${position.x}px`,
         top: `${position.y}px`,
       }}
@@ -268,8 +268,7 @@ function MenuItemComponent({ item, onClose, depth = 0, renderIcon }: MenuItemCom
         <div
           ref={submenuRef}
           className="fixed"
-          style={{ zIndex: Z.floatOverlayPopover }}
-          style={{ left: submenuPos.x, top: submenuPos.y }}
+          style={{ zIndex: Z.floatOverlayPopover, left: submenuPos.x, top: submenuPos.y }}
           data-context-menu
           onMouseEnter={() => {
             cancelHide();

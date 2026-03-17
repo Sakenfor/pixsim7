@@ -542,8 +542,7 @@ export function PropertiesPopup() {
     <div
       ref={popupRef}
       className="fixed"
-      style={{ zIndex: Z.floatOverlay }}
-      style={{ left: `${coords.x}px`, top: `${coords.y}px` }}
+      style={{ zIndex: Z.floatOverlay, left: `${coords.x}px`, top: `${coords.y}px` }}
       data-properties-popup
     >
       <Panel className="w-[320px] shadow-lg">
