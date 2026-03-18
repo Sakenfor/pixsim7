@@ -1174,11 +1174,12 @@ async def _poll_single_generation(
                         status_result.error_message
                         or f"Provider reported terminal status: {status_result.status.value}"
                     )
-                    error_code = (
-                        GenerationErrorCode.CONTENT_FILTERED.value
-                        if status_result.status == ProviderStatus.FILTERED
-                        else None
-                    )
+                    if status_result.status == ProviderStatus.FILTERED:
+                        error_code = GenerationErrorCode.CONTENT_FILTERED.value
+                    elif status_result.status == ProviderStatus.FAILED:
+                        error_code = GenerationErrorCode.PROVIDER_GENERIC.value
+                    else:
+                        error_code = None
                     await generation_service.mark_failed(
                         generation.id,
                         error_text,
