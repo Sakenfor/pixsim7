@@ -192,9 +192,10 @@ class GenerationRetryService:
         Determine if a failed generation should be automatically retried
 
         Auto-retry is triggered for:
-        - Content filtering rejections (romantic/erotic content that might pass on retry)
-        - Provider temporary errors
-        - Not for: validation errors, quota errors, permanent failures
+        - Content filtering rejections (output that might pass on retry)
+        - Provider temporary errors (rate limit, timeout, unavailable)
+        - Provider quota errors (another account may have credits)
+        - Not for: validation errors, auth errors, permanent failures
 
         Uses structured error_code when available, falls back to string pattern
         matching for legacy generations without error_code.

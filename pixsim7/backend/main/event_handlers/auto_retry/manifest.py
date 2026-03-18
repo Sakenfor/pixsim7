@@ -128,6 +128,18 @@ async def handle_event(event: Event) -> None:
             defer_seconds: int | None = None
             rotate_account_from: int | None = None
             fairness_yield = False
+
+            # Quota errors: clear account so retry picks a different one
+            if generation.error_code == "provider_quota" and generation.account_id is not None:
+                rotate_account_from = generation.account_id
+                generation.account_id = None
+                logger.info(
+                    "auto_retry_quota_account_rotation",
+                    generation_id=generation.id,
+                    exhausted_account_id=rotate_account_from,
+                    retry_count=generation.retry_count or 0,
+                )
+
             if _is_poll_time_content_filtered(generation):
                 is_pinned = _is_pinned_generation(generation)
                 current_retries = generation.retry_count or 0
