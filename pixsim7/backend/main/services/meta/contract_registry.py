@@ -936,6 +936,21 @@ def _builtin_testing_catalog() -> MetaContract:
                 auth_required=False,
                 tags=["coverage"],
             ),
+            MetaContractEndpoint(
+                id="testing.sync",
+                method="POST",
+                path="/api/v1/dev/testing/sync",
+                summary="Sync test suites from filesystem discovery into DB.",
+                tags=["sync"],
+            ),
+            MetaContractEndpoint(
+                id="testing.suites_db",
+                method="GET",
+                path="/api/v1/dev/testing/suites",
+                summary="Query suites from DB (fast, no filesystem scan). Requires prior sync.",
+                auth_required=False,
+                tags=["suites", "db"],
+            ),
         ],
     )
 

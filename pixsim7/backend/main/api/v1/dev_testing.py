@@ -10,9 +10,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
 from pixsim7.backend.main.services.testing.catalog import (
     build_catalog,
     validate_catalog,
@@ -366,4 +369,86 @@ async def get_coverage_gaps(
         covered_paths=covered_count,
         gap_count=len(gaps),
         gaps=gaps,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Sync — filesystem → DB
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class SyncResponse(BaseModel):
+    created: int
+    updated: int
+    removed: int
+    unchanged: int
+
+
+@router.post("/sync", response_model=SyncResponse)
+async def sync_suites(
+    _user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+) -> SyncResponse:
+    """Sync test suites from filesystem discovery into DB.
+
+    Discovers TEST_SUITE dicts + static entries, then upserts to
+    the ``test_suites`` table.  Stale DB entries are removed.
+    """
+    from pixsim7.backend.main.services.testing.sync import sync_test_suites
+
+    result = await sync_test_suites(db)
+    await db.commit()
+    return SyncResponse(
+        created=result.created,
+        updated=result.updated,
+        removed=result.removed,
+        unchanged=result.unchanged,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DB-backed catalog query
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.get("/suites", response_model=CatalogResponse)
+async def list_suites_from_db(
+    layer: Optional[str] = Query(None, description="Filter by layer"),
+    category: Optional[str] = Query(None, description="Filter by category prefix"),
+    kind: Optional[str] = Query(None, description="Filter by kind"),
+    db: AsyncSession = Depends(get_database),
+) -> CatalogResponse:
+    """Query test suites from DB (requires prior sync).
+
+    Faster than ``/catalog`` (no filesystem scan).  Returns empty if
+    sync has never run.
+    """
+    from pixsim7.backend.main.domain.docs.models import TestSuiteRecord
+
+    stmt = select(TestSuiteRecord)
+    if layer:
+        stmt = stmt.where(TestSuiteRecord.layer == layer)
+    if category:
+        stmt = stmt.where(TestSuiteRecord.category.startswith(category))
+    if kind:
+        stmt = stmt.where(TestSuiteRecord.kind == kind)
+    stmt = stmt.order_by(TestSuiteRecord.order.asc().nullslast(), TestSuiteRecord.label.asc())
+
+    rows = (await db.execute(stmt)).scalars().all()
+    return CatalogResponse(
+        suite_count=len(rows),
+        suites=[
+            SuiteResponse(
+                id=r.id,
+                label=r.label,
+                path=r.path,
+                layer=r.layer,
+                kind=r.kind,
+                category=r.category,
+                subcategory=r.subcategory,
+                covers=r.covers or [],
+                order=r.order,
+            )
+            for r in rows
+        ],
     )

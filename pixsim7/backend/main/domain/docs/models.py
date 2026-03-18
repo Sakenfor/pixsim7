@@ -36,6 +36,7 @@ class Document(SQLModel, table=True):
     markdown: Optional[str] = Field(default=None, sa_column=Column(Text))
     user_id: Optional[int] = Field(default=None, index=True)
     visibility: str = Field(default="private", max_length=32)
+    namespace: Optional[str] = Field(default=None, max_length=255, index=True)
     tags: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
     extra: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
     revision: int = Field(default=1)
@@ -142,6 +143,32 @@ class PlanRegistry(SQLModel, table=True):
     handoffs: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
     depends_on: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
     manifest_hash: str = Field(default="", max_length=64)
+    last_synced_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class TestSuiteRecord(SQLModel, table=True):
+    """Test suite metadata — DB mirror of TEST_SUITE dicts and static entries.
+
+    Synced from filesystem discovery (TEST_SUITE dicts in Python files) and
+    static definitions.  The DB is the query surface; files are the authoring
+    surface.
+    """
+
+    __tablename__ = "test_suites"
+    __table_args__ = {"schema": PLAN_META_SCHEMA}
+
+    id: str = Field(primary_key=True, max_length=120)
+    label: str = Field(max_length=255)
+    path: str = Field(max_length=512)
+    layer: str = Field(max_length=32, index=True)  # backend | frontend | scripts
+    kind: Optional[str] = Field(default=None, max_length=32, index=True)
+    category: Optional[str] = Field(default=None, max_length=120, index=True)
+    subcategory: Optional[str] = Field(default=None, max_length=120)
+    covers: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    order: Optional[float] = Field(default=None)
+    source: str = Field(default="discovered", max_length=32)  # discovered | static | manual
     last_synced_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, index=True)
     updated_at: datetime = Field(default_factory=utcnow, index=True)
