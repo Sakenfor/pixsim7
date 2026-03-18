@@ -1,4 +1,4 @@
-import { Dropdown } from '@pixsim7/shared.ui';
+import { Dropdown, Z } from '@pixsim7/shared.ui';
 import {
   useCallback,
   useEffect,
@@ -384,8 +384,9 @@ export function FilterDropdown({
     const openUp = availableBelow < 180 && availableAbove > availableBelow;
     return (
       <div
-        className="absolute z-[9998]"
+        className="absolute"
         style={{
+          zIndex: Z.floatOverlay,
           left: 0,
           top: openUp ? undefined : `calc(100% + ${spacing}px)`,
           bottom: openUp ? `calc(100% + ${spacing}px)` : undefined,
@@ -682,8 +683,9 @@ function OverflowMenu<T>({
             const openUp = availableBelow < 220 && availableAbove > availableBelow;
             return (
               <div
-                className="absolute z-[9998]"
+                className="absolute"
                 style={{
+                  zIndex: Z.floatOverlay,
                   right: 0,
                   top: openUp ? undefined : 'calc(100% + 6px)',
                   bottom: openUp ? 'calc(100% + 6px)' : undefined,

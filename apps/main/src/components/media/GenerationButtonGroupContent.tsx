@@ -4,7 +4,7 @@
  * Handles smart action, menu, slot picker, and regenerate functionality.
  */
 
-import { ActionHintBadge, ButtonGroup, DropdownItem, DropdownDivider, Popover, useToast, type ButtonGroupItem } from '@pixsim7/shared.ui';
+import { ActionHintBadge, ButtonGroup, DropdownItem, DropdownDivider, Popover, useToast, Z, type ButtonGroupItem } from '@pixsim7/shared.ui';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 
 import { uploadAssetToProvider } from '@lib/api/assets';
@@ -705,7 +705,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
           placement="bottom"
           align="start"
           offset={4}
-          style={{ zIndex: 12050 }}
+          style={{ zIndex: Z.floatOverlay }}
           className="min-w-[180px] rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-xl p-1"
         >
           {uploadTargetOptions.map((target) => (

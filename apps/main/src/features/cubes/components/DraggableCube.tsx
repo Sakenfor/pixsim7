@@ -10,6 +10,7 @@ import {
   CUBE_HOVER_TILT,
   DRAG_THRESHOLD,
 } from '@pixsim7/pixcubes';
+import { Z } from '@pixsim7/shared.ui';
 import { clsx } from 'clsx';
 import { useRef, useState, useCallback, useEffect } from 'react';
 
@@ -169,7 +170,7 @@ export function DraggableCube({
       ref={cubeRef}
       className={clsx(
         'absolute pointer-events-auto cursor-grab select-none',
-        isDragging && 'cursor-grabbing z-[9999]',
+        isDragging && 'cursor-grabbing',
         className
       )}
       style={{
@@ -177,7 +178,7 @@ export function DraggableCube({
         top: cube.position.y,
         width: size,
         height: size,
-        zIndex: cube.zIndex,
+        zIndex: isDragging ? Z.floatOverlay : cube.zIndex,
         perspective: '1000px',
       }}
       onMouseDown={handleMouseDown}

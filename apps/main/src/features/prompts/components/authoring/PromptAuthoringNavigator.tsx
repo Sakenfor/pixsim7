@@ -5,13 +5,13 @@
  * Consumes shared state from PromptAuthoringContext.
  */
 
-import { DisclosureSection } from '@pixsim7/shared.ui';
+import { DisclosureSection, Popover, Z } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 
-import type { PromptVersionSummary } from '@lib/api/prompts';
+import type { PromptFamilySummary, PromptVersionSummary } from '@lib/api/prompts';
 import { Icon } from '@lib/icons';
 
 import { ClientFilterBar } from '@features/gallery/components/ClientFilterBar';
@@ -20,7 +20,7 @@ import type { ClientFilterDef, ClientFilterValue } from '@features/gallery/lib/u
 
 import type { OperationType } from '@/types/operations';
 
-import { formatDate, usePromptAuthoring } from '../../context/PromptAuthoringContext';
+import { formatDate, parseTags, usePromptAuthoring } from '../../context/PromptAuthoringContext';
 import {
   formatOperationTypeLabel,
   formatOperationTypeShort,
@@ -88,8 +88,9 @@ function VersionMetadataPopover({
 
     return createPortal(
       <div
-        className="fixed z-[10000]"
+        className="fixed"
         style={{
+          zIndex: Z.globalModal,
           left,
           top,
           transform: openUp ? 'translateY(-100%)' : undefined,
@@ -170,6 +171,178 @@ function VersionMetadataPopover({
   );
 }
 
+const CATEGORY_OPTIONS = [
+  '', 'scene_setup', 'scene_continuation', 'character_design',
+  'tool_edit', 'patch_edit', 'variation',
+];
+
+function FamilyEditPopover({
+  family,
+  onUpdate,
+  onClose,
+  triggerRef,
+}: {
+  family: PromptFamilySummary;
+  onUpdate: (familyId: string, data: { title?: string; category?: string; tags?: string[] }) => Promise<void>;
+  onClose: () => void;
+  triggerRef: React.RefObject<HTMLElement | null>;
+}) {
+  const [title, setTitle] = useState(family.title);
+  const [category, setCategory] = useState(family.category ?? '');
+  const [tagsInput, setTagsInput] = useState((family.tags ?? []).join(', '));
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const updates: { title?: string; category?: string; tags?: string[] } = {};
+      if (title.trim() !== family.title) updates.title = title.trim();
+      if (category !== (family.category ?? '')) updates.category = category || undefined;
+      const newTags = parseTags(tagsInput);
+      const oldTags = family.tags ?? [];
+      if (JSON.stringify(newTags) !== JSON.stringify(oldTags)) updates.tags = newTags;
+      if (Object.keys(updates).length > 0) {
+        await onUpdate(family.id, updates);
+      }
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Popover
+      anchor={triggerRef.current}
+      placement="bottom"
+      align="start"
+      offset={4}
+      open
+      onClose={onClose}
+      triggerRef={triggerRef}
+      className="w-72 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg p-3 space-y-2"
+    >
+      <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200">Edit family</div>
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="Title"
+        className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+      />
+      <div>
+        <div className="text-[10px] text-neutral-500 dark:text-neutral-400 mb-0.5">Category (authoring mode)</div>
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+        >
+          {CATEGORY_OPTIONS.map((opt) => (
+            <option key={opt} value={opt}>{opt || '(none)'}</option>
+          ))}
+        </select>
+      </div>
+      <input
+        value={tagsInput}
+        onChange={(e) => setTagsInput(e.target.value)}
+        placeholder="Tags (comma separated)"
+        className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+      />
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={saving}
+          className="text-xs px-2 py-1 rounded border border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300 disabled:opacity-60"
+        >
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300"
+        >
+          Cancel
+        </button>
+      </div>
+    </Popover>
+  );
+}
+
+function FamilyCreatePopover({
+  onClose,
+  triggerRef,
+}: {
+  onClose: () => void;
+  triggerRef: React.RefObject<HTMLElement | null>;
+}) {
+  const {
+    newFamilyTitle, setNewFamilyTitle,
+    newFamilyPromptType, setNewFamilyPromptType,
+    newFamilyCategory, setNewFamilyCategory,
+    newFamilyTagsInput, setNewFamilyTagsInput,
+    busyAction, handleCreateFamily,
+  } = usePromptAuthoring();
+
+  const handleCreate = async () => {
+    await handleCreateFamily();
+    onClose();
+  };
+
+  return (
+    <Popover
+      anchor={triggerRef.current}
+      placement="bottom"
+      align="end"
+      offset={4}
+      open
+      onClose={onClose}
+      triggerRef={triggerRef}
+      className="w-72 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg p-3 space-y-2"
+    >
+      <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200">New family</div>
+      <input
+        value={newFamilyTitle}
+        onChange={(e) => setNewFamilyTitle(e.target.value)}
+        placeholder="Title"
+        className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <select
+          value={newFamilyPromptType}
+          onChange={(e) => setNewFamilyPromptType(e.target.value as 'visual' | 'narrative' | 'hybrid')}
+          className="rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+        >
+          <option value="visual">visual</option>
+          <option value="narrative">narrative</option>
+          <option value="hybrid">hybrid</option>
+        </select>
+        <select
+          value={newFamilyCategory}
+          onChange={(e) => setNewFamilyCategory(e.target.value)}
+          className="rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+        >
+          {CATEGORY_OPTIONS.map((opt) => (
+            <option key={opt} value={opt}>{opt || '(none)'}</option>
+          ))}
+        </select>
+      </div>
+      <input
+        value={newFamilyTagsInput}
+        onChange={(e) => setNewFamilyTagsInput(e.target.value)}
+        placeholder="Tags (comma separated)"
+        className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+      />
+      <button
+        type="button"
+        onClick={() => void handleCreate()}
+        disabled={busyAction === 'family'}
+        className="text-xs px-2 py-1 rounded border border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300 disabled:opacity-60"
+      >
+        {busyAction === 'family' ? 'Creating...' : 'Create'}
+      </button>
+    </Popover>
+  );
+}
+
 export function PromptAuthoringNavigator() {
   const {
     families,
@@ -178,17 +351,8 @@ export function PromptAuthoringNavigator() {
     selectedFamily,
     selectedFamilyId,
     setSelectedFamilyId,
-    newFamilyTitle,
-    setNewFamilyTitle,
-    newFamilyPromptType,
-    setNewFamilyPromptType,
-    newFamilyCategory,
-    setNewFamilyCategory,
-    newFamilyTagsInput,
-    setNewFamilyTagsInput,
-    busyAction,
     refreshFamilies,
-    handleCreateFamily,
+    handleUpdateFamily,
     versions,
     versionsLoading,
     versionsError,
@@ -270,80 +434,49 @@ export function PromptAuthoringNavigator() {
     setActiveVersionTagFilters(next);
   }, []);
 
+  const [createOpen, setCreateOpen] = useState(false);
+  const createBtnRef = useRef<HTMLButtonElement>(null);
+  const [editingFamilyId, setEditingFamilyId] = useState<string | null>(null);
+  const editBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+
   return (
     <div className="h-full min-h-0 flex flex-col bg-white dark:bg-neutral-900/60">
-      <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-800">
-        <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Prompt Families</div>
-        <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-          Select a family, then select a version branch source.
-        </div>
-      </div>
-
-      {/* Family creation form */}
-      <div className="p-3 space-y-2 border-b border-neutral-200 dark:border-neutral-800">
-        <input
-          value={newFamilyTitle}
-          onChange={(e) => setNewFamilyTitle(e.target.value)}
-          placeholder="New family title..."
-          className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
-        />
-        <div className="grid grid-cols-2 gap-2">
-          <select
-            value={newFamilyPromptType}
-            onChange={(e) => setNewFamilyPromptType(e.target.value as 'visual' | 'narrative' | 'hybrid')}
-            className="rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
-          >
-            <option value="visual">visual</option>
-            <option value="narrative">narrative</option>
-            <option value="hybrid">hybrid</option>
-          </select>
-          <input
-            value={newFamilyCategory}
-            onChange={(e) => setNewFamilyCategory(e.target.value)}
-            placeholder="Category"
-            className="rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
-          />
-        </div>
-        <input
-          value={newFamilyTagsInput}
-          onChange={(e) => setNewFamilyTagsInput(e.target.value)}
-          placeholder="family tags (comma separated)"
-          className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
-        />
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void handleCreateFamily()}
-            disabled={busyAction === 'family'}
-            className="text-xs px-2 py-1 rounded border border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300 disabled:opacity-60"
-          >
-            {busyAction === 'family' ? 'Creating...' : 'Create family'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void refreshFamilies(selectedFamilyId)}
-            disabled={familiesLoading}
-            className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300"
-          >
-            <Icon name="refresh" size={12} />
-          </button>
-        </div>
-        {familiesError && (
-          <div className="text-[11px] text-red-600 dark:text-red-300">{familiesError}</div>
-        )}
-      </div>
-
       {/* Family + version lists */}
       <div className="flex-1 min-h-0 flex flex-col">
         <DisclosureSection
           label="Families"
           defaultOpen
           fillHeight
-          badge={families.length > 0 ? <span className="text-[10px] text-neutral-500 dark:text-neutral-400">({families.length})</span> : undefined}
+          badge={(
+            <span className="flex items-center gap-1">
+              {families.length > 0 && <span className="text-[10px] text-neutral-500 dark:text-neutral-400">({families.length})</span>}
+              <button
+                ref={createBtnRef}
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setCreateOpen((v) => !v); }}
+                className="p-0.5 rounded text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200"
+                title="New family"
+              >
+                <Icon name="plus" size={12} />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); void refreshFamilies(selectedFamilyId); }}
+                disabled={familiesLoading}
+                className="p-0.5 rounded text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-50"
+                title="Refresh families"
+              >
+                <Icon name="refresh" size={11} />
+              </button>
+            </span>
+          )}
           className="border-b border-neutral-200 dark:border-neutral-800"
           headerClassName="px-3"
           contentClassName="!mt-0"
         >
+          {familiesError && (
+            <div className="px-3 py-1 text-[11px] text-red-600 dark:text-red-300">{familiesError}</div>
+          )}
           {families.length === 0 && !familiesLoading ? (
             <div className="px-3 py-4 text-xs text-neutral-500 dark:text-neutral-400">
               No prompt families found.
@@ -351,26 +484,61 @@ export function PromptAuthoringNavigator() {
           ) : (
             <div className="p-2 space-y-1">
               {families.map((family) => (
-                <button
+                <div
                   key={family.id}
-                  type="button"
-                  onClick={() => setSelectedFamilyId(family.id)}
                   className={clsx(
-                    'w-full text-left px-2 py-1.5 rounded border text-xs',
+                    'flex items-start rounded border text-xs',
                     selectedFamilyId === family.id
                       ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300'
                       : 'border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200',
                   )}
                 >
-                  <div className="font-medium truncate">{family.title}</div>
-                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
-                    {family.slug} | {family.prompt_type}
-                  </div>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFamilyId(family.id)}
+                    className="flex-1 min-w-0 text-left px-2 py-1.5"
+                  >
+                    <div className="font-medium truncate">{family.title}</div>
+                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
+                      {family.category ? `${family.category} · ` : ''}{family.prompt_type}
+                    </div>
+                  </button>
+                  <button
+                    ref={(el) => { if (el) editBtnRefs.current.set(family.id, el); }}
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setEditingFamilyId((v) => v === family.id ? null : family.id); }}
+                    className="flex-shrink-0 p-1.5 rounded text-neutral-400 dark:text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                    title="Edit family"
+                  >
+                    <Icon name="edit" size={10} />
+                  </button>
+                </div>
               ))}
             </div>
           )}
         </DisclosureSection>
+
+        {/* Create popover */}
+        {createOpen && (
+          <FamilyCreatePopover
+            onClose={() => setCreateOpen(false)}
+            triggerRef={createBtnRef}
+          />
+        )}
+        {/* Edit popover */}
+        {editingFamilyId && (() => {
+          const fam = families.find((f) => f.id === editingFamilyId);
+          const btnEl = editBtnRefs.current.get(editingFamilyId);
+          if (!fam || !btnEl) return null;
+          return (
+            <FamilyEditPopover
+              family={fam}
+              onUpdate={handleUpdateFamily}
+              onClose={() => setEditingFamilyId(null)}
+              triggerRef={{ current: btnEl }}
+            />
+          );
+        })()}
 
         <DisclosureSection
           label="Versions"

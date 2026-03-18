@@ -1,3 +1,4 @@
+import { Z } from '@pixsim7/shared.ui';
 import React from 'react';
 
 type Props = {
@@ -21,14 +22,14 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    // eslint-disable-next-line no-console
+     
     console.error('ErrorBoundary caught error:', error, info);
   }
 
   render() {
     if (this.state.hasError) {
       return this.props.fallback ?? (
-        <div style={{ position: 'fixed', bottom: 8, left: 8, right: 8, padding: 8, background: '#fee', color: '#900', border: '1px solid #f99', borderRadius: 6, zIndex: 50 }}>
+        <div style={{ position: 'fixed', bottom: 8, left: 8, right: 8, padding: 8, background: '#fee', color: '#900', border: '1px solid #f99', borderRadius: 6, zIndex: Z.globalToast }}>
           <strong>Component crashed.</strong> The panel was disabled. Check console for details.
         </div>
       );

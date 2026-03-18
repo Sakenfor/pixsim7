@@ -1,5 +1,5 @@
 import type { CubeFace } from '@pixsim7/pixcubes';
-import { useToast } from '@pixsim7/shared.ui';
+import { useToast, Z } from '@pixsim7/shared.ui';
 import { clsx } from 'clsx';
 import { useState, useCallback } from 'react';
 
@@ -201,7 +201,7 @@ ${actionsCode}
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[10000] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: Z.globalModal }}>
       <div className="bg-neutral-900 rounded-xl border border-white/20 shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-white/10">

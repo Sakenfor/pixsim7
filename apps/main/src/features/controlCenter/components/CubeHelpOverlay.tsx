@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { Z } from '@pixsim7/shared.ui';
 import { clsx } from 'clsx';
+import { useEffect } from 'react';
 
 export interface CubeHelpOverlayProps {
   show: boolean;
@@ -95,7 +96,8 @@ export function CubeHelpOverlay({ show, onClose }: CubeHelpOverlayProps) {
 
   return (
     <div
-      className="fixed inset-0 z-[10002] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+      style={{ zIndex: Z.globalModal }}
       onClick={onClose}
     >
       <div
