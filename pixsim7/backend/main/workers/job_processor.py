@@ -5,9 +5,13 @@ Processes generations created via GenerationService:
 1. Select provider account
 2. Submit generation to provider
 3. Update generation status
+
+Helper modules:
+- job_processor_errors: Error classification (EXPECTED_ERRORS, retryability checks)
+- job_processor_account: Credit verification, account reservation/release/cooldown
+- job_processor_requeue: Requeue-for-rotation and pinned-generation deferral
 """
 import asyncio
-import os
 import random
 from datetime import datetime, timezone, timedelta
 from typing import Any
@@ -26,7 +30,6 @@ from pixsim7.backend.main.infrastructure.queue import (
     enqueue_generation_retry_job,
     GENERATION_RETRY_QUEUE_NAME,
     release_generation_enqueue_lease,
-    set_generation_wait_metadata,
 )
 from pixsim7.backend.main.shared.errors import (
     NoAccountAvailableError,
@@ -37,36 +40,29 @@ from pixsim7.backend.main.shared.errors import (
     ProviderAuthenticationError,
     ProviderQuotaExceededError,
     ProviderContentFilteredError,
-    ProviderRateLimitError,
     ProviderConcurrentLimitError,
 )
 from pixsim7.backend.main.shared.policies import (
     with_fallback,
     FallbackExhaustedError,
 )
-from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.workers.worker_concurrency import (
-    # Settings helpers (authoritative copies live in worker_concurrency)
     _settings_int,
     _settings_float,
     _settings_bool,
     _pinned_wait_padding_seconds,
     _get_operation_value,
     _get_concurrent_limit_cooldown_seconds,
-    # Constants
     CONCURRENT_COOLDOWN_SECONDS,
     MAX_PINNED_CONCURRENT_RETRIES,
     PINNED_YIELD_THRESHOLD_RATIO,
     PINNED_YIELD_DEFER_MULTIPLIER,
-    # Adaptive concurrency
     _adaptive_provider_concurrency_pre_submit_gate,
     _adaptive_provider_concurrency_record_limit_error,
     _adaptive_provider_concurrency_record_submit_success,
-    # Pinned generation helpers
     _get_pinned_concurrent_wait_count,
     _clear_pinned_concurrent_wait_count,
     _plan_pinned_concurrent_defer,
-    _count_runnable_pinned_siblings,
     _normalize_positive_int,
 )
 from pixsim7.backend.main.shared.policies.content_filter_retry import (
@@ -79,35 +75,32 @@ from pixsim7.backend.main.shared.policies.content_filter_retry import (
     try_acquire_content_filter_yield,
 )
 
-# Expected errors that don't need stack traces - these are business logic, not bugs
-EXPECTED_ERRORS = (
-    ProviderAuthenticationError,
-    ProviderContentFilteredError,
-    ProviderQuotaExceededError,
-    ProviderRateLimitError,
-    ProviderConcurrentLimitError,
-    NoAccountAvailableError,
-    AccountExhaustedError,
-    AccountCooldownError,
+# --- Re-exported from helper modules (used by status_poller and other callers) ---
+from pixsim7.backend.main.workers.job_processor_errors import (  # noqa: F401
+    EXPECTED_ERRORS,
+    NON_RETRYABLE_ERROR_PATTERNS,
+    _is_non_retryable_error,
+    _extract_error_code,
+    _is_auth_rotation_error,
+    _get_max_tries,
+    _is_final_try,
 )
-
-# Errors that should NOT trigger ARQ retry - these are permanent failures
-# (validation errors, configuration issues, etc. that won't be fixed by retry)
-NON_RETRYABLE_ERROR_PATTERNS = (
-    "requires at least one",  # Missing required params (image_url, video_url, etc.)
-    "is required for",  # Missing required params
-    "is not valid for",  # Invalid param format
-    "must contain",  # Validation failure
-    "has no resolvable",  # Asset resolution failure
-    "needs to be re-uploaded",  # Asset needs manual intervention
-    "invalid param",  # Provider rejected param as invalid (400 error)
-    "invalid parameter",  # Alternative wording
-    "too-long parameters",  # Prompt/param length exceeded (e.g. Pixverse 400018)
-    "cannot exceed",  # Generic length limit exceeded
+from pixsim7.backend.main.workers.job_processor_account import (  # noqa: F401
+    refresh_account_credits,
+    has_sufficient_credits,
+    _required_generation_credit_hint,
+    is_unlimited_model,
+    _is_pinned_account,
+    _release_account_reservation,
+    _apply_account_cooldown,
+)
+from pixsim7.backend.main.workers.job_processor_requeue import (  # noqa: F401
+    _requeue_generation_for_account_rotation,
+    _defer_pinned_generation,
+    _count_pending_pinned_siblings,
 )
 
 # Cooldown applied when an account fails authentication/session checks.
-# This gives a chance for manual re-auth while allowing other accounts to run.
 AUTH_FAILURE_COOLDOWN_SECONDS = 300
 
 NO_ACCOUNT_AVAILABLE_DEFER_SECONDS = 10
@@ -123,79 +116,6 @@ def _max_dispatch_stagger_seconds() -> float:
 
 def _min_pinned_cooldown_defer_seconds() -> int:
     return _settings_int("min_pinned_cooldown_defer_seconds", 2, minimum=1)
-
-
-def _is_non_retryable_error(error: Exception) -> bool:
-    """Check if an error should NOT be retried by ARQ.
-
-    Primary path: use the structured `retryable` attribute on ProviderError.
-    Fallback: string pattern matching for plain exceptions or legacy errors
-    without structured attributes.
-    """
-    # Structured path: ProviderError subclasses carry .retryable
-    if hasattr(error, 'retryable'):
-        return not error.retryable
-
-    # Fallback: string pattern matching for unstructured errors
-    error_msg = str(error).lower()
-    for pattern in NON_RETRYABLE_ERROR_PATTERNS:
-        if pattern.lower() in error_msg:
-            return True
-    return False
-
-
-def _extract_error_code(error: Exception) -> str | None:
-    """Extract structured error_code from an exception, if available."""
-    return getattr(error, 'error_code', None)
-
-
-def _is_auth_rotation_error(error: Exception) -> bool:
-    """
-    Return True when a provider error should rotate to a different account.
-
-    Covers structured auth errors plus Pixverse session-invalid signals that may
-    surface as generic ProviderError messages.
-    """
-    if isinstance(error, ProviderAuthenticationError):
-        return True
-
-    error_code = _extract_error_code(error)
-    if error_code == "provider_auth":
-        return True
-
-    message = str(error).lower()
-    session_markers = (
-        "10005",
-        "10003",
-        "10002",
-        "logged in elsewhere",
-        "logged_elsewhere",
-        "user is not login",
-        "token is expired",
-        "session expired",
-        "authentication failed for provider",
-    )
-    return any(marker in message for marker in session_markers)
-
-
-def _is_pinned_account(generation: Generation, account: ProviderAccount) -> bool:
-    """Return True when the account is the user's explicitly-pinned choice."""
-    pref = getattr(generation, 'preferred_account_id', None)
-    return pref is not None and pref == account.id
-
-
-
-def _get_max_tries() -> int:
-    """Get ARQ max_tries setting."""
-    import os
-    return int(os.getenv("ARQ_MAX_TRIES", "3"))
-
-
-def _is_final_try(ctx: dict) -> bool:
-    """Check if this is the final ARQ try (no more retries after this)."""
-    job_try = ctx.get("job_try", 1)
-    max_tries = _get_max_tries()
-    return job_try >= max_tries
 
 
 from pixsim7.backend.main.shared.debug import (
@@ -225,12 +145,7 @@ def _get_worker_logger():
 
 
 def _init_worker_debug_flags() -> None:
-    """
-    Initialize global worker debug flags from environment.
-
-    This allows enabling worker debug without user context via
-    PIXSIM_WORKER_DEBUG (e.g. 'generation,provider,worker').
-    """
+    """Initialize global worker debug flags from environment."""
     global _worker_debug_initialized
     if _worker_debug_initialized:
         return
@@ -239,392 +154,6 @@ def _init_worker_debug_flags() -> None:
 
 
 logger = _get_worker_logger()
-
-
-async def refresh_account_credits(
-    account: ProviderAccount,
-    account_service: AccountService,
-    gen_logger,
-) -> dict:
-    """
-    Refresh credits for an account from the provider.
-
-    Returns dict with credit amounts, or empty dict on failure.
-    Credit types are determined dynamically from the provider's manifest/adapter
-    via get_credit_types() instead of being hardcoded.
-    """
-    from pixsim7.backend.main.domain.providers.registry import registry
-
-    try:
-        provider = registry.get(account.provider_id)
-
-        # Use get_credits (fast, no ad-task lookup)
-        if hasattr(provider, 'get_credits'):
-            credits_data = await provider.get_credits(account, retry_on_session_error=False)
-        else:
-            # Provider has no remote credit-fetch method (e.g. web-API-replay
-            # providers like Remaker).  Fall back to DB-stored credits so the
-            # account isn't incorrectly rejected/exhausted.
-            if account.credits:
-                return {c.credit_type: c.amount for c in account.credits}
-            gen_logger.debug("provider_no_credits_method", provider_id=account.provider_id)
-            return {}
-
-        # Get valid credit types from provider (no longer hardcoded)
-        valid_credit_types = set()
-        if hasattr(provider, 'get_credit_types'):
-            valid_credit_types = set(provider.get_credit_types())
-        else:
-            # Fallback for providers without get_credit_types()
-            valid_credit_types = {'web', 'openapi', 'standard', 'usage'}
-
-        # Update credits in database and build filtered result
-        filtered_credits = {}
-        if credits_data:
-            for credit_type, amount in credits_data.items():
-                if credit_type in valid_credit_types:
-                    try:
-                        await account_service.set_credit(account.id, credit_type, int(amount))
-                        filtered_credits[credit_type] = int(amount)
-                    except Exception as e:
-                        gen_logger.warning("credit_update_failed", credit_type=credit_type, error=str(e))
-
-            gen_logger.info("credits_refreshed", account_id=account.id, credits=filtered_credits)
-            AccountEventService.record(
-                "credits_refreshed",
-                account.id,
-                provider_id=account.provider_id,
-                extra={"credits": filtered_credits},
-            )
-
-        return filtered_credits
-
-    except Exception as e:
-        gen_logger.warning("credits_refresh_failed", account_id=account.id, error=str(e))
-        return {}
-
-
-def has_sufficient_credits(credits_data: dict, min_credits: int = 1) -> bool:
-    """
-    Check if account has any usable credits.
-
-    Checks all credit types in credits_data. Returns True if any type has
-    sufficient credits. This is provider-agnostic - works with any credit types.
-    """
-    if not credits_data:
-        return False
-
-    # Check if any credit type has sufficient credits
-    for credit_type, amount in credits_data.items():
-        try:
-            if int(amount) >= min_credits:
-                return True
-        except (ValueError, TypeError):
-            continue
-
-    return False
-
-
-def _required_generation_credit_hint(
-    generation: Generation,
-    params: dict[str, Any] | None = None,
-) -> int | None:
-    """Best-effort required credit estimate for pre-submit account filtering.
-
-    Prefer the normalized billing field computed at creation time, and fall back
-    to provider-param hints when available.
-    """
-    estimated = getattr(generation, "estimated_credits", None)
-    if estimated is not None:
-        try:
-            return max(0, int(estimated))
-        except Exception:
-            pass
-
-    if isinstance(params, dict):
-        raw_hint = params.get("credit_change")
-        if raw_hint is not None:
-            try:
-                # `credit_change` is a delta hint; normalize to positive cost.
-                return max(0, abs(int(raw_hint)))
-            except Exception:
-                try:
-                    return max(0, abs(int(float(raw_hint))))
-                except Exception:
-                    pass
-
-    return None
-
-
-def is_unlimited_model(account: ProviderAccount, model: str | None) -> bool:
-    """Check if the model is in the account's unlimited image models list.
-
-    Unlimited models (e.g. qwen-image on Pro plans) don't consume credits,
-    so credit checks should be bypassed for them.
-    """
-    if not model or not account.provider_metadata:
-        return False
-    unlimited = account.provider_metadata.get("plan_unlimited_image_models") or []
-    return model in unlimited
-
-
-async def _release_account_reservation(
-    *,
-    account_service: AccountService,
-    account_id: int,
-    gen_logger,
-    skip_wake: bool = False,
-) -> None:
-    """Best-effort account release helper used across failure paths."""
-    try:
-        await account_service.release_account(account_id, skip_wake=skip_wake)
-    except Exception as release_err:
-        gen_logger.warning("account_release_failed", error=str(release_err))
-
-
-async def _apply_account_cooldown(
-    *,
-    db: AsyncSession,
-    account: ProviderAccount,
-    cooldown_seconds: int,
-    gen_logger,
-    event_name: str,
-    error_code: str | None = None,
-) -> None:
-    """Apply account cooldown and log outcome."""
-    try:
-        account.cooldown_until = datetime.now(timezone.utc) + timedelta(
-            seconds=cooldown_seconds,
-        )
-        await db.commit()
-        payload = {
-            "account_id": account.id,
-            "cooldown_seconds": cooldown_seconds,
-        }
-        if error_code:
-            payload["error_code"] = error_code
-        gen_logger.info(event_name, **payload)
-        AccountEventService.record(
-            "cooldown_applied",
-            account.id,
-            provider_id=account.provider_id,
-            cooldown_seconds=cooldown_seconds,
-            error_code=error_code,
-        )
-    except Exception as cooldown_err:
-        gen_logger.warning(
-            "account_cooldown_failed",
-            account_id=account.id,
-            error=str(cooldown_err),
-        )
-
-
-async def _requeue_generation_for_account_rotation(
-    *,
-    db: AsyncSession,
-    generation: Generation,
-    generation_id: int,
-    failed_account_id: int,
-    reason: str,
-    log_event: str,
-    account_log_field: str,
-    gen_logger,
-    clear_preferred_on_account_match: bool = False,
-    error_code: str | None = None,
-    increment_retry: bool = False,
-) -> dict | None:
-    """
-    Reset generation state and enqueue it to retry with a different account.
-
-    Returns requeue payload on success; returns None if enqueue fails so caller
-    can fall through to standard failure handling.
-    """
-    cleared_preferred = False
-    generation.account_id = None
-    if (
-        clear_preferred_on_account_match
-        and generation.preferred_account_id == failed_account_id
-    ):
-        generation.preferred_account_id = None
-        cleared_preferred = True
-
-    try:
-        from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-        from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
-
-        if increment_retry:
-            generation.retry_count = (generation.retry_count or 0) + 1
-        generation.status = GenStatus.PENDING
-        generation.started_at = None
-        await db.commit()
-        await db.refresh(generation)
-
-        arq_pool = await get_arq_pool()
-        enqueue_result = await enqueue_generation_retry_job(arq_pool, generation.id)
-
-        payload = {
-            "generation_id": generation.id,
-            account_log_field: failed_account_id,
-            "enqueue_deduped": bool(enqueue_result.get("deduped")),
-        }
-        if clear_preferred_on_account_match:
-            payload["cleared_preferred_account"] = cleared_preferred
-        if error_code:
-            payload["error_code"] = error_code
-        if increment_retry:
-            payload["retry_attempt"] = generation.retry_count
-        gen_logger.info(log_event, **payload)
-
-        result = {
-            "status": "requeued",
-            "reason": reason,
-            "generation_id": generation_id,
-        }
-        if increment_retry:
-            result["retry_attempt"] = generation.retry_count
-        return result
-    except Exception as requeue_err:
-        gen_logger.error(
-            "generation_requeue_failed",
-            error=str(requeue_err),
-            generation_id=generation.id,
-        )
-        return None
-
-
-async def _defer_pinned_generation(
-    *,
-    db: AsyncSession,
-    generation: Generation,
-    generation_id: int,
-    account_id: int,
-    defer_seconds: int,
-    reason: str,
-    gen_logger,
-    increment_retry: bool = True,
-) -> dict | None:
-    """
-    Reset a pinned generation to PENDING and hold it for account-dispatch.
-
-    Used when the pinned account is temporarily at capacity (concurrent limit)
-    or on cooldown.  Set ``increment_retry=False`` for passive cooldown waits
-    that shouldn't count against the retry budget.
-
-    Returns defer payload on success; None on failure so the caller can fall
-    through to standard failure handling.
-    """
-    try:
-        from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
-
-        if increment_retry:
-            generation.retry_count = (generation.retry_count or 0) + 1
-        now = datetime.now(timezone.utc)
-        generation.status = GenStatus.PENDING
-        generation.started_at = None
-        generation.account_id = None
-        generation.scheduled_at = now + timedelta(seconds=defer_seconds)
-        generation.updated_at = now
-        await db.commit()
-        await db.refresh(generation)
-
-        logged_defer_seconds = defer_seconds
-        try:
-            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-
-            arq_pool = await get_arq_pool()
-            await set_generation_wait_metadata(
-                arq_pool,
-                generation.id,
-                reason=reason,
-                account_id=account_id,
-                next_attempt_at=generation.scheduled_at,
-                source="job_processor",
-            )
-        except Exception:
-            gen_logger.debug(
-                "generation_wait_meta_set_failed",
-                generation_id=generation.id,
-                account_id=account_id,
-                reason=reason,
-                exc_info=True,
-            )
-
-        # Safety-net deferred enqueue: ensures the generation is revisited even
-        # if no account release wake sees it promptly after `scheduled_at`
-        # expires. We intentionally release the enqueue lease immediately after
-        # scheduling so an earlier capacity wake can still preempt this timer.
-        try:
-            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-
-            arq_pool = await get_arq_pool()
-            enqueue_result = await enqueue_generation_retry_job(
-                arq_pool,
-                generation.id,
-                defer_seconds=defer_seconds,
-            )
-            if enqueue_result.get("enqueued"):
-                await release_generation_enqueue_lease(arq_pool, generation.id)
-            gen_logger.debug(
-                "generation_deferred_pinned_safety_enqueued",
-                generation_id=generation.id,
-                account_id=account_id,
-                defer_seconds=defer_seconds,
-                actual_defer_seconds=enqueue_result.get("actual_defer_seconds"),
-                enqueue_deduped=bool(enqueue_result.get("deduped")),
-                lease_released_for_early_wake=bool(enqueue_result.get("enqueued")),
-                target_queue=GENERATION_RETRY_QUEUE_NAME,
-            )
-        except Exception:
-            gen_logger.debug(
-                "generation_deferred_pinned_safety_enqueue_failed",
-                generation_id=generation.id,
-                account_id=account_id,
-                reason=reason,
-                exc_info=True,
-            )
-
-        gen_logger.info(
-            "generation_deferred_pinned",
-            generation_id=generation.id,
-            account_id=account_id,
-            retry_attempt=generation.retry_count,
-            defer_seconds=logged_defer_seconds,
-            base_defer_seconds=defer_seconds,
-            reason=reason,
-            target_queue=None,
-            dispatch_mode="account_dispatcher",
-        )
-
-        return {
-            "status": "waiting",
-            "reason": reason,
-            "generation_id": generation_id,
-            "retry_attempt": generation.retry_count,
-            "defer_seconds": logged_defer_seconds,
-            "dispatch_mode": "account_dispatcher",
-        }
-    except Exception as requeue_err:
-        gen_logger.error(
-            "generation_requeue_failed",
-            error=str(requeue_err),
-            generation_id=generation.id,
-        )
-        return None
-
-
-async def _count_pending_pinned_siblings(
-    db: AsyncSession,
-    preferred_account_id: int,
-    exclude_generation_id: int,
-) -> int:
-    """Backward-compatible wrapper: count runnable pending siblings."""
-    counts = await _count_runnable_pinned_siblings(
-        db=db,
-        preferred_account_id=preferred_account_id,
-        exclude_generation_id=exclude_generation_id,
-        current_generation_created_at=None,
-    )
-    return int(counts.get("total_runnable", 0))
 
 
 async def process_generation(ctx: dict, generation_id: int) -> dict:
@@ -903,8 +432,18 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     except Exception as _pin_err:
                         gen_logger.warning("pinned_account_query_failed", error=str(_pin_err))
 
+                # Track accounts rejected during credit verification so that
+                # acquire_account never re-selects the same account within this
+                # fallback loop (prevents wasting attempts on accounts that have
+                # *some* credits but not enough for this operation).
+                _rejected_account_ids: list[int] = []
+
                 async def acquire_account():
                     """Select and reserve next account. Raises if pool empty."""
+                    # Combine pinned exclusions with accounts already rejected
+                    # in this fallback loop.
+                    exclude_ids = list(_pinned_exclude_ids)
+                    exclude_ids.extend(_rejected_account_ids)
                     try:
                         # Do not include exhausted accounts in the selection pool by default.
                         # Using `bool(gen_model)` here made almost every request include
@@ -915,12 +454,13 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             user_id=generation.user_id,
                             include_exhausted=include_exhausted_candidates,
                             min_credits=required_credit_hint,
-                            exclude_account_ids=_pinned_exclude_ids or None,
+                            exclude_account_ids=exclude_ids or None,
                         )
                         return acct
                     except (NoAccountAvailableError, AccountCooldownError) as e:
                         # If we excluded pinned accounts and that left no accounts,
                         # retry without exclusions so non-pinned jobs don't starve.
+                        # Still exclude rejected accounts — they genuinely lack credits.
                         if _pinned_exclude_ids:
                             try:
                                 gen_logger.info("retrying_without_pinned_exclusion")
@@ -929,6 +469,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                                     user_id=generation.user_id,
                                     include_exhausted=include_exhausted_candidates,
                                     min_credits=required_credit_hint,
+                                    exclude_account_ids=_rejected_account_ids or None,
                                 )
                                 return acct
                             except (NoAccountAvailableError, AccountCooldownError):
@@ -965,9 +506,10 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     return has_sufficient_credits(credits_data, min_credits=min_credits)
 
                 async def reject_account(acct: ProviderAccount) -> None:
-                    """Release account; only mark exhausted if truly zero credits."""
+                    """Release account and exclude from further attempts in this loop."""
                     gen_logger.warning("account_no_credits", account_id=acct.id)
                     debug.worker("account_no_credits", account_id=acct.id)
+                    _rejected_account_ids.append(acct.id)
                     await account_service.release_account(acct.id)
                     # Only mark exhausted if the account has zero credits across
                     # all types.  If it has *some* credits (just not enough for
@@ -999,6 +541,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         "all_accounts_exhausted",
                         attempts=MAX_ACCOUNT_RETRIES,
                         last_account_id=last_account_id,
+                        rejected_account_ids=_rejected_account_ids,
                     )
                     debug.worker(
                         "all_accounts_exhausted",
@@ -1662,7 +1205,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
                 raise
 
-        except (NoAccountAvailableError, AccountCooldownError) as e:
+        except (NoAccountAvailableError, AccountCooldownError, AccountExhaustedError) as e:
             gen_logger.warning(
                 "generation_waiting_for_account_capacity",
                 error=str(e),
