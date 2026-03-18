@@ -100,6 +100,11 @@ class BackendPluginInfo(BaseModel):
     provides_capabilities: List[str] = Field(default_factory=list)
     consumes_features: List[str] = Field(default_factory=list)
     provides_features: List[str] = Field(default_factory=list)
+    explicit_consumes_features: List[str] = Field(default_factory=list)
+    explicit_provides_features: List[str] = Field(default_factory=list)
+    default_consumes_features: List[str] = Field(default_factory=list)
+    default_provides_features: List[str] = Field(default_factory=list)
+    feature_relation_mode: Optional[Literal["explicit", "family_default", "mixed", "none"]] = None
     status: Optional[Literal["enabled", "disabled"]] = None
 
 
@@ -144,6 +149,7 @@ class ArchitectureLink(BaseModel):
     kind: Literal["frontend_to_backend", "plugin_to_capability", "plugin_to_feature", "service_to_route"]
     status: Literal["resolved", "unresolved", "stale"]
     direction: Optional[Literal["consumes", "provides", "unknown"]] = None
+    relation_source: Optional[Literal["explicit", "family_default", "mixed"]] = None
 
     model_config = {"populate_by_name": True}
 

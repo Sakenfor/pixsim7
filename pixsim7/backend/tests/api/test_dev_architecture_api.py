@@ -98,6 +98,7 @@ async def test_graph_returns_valid_schema():
     plugin_feature_links = [link for link in data["links"] if link.get("kind") == "plugin_to_feature"]
     for link in plugin_feature_links:
         assert link.get("direction") in ("consumes", "provides", "unknown")
+        assert link.get("relation_source") in ("explicit", "family_default", "mixed", None)
 
     # Metrics
     metrics = data["metrics"]

@@ -71,21 +71,19 @@ const FAMILY_FEATURE_MAP: Record<UnifiedPluginFamily, {
   "overlay-widget":  { consumes: ["workspace"],         provides: ["ui-overlay"] },
 };
 
-/** Prefer explicit plugin dependencies; fall back to family defaults when absent. */
+/** Family defaults are baseline; explicit plugin relations augment them. */
 function resolvePluginFeaturesInferred(plugin: UnifiedPluginDescriptor) {
   const explicitConsumes = plugin.consumesFeatures ?? [];
   const explicitProvides = plugin.providesFeatures ?? [];
-  if (explicitConsumes.length > 0 || explicitProvides.length > 0) {
-    return {
-      consumes: [...new Set(explicitConsumes)],
-      provides: [...new Set(explicitProvides)],
-      unknown: [],
-    };
-  }
-
   const familyDefaults = FAMILY_FEATURE_MAP[plugin.family] ?? { consumes: [], provides: [] };
   const consumes = new Set(familyDefaults.consumes);
   const provides = new Set(familyDefaults.provides);
+  for (const featureId of explicitConsumes) {
+    consumes.add(featureId);
+  }
+  for (const featureId of explicitProvides) {
+    provides.add(featureId);
+  }
   return { consumes: [...consumes], provides: [...provides], unknown: [] };
 }
 

@@ -13,7 +13,7 @@ Endpoints:
 - GET /dev/architecture/unified - Combined backend + frontend architecture
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Literal
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
@@ -89,6 +89,11 @@ class BackendPluginInfo(BaseModel):
     provides_capabilities: List[str] = Field(default_factory=list)
     consumes_features: List[str] = Field(default_factory=list)
     provides_features: List[str] = Field(default_factory=list)
+    explicit_consumes_features: List[str] = Field(default_factory=list)
+    explicit_provides_features: List[str] = Field(default_factory=list)
+    default_consumes_features: List[str] = Field(default_factory=list)
+    default_provides_features: List[str] = Field(default_factory=list)
+    feature_relation_mode: Optional[Literal["explicit", "family_default", "mixed", "none"]] = None
     status: Optional[str] = None
 
 
@@ -306,6 +311,106 @@ def discover_plugin_manifests() -> List[Dict[str, Any]]:
         return []
 
     plugins = []
+    known_feature_ids: set[str] = {
+        "assets",
+        "automation",
+        "game",
+        "generation",
+        "gizmos",
+        "graph",
+        "interaction-demo",
+        "interactions",
+        "npcs",
+        "plugins",
+        "routine-graph",
+        "settings",
+        "simulation",
+        "workspace",
+    }
+
+    token_to_feature_ids: Dict[str, List[str]] = {
+        "asset": ["assets"],
+        "assets": ["assets"],
+        "gallery": ["assets"],
+        "media": ["assets"],
+        "pixverse": ["assets"],
+        "automation": ["automation"],
+        "agent": ["automation"],
+        "agents": ["automation"],
+        "workflow": ["automation"],
+        "game": ["game"],
+        "world": ["game"],
+        "quest": ["game"],
+        "quests": ["game"],
+        "location": ["game"],
+        "locations": ["game"],
+        "session": ["game"],
+        "sessions": ["game"],
+        "inventory": ["game"],
+        "action": ["game"],
+        "actions": ["game"],
+        "trigger": ["game"],
+        "triggers": ["game"],
+        "scene": ["game"],
+        "scenes": ["game"],
+        "generation": ["generation"],
+        "generations": ["generation"],
+        "prompt": ["generation"],
+        "prompts": ["generation"],
+        "provider": ["generation"],
+        "providers": ["generation"],
+        "semantic": ["generation"],
+        "analyzer": ["generation"],
+        "analyzers": ["generation"],
+        "analysis": ["generation"],
+        "analyses": ["generation"],
+        "ai": ["generation"],
+        "llm": ["generation"],
+        "gizmo": ["gizmos"],
+        "gizmos": ["gizmos"],
+        "graph": ["graph"],
+        "interaction": ["interactions"],
+        "interactions": ["interactions"],
+        "dialogue": ["interactions"],
+        "npc": ["npcs"],
+        "npcs": ["npcs"],
+        "character": ["npcs"],
+        "characters": ["npcs"],
+        "plugin": ["plugins"],
+        "plugins": ["plugins"],
+        "catalog": ["plugins"],
+        "routine": ["routine-graph"],
+        "behavior": ["routine-graph"],
+        "settings": ["settings"],
+        "setting": ["settings"],
+        "auth": ["settings"],
+        "user": ["settings"],
+        "users": ["settings"],
+        "account": ["settings"],
+        "accounts": ["settings"],
+        "notification": ["settings"],
+        "notifications": ["settings"],
+        "simulation": ["simulation"],
+        "stat": ["simulation"],
+        "stats": ["simulation"],
+        "workspace": ["workspace"],
+        "dev": ["workspace"],
+        "admin": ["workspace"],
+        "docs": ["workspace"],
+        "plan": ["workspace"],
+        "plans": ["workspace"],
+        "architecture": ["workspace"],
+        "testing": ["workspace"],
+        "sql": ["workspace"],
+        "database": ["workspace"],
+        "migration": ["workspace"],
+        "migrations": ["workspace"],
+        "logs": ["workspace"],
+        "service": ["workspace"],
+        "services": ["workspace"],
+        "websocket": ["workspace"],
+        "introspection": ["workspace"],
+    }
 
     def _extract_string(field: str, content: str, default: str = "") -> str:
         match = re.search(rf'{field}\s*=\s*["\']([^"\']+)["\']', content)
@@ -322,6 +427,72 @@ def discover_plugin_manifests() -> List[Dict[str, Any]]:
         if not match:
             return default
         return match.group(1) == "True"
+
+    def _normalize_key(value: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
+
+    def _tokenize(value: str) -> List[str]:
+        return [token for token in re.split(r"[^a-z0-9]+", value.lower()) if token]
+
+    def _dedupe_sorted(values: List[str]) -> List[str]:
+        return sorted(set(v for v in values if v))
+
+    def _collect_frontend_feature_context() -> tuple[set[str], Dict[str, set[str]]]:
+        feature_ids = set(known_feature_ids)
+        backend_ref_to_features: Dict[str, set[str]] = {}
+        app_map = load_frontend_app_map()
+        for entry in app_map.get("entries", []):
+            if not isinstance(entry, dict):
+                continue
+            feature_id = entry.get("id")
+            if not isinstance(feature_id, str) or not feature_id:
+                continue
+            feature_ids.add(feature_id)
+
+            backend_refs = entry.get("backend") or []
+            if not isinstance(backend_refs, list):
+                continue
+            for ref in backend_refs:
+                if not isinstance(ref, str):
+                    continue
+                tail = ref.rsplit(".", 1)[-1]
+                key = _normalize_key(tail)
+                if not key:
+                    continue
+                if key not in backend_ref_to_features:
+                    backend_ref_to_features[key] = set()
+                backend_ref_to_features[key].add(feature_id)
+        return feature_ids, backend_ref_to_features
+
+    frontend_feature_ids, backend_ref_to_features = _collect_frontend_feature_context()
+
+    def _infer_features_from_values(values: List[str]) -> set[str]:
+        scores: Dict[str, int] = {}
+
+        def _add(feature_id: str, weight: int) -> None:
+            if feature_id in frontend_feature_ids:
+                scores[feature_id] = scores.get(feature_id, 0) + weight
+
+        for value in values:
+            if not value:
+                continue
+            normalized = _normalize_key(value)
+            if normalized in backend_ref_to_features:
+                for feature_id in backend_ref_to_features[normalized]:
+                    _add(feature_id, 6)
+
+            tokens = _tokenize(value)
+            for token in tokens:
+                for feature_id in token_to_feature_ids.get(token, []):
+                    _add(feature_id, 2)
+
+            if normalized.startswith("dev_"):
+                _add("workspace", 3)
+            if normalized.startswith("game_"):
+                _add("game", 3)
+
+        # Avoid weak/noisy matches from single incidental tokens.
+        return {feature_id for feature_id, score in scores.items() if score >= 3}
 
     # Scan for manifest.py files
     for manifest_file in routes_dir.rglob("manifest.py"):
@@ -343,10 +514,33 @@ def discover_plugin_manifests() -> List[Dict[str, Any]]:
             dependencies = _extract_list("dependencies", content)
             provides_capabilities = _extract_list("provides", content)
             permissions = _extract_list("permissions", content)
-            consumes_features = _extract_list("consumes_features", content)
-            provides_features = _extract_list("provides_features", content)
+            explicit_consumes_features = _dedupe_sorted(_extract_list("consumes_features", content))
+            explicit_provides_features = _dedupe_sorted(_extract_list("provides_features", content))
             enabled = _extract_bool("enabled", content, True)
             required = _extract_bool("required", content, False)
+
+            default_provides_features = _dedupe_sorted(list(_infer_features_from_values([
+                plugin_id,
+                name,
+                *tags,
+            ])))
+            default_consumes_features = _dedupe_sorted(list(_infer_features_from_values([
+                dep for dep in dependencies if dep not in {"auth", "admin"}
+            ])))
+
+            consumes_features = _dedupe_sorted(default_consumes_features + explicit_consumes_features)
+            provides_features = _dedupe_sorted(default_provides_features + explicit_provides_features)
+
+            has_explicit_relations = bool(explicit_consumes_features or explicit_provides_features)
+            has_default_relations = bool(default_consumes_features or default_provides_features)
+            if has_explicit_relations and has_default_relations:
+                feature_relation_mode: Literal["explicit", "family_default", "mixed", "none"] = "mixed"
+            elif has_explicit_relations:
+                feature_relation_mode = "explicit"
+            elif has_default_relations:
+                feature_relation_mode = "family_default"
+            else:
+                feature_relation_mode = "none"
 
             # Try to get relative path, fall back to resolved path if not possible
             try:
@@ -372,6 +566,11 @@ def discover_plugin_manifests() -> List[Dict[str, Any]]:
                 "provides_capabilities": provides_capabilities,
                 "consumes_features": consumes_features,
                 "provides_features": provides_features,
+                "explicit_consumes_features": explicit_consumes_features,
+                "explicit_provides_features": explicit_provides_features,
+                "default_consumes_features": default_consumes_features,
+                "default_provides_features": default_provides_features,
+                "feature_relation_mode": feature_relation_mode,
                 "status": "enabled" if enabled else "disabled",
             })
         except Exception as e:

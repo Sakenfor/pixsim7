@@ -277,6 +277,24 @@ def build_links(
     seen_capability_links: set[tuple[str, str]] = set()
     for plugin in backend.plugins:
         plugin_ref = f"plugin:{plugin.id}"
+        explicit_consumes = set(plugin.explicit_consumes_features or [])
+        explicit_provides = set(plugin.explicit_provides_features or [])
+        default_consumes = set(plugin.default_consumes_features or [])
+        default_provides = set(plugin.default_provides_features or [])
+
+        def _relation_sources(feature_id: str, direction: str) -> set[str]:
+            sources: set[str] = set()
+            if direction in {"consumes", "unknown"}:
+                if feature_id in explicit_consumes:
+                    sources.add("explicit")
+                if feature_id in default_consumes:
+                    sources.add("family_default")
+            if direction in {"provides", "unknown"}:
+                if feature_id in explicit_provides:
+                    sources.add("explicit")
+                if feature_id in default_provides:
+                    sources.add("family_default")
+            return sources
 
         for capability in plugin.provides_capabilities:
             to_ref = f"capability:{capability}"
@@ -306,12 +324,24 @@ def build_links(
             to_ref = f"frontend:{feature_id}"
             direction_values = feature_directions[feature_id]
             direction = "unknown" if len(direction_values) != 1 else next(iter(direction_values))
-            links.append(ArchitectureLink(**{
+            relation_sources = _relation_sources(feature_id, direction)
+            relation_source = None
+            if len(relation_sources) > 1:
+                relation_source = "mixed"
+            elif len(relation_sources) == 1:
+                relation_source = next(iter(relation_sources))
+
+            link_payload: Dict[str, Any] = {
                 "from": plugin_ref,
                 "to": to_ref,
                 "kind": "plugin_to_feature",
                 "status": "resolved" if feature_id in frontend_feature_ids else "unresolved",
                 "direction": direction,
+            }
+            if relation_source is not None:
+                link_payload["relation_source"] = relation_source
+            links.append(ArchitectureLink(**{
+                **link_payload,
             }))
 
     return links
