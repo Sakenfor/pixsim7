@@ -106,10 +106,10 @@ async def sync_test_suites(db: AsyncSession) -> SyncResult:
 
     logger.info(
         "test_suite_sync_complete",
-        created=result.created,
-        updated=result.updated,
-        removed=result.removed,
-        unchanged=result.unchanged,
+        suites_created=result.created,
+        suites_updated=result.updated,
+        suites_removed=result.removed,
+        suites_unchanged=result.unchanged,
     )
     return result
 
