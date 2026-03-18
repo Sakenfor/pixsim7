@@ -197,6 +197,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
   const setInputMode = useInputStore(s => s.setInputMode);
   const storeReorderInput = useInputStore(s => s.reorderInput);
   const storeUpdateMaskLayer = useInputStore(s => s.updateMaskLayer);
+  const storeToggleSkip = useInputStore(s => s.toggleSkip);
   const reorderInput = ctx?.reorderInput ?? storeReorderInput;
 
   // Mini gallery popover for empty slot / add asset
@@ -912,6 +913,7 @@ export function useAssetPanelState(props: QuickGenPanelProps) {
     setOperationInputIndex,
     removeInput,
     updateLockedTimestamp,
+    toggleSkip: storeToggleSkip,
     orderedInputs,
     inputIndexById,
     slotItems,

@@ -11,6 +11,8 @@ export interface CompactAssetCardLocalWidgetsOptions {
   onGenerate?: () => void;
   generating?: boolean;
   onUploadToProvider?: () => void | Promise<void>;
+  skipped?: boolean;
+  onToggleSkip?: () => void;
 }
 
 /**
@@ -30,6 +32,8 @@ export function buildCompactAssetCardLocalWidgets({
   onGenerate,
   generating = false,
   onUploadToProvider,
+  skipped,
+  onToggleSkip,
 }: CompactAssetCardLocalWidgetsOptions): OverlayWidget[] {
   const widgets: OverlayWidget[] = [];
 
@@ -39,6 +43,24 @@ export function buildCompactAssetCardLocalWidgets({
       tooltip: 'Remove',
       visibility: { trigger: 'always' },
       className: '!bg-red-600 hover:!bg-red-700 !text-white opacity-70 hover:opacity-100',
+    }));
+  }
+
+  if (onToggleSkip) {
+    widgets.push(createBadgeWidget({
+      id: 'skip-toggle',
+      ...BADGE_SLOT.topRight,
+      visibility: { trigger: skipped ? 'always' : 'hover-container' },
+      variant: 'icon',
+      icon: 'eyeOff',
+      color: 'gray',
+      shape: 'circle',
+      tooltip: skipped ? 'Include in generation' : 'Skip in generation',
+      onClick: onToggleSkip,
+      className: skipped
+        ? '!bg-amber-500 hover:!bg-amber-600 !text-white'
+        : '!bg-white/80 dark:!bg-neutral-800/80 !text-neutral-400 hover:!text-amber-500 backdrop-blur-sm opacity-70 hover:opacity-100',
+      priority: BADGE_PRIORITY.important,
     }));
   }
 

@@ -123,6 +123,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
               setOperationInputIndex={state.setOperationInputIndex}
               removeInput={state.removeInput}
               updateLockedTimestamp={state.updateLockedTimestamp}
+              toggleSkip={state.toggleSkip}
               buildFusionRoleOverlay={state.buildFusionRoleOverlay}
               buildSlotExtraWidgets={(item, idx) => state.buildSlotExtraWidgets(item, idx, { includeSlotIndex: true })}
               enableHoverPreview={state.enableHoverPreview}
@@ -245,6 +246,12 @@ export function AssetPanel(props: QuickGenPanelProps) {
                         state.updateLockedTimestamp?.(state.operationType, state.currentInputId!, timestamp)
                     : undefined
                 }
+                skipped={state.currentInput?.skipped}
+                onToggleSkip={
+                  state.currentInputId
+                    ? () => state.toggleSkip(state.operationType, state.currentInputId!)
+                    : undefined
+                }
                 {...(singleNeedsUpload
                   ? {
                       onUploadToProvider: () => state.handleUploadToProvider(currentAsset.id),
@@ -252,7 +259,9 @@ export function AssetPanel(props: QuickGenPanelProps) {
                     }
                   : {
                       onGenerate: () => state.controller.generate(
-                        state.currentInput ? { overrideOperationInputs: [state.currentInput] } : undefined
+                        state.currentInput?.asset
+                          ? { assetOverrides: [state.currentInput.asset] }
+                          : { assetOverrides: [], skipActiveAssetFallback: true }
                       ),
                       generating: state.controller.generating,
                     }

@@ -315,11 +315,13 @@ export function useQuickGenerateController() {
   /** Read current input state from store (avoids stale React hook values) */
   function getInputState(activeOperationType: OperationType = getActiveOperationType()) {
     const inputState = (useInputStore as any).getState();
-    const currentInputs = inputState.inputsByOperation?.[activeOperationType]?.items ?? [];
+    const allItems = inputState.inputsByOperation?.[activeOperationType]?.items ?? [];
+    const currentInputs = allItems.filter((item: any) => !item.skipped);
     const currentInput = inputState.getCurrentInput
       ? inputState.getCurrentInput(activeOperationType)
       : null;
-    const transitionInputs = inputState.inputsByOperation?.video_transition?.items ?? [];
+    const allTransitionItems = inputState.inputsByOperation?.video_transition?.items ?? [];
+    const transitionInputs = allTransitionItems.filter((item: any) => !item.skipped);
     return { currentInputs, currentInput, transitionInputs };
   }
 
@@ -710,7 +712,7 @@ export function useQuickGenerateController() {
     let effectiveCurrentInput: any;
     let activeAssetOverride: ReturnType<typeof toSelectedAsset> | undefined;
 
-    if (overrides?.assetOverrides?.length) {
+    if (Array.isArray(overrides?.assetOverrides)) {
       const inputItems = overrides.assetOverrides.map(asset => ({
         id: `quick-${asset.id}-${Date.now()}`,
         asset,
@@ -718,8 +720,10 @@ export function useQuickGenerateController() {
         lockedTimestamp: undefined,
       }));
       effectiveInputs = inputItems;
-      effectiveCurrentInput = inputItems[0];
-      activeAssetOverride = toSelectedAsset(overrides.assetOverrides[0], 'gallery');
+      effectiveCurrentInput = inputItems[0] ?? null;
+      if (overrides.assetOverrides.length > 0) {
+        activeAssetOverride = toSelectedAsset(overrides.assetOverrides[0], 'gallery');
+      }
     } else {
       effectiveInputs = currentInputs;
       effectiveCurrentInput = currentInput;
@@ -1177,10 +1181,24 @@ export function useQuickGenerateController() {
 
   /** Generate using only the currently selected carousel input (ignores other queued inputs). */
   async function generateCurrentOnly(count?: number) {
+    const activeOperationType = getActiveOperationType();
+    const inputState = (useInputStore as any).getState();
+    const operationData = inputState.inputsByOperation?.[activeOperationType];
+    const items = operationData?.items ?? [];
+    const rawIndex = operationData?.currentIndex ?? 1;
+
+    // Virtual empty slot: the UI index is beyond the real items list
+    const isOnVirtualSlot = items.length > 0 && rawIndex > items.length;
+
+    if (isOnVirtualSlot) {
+      // No asset on virtual slot — force text-to-* with empty inputs
+      return generate({ assetOverrides: [], skipActiveAssetFallback: true });
+    }
+
     const { currentInput } = getInputState();
     if (!currentInput?.asset) {
-      // Empty carousel slot: skip activeAsset fallback so text-to-* kicks in
-      return generate({ skipActiveAssetFallback: true });
+      // Empty carousel or no asset — skip gallery fallback so text-to-* kicks in
+      return generate({ assetOverrides: [], skipActiveAssetFallback: true });
     }
     return generate({ assetOverrides: [currentInput.asset], count });
   }

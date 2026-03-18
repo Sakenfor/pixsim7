@@ -15,7 +15,8 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +33,7 @@ from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 router = APIRouter(prefix="/meta", tags=["meta"])
-CONTRACTS_INDEX_VERSION = "2026-03-16.2"
+CONTRACTS_INDEX_VERSION = "2026-03-17.5"
 
 
 # =============================================================================
@@ -141,6 +142,115 @@ class ContractsIndexResponse(BaseModel):
     total_active_agents: int = 0
 
 
+def _normalize_route_path(path: str) -> str:
+    normalized = str(path or "").strip()
+    if not normalized.startswith("/"):
+        normalized = f"/{normalized}"
+    if normalized != "/" and normalized.endswith("/"):
+        normalized = normalized[:-1]
+    return normalized
+
+
+def _slugify_contract_token(value: str) -> str:
+    token = "".join(ch if ch.isalnum() else "_" for ch in str(value or "").strip().lower())
+    token = token.strip("_")
+    return token or "unknown"
+
+
+def _discover_game_route_group_contracts(
+    request: Optional[Request],
+    *,
+    active_sessions: List[Any],
+) -> List[ContractIndexEntry]:
+    app = getattr(request, "app", None) if request is not None else None
+    routes = getattr(app, "routes", None)
+    if not isinstance(routes, list):
+        return []
+
+    groups: Dict[str, Dict[str, Any]] = {}
+    for route in routes:
+        if not isinstance(route, APIRoute):
+            continue
+
+        normalized_path = _normalize_route_path(route.path)
+        if not normalized_path.startswith("/api/v1/game/"):
+            continue
+
+        suffix = normalized_path[len("/api/v1/game/") :]
+        if not suffix:
+            continue
+        group_key = suffix.split("/", 1)[0].strip()
+        if not group_key:
+            continue
+
+        entry = groups.setdefault(
+            group_key,
+            {
+                "methods": set(),
+                "paths": set(),
+            },
+        )
+
+        methods = {
+            method.upper()
+            for method in (route.methods or set())
+            if isinstance(method, str) and method.upper() not in {"HEAD", "OPTIONS"}
+        }
+        entry["methods"].update(methods)
+        entry["paths"].add(normalized_path)
+
+    contracts: List[ContractIndexEntry] = []
+    for group_key in sorted(groups.keys(), key=str.lower):
+        group_meta = groups[group_key]
+        group_slug = _slugify_contract_token(group_key)
+        contract_id = f"game.routes.{group_slug}"
+        contract_endpoint = f"/api/v1/game/{group_key}"
+        methods = sorted(group_meta["methods"])
+        paths = sorted(group_meta["paths"])
+
+        agents_on_contract = [
+            AgentPresence(
+                session_id=s.session_id,
+                agent_type=s.agent_type,
+                status=s.status,
+                action=s.current_action,
+                detail=s.current_detail,
+                plan_id=s.current_plan_id,
+                duration_seconds=s.duration_seconds,
+            )
+            for s in active_sessions
+            if s.current_contract_id == contract_id
+        ]
+
+        method_summary = ", ".join(methods) if methods else "none"
+        summary = (
+            f"Auto-discovered game route group '{group_key}' exposing "
+            f"{len(paths)} path(s) and methods: {method_summary}."
+        )
+
+        contracts.append(
+            ContractIndexEntry(
+                id=contract_id,
+                name=f"Game Routes: {group_key}",
+                endpoint=contract_endpoint,
+                version=CONTRACTS_INDEX_VERSION,
+                auth_required=True,
+                owner="game route plugins",
+                summary=summary,
+                audience=["user", "dev"],
+                provides=[
+                    "game_api_routes",
+                    f"game_route_group:{group_slug}",
+                ],
+                relates_to=["game.authoring", "user.assistant"],
+                sub_endpoints=[],
+                active_agents=agents_on_contract,
+            )
+        )
+
+    return contracts
+
+
 def _resolve_endpoint_availability(
     contract_id: str,
     endpoint_id: str,
@@ -165,6 +275,7 @@ def _resolve_endpoint_availability(
 
 @router.get("/contracts", response_model=ContractsIndexResponse)
 async def list_contract_endpoints(
+    request: Request = None,
     audience: Optional[str] = Query(
         None,
         description="Filter by audience: 'user' or 'dev'. Omit for all.",
@@ -179,7 +290,7 @@ async def list_contract_endpoints(
 
     Pass `?audience=user` to only get user-facing contracts (excludes dev tooling).
     """
-    _sync_prompt_contract_versions()
+    _sync_contract_versions()
     audience_filter = audience.strip() if isinstance(audience, str) else None
 
     active_sessions = agent_session_registry.get_active()
@@ -233,6 +344,18 @@ async def list_contract_endpoints(
             ],
             active_agents=agents_on_contract,
         ))
+
+    dynamic_game_route_contracts = _discover_game_route_group_contracts(
+        request,
+        active_sessions=active_sessions,
+    )
+    existing_ids = {contract.id for contract in contracts}
+    for contract in dynamic_game_route_contracts:
+        if contract.id in existing_ids:
+            continue
+        if audience_filter and audience_filter not in contract.audience:
+            continue
+        contracts.append(contract)
 
     return ContractsIndexResponse(
         version=CONTRACTS_INDEX_VERSION,
@@ -1172,11 +1295,20 @@ def _build_user_system_prompt() -> str:
     return "\n".join(lines)
 
 
-def _sync_prompt_contract_versions() -> None:
-    """Keep registry versions in sync with the canonical version constants."""
+def _sync_contract_versions() -> None:
+    """Keep registry versions in sync with canonical contract version constants."""
     from pixsim7.backend.main.api.v1.prompts.meta import (
         PROMPT_ANALYSIS_CONTRACT_VERSION,
         PROMPT_AUTHORING_CONTRACT_VERSION,
+    )
+    from pixsim7.backend.main.api.v1.game_meta import (
+        GAME_AUTHORING_CONTRACT_VERSION,
+    )
+    from pixsim7.backend.main.api.v1.meta_ui import (
+        UI_CATALOG_CONTRACT_VERSION,
+    )
+    from pixsim7.backend.main.api.v1.dev_testing import (
+        TESTING_CONTRACT_VERSION,
     )
 
     meta_contract_registry.update_version(
@@ -1184,4 +1316,13 @@ def _sync_prompt_contract_versions() -> None:
     )
     meta_contract_registry.update_version(
         "prompts.authoring", PROMPT_AUTHORING_CONTRACT_VERSION
+    )
+    meta_contract_registry.update_version(
+        "game.authoring", GAME_AUTHORING_CONTRACT_VERSION
+    )
+    meta_contract_registry.update_version(
+        "ui.catalog", UI_CATALOG_CONTRACT_VERSION
+    )
+    meta_contract_registry.update_version(
+        "testing.catalog", TESTING_CONTRACT_VERSION
     )

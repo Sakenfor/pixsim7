@@ -35,6 +35,7 @@ export interface AssetPanelGridProps {
 
   removeInput: (operationType: OperationType, inputId: string) => void;
   updateLockedTimestamp: ((operationType: OperationType, inputId: string, timestamp: number | undefined) => void) | undefined;
+  toggleSkip: (operationType: OperationType, inputId: string) => void;
 
   // Widget builders
   buildFusionRoleOverlay: (item: InputItem, slotIdx: number) => React.ReactNode | undefined;
@@ -73,6 +74,7 @@ export function AssetPanelGrid({
   setOperationInputIndex,
   removeInput,
   updateLockedTimestamp,
+  toggleSkip,
   buildFusionRoleOverlay,
   buildSlotExtraWidgets,
   enableHoverPreview,
@@ -191,6 +193,8 @@ export function AssetPanelGrid({
               asset={inputItem.asset}
               showRemoveButton
               onRemove={() => removeInput(operationType, inputItem.id)}
+              skipped={inputItem.skipped}
+              onToggleSkip={() => toggleSkip(operationType, inputItem.id)}
               lockedTimestamp={inputItem.lockedTimestamp}
               onLockTimestamp={(timestamp) => updateLockedTimestamp?.(operationType, inputItem.id, timestamp)}
               hideFooter

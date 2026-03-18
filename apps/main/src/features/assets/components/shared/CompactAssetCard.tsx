@@ -84,6 +84,9 @@ export interface CompactAssetCardProps {
   // Upload to provider shortcut (replaces generate button when asset isn't on target provider)
   onUploadToProvider?: () => void | Promise<void>;
   uploadingToProvider?: boolean;
+  // Skip toggle — temporarily omit from generation
+  skipped?: boolean;
+  onToggleSkip?: () => void;
   // Extension points
   onClick?: () => void; // Custom click handler for the card body
   overlay?: React.ReactNode; // Custom overlay content (absolute-positioned, pointer-events-none)
@@ -120,6 +123,8 @@ export function CompactAssetCard({
   generating = false,
   onUploadToProvider,
   uploadingToProvider = false,
+  skipped,
+  onToggleSkip,
   onClick,
   overlay,
   hoverActions,
@@ -235,6 +240,8 @@ export function CompactAssetCard({
   // Stable refs for callbacks used in overlay widgets (avoids identity changes)
   const onGenerateRef = useRef(onGenerate);
   onGenerateRef.current = onGenerate;
+  const onToggleSkipRef = useRef(onToggleSkip);
+  onToggleSkipRef.current = onToggleSkip;
 
   // Build extra widgets from props (remove button, status indicators, etc.)
   const cardWidgets = useMemo(
@@ -248,6 +255,8 @@ export function CompactAssetCard({
       onGenerate: onGenerate ? () => onGenerateRef.current?.() : undefined,
       generating,
       onUploadToProvider,
+      skipped,
+      onToggleSkip: onToggleSkip ? () => onToggleSkipRef.current?.() : undefined,
     }),
     [
       showRemoveButton,
@@ -258,6 +267,8 @@ export function CompactAssetCard({
       onGenerate,
       generating,
       onUploadToProvider,
+      skipped,
+      onToggleSkip,
     ],
   );
 
@@ -275,7 +286,7 @@ export function CompactAssetCard({
 
   return (
     <div
-      className={`relative rounded-md border-2 ${statusColor} bg-white dark:bg-neutral-900 overflow-hidden ${fillHeight ? 'h-full flex flex-col' : ''} ${onClick ? 'cursor-pointer' : ''} group/card ${className}`}
+      className={`relative rounded-md border-2 ${statusColor} bg-white dark:bg-neutral-900 overflow-hidden ${fillHeight ? 'h-full flex flex-col' : ''} ${onClick ? 'cursor-pointer' : ''} ${skipped ? 'opacity-40' : ''} group/card ${className}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={onClick}

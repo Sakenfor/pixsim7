@@ -90,15 +90,97 @@ def _builtin_prompts_authoring(version: str = "unknown") -> MetaContract:
         owner="prompt-authoring lane",
         summary=(
             "Prompt family/version authoring workflows, request schemas, "
-            "pre-authoring checks, constraints, idempotency, and examples."
+            "pre-authoring checks, constraints, idempotency, and examples. "
+            "Includes CRUD for families (create, read, update) and versions "
+            "(create, read, apply-edit), generation hints per authoring mode, "
+            "and category-driven mode resolution."
         ),
+        audience=["user", "dev", "agent"],
         provides=[
             "prompt_families",
+            "prompt_family_crud",
             "prompt_versions",
             "authoring_workflows",
+            "authoring_modes",
+            "generation_hints",
             "valid_values",
         ],
         relates_to=["prompts.analysis", "blocks.discovery", "user.assistant"],
+        sub_endpoints=[
+            MetaContractEndpoint(
+                id="prompts.list_families",
+                method="GET",
+                path="/api/v1/prompts/families",
+                summary="List prompt families. Filter by prompt_type, category, is_active.",
+                tags=["families", "read"],
+            ),
+            MetaContractEndpoint(
+                id="prompts.get_family",
+                method="GET",
+                path="/api/v1/prompts/families/{family_id}",
+                summary="Get a single family by ID with version count.",
+                tags=["families", "read"],
+            ),
+            MetaContractEndpoint(
+                id="prompts.create_family",
+                method="POST",
+                path="/api/v1/prompts/families",
+                summary="Create a prompt family container.",
+                tags=["families", "write"],
+            ),
+            MetaContractEndpoint(
+                id="prompts.update_family",
+                method="PATCH",
+                path="/api/v1/prompts/families/{family_id}",
+                summary=(
+                    "Partial update on a family. Send only fields to change: "
+                    "title, description, category, tags, is_active."
+                ),
+                tags=["families", "write"],
+            ),
+            MetaContractEndpoint(
+                id="prompts.list_versions",
+                method="GET",
+                path="/api/v1/prompts/families/{family_id}/versions",
+                summary="List versions for a family.",
+                tags=["versions", "read"],
+            ),
+            MetaContractEndpoint(
+                id="prompts.get_version",
+                method="GET",
+                path="/api/v1/prompts/versions/{version_id}",
+                summary="Get a single version with full prompt_text.",
+                tags=["versions", "read"],
+            ),
+            MetaContractEndpoint(
+                id="prompts.create_version",
+                method="POST",
+                path="/api/v1/prompts/families/{family_id}/versions",
+                summary="Create a version under a family with optional prompt_analysis.",
+                tags=["versions", "write"],
+            ),
+            MetaContractEndpoint(
+                id="prompts.apply_edit",
+                method="POST",
+                path="/api/v1/prompts/versions/{version_id}/apply-edit",
+                summary="Apply edits to a version, creating a child version.",
+                tags=["versions", "write"],
+            ),
+            MetaContractEndpoint(
+                id="prompts.analyze",
+                method="POST",
+                path="/api/v1/prompts/analyze",
+                summary="Analyze raw prompt text before persistence.",
+                tags=["analysis"],
+            ),
+            MetaContractEndpoint(
+                id="prompts.search_similar",
+                method="GET",
+                path="/api/v1/prompts/search/similar",
+                summary="Find similar prompts by text similarity.",
+                tags=["discovery"],
+            ),
+        ],
     )
 
 
@@ -183,7 +265,7 @@ def _builtin_plans_management() -> MetaContract:
         id="plans.management",
         name="Plan Management",
         endpoint=None,
-        version="2.2.0",
+        version="2.3.0",
         auth_required=True,
         owner="devtools lane",
         summary=(
@@ -330,6 +412,40 @@ def _builtin_plans_management() -> MetaContract:
                 tags=["update", "planning"],
             ),
             MetaContractEndpoint(
+                id="plans.progress",
+                method="POST",
+                path="/api/v1/dev/plans/progress/{plan_id}",
+                summary=(
+                    "Log in-flight checkpoint progress using point deltas and execution metadata "
+                    "(status/owner/eta/blockers/evidence) with consistent checkpoint updates."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "plan_id": {"type": "string"},
+                        "body": {
+                            "type": "object",
+                            "required": ["checkpoint_id"],
+                            "properties": {
+                                "checkpoint_id": {"type": "string"},
+                                "points_delta": {"type": "integer"},
+                                "points_done": {"type": "integer"},
+                                "points_total": {"type": "integer"},
+                                "status": {"type": "string", "enum": ["pending", "active", "done", "blocked"]},
+                                "owner": {"type": "string"},
+                                "eta": {"type": "string"},
+                                "blockers": {"type": "array", "items": {"type": "object"}},
+                                "append_evidence": {"type": "array", "items": {"type": "string"}},
+                                "note": {"type": "string"},
+                                "sync_plan_stage": {"type": "boolean"},
+                            },
+                        },
+                    },
+                    "required": ["plan_id", "body"],
+                },
+                tags=["update", "progress", "planning"],
+            ),
+            MetaContractEndpoint(
                 id="plans.documents",
                 method="GET",
                 path="/api/v1/dev/plans/documents/{plan_id}",
@@ -413,26 +529,65 @@ def _builtin_plans_management() -> MetaContract:
     )
 
 
+def _builtin_game_authoring(version: str = "unknown") -> MetaContract:
+    return MetaContract(
+        id="game.authoring",
+        name="Game Authoring Contract",
+        endpoint="/api/v1/game/meta/authoring-contract",
+        version=version,
+        auth_required=True,
+        owner="game authoring lane",
+        summary=(
+            "Canonical API workflow contract for world bootstrap, behavior setup, "
+            "project snapshots, and agent-driven game iteration."
+        ),
+        provides=[
+            "world_bootstrap_workflows",
+            "behavior_authoring_workflows",
+            "project_snapshot_iteration",
+            "project_discovery",
+            "seed_profile_guidance",
+            "idempotency_guidance",
+        ],
+        relates_to=[
+            "blocks.discovery",
+            "prompts.authoring",
+            "user.assistant",
+            "plans.management",
+        ],
+        sub_endpoints=[
+            MetaContractEndpoint(
+                id="game.meta.authoring_contract",
+                method="GET",
+                path="/api/v1/game/meta/authoring-contract",
+                summary="Machine-readable workflow contract for game creation and iteration.",
+            ),
+        ],
+    )
+
+
 def _builtin_notifications() -> MetaContract:
     return MetaContract(
         id="notifications",
         name="Notifications",
         endpoint=None,
-        version="1.1.0",
+        version="2.0.0",
         auth_required=True,
         owner="platform",
         summary=(
-            "Broadcast and targeted notifications for plan events, feature "
-            "announcements, and agent actions. Per-category preferences with "
-            "granularity control."
+            "Structured notification contract — all writes require event_type. "
+            "Dynamic read-time rendering and category granularity preferences. "
+            "POST /notifications/emit is the primary write path."
         ),
         provides=[
             "notification_list",
-            "notification_create",
+            "notification_structured_emit",
+            "notification_structured_write_policy",
+            "notification_event_types",
             "notification_read_status",
             "notification_categories",
         ],
-        relates_to=["plans.management"],
+        relates_to=["plans.management", "user.assistant"],
         sub_endpoints=[
             MetaContractEndpoint(
                 id="notifications.categories",
@@ -450,7 +605,56 @@ def _builtin_notifications() -> MetaContract:
                 id="notifications.create",
                 method="POST",
                 path="/api/v1/notifications",
-                summary="Create a notification (broadcast or targeted to a user).",
+                summary="Deprecated — use notifications.emit. Stamps event_type='notification.manual' automatically.",
+                tags=["write", "legacy", "deprecated"],
+            ),
+            MetaContractEndpoint(
+                id="notifications.emit",
+                method="POST",
+                path="/api/v1/notifications/emit",
+                summary=(
+                    "Structured emit endpoint for agents/integrations. "
+                    "Requires event_type + payload; known events are validated."
+                ),
+                input_schema={
+                    "type": "object",
+                    "required": ["body"],
+                    "properties": {
+                        "body": {
+                            "type": "object",
+                            "required": ["event_type"],
+                            "properties": {
+                                "event_type": {
+                                    "type": "string",
+                                    "description": "Event identifier (e.g. plan.created, plan.updated).",
+                                },
+                                "category": {"type": "string"},
+                                "severity": {"type": "string"},
+                                "source": {"type": "string"},
+                                "ref_type": {"type": "string"},
+                                "ref_id": {"type": "string"},
+                                "broadcast": {"type": "boolean"},
+                                "user_id": {"type": "integer"},
+                                "actor_name": {"type": "string"},
+                                "actor_user_id": {"type": "integer"},
+                                "title": {
+                                    "type": "string",
+                                    "description": "Required only for custom event types.",
+                                },
+                                "body": {"type": "string"},
+                                "payload": {
+                                    "type": "object",
+                                    "description": (
+                                        "Structured event payload. Built-in plan events expect "
+                                        "payload.planTitle (plan.created) and payload.changes "
+                                        "(plan.updated)."
+                                    ),
+                                },
+                            },
+                        }
+                    },
+                },
+                tags=["write", "structured", "agent"],
             ),
             MetaContractEndpoint(
                 id="notifications.mark_read",
@@ -514,29 +718,72 @@ def _builtin_ui_catalog() -> MetaContract:
     return MetaContract(
         id="ui.catalog",
         name="UI Component Catalog",
-        endpoint=None,
+        endpoint="/api/v1/meta/ui/contract",
         version="1.0.0",
         auth_required=False,
         owner="frontend lane",
-        audience=["dev"],
+        audience=["dev", "agent"],
         summary=(
-            "Machine-readable catalog of shared UI components, hooks, icons, "
-            "and composition patterns. Prevents ad-hoc inline UI."
+            "Queryable catalog of UI components, composition patterns, and "
+            "agent guidance. Backend-owned source of truth — agents query "
+            "these endpoints instead of parsing the generated JSON file."
         ),
         provides=[
             "ui_components",
-            "ui_hooks",
-            "ui_icons",
             "ui_patterns",
-            "agent_guidance",
+            "ui_guidance",
+            "overlay_widget_api",
+            "badge_system",
         ],
         relates_to=["devtools.codegen", "plans.management"],
         sub_endpoints=[
             MetaContractEndpoint(
-                id="ui.catalog_file",
+                id="ui.contract",
                 method="GET",
-                path="docs/ui-component-catalog.generated.json",
-                summary="Generated catalog JSON (filesystem, not an API endpoint).",
+                path="/api/v1/meta/ui/contract",
+                summary="Catalog summary: counts, categories, version.",
+                auth_required=False,
+                tags=["discovery"],
+            ),
+            MetaContractEndpoint(
+                id="ui.components",
+                method="GET",
+                path="/api/v1/meta/ui/components",
+                summary="List/search UI components. Supports ?q= and ?category= filters.",
+                auth_required=False,
+                tags=["components"],
+            ),
+            MetaContractEndpoint(
+                id="ui.component_detail",
+                method="GET",
+                path="/api/v1/meta/ui/components/{component_id}",
+                summary="Single component with exports, examples, and use_instead_of.",
+                auth_required=False,
+                tags=["components"],
+            ),
+            MetaContractEndpoint(
+                id="ui.patterns",
+                method="GET",
+                path="/api/v1/meta/ui/patterns",
+                summary="Composition patterns (sidebar, overlay, filterable list). Supports ?topic= filter.",
+                auth_required=False,
+                tags=["patterns"],
+            ),
+            MetaContractEndpoint(
+                id="ui.pattern_detail",
+                method="GET",
+                path="/api/v1/meta/ui/patterns/{pattern_id}",
+                summary="Single pattern with step-by-step recipe.",
+                auth_required=False,
+                tags=["patterns"],
+            ),
+            MetaContractEndpoint(
+                id="ui.guidance",
+                method="GET",
+                path="/api/v1/meta/ui/guidance",
+                summary="Agent coding rules and pre-coding checklist.",
+                auth_required=False,
+                tags=["guidance"],
             ),
         ],
     )
@@ -626,14 +873,83 @@ def _builtin_user_assistant() -> MetaContract:
     )
 
 
+def _builtin_testing_catalog() -> MetaContract:
+    return MetaContract(
+        id="testing.catalog",
+        name="Test Suite Catalog",
+        endpoint="/api/v1/dev/testing/contract",
+        version="1.0.0",
+        auth_required=False,
+        owner="platform",
+        audience=["dev", "agent"],
+        summary=(
+            "Live test suite discovery, conventions, and coverage-gap detection. "
+            "Suites self-register via TEST_SUITE dict literals (AST-extracted). "
+            "Agents query guidance and coverage endpoints when creating tests."
+        ),
+        provides=[
+            "test_suites",
+            "test_guidance",
+            "test_conventions",
+            "coverage_gaps",
+            "plan_evidence_linking",
+        ],
+        relates_to=["plans.management", "devtools.codegen", "ui.catalog"],
+        sub_endpoints=[
+            MetaContractEndpoint(
+                id="testing.contract",
+                method="GET",
+                path="/api/v1/dev/testing/contract",
+                summary="Catalog summary: suite count, layers, kinds, categories.",
+                auth_required=False,
+                tags=["discovery"],
+            ),
+            MetaContractEndpoint(
+                id="testing.catalog",
+                method="GET",
+                path="/api/v1/dev/testing/catalog",
+                summary="List/filter test suites. Supports ?layer=, ?category=, ?kind= filters.",
+                auth_required=False,
+                tags=["suites"],
+            ),
+            MetaContractEndpoint(
+                id="testing.validate",
+                method="GET",
+                path="/api/v1/dev/testing/catalog/validate",
+                summary="Validate all suite metadata (paths exist, required fields).",
+                auth_required=False,
+                tags=["validation"],
+            ),
+            MetaContractEndpoint(
+                id="testing.guidance",
+                method="GET",
+                path="/api/v1/dev/testing/guidance",
+                summary="Conventions, TEST_SUITE template, and pre-creation checklist for agents.",
+                auth_required=False,
+                tags=["guidance"],
+            ),
+            MetaContractEndpoint(
+                id="testing.coverage_gaps",
+                method="GET",
+                path="/api/v1/dev/testing/coverage-gaps",
+                summary="Find source paths not covered by any test suite. Supports ?scope= prefix filter.",
+                auth_required=False,
+                tags=["coverage"],
+            ),
+        ],
+    )
+
+
 _BUILTIN_FACTORIES = {
     "prompts.analysis": _builtin_prompts_analysis,
     "prompts.authoring": _builtin_prompts_authoring,
     "blocks.discovery": _builtin_blocks_discovery,
     "plans.management": _builtin_plans_management,
+    "game.authoring": _builtin_game_authoring,
     "notifications": _builtin_notifications,
     "devtools.codegen": _builtin_devtools_codegen,
     "ui.catalog": _builtin_ui_catalog,
+    "testing.catalog": _builtin_testing_catalog,
     "user.assistant": _builtin_user_assistant,
 }
 

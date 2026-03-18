@@ -45,6 +45,7 @@ export interface InputItem {
   assetSetRef?: AssetSetSlotRef; // optional set linkage for variety picks
   maskUrl?: string; // DEPRECATED — kept for migration, prefer maskLayers
   maskLayers?: InputMaskLayer[]; // List of mask layers to composite at generation time
+  skipped?: boolean; // Temporarily omit this input from generation
 }
 
 export interface OperationInputs {
@@ -88,6 +89,7 @@ export interface GenerationInputsState {
   removeMaskLayer: (operationType: OperationType, inputId: string, layerId: string) => void;
   updateMaskLayer: (operationType: OperationType, inputId: string, layerId: string, patch: Partial<InputMaskLayer>) => void;
   setMaskLayers: (operationType: OperationType, inputId: string, layers: InputMaskLayer[]) => void;
+  toggleSkip: (operationType: OperationType, inputId: string) => void;
 
   getCurrentInput: (operationType: OperationType) => InputItem | null;
   getInputs: (operationType: OperationType) => InputItem[];
@@ -720,6 +722,23 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
                   ...existing,
                   items: existing.items.map((item) =>
                     item.id === inputId ? { ...item, maskLayers: layers } : item
+                  ),
+                },
+              },
+            };
+          });
+        },
+
+        toggleSkip: (operationType, inputId) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) =>
+                    item.id === inputId ? { ...item, skipped: !item.skipped } : item
                   ),
                 },
               },

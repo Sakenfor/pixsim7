@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, get_database
 from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry, PlanSyncRun
 from pixsim7.backend.main.shared.config import settings
+from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim7.backend.main.services.docs.plans import get_plans_index
 from pixsim7.backend.main.services.docs.plan_sync import (
     PlanSyncLockedError,
@@ -63,6 +64,7 @@ class PlanSummary(BaseModel):
     scope: str
     planType: str = "feature"
     visibility: str = "public"
+    namespace: Optional[str] = None
     target: Optional[Dict] = None
     checkpoints: Optional[List[Dict]] = None
     codePaths: List[str] = Field(default_factory=list)
@@ -95,6 +97,7 @@ class PlanRegistryEntry(BaseModel):
     priority: str
     summary: str
     scope: str
+    namespace: Optional[str] = None
     codePaths: List[str] = Field(default_factory=list)
     companions: List[str] = Field(default_factory=list)
     handoffs: List[str] = Field(default_factory=list)
@@ -213,6 +216,7 @@ def _bundle_to_summary(b: PlanBundle, children: Optional[List[PlanBundle]] = Non
         "scope": plan.scope,
         "planType": plan.plan_type,
         "visibility": doc.visibility,
+        "namespace": doc.namespace,
         "target": plan.target,
         "checkpoints": plan.checkpoints,
         "codePaths": plan.code_paths or [],
@@ -249,6 +253,7 @@ def _bundle_to_registry_entry(b: PlanBundle) -> dict:
         "priority": plan.priority,
         "summary": doc.summary or "",
         "scope": plan.scope,
+        "namespace": doc.namespace,
         "codePaths": plan.code_paths or [],
         "companions": plan.companions or [],
         "handoffs": plan.handoffs or [],
@@ -295,7 +300,101 @@ def _run_to_entry(run: PlanSyncRun) -> dict:
     }
 
 
+def _actor_identity(user: CurrentUser) -> tuple[str, str, Optional[int]]:
+    actor_id = getattr(user, "id", None)
+    actor_source = f"user:{actor_id}" if actor_id is not None else "user:unknown"
+    actor_name = (
+        getattr(user, "display_name", None)
+        or getattr(user, "username", None)
+        or actor_source
+    )
+    return actor_source, actor_name, actor_id
+
+
 # ── List endpoint ─────────────────────────────────────────────────
+
+
+CHECKPOINT_STATUSES = frozenset({"pending", "active", "done", "blocked"})
+
+
+def _checkpoint_int(value: Any) -> Optional[int]:
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, int) else None
+
+
+def _derive_checkpoint_points(checkpoint: Dict[str, Any]) -> tuple[int, Optional[int]]:
+    """Resolve points from explicit fields, or fall back to step checkboxes."""
+    points_done = _checkpoint_int(checkpoint.get("points_done"))
+    points_total = _checkpoint_int(checkpoint.get("points_total"))
+
+    steps = checkpoint.get("steps")
+    if isinstance(steps, list):
+        step_dicts = [s for s in steps if isinstance(s, dict)]
+        if points_total is None:
+            points_total = len(step_dicts)
+        if points_done is None:
+            points_done = sum(1 for s in step_dicts if bool(s.get("done")))
+
+    if points_done is None:
+        points_done = 0
+    return points_done, points_total
+
+
+def _normalize_evidence_ref(item: Any) -> Optional[Dict[str, str]]:
+    """Normalize an evidence item to ``{"kind": ..., "ref": ...}`` form.
+
+    Accepts:
+    - ``str`` (legacy file path) → ``{"kind": "file_path", "ref": "..."}``
+    - ``{"kind": "test_suite", "ref": "suite-id"}`` → pass-through
+    - ``{"kind": "file_path", "ref": "path/to/file"}`` → pass-through
+    """
+    if isinstance(item, str):
+        text = item.strip()
+        return {"kind": "file_path", "ref": text} if text else None
+    if isinstance(item, dict) and item.get("ref"):
+        kind = item.get("kind", "file_path")
+        ref = str(item["ref"]).strip()
+        if not ref:
+            return None
+        return {"kind": kind, "ref": ref}
+    return None
+
+
+def _evidence_key(ref: Dict[str, str]) -> str:
+    return f"{ref['kind']}:{ref['ref']}"
+
+
+def _merge_evidence(existing: Any, appends: Optional[list]) -> List[Dict[str, str]]:
+    """Merge evidence refs, deduplicating by kind+ref.
+
+    Backward-compatible: bare strings in ``existing`` are promoted to
+    ``{"kind": "file_path", "ref": "..."}`` on read.
+    """
+    out: List[Dict[str, str]] = []
+    seen: set[str] = set()
+
+    for item in (existing if isinstance(existing, list) else []):
+        ref = _normalize_evidence_ref(item)
+        if ref is None:
+            continue
+        key = _evidence_key(ref)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(ref)
+
+    for item in appends or []:
+        ref = _normalize_evidence_ref(item)
+        if ref is None:
+            continue
+        key = _evidence_key(ref)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(ref)
+
+    return out
 
 
 @router.get("", response_model=PlansIndexResponse)
@@ -303,6 +402,7 @@ async def list_plans(
     _user: CurrentUser,
     status: Optional[str] = Query(None, description="Filter by status (active, done, parked)"),
     owner: Optional[str] = Query(None, description="Filter by owner (substring match)"),
+    namespace: Optional[str] = Query(None, description="Filter by namespace"),
     refresh: bool = Query(False),
     db: AsyncSession = Depends(get_database),
 ):
@@ -320,6 +420,8 @@ async def list_plans(
         if status and b.doc.status != status:
             continue
         if owner and owner.lower() not in b.doc.owner.lower():
+            continue
+        if namespace and b.doc.namespace != namespace:
             continue
         plans.append(_bundle_to_summary(b, children=children_map.get(b.id)))
 
@@ -561,11 +663,14 @@ class PlanCreateRequest(BaseModel):
     markdown: Optional[str] = Field(None, description="Plan content")
     task_scope: str = Field("plan", description="plan | user | system")
     visibility: str = Field("public", description="private | shared | public")
+    namespace: Optional[str] = Field("dev/plans", description="Optional taxonomy namespace")
     tags: Optional[List[str]] = Field(None)
     code_paths: Optional[List[str]] = Field(None)
     companions: Optional[List[str]] = Field(None)
     handoffs: Optional[List[str]] = Field(None)
     depends_on: Optional[List[str]] = Field(None)
+    target: Optional[Dict[str, Any]] = Field(None, description="Structured target metadata object.")
+    checkpoints: Optional[List[Dict[str, Any]]] = Field(None, description="Structured checkpoints list.")
     parent_id: Optional[str] = Field(None, description="Parent plan ID for sub-plans")
 
 
@@ -606,6 +711,7 @@ async def create_plan(
         markdown=payload.markdown,
         user_id=getattr(_admin, "id", None),
         visibility=payload.visibility,
+        namespace=payload.namespace or "dev/plans",
         tags=payload.tags or [],
         revision=1,
         created_at=now,
@@ -629,6 +735,8 @@ async def create_plan(
         stage=payload.stage,
         priority=payload.priority,
         task_scope=payload.task_scope,
+        target=payload.target,
+        checkpoints=payload.checkpoints,
         code_paths=payload.code_paths or [],
         companions=payload.companions or [],
         handoffs=payload.handoffs or [],
@@ -641,8 +749,15 @@ async def create_plan(
 
     # Emit notification
     from pixsim7.backend.main.services.docs.plan_write import emit_plan_created_notification
-    actor_id = getattr(_admin, "id", None)
-    await emit_plan_created_notification(db, payload.id, payload.title, actor=f"user:{actor_id}")
+    actor_source, actor_name, actor_user_id = _actor_identity(_admin)
+    await emit_plan_created_notification(
+        db,
+        payload.id,
+        payload.title,
+        actor=actor_source,
+        actor_name=actor_name,
+        actor_user_id=actor_user_id,
+    )
 
     await db.commit()
 
@@ -652,8 +767,10 @@ async def create_plan(
         try:
             bundle = PlanBundle(plan=plan, doc=doc)
             paths = export_plan_to_disk(bundle)
-            actor_id = getattr(_admin, "id", None)
-            commit_sha = _git_commit(paths, f"plan({payload.id}): created\n\nActor: user:{actor_id}")
+            commit_sha = _git_commit(
+                paths,
+                f"plan({payload.id}): created\n\nActor: {actor_source}",
+            )
         except Exception:
             pass  # DB is the authority
 
@@ -666,14 +783,23 @@ class PlanUpdateRequest(BaseModel):
     stage: Optional[str] = Field(None, description="Free-form stage label")
     owner: Optional[str] = Field(None, description="Owner / lane")
     priority: Optional[str] = Field(None, description="high | normal | low")
+    task_scope: Optional[str] = Field(None, description="plan | user | system")
+    plan_type: Optional[str] = Field(None, description="proposal | feature | bugfix | refactor | exploration | task")
     summary: Optional[str] = Field(None, description="Plan summary")
     markdown: Optional[str] = Field(None, description="Plan markdown content")
     visibility: Optional[str] = Field(None, description="private | shared | public")
+    namespace: Optional[str] = Field(None, description="Optional taxonomy namespace")
     tags: Optional[List[str]] = Field(None)
     code_paths: Optional[List[str]] = Field(None)
     companions: Optional[List[str]] = Field(None)
     handoffs: Optional[List[str]] = Field(None)
     depends_on: Optional[List[str]] = Field(None)
+    target: Optional[Dict[str, Any]] = Field(None, description="Structured target metadata object.")
+    checkpoints: Optional[List[Dict[str, Any]]] = Field(None, description="Structured checkpoints list.")
+    patch: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Raw mutable-field patch map. Merged with explicit fields; explicit fields win.",
+    )
 
 
 class PlanUpdateResponse(BaseModel):
@@ -690,15 +816,28 @@ async def update_plan_endpoint(
     _admin: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
-    updates = {k: v for k, v in payload.dict().items() if v is not None}
+    payload_data = payload.model_dump()
+    raw_patch = payload_data.pop("patch", None)
+
+    updates: Dict[str, Any] = {}
+    if isinstance(raw_patch, dict):
+        updates.update(raw_patch)
+
+    updates.update({k: v for k, v in payload_data.items() if v is not None})
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    actor_id = getattr(_admin, "id", None)
-    actor = f"user:{actor_id}" if actor_id is not None else "user:unknown"
+    actor_source, actor_name, actor_user_id = _actor_identity(_admin)
 
     try:
-        result = await update_plan(db, plan_id, updates, actor=actor)
+        result = await update_plan(
+            db,
+            plan_id,
+            updates,
+            actor=actor_source,
+            actor_name=actor_name,
+            actor_user_id=actor_user_id,
+        )
     except PlanNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PlanWriteError as exc:
@@ -717,6 +856,182 @@ async def update_plan_endpoint(
 # ── Agent context ─────────────────────────────────────────────────
 
 
+class PlanProgressRequest(BaseModel):
+    checkpoint_id: str = Field(..., min_length=1, description="Checkpoint ID to progress.")
+    points_delta: int = Field(0, description="Delta to add to points_done.")
+    points_done: Optional[int] = Field(None, ge=0, description="Absolute points_done override.")
+    points_total: Optional[int] = Field(None, ge=0, description="Absolute points_total override.")
+    status: Optional[str] = Field(None, description="pending | active | done | blocked")
+    owner: Optional[str] = Field(None, description="Optional checkpoint owner/lane.")
+    eta: Optional[str] = Field(None, description="Optional checkpoint ETA.")
+    blockers: Optional[List[Dict[str, Any]]] = Field(None, description="Replace checkpoint blockers list.")
+    append_evidence: Optional[List[Any]] = Field(
+        None,
+        description=(
+            'Evidence references to append. Each item is either a bare string '
+            '(legacy file path) or {"kind": "file_path"|"test_suite", "ref": "..."}.'
+        ),
+    )
+    note: Optional[str] = Field(None, description="Short progress note.")
+    sync_plan_stage: bool = Field(
+        False,
+        description="When true, set plan.stage to checkpoint_id in the same update.",
+    )
+
+
+class PlanProgressResponse(BaseModel):
+    planId: str
+    checkpointId: str
+    checkpoint: Dict[str, Any] = Field(default_factory=dict)
+    changes: List[Dict[str, Any]] = Field(default_factory=list)
+    commitSha: Optional[str] = None
+    newScope: Optional[str] = None
+
+
+@router.post("/progress/{plan_id}", response_model=PlanProgressResponse)
+async def log_plan_progress(
+    plan_id: str,
+    payload: PlanProgressRequest,
+    _admin: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    if payload.status is not None and payload.status not in CHECKPOINT_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid checkpoint status '{payload.status}'. Valid: {', '.join(sorted(CHECKPOINT_STATUSES))}",
+        )
+
+    has_action = any(
+        (
+            payload.points_delta != 0,
+            payload.points_done is not None,
+            payload.points_total is not None,
+            payload.status is not None,
+            payload.owner is not None,
+            payload.eta is not None,
+            payload.blockers is not None,
+            bool(payload.append_evidence),
+            bool((payload.note or "").strip()),
+            payload.sync_plan_stage,
+        )
+    )
+    if not has_action:
+        raise HTTPException(status_code=400, detail="No progress fields to update")
+
+    bundle = await get_plan_bundle(db, plan_id)
+    if not bundle:
+        raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+    checkpoints = bundle.plan.checkpoints or []
+    if not isinstance(checkpoints, list) or not checkpoints:
+        raise HTTPException(
+            status_code=400,
+            detail="Plan has no checkpoints. Seed checkpoints via /dev/plans/update/{plan_id} first.",
+        )
+
+    checkpoint_index: Optional[int] = None
+    for idx, item in enumerate(checkpoints):
+        if isinstance(item, dict) and item.get("id") == payload.checkpoint_id:
+            checkpoint_index = idx
+            break
+    if checkpoint_index is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Checkpoint not found on plan '{plan_id}': {payload.checkpoint_id}",
+        )
+
+    checkpoint_raw = checkpoints[checkpoint_index]
+    checkpoint = dict(checkpoint_raw) if isinstance(checkpoint_raw, dict) else {}
+
+    points_done, points_total = _derive_checkpoint_points(checkpoint)
+    if payload.points_done is not None:
+        points_done = payload.points_done
+    if payload.points_delta != 0:
+        points_done += payload.points_delta
+    if payload.points_total is not None:
+        points_total = payload.points_total
+
+    if points_done < 0:
+        raise HTTPException(status_code=400, detail="points_done cannot be negative")
+    if points_total is not None and points_total < 0:
+        raise HTTPException(status_code=400, detail="points_total cannot be negative")
+    if points_total is not None and points_done > points_total:
+        points_total = points_done
+
+    points_changed = (
+        payload.points_delta != 0
+        or payload.points_done is not None
+        or payload.points_total is not None
+    )
+    if points_changed:
+        checkpoint["points_done"] = points_done
+        checkpoint["points_total"] = points_total if points_total is not None else points_done
+
+    if payload.status is not None:
+        checkpoint["status"] = payload.status
+    elif points_changed:
+        existing_status = str(checkpoint.get("status") or "").lower()
+        if existing_status != "blocked":
+            if points_total is not None and points_total > 0 and points_done >= points_total:
+                checkpoint["status"] = "done"
+            elif points_done > 0:
+                checkpoint["status"] = "active"
+            elif existing_status not in ("done",):
+                checkpoint["status"] = "pending"
+
+    if payload.owner is not None:
+        checkpoint["owner"] = payload.owner
+    if payload.eta is not None:
+        checkpoint["eta"] = payload.eta
+
+    if payload.blockers is not None:
+        if any(not isinstance(b, dict) for b in payload.blockers):
+            raise HTTPException(status_code=400, detail="blockers must be list[object]")
+        checkpoint["blockers"] = payload.blockers
+
+    if payload.append_evidence is not None:
+        checkpoint["evidence"] = _merge_evidence(checkpoint.get("evidence"), payload.append_evidence)
+
+    actor_source, actor_name, actor_user_id = _actor_identity(_admin)
+    note_text = (payload.note or "").strip()
+    checkpoint["last_update"] = {
+        "at": utcnow().isoformat(),
+        "by": actor_name,
+        "note": note_text,
+    }
+
+    new_checkpoints = list(checkpoints)
+    new_checkpoints[checkpoint_index] = checkpoint
+    updates: Dict[str, Any] = {"checkpoints": new_checkpoints}
+    if payload.sync_plan_stage:
+        updates["stage"] = payload.checkpoint_id
+
+    try:
+        result = await update_plan(
+            db,
+            plan_id,
+            updates,
+            actor=actor_source,
+            actor_name=actor_name,
+            actor_user_id=actor_user_id,
+        )
+    except PlanNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PlanWriteError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return PlanProgressResponse(
+        planId=result.plan_id,
+        checkpointId=payload.checkpoint_id,
+        checkpoint=checkpoint,
+        changes=result.changes,
+        commitSha=result.commit_sha,
+        newScope=result.new_scope,
+    )
+
+
 class AgentPlanDocument(BaseModel):
     docType: str
     path: str
@@ -733,6 +1048,7 @@ class AgentPlanContext(BaseModel):
     owner: str
     priority: str
     summary: str
+    namespace: Optional[str] = None
     markdown: Optional[str] = None
     codePaths: List[str] = Field(default_factory=list)
     companions: List[str] = Field(default_factory=list)
@@ -750,6 +1066,7 @@ class AgentPlanSummary(BaseModel):
     owner: str
     priority: str
     summary: str
+    namespace: Optional[str] = None
     dependsOn: List[str] = Field(default_factory=list)
 
 
@@ -777,6 +1094,7 @@ async def get_agent_context(
         AgentPlanSummary(
             id=b.id, title=b.doc.title, status=b.doc.status, stage=b.plan.stage,
             owner=b.doc.owner, priority=b.plan.priority, summary=b.doc.summary or "",
+            namespace=b.doc.namespace,
             dependsOn=b.plan.depends_on or [],
         )
         for b in all_bundles if b.doc.status == "active"
@@ -806,6 +1124,7 @@ async def get_agent_context(
             owner=target.doc.owner,
             priority=target.plan.priority,
             summary=target.doc.summary or "",
+            namespace=target.doc.namespace,
             markdown=target.doc.markdown,
             codePaths=target.plan.code_paths or [],
             companions=target.plan.companions or [],
@@ -829,7 +1148,7 @@ async def get_agent_context(
                 "action": "create_plan",
                 "method": "POST",
                 "url": "/dev/plans",
-                "body": '{"id": "slug", "title": "...", "summary": "...", "markdown": "...", "plan_type": "feature|bugfix|refactor|exploration|task", "status": "active", "stage": "proposed", "owner": "unassigned", "priority": "normal", "parent_id": null, "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
+                "body": '{"id": "slug", "title": "...", "summary": "...", "markdown": "...", "namespace": "dev/plans", "plan_type": "feature|bugfix|refactor|exploration|task", "task_scope": "plan|user|system", "status": "active", "stage": "proposed", "owner": "unassigned", "priority": "normal", "parent_id": null, "target": {}, "checkpoints": [], "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
                 "description": "Create a new plan (Document + PlanRegistry). Use parent_id to create sub-plans under an initiative.",
             },
             {
@@ -856,8 +1175,22 @@ async def get_agent_context(
                 "action": "update_fields",
                 "method": "PATCH",
                 "url": "/dev/plans/update/{plan_id}",
-                "body": '{"title": "...", "status": "active|parked|done|blocked", "stage": "...", "priority": "high|normal|low", "owner": "...", "summary": "...", "visibility": "public|shared|private", "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
+                "body": '{"title": "...", "status": "active|parked|done|blocked", "stage": "...", "priority": "high|normal|low", "task_scope": "plan|user|system", "plan_type": "feature|bugfix|refactor|exploration|task", "owner": "...", "summary": "...", "visibility": "public|shared|private", "namespace": "dev/plans", "target": {}, "checkpoints": [], "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
                 "description": "Update any combination of plan fields in a single call",
+            },
+            {
+                "action": "patch_fields",
+                "method": "PATCH",
+                "url": "/dev/plans/update/{plan_id}",
+                "body": '{"patch": {"target": {"type": "system", "id": "agent-infra"}, "checkpoints": [{"id": "phase_1", "label": "Phase 1", "status": "active"}]}}',
+                "description": "Generic patch map for mutable fields (explicit fields in body override patch keys).",
+            },
+            {
+                "action": "log_progress",
+                "method": "POST",
+                "url": "/dev/plans/progress/{plan_id}",
+                "body": '{"checkpoint_id": "phase_1", "points_delta": 1, "note": "implemented API scaffolding", "append_evidence": [{"kind": "test_suite", "ref": "my-feature-tests"}, "pixsim7/backend/tests/api/test_feature.py"]}',
+                "description": "Apply checkpoint progress deltas and metadata (points/status/blockers/evidence) with consistent checkpoint updates. Evidence accepts both bare file paths and typed refs ({kind: file_path|test_suite, ref: ...}).",
             },
             {
                 "action": "update_markdown",
@@ -946,3 +1279,91 @@ async def get_plan(
         "planPath": bundle.plan.plan_path or "",
         "markdown": bundle.doc.markdown or "",
     }
+
+
+# ── Test coverage discovery ──────────────────────────────────────
+
+
+class CoverageSuiteMatch(BaseModel):
+    suite_id: str
+    suite_label: str
+    kind: Optional[str] = None
+    category: Optional[str] = None
+    path: str = ""
+    matched_paths: List[str] = Field(default_factory=list)
+
+
+class PlanCoverageResponse(BaseModel):
+    plan_id: str
+    code_paths: List[str]
+    explicit_suites: List[str] = Field(
+        default_factory=list,
+        description="Suite IDs explicitly linked via checkpoint evidence.",
+    )
+    auto_discovered: List[CoverageSuiteMatch] = Field(
+        default_factory=list,
+        description="Suites whose 'covers' paths overlap with plan code_paths.",
+    )
+
+
+@router.get("/coverage/{plan_id}", response_model=PlanCoverageResponse)
+async def get_plan_coverage(
+    plan_id: str,
+    _user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Discover test suites covering a plan's code paths.
+
+    Returns both explicitly linked suites (from checkpoint evidence) and
+    auto-discovered suites (from ``code_paths ∩ suite.covers`` overlap).
+    """
+    from pixsim7.backend.main.services.testing.catalog import build_catalog
+
+    bundle = await get_plan_bundle(db, plan_id)
+    if not bundle:
+        raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+    code_paths = bundle.plan.code_paths or []
+
+    # Collect explicit test_suite refs from all checkpoints
+    explicit_suite_ids: list[str] = []
+    for cp in bundle.plan.checkpoints or []:
+        for ev in cp.get("evidence") or []:
+            ref = _normalize_evidence_ref(ev)
+            if ref and ref["kind"] == "test_suite":
+                if ref["ref"] not in explicit_suite_ids:
+                    explicit_suite_ids.append(ref["ref"])
+
+    # Auto-discover: find suites whose covers overlap with plan code_paths
+    all_suites = build_catalog()
+    auto_discovered: list[CoverageSuiteMatch] = []
+
+    for suite in all_suites:
+        suite_covers = suite.get("covers") or []
+        if not suite_covers or not code_paths:
+            continue
+
+        matched: list[str] = []
+        for plan_path in code_paths:
+            for cover_path in suite_covers:
+                # Match if either is a prefix of the other
+                if plan_path.startswith(cover_path) or cover_path.startswith(plan_path):
+                    matched.append(f"{plan_path} ↔ {cover_path}")
+                    break
+
+        if matched:
+            auto_discovered.append(CoverageSuiteMatch(
+                suite_id=suite["id"],
+                suite_label=suite.get("label", suite["id"]),
+                kind=suite.get("kind"),
+                category=suite.get("category"),
+                path=suite.get("path", ""),
+                matched_paths=matched,
+            ))
+
+    return PlanCoverageResponse(
+        plan_id=plan_id,
+        code_paths=code_paths,
+        explicit_suites=explicit_suite_ids,
+        auto_discovered=auto_discovered,
+    )
