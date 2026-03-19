@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -451,4 +452,159 @@ async def list_suites_from_db(
             )
             for r in rows
         ],
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Test Runs — submit and query run results
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class SubmitRunRequest(BaseModel):
+    suite_id: str = Field(..., description="Suite ID (must exist in test_suites)")
+    status: str = Field(..., pattern="^(pass|fail|error)$", description="Run outcome")
+    started_at: str = Field(..., description="ISO datetime when run started")
+    finished_at: Optional[str] = Field(None, description="ISO datetime when run finished")
+    duration_ms: Optional[int] = Field(None, ge=0, description="Run duration in milliseconds")
+    summary: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Flexible run summary. Recommended shape: "
+            '{"total": N, "passed": N, "failed": N, '
+            '"metrics": {"precision_at_1": 0.95}, '
+            '"failures": [{"test": "...", "reason": "..."}]}'
+        ),
+    )
+    environment: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Run environment context: git_sha, python_version, etc.",
+    )
+
+
+class RunResponse(BaseModel):
+    id: UUID
+    suite_id: str
+    status: str
+    started_at: str
+    finished_at: Optional[str] = None
+    duration_ms: Optional[int] = None
+    summary: Dict[str, Any] = Field(default_factory=dict)
+    environment: Optional[Dict[str, Any]] = None
+    created_at: str
+
+
+class RunListResponse(BaseModel):
+    total: int
+    runs: List[RunResponse]
+
+
+@router.post("/runs", response_model=RunResponse, status_code=201)
+async def submit_run(
+    body: SubmitRunRequest,
+    _user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+) -> RunResponse:
+    """Submit a test/eval run result.
+
+    Creates a record linking run outcome and metrics to a test suite.
+    The ``summary`` field is flexible — eval harnesses can store metrics,
+    failure lists, corpus stats, etc.
+    """
+    from datetime import datetime
+
+    from pixsim7.backend.main.domain.docs.models import TestRunRecord, TestSuiteRecord
+
+    suite = await db.get(TestSuiteRecord, body.suite_id)
+    if suite is None:
+        raise HTTPException(status_code=404, detail=f"Suite '{body.suite_id}' not found. Run /dev/testing/sync first.")
+
+    started = datetime.fromisoformat(body.started_at)
+    finished = datetime.fromisoformat(body.finished_at) if body.finished_at else None
+    duration = body.duration_ms
+    if duration is None and finished and started:
+        duration = int((finished - started).total_seconds() * 1000)
+
+    run = TestRunRecord(
+        suite_id=body.suite_id,
+        status=body.status,
+        started_at=started,
+        finished_at=finished,
+        duration_ms=duration,
+        summary=body.summary,
+        environment=body.environment,
+    )
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+
+    return RunResponse(
+        id=run.id,
+        suite_id=run.suite_id,
+        status=run.status,
+        started_at=run.started_at.isoformat(),
+        finished_at=run.finished_at.isoformat() if run.finished_at else None,
+        duration_ms=run.duration_ms,
+        summary=run.summary or {},
+        environment=run.environment,
+        created_at=run.created_at.isoformat(),
+    )
+
+
+@router.get("/runs", response_model=RunListResponse)
+async def list_runs(
+    suite_id: Optional[str] = Query(None, description="Filter by suite ID"),
+    status: Optional[str] = Query(None, description="Filter by status (pass/fail/error)"),
+    limit: int = Query(20, ge=1, le=100, description="Max runs to return"),
+    db: AsyncSession = Depends(get_database),
+) -> RunListResponse:
+    """List recent test runs, optionally filtered by suite or status."""
+    from pixsim7.backend.main.domain.docs.models import TestRunRecord
+
+    stmt = select(TestRunRecord).order_by(TestRunRecord.started_at.desc()).limit(limit)
+    if suite_id:
+        stmt = stmt.where(TestRunRecord.suite_id == suite_id)
+    if status:
+        stmt = stmt.where(TestRunRecord.status == status)
+
+    rows = (await db.execute(stmt)).scalars().all()
+    return RunListResponse(
+        total=len(rows),
+        runs=[
+            RunResponse(
+                id=r.id,
+                suite_id=r.suite_id,
+                status=r.status,
+                started_at=r.started_at.isoformat(),
+                finished_at=r.finished_at.isoformat() if r.finished_at else None,
+                duration_ms=r.duration_ms,
+                summary=r.summary or {},
+                environment=r.environment,
+                created_at=r.created_at.isoformat(),
+            )
+            for r in rows
+        ],
+    )
+
+
+@router.get("/runs/{run_id}", response_model=RunResponse)
+async def get_run(
+    run_id: UUID,
+    db: AsyncSession = Depends(get_database),
+) -> RunResponse:
+    """Get a single test run by ID."""
+    from pixsim7.backend.main.domain.docs.models import TestRunRecord
+
+    run = await db.get(TestRunRecord, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return RunResponse(
+        id=run.id,
+        suite_id=run.suite_id,
+        status=run.status,
+        started_at=run.started_at.isoformat(),
+        finished_at=run.finished_at.isoformat() if run.finished_at else None,
+        duration_ms=run.duration_ms,
+        summary=run.summary or {},
+        environment=run.environment,
+        created_at=run.created_at.isoformat(),
     )

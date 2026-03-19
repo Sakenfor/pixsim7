@@ -1,7 +1,8 @@
 import { PanelShell, SidebarPaneShell, HierarchicalSidebarNav } from '@pixsim7/shared.ui';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { canRunCodegen } from '@lib/auth';
+
 
 import {
   extractErrorMessage,
@@ -18,6 +19,7 @@ import {
   type TestRunSnapshot,
   type TestRunStatus,
 } from '@features/devtools/services/testOverviewService';
+import { fetchTestRuns, fetchTestCatalog, type TestRunRecord, type CatalogSuiteRecord } from '@features/devtools/services/testRunsApi';
 
 import { useAuthStore } from '@/stores/authStore';
 
@@ -308,6 +310,102 @@ function ProfileCard({
   );
 }
 
+function serverRunStatusClasses(status: string): string {
+  if (status === 'pass') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300';
+  if (status === 'fail') return 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-300';
+  return 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300';
+}
+
+function formatDuration(ms: number | null): string {
+  if (ms == null) return '';
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function ServerRunRow({ run }: { run: TestRunRecord }) {
+  const [expanded, setExpanded] = useState(false);
+  const summary = run.summary ?? {};
+  const metrics = (summary.metrics ?? {}) as Record<string, number>;
+  const failures = (summary.failures ?? []) as Array<{ test: string; reason: string }>;
+  const hasDetails = Object.keys(metrics).length > 0 || failures.length > 0;
+
+  return (
+    <div className="px-3 py-2.5">
+      <button
+        type="button"
+        onClick={() => hasDetails && setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between gap-3 text-left"
+        disabled={!hasDetails}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium">{run.suite_id}</div>
+          <div className="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
+            {formatRunTime(run.started_at)}
+            {run.duration_ms != null && (
+              <span className="text-neutral-400 dark:text-neutral-500">
+                {formatDuration(run.duration_ms)}
+              </span>
+            )}
+            {typeof summary.total === 'number' && (
+              <span>
+                {summary.passed ?? 0}/{summary.total} passed
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`px-2 py-0.5 rounded text-xs font-medium ${serverRunStatusClasses(run.status)}`}>
+            {run.status}
+          </span>
+          {hasDetails && (
+            <span className="text-[10px] text-neutral-400">{expanded ? '▾' : '▸'}</span>
+          )}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="mt-2 pl-1 space-y-1.5">
+          {Object.keys(metrics).length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(metrics).map(([key, value]) => (
+                <span
+                  key={key}
+                  className="px-2 py-0.5 rounded text-[11px] bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300 font-mono"
+                >
+                  {key}: {typeof value === 'number' && value < 1 ? `${(value * 100).toFixed(1)}%` : value}
+                </span>
+              ))}
+            </div>
+          )}
+          {failures.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[10px] text-red-400 uppercase tracking-wider">
+                Failures ({failures.length})
+              </div>
+              {failures.slice(0, 5).map((f, i) => (
+                <div key={i} className="text-[11px] text-neutral-400 dark:text-neutral-500 pl-2 border-l-2 border-red-800/30">
+                  <span className="font-mono text-neutral-300">{f.test}</span>
+                  {f.reason && <span className="text-neutral-500"> — {f.reason}</span>}
+                </div>
+              ))}
+              {failures.length > 5 && (
+                <div className="text-[10px] text-neutral-500 pl-2">+{failures.length - 5} more</div>
+              )}
+            </div>
+          )}
+          {run.environment && (
+            <div className="flex flex-wrap gap-2 text-[10px] text-neutral-500">
+              {Object.entries(run.environment).map(([k, v]) => (
+                <span key={k} className="font-mono">{k}: {String(v)}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TestOverviewPanel() {
   const overview = useMemo(() => getTestOverview(), []);
   const user = useAuthStore((state) => state.user);
@@ -318,9 +416,112 @@ export function TestOverviewPanel() {
   const [runningProfileId, setRunningProfileId] = useState<string | null>(null);
   const [runError, setRunError] = useState<string>('');
   const [runOutput, setRunOutput] = useState<string>('');
+  const [serverRuns, setServerRuns] = useState<TestRunRecord[]>([]);
+  const [serverRunsLoading, setServerRunsLoading] = useState(false);
+  const [backendSuites, setBackendSuites] = useState<CatalogSuiteRecord[]>([]);
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [historySuiteFilter, setHistorySuiteFilter] = useState<string | null>(null);
+
+  const loadServerRuns = useCallback(async () => {
+    setServerRunsLoading(true);
+    try {
+      const result = await fetchTestRuns({ limit: 50 });
+      setServerRuns(result);
+    } catch {
+      // Silently fail — server runs are supplementary
+    } finally {
+      setServerRunsLoading(false);
+    }
+  }, []);
+
+  // Load server runs on mount (for sidebar count) and when visiting catalog/history
+  useEffect(() => {
+    void loadServerRuns();
+    void fetchTestCatalog().then(setBackendSuites).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (activeSection === 'history' || activeSection === 'catalog') {
+      void loadServerRuns();
+    }
+  }, [activeSection, loadServerRuns]);
+
+  // Latest run status per suite — for catalog health badges
+  const suiteHealthMap = useMemo(() => {
+    const map = new Map<string, { status: string; started_at: string }>();
+    // Server runs are sorted by started_at desc, so first occurrence is latest
+    for (const run of serverRuns) {
+      if (!map.has(run.suite_id)) {
+        map.set(run.suite_id, { status: run.status, started_at: run.started_at });
+      }
+    }
+    return map;
+  }, [serverRuns]);
+
+  // Server runs filtered by suite when drill-through is active
+  const filteredServerRuns = useMemo(() => {
+    if (!historySuiteFilter) return serverRuns;
+    return serverRuns.filter((r) => r.suite_id === historySuiteFilter);
+  }, [serverRuns, historySuiteFilter]);
 
   const lastRun = runs[0] ?? null;
-  const suiteCatalog = useMemo(() => buildSuiteCatalog(overview.suites), [overview.suites]);
+
+  // Merge local (TS-registered) suites with backend-discovered suites, dedup by ID
+  const allSuites = useMemo<TestSuiteDefinition[]>(() => {
+    const seen = new Set<string>();
+    const merged: TestSuiteDefinition[] = [];
+    for (const suite of overview.suites) {
+      if (!seen.has(suite.id)) {
+        seen.add(suite.id);
+        merged.push(suite);
+      }
+    }
+    for (const bs of backendSuites) {
+      if (!seen.has(bs.id)) {
+        seen.add(bs.id);
+        merged.push({
+          id: bs.id,
+          label: bs.label,
+          path: bs.path,
+          layer: bs.layer,
+          kind: (bs.kind ?? 'unit') as TestSuiteDefinition['kind'],
+          category: bs.category ?? undefined,
+          subcategory: bs.subcategory ?? undefined,
+          covers: bs.covers,
+          order: bs.order ?? undefined,
+        });
+      }
+    }
+    return merged;
+  }, [overview.suites, backendSuites]);
+
+  const suiteCatalog = useMemo(() => buildSuiteCatalog(allSuites), [allSuites]);
+
+  // Filtered catalog for search
+  const filteredSuiteCatalog = useMemo(() => {
+    const query = catalogSearch.trim().toLowerCase();
+    if (!query) return suiteCatalog;
+    return suiteCatalog
+      .map((layer) => ({
+        ...layer,
+        categories: layer.categories
+          .map((cat) => ({
+            ...cat,
+            subcategories: cat.subcategories
+              .map((sub) => ({
+                ...sub,
+                suites: sub.suites.filter((suite) =>
+                  suite.label.toLowerCase().includes(query) ||
+                  suite.id.toLowerCase().includes(query) ||
+                  (suite.path ?? '').toLowerCase().includes(query)
+                ),
+              }))
+              .filter((sub) => sub.suites.length > 0),
+          }))
+          .filter((cat) => cat.subcategories.length > 0),
+      }))
+      .filter((layer) => layer.categories.length > 0);
+  }, [suiteCatalog, catalogSearch]);
   const docsByKind = useMemo(() => {
     const reports = overview.docs.filter((path) => {
       return path.includes('/plans/') || path.includes('\\plans\\') || path.includes('eval_');
@@ -345,6 +546,11 @@ export function TestOverviewPanel() {
   const handleRecordRun = (profileId: TestProfileDefinition['id'], status: TestRunStatus) => {
     recordTestRunSnapshot(profileId, status);
     setRuns(listTestRunSnapshots(60));
+  };
+
+  const handleDrillToSuiteHistory = (suiteId: string) => {
+    setHistorySuiteFilter(suiteId);
+    setActiveSection('history');
   };
 
   const handleRunProfile = async (profile: TestProfileDefinition) => {
@@ -376,8 +582,8 @@ export function TestOverviewPanel() {
           <HierarchicalSidebarNav
             items={[
               { id: 'run', label: `Run (${overview.profiles.length})` },
-              { id: 'catalog', label: `Catalog (${overview.suites.length})` },
-              { id: 'history', label: `History (${runs.length})` },
+              { id: 'catalog', label: `Catalog (${allSuites.length})` },
+              { id: 'history', label: `History (${runs.length + serverRuns.length})` },
               { id: 'reports', label: `Reports (${docsByKind.reports.length})` },
             ]}
             onSelectItem={(id) => setActiveSection(id as TestOverviewSection)}
@@ -394,15 +600,62 @@ export function TestOverviewPanel() {
             </div>
             <div className="px-2 py-1 text-xs">
               <span className="text-neutral-500 dark:text-neutral-400">Suites</span>
-              <span className="ml-auto float-right font-semibold">{overview.suites.length}</span>
+              <span className="ml-auto float-right font-semibold">{allSuites.length}</span>
             </div>
-            {lastRun && (
+            {suiteHealthMap.size > 0 && (() => {
+              const passing = [...suiteHealthMap.values()].filter((h) => h.status === 'pass').length;
+              const failing = [...suiteHealthMap.values()].filter((h) => h.status === 'fail').length;
+              const errored = suiteHealthMap.size - passing - failing;
+              return (
+                <div className="px-2 py-1 text-xs space-y-1">
+                  <div className="text-neutral-500 dark:text-neutral-400">Health</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    {passing > 0 && (
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-green-500" />
+                        <span className="text-[11px] font-medium">{passing}</span>
+                      </span>
+                    )}
+                    {failing > 0 && (
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-red-500" />
+                        <span className="text-[11px] font-medium">{failing}</span>
+                      </span>
+                    )}
+                    {errored > 0 && (
+                      <span className="flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                        <span className="text-[11px] font-medium">{errored}</span>
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-neutral-300 dark:bg-neutral-700" />
+                      <span className="text-[11px] font-medium">{allSuites.length - suiteHealthMap.size}</span>
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+            {(lastRun || serverRuns.length > 0) && (
               <div className="px-2 py-1 text-xs">
-                <div className="text-neutral-500 dark:text-neutral-400">Last run</div>
-                <div className="mt-1">
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusClasses(lastRun.status)}`}>
-                    {lastRun.status}
-                  </span>
+                <div className="text-neutral-500 dark:text-neutral-400">Latest</div>
+                <div className="mt-1 space-y-1">
+                  {serverRuns[0] && (
+                    <div className="flex items-center gap-1.5">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${serverRunStatusClasses(serverRuns[0].status)}`}>
+                        {serverRuns[0].status}
+                      </span>
+                      <span className="text-[10px] text-neutral-400 truncate">{serverRuns[0].suite_id}</span>
+                    </div>
+                  )}
+                  {lastRun && (
+                    <div className="flex items-center gap-1.5">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusClasses(lastRun.status)}`}>
+                        {lastRun.status}
+                      </span>
+                      <span className="text-[10px] text-neutral-400 truncate">{lastRun.profileLabel}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -458,10 +711,24 @@ export function TestOverviewPanel() {
 
         {activeSection === 'catalog' && (
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-              Suite catalog by layer/category
-            </h3>
-            {suiteCatalog.map((layer) => (
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                Suite catalog by layer/category
+              </h3>
+              <input
+                type="text"
+                value={catalogSearch}
+                onChange={(e) => setCatalogSearch(e.target.value)}
+                placeholder="Filter suites..."
+                className="px-2.5 py-1.5 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 placeholder:text-neutral-400 w-48 outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            {filteredSuiteCatalog.length === 0 && catalogSearch.trim() && (
+              <div className="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700 p-4 text-sm text-neutral-500 dark:text-neutral-400">
+                No suites matching &ldquo;{catalogSearch.trim()}&rdquo;
+              </div>
+            )}
+            {filteredSuiteCatalog.map((layer) => (
               <div
                 key={layer.key}
                 className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden"
@@ -497,13 +764,66 @@ export function TestOverviewPanel() {
                               </span>
                             </div>
                             <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                              {subcategory.suites.map((suite) => (
-                                <div key={suite.id} className="px-2.5 py-2">
-                                  <div className="text-sm font-medium">{suite.label}</div>
-                                  <code className="text-[11px] text-neutral-500 dark:text-neutral-400">{suite.path}</code>
-                                  {renderSuiteMetaPills(suite, { hideCategory: true, hideSubcategory: true })}
-                                </div>
-                              ))}
+                              {subcategory.suites.map((suite) => {
+                                const health = suiteHealthMap.get(suite.id);
+                                const suiteCommand = suite.layer === 'frontend'
+                                  ? `pnpm vitest run ${suite.path}`
+                                  : `python -m pytest ${suite.path} -q`;
+                                return (
+                                  <div
+                                    key={suite.id}
+                                    className="px-2.5 py-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      {health && (
+                                        <span
+                                          className={`w-2 h-2 rounded-full shrink-0 ${
+                                            health.status === 'pass'
+                                              ? 'bg-green-500'
+                                              : health.status === 'fail'
+                                                ? 'bg-red-500'
+                                                : 'bg-amber-500'
+                                          }`}
+                                          title={`Last run: ${health.status} (${formatRunTime(health.started_at)})`}
+                                        />
+                                      )}
+                                      {!health && (
+                                        <span
+                                          className="w-2 h-2 rounded-full shrink-0 bg-neutral-300 dark:bg-neutral-700"
+                                          title="No recorded runs"
+                                        />
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDrillToSuiteHistory(suite.id)}
+                                        className="text-sm font-medium hover:text-blue-500 dark:hover:text-blue-400 transition-colors text-left"
+                                      >
+                                        {suite.label}
+                                      </button>
+                                    </div>
+                                    <code className="text-[11px] text-neutral-500 dark:text-neutral-400">{suite.path}</code>
+                                    <div className="flex items-center gap-2 mt-1.5">
+                                      {renderSuiteMetaPills(suite, { hideCategory: true, hideSubcategory: true })}
+                                      <div className="flex-1" />
+                                      <button
+                                        type="button"
+                                        onClick={() => void navigator.clipboard.writeText(suiteCommand)}
+                                        className="px-2 py-0.5 text-[10px] font-medium rounded border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                                        title={suiteCommand}
+                                      >
+                                        Copy run cmd
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDrillToSuiteHistory(suite.id)}
+                                        className="px-2 py-0.5 text-[10px] font-medium rounded border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                                      >
+                                        History
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         ))}
@@ -518,7 +838,22 @@ export function TestOverviewPanel() {
 
         {activeSection === 'history' && (
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Run history + analytics</h3>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Run history + analytics</h3>
+              {historySuiteFilter && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                    Filtered: <span className="font-mono text-neutral-300">{historySuiteFilter}</span>
+                  </span>
+                  <button
+                    onClick={() => setHistorySuiteFilter(null)}
+                    className="px-2 py-0.5 text-[11px] font-medium rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300"
+                  >
+                    Clear filter
+                  </button>
+                </div>
+              )}
+            </div>
             {lastRun && (
               <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 flex items-center justify-between gap-3">
                 <div>
@@ -535,6 +870,35 @@ export function TestOverviewPanel() {
             )}
 
             <TestAnalyticsGraphs snapshots={runs} />
+
+            {/* Server-persisted eval runs */}
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                Eval runs {filteredServerRuns.length > 0 && (
+                  <span className="text-neutral-400 font-normal">
+                    ({filteredServerRuns.length}{historySuiteFilter ? ` of ${serverRuns.length}` : ''})
+                  </span>
+                )}
+              </h3>
+              <button
+                onClick={() => void loadServerRuns()}
+                disabled={serverRunsLoading}
+                className="px-2.5 py-1 text-xs font-medium rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-50"
+              >
+                {serverRunsLoading ? '...' : 'Refresh'}
+              </button>
+            </div>
+            {filteredServerRuns.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700 p-4 text-sm text-neutral-500 dark:text-neutral-400">
+                {serverRunsLoading ? 'Loading...' : historySuiteFilter ? `No runs for "${historySuiteFilter}".` : 'No eval runs recorded yet.'}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 divide-y divide-neutral-200 dark:divide-neutral-800">
+                {filteredServerRuns.map((run) => (
+                  <ServerRunRow key={run.id} run={run} />
+                ))}
+              </div>
+            )}
 
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Local run history</h3>

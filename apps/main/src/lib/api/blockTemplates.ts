@@ -27,6 +27,7 @@ export type {
   BlockCatalogRow,
   BlockMatrixQuery,
   BlockMatrixResponse,
+  BlockTagDictionaryKey,
   BlockTagDictionaryQuery,
   BlockTagDictionaryResponse,
   BlockTagNormalizeRequest,

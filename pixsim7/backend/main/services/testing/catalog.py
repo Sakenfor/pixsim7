@@ -78,34 +78,6 @@ _STATIC_SUITES: list[dict[str, Any]] = [
         "covers": ["apps/main/src/lib/game/projectBundle/registry.ts"],
         "order": 18,
     },
-    {
-        "id": "block-ops-primitive-projection-eval",
-        "label": "Block Ops Primitive Projection Eval",
-        "path": "scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py",
-        "layer": "scripts",
-        "kind": "smoke",
-        "category": "scripts/block-ops",
-        "subcategory": "primitive-projection-eval",
-        "covers": [
-            "scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py",
-            "scripts/tests/block_ops/primitive_projection/eval_corpus.json",
-        ],
-        "order": 54,
-    },
-    {
-        "id": "block-ops-primitive-projection-eval-medium",
-        "label": "Block Ops Primitive Projection Eval (Medium)",
-        "path": "scripts/tests/block_ops/primitive_projection/eval_corpus_medium.json",
-        "layer": "scripts",
-        "kind": "smoke",
-        "category": "scripts/block-ops",
-        "subcategory": "primitive-projection-eval-medium",
-        "covers": [
-            "scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py",
-            "scripts/tests/block_ops/primitive_projection/eval_corpus_medium.json",
-        ],
-        "order": 55,
-    },
 ]
 
 

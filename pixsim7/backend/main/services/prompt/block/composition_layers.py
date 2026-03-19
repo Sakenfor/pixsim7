@@ -317,6 +317,34 @@ def compose_sequential(blocks: List[Any]) -> str:
     return join_blocks([block_text(block) for block in blocks if block_text(block)])
 
 
+def _beat_order_key(block: Any) -> float:
+    """Extract a numeric beat/sequence position from block tags or metadata.
+
+    Blocks can declare ordering via ``tags.beat`` or ``block_metadata.beat``.
+    Values can be numeric (``1``, ``2.5``) or named (``entrance`` → 1,
+    ``action`` → 3, ``reaction`` → 4, ``exit`` → 6).
+    Blocks without a beat tag sort to the middle (5.0).
+    """
+    raw = _block_tag_value(block, "beat") or _block_metadata_value(block, "beat")
+    if raw is None:
+        return 5.0
+    # Try numeric first
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        pass
+    # Named beat positions
+    _NAMED_BEATS = {
+        "entrance": 1.0,
+        "establish": 2.0,
+        "action": 3.0,
+        "reaction": 4.0,
+        "sustain": 5.0,
+        "exit": 6.0,
+    }
+    return _NAMED_BEATS.get(raw.strip().lower(), 5.0)
+
+
 def order_layered_blocks(
     blocks: List[Any],
     *,
@@ -331,12 +359,13 @@ def order_layered_blocks(
         rank_map = default_rank
         alias_map = default_alias_map
 
-    def _sort_key(item: tuple[int, Any]) -> tuple[int, int, int]:
+    def _sort_key(item: tuple[int, Any]) -> tuple[int, int, float, int]:
         original_index, block = item
         layer = block_layer(block, alias_map=alias_map)
         return (
             rank_map.get(layer, len(rank_map)),
             _role_order_key(block),
+            _beat_order_key(block),
             original_index,
         )
 

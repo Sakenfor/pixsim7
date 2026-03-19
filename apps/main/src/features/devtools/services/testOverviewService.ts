@@ -66,9 +66,9 @@ const TEST_DOCS = [
   'docs/plans/prompt-primitive-projection-eval.md',
   'scripts/tests/README.md',
   'scripts/tests/run.py',
-  'scripts/tests/block_ops/primitive_projection/eval_primitive_projection.py',
-  'scripts/tests/block_ops/primitive_projection/eval_corpus.json',
-  'scripts/tests/block_ops/primitive_projection/eval_corpus_medium.json',
+  'pixsim7/backend/tests/blocks/evals/primitive_projection/eval_primitive_projection.py',
+  'pixsim7/backend/tests/blocks/evals/primitive_projection/eval_corpus.json',
+  'pixsim7/backend/tests/blocks/evals/primitive_projection/eval_corpus_medium.json',
   'pytest.ini',
 ];
 

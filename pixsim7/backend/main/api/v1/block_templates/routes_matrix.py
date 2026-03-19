@@ -165,6 +165,10 @@ async def get_block_matrix(
             )
             source_pack = tags_map.get("source_pack") if isinstance(tags_map, dict) else None
             package = str(source_pack).strip() if isinstance(source_pack, str) and source_pack.strip() else None
+            raw_text = getattr(b, "text", "") or ""
+            text_preview = raw_text[:120].strip()
+            if len(raw_text) > 120:
+                text_preview += "..."
             samples.append(
                 BlockMatrixCellSampleResponse(
                     id=b.id,
@@ -172,6 +176,7 @@ async def get_block_matrix(
                     package_name=package,
                     composition_role=inferred.role_id,
                     category=b.category,
+                    text_preview=text_preview,
                 )
             )
         cells.append(

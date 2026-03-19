@@ -156,6 +156,7 @@ export interface BlockMatrixCellSample {
   package_name: string | null;
   composition_role: string | null;
   category: string | null;
+  text_preview: string;
 }
 
 export interface BlockMatrixCell {

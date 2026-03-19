@@ -249,6 +249,7 @@ class BlockMatrixCellSampleResponse(BaseModel):
     package_name: Optional[str] = None
     composition_role: Optional[str] = None
     category: Optional[str] = None
+    text_preview: str = ""
 
 
 class BlockMatrixCellResponse(BaseModel):

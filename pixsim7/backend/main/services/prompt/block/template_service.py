@@ -1185,6 +1185,77 @@ class BlockTemplateService:
                         existing_ids.add(bonus_id)
 
     @staticmethod
+    def _inject_block_compatibility_bonuses(
+        request: ResolverResolutionRequest,
+    ) -> None:
+        """Read ``block_metadata.compatibility`` from candidates and inject pairwise bonuses.
+
+        Blocks can declare compatibility in YAML::
+
+            block_metadata:
+              compatibility:
+                prefers:
+                  - tag:stance:standing
+                  - tag:beat:entrance
+                avoids:
+                  - tag:stance:seated
+
+        Each ``prefers`` entry creates a positive pairwise bonus (+1.5) when another
+        slot selects a block matching that tag.  Each ``avoids`` entry creates a
+        negative bonus (-1.5).
+
+        Format: ``tag:<key>:<value>`` for tag-based matching.
+        """
+        COMPAT_BONUS = 1.5
+        COMPAT_PENALTY = -1.5
+        existing_ids = {bonus.id for bonus in request.pairwise_bonuses}
+        target_keys = list(request.candidates_by_target.keys())
+
+        for target_key in target_keys:
+            candidates = request.candidates_by_target.get(target_key) or []
+            for candidate in candidates:
+                compat = (candidate.metadata or {}).get("compatibility")
+                if not isinstance(compat, dict):
+                    continue
+
+                prefers = compat.get("prefers") or []
+                avoids = compat.get("avoids") or []
+
+                for entries, bonus_value, prefix in [
+                    (prefers, COMPAT_BONUS, "compat-prefer"),
+                    (avoids, COMPAT_PENALTY, "compat-avoid"),
+                ]:
+                    for entry in entries:
+                        if not isinstance(entry, str) or not entry.startswith("tag:"):
+                            continue
+                        parts = entry[4:].split(":", 1)
+                        if len(parts) != 2:
+                            continue
+                        tag_key, tag_value = parts[0].strip(), parts[1].strip()
+                        if not tag_key or not tag_value:
+                            continue
+
+                        # Create a bonus from every other target to this target:
+                        # when the source has the matching tag, this candidate is boosted.
+                        for source_key in target_keys:
+                            if source_key == target_key:
+                                continue
+                            bonus_id = f"{prefix}:{candidate.block_id}:{source_key}:{tag_key}:{tag_value}"
+                            if bonus_id in existing_ids:
+                                continue
+                            request.pairwise_bonuses.append(
+                                ResolverPairwiseBonus(
+                                    id=bonus_id,
+                                    source_target=source_key,
+                                    target_key=target_key,
+                                    source_tags={tag_key: tag_value},
+                                    candidate_tags={},
+                                    bonus=bonus_value,
+                                )
+                            )
+                            existing_ids.add(bonus_id)
+
+    @staticmethod
     def _apply_control_effects(
         slots: List[Dict[str, Any]],
         template_metadata: Dict[str, Any],
@@ -1544,6 +1615,7 @@ class BlockTemplateService:
             compiled_request.context = context_payload
 
         self._inject_diversity_pairwise_bonuses(request=compiled_request, slots=slots)
+        self._inject_block_compatibility_bonuses(compiled_request)
 
         try:
             resolver_result = _resolver_registry.resolve(compiled_request)

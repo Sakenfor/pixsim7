@@ -20,6 +20,7 @@ import {
   type BlockMatrixResponse,
   type BlockMatrixCell,
   type BlockMatrixCellSample,
+  type BlockTagDictionaryKey,
   type BlockTagDictionaryResponse,
   type BlockTagNormalizeResponse,
 } from '@lib/api/blockTemplates';
@@ -164,6 +165,9 @@ export function BlockMatrixView({
   const [presetFilter, setPresetFilter] = useState('');
   const [selectedPresetKey, setSelectedPresetKey] = useState('');
   const [selectedPresetSources, setSelectedPresetSources] = useState<string[]>([]);
+  const [activePresetLabel, setActivePresetLabel] = useState<string | null>(null);
+  const [activePresetDescription, setActivePresetDescription] = useState<string | null>(null);
+  const [tagInsightsOpen, setTagInsightsOpen] = useState(false);
   const fetchIdRef = useRef(0);
   const tagDictFetchIdRef = useRef(0);
   const copyTimerRef = useRef<number | null>(null);
@@ -207,9 +211,10 @@ export function BlockMatrixView({
           package_name: query.package_name,
           role: query.composition_role,
           category: query.category,
-          include_values: false,
+          include_values: true,
           include_usage_examples: false,
           include_aliases: true,
+          limit_values_per_key: 8,
         });
         if (id === tagDictFetchIdRef.current) {
           setTagDictionary(result);
@@ -344,6 +349,15 @@ export function BlockMatrixView({
     return map;
   }, [tagDictionary]);
 
+  const notableTagKeys = useMemo(() => {
+    if (!tagDictionary) return { unknown: [], alias: [] };
+    const unknown = tagDictionary.keys.filter((k) => k.status === 'unknown');
+    const alias = tagDictionary.keys.filter((k) => k.status === 'alias_key');
+    return { unknown, alias };
+  }, [tagDictionary]);
+
+  const hasNotableTags = notableTagKeys.unknown.length > 0 || notableTagKeys.alias.length > 0;
+
   const axisAliasSuggestions = useMemo(() => {
     const suggestions: Array<{ axis: 'row' | 'col'; from: string; to: string }> = [];
     const checkAxis = (axis: 'row' | 'col', axisKey: string | undefined) => {
@@ -459,7 +473,21 @@ export function BlockMatrixView({
       setQuery((prev) => ({ ...prev, source: 'primitives' }));
       return;
     }
-    setQuery((prev) => ({ ...prev, [field]: value || undefined }));
+    setQuery((prev) => {
+      const normalizedValue = (value === '' || value === null ? undefined : value) as BlockMatrixQuery[K];
+      const next: BlockMatrixQuery = { ...prev, [field]: normalizedValue };
+      if (field === 'row_key') {
+        next.expected_row_values = undefined;
+      } else if (field === 'col_key') {
+        next.expected_col_values = undefined;
+      }
+      return next;
+    });
+    // Clear active preset context when user manually changes axes
+    if (field === 'row_key' || field === 'col_key') {
+      setActivePresetLabel(null);
+      setActivePresetDescription(null);
+    }
   };
 
   const applyPreset = (preset: BlockMatrixPreset) => {
@@ -476,6 +504,8 @@ export function BlockMatrixView({
       composition_role: undefined,
       kind: undefined,
     }));
+    setActivePresetLabel(preset.label);
+    setActivePresetDescription(preset.description ?? null);
   };
 
   const applySelectedPreset = () => {
@@ -652,6 +682,18 @@ export function BlockMatrixView({
         </div>
       )}
 
+      {/* Active preset context */}
+      {activePresetLabel && (
+        <div className="px-3 py-1.5 border-b border-neutral-800 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-medium text-blue-300">{activePresetLabel}</span>
+            {activePresetDescription && (
+              <span className="text-[11px] text-neutral-400">{activePresetDescription}</span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Controls bar */}
       <div className="px-3 py-2 border-b border-neutral-800 space-y-2 shrink-0">
         {/* Axis selectors */}
@@ -808,20 +850,23 @@ export function BlockMatrixView({
             <span className="text-neutral-500">
               Tag dictionary: {(tagDictionary.keys ?? []).filter((k) => k.status !== 'unknown').length} known keys
             </span>
-            {(tagDictionary.warnings ?? []).slice(0, 2).map((w) => (
-              <span
-                key={`${w.kind}:${w.keys.join(',')}`}
+            {hasNotableTags && (
+              <button
+                type="button"
+                onClick={() => setTagInsightsOpen((v) => !v)}
                 className={clsx(
-                  'px-1.5 py-0.5 rounded border',
-                  w.kind === 'unknown_keys_present'
-                    ? 'border-amber-700/50 text-amber-300'
-                    : 'border-cyan-700/50 text-cyan-300',
+                  'px-1.5 py-0.5 rounded border cursor-pointer transition-colors',
+                  tagInsightsOpen
+                    ? 'border-amber-600/60 bg-amber-900/20 text-amber-200'
+                    : 'border-amber-700/50 text-amber-300 hover:bg-amber-900/10',
                 )}
-                title={`${w.message}${w.keys.length ? ` (${w.keys.join(', ')})` : ''}`}
               >
-                {w.kind === 'unknown_keys_present' ? 'unknown tag keys in scope' : 'alias tag keys in scope'}
-              </span>
-            ))}
+                <Icon name={tagInsightsOpen ? 'chevronDown' : 'chevronRight'} size={9} className="inline mr-1" />
+                {notableTagKeys.unknown.length > 0 && `${notableTagKeys.unknown.length} unknown`}
+                {notableTagKeys.unknown.length > 0 && notableTagKeys.alias.length > 0 && ', '}
+                {notableTagKeys.alias.length > 0 && `${notableTagKeys.alias.length} alias`}
+              </button>
+            )}
             {axisAliasSuggestions.map((s) => (
               <button
                 key={`${s.axis}:${s.from}->${s.to}`}
@@ -952,6 +997,19 @@ export function BlockMatrixView({
           />
         )}
       </div>
+
+      {/* Tag insights expandable */}
+      {tagInsightsOpen && hasNotableTags && (
+        <TagInsightsPanel
+          unknownKeys={notableTagKeys.unknown}
+          aliasKeys={notableTagKeys.alias}
+          aliasTagKeyMap={aliasTagKeyMap}
+          onUseAsAxis={(tagKey) => {
+            updateField('row_key', `tag:${tagKey}`);
+          }}
+          onClose={() => setTagInsightsOpen(false)}
+        />
+      )}
 
       {/* Footer stats */}
       {data && !loading && (
@@ -1297,14 +1355,149 @@ function SampleRow({
       type="button"
       onClick={() => onOpen?.(sample.block_id)}
       disabled={!onOpen}
-      className="text-left p-1.5 rounded border border-neutral-700/50 hover:bg-neutral-800/50 disabled:cursor-default max-w-[220px]"
+      className="text-left p-1.5 rounded border border-neutral-700/50 hover:bg-neutral-800/50 disabled:cursor-default max-w-[280px]"
     >
       <div className="text-[10px] text-neutral-200 font-mono truncate">{sample.block_id}</div>
-      <div className="text-[9px] text-neutral-500 truncate">
+      {sample.text_preview && (
+        <div className="text-[10px] text-neutral-400 mt-0.5 line-clamp-2 leading-tight italic">
+          {sample.text_preview}
+        </div>
+      )}
+      <div className="text-[9px] text-neutral-500 truncate mt-0.5">
         {sample.category ?? 'no cat'}
         {sample.composition_role && ` | ${sample.composition_role}`}
         {sample.package_name && ` | ${sample.package_name}`}
       </div>
     </button>
+  );
+}
+
+// ── Tag Insights Panel ──────────────────────────────────────────────────
+
+function TagInsightsPanel({
+  unknownKeys,
+  aliasKeys,
+  aliasTagKeyMap,
+  onUseAsAxis,
+  onClose,
+}: {
+  unknownKeys: BlockTagDictionaryKey[];
+  aliasKeys: BlockTagDictionaryKey[];
+  aliasTagKeyMap: Map<string, string>;
+  onUseAsAxis: (tagKey: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="shrink-0 max-h-[35%] overflow-y-auto border-t border-neutral-800 bg-neutral-900/80">
+      <div className="px-3 py-2">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[11px] font-medium text-neutral-200">Tag Insights</span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-0.5 rounded text-neutral-500 hover:text-neutral-300"
+          >
+            <Icon name="x" size={12} />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {unknownKeys.length > 0 && (
+            <div>
+              <div className="text-[10px] text-amber-400 uppercase tracking-wider mb-1.5">
+                Unknown keys ({unknownKeys.length})
+              </div>
+              <div className="space-y-1.5">
+                {unknownKeys.map((k) => (
+                  <TagKeyRow
+                    key={k.key}
+                    tagKey={k}
+                    variant="unknown"
+                    onUseAsAxis={onUseAsAxis}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {aliasKeys.length > 0 && (
+            <div>
+              <div className="text-[10px] text-cyan-400 uppercase tracking-wider mb-1.5">
+                Alias keys ({aliasKeys.length})
+              </div>
+              <div className="space-y-1.5">
+                {aliasKeys.map((k) => (
+                  <TagKeyRow
+                    key={k.key}
+                    tagKey={k}
+                    variant="alias"
+                    canonicalKey={aliasTagKeyMap.get(k.key)}
+                    onUseAsAxis={onUseAsAxis}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TagKeyRow({
+  tagKey,
+  variant,
+  canonicalKey,
+  onUseAsAxis,
+}: {
+  tagKey: BlockTagDictionaryKey;
+  variant: 'unknown' | 'alias';
+  canonicalKey?: string;
+  onUseAsAxis: (tagKey: string) => void;
+}) {
+  const values = tagKey.common_values ?? [];
+  const borderClass = variant === 'unknown'
+    ? 'border-amber-800/40'
+    : 'border-cyan-800/40';
+
+  return (
+    <div className={clsx('rounded border p-2', borderClass)}>
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-[11px] font-mono font-medium text-neutral-200">{tagKey.key}</span>
+        <span className="text-[10px] text-neutral-500">
+          {tagKey.observed_count} block{tagKey.observed_count === 1 ? '' : 's'}
+        </span>
+        {tagKey.data_type && tagKey.data_type !== 'string' && (
+          <span className="text-[9px] text-neutral-600 font-mono">{tagKey.data_type}</span>
+        )}
+        {canonicalKey && (
+          <span className="text-[10px] text-cyan-400">
+            canonical: <span className="font-mono">{canonicalKey}</span>
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => onUseAsAxis(tagKey.key)}
+          className="ml-auto text-[9px] px-1.5 py-0.5 rounded border border-neutral-700 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
+          title={`Use tag:${tagKey.key} as row axis`}
+        >
+          Use as axis
+        </button>
+      </div>
+      {values.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {values.map((v) => (
+            <span
+              key={v.value}
+              className="text-[9px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 font-mono"
+              title={`${v.count} occurrence${v.count === 1 ? '' : 's'}`}
+            >
+              {v.value}
+              <span className="text-neutral-600 ml-1">{v.count}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
