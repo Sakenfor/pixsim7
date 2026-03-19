@@ -51,9 +51,11 @@ class RequestPrincipal(BaseModel):
 
     agent_id: Optional[str] = Field(default=None, description="Agent instance identifier.")
     agent_type: Optional[str] = Field(default=None, description='E.g. "claude-cli", "codex".')
+    agent_label: Optional[str] = Field(default=None, description="Resolved profile display name.")
     run_id: Optional[str] = Field(default=None, description="Unique run/invocation ID.")
     plan_id: Optional[str] = Field(default=None, description="Plan being worked on.")
     on_behalf_of: Optional[int] = Field(default=None, description="User ID the agent acts for.")
+    on_behalf_of_name: Optional[str] = Field(default=None, description="Resolved display name of delegating user.")
 
     # ── User duck-compat methods ─────────────────────────────────
 
@@ -93,7 +95,10 @@ class RequestPrincipal(BaseModel):
     @property
     def actor_display_name(self) -> str:
         if self.principal_type == "agent":
-            return f"agent:{self.agent_id}"
+            label = self.agent_label or self.agent_id or "agent"
+            if self.on_behalf_of_name:
+                return f"{label} ({self.on_behalf_of_name})"
+            return label
         return self.display_name or self.username or f"user:{self.id}"
 
     @property

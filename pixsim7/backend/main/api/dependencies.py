@@ -290,6 +290,26 @@ async def get_current_principal(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+    # Enrich agent principals with profile label + delegating user name
+    if principal.is_agent:
+        if principal.agent_id:
+            try:
+                from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
+                profile = await auth_service.db.get(AgentProfile, principal.agent_id)
+                if profile:
+                    principal.agent_label = profile.label
+            except Exception:
+                pass
+        if principal.on_behalf_of and not principal.on_behalf_of_name:
+            try:
+                user = await auth_service.users.get_user(principal.on_behalf_of)
+                principal.on_behalf_of_name = (
+                    getattr(user, "display_name", None)
+                    or getattr(user, "username", None)
+                )
+            except Exception:
+                pass
+
     return principal
 
 
