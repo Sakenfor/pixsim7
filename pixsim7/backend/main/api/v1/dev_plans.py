@@ -4,14 +4,14 @@ Dev Plans API — DB-first plan management.
 Plans are backed by Document (shared fields) + PlanRegistry (plan-specific fields).
 The DB is authoritative. Filesystem markdown is a convenience export.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, get_database
+from pixsim7.backend.main.api.dependencies import ActorCtx, CurrentAdminUser, CurrentUser, get_database
 from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry, PlanSyncRun
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
@@ -25,6 +25,7 @@ from pixsim7.backend.main.services.docs.plan_write import (
     PlanBundle,
     PlanNotFoundError,
     PlanWriteError,
+    _status_to_scope,
     export_plan_to_disk,
     get_active_assignment,
     get_plan_bundle,
@@ -33,6 +34,9 @@ from pixsim7.backend.main.services.docs.plan_write import (
     make_document_id,
     update_plan,
 )
+from pixsim_logging import get_logger
+
+logger = get_logger()
 
 router = APIRouter(prefix="/dev/plans", tags=["dev", "plans"])
 
@@ -300,7 +304,8 @@ def _run_to_entry(run: PlanSyncRun) -> dict:
     }
 
 
-def _actor_identity(user: CurrentUser) -> tuple[str, str, Optional[int]]:
+def _actor_identity(user) -> tuple[str, str, Optional[int]]:
+    """Legacy tuple helper — prefer ActorCtx dependency in new endpoints."""
     actor_id = getattr(user, "id", None)
     actor_source = f"user:{actor_id}" if actor_id is not None else "user:unknown"
     actor_name = (
@@ -654,15 +659,19 @@ async def get_activity(
 class PlanCreateRequest(BaseModel):
     id: str = Field(..., min_length=1, max_length=120, description="Unique plan ID (slug)")
     title: str = Field(..., min_length=1, max_length=255)
-    plan_type: str = Field("feature", description="proposal | feature | bugfix | refactor | exploration | task")
-    status: str = Field("active", description="active | parked | done | blocked")
+    plan_type: Literal["proposal", "feature", "bugfix", "refactor", "exploration", "task"] = Field(
+        "feature", description="proposal | feature | bugfix | refactor | exploration | task"
+    )
+    status: Literal["active", "parked", "done", "blocked"] = Field(
+        "active", description="active | parked | done | blocked"
+    )
     stage: str = Field("proposed", description="Free-form stage label")
     owner: str = Field("unassigned", description="Owner / lane")
-    priority: str = Field("normal", description="high | normal | low")
+    priority: Literal["high", "normal", "low"] = Field("normal", description="high | normal | low")
     summary: str = Field("", description="Plan summary")
     markdown: Optional[str] = Field(None, description="Plan content")
-    task_scope: str = Field("plan", description="plan | user | system")
-    visibility: str = Field("public", description="private | shared | public")
+    task_scope: Literal["plan", "user", "system"] = Field("plan", description="plan | user | system")
+    visibility: Literal["private", "shared", "public"] = Field("public", description="private | shared | public")
     namespace: Optional[str] = Field("dev/plans", description="Optional taxonomy namespace")
     tags: Optional[List[str]] = Field(None)
     code_paths: Optional[List[str]] = Field(None)
@@ -679,6 +688,7 @@ class PlanCreateResponse(BaseModel):
     documentId: str
     created: bool
     commitSha: Optional[str] = None
+    exportError: Optional[str] = None
 
 
 @router.post("", response_model=PlanCreateResponse)
@@ -741,7 +751,7 @@ async def create_plan(
         companions=payload.companions or [],
         handoffs=payload.handoffs or [],
         depends_on=payload.depends_on or [],
-        scope=payload.status if payload.status in ("active", "done", "parked") else "active",
+        scope=_status_to_scope(payload.status),
         created_at=now,
         updated_at=now,
     )
@@ -763,6 +773,7 @@ async def create_plan(
 
     # Optional export to filesystem + git for dev plans
     commit_sha = None
+    export_error = None
     if payload.task_scope == "plan" and not settings.plans_db_only_mode:
         try:
             bundle = PlanBundle(plan=plan, doc=doc)
@@ -771,10 +782,21 @@ async def create_plan(
                 paths,
                 f"plan({payload.id}): created\n\nActor: {actor_source}",
             )
-        except Exception:
-            pass  # DB is the authority
+        except Exception as exc:
+            export_error = str(exc)
+            logger.warning(
+                "plan_create_export_failed",
+                plan_id=payload.id,
+                error=export_error,
+            )
 
-    return PlanCreateResponse(planId=plan.id, documentId=doc_id, created=True, commitSha=commit_sha)
+    return PlanCreateResponse(
+        planId=plan.id,
+        documentId=doc_id,
+        created=True,
+        commitSha=commit_sha,
+        exportError=export_error,
+    )
 
 
 class PlanUpdateRequest(BaseModel):
@@ -813,6 +835,7 @@ class PlanUpdateResponse(BaseModel):
 async def update_plan_endpoint(
     plan_id: str,
     payload: PlanUpdateRequest,
+    actor: ActorCtx,
     _admin: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
@@ -827,7 +850,7 @@ async def update_plan_endpoint(
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    actor_source, actor_name, actor_user_id = _actor_identity(_admin)
+    actor_source, actor_name, actor_user_id = actor.actor_tuple
 
     try:
         result = await update_plan(
@@ -892,6 +915,7 @@ class PlanProgressResponse(BaseModel):
 async def log_plan_progress(
     plan_id: str,
     payload: PlanProgressRequest,
+    actor: ActorCtx,
     _admin: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
@@ -992,13 +1016,16 @@ async def log_plan_progress(
     if payload.append_evidence is not None:
         checkpoint["evidence"] = _merge_evidence(checkpoint.get("evidence"), payload.append_evidence)
 
-    actor_source, actor_name, actor_user_id = _actor_identity(_admin)
+    actor_source, actor_name, actor_user_id = actor.actor_tuple
     note_text = (payload.note or "").strip()
-    checkpoint["last_update"] = {
+    last_update: Dict[str, Any] = {
         "at": utcnow().isoformat(),
         "by": actor_name,
         "note": note_text,
     }
+    if actor.is_agent:
+        last_update["actor"] = actor.audit_dict()
+    checkpoint["last_update"] = last_update
 
     new_checkpoints = list(checkpoints)
     new_checkpoints[checkpoint_index] = checkpoint
