@@ -44,6 +44,14 @@ interface ContractEndpoint {
   summary: string;
 }
 
+interface EndpointDisplayEntry {
+  key: string;
+  method: string;
+  path: string;
+  summary: string;
+  endpoint: ContractEndpoint | null;
+}
+
 interface ContractNode {
   id: string;
   name: string;
@@ -156,6 +164,84 @@ const STATUS_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'
   errored: 'red',
 };
 
+const AI_ASSISTANT_DRAFT_KEY = 'ai-assistant:draft';
+const AI_ASSISTANT_INJECT_PROMPT_EVENT = 'ai-assistant:inject-prompt';
+
+function getEndpointEntries(node: ContractNode): EndpointDisplayEntry[] {
+  const entries: EndpointDisplayEntry[] = [];
+  if (node.endpoint) {
+    entries.push({
+      key: `${node.id}:contract`,
+      method: 'GET',
+      path: node.endpoint,
+      summary: node.summary || `Contract endpoint for ${node.id}.`,
+      endpoint: null,
+    });
+  }
+  for (const ep of node.sub_endpoints) {
+    entries.push({
+      key: `${node.id}:${ep.id}:${ep.method}:${ep.path}`,
+      method: ep.method,
+      path: ep.path,
+      summary: ep.summary,
+      endpoint: ep,
+    });
+  }
+  return entries;
+}
+
+function getEndpointViewTarget(path: string, method: string): { href: string; label: 'View' | 'Docs' } {
+  const rawPath = String(path || '').trim();
+  const upperMethod = String(method || '').toUpperCase();
+  if (!rawPath) return { href: '/docs', label: 'Docs' };
+
+  if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
+    return { href: rawPath, label: 'View' };
+  }
+
+  const normalizedPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+  const hasPathParams = normalizedPath.includes('{') || normalizedPath.includes('}');
+
+  if (upperMethod === 'GET' && !hasPathParams) {
+    return { href: normalizedPath, label: 'View' };
+  }
+
+  return { href: '/docs', label: 'Docs' };
+}
+
+function openEndpointView(path: string, method: string) {
+  const target = getEndpointViewTarget(path, method);
+  window.open(target.href, '_blank', 'noopener,noreferrer');
+}
+
+function buildContractPrompt(node: ContractNode, endpoint?: ContractEndpoint): string {
+  if (!endpoint) {
+    return `Help me use contract ${node.id} (${node.name}). Explain available actions and suggest the best next step.`;
+  }
+  const summary = endpoint.summary?.trim().replace(/\.$/, '');
+  if (summary) {
+    return `I want to ${summary.toLowerCase()} using ${node.id} (${endpoint.method} ${endpoint.path}). Ask one clarifying question, then draft the exact call.`;
+  }
+  return `Help me call ${endpoint.method} ${endpoint.path} from contract ${node.id}.`;
+}
+
+function openAssistantWithPrompt(prompt: string) {
+  const text = prompt.trim();
+  if (!text) return;
+
+  try {
+    sessionStorage.setItem(AI_ASSISTANT_DRAFT_KEY, text);
+  } catch { /* ignore */ }
+
+  try {
+    window.dispatchEvent(new CustomEvent(AI_ASSISTANT_INJECT_PROMPT_EVENT, {
+      detail: { prompt: text, mode: 'replace' },
+    }));
+  } catch { /* ignore */ }
+
+  openWorkspacePanel('ai-assistant');
+}
+
 // =============================================================================
 // Contract Graph View
 // =============================================================================
@@ -163,6 +249,7 @@ const STATUS_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'
 function ContractGraphView() {
   const [data, setData] = useState<ContractsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expandedEndpointContracts, setExpandedEndpointContracts] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     try {
@@ -177,6 +264,15 @@ function ContractGraphView() {
     const interval = setInterval(load, 10_000);
     return () => clearInterval(interval);
   }, [load]);
+
+  const toggleEndpoints = useCallback((contractId: string) => {
+    setExpandedEndpointContracts((prev) => {
+      const next = new Set(prev);
+      if (next.has(contractId)) next.delete(contractId);
+      else next.add(contractId);
+      return next;
+    });
+  }, []);
 
   if (loading && !data) {
     return (
@@ -204,69 +300,132 @@ function ContractGraphView() {
       </SectionHeader>
 
       <div className="space-y-3">
-        {data.contracts.map((node) => (
-          <div
-            key={node.id}
-            className={`rounded-lg border overflow-hidden ${
-              node.active_agents.length > 0
-                ? 'border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-950/20'
-                : 'border-neutral-200 dark:border-neutral-800'
-            }`}
-          >
-            <div className="px-4 py-2.5 bg-neutral-50 dark:bg-neutral-900 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-sm">{node.name}</span>
-                <Badge color="gray" className="text-[10px]">{node.id}</Badge>
-                {node.active_agents.length > 0 && (
-                  <Badge color="green" className="text-[10px]">
-                    {node.active_agents.length} agent{node.active_agents.length !== 1 ? 's' : ''}
-                  </Badge>
-                )}
-              </div>
-              <div className="text-[10px] text-neutral-400">
-                v{node.version} | {node.sub_endpoints.length + (node.endpoint ? 1 : 0)} endpoint{node.sub_endpoints.length + (node.endpoint ? 1 : 0) !== 1 ? 's' : ''}
-              </div>
-            </div>
+        {data.contracts.map((node) => {
+          const endpointEntries = getEndpointEntries(node);
+          const endpointCount = endpointEntries.length;
+          const endpointsExpanded = expandedEndpointContracts.has(node.id);
 
-            <div className="px-4 py-2 text-xs text-neutral-500 dark:text-neutral-400">
-              {node.summary}
-            </div>
-
-            {node.provides.length > 0 && (
-              <div className="px-4 pb-2 flex flex-wrap gap-1">
-                {node.provides.map((cap) => (
-                  <Badge key={cap} color="blue" className="text-[9px]">{cap}</Badge>
-                ))}
-              </div>
-            )}
-
-            {node.relates_to.length > 0 && (
-              <div className="px-4 pb-2 flex items-center gap-1 text-[10px] text-neutral-400">
-                <Icon name="link" size={10} />
-                {node.relates_to.join(', ')}
-              </div>
-            )}
-
-            {node.active_agents.map((agent) => (
-              <div
-                key={agent.session_id}
-                className="mx-3 mb-2 px-3 py-2 rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30 text-xs"
-              >
+          return (
+            <div
+              key={node.id}
+              className={`rounded-lg border overflow-hidden ${
+                node.active_agents.length > 0
+                  ? 'border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-950/20'
+                  : 'border-neutral-200 dark:border-neutral-800'
+              }`}
+            >
+              <div className="px-4 py-2.5 bg-neutral-50 dark:bg-neutral-900 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Badge color="green" className="text-[10px]">{agent.agent_type}</Badge>
-                  <span className="font-medium">{agent.action || 'idle'}</span>
-                  <span className="text-neutral-400 ml-auto">{formatDuration(agent.duration_seconds)}</span>
+                  <span className="font-medium text-sm">{node.name}</span>
+                  <Badge color="gray" className="text-[10px]">{node.id}</Badge>
+                  {node.active_agents.length > 0 && (
+                    <Badge color="green" className="text-[10px]">
+                      {node.active_agents.length} agent{node.active_agents.length !== 1 ? 's' : ''}
+                    </Badge>
+                  )}
                 </div>
-                {agent.detail && (
-                  <div className="text-neutral-500 mt-1">{agent.detail}</div>
-                )}
-                {agent.plan_id && (
-                  <div className="text-neutral-400 mt-0.5">Plan: <PlanLink planId={agent.plan_id} /></div>
-                )}
+                <div className="text-[10px] text-neutral-400">
+                  v{node.version} | {endpointCount} endpoint{endpointCount !== 1 ? 's' : ''}
+                </div>
               </div>
-            ))}
-          </div>
-        ))}
+
+              <div className="px-4 py-2 text-xs text-neutral-500 dark:text-neutral-400">
+                {node.summary}
+              </div>
+
+              {endpointCount > 0 && (
+                <div className="px-4 pb-2">
+                  <button
+                    onClick={() => toggleEndpoints(node.id)}
+                    className="w-full px-2 py-1 rounded border border-neutral-200 dark:border-neutral-800 text-left text-[11px] bg-neutral-50/70 dark:bg-neutral-900/40 hover:bg-neutral-100 dark:hover:bg-neutral-900/60 transition-colors flex items-center gap-2"
+                  >
+                    <Icon name={endpointsExpanded ? 'chevronDown' : 'chevronRight'} size={12} className="text-neutral-500" />
+                    <span className="text-neutral-700 dark:text-neutral-300">
+                      {endpointCount} endpoint{endpointCount !== 1 ? 's' : ''}
+                    </span>
+                    <span className="ml-auto text-[10px] text-neutral-500 dark:text-neutral-400">
+                      {endpointsExpanded ? 'hide' : 'show'}
+                    </span>
+                  </button>
+
+                  {endpointsExpanded && (
+                    <div className="mt-2 space-y-1">
+                      {endpointEntries.map((entry) => {
+                        const viewTarget = getEndpointViewTarget(entry.path, entry.method);
+                        return (
+                          <div
+                            key={entry.key}
+                            className="w-full px-2 py-1 rounded border border-neutral-200 dark:border-neutral-800 text-[11px] bg-neutral-50/70 dark:bg-neutral-900/40 flex items-center gap-2"
+                          >
+                            <Badge color="gray" className="text-[9px] shrink-0">{entry.method}</Badge>
+                            <span className="font-mono text-[10px] text-neutral-600 dark:text-neutral-300 truncate max-w-[40%]">
+                              {entry.path}
+                            </span>
+                            <span className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
+                              {entry.summary}
+                            </span>
+                            <div className="ml-auto flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => openEndpointView(entry.path, entry.method)}
+                                className="px-2 py-0.5 rounded border border-neutral-300 dark:border-neutral-700 text-[10px] text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                                title={viewTarget.label === 'Docs' ? 'Open API docs' : 'Open endpoint'}
+                              >
+                                {viewTarget.label}
+                              </button>
+                              <button
+                                onClick={() => openAssistantWithPrompt(
+                                  entry.endpoint ? buildContractPrompt(node, entry.endpoint) : buildContractPrompt(node)
+                                )}
+                                className="px-2 py-0.5 rounded border border-blue-300 dark:border-blue-700 text-[10px] text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                                title="Open in AI Assistant"
+                              >
+                                Ask
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {node.provides.length > 0 && (
+                <div className="px-4 pb-2 flex flex-wrap gap-1">
+                  {node.provides.map((cap) => (
+                    <Badge key={cap} color="blue" className="text-[9px]">{cap}</Badge>
+                  ))}
+                </div>
+              )}
+
+              {node.relates_to.length > 0 && (
+                <div className="px-4 pb-2 flex items-center gap-1 text-[10px] text-neutral-400">
+                  <Icon name="arrowRightLeft" size={10} />
+                  {node.relates_to.join(', ')}
+                </div>
+              )}
+
+              {node.active_agents.map((agent) => (
+                <div
+                  key={agent.session_id}
+                  className="mx-3 mb-2 px-3 py-2 rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30 text-xs"
+                >
+                  <div className="flex items-center gap-2">
+                    <Badge color="green" className="text-[10px]">{agent.agent_type}</Badge>
+                    <span className="font-medium">{agent.action || 'idle'}</span>
+                    <span className="text-neutral-400 ml-auto">{formatDuration(agent.duration_seconds)}</span>
+                  </div>
+                  {agent.detail && (
+                    <div className="text-neutral-500 mt-1">{agent.detail}</div>
+                  )}
+                  {agent.plan_id && (
+                    <div className="text-neutral-400 mt-0.5">Plan: <PlanLink planId={agent.plan_id} /></div>
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -702,6 +861,95 @@ function HistoryView() {
 }
 
 // =============================================================================
+// Writes View — plan changes attributed to agents
+// =============================================================================
+
+interface AgentWriteEntry {
+  id: string;
+  plan_id: string;
+  plan_title: string;
+  event_type: string;
+  field: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  commit_sha: string | null;
+  actor: string;
+  timestamp: string;
+}
+
+interface AgentWritesResponse {
+  entries: AgentWriteEntry[];
+  total: number;
+}
+
+function WritesView() {
+  const [data, setData] = useState<AgentWritesResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    pixsimClient
+      .get<AgentWritesResponse>('/meta/agents/writes', { params: { days: 14, limit: 100 } })
+      .then(setData)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <EmptyState message="Loading writes..." icon={<Icon name="loader" size={20} />} />
+      </div>
+    );
+  }
+
+  if (!data || data.entries.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <EmptyState message="No agent-attributed writes yet" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-2">
+      <SectionHeader>{data.total} agent write{data.total !== 1 ? 's' : ''} (last 14 days)</SectionHeader>
+      <div className="space-y-1">
+        {data.entries.map((entry) => {
+          const agentName = entry.actor.replace('agent:', '');
+          const isFieldChange = entry.event_type === 'field_changed';
+          return (
+            <div
+              key={entry.id}
+              className="flex items-start gap-2 px-2 py-1.5 rounded border border-neutral-200 dark:border-neutral-800 text-xs"
+            >
+              <Badge color="blue" className="text-[10px] shrink-0">{agentName}</Badge>
+              <div className="flex-1 min-w-0">
+                <span className="mr-1"><PlanLink planId={entry.plan_id} /></span>
+                {isFieldChange && entry.field && (
+                  <span className="text-neutral-500">
+                    {entry.field}
+                    {entry.new_value ? ` \u2192 ${entry.new_value.slice(0, 40)}` : ''}
+                  </span>
+                )}
+                {!isFieldChange && (
+                  <Badge color="gray" className="text-[9px] ml-1">{entry.event_type}</Badge>
+                )}
+                {entry.commit_sha && (
+                  <span className="ml-1 font-mono text-neutral-400 text-[10px]">
+                    {entry.commit_sha.slice(0, 7)}
+                  </span>
+                )}
+              </div>
+              <span className="shrink-0 text-neutral-400 text-[10px]">{formatTimestamp(entry.timestamp)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
 // Stats View
 // =============================================================================
 
@@ -982,6 +1230,11 @@ export function AgentObservabilityPanel() {
       icon: <Icon name="clock" size={12} />,
     },
     {
+      id: 'writes',
+      label: 'Writes',
+      icon: <Icon name="edit" size={12} />,
+    },
+    {
       id: 'send',
       label: 'Test Bridge',
       icon: <Icon name="messageSquare" size={12} />,
@@ -1009,6 +1262,9 @@ export function AgentObservabilityPanel() {
       break;
     case 'history':
       content = <HistoryView />;
+      break;
+    case 'writes':
+      content = <WritesView />;
       break;
     case 'send':
       content = <SendMessageView />;

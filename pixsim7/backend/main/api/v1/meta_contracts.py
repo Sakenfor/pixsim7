@@ -12,7 +12,7 @@ which contracts and plans agents are currently working on.
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -744,10 +744,84 @@ async def terminate_agent(agent_id: str) -> TerminateAgentResponse:
     return TerminateAgentResponse(ok=True, agent_id=agent_id, message="Disconnected")
 
 
+# =============================================================================
+# Agent Writes — plan/notification audit trail for agent-attributed changes
+# =============================================================================
+
+
+class AgentWriteEntry(BaseModel):
+    id: str
+    plan_id: str
+    plan_title: str
+    event_type: str
+    field: Optional[str] = None
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    commit_sha: Optional[str] = None
+    actor: str
+    timestamp: str
+
+
+class AgentWritesResponse(BaseModel):
+    entries: List[AgentWriteEntry]
+    total: int
+
+
+@router.get("/agents/writes", response_model=AgentWritesResponse)
+async def get_agent_writes(
+    _user: CurrentUser,
+    days: int = Query(7, ge=1, le=90),
+    limit: int = Query(100, ge=1, le=500),
+    agent_id: Optional[str] = Query(None, description="Filter by specific agent ID"),
+    db: AsyncSession = Depends(get_database),
+):
+    """Query plan write events attributed to agents."""
+    from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry, Document
+
+    cutoff = datetime.now(tz=timezone.utc) - timedelta(days=days)
+
+    stmt = (
+        select(PlanEvent, Document.title)
+        .join(PlanRegistry, PlanEvent.plan_id == PlanRegistry.id)
+        .join(Document, PlanRegistry.document_id == Document.id)
+        .where(PlanEvent.timestamp >= cutoff)
+        .where(PlanEvent.actor.like("agent:%"))
+    )
+    if agent_id:
+        stmt = stmt.where(PlanEvent.actor == f"agent:{agent_id}")
+
+    stmt = stmt.order_by(PlanEvent.timestamp.desc()).limit(limit)
+    rows = (await db.execute(stmt)).all()
+
+    entries = [
+        AgentWriteEntry(
+            id=str(ev.id),
+            plan_id=ev.plan_id,
+            plan_title=title or ev.plan_id,
+            event_type=ev.event_type,
+            field=ev.field,
+            old_value=ev.old_value,
+            new_value=ev.new_value,
+            commit_sha=ev.commit_sha,
+            actor=ev.actor,
+            timestamp=ev.timestamp.isoformat() if ev.timestamp else "",
+        )
+        for ev, title in rows
+    ]
+
+    return AgentWritesResponse(entries=entries, total=len(entries))
+
+
+# =============================================================================
+# CLI Token — agent-identity-aware
+# =============================================================================
+
+
 class CliTokenResponse(BaseModel):
     token: str
     expires_in_hours: int
     scope: str
+    agent_id: Optional[str] = None
     command: str = Field(description="Ready-to-paste Claude CLI command")
 
 
@@ -757,14 +831,22 @@ async def generate_cli_token(
     scope: str = Query("dev", description="Tool scope: 'user' or 'dev'"),
     hours: int = Query(24, ge=1, le=168, description="Token lifetime in hours (max 7 days)"),
 ) -> CliTokenResponse:
-    """Generate a CLI token for standalone Claude use with MCP tools.
+    """Generate a CLI agent token for standalone Claude use with MCP tools.
 
-    Mint from the AI Agents panel, paste into terminal.
+    Mints a proper agent token with agent_id + on_behalf_of so all API
+    calls made by the CLI agent are distinguishable from human actions.
     """
-    from pixsim7.backend.main.services.llm.remote_cmd_bridge import _mint_bridge_token
-    token = _mint_bridge_token(user.id, hours=hours)
-    if not token:
-        raise HTTPException(status_code=500, detail="Failed to generate token")
+    import secrets
+    from pixsim7.backend.main.shared.auth import create_agent_token
+
+    agent_id = f"cli-{secrets.token_hex(4)}"
+
+    token = create_agent_token(
+        agent_id=agent_id,
+        agent_type="claude-cli",
+        on_behalf_of=user.id if user.id != 0 else None,
+        ttl_hours=hours,
+    )
 
     command = (
         f'PIXSIM_API_TOKEN="{token}" PIXSIM_SCOPE="{scope}" '
@@ -775,6 +857,7 @@ async def generate_cli_token(
         token=token,
         expires_in_hours=hours,
         scope=scope,
+        agent_id=agent_id,
         command=command,
     )
 

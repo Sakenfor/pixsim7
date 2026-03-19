@@ -4,6 +4,7 @@ Dev Plans API — DB-first plan management.
 Plans are backed by Document (shared fields) + PlanRegistry (plan-specific fields).
 The DB is authoritative. Filesystem markdown is a convenience export.
 """
+import re
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -126,6 +127,7 @@ class PlanEventEntry(BaseModel):
     oldValue: Optional[str] = None
     newValue: Optional[str] = None
     commitSha: Optional[str] = None
+    actor: Optional[str] = None
     timestamp: str
 
 
@@ -143,6 +145,7 @@ class PlanActivityEntry(BaseModel):
     oldValue: Optional[str] = None
     newValue: Optional[str] = None
     commitSha: Optional[str] = None
+    actor: Optional[str] = None
     timestamp: str
 
 
@@ -281,6 +284,7 @@ def _event_to_entry(ev: PlanEvent, plan_title: str = "") -> dict:
         "oldValue": ev.old_value,
         "newValue": ev.new_value,
         "commitSha": ev.commit_sha,
+        "actor": ev.actor,
         "timestamp": ev.timestamp.isoformat() if ev.timestamp else "",
     }
 
@@ -310,6 +314,18 @@ def _run_to_entry(run: PlanSyncRun) -> dict:
 
 
 CHECKPOINT_STATUSES = frozenset({"pending", "active", "done", "blocked"})
+
+_GIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
+
+
+def _validate_commit_sha(sha: str) -> str:
+    """Validate a git commit SHA (7-40 hex chars). Returns lowercase."""
+    sha = sha.strip()
+    if not _GIT_SHA_RE.match(sha):
+        raise ValueError(
+            f"Invalid commit SHA format: '{sha}'. Expected 7-40 hex characters."
+        )
+    return sha.lower()
 
 
 def _checkpoint_int(value: Any) -> Optional[int]:
@@ -595,6 +611,7 @@ async def get_plan_events(
                 "oldValue": ev.old_value,
                 "newValue": ev.new_value,
                 "commitSha": ev.commit_sha,
+                "actor": ev.actor,
                 "timestamp": ev.timestamp.isoformat() if ev.timestamp else "",
             }
             for ev in events
@@ -809,6 +826,10 @@ class PlanUpdateRequest(BaseModel):
         None,
         description="Raw mutable-field patch map. Merged with explicit fields; explicit fields win.",
     )
+    commit_sha: Optional[str] = Field(
+        None,
+        description="Git commit SHA associated with this update. Recorded on audit events for traceability.",
+    )
 
 
 class PlanUpdateResponse(BaseModel):
@@ -827,6 +848,14 @@ async def update_plan_endpoint(
 ):
     payload_data = payload.model_dump()
     raw_patch = payload_data.pop("patch", None)
+    request_commit_sha = payload_data.pop("commit_sha", None)
+
+    # Validate commit SHA if provided
+    if request_commit_sha is not None:
+        try:
+            request_commit_sha = _validate_commit_sha(request_commit_sha)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     updates: Dict[str, Any] = {}
     if isinstance(raw_patch, dict):
@@ -837,7 +866,10 @@ async def update_plan_endpoint(
         raise HTTPException(status_code=400, detail="No fields to update")
 
     try:
-        result = await update_plan(db, plan_id, updates, principal=principal)
+        result = await update_plan(
+            db, plan_id, updates, principal=principal,
+            evidence_commit_sha=request_commit_sha,
+        )
     except PlanNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PlanWriteError as exc:
@@ -869,8 +901,16 @@ class PlanProgressRequest(BaseModel):
         None,
         description=(
             'Evidence references to append. Each item is either a bare string '
-            '(legacy file path) or {"kind": "file_path"|"test_suite", "ref": "..."}.'
+            '(legacy file path) or {"kind": "file_path"|"test_suite"|"git_commit", "ref": "..."}.'
         ),
+    )
+    commit_sha: Optional[str] = Field(
+        None,
+        description="Single git commit SHA to record as checkpoint evidence. Accepts short (7+) or full (40) hex.",
+    )
+    append_commits: Optional[List[str]] = Field(
+        None,
+        description="List of git commit SHAs to append as checkpoint evidence.",
     )
     note: Optional[str] = Field(None, description="Short progress note.")
     sync_plan_stage: bool = Field(
@@ -911,6 +951,8 @@ async def log_plan_progress(
             payload.eta is not None,
             payload.blockers is not None,
             bool(payload.append_evidence),
+            payload.commit_sha is not None,
+            bool(payload.append_commits),
             bool((payload.note or "").strip()),
             payload.sync_plan_stage,
         )
@@ -989,8 +1031,36 @@ async def log_plan_progress(
             raise HTTPException(status_code=400, detail="blockers must be list[object]")
         checkpoint["blockers"] = payload.blockers
 
+    # Build combined evidence to append (explicit evidence + commit SHAs)
+    evidence_to_append: Optional[list] = None
     if payload.append_evidence is not None:
-        checkpoint["evidence"] = _merge_evidence(checkpoint.get("evidence"), payload.append_evidence)
+        evidence_to_append = list(payload.append_evidence)
+    if payload.commit_sha is not None:
+        try:
+            validated = _validate_commit_sha(payload.commit_sha)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if evidence_to_append is None:
+            evidence_to_append = []
+        evidence_to_append.append({"kind": "git_commit", "ref": validated})
+    if payload.append_commits:
+        if evidence_to_append is None:
+            evidence_to_append = []
+        for raw_sha in payload.append_commits:
+            try:
+                validated = _validate_commit_sha(raw_sha)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            evidence_to_append.append({"kind": "git_commit", "ref": validated})
+    if evidence_to_append is not None:
+        checkpoint["evidence"] = _merge_evidence(checkpoint.get("evidence"), evidence_to_append)
+
+    # Resolve the primary commit SHA for audit events (first supplied SHA)
+    progress_commit_sha: Optional[str] = None
+    if payload.commit_sha is not None:
+        progress_commit_sha = _validate_commit_sha(payload.commit_sha)
+    elif payload.append_commits:
+        progress_commit_sha = _validate_commit_sha(payload.append_commits[0])
 
     note_text = (payload.note or "").strip()
     last_update: Dict[str, Any] = {
@@ -1009,7 +1079,10 @@ async def log_plan_progress(
         updates["stage"] = payload.checkpoint_id
 
     try:
-        result = await update_plan(db, plan_id, updates, principal=principal)
+        result = await update_plan(
+            db, plan_id, updates, principal=principal,
+            evidence_commit_sha=progress_commit_sha,
+        )
     except PlanNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PlanWriteError as exc:
@@ -1184,8 +1257,8 @@ async def get_agent_context(
                 "action": "log_progress",
                 "method": "POST",
                 "url": "/dev/plans/progress/{plan_id}",
-                "body": '{"checkpoint_id": "phase_1", "points_delta": 1, "note": "implemented API scaffolding", "append_evidence": [{"kind": "test_suite", "ref": "my-feature-tests"}, "pixsim7/backend/tests/api/test_feature.py"]}',
-                "description": "Apply checkpoint progress deltas and metadata (points/status/blockers/evidence) with consistent checkpoint updates. Evidence accepts both bare file paths and typed refs ({kind: file_path|test_suite, ref: ...}).",
+                "body": '{"checkpoint_id": "phase_1", "points_delta": 1, "note": "implemented API scaffolding", "commit_sha": "a1b2c3d4e5f6", "append_commits": [], "append_evidence": [{"kind": "test_suite", "ref": "my-feature-tests"}, "pixsim7/backend/tests/api/test_feature.py"]}',
+                "description": "Apply checkpoint progress deltas and metadata (points/status/blockers/evidence) with consistent checkpoint updates. Evidence accepts bare file paths, typed refs ({kind: file_path|test_suite|git_commit, ref: ...}), and convenience commit_sha/append_commits fields (auto-converted to git_commit evidence).",
             },
             {
                 "action": "update_markdown",
