@@ -686,10 +686,13 @@ export function AIAssistantPanel() {
             const tabProfile = profiles.find((p) => p.id === tab.profileId);
             const tabIcon = (tabProfile?.icon || (tabProfile && tabProfile.agent_type !== 'assistant' ? 'cpu' : 'messageSquare')) as IconName;
             return (
-              <button
+              <div
                 key={tab.id}
+                role="tab"
+                tabIndex={0}
                 onClick={() => setActiveTab(tab.id)}
-                className={`group flex items-center gap-1.5 px-3 py-1.5 text-[11px] border-r border-neutral-200 dark:border-neutral-800 shrink-0 transition-colors ${
+                onKeyDown={(e) => { if (e.key === 'Enter') setActiveTab(tab.id); }}
+                className={`group flex items-center gap-1.5 px-3 py-1.5 text-[11px] border-r border-neutral-200 dark:border-neutral-800 shrink-0 transition-colors cursor-pointer ${
                   isActive
                     ? 'bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100'
                     : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
@@ -705,7 +708,7 @@ export function AIAssistantPanel() {
                     <Icon name="x" size={8} />
                   </button>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>
