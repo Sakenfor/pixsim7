@@ -14,7 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi import status as http_status
 from fastapi.responses import FileResponse
 from pixsim7.backend.main.shared.errors import InvalidOperationError
-from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc, DatabaseSession
+from pixsim7.backend.main.api.dependencies import CurrentUser, CurrentUserRecord, AssetSvc, DatabaseSession
 from pixsim7.backend.main.shared.schemas.asset_schemas import (
     AssetResponse,
     AssetGenerationContext,
@@ -423,7 +423,7 @@ async def check_assets_by_hash_batch(
 
 
 @router.post("/{asset_id}/sync", response_model=AssetResponse, status_code=http_status.HTTP_200_OK)
-async def sync_asset(asset_id: int, user: CurrentUser, asset_service: AssetSvc):
+async def sync_asset(asset_id: int, user: CurrentUserRecord, asset_service: AssetSvc):
     """Download remote provider asset locally and optionally extract embedded assets."""
     try:
         asset = await asset_service.sync_asset(asset_id=asset_id, user=user)

@@ -385,6 +385,37 @@ CurrentGamePrincipal = Annotated[AuthPrincipal, Depends(get_current_game_princip
 require_admin = get_current_admin_principal
 require_codegen = get_current_codegen_principal
 
+# ===== FULL USER ORM (for endpoints that mutate quota/storage fields) =====
+
+
+async def get_current_user_record(
+    principal: RequestPrincipal = Depends(get_current_principal),
+    user_service: UserService = Depends(get_user_service),
+) -> User:
+    """Load the full User ORM model from DB.
+
+    Use this ONLY in endpoints that need to mutate quota fields
+    (jobs_today, current_storage_gb, etc.) or pass the user to services
+    that call increment_job_count / increment_storage.
+
+    Most endpoints should use ``CurrentUser`` (RequestPrincipal) instead.
+    """
+    if principal.id == 0:
+        # Agent/service tokens — return synthetic User for compat
+        return User(
+            id=0,
+            email=principal.email or "service@local",
+            username=principal.username or "service",
+            password_hash="",
+            role=principal.role,
+            is_active=True,
+            permissions=principal.permissions,
+        )
+    return await user_service.get_user(principal.id)
+
+
+CurrentUserRecord = Annotated[User, Depends(get_current_user_record)]
+
 # Backward-compat aliases — import these in new code
 get_current_user = get_current_principal
 get_current_user_ws = get_current_principal_ws

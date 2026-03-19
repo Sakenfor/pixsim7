@@ -13,7 +13,7 @@ import tempfile
 import hashlib
 from types import SimpleNamespace
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc, AccountSvc, DatabaseSession
+from pixsim7.backend.main.api.dependencies import CurrentUser, CurrentUserRecord, AssetSvc, AccountSvc, DatabaseSession
 from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOperationError
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
@@ -982,7 +982,7 @@ async def upload_asset_from_url(
 @router.post("/extract-frame", response_model=AssetResponse)
 async def extract_frame(
     request: ExtractFrameRequest,
-    user: CurrentUser,
+    user: CurrentUserRecord,
     asset_service: AssetSvc
 ):
     """
