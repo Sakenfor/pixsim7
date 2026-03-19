@@ -884,12 +884,20 @@ interface AgentWritesResponse {
 
 function WritesView() {
   const [data, setData] = useState<AgentWritesResponse | null>(null);
+  const [profileLabels, setProfileLabels] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    pixsimClient
-      .get<AgentWritesResponse>('/meta/agents/writes', { params: { days: 14, limit: 100 } })
-      .then(setData)
+    Promise.all([
+      pixsimClient.get<AgentWritesResponse>('/meta/agents/writes', { params: { days: 14, limit: 100 } }),
+      pixsimClient.get<AgentProfileListResponse>('/dev/agent-profiles').catch(() => ({ profiles: [] })),
+    ])
+      .then(([writes, profiles]) => {
+        setData(writes);
+        const labels: Record<string, string> = {};
+        for (const p of profiles.profiles) labels[p.id] = p.label;
+        setProfileLabels(labels);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -915,7 +923,8 @@ function WritesView() {
       <SectionHeader>{data.total} agent write{data.total !== 1 ? 's' : ''} (last 14 days)</SectionHeader>
       <div className="space-y-1">
         {data.entries.map((entry) => {
-          const agentName = entry.actor.replace('agent:', '');
+          const agentSlug = entry.actor.replace('agent:', '');
+          const agentName = profileLabels[agentSlug] || agentSlug;
           const isFieldChange = entry.event_type === 'field_changed';
           return (
             <div
@@ -945,6 +954,223 @@ function WritesView() {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Profiles View — persistent agent identities
+// =============================================================================
+
+interface AgentProfileEntry {
+  id: string;
+  user_id: number;
+  label: string;
+  description: string | null;
+  agent_type: string;
+  default_scopes: string[] | null;
+  assigned_plans: string[] | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AgentProfileListResponse {
+  profiles: AgentProfileEntry[];
+  total: number;
+}
+
+interface MintedToken {
+  access_token: string;
+  command: string;
+  agent_id: string;
+  expires_in_hours: number;
+}
+
+const PROFILE_STATUS_COLORS: Record<string, 'green' | 'gray' | 'orange'> = {
+  active: 'green',
+  paused: 'orange',
+  archived: 'gray',
+};
+
+function ProfilesView() {
+  const [profiles, setProfiles] = useState<AgentProfileEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [mintedToken, setMintedToken] = useState<MintedToken | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Create form
+  const [newId, setNewId] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const [newType, setNewType] = useState('claude-cli');
+
+  const loadProfiles = useCallback(() => {
+    pixsimClient
+      .get<AgentProfileListResponse>('/dev/agent-profiles')
+      .then((r) => setProfiles(r.profiles))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { loadProfiles(); }, [loadProfiles]);
+
+  const handleCreate = async () => {
+    if (!newId.trim() || !newLabel.trim()) return;
+    try {
+      await pixsimClient.post('/dev/agent-profiles', {
+        id: newId.trim().toLowerCase().replace(/\s+/g, '-'),
+        label: newLabel.trim(),
+        agent_type: newType,
+      });
+      setNewId('');
+      setNewLabel('');
+      setCreating(false);
+      loadProfiles();
+    } catch {
+      // error handled by client
+    }
+  };
+
+  const handleMintToken = async (profileId: string) => {
+    try {
+      const resp = await pixsimClient.post<MintedToken>(
+        `/dev/agent-profiles/${profileId}/token`,
+        undefined,
+        { params: { hours: 24, scope: 'dev' } },
+      );
+      setMintedToken(resp);
+      setCopied(false);
+    } catch {
+      // error handled by client
+    }
+  };
+
+  const handleArchive = async (profileId: string) => {
+    try {
+      await pixsimClient.delete(`/dev/agent-profiles/${profileId}`);
+      loadProfiles();
+    } catch {
+      // error handled by client
+    }
+  };
+
+  const copyCommand = () => {
+    if (mintedToken) {
+      navigator.clipboard.writeText(mintedToken.command);
+      setCopied(true);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <EmptyState message="Loading profiles..." icon={<Icon name="loader" size={20} />} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <SectionHeader>{profiles.length} profile{profiles.length !== 1 ? 's' : ''}</SectionHeader>
+        <Button size="sm" onClick={() => setCreating(!creating)}>
+          {creating ? 'Cancel' : '+ New'}
+        </Button>
+      </div>
+
+      {creating && (
+        <div className="space-y-2 p-3 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900">
+          <input
+            className="w-full px-2 py-1 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
+            placeholder="ID (slug, e.g. plan-worker)"
+            value={newId}
+            onChange={(e) => setNewId(e.target.value)}
+          />
+          <input
+            className="w-full px-2 py-1 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
+            placeholder="Label (e.g. Claude Plan Worker)"
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+          />
+          <select
+            className="w-full px-2 py-1 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
+            value={newType}
+            onChange={(e) => setNewType(e.target.value)}
+          >
+            <option value="claude-cli">claude-cli</option>
+            <option value="codex">codex</option>
+            <option value="custom">custom</option>
+          </select>
+          <Button size="sm" onClick={handleCreate} disabled={!newId.trim() || !newLabel.trim()}>
+            Create
+          </Button>
+        </div>
+      )}
+
+      {mintedToken && (
+        <div className="p-3 rounded border border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium">Token for {mintedToken.agent_id}</span>
+            <button
+              onClick={() => setMintedToken(null)}
+              className="text-neutral-400 hover:text-neutral-600 text-xs"
+            >
+              dismiss
+            </button>
+          </div>
+          <div className="text-[10px] font-mono bg-white dark:bg-neutral-900 p-2 rounded break-all select-all max-h-16 overflow-y-auto">
+            {mintedToken.command}
+          </div>
+          <Button size="sm" onClick={copyCommand}>
+            {copied ? 'Copied' : 'Copy command'}
+          </Button>
+        </div>
+      )}
+
+      <div className="space-y-1">
+        {profiles.map((profile) => (
+          <div
+            key={profile.id}
+            className="flex items-center gap-2 px-2 py-2 rounded border border-neutral-200 dark:border-neutral-800 text-xs"
+          >
+            <Badge color={PROFILE_STATUS_COLORS[profile.status] ?? 'gray'} className="text-[10px] shrink-0">
+              {profile.status}
+            </Badge>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium truncate">{profile.label}</div>
+              <div className="text-neutral-500 font-mono text-[10px]">{profile.id}</div>
+              {profile.description && (
+                <div className="text-neutral-400 text-[10px] truncate mt-0.5">{profile.description}</div>
+              )}
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {profile.status === 'active' && (
+                <Button
+                  size="sm"
+                  onClick={() => handleMintToken(profile.id)}
+                  title="Mint CLI token"
+                >
+                  <Icon name="key" size={10} />
+                </Button>
+              )}
+              {profile.status !== 'archived' && (
+                <Button
+                  size="sm"
+                  onClick={() => handleArchive(profile.id)}
+                  title="Archive profile"
+                >
+                  <Icon name="archive" size={10} />
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {profiles.length === 0 && !creating && (
+        <EmptyState message="No agent profiles yet. Create one to get a stable identity for your AI agents." />
+      )}
     </div>
   );
 }
@@ -1215,6 +1441,11 @@ export function AgentObservabilityPanel() {
 
   const sections = useMemo<SidebarContentLayoutSection[]>(() => [
     {
+      id: 'profiles',
+      label: 'Profiles',
+      icon: <Icon name="user" size={12} />,
+    },
+    {
       id: 'graph',
       label: 'Contract Graph',
       icon: <Icon name="graph" size={12} />,
@@ -1248,12 +1479,15 @@ export function AgentObservabilityPanel() {
 
   const nav = useSidebarNav({
     sections,
-    initial: 'graph',
+    initial: 'profiles',
     storageKey: 'agent-observability:nav',
   });
 
   let content: React.ReactNode;
   switch (nav.activeId) {
+    case 'profiles':
+      content = <ProfilesView />;
+      break;
     case 'graph':
       content = <ContractGraphView />;
       break;
