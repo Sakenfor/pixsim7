@@ -1,11 +1,10 @@
 /**
- * AI Assistant Panel — user-facing floating chat panel.
+ * AI Assistant Panel — tabbed chat panel with agent profile binding.
  *
- * Features:
- * - Chat with AI via bridge or direct API
- * - "+" action picker from meta contracts
- * - Session-persisted messages + draft input
- * - Retry on error, copy responses, lightweight markdown rendering
+ * Each tab = independent conversation with its own:
+ * - Session (Claude session ID)
+ * - Agent profile binding (determines identity + instructions)
+ * - Message history (persisted to localStorage)
  */
 
 import {
@@ -24,8 +23,8 @@ import { Icon, type IconName } from '@lib/icons';
 
 interface BridgeStatus { connected: number; available: number }
 interface SendResponse { ok: boolean; agent_id: string; response: string | null; error: string | null; duration_ms: number | null; claude_session_id?: string | null }
-interface StartBridgeResponse { ok: boolean; pid: number | null; message: string }
 interface AssistantProfile { assistant_id: string; name: string; icon: string | null; is_default: boolean; is_global: boolean }
+interface AgentProfileEntry { id: string; label: string; agent_type: string; status: string }
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'error';
@@ -34,62 +33,89 @@ interface ChatMessage {
   timestamp: Date;
 }
 
-// Claude session history (persisted to localStorage — survives tab close)
-interface SessionEntry {
+/** A single chat tab */
+interface ChatTab {
   id: string;
-  label: string;       // first user message or "Session <short-id>"
-  lastUsed: string;     // ISO timestamp
-  messageCount: number;
+  label: string;
+  sessionId: string | null;         // Claude session UUID (assigned by backend)
+  assistantProfileId: string | null; // backend assistant profile
+  agentProfileId: string | null;     // agent identity profile
+  createdAt: string;
 }
 
 // =============================================================================
-// Persistence (sessionStorage)
+// Persistence
 // =============================================================================
 
-const MSG_KEY = 'ai-assistant:messages';
-const DRAFT_KEY = 'ai-assistant:draft';
-const SESSIONS_KEY = 'ai-assistant:sessions';
-const ACTIVE_SESSION_KEY = 'ai-assistant:active-session';
+const TABS_KEY = 'ai-assistant:tabs';
+const ACTIVE_TAB_KEY = 'ai-assistant:active-tab';
+const DRAFT_KEY_PREFIX = 'ai-assistant:draft:';
+const MSG_KEY_PREFIX = 'ai-assistant:msg:';
+const INJECT_PROMPT_EVENT = 'ai-assistant:inject-prompt';
+// Legacy keys for migration
+const LEGACY_SESSIONS_KEY = 'ai-assistant:sessions';
+const LEGACY_ACTIVE_SESSION_KEY = 'ai-assistant:active-session';
 
-function loadSessions(): SessionEntry[] {
+interface InjectPromptDetail {
+  prompt: string;
+  mode?: 'replace' | 'append';
+}
+
+function loadTabs(): ChatTab[] {
   try {
-    const raw = localStorage.getItem(SESSIONS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+    const raw = localStorage.getItem(TABS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+
+  // Migrate from legacy sessions → tabs (one-time)
+  try {
+    const legacySessions = localStorage.getItem(LEGACY_SESSIONS_KEY);
+    if (legacySessions) {
+      const sessions = JSON.parse(legacySessions) as Array<{ id: string; label: string; lastUsed: string; messageCount: number }>;
+      const tabs: ChatTab[] = sessions.map((s) => ({
+        id: s.id,
+        label: s.label,
+        sessionId: s.id,
+        assistantProfileId: null,
+        agentProfileId: null,
+        createdAt: s.lastUsed,
+      }));
+      if (tabs.length > 0) {
+        persistTabs(tabs);
+        // Clean up legacy keys
+        localStorage.removeItem(LEGACY_SESSIONS_KEY);
+        localStorage.removeItem(LEGACY_ACTIVE_SESSION_KEY);
+        return tabs;
+      }
+    }
+  } catch { /* ignore */ }
+
+  return [];
 }
 
-function persistSessions(sessions: SessionEntry[]) {
-  try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions.slice(0, 20))); }
+function persistTabs(tabs: ChatTab[]) {
+  try { localStorage.setItem(TABS_KEY, JSON.stringify(tabs.slice(0, 20))); }
   catch { /* ignore */ }
 }
 
-function getActiveSessionId(): string | null {
-  try { return sessionStorage.getItem(ACTIVE_SESSION_KEY); }
+function getActiveTabId(): string | null {
+  try { return localStorage.getItem(ACTIVE_TAB_KEY); }
   catch { return null; }
 }
 
-function setActiveSessionId(id: string | null) {
+function setActiveTabId(id: string | null) {
   try {
-    if (id) sessionStorage.setItem(ACTIVE_SESSION_KEY, id);
-    else sessionStorage.removeItem(ACTIVE_SESSION_KEY);
+    if (id) localStorage.setItem(ACTIVE_TAB_KEY, id);
+    else localStorage.removeItem(ACTIVE_TAB_KEY);
   } catch { /* ignore */ }
 }
 
-function upsertSession(sessions: SessionEntry[], id: string, firstMessage: string, msgCount: number): SessionEntry[] {
-  const existing = sessions.find((s) => s.id === id);
-  if (existing) {
-    existing.lastUsed = new Date().toISOString();
-    existing.messageCount = msgCount;
-    return [...sessions];
-  }
-  const label = firstMessage.slice(0, 40) || `Session ${id.slice(0, 8)}`;
-  return [{ id, label, lastUsed: new Date().toISOString(), messageCount: msgCount }, ...sessions];
-}
+function msgKey(tabId: string): string { return `${MSG_KEY_PREFIX}${tabId}`; }
+function draftKey(tabId: string): string { return `${DRAFT_KEY_PREFIX}${tabId}`; }
 
-function loadMessages(): ChatMessage[] {
+function parseMessages(raw: string | null): ChatMessage[] {
+  if (!raw) return [];
   try {
-    const raw = sessionStorage.getItem(MSG_KEY);
-    if (!raw) return [];
     return (JSON.parse(raw) as Array<Record<string, unknown>>).map((m) => ({
       role: m.role as ChatMessage['role'],
       text: m.text as string,
@@ -99,21 +125,30 @@ function loadMessages(): ChatMessage[] {
   } catch { return []; }
 }
 
-function persistMessages(messages: ChatMessage[]) {
-  try { sessionStorage.setItem(MSG_KEY, JSON.stringify(messages.slice(-50))); }
+function loadTabMessages(tabId: string): ChatMessage[] {
+  try { return parseMessages(localStorage.getItem(msgKey(tabId))); }
+  catch { return []; }
+}
+
+function persistTabMessages(tabId: string, messages: ChatMessage[]) {
+  try { localStorage.setItem(msgKey(tabId), JSON.stringify(messages.slice(-50))); }
   catch { /* ignore */ }
 }
 
-function loadDraft(): string {
-  try { return sessionStorage.getItem(DRAFT_KEY) || ''; }
+function loadTabDraft(tabId: string): string {
+  try { return localStorage.getItem(draftKey(tabId)) || ''; }
   catch { return ''; }
 }
 
-function persistDraft(text: string) {
+function persistTabDraft(tabId: string, text: string) {
   try {
-    if (text) sessionStorage.setItem(DRAFT_KEY, text);
-    else sessionStorage.removeItem(DRAFT_KEY);
+    if (text) localStorage.setItem(draftKey(tabId), text);
+    else localStorage.removeItem(draftKey(tabId));
   } catch { /* ignore */ }
+}
+
+function createTabId(): string {
+  return `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 // =============================================================================
@@ -133,16 +168,12 @@ function renderMarkdown(text: string): React.ReactNode[] {
   while (i < lines.length) {
     const line = lines[i];
 
-    // Code block
     if (line.startsWith('```')) {
       const lang = line.slice(3).trim();
       const codeLines: string[] = [];
       i++;
-      while (i < lines.length && !lines[i].startsWith('```')) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      i++; // skip closing ```
+      while (i < lines.length && !lines[i].startsWith('```')) { codeLines.push(lines[i]); i++; }
+      i++;
       nodes.push(
         <pre key={nodes.length} className="p-2 rounded bg-neutral-900 dark:bg-neutral-950 text-neutral-200 text-[11px] font-mono overflow-x-auto whitespace-pre">
           {lang && <div className="text-[9px] text-neutral-500 mb-1">{lang}</div>}
@@ -152,80 +183,54 @@ function renderMarkdown(text: string): React.ReactNode[] {
       continue;
     }
 
-    // Empty line
     if (!line.trim()) { i++; continue; }
 
-    // Heading
     const headingMatch = line.match(/^(#{1,3})\s+(.+)/);
     if (headingMatch) {
       const level = headingMatch[1].length;
       const cls = level === 1 ? 'text-sm font-bold' : level === 2 ? 'text-xs font-semibold' : 'text-xs font-medium';
       nodes.push(<div key={nodes.length} className={cls}>{inlineFormat(headingMatch[2])}</div>);
-      i++;
-      continue;
+      i++; continue;
     }
 
-    // Bullet list
     if (line.match(/^\s*[-*]\s/)) {
       const items: string[] = [];
-      while (i < lines.length && lines[i].match(/^\s*[-*]\s/)) {
-        items.push(lines[i].replace(/^\s*[-*]\s+/, ''));
-        i++;
-      }
-      nodes.push(
-        <ul key={nodes.length} className="list-disc list-inside space-y-0.5 text-xs">
-          {items.map((item, j) => <li key={j}>{inlineFormat(item)}</li>)}
-        </ul>
-      );
+      while (i < lines.length && lines[i].match(/^\s*[-*]\s/)) { items.push(lines[i].replace(/^\s*[-*]\s/, '')); i++; }
+      nodes.push(<ul key={nodes.length} className="list-disc pl-4 space-y-0.5">{items.map((item, j) => <li key={j}>{inlineFormat(item)}</li>)}</ul>);
       continue;
     }
 
-    // Numbered list
     if (line.match(/^\s*\d+\.\s/)) {
       const items: string[] = [];
-      while (i < lines.length && lines[i].match(/^\s*\d+\.\s/)) {
-        items.push(lines[i].replace(/^\s*\d+\.\s+/, ''));
-        i++;
-      }
-      nodes.push(
-        <ol key={nodes.length} className="list-decimal list-inside space-y-0.5 text-xs">
-          {items.map((item, j) => <li key={j}>{inlineFormat(item)}</li>)}
-        </ol>
-      );
+      while (i < lines.length && lines[i].match(/^\s*\d+\.\s/)) { items.push(lines[i].replace(/^\s*\d+\.\s/, '')); i++; }
+      nodes.push(<ol key={nodes.length} className="list-decimal pl-4 space-y-0.5">{items.map((item, j) => <li key={j}>{inlineFormat(item)}</li>)}</ol>);
       continue;
     }
 
-    // Regular paragraph
     nodes.push(<p key={nodes.length}>{inlineFormat(line)}</p>);
     i++;
   }
-
   return nodes;
 }
 
-/** Inline formatting: **bold**, `code`, *italic* */
 function inlineFormat(text: string): React.ReactNode {
+  const regex = /(\*\*(.+?)\*\*|`([^`]+)`|\*(.+?)\*)/g;
   const parts: React.ReactNode[] = [];
-  const regex = /(\*\*(.+?)\*\*|`(.+?)`|\*(.+?)\*)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
-
   while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index));
-    }
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
     if (match[2]) parts.push(<strong key={parts.length}>{match[2]}</strong>);
     else if (match[3]) parts.push(<code key={parts.length} className="px-1 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-[11px] font-mono">{match[3]}</code>);
     else if (match[4]) parts.push(<em key={parts.length}>{match[4]}</em>);
     lastIndex = match.index + match[0].length;
   }
-
   if (lastIndex < text.length) parts.push(text.slice(lastIndex));
   return parts.length === 1 ? parts[0] : <>{parts}</>;
 }
 
 // =============================================================================
-// Action Picker (from meta contracts)
+// Action Picker
 // =============================================================================
 
 interface ContractEndpoint { id: string; method: string; path: string; summary: string }
@@ -307,9 +312,9 @@ function ActionPicker({ open, onClose, onSelect, disabled }: {
               <div className="pl-3">
                 {g.actions.map((a, i) => (
                   <button key={`${a.contractId}-${i}`} onClick={() => { onSelect(a.prompt); onClose(); }} disabled={disabled}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-600 dark:text-neutral-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-700 dark:hover:text-blue-300 transition-colors disabled:opacity-50 text-left">
-                    <Icon name={a.icon} size={11} className="shrink-0 opacity-60" />
-                    <span className="truncate">{a.label}</span>
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-40 transition-colors">
+                    <Icon name={a.icon} size={11} className="shrink-0 text-neutral-400" />
+                    <span className="truncate text-left">{a.label}</span>
                   </button>
                 ))}
               </div>
@@ -325,46 +330,22 @@ function ActionPicker({ open, onClose, onSelect, disabled }: {
 // Message Bubble
 // =============================================================================
 
-function MessageBubble({ msg, onRetry, onCopy }: {
-  msg: ChatMessage;
-  onRetry?: () => void;
-  onCopy?: () => void;
-}) {
+function MessageBubble({ msg, onRetry }: { msg: ChatMessage; onRetry?: () => void }) {
   const [copied, setCopied] = useState(false);
-
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(msg.text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-    onCopy?.();
-  }, [msg.text, onCopy]);
+    navigator.clipboard.writeText(msg.text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  }, [msg.text]);
 
   return (
     <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} group`}>
-      <div
-        className={`max-w-[85%] rounded-xl px-3 py-2 ${
-          msg.role === 'user'
-            ? 'bg-accent text-white'
-            : msg.role === 'error'
-              ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
-              : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100'
-        }`}
-      >
-        {/* Content */}
-        {msg.role === 'assistant' ? (
-          <MarkdownText text={msg.text} />
-        ) : (
-          <pre className="whitespace-pre-wrap text-xs font-sans leading-relaxed">{msg.text}</pre>
-        )}
-
-        {/* Footer: duration + actions */}
+      <div className={`max-w-[85%] rounded-xl px-3 py-2 ${
+        msg.role === 'user' ? 'bg-accent text-white'
+          : msg.role === 'error' ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
+          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100'
+      }`}>
+        {msg.role === 'assistant' ? <MarkdownText text={msg.text} /> : <pre className="whitespace-pre-wrap text-xs font-sans leading-relaxed">{msg.text}</pre>}
         <div className="flex items-center gap-2 mt-1">
-          {msg.duration_ms != null && (
-            <span className="text-[10px] opacity-50">{(msg.duration_ms / 1000).toFixed(1)}s</span>
-          )}
-
-          {/* Actions — visible on hover */}
+          {msg.duration_ms != null && <span className="text-[10px] opacity-50">{(msg.duration_ms / 1000).toFixed(1)}s</span>}
           <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             {msg.role === 'assistant' && (
               <button onClick={handleCopy} className="text-[10px] opacity-60 hover:opacity-100" title="Copy">
@@ -395,58 +376,45 @@ const QUICK_SHORTCUTS = [
 ];
 
 // =============================================================================
-// Main Component
+// Tab Chat View — one per tab, owns its own message state
 // =============================================================================
 
-export function AIAssistantPanel() {
-  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
-  const [input, setInput] = useState(loadDraft);
+function TabChatView({ tab, onUpdateTab, bridge, assistantProfiles, agentProfiles }: {
+  tab: ChatTab;
+  onUpdateTab: (updates: Partial<ChatTab>) => void;
+  bridge: BridgeStatus | null;
+  assistantProfiles: AssistantProfile[];
+  agentProfiles: AgentProfileEntry[];
+}) {
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadTabMessages(tab.id));
+  const [input, setInput] = useState(() => loadTabDraft(tab.id));
   const [sending, setSending] = useState(false);
-  const [bridge, setBridge] = useState<BridgeStatus | null>(null);
-  const [bridgeStarting, setBridgeStarting] = useState(false);
   const [actionPickerOpen, setActionPickerOpen] = useState(false);
-  const [attachedAssets, setAttachedAssets] = useState<Array<{ id: number; name: string; thumbnailUrl?: string }>>([]);
-  const [profiles, setProfiles] = useState<AssistantProfile[]>([]);
-  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [showProfilePicker, setShowProfilePicker] = useState(false);
   const profilePickerRef = useRef<HTMLDivElement>(null);
-  const [sessions, setSessions] = useState<SessionEntry[]>(loadSessions);
-  const [activeSessionId, setActiveSessionIdState] = useState<string | null>(getActiveSessionId);
-  const [showSessionPicker, setShowSessionPicker] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const sessionPickerRef = useRef<HTMLDivElement>(null);
+
+  const connected = bridge?.connected ?? 0;
 
   // Persist
-  useEffect(() => { persistMessages(messages); }, [messages]);
-  useEffect(() => { persistDraft(input); }, [input]);
+  useEffect(() => { persistTabMessages(tab.id, messages); }, [messages, tab.id]);
+  useEffect(() => { persistTabDraft(tab.id, input); }, [input, tab.id]);
 
-  // Track session from responses
-  const trackSession = useCallback((claudeSessionId: string) => {
-    setActiveSessionIdState(claudeSessionId);
-    setActiveSessionId(claudeSessionId);
-    const firstUserMsg = messages.find((m) => m.role === 'user')?.text || '';
-    const updated = upsertSession(sessions, claudeSessionId, firstUserMsg, messages.length);
-    setSessions(updated);
-    persistSessions(updated);
-  }, [messages, sessions]);
-
-  const clearMessages = useCallback(() => {
-    setMessages([]);
-    sessionStorage.removeItem(MSG_KEY);
-    setActiveSessionIdState(null);
-    setActiveSessionId(null);
+  // Inject prompt from other panels
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<InjectPromptDetail>;
+      const prompt = custom.detail?.prompt?.trim();
+      if (!prompt) return;
+      setInput((prev) => custom.detail?.mode === 'append' && prev.trim() ? `${prev}\n${prompt}` : prompt);
+      setActionPickerOpen(false);
+    };
+    window.addEventListener(INJECT_PROMPT_EVENT, handler as EventListener);
+    return () => window.removeEventListener(INJECT_PROMPT_EVENT, handler as EventListener);
   }, []);
 
-  // Load assistant profiles
-  useEffect(() => {
-    pixsimClient.get<AssistantProfile[]>('/assistants')
-      .then((data) => {
-        setProfiles(data);
-        const def = data.find((p) => p.is_default);
-        if (def && !activeProfileId) setActiveProfileId(def.assistant_id);
-      })
-      .catch(() => {});
-  }, []);// eslint-disable-line react-hooks/exhaustive-deps
+  // Auto-scroll
+  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   // Close profile picker on outside click
   useEffect(() => {
@@ -456,25 +424,6 @@ export function AIAssistantPanel() {
     return () => document.removeEventListener('mousedown', handler);
   }, [showProfilePicker]);
 
-  // Close session picker on outside click
-  useEffect(() => {
-    if (!showSessionPicker) return;
-    const handler = (e: MouseEvent) => { if (sessionPickerRef.current && !sessionPickerRef.current.contains(e.target as Node)) setShowSessionPicker(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showSessionPicker]);
-
-  // Poll bridge
-  useEffect(() => {
-    const poll = () => { pixsimClient.get<BridgeStatus>('/meta/agents/bridge').then(setBridge).catch(() => setBridge(null)); };
-    poll();
-    const interval = setInterval(poll, 8_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Auto-scroll
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || sending) return;
     setInput('');
@@ -482,15 +431,17 @@ export function AIAssistantPanel() {
     setSending(true);
     try {
       const body: Record<string, unknown> = { message: text, timeout: 120 };
-      if (activeProfileId) body.assistant_id = activeProfileId;
-      if (attachedAssets.length > 0) {
-        body.asset_ids = attachedAssets.map((a) => a.id);
-        setAttachedAssets([]);
-      }
+      if (tab.assistantProfileId) body.assistant_id = tab.assistantProfileId;
       const res = await pixsimClient.post<SendResponse>('/meta/agents/bridge/send', body);
       if (res.ok && res.response) {
         setMessages((prev) => [...prev, { role: 'assistant', text: res.response!, duration_ms: res.duration_ms ?? undefined, timestamp: new Date() }]);
-        if (res.claude_session_id) trackSession(res.claude_session_id);
+        if (res.claude_session_id && res.claude_session_id !== tab.sessionId) {
+          onUpdateTab({ sessionId: res.claude_session_id });
+        }
+        // Update label from first user message
+        if (!tab.sessionId) {
+          onUpdateTab({ label: text.slice(0, 30) || tab.label });
+        }
       } else {
         setMessages((prev) => [...prev, { role: 'error', text: res.error || 'No response from agent', timestamp: new Date() }]);
       }
@@ -499,13 +450,11 @@ export function AIAssistantPanel() {
     } finally {
       setSending(false);
     }
-  }, [sending, trackSession, attachedAssets, activeProfileId]);
+  }, [sending, tab.assistantProfileId, tab.sessionId, tab.label, onUpdateTab]);
 
   const retryLast = useCallback(() => {
-    // Find the last user message before the error
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'user') {
-        // Remove the error message(s) after this user message
         setMessages(messages.slice(0, i));
         void sendMessage(messages[i].text);
         return;
@@ -513,111 +462,19 @@ export function AIAssistantPanel() {
     }
   }, [messages, sendMessage]);
 
-  const startBridge = useCallback(async () => {
-    setBridgeStarting(true);
-    try { await pixsimClient.post<StartBridgeResponse>('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }); }
-    catch { /* ignore */ }
-    setTimeout(() => setBridgeStarting(false), 5000);
-  }, []);
-
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage(input); }
   }, [input, sendMessage]);
 
-  const connected = bridge?.connected ?? 0;
+  // Resolve current profile display
+  const activeAgent = agentProfiles.find((p) => p.id === tab.agentProfileId);
+  const activeAssistant = assistantProfiles.find((p) => p.assistant_id === tab.assistantProfileId);
+  const profileDisplay = activeAgent?.label || activeAssistant?.name || 'General';
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-neutral-950">
-      {/* Header */}
-      <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2">
-        <Icon name="messageSquare" size={14} className="text-neutral-400" />
-        <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">AI Assistant</span>
-
-        {/* Session indicator — clickable to show picker */}
-        <div className="relative" ref={sessionPickerRef}>
-          <button
-            onClick={() => sessions.length > 0 && setShowSessionPicker(!showSessionPicker)}
-            className={`text-[9px] font-mono px-1.5 py-0.5 rounded transition-colors ${
-              activeSessionId
-                ? 'text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20'
-                : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-            } ${sessions.length === 0 ? 'pointer-events-none' : 'cursor-pointer'}`}
-            title={activeSessionId ? `Session: ${activeSessionId}` : 'No active session'}
-          >
-            {activeSessionId ? activeSessionId.slice(0, 8) : sessions.length > 0 ? 'sessions' : ''}
-          </button>
-
-          {/* Session picker dropdown */}
-          {showSessionPicker && (
-            <div className="absolute top-full right-0 mt-1 w-56 max-h-48 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20">
-              {/* New session option */}
-              <button
-                onClick={() => { clearMessages(); setShowSessionPicker(false); }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-              >
-                <Icon name="plus" size={10} className="shrink-0" />
-                <span>New session</span>
-              </button>
-              <div className="border-t border-neutral-100 dark:border-neutral-800" />
-
-              {/* Session list */}
-              {sessions.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => {
-                    // Resume: restart bridge with this session
-                    setActiveSessionIdState(s.id);
-                    setActiveSessionId(s.id);
-                    setShowSessionPicker(false);
-                    // Start bridge with resume
-                    pixsimClient.post('/meta/agents/bridge/start', {
-                      pool_size: 1,
-                      claude_args: '--dangerously-skip-permissions',
-                      resume_session_id: s.id,
-                    }).catch(() => {});
-                  }}
-                  className={`w-full flex items-start gap-2 px-3 py-1.5 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-                    s.id === activeSessionId ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
-                  }`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300 truncate">{s.label}</div>
-                    <div className="text-[9px] text-neutral-400 flex items-center gap-1.5">
-                      <span className="font-mono">{s.id.slice(0, 8)}</span>
-                      <span>{s.messageCount} msgs</span>
-                    </div>
-                  </div>
-                  {s.id === activeSessionId && <Badge color="blue" className="text-[8px] shrink-0">active</Badge>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="ml-auto flex items-center gap-1.5">
-          {messages.length > 0 && (
-            <button onClick={clearMessages} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors" title="Clear chat">
-              <Icon name="trash" size={12} />
-            </button>
-          )}
-          {connected > 0 && (
-            <button
-              onClick={() => { pixsimClient.post('/meta/agents/bridge/stop').catch(() => {}); }}
-              className="text-neutral-400 hover:text-red-500 transition-colors"
-              title="Stop bridge"
-            >
-              <Icon name="square" size={10} />
-            </button>
-          )}
-          <Badge color={connected > 0 ? 'green' : 'gray'} className="text-[10px]">
-            {connected > 0 ? 'Connected' : 'Offline'}
-          </Badge>
-        </div>
-      </div>
-
+    <div className="flex flex-col h-full">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {/* Empty connected state */}
         {messages.length === 0 && connected > 0 && (
           <div className="space-y-3">
             <EmptyState message="Ask anything or pick an action" size="sm" />
@@ -631,28 +488,17 @@ export function AIAssistantPanel() {
             </div>
           </div>
         )}
-
-        {/* Empty offline state */}
         {messages.length === 0 && connected === 0 && (
           <div className="flex flex-col items-center justify-center gap-3 py-8">
             <EmptyState message="AI assistant is offline" description="Start an agent bridge to connect" size="sm" />
-            <Button size="sm" onClick={startBridge} disabled={bridgeStarting}>
-              <Icon name="play" size={12} className="mr-1.5" />
-              {bridgeStarting ? 'Starting...' : 'Start Bridge'}
+            <Button size="sm" onClick={() => { pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }).catch(() => {}); }}>
+              <Icon name="play" size={12} className="mr-1.5" />Start Bridge
             </Button>
           </div>
         )}
-
-        {/* Messages */}
         {messages.map((msg, i) => (
-          <MessageBubble
-            key={i}
-            msg={msg}
-            onRetry={msg.role === 'error' ? retryLast : undefined}
-          />
+          <MessageBubble key={i} msg={msg} onRetry={msg.role === 'error' ? retryLast : undefined} />
         ))}
-
-        {/* Typing indicator */}
         {sending && (
           <div className="flex justify-start">
             <div className="bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-2">
@@ -664,120 +510,81 @@ export function AIAssistantPanel() {
             </div>
           </div>
         )}
-
         <div ref={scrollRef} />
       </div>
 
-      {/* Input area */}
+      {/* Input */}
       <div className="relative border-t border-neutral-200 dark:border-neutral-800 p-2">
         <ActionPicker open={actionPickerOpen} onClose={() => setActionPickerOpen(false)} onSelect={(p) => void sendMessage(p)} disabled={connected === 0 || sending} />
-
-        {/* Attached assets strip */}
-        {attachedAssets.length > 0 && (
-          <div className="flex gap-1.5 mb-1.5 px-1">
-            {attachedAssets.map((a) => (
-              <div key={a.id} className="relative group">
-                <div className="w-10 h-10 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 overflow-hidden flex items-center justify-center">
-                  {a.thumbnailUrl ? (
-                    <img src={a.thumbnailUrl} alt={a.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <Icon name="image" size={14} className="text-neutral-400" />
-                  )}
-                </div>
-                <button
-                  onClick={() => setAttachedAssets(attachedAssets.filter((x) => x.id !== a.id))}
-                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Remove"
-                >
-                  <Icon name="x" size={8} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
         <div className="flex gap-1.5 items-end">
-          {/* Action picker */}
           <button onClick={() => setActionPickerOpen(!actionPickerOpen)} disabled={connected === 0}
-            className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${actionPickerOpen ? 'bg-accent text-white' : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-600'}`}
+            className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${actionPickerOpen ? 'bg-accent text-white' : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
             title="Browse actions">
             <Icon name="plus" size={16} />
           </button>
 
-          {/* Attach image — simple ID input for now, can be replaced with asset picker */}
-          <button
-            onClick={() => {
-              const idStr = prompt('Asset ID to attach (number):');
-              if (!idStr) return;
-              const id = parseInt(idStr, 10);
-              if (isNaN(id) || attachedAssets.some((a) => a.id === id)) return;
-              setAttachedAssets([...attachedAssets, { id, name: `Asset #${id}` }]);
-            }}
-            disabled={connected === 0 || attachedAssets.length >= 4}
-            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-600 transition-colors disabled:opacity-30"
-            title="Attach image asset"
-          >
-            <Icon name="image" size={15} />
-          </button>
-
           {/* Profile picker */}
-          {profiles.length > 1 && (
-            <div className="relative shrink-0" ref={profilePickerRef}>
-              <button
-                onClick={() => setShowProfilePicker(!showProfilePicker)}
-                className={`h-8 flex items-center gap-1 px-1.5 rounded-lg text-[10px] transition-colors ${
-                  showProfilePicker
-                    ? 'bg-accent text-white'
-                    : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                }`}
-                title={profiles.find((p) => p.assistant_id === activeProfileId)?.name || 'Select profile'}
-              >
-                <Icon
-                  name={(profiles.find((p) => p.assistant_id === activeProfileId)?.icon || 'messageSquare') as IconName}
-                  size={12}
-                />
-              </button>
+          <div className="relative shrink-0" ref={profilePickerRef}>
+            <button
+              onClick={() => setShowProfilePicker(!showProfilePicker)}
+              className={`h-8 flex items-center gap-1 px-1.5 rounded-lg text-[10px] transition-colors ${
+                showProfilePicker ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+              }`}
+              title={`Profile: ${profileDisplay}`}
+            >
+              <Icon name={activeAgent ? 'cpu' : 'messageSquare'} size={12} />
+              <span className="max-w-[60px] truncate">{profileDisplay}</span>
+            </button>
 
-              {showProfilePicker && (
-                <div className="absolute bottom-full left-0 mb-1 w-44 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20 overflow-hidden">
-                  {profiles.map((p) => (
-                    <button
-                      key={p.assistant_id}
-                      onClick={() => { setActiveProfileId(p.assistant_id); setShowProfilePicker(false); }}
-                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors ${
-                        p.assistant_id === activeProfileId ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400' : 'text-neutral-600 dark:text-neutral-400'
-                      }`}
-                    >
-                      <Icon name={(p.icon || 'messageSquare') as IconName} size={12} className="shrink-0" />
-                      <span className="truncate">{p.name}</span>
-                      {p.is_global && <span className="text-[8px] text-neutral-400 shrink-0 ml-auto">built-in</span>}
-                    </button>
-                  ))}
-                  {/* Add new profile */}
+            {showProfilePicker && (
+              <div className="absolute bottom-full left-0 mb-1 w-52 max-h-64 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20">
+                {/* Agent profiles */}
+                {agentProfiles.filter((p) => p.status === 'active').length > 0 && (
+                  <>
+                    <div className="px-3 py-1 text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">Agent Profiles</div>
+                    {agentProfiles.filter((p) => p.status === 'active').map((p) => (
+                      <button
+                        key={`agent:${p.id}`}
+                        onClick={() => { onUpdateTab({ agentProfileId: p.id, assistantProfileId: null }); setShowProfilePicker(false); }}
+                        className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
+                          tab.agentProfileId === p.id ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
+                        }`}
+                      >
+                        <Icon name="cpu" size={12} className="shrink-0" />
+                        <span className="truncate">{p.label}</span>
+                        <span className="text-[8px] text-neutral-400 ml-auto shrink-0">{p.agent_type}</span>
+                      </button>
+                    ))}
+                    <div className="border-t border-neutral-100 dark:border-neutral-800" />
+                  </>
+                )}
+
+                {/* Assistant profiles */}
+                <div className="px-3 py-1 text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">Assistant Profiles</div>
+                <button
+                  onClick={() => { onUpdateTab({ agentProfileId: null, assistantProfileId: null }); setShowProfilePicker(false); }}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
+                    !tab.agentProfileId && !tab.assistantProfileId ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
+                  }`}
+                >
+                  <Icon name="messageSquare" size={12} className="shrink-0" />
+                  <span>General</span>
+                </button>
+                {assistantProfiles.map((p) => (
                   <button
-                    onClick={() => {
-                      const name = prompt('Profile name:');
-                      if (!name) return;
-                      const id = `assistant:${name.toLowerCase().replace(/\s+/g, '-')}`;
-                      pixsimClient.post<AssistantProfile>('/assistants', {
-                        assistant_id: id,
-                        name,
-                        icon: 'user',
-                      }).then((p) => {
-                        setProfiles([...profiles, p]);
-                        setActiveProfileId(p.assistant_id);
-                        setShowProfilePicker(false);
-                      }).catch(() => {});
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 border-t border-neutral-100 dark:border-neutral-800"
+                    key={p.assistant_id}
+                    onClick={() => { onUpdateTab({ agentProfileId: null, assistantProfileId: p.assistant_id }); setShowProfilePicker(false); }}
+                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
+                      tab.assistantProfileId === p.assistant_id ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
+                    }`}
                   >
-                    <Icon name="plus" size={10} className="shrink-0" />
-                    <span>New profile</span>
+                    <Icon name={(p.icon || 'messageSquare') as IconName} size={12} className="shrink-0" />
+                    <span className="truncate">{p.name}</span>
                   </button>
-                </div>
-              )}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
 
           <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
             placeholder={connected > 0 ? 'Ask something... (Enter to send)' : 'No agent connected'}
@@ -786,11 +593,166 @@ export function AIAssistantPanel() {
             style={{ minHeight: '36px', maxHeight: '120px' }}
             onInput={(e) => { const el = e.currentTarget; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }}
           />
-          <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || (!input.trim() && attachedAssets.length === 0)} className="shrink-0">
+          <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || !input.trim()} className="shrink-0">
             <Icon name="send" size={14} />
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Main Component
+// =============================================================================
+
+export function AIAssistantPanel() {
+  const [tabs, setTabs] = useState<ChatTab[]>(loadTabs);
+  const [activeTabId, setActiveTabIdState] = useState<string | null>(() => {
+    const stored = getActiveTabId();
+    // Ensure the stored tab still exists
+    const loaded = loadTabs();
+    if (stored && loaded.some((t) => t.id === stored)) return stored;
+    return loaded[0]?.id ?? null;
+  });
+  const [bridge, setBridge] = useState<BridgeStatus | null>(null);
+  const [bridgeStarting, setBridgeStarting] = useState(false);
+  const [assistantProfiles, setAssistantProfiles] = useState<AssistantProfile[]>([]);
+  const [agentProfiles, setAgentProfiles] = useState<AgentProfileEntry[]>([]);
+
+  // Persist tabs
+  useEffect(() => { persistTabs(tabs); }, [tabs]);
+
+  // Load profiles
+  useEffect(() => {
+    pixsimClient.get<AssistantProfile[]>('/assistants').then(setAssistantProfiles).catch(() => {});
+    pixsimClient.get<{ profiles: AgentProfileEntry[] }>('/dev/agent-profiles')
+      .then((r) => setAgentProfiles(r.profiles))
+      .catch(() => {});
+  }, []);
+
+  // Poll bridge
+  useEffect(() => {
+    const poll = () => { pixsimClient.get<BridgeStatus>('/meta/agents/bridge').then(setBridge).catch(() => setBridge(null)); };
+    poll();
+    const interval = setInterval(poll, 8_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const setActiveTab = useCallback((id: string | null) => {
+    setActiveTabIdState(id);
+    setActiveTabId(id);
+  }, []);
+
+  const createTab = useCallback((agentProfileId?: string) => {
+    const id = createTabId();
+    const agentProfile = agentProfileId ? agentProfiles.find((p) => p.id === agentProfileId) : undefined;
+    const newTab: ChatTab = {
+      id,
+      label: agentProfile?.label || 'New Chat',
+      sessionId: null,
+      assistantProfileId: null,
+      agentProfileId: agentProfileId || null,
+      createdAt: new Date().toISOString(),
+    };
+    setTabs((prev) => [newTab, ...prev]);
+    setActiveTab(id);
+  }, [agentProfiles, setActiveTab]);
+
+  const closeTab = useCallback((tabId: string) => {
+    setTabs((prev) => {
+      const next = prev.filter((t) => t.id !== tabId);
+      if (activeTabId === tabId) {
+        const newActive = next[0]?.id ?? null;
+        setActiveTab(newActive);
+      }
+      // Clean up storage
+      try {
+        localStorage.removeItem(msgKey(tabId));
+        localStorage.removeItem(draftKey(tabId));
+      } catch { /* ignore */ }
+      return next;
+    });
+  }, [activeTabId, setActiveTab]);
+
+  const updateTab = useCallback((tabId: string, updates: Partial<ChatTab>) => {
+    setTabs((prev) => prev.map((t) => t.id === tabId ? { ...t, ...updates } : t));
+  }, []);
+
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const connected = bridge?.connected ?? 0;
+
+  // Auto-create a tab if none exist
+  useEffect(() => {
+    if (tabs.length === 0) createTab();
+  }, [tabs.length, createTab]);
+
+  return (
+    <div className="flex flex-col h-full bg-white dark:bg-neutral-950">
+      {/* Tab bar */}
+      <div className="flex items-center border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 min-h-[32px]">
+        <div className="flex-1 flex items-center overflow-x-auto scrollbar-none">
+          {tabs.map((tab) => {
+            const isActive = tab.id === activeTabId;
+            const agent = agentProfiles.find((p) => p.id === tab.agentProfileId);
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`group flex items-center gap-1.5 px-3 py-1.5 text-[11px] border-r border-neutral-200 dark:border-neutral-800 shrink-0 transition-colors ${
+                  isActive
+                    ? 'bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100'
+                    : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                }`}
+              >
+                <Icon name={agent ? 'cpu' : 'messageSquare'} size={10} className={isActive ? 'text-accent' : 'text-neutral-400'} />
+                <span className="max-w-[80px] truncate">{tab.label}</span>
+                {tabs.length > 1 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
+                    className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-neutral-600 transition-opacity"
+                  >
+                    <Icon name="x" size={8} />
+                  </button>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* New tab + status */}
+        <div className="flex items-center gap-1 px-2 shrink-0">
+          <button onClick={() => createTab()} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300" title="New chat">
+            <Icon name="plus" size={12} />
+          </button>
+          {connected === 0 && (
+            <button
+              onClick={() => { setBridgeStarting(true); pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }).catch(() => {}); setTimeout(() => setBridgeStarting(false), 5000); }}
+              disabled={bridgeStarting}
+              className="text-[9px] px-1.5 py-0.5 rounded bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
+            >
+              {bridgeStarting ? '...' : 'Connect'}
+            </button>
+          )}
+          <div className={`w-1.5 h-1.5 rounded-full ${connected > 0 ? 'bg-green-500' : 'bg-neutral-300'}`} title={connected > 0 ? 'Connected' : 'Offline'} />
+        </div>
+      </div>
+
+      {/* Active tab content */}
+      {activeTab ? (
+        <TabChatView
+          key={activeTab.id}
+          tab={activeTab}
+          onUpdateTab={(updates) => updateTab(activeTab.id, updates)}
+          bridge={bridge}
+          assistantProfiles={assistantProfiles}
+          agentProfiles={agentProfiles}
+        />
+      ) : (
+        <div className="flex-1 flex items-center justify-center">
+          <EmptyState message="No chat tabs" />
+        </div>
+      )}
     </div>
   );
 }
