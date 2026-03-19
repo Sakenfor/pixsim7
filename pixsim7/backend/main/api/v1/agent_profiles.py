@@ -1,15 +1,17 @@
 """
-Agent Profiles API — CRUD + token minting for persistent agent identities.
+Agent Profiles API — unified CRUD for AI agent identities + assistant personas.
+
+Each profile is both a service identity (agent_id for write attribution)
+and a conversation persona (system prompt, model, tool scope).
 """
 from __future__ import annotations
 
 import re
-import secrets
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
@@ -19,7 +21,7 @@ from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 router = APIRouter(prefix="/dev/agent-profiles", tags=["dev", "agent-profiles"])
 
-_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,118}[a-z0-9]$")
+_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_:.-]{1,118}[a-z0-9]$")
 VALID_STATUSES = frozenset({"active", "paused", "archived"})
 
 
@@ -31,11 +33,19 @@ class AgentProfileResponse(BaseModel):
     user_id: int
     label: str
     description: Optional[str] = None
+    icon: Optional[str] = None
     agent_type: str
-    instructions: Optional[str] = None
+    system_prompt: Optional[str] = None
+    model_id: Optional[str] = None
+    method: Optional[str] = None
+    audience: str = "user"
+    allowed_contracts: Optional[List[str]] = None
+    config: Optional[Dict] = None
     default_scopes: Optional[List[str]] = None
     assigned_plans: Optional[List[str]] = None
     status: str
+    is_default: bool = False
+    is_global: bool = False
     created_at: str
     updated_at: str
 
@@ -46,11 +56,17 @@ class AgentProfileListResponse(BaseModel):
 
 
 class AgentProfileCreateRequest(BaseModel):
-    id: str = Field(..., min_length=3, max_length=120, description="Slug ID (lowercase, hyphens, underscores)")
+    id: str = Field(..., min_length=3, max_length=120)
     label: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
+    icon: Optional[str] = Field(None, max_length=50)
     agent_type: str = Field(default="claude-cli", max_length=64)
-    instructions: Optional[str] = None
+    system_prompt: Optional[str] = None
+    model_id: Optional[str] = Field(None, max_length=100)
+    method: Optional[str] = Field(None, max_length=20)
+    audience: str = Field(default="user", max_length=20)
+    allowed_contracts: Optional[List[str]] = None
+    config: Optional[Dict] = None
     default_scopes: Optional[List[str]] = None
     assigned_plans: Optional[List[str]] = None
 
@@ -58,11 +74,18 @@ class AgentProfileCreateRequest(BaseModel):
 class AgentProfileUpdateRequest(BaseModel):
     label: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
+    icon: Optional[str] = Field(None, max_length=50)
     agent_type: Optional[str] = Field(None, max_length=64)
-    instructions: Optional[str] = None
+    system_prompt: Optional[str] = None
+    model_id: Optional[str] = Field(None, max_length=100)
+    method: Optional[str] = Field(None, max_length=20)
+    audience: Optional[str] = Field(None, max_length=20)
+    allowed_contracts: Optional[List[str]] = None
+    config: Optional[Dict] = None
     default_scopes: Optional[List[str]] = None
     assigned_plans: Optional[List[str]] = None
     status: Optional[str] = None
+    is_default: Optional[bool] = None
 
 
 class AgentProfileTokenResponse(BaseModel):
@@ -83,11 +106,19 @@ def _to_response(p: AgentProfile) -> dict:
         "user_id": p.user_id,
         "label": p.label,
         "description": p.description,
+        "icon": p.icon,
         "agent_type": p.agent_type,
-        "instructions": p.instructions,
+        "system_prompt": p.system_prompt,
+        "model_id": p.model_id,
+        "method": p.method,
+        "audience": p.audience,
+        "allowed_contracts": p.allowed_contracts,
+        "config": p.config,
         "default_scopes": p.default_scopes,
         "assigned_plans": p.assigned_plans,
         "status": p.status,
+        "is_default": p.is_default,
+        "is_global": p.is_global,
         "created_at": p.created_at.isoformat() if p.created_at else "",
         "updated_at": p.updated_at.isoformat() if p.updated_at else "",
     }
@@ -100,12 +131,25 @@ def _to_response(p: AgentProfile) -> dict:
 async def list_agent_profiles(
     principal: CurrentUser,
     status: Optional[str] = Query(None, description="Filter by status"),
+    include_global: bool = Query(True, description="Include global/system profiles"),
     db: AsyncSession = Depends(get_database),
 ):
-    stmt = select(AgentProfile).where(AgentProfile.user_id == principal.id)
+    conditions = [AgentProfile.status != "archived"]
     if status:
-        stmt = stmt.where(AgentProfile.status == status)
-    stmt = stmt.order_by(AgentProfile.created_at.desc())
+        conditions = [AgentProfile.status == status]
+
+    if include_global:
+        conditions.append(
+            or_(AgentProfile.user_id == principal.id, AgentProfile.user_id == 0)
+        )
+    else:
+        conditions.append(AgentProfile.user_id == principal.id)
+
+    stmt = (
+        select(AgentProfile)
+        .where(*conditions)
+        .order_by(AgentProfile.is_default.desc(), AgentProfile.label)
+    )
     profiles = (await db.execute(stmt)).scalars().all()
     return {
         "profiles": [_to_response(p) for p in profiles],
@@ -123,7 +167,7 @@ async def get_agent_profile(
     db: AsyncSession = Depends(get_database),
 ):
     profile = await db.get(AgentProfile, profile_id)
-    if not profile or profile.user_id != principal.id:
+    if not profile or (profile.user_id != principal.id and profile.user_id != 0):
         raise HTTPException(status_code=404, detail=f"Agent profile not found: {profile_id}")
     return _to_response(profile)
 
@@ -140,7 +184,7 @@ async def create_agent_profile(
     if not _SLUG_RE.match(payload.id):
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid profile ID '{payload.id}'. Must be 3-120 chars, lowercase alphanumeric with hyphens/underscores.",
+            detail=f"Invalid profile ID '{payload.id}'. Must be 3-120 chars, lowercase alphanumeric with hyphens/underscores/colons/dots.",
         )
 
     existing = await db.get(AgentProfile, payload.id)
@@ -153,8 +197,14 @@ async def create_agent_profile(
         user_id=principal.id,
         label=payload.label,
         description=payload.description,
+        icon=payload.icon,
         agent_type=payload.agent_type,
-        instructions=payload.instructions,
+        system_prompt=payload.system_prompt,
+        model_id=payload.model_id,
+        method=payload.method,
+        audience=payload.audience,
+        allowed_contracts=payload.allowed_contracts,
+        config=payload.config,
         default_scopes=payload.default_scopes,
         assigned_plans=payload.assigned_plans,
         status="active",
@@ -178,7 +228,7 @@ async def update_agent_profile(
     db: AsyncSession = Depends(get_database),
 ):
     profile = await db.get(AgentProfile, profile_id)
-    if not profile or profile.user_id != principal.id:
+    if not profile or (profile.user_id != principal.id and profile.user_id != 0):
         raise HTTPException(status_code=404, detail=f"Agent profile not found: {profile_id}")
 
     if payload.status is not None and payload.status not in VALID_STATUSES:
@@ -210,7 +260,7 @@ async def delete_agent_profile(
     db: AsyncSession = Depends(get_database),
 ):
     profile = await db.get(AgentProfile, profile_id)
-    if not profile or profile.user_id != principal.id:
+    if not profile or (profile.user_id != principal.id and profile.user_id != 0):
         raise HTTPException(status_code=404, detail=f"Agent profile not found: {profile_id}")
 
     profile.status = "archived"
@@ -231,7 +281,7 @@ async def mint_profile_token(
 ):
     """Mint a token using this profile's stable agent_id."""
     profile = await db.get(AgentProfile, profile_id)
-    if not profile or profile.user_id != principal.id:
+    if not profile or (profile.user_id != principal.id and profile.user_id != 0):
         raise HTTPException(status_code=404, detail=f"Agent profile not found: {profile_id}")
 
     if profile.status != "active":
@@ -257,3 +307,54 @@ async def mint_profile_token(
         expires_in_hours=hours,
         command=command,
     )
+
+
+# ── Compat: /assistants read-through ────────────────────────────
+
+
+async def resolve_profile_for_bridge(
+    db: AsyncSession,
+    user_id: int,
+    profile_id: Optional[str] = None,
+) -> Optional[AgentProfile]:
+    """Resolve which profile to use for the bridge send path.
+
+    Priority: explicit profile_id > user's default > global default > first available.
+    """
+    if profile_id:
+        return await db.get(AgentProfile, profile_id)
+
+    # User's default
+    stmt = select(AgentProfile).where(
+        AgentProfile.user_id == user_id,
+        AgentProfile.is_default == True,  # noqa: E712
+        AgentProfile.status == "active",
+    )
+    result = await db.execute(stmt)
+    p = result.scalar_one_or_none()
+    if p:
+        return p
+
+    # Global default
+    stmt = select(AgentProfile).where(
+        AgentProfile.user_id == 0,
+        AgentProfile.is_default == True,  # noqa: E712
+        AgentProfile.status == "active",
+    )
+    result = await db.execute(stmt)
+    p = result.scalar_one_or_none()
+    if p:
+        return p
+
+    # First available
+    stmt = (
+        select(AgentProfile)
+        .where(
+            or_(AgentProfile.user_id == user_id, AgentProfile.user_id == 0),
+            AgentProfile.status == "active",
+        )
+        .order_by(AgentProfile.is_default.desc(), AgentProfile.label)
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()

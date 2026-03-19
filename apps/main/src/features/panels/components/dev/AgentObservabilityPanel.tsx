@@ -973,10 +973,15 @@ interface AgentProfileEntry {
   user_id: number;
   label: string;
   description: string | null;
+  icon: string | null;
   agent_type: string;
+  system_prompt: string | null;
+  audience: string;
   default_scopes: string[] | null;
   assigned_plans: string[] | null;
   status: string;
+  is_default: boolean;
+  is_global: boolean;
   created_at: string;
   updated_at: string;
 }

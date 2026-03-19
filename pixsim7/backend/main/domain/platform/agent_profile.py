@@ -1,9 +1,12 @@
 """
-Agent Profile — persistent named identity for AI agents.
+Agent Profile — unified identity for AI agents and assistant personas.
 
-An agent profile gives an AI agent a stable identity across sessions.
-Tokens minted from a profile carry the profile's ``agent_id``, so all
-writes are attributed consistently.
+Merges the former ``AssistantDefinition`` (conversation persona) with
+``AgentProfile`` (service identity).  A single profile configures:
+- **Identity**: stable agent_id for write attribution
+- **Persona**: system prompt, model, delivery method
+- **Scope**: allowed contracts, token scopes, plan assignments
+- **UI**: icon, label, description
 """
 from __future__ import annotations
 
@@ -20,7 +23,7 @@ PLATFORM_SCHEMA = "dev_meta"
 
 
 class AgentProfile(SQLModel, table=True):
-    """A persistent, named AI agent identity."""
+    """Unified AI profile — both identity and persona."""
 
     __tablename__ = "agent_profiles"
     __table_args__ = (
@@ -30,28 +33,57 @@ class AgentProfile(SQLModel, table=True):
     )
 
     id: str = Field(primary_key=True, max_length=120)
-    user_id: int = Field(index=True)
+    user_id: int = Field(default=0, index=True)  # 0 = global/system profile
     label: str = Field(max_length=255)
     description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    icon: Optional[str] = Field(default=None, max_length=50)
     agent_type: str = Field(default="claude-cli", max_length=64)
-    instructions: Optional[str] = Field(
+
+    # Persona (from AssistantDefinition)
+    system_prompt: Optional[str] = Field(
         default=None,
         sa_column=Column(Text),
-        description="System prompt / guidelines for this agent (v1.1).",
+        description="System prompt / instructions appended to base prompt.",
     )
+    model_id: Optional[str] = Field(default=None, max_length=100)
+    method: Optional[str] = Field(default=None, max_length=20)
+    audience: str = Field(default="user", max_length=20)
+    allowed_contracts: Optional[List[str]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Contract IDs this profile can access. NULL = all for audience.",
+    )
+    config: Optional[Dict] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Extra config (temperature, max_tokens, etc.).",
+    )
+
+    # Agent identity
     default_scopes: Optional[List[str]] = Field(
         default=None,
         sa_column=Column(JSON),
-        description="Default scopes when minting tokens from this profile.",
+        description="Default scopes when minting tokens.",
     )
     assigned_plans: Optional[List[str]] = Field(
         default=None,
         sa_column=Column(JSON),
-        description="Plan IDs this agent is allowed to work on. NULL = unrestricted.",
+        description="Plan IDs this agent may work on. NULL = unrestricted.",
     )
+
+    # Status & defaults
     status: str = Field(default="active", max_length=32)  # active | paused | archived
+    is_default: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
+
+    @property
+    def is_global(self) -> bool:
+        return self.user_id == 0
+
+    @property
+    def enabled(self) -> bool:
+        return self.status == "active"
 
 
 # ---------------------------------------------------------------------------
@@ -83,12 +115,8 @@ class AgentRun(SQLModel, table=True):
         index=True,
     )
     run_id: str = Field(max_length=120, index=True)
-    status: str = Field(default="running", max_length=32)  # running | completed | failed
+    status: str = Field(default="running", max_length=32)
     started_at: datetime = Field(default_factory=utcnow)
     ended_at: Optional[datetime] = Field(default=None)
     summary: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
-    token_jti: Optional[str] = Field(
-        default=None,
-        max_length=64,
-        description="JWT jti for future revocation support.",
-    )
+    token_jti: Optional[str] = Field(default=None, max_length=64)

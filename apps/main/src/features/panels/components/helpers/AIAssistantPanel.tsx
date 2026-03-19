@@ -23,8 +23,20 @@ import { Icon, type IconName } from '@lib/icons';
 
 interface BridgeStatus { connected: number; available: number }
 interface SendResponse { ok: boolean; agent_id: string; response: string | null; error: string | null; duration_ms: number | null; claude_session_id?: string | null }
-interface AssistantProfile { assistant_id: string; name: string; icon: string | null; is_default: boolean; is_global: boolean }
-interface AgentProfileEntry { id: string; label: string; agent_type: string; status: string }
+
+/** Unified profile — both agent identity and assistant persona */
+interface UnifiedProfile {
+  id: string;
+  label: string;
+  description: string | null;
+  icon: string | null;
+  agent_type: string;
+  system_prompt: string | null;
+  audience: string;
+  status: string;
+  is_default: boolean;
+  is_global: boolean;
+}
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'error';
@@ -37,9 +49,8 @@ interface ChatMessage {
 interface ChatTab {
   id: string;
   label: string;
-  sessionId: string | null;         // Claude session UUID (assigned by backend)
-  assistantProfileId: string | null; // backend assistant profile
-  agentProfileId: string | null;     // agent identity profile
+  sessionId: string | null;    // Claude session UUID (assigned by backend)
+  profileId: string | null;    // unified profile ID
   createdAt: string;
 }
 
@@ -379,12 +390,11 @@ const QUICK_SHORTCUTS = [
 // Tab Chat View — one per tab, owns its own message state
 // =============================================================================
 
-function TabChatView({ tab, onUpdateTab, bridge, assistantProfiles, agentProfiles }: {
+function TabChatView({ tab, onUpdateTab, bridge, profiles }: {
   tab: ChatTab;
   onUpdateTab: (updates: Partial<ChatTab>) => void;
   bridge: BridgeStatus | null;
-  assistantProfiles: AssistantProfile[];
-  agentProfiles: AgentProfileEntry[];
+  profiles: UnifiedProfile[];
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadTabMessages(tab.id));
   const [input, setInput] = useState(() => loadTabDraft(tab.id));
@@ -431,7 +441,7 @@ function TabChatView({ tab, onUpdateTab, bridge, assistantProfiles, agentProfile
     setSending(true);
     try {
       const body: Record<string, unknown> = { message: text, timeout: 120 };
-      if (tab.assistantProfileId) body.assistant_id = tab.assistantProfileId;
+      if (tab.profileId) body.assistant_id = tab.profileId;
       const res = await pixsimClient.post<SendResponse>('/meta/agents/bridge/send', body);
       if (res.ok && res.response) {
         setMessages((prev) => [...prev, { role: 'assistant', text: res.response!, duration_ms: res.duration_ms ?? undefined, timestamp: new Date() }]);
@@ -450,7 +460,7 @@ function TabChatView({ tab, onUpdateTab, bridge, assistantProfiles, agentProfile
     } finally {
       setSending(false);
     }
-  }, [sending, tab.assistantProfileId, tab.sessionId, tab.label, onUpdateTab]);
+  }, [sending, tab.profileId, tab.sessionId, tab.label, onUpdateTab]);
 
   const retryLast = useCallback(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -466,10 +476,10 @@ function TabChatView({ tab, onUpdateTab, bridge, assistantProfiles, agentProfile
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage(input); }
   }, [input, sendMessage]);
 
-  // Resolve current profile display
-  const activeAgent = agentProfiles.find((p) => p.id === tab.agentProfileId);
-  const activeAssistant = assistantProfiles.find((p) => p.assistant_id === tab.assistantProfileId);
-  const profileDisplay = activeAgent?.label || activeAssistant?.name || 'General';
+  // Resolve current profile
+  const activeProfile = profiles.find((p) => p.id === tab.profileId);
+  const profileDisplay = activeProfile?.label || 'General';
+  const isAgentProfile = activeProfile && activeProfile.agent_type !== 'assistant';
 
   return (
     <div className="flex flex-col h-full">
@@ -532,54 +542,36 @@ function TabChatView({ tab, onUpdateTab, bridge, assistantProfiles, agentProfile
               }`}
               title={`Profile: ${profileDisplay}`}
             >
-              <Icon name={activeAgent ? 'cpu' : 'messageSquare'} size={12} />
+              <Icon name={(activeProfile?.icon || (isAgentProfile ? 'cpu' : 'messageSquare')) as IconName} size={12} />
               <span className="max-w-[60px] truncate">{profileDisplay}</span>
             </button>
 
             {showProfilePicker && (
               <div className="absolute bottom-full left-0 mb-1 w-52 max-h-64 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20">
-                {/* Agent profiles */}
-                {agentProfiles.filter((p) => p.status === 'active').length > 0 && (
-                  <>
-                    <div className="px-3 py-1 text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">Agent Profiles</div>
-                    {agentProfiles.filter((p) => p.status === 'active').map((p) => (
-                      <button
-                        key={`agent:${p.id}`}
-                        onClick={() => { onUpdateTab({ agentProfileId: p.id, assistantProfileId: null }); setShowProfilePicker(false); }}
-                        className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-                          tab.agentProfileId === p.id ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
-                        }`}
-                      >
-                        <Icon name="cpu" size={12} className="shrink-0" />
-                        <span className="truncate">{p.label}</span>
-                        <span className="text-[8px] text-neutral-400 ml-auto shrink-0">{p.agent_type}</span>
-                      </button>
-                    ))}
-                    <div className="border-t border-neutral-100 dark:border-neutral-800" />
-                  </>
-                )}
-
-                {/* Assistant profiles */}
-                <div className="px-3 py-1 text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">Assistant Profiles</div>
+                {/* No profile = general */}
                 <button
-                  onClick={() => { onUpdateTab({ agentProfileId: null, assistantProfileId: null }); setShowProfilePicker(false); }}
+                  onClick={() => { onUpdateTab({ profileId: null }); setShowProfilePicker(false); }}
                   className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-                    !tab.agentProfileId && !tab.assistantProfileId ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
+                    !tab.profileId ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
                   }`}
                 >
                   <Icon name="messageSquare" size={12} className="shrink-0" />
                   <span>General</span>
                 </button>
-                {assistantProfiles.map((p) => (
+                <div className="border-t border-neutral-100 dark:border-neutral-800" />
+
+                {/* Unified profile list */}
+                {profiles.map((p) => (
                   <button
-                    key={p.assistant_id}
-                    onClick={() => { onUpdateTab({ agentProfileId: null, assistantProfileId: p.assistant_id }); setShowProfilePicker(false); }}
+                    key={p.id}
+                    onClick={() => { onUpdateTab({ profileId: p.id }); setShowProfilePicker(false); }}
                     className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-                      tab.assistantProfileId === p.assistant_id ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
+                      tab.profileId === p.id ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
                     }`}
                   >
-                    <Icon name={(p.icon || 'messageSquare') as IconName} size={12} className="shrink-0" />
-                    <span className="truncate">{p.name}</span>
+                    <Icon name={(p.icon || (p.agent_type !== 'assistant' ? 'cpu' : 'messageSquare')) as IconName} size={12} className="shrink-0" />
+                    <span className="truncate">{p.label}</span>
+                    {p.is_global && <span className="text-[8px] text-neutral-400 ml-auto shrink-0">built-in</span>}
                   </button>
                 ))}
               </div>
@@ -617,17 +609,15 @@ export function AIAssistantPanel() {
   });
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [bridgeStarting, setBridgeStarting] = useState(false);
-  const [assistantProfiles, setAssistantProfiles] = useState<AssistantProfile[]>([]);
-  const [agentProfiles, setAgentProfiles] = useState<AgentProfileEntry[]>([]);
+  const [profiles, setProfiles] = useState<UnifiedProfile[]>([]);
 
   // Persist tabs
   useEffect(() => { persistTabs(tabs); }, [tabs]);
 
-  // Load profiles
+  // Load unified profiles
   useEffect(() => {
-    pixsimClient.get<AssistantProfile[]>('/assistants').then(setAssistantProfiles).catch(() => {});
-    pixsimClient.get<{ profiles: AgentProfileEntry[] }>('/dev/agent-profiles')
-      .then((r) => setAgentProfiles(r.profiles))
+    pixsimClient.get<{ profiles: UnifiedProfile[] }>('/dev/agent-profiles', { params: { include_global: true } })
+      .then((r) => setProfiles(r.profiles))
       .catch(() => {});
   }, []);
 
@@ -644,20 +634,19 @@ export function AIAssistantPanel() {
     setActiveTabId(id);
   }, []);
 
-  const createTab = useCallback((agentProfileId?: string) => {
+  const createTab = useCallback((profileId?: string) => {
     const id = createTabId();
-    const agentProfile = agentProfileId ? agentProfiles.find((p) => p.id === agentProfileId) : undefined;
+    const profile = profileId ? profiles.find((p) => p.id === profileId) : undefined;
     const newTab: ChatTab = {
       id,
-      label: agentProfile?.label || 'New Chat',
+      label: profile?.label || 'New Chat',
       sessionId: null,
-      assistantProfileId: null,
-      agentProfileId: agentProfileId || null,
+      profileId: profileId || null,
       createdAt: new Date().toISOString(),
     };
     setTabs((prev) => [newTab, ...prev]);
     setActiveTab(id);
-  }, [agentProfiles, setActiveTab]);
+  }, [profiles, setActiveTab]);
 
   const closeTab = useCallback((tabId: string) => {
     setTabs((prev) => {
@@ -694,7 +683,8 @@ export function AIAssistantPanel() {
         <div className="flex-1 flex items-center overflow-x-auto scrollbar-none">
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
-            const agent = agentProfiles.find((p) => p.id === tab.agentProfileId);
+            const tabProfile = profiles.find((p) => p.id === tab.profileId);
+            const tabIcon = (tabProfile?.icon || (tabProfile && tabProfile.agent_type !== 'assistant' ? 'cpu' : 'messageSquare')) as IconName;
             return (
               <button
                 key={tab.id}
@@ -705,7 +695,7 @@ export function AIAssistantPanel() {
                     : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
                 }`}
               >
-                <Icon name={agent ? 'cpu' : 'messageSquare'} size={10} className={isActive ? 'text-accent' : 'text-neutral-400'} />
+                <Icon name={tabIcon} size={10} className={isActive ? 'text-accent' : 'text-neutral-400'} />
                 <span className="max-w-[80px] truncate">{tab.label}</span>
                 {tabs.length > 1 && (
                   <button
@@ -745,8 +735,7 @@ export function AIAssistantPanel() {
           tab={activeTab}
           onUpdateTab={(updates) => updateTab(activeTab.id, updates)}
           bridge={bridge}
-          assistantProfiles={assistantProfiles}
-          agentProfiles={agentProfiles}
+          profiles={profiles}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center">
