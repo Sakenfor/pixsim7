@@ -174,6 +174,28 @@ class TestSuiteRecord(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow, index=True)
 
 
+class TestRunRecord(SQLModel, table=True):
+    """A single test/eval run result.
+
+    Stored per suite execution — links to the test_suites table.
+    ``summary`` is flexible JSONB: counts, metrics, first N failures, etc.
+    ``environment`` captures git sha, python version, and other context.
+    """
+
+    __tablename__ = "test_runs"
+    __table_args__ = {"schema": PLAN_META_SCHEMA}
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    suite_id: str = Field(max_length=120, index=True)
+    status: str = Field(max_length=20)  # pass | fail | error
+    started_at: datetime = Field(default_factory=utcnow)
+    finished_at: Optional[datetime] = Field(default=None)
+    duration_ms: Optional[int] = Field(default=None)
+    summary: Dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    environment: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+
+
 class PlanDocument(SQLModel, table=True):
     """Companion or handoff document belonging to a plan."""
 
@@ -229,4 +251,5 @@ class PlanEvent(SQLModel, table=True):
     old_value: Optional[str] = Field(default=None, sa_column=Column(Text))
     new_value: Optional[str] = Field(default=None, sa_column=Column(Text))
     commit_sha: Optional[str] = Field(default=None, max_length=64)
+    actor: Optional[str] = Field(default=None, max_length=120)
     timestamp: datetime = Field(default_factory=utcnow, index=True)

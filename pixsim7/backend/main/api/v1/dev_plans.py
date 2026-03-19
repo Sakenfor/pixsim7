@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import ActorCtx, CurrentAdminUser, CurrentUser, get_database
+from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, get_database
 from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry, PlanSyncRun
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
@@ -304,16 +304,6 @@ def _run_to_entry(run: PlanSyncRun) -> dict:
     }
 
 
-def _actor_identity(user) -> tuple[str, str, Optional[int]]:
-    """Legacy tuple helper — prefer ActorCtx dependency in new endpoints."""
-    actor_id = getattr(user, "id", None)
-    actor_source = f"user:{actor_id}" if actor_id is not None else "user:unknown"
-    actor_name = (
-        getattr(user, "display_name", None)
-        or getattr(user, "username", None)
-        or actor_source
-    )
-    return actor_source, actor_name, actor_id
 
 
 # ── List endpoint ─────────────────────────────────────────────────
@@ -694,7 +684,7 @@ class PlanCreateResponse(BaseModel):
 @router.post("", response_model=PlanCreateResponse)
 async def create_plan(
     payload: PlanCreateRequest,
-    _admin: CurrentUser,
+    principal: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
     """Create a new plan: Document (shared fields) + PlanRegistry (plan-specific)."""
@@ -719,7 +709,7 @@ async def create_plan(
         owner=payload.owner,
         summary=payload.summary,
         markdown=payload.markdown,
-        user_id=getattr(_admin, "id", None),
+        user_id=principal.id if principal.id != 0 else None,
         visibility=payload.visibility,
         namespace=payload.namespace or "dev/plans",
         tags=payload.tags or [],
@@ -759,14 +749,11 @@ async def create_plan(
 
     # Emit notification
     from pixsim7.backend.main.services.docs.plan_write import emit_plan_created_notification
-    actor_source, actor_name, actor_user_id = _actor_identity(_admin)
     await emit_plan_created_notification(
         db,
         payload.id,
         payload.title,
-        actor=actor_source,
-        actor_name=actor_name,
-        actor_user_id=actor_user_id,
+        principal=principal,
     )
 
     await db.commit()
@@ -780,7 +767,7 @@ async def create_plan(
             paths = export_plan_to_disk(bundle)
             commit_sha = _git_commit(
                 paths,
-                f"plan({payload.id}): created\n\nActor: {actor_source}",
+                f"plan({payload.id}): created\n\nActor: {principal.source}",
             )
         except Exception as exc:
             export_error = str(exc)
@@ -835,8 +822,7 @@ class PlanUpdateResponse(BaseModel):
 async def update_plan_endpoint(
     plan_id: str,
     payload: PlanUpdateRequest,
-    actor: ActorCtx,
-    _admin: CurrentUser,
+    principal: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
     payload_data = payload.model_dump()
@@ -850,17 +836,8 @@ async def update_plan_endpoint(
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    actor_source, actor_name, actor_user_id = actor.actor_tuple
-
     try:
-        result = await update_plan(
-            db,
-            plan_id,
-            updates,
-            actor=actor_source,
-            actor_name=actor_name,
-            actor_user_id=actor_user_id,
-        )
+        result = await update_plan(db, plan_id, updates, principal=principal)
     except PlanNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PlanWriteError as exc:
@@ -915,8 +892,7 @@ class PlanProgressResponse(BaseModel):
 async def log_plan_progress(
     plan_id: str,
     payload: PlanProgressRequest,
-    actor: ActorCtx,
-    _admin: CurrentUser,
+    principal: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
     if payload.status is not None and payload.status not in CHECKPOINT_STATUSES:
@@ -1016,15 +992,14 @@ async def log_plan_progress(
     if payload.append_evidence is not None:
         checkpoint["evidence"] = _merge_evidence(checkpoint.get("evidence"), payload.append_evidence)
 
-    actor_source, actor_name, actor_user_id = actor.actor_tuple
     note_text = (payload.note or "").strip()
     last_update: Dict[str, Any] = {
         "at": utcnow().isoformat(),
-        "by": actor_name,
+        "by": principal.actor_display_name,
         "note": note_text,
     }
-    if actor.is_agent:
-        last_update["actor"] = actor.audit_dict()
+    if principal.is_agent:
+        last_update["actor"] = principal.audit_dict()
     checkpoint["last_update"] = last_update
 
     new_checkpoints = list(checkpoints)
@@ -1034,14 +1009,7 @@ async def log_plan_progress(
         updates["stage"] = payload.checkpoint_id
 
     try:
-        result = await update_plan(
-            db,
-            plan_id,
-            updates,
-            actor=actor_source,
-            actor_name=actor_name,
-            actor_user_id=actor_user_id,
-        )
+        result = await update_plan(db, plan_id, updates, principal=principal)
     except PlanNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PlanWriteError as exc:

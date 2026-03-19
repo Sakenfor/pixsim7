@@ -6,6 +6,7 @@ The DB is the authority. Filesystem markdown is a convenience export.
 """
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +23,11 @@ from pixsim7.backend.main.services.docs.plans import (
     PlanEntry,
     get_plans_index,
 )
+from pixsim7.backend.main.services.notifications.notification_categories import (
+    NotificationCategoryGranularityOption,
+    NotificationCategorySpec,
+    notification_category_registry,
+)
 from pixsim7.backend.main.shared.config import _resolve_repo_root, settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim_logging import get_logger
@@ -32,11 +38,15 @@ PLANS_DIR = "docs/plans"
 
 # Fields that can be updated via the API.
 # Doc fields go to Document, plan fields go to PlanRegistry.
-DOC_MUTABLE_FIELDS = frozenset({"title", "status", "owner", "summary", "markdown", "visibility"})
+DOC_MUTABLE_FIELDS = frozenset({"title", "status", "owner", "summary", "markdown", "visibility", "namespace"})
 PLAN_MUTABLE_FIELDS = frozenset(
     {
         "stage",
         "priority",
+        "task_scope",
+        "plan_type",
+        "target",
+        "checkpoints",
         "code_paths",
         "companions",
         "handoffs",
@@ -44,10 +54,120 @@ PLAN_MUTABLE_FIELDS = frozenset(
     }
 )
 LIST_MUTABLE_FIELDS = frozenset({"tags", "code_paths", "companions", "handoffs", "depends_on"})
+JSON_MUTABLE_FIELDS = frozenset({"target", "checkpoints"})
 ALL_MUTABLE_FIELDS = DOC_MUTABLE_FIELDS | PLAN_MUTABLE_FIELDS
 
 VALID_STATUSES = ("active", "parked", "done", "blocked")
 VALID_PRIORITIES = ("high", "normal", "low")
+VALID_TASK_SCOPES = ("plan", "user", "system")
+
+_PLAN_NOTIFICATION_SYSTEM_ID = "plan"
+_PLAN_NOTIFICATION_SYSTEM_LABEL = "Plans"
+
+
+def _plan_opt(id: str, label: str, description: str = "") -> NotificationCategoryGranularityOption:
+    return NotificationCategoryGranularityOption(id=id, label=label, description=description)
+
+
+_PLAN_STATUS_OFF = [
+    _plan_opt("all_changes", "All changes", "Show all change notifications"),
+    _plan_opt("status_only", "Status changes only", "Only show status transitions"),
+    _plan_opt("off", "Off", "Suppress all notifications"),
+]
+
+_PLAN_ALL_OFF = [
+    _plan_opt("all", "All", "Show all notifications"),
+    _plan_opt("off", "Off", "Suppress all notifications"),
+]
+
+_PLAN_NOTIFICATION_CATEGORIES: List[NotificationCategorySpec] = [
+    NotificationCategorySpec(
+        id="plan",
+        label="Plans",
+        description="Plan status changes and updates",
+        icon="clipboard",
+        default_enabled=True,
+        default_granularity="all_changes",
+        granularity_options=_PLAN_STATUS_OFF,
+        sort_order=20,
+        system_id=_PLAN_NOTIFICATION_SYSTEM_ID,
+        system_label=_PLAN_NOTIFICATION_SYSTEM_LABEL,
+    ),
+    NotificationCategorySpec(
+        id="plan.created",
+        label="Created",
+        description="New plans created",
+        icon="plus",
+        default_enabled=True,
+        default_granularity="all",
+        granularity_options=_PLAN_ALL_OFF,
+        sort_order=21,
+        system_id=_PLAN_NOTIFICATION_SYSTEM_ID,
+        system_label=_PLAN_NOTIFICATION_SYSTEM_LABEL,
+        parent_category_id="plan",
+    ),
+    NotificationCategorySpec(
+        id="plan.status",
+        label="Status",
+        description="Plan status changes",
+        icon="checkCircle",
+        default_enabled=True,
+        default_granularity="all_changes",
+        granularity_options=_PLAN_STATUS_OFF,
+        sort_order=22,
+        system_id=_PLAN_NOTIFICATION_SYSTEM_ID,
+        system_label=_PLAN_NOTIFICATION_SYSTEM_LABEL,
+        parent_category_id="plan",
+    ),
+    NotificationCategorySpec(
+        id="plan.stage",
+        label="Stage",
+        description="Plan stage updates",
+        icon="layers",
+        default_enabled=True,
+        default_granularity="all",
+        granularity_options=_PLAN_ALL_OFF,
+        sort_order=23,
+        system_id=_PLAN_NOTIFICATION_SYSTEM_ID,
+        system_label=_PLAN_NOTIFICATION_SYSTEM_LABEL,
+        parent_category_id="plan",
+    ),
+    NotificationCategorySpec(
+        id="plan.priority",
+        label="Priority",
+        description="Plan priority changes",
+        icon="arrowUp",
+        default_enabled=True,
+        default_granularity="all",
+        granularity_options=_PLAN_ALL_OFF,
+        sort_order=24,
+        system_id=_PLAN_NOTIFICATION_SYSTEM_ID,
+        system_label=_PLAN_NOTIFICATION_SYSTEM_LABEL,
+        parent_category_id="plan",
+    ),
+    NotificationCategorySpec(
+        id="plan.owner",
+        label="Owner",
+        description="Plan ownership changes",
+        icon="user",
+        default_enabled=True,
+        default_granularity="all",
+        granularity_options=_PLAN_ALL_OFF,
+        sort_order=25,
+        system_id=_PLAN_NOTIFICATION_SYSTEM_ID,
+        system_label=_PLAN_NOTIFICATION_SYSTEM_LABEL,
+        parent_category_id="plan",
+    ),
+]
+
+
+def register_plan_notification_categories() -> None:
+    """Register plan-owned notification categories and subcategories."""
+    for spec in _PLAN_NOTIFICATION_CATEGORIES:
+        notification_category_registry.register(spec.id, spec)
+
+
+register_plan_notification_categories()
 
 
 def _plans_db_only_mode() -> bool:
@@ -100,7 +220,7 @@ def make_document_id(plan_id: str) -> str:
 
 _MANIFEST_KEY_ORDER = [
     "id", "title", "status", "stage", "owner", "last_updated",
-    "priority", "summary", "plan_path", "code_paths",
+    "priority", "summary", "plan_path", "target", "checkpoints", "code_paths",
     "companions", "handoffs", "tags", "depends_on",
 ]
 
@@ -136,6 +256,16 @@ def _status_to_scope(status: str) -> str:
     return "parked"
 
 
+def _json_fingerprint(value: Any) -> str:
+    """Stable string form for complex JSON values in change tracking/events."""
+    if value is None:
+        return ""
+    try:
+        return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    except TypeError:
+        return str(value)
+
+
 def _find_manifest_on_disk(plan_id: str) -> Optional[Tuple[Path, str]]:
     repo_root = _resolve_repo_root()
     for scope in PLAN_SCOPES:
@@ -163,6 +293,10 @@ def _build_manifest_data(bundle: PlanBundle) -> Dict[str, Any]:
     }
     if plan.code_paths:
         data["code_paths"] = plan.code_paths
+    if plan.target is not None:
+        data["target"] = plan.target
+    if plan.checkpoints is not None:
+        data["checkpoints"] = plan.checkpoints
     if plan.companions:
         data["companions"] = plan.companions
     if plan.handoffs:
@@ -313,6 +447,7 @@ def _create_document_for_plan(
     markdown: Optional[str] = None,
     user_id: Optional[int] = None,
     visibility: str = "public",
+    namespace: Optional[str] = "dev/plans",
     tags: Optional[List[str]] = None,
 ) -> Document:
     """Create a new Document for a plan."""
@@ -327,6 +462,7 @@ def _create_document_for_plan(
         markdown=markdown,
         user_id=user_id,
         visibility=visibility,
+        namespace=namespace,
         tags=tags or [],
         revision=1,
         created_at=now,
@@ -400,6 +536,7 @@ async def _ensure_bundle(
         markdown=entry.markdown if entry else d.get("markdown"),
         user_id=d.get("user_id"),
         visibility=d.get("visibility", "public"),
+        namespace=d.get("namespace", "dev/plans"),
         tags=entry.tags if entry else d.get("tags", []),
         revision=1,
         created_at=now,
@@ -432,19 +569,22 @@ async def _emit_events(
     plan_id: str,
     changes: List[Dict[str, Any]],
     commit_sha: Optional[str],
+    actor_source: Optional[str] = None,
 ) -> None:
     now = utcnow()
     for change in changes:
         if change["field"] == "markdown":
             db.add(PlanEvent(
                 plan_id=plan_id, event_type="content_updated",
-                field="markdown", commit_sha=commit_sha, timestamp=now,
+                field="markdown", commit_sha=commit_sha,
+                actor=actor_source, timestamp=now,
             ))
         else:
             db.add(PlanEvent(
                 plan_id=plan_id, event_type="field_changed",
                 field=change["field"], old_value=change.get("old"),
-                new_value=change.get("new"), commit_sha=commit_sha, timestamp=now,
+                new_value=change.get("new"), commit_sha=commit_sha,
+                actor=actor_source, timestamp=now,
             ))
 
 
@@ -453,7 +593,7 @@ async def _emit_plan_notification(
     plan_id: str,
     title: str,
     changes: List[Dict[str, Any]],
-    actor: Optional[str] = None,
+    principal=None,
 ) -> None:
     """Emit a notification for significant plan changes."""
     from pixsim7.backend.main.api.v1.notifications import emit_notification
@@ -463,6 +603,14 @@ async def _emit_plan_notification(
     if not significant:
         return
 
+    # Route to the most significant matching subcategory for preference filtering.
+    preferred_field_order = ("status", "stage", "priority", "owner")
+    subcategory = "plan"
+    for field in preferred_field_order:
+        if any(c["field"] == field for c in significant):
+            subcategory = f"plan.{field}"
+            break
+
     parts = []
     for c in significant:
         if c["field"] == "status":
@@ -470,19 +618,33 @@ async def _emit_plan_notification(
         else:
             parts.append(f"{c['field']} -> {c.get('new', '?')}")
 
-    body = f"**{title}**: {', '.join(parts)}"
-    if actor:
-        body += f" (by {actor})"
+    source = principal.source if principal else "system"
+    actor_name = principal.actor_display_name if principal else None
+    actor_user_id = principal.user_id if principal else None
 
     await emit_notification(
         db,
         title=f"Plan updated: {title}",
-        body=body,
-        category="plan",
+        body=f"**{title}**: {', '.join(parts)}",
+        category=subcategory,
         severity="info",
-        source=actor or "system",
+        source=source,
+        event_type="plan.updated",
+        actor_name=actor_name,
+        actor_user_id=actor_user_id,
         ref_type="plan",
         ref_id=plan_id,
+        payload={
+            "changes": [
+                {
+                    "field": c["field"],
+                    "old": c.get("old"),
+                    "new": c.get("new"),
+                }
+                for c in significant
+            ],
+            "planTitle": title,
+        },
     )
 
 
@@ -490,24 +652,32 @@ async def emit_plan_created_notification(
     db: AsyncSession,
     plan_id: str,
     title: str,
+    principal=None,
+    # Legacy kwargs kept for any remaining callers
     actor: Optional[str] = None,
+    actor_name: Optional[str] = None,
+    actor_user_id: Optional[int] = None,
 ) -> None:
     """Emit a notification when a plan is created."""
     from pixsim7.backend.main.api.v1.notifications import emit_notification
 
-    body = f"New plan: **{title}**"
-    if actor:
-        body += f" (by {actor})"
+    source = principal.source if principal else (actor or "system")
+    name = principal.actor_display_name if principal else actor_name
+    uid = principal.user_id if principal else actor_user_id
 
     await emit_notification(
         db,
         title=f"Plan created: {title}",
-        body=body,
-        category="plan",
+        body=f"New plan: **{title}**",
+        category="plan.created",
         severity="success",
-        source=actor or "system",
+        source=source,
+        event_type="plan.created",
+        actor_name=name,
+        actor_user_id=uid,
         ref_type="plan",
         ref_id=plan_id,
+        payload={"planTitle": title},
     )
 
 
@@ -520,7 +690,7 @@ async def update_plan(
     db: AsyncSession,
     plan_id: str,
     updates: Dict[str, Any],
-    actor: Optional[str] = None,
+    principal=None,
 ) -> PlanUpdateResult:
     """
     Apply field updates to a plan (DB-first).
@@ -535,6 +705,12 @@ async def update_plan(
         raise ValueError(f"Invalid status '{updates['status']}'. Valid: {', '.join(VALID_STATUSES)}")
     if "priority" in updates and updates["priority"] not in VALID_PRIORITIES:
         raise ValueError(f"Invalid priority '{updates['priority']}'. Valid: {', '.join(VALID_PRIORITIES)}")
+    if "task_scope" in updates and updates["task_scope"] not in VALID_TASK_SCOPES:
+        raise ValueError(f"Invalid task_scope '{updates['task_scope']}'. Valid: {', '.join(VALID_TASK_SCOPES)}")
+    if "plan_type" in updates:
+        plan_type = updates["plan_type"]
+        if not isinstance(plan_type, str) or not plan_type.strip():
+            raise ValueError("Invalid 'plan_type': expected non-empty string")
     for key in LIST_MUTABLE_FIELDS:
         if key in updates:
             value = updates[key]
@@ -543,6 +719,16 @@ async def update_plan(
                 continue
             if not isinstance(value, list) or any(not isinstance(v, str) for v in value):
                 raise ValueError(f"Invalid {key!r}: expected list[str]")
+    if "target" in updates:
+        target = updates["target"]
+        if target is not None and not isinstance(target, dict):
+            raise ValueError("Invalid 'target': expected object or null")
+    if "checkpoints" in updates:
+        checkpoints = updates["checkpoints"]
+        if checkpoints is None:
+            updates["checkpoints"] = []
+        elif not isinstance(checkpoints, list) or any(not isinstance(v, dict) for v in checkpoints):
+            raise ValueError("Invalid 'checkpoints': expected list[object] or null")
 
     bundle = await _ensure_bundle(db, plan_id)
     doc, plan = bundle.doc, bundle.plan
@@ -575,6 +761,12 @@ async def update_plan(
                     }
                 )
                 setattr(target, key, new_list)
+        elif key in JSON_MUTABLE_FIELDS:
+            old_json = _json_fingerprint(old_value)
+            new_json = _json_fingerprint(new_value)
+            if old_json != new_json:
+                changes.append({"field": key, "old": old_json, "new": new_json})
+                setattr(target, key, new_value)
         elif old_str != new_value:
             changes.append({"field": key, "old": old_str, "new": new_value})
             setattr(target, key, new_value)
@@ -595,8 +787,9 @@ async def update_plan(
 
     # Emit events + notification
     sha = None
-    await _emit_events(db, plan_id, changes, None)
-    await _emit_plan_notification(db, plan_id, doc.title, changes, actor)
+    actor_source = principal.source if principal else None
+    await _emit_events(db, plan_id, changes, None, actor_source=actor_source)
+    await _emit_plan_notification(db, plan_id, doc.title, changes, principal=principal)
     await db.commit()
 
     # Optional commit-back to filesystem (disabled in DB-only mode)
@@ -618,8 +811,8 @@ async def update_plan(
                 else:
                     commit_parts.append(f"{c['field']} {c.get('old', '')}->{c.get('new', '')}")
             commit_msg = " ".join(commit_parts)
-            if actor:
-                commit_msg += f"\n\nActor: {actor}"
+            if actor_source:
+                commit_msg += f"\n\nActor: {actor_source}"
 
             if needs_move:
                 sha = _git_commit_move(plan_id, old_scope, new_scope, commit_msg)
@@ -638,7 +831,7 @@ async def update_plan(
         plan_id=plan_id,
         changes=[c["field"] for c in changes],
         commit_sha=sha,
-        actor=actor,
+        actor=actor_source,
     )
 
     return result
@@ -719,6 +912,7 @@ async def list_plan_bundles(db: AsyncSession) -> List[PlanBundle]:
             summary=entry.summary,
             markdown=entry.markdown,
             visibility="public",
+            namespace="dev/plans",
             tags=entry.tags,
             revision=1,
             created_at=now,

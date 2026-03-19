@@ -260,3 +260,60 @@ def create_email_verification_token(user_id: int) -> str:
         data={"sub": str(user_id), "type": "email_verification"},
         expires_delta=timedelta(days=7)
     )
+
+
+# ===== AGENT / SERVICE TOKENS =====
+
+
+def create_agent_token(
+    *,
+    agent_id: str,
+    agent_type: str = "claude-cli",
+    scopes: Optional[list[str]] = None,
+    on_behalf_of: Optional[int] = None,
+    run_id: Optional[str] = None,
+    plan_id: Optional[str] = None,
+    ttl_hours: int = 8,
+) -> str:
+    """
+    Create a short-lived JWT for an AI agent / service principal.
+
+    The token carries ``purpose: "agent"`` so the auth pipeline can
+    distinguish it from regular user tokens and bridge tokens.
+
+    Args:
+        agent_id:      Stable identifier for this agent instance.
+        agent_type:    Agent flavor ("claude-cli", "codex", etc.).
+        scopes:        Optional list of allowed scopes (future enforcement).
+        on_behalf_of:  User ID the agent acts on behalf of (optional).
+        run_id:        Unique run/invocation ID.
+        plan_id:       Plan being worked on (optional).
+        ttl_hours:     Token lifetime in hours (default 8).
+
+    Returns:
+        Signed JWT string.
+    """
+    data = {
+        "sub": "0",
+        "purpose": "agent",
+        "principal_type": "agent",
+        "agent_id": agent_id,
+        "agent_type": agent_type,
+        "role": "agent",
+        "is_admin": False,
+        "is_active": True,
+        "permissions": [],
+    }
+    if scopes:
+        data["scopes"] = scopes
+    if on_behalf_of is not None:
+        data["on_behalf_of"] = on_behalf_of
+    if run_id:
+        data["run_id"] = run_id
+    if plan_id:
+        data["plan_id"] = plan_id
+
+    return create_access_token(
+        data=data,
+        expires_delta=timedelta(hours=ttl_hours),
+    )

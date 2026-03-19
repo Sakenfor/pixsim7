@@ -372,17 +372,12 @@ class AuthService:
 
     async def verify_token(self, token: str) -> User:
         """
-        Verify JWT token and return user
+        Verify JWT token and return User ORM record.
 
-        Args:
-            token: JWT token
-
-        Returns:
-            User associated with token
-
-        Raises:
-            AuthenticationError: Invalid or revoked token
-            ResourceNotFoundError: User not found
+        Note: The primary auth path now uses ``verify_token_claims()`` +
+        ``RequestPrincipal.from_jwt_payload()`` in the dependency layer.
+        This method is kept for internal use (WebSocket bridge, etc.) where
+        the full User ORM model is needed.
         """
         try:
             payload = await self.verify_token_claims(
@@ -393,25 +388,23 @@ class AuthService:
         except (ValueError, KeyError) as e:
             raise AuthenticationError(f"Invalid token: {e}")
 
-        # Bridge service tokens (sub=0) return a synthetic User
-        if user_id == 0 and payload.get("purpose") == "bridge":
+        # Non-user tokens (bridge, agent) — return a synthetic User for compat
+        purpose = payload.get("purpose")
+        if user_id == 0 and purpose in ("bridge", "agent"):
+            label = payload.get("agent_id", purpose)
             return User(
                 id=0,
-                email="bridge@service.local",
-                username="bridge",
+                email=f"{label}@service.local",
+                username=f"{purpose}:{label}",
                 password_hash="",
-                role=payload.get("role", "admin"),
+                role=payload.get("role", "admin" if purpose == "bridge" else "agent"),
                 is_active=True,
                 permissions=payload.get("permissions", []),
             )
 
-        # Get user
         user = await self.users.get_user(user_id)
-
-        # Check if user is active
         if not user.is_active:
             raise AuthenticationError("Account is inactive")
-
         return user
 
     async def get_current_user(self, token: str) -> User:

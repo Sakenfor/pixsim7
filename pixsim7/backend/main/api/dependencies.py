@@ -37,6 +37,8 @@ from pixsim7.backend.main.services.npc import NpcExpressionService
 from pixsim7.backend.main.services.plugin import PluginCatalogService
 from pixsim7.backend.main.services.refs import EntityRefResolver
 from pixsim7.backend.main.shared.auth_claims import AuthPrincipal
+from pixsim7.backend.main.shared.actor import RequestPrincipal
+from pixsim7.backend.main.shared.auth import decode_access_token
 
 # Narrative engine imports (lazy-loaded)
 from pixsim7.backend.main.domain.narrative import NarrativeEngine
@@ -237,32 +239,78 @@ def _extract_bearer_token(authorization: str | None) -> str:
 
     return parts[1]
 
-async def get_current_user(
+async def get_current_principal(
     authorization: Annotated[str | None, Header()] = None,
-    auth_service: AuthService = Depends(get_auth_service)
-) -> User:
+    auth_service: AuthService = Depends(get_auth_service),
+    x_agent_id: Annotated[str | None, Header()] = None,
+    x_run_id: Annotated[str | None, Header()] = None,
+    x_plan_id: Annotated[str | None, Header()] = None,
+) -> RequestPrincipal:
     """
-    Get current authenticated user from JWT token
+    Single auth dependency — validates JWT, returns a ``RequestPrincipal``.
 
-    Usage in routes:
-        @router.get("/me")
-        async def get_me(user: User = Depends(get_current_user)):
-            return user
-
-    Raises:
-        HTTPException: 401 if token is invalid or missing
+    Handles user tokens, agent tokens, bridge tokens, and user tokens with
+    agent headers.  One decode, one object, no synthetic Users.
     """
     token = _extract_bearer_token(authorization)
 
     try:
-        user = await auth_service.verify_token(token)
-        return user
+        payload = await auth_service.verify_token_claims(token, update_last_used=True)
     except Exception as e:
         raise HTTPException(
             status_code=401,
             detail=f"Invalid or expired token: {e}",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    principal = RequestPrincipal.from_jwt_payload(
+        payload,
+        x_agent_id=x_agent_id,
+        x_run_id=x_run_id,
+        x_plan_id=x_plan_id,
+    )
+
+    if not principal.is_active:
+        raise HTTPException(status_code=403, detail="Inactive user")
+
+    # Enrich user principals with DB data (display_name, preferences)
+    if principal.is_user and principal.id != 0:
+        try:
+            user = await auth_service.users.get_user(principal.id)
+            if not user.is_active:
+                raise HTTPException(status_code=403, detail="Inactive user")
+            principal.display_name = getattr(user, "display_name", None)
+            principal.preferences = getattr(user, "preferences", None) or {}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=401,
+                detail=f"User not found: {e}",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    return principal
+
+
+async def get_current_admin_principal(
+    principal: RequestPrincipal = Depends(get_current_principal),
+) -> RequestPrincipal:
+    """Require admin role."""
+    if not principal.is_admin():
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return principal
+
+
+async def get_current_codegen_principal(
+    principal: RequestPrincipal = Depends(get_current_principal),
+) -> RequestPrincipal:
+    """Require devtools.codegen permission."""
+    if not principal.has_permission(CODEGEN_PERMISSION):
+        raise HTTPException(
+            status_code=403, detail=f"Missing required permission: {CODEGEN_PERMISSION}"
+        )
+    return principal
 
 
 async def get_current_game_principal(
@@ -272,8 +320,8 @@ async def get_current_game_principal(
     """
     Resolve a claims-based principal for game-facing endpoints.
 
-    This validates JWT and session revocation state without loading the full
-    User ORM record.
+    Kept separate from ``get_current_principal`` because game endpoints use
+    the ``AuthPrincipal`` type from ``auth_claims.py``.
     """
     token = _extract_bearer_token(authorization)
 
@@ -293,145 +341,54 @@ async def get_current_game_principal(
         )
 
 
-async def get_current_user_ws(
+async def get_current_principal_ws(
     token: Optional[str] = None,
-    auth_service: AuthService = Depends(get_auth_service)
-) -> Optional[User]:
-    """
-    Get current authenticated user from WebSocket token (query parameter).
-
-    For WebSocket connections, token is typically passed as query parameter:
-        ws://host/ws/endpoint?token=JWT_TOKEN
-
-    Returns:
-        User if token is valid, None if token is missing/invalid.
-
-    Note: Returns None instead of raising exception to allow graceful
-          WebSocket connection handling by the endpoint.
-    """
+    auth_service: AuthService = Depends(get_auth_service),
+) -> Optional[RequestPrincipal]:
+    """WebSocket variant — returns None instead of raising on failure."""
     if not token:
         return None
-
     try:
-        user = await auth_service.verify_token(token)
-        return user
+        payload = await auth_service.verify_token_claims(token)
+        return RequestPrincipal.from_jwt_payload(payload)
     except Exception:
-        # Return None for invalid tokens instead of raising
-        # WebSocket endpoints should handle None gracefully
         return None
 
 
-async def get_current_user_optional(
+async def get_current_principal_optional(
     authorization: Annotated[str | None, Header()] = None,
-    auth_service: AuthService = Depends(get_auth_service)
-) -> Optional[User]:
-    """
-    Get current authenticated user from JWT token (optional).
-
-    Similar to get_current_user but returns None instead of raising
-    exceptions. Useful for endpoints that provide different behavior
-    for authenticated vs unauthenticated users.
-
-    Returns:
-        User if token is valid, None if token is missing/invalid.
-    """
+    auth_service: AuthService = Depends(get_auth_service),
+) -> Optional[RequestPrincipal]:
+    """Optional auth — returns None when no token or token is invalid."""
     if not authorization:
         return None
-
     try:
         token = _extract_bearer_token(authorization)
     except HTTPException:
         return None
-
     try:
-        user = await auth_service.verify_token(token)
-        return user
+        payload = await auth_service.verify_token_claims(token)
+        return RequestPrincipal.from_jwt_payload(payload)
     except Exception:
         return None
 
 
-async def get_current_active_user(
-    user: User = Depends(get_current_user)
-) -> User:
-    """
-    Get current user and ensure they're active
-
-    Raises:
-        HTTPException: 403 if user is inactive
-    """
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="Inactive user")
-    return user
-
-
-async def get_current_admin_user(
-    user: User = Depends(get_current_user)
-) -> User:
-    """
-    Get current user and ensure they're admin
-
-    Raises:
-        HTTPException: 403 if user is not admin
-    """
-    if not user.is_admin():
-        raise HTTPException(status_code=403, detail="Admin access required")
-    return user
-
-
-def _require_permission(user: User, permission: str) -> None:
-    if user.has_permission(permission):
-        return
-    raise HTTPException(status_code=403, detail=f"Missing required permission: {permission}")
-
-
-async def get_current_codegen_user(
-    user: User = Depends(get_current_user)
-) -> User:
-    """Get current user and ensure they can run devtools codegen tasks."""
-    _require_permission(user, CODEGEN_PERMISSION)
-    return user
-
-
 # ===== TYPE ALIASES (for cleaner route signatures) =====
 
-CurrentUser = Annotated[User, Depends(get_current_user)]
-CurrentActiveUser = Annotated[User, Depends(get_current_active_user)]
-CurrentAdminUser = Annotated[User, Depends(get_current_admin_user)]
-CurrentCodegenUser = Annotated[User, Depends(get_current_codegen_user)]
+CurrentUser = Annotated[RequestPrincipal, Depends(get_current_principal)]
+CurrentActiveUser = Annotated[RequestPrincipal, Depends(get_current_principal)]
+CurrentAdminUser = Annotated[RequestPrincipal, Depends(get_current_admin_principal)]
+CurrentCodegenUser = Annotated[RequestPrincipal, Depends(get_current_codegen_principal)]
 CurrentGamePrincipal = Annotated[AuthPrincipal, Depends(get_current_game_principal)]
 
-# Alias for admin access (used by admin endpoints)
-require_admin = get_current_admin_user
-require_codegen = get_current_codegen_user
+# Aliases for explicit use
+require_admin = get_current_admin_principal
+require_codegen = get_current_codegen_principal
 
-# ─────────────────────────────────────────────────────────────────────────
-# USAGE CONVENTIONS FOR CURRENT*USER TYPE ALIASES
-# ─────────────────────────────────────────────────────────────────────────
-#
-# These type aliases already include Depends(), so do NOT add another
-# Depends() call when using them in route signatures.
-#
-# ✅ CORRECT:
-#     @router.get("/me")
-#     async def get_me(user: CurrentUser):
-#         return user
-#
-#     @router.post("/admin/action")
-#     async def admin_action(admin: CurrentAdminUser):
-#         return {"status": "ok"}
-#
-# ❌ INCORRECT (will raise FastAPI error):
-#     async def get_me(user: CurrentUser = Depends()):  # Double Depends!
-#     async def admin_action(admin: CurrentAdminUser = Depends(get_current_admin_user)):  # Redundant!
-#
-# For optional authentication, use get_current_user_optional explicitly:
-#     async def optional_route(user: Optional[User] = Depends(get_current_user_optional)):
-#         if user:
-#             # authenticated behavior
-#         else:
-#             # unauthenticated behavior
-#
-# ─────────────────────────────────────────────────────────────────────────
+# Backward-compat aliases — import these in new code
+get_current_user = get_current_principal
+get_current_user_ws = get_current_principal_ws
+get_current_user_optional = get_current_principal_optional
 
 DatabaseSession = Annotated[AsyncSession, Depends(get_database)]
 
