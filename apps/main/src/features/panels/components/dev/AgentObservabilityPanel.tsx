@@ -8,7 +8,9 @@
 import {
   Badge,
   Button,
+  ConfirmModal,
   EmptyState,
+  Modal,
   SectionHeader,
   SidebarContentLayout,
   type SidebarContentLayoutSection,
@@ -1004,12 +1006,24 @@ const PROFILE_STATUS_COLORS: Record<string, 'green' | 'gray' | 'orange'> = {
   archived: 'gray',
 };
 
+interface EditFormState {
+  label: string;
+  description: string;
+  icon: string;
+  agent_type: string;
+  system_prompt: string;
+  audience: string;
+}
+
 function ProfilesView() {
   const [profiles, setProfiles] = useState<AgentProfileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [mintedToken, setMintedToken] = useState<MintedToken | null>(null);
   const [copied, setCopied] = useState(false);
+  const [editProfile, setEditProfile] = useState<AgentProfileEntry | null>(null);
+  const [editForm, setEditForm] = useState<EditFormState>({ label: '', description: '', icon: '', agent_type: '', system_prompt: '', audience: '' });
+  const [deleteTarget, setDeleteTarget] = useState<AgentProfileEntry | null>(null);
 
   // Create form
   const [newId, setNewId] = useState('');
@@ -1038,9 +1052,7 @@ function ProfilesView() {
       setNewLabel('');
       setCreating(false);
       loadProfiles();
-    } catch {
-      // error handled by client
-    }
+    } catch { /* handled by client */ }
   };
 
   const handleMintToken = async (profileId: string) => {
@@ -1052,18 +1064,47 @@ function ProfilesView() {
       );
       setMintedToken(resp);
       setCopied(false);
-    } catch {
-      // error handled by client
-    }
+    } catch { /* handled by client */ }
   };
 
-  const handleArchive = async (profileId: string) => {
+  const openEdit = (profile: AgentProfileEntry) => {
+    setEditProfile(profile);
+    setEditForm({
+      label: profile.label,
+      description: profile.description || '',
+      icon: profile.icon || '',
+      agent_type: profile.agent_type,
+      system_prompt: profile.system_prompt || '',
+      audience: profile.audience,
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editProfile) return;
+    const updates: Record<string, unknown> = {};
+    if (editForm.label !== editProfile.label) updates.label = editForm.label;
+    if (editForm.description !== (editProfile.description || '')) updates.description = editForm.description || null;
+    if (editForm.icon !== (editProfile.icon || '')) updates.icon = editForm.icon || null;
+    if (editForm.agent_type !== editProfile.agent_type) updates.agent_type = editForm.agent_type;
+    if (editForm.system_prompt !== (editProfile.system_prompt || '')) updates.system_prompt = editForm.system_prompt || null;
+    if (editForm.audience !== editProfile.audience) updates.audience = editForm.audience;
+
+    if (Object.keys(updates).length === 0) { setEditProfile(null); return; }
+
     try {
-      await pixsimClient.delete(`/dev/agent-profiles/${profileId}`);
+      await pixsimClient.patch(`/dev/agent-profiles/${editProfile.id}`, updates);
+      setEditProfile(null);
       loadProfiles();
-    } catch {
-      // error handled by client
-    }
+    } catch { /* handled by client */ }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await pixsimClient.delete(`/dev/agent-profiles/${deleteTarget.id}`);
+      setDeleteTarget(null);
+      loadProfiles();
+    } catch { /* handled by client */ }
   };
 
   const copyCommand = () => {
@@ -1072,6 +1113,8 @@ function ProfilesView() {
       setCopied(true);
     }
   };
+
+  const inputCls = "w-full px-2 py-1.5 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100";
 
   if (loading) {
     return (
@@ -1092,30 +1135,15 @@ function ProfilesView() {
 
       {creating && (
         <div className="space-y-2 p-3 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900">
-          <input
-            className="w-full px-2 py-1 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
-            placeholder="ID (slug, e.g. plan-worker)"
-            value={newId}
-            onChange={(e) => setNewId(e.target.value)}
-          />
-          <input
-            className="w-full px-2 py-1 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
-            placeholder="Label (e.g. Claude Plan Worker)"
-            value={newLabel}
-            onChange={(e) => setNewLabel(e.target.value)}
-          />
-          <select
-            className="w-full px-2 py-1 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
-            value={newType}
-            onChange={(e) => setNewType(e.target.value)}
-          >
+          <input className={inputCls} placeholder="ID (slug, e.g. plan-worker)" value={newId} onChange={(e) => setNewId(e.target.value)} />
+          <input className={inputCls} placeholder="Label (e.g. Claude Plan Worker)" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
+          <select className={inputCls} value={newType} onChange={(e) => setNewType(e.target.value)}>
             <option value="claude-cli">claude-cli</option>
+            <option value="assistant">assistant</option>
             <option value="codex">codex</option>
             <option value="custom">custom</option>
           </select>
-          <Button size="sm" onClick={handleCreate} disabled={!newId.trim() || !newLabel.trim()}>
-            Create
-          </Button>
+          <Button size="sm" onClick={handleCreate} disabled={!newId.trim() || !newLabel.trim()}>Create</Button>
         </div>
       )}
 
@@ -1123,19 +1151,12 @@ function ProfilesView() {
         <div className="p-3 rounded border border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium">Token for {mintedToken.agent_id}</span>
-            <button
-              onClick={() => setMintedToken(null)}
-              className="text-neutral-400 hover:text-neutral-600 text-xs"
-            >
-              dismiss
-            </button>
+            <button onClick={() => setMintedToken(null)} className="text-neutral-400 hover:text-neutral-600 text-xs">dismiss</button>
           </div>
           <div className="text-[10px] font-mono bg-white dark:bg-neutral-900 p-2 rounded break-all select-all max-h-16 overflow-y-auto">
             {mintedToken.command}
           </div>
-          <Button size="sm" onClick={copyCommand}>
-            {copied ? 'Copied' : 'Copy command'}
-          </Button>
+          <Button size="sm" onClick={copyCommand}>{copied ? 'Copied' : 'Copy command'}</Button>
         </div>
       )}
 
@@ -1149,7 +1170,10 @@ function ProfilesView() {
               {profile.status}
             </Badge>
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate">{profile.label}</div>
+              <div className="font-medium truncate">
+                {profile.icon && <Icon name={profile.icon as import('@lib/icons').IconName} size={10} className="inline mr-1" />}
+                {profile.label}
+              </div>
               <div className="text-neutral-500 font-mono text-[10px]">{profile.id}</div>
               {profile.description && (
                 <div className="text-neutral-400 text-[10px] truncate mt-0.5">{profile.description}</div>
@@ -1157,21 +1181,18 @@ function ProfilesView() {
             </div>
             <div className="flex items-center gap-1 shrink-0">
               {profile.status === 'active' && (
-                <Button
-                  size="sm"
-                  onClick={() => handleMintToken(profile.id)}
-                  title="Mint CLI token"
-                >
+                <Button size="sm" onClick={() => handleMintToken(profile.id)} title="Mint CLI token">
                   <Icon name="key" size={10} />
                 </Button>
               )}
-              {profile.status !== 'archived' && (
-                <Button
-                  size="sm"
-                  onClick={() => handleArchive(profile.id)}
-                  title="Archive profile"
-                >
-                  <Icon name="archive" size={10} />
+              {!profile.is_global && (
+                <Button size="sm" onClick={() => openEdit(profile)} title="Edit profile">
+                  <Icon name="edit" size={10} />
+                </Button>
+              )}
+              {!profile.is_global && profile.status !== 'archived' && (
+                <Button size="sm" onClick={() => setDeleteTarget(profile)} title="Delete profile">
+                  <Icon name="trash" size={10} />
                 </Button>
               )}
             </div>
@@ -1182,6 +1203,67 @@ function ProfilesView() {
       {profiles.length === 0 && !creating && (
         <EmptyState message="No agent profiles yet. Create one to get a stable identity for your AI agents." />
       )}
+
+      {/* Edit Modal */}
+      <Modal isOpen={!!editProfile} onClose={() => setEditProfile(null)} title={`Edit: ${editProfile?.label || ''}`} size="sm">
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Label</label>
+            <input className={inputCls} value={editForm.label} onChange={(e) => setEditForm({ ...editForm, label: e.target.value })} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Description</label>
+            <input className={inputCls} value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} placeholder="Optional description" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Icon</label>
+            <input className={inputCls} value={editForm.icon} onChange={(e) => setEditForm({ ...editForm, icon: e.target.value })} placeholder="Icon name (e.g. cpu, sparkles, code)" />
+          </div>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Type</label>
+              <select className={inputCls} value={editForm.agent_type} onChange={(e) => setEditForm({ ...editForm, agent_type: e.target.value })}>
+                <option value="claude-cli">claude-cli</option>
+                <option value="assistant">assistant</option>
+                <option value="codex">codex</option>
+                <option value="custom">custom</option>
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Audience</label>
+              <select className={inputCls} value={editForm.audience} onChange={(e) => setEditForm({ ...editForm, audience: e.target.value })}>
+                <option value="user">user</option>
+                <option value="dev">dev</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">System Prompt</label>
+            <textarea
+              className={`${inputCls} resize-y`}
+              rows={4}
+              value={editForm.system_prompt}
+              onChange={(e) => setEditForm({ ...editForm, system_prompt: e.target.value })}
+              placeholder="Optional system prompt / instructions"
+            />
+          </div>
+          <div className="flex gap-2 justify-end pt-1">
+            <Button size="sm" onClick={() => setEditProfile(null)}>Cancel</Button>
+            <Button size="sm" onClick={handleSaveEdit} disabled={!editForm.label.trim()}>Save</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Confirmation */}
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+        title="Delete Profile"
+        message={`Archive "${deleteTarget?.label}"? It will no longer appear in profile lists or be usable for token minting.`}
+        confirmText="Delete"
+        variant="danger"
+      />
     </div>
   );
 }
