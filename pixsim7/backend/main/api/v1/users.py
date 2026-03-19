@@ -3,7 +3,7 @@ User management API endpoints
 """
 from typing import Any
 from fastapi import APIRouter, HTTPException, Query
-from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, CurrentUserRecord, UserSvc
+from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, UserSvc
 from pixsim7.backend.main.shared.schemas.user_schemas import (
     AdminUpdateUserRequest,
     AdminUserPermissionsResponse,
@@ -63,12 +63,13 @@ def _build_user_response(user: Any) -> UserResponse:
 # ===== GET CURRENT USER =====
 
 @router.get("/users/me", response_model=UserResponse)
-async def get_current_user(user: CurrentUserRecord):
+async def get_current_user(principal: CurrentUser, user_service: UserSvc):
     """
     Get current authenticated user profile
 
     Returns the profile information for the currently authenticated user.
     """
+    user = await user_service.get_user(principal.id)
     return _build_user_response(user)
 
 
@@ -77,7 +78,7 @@ async def get_current_user(user: CurrentUserRecord):
 @router.patch("/users/me", response_model=UserResponse)
 async def update_current_user(
     request: UpdateUserRequest,
-    user: CurrentUserRecord,
+    user: CurrentUser,
     user_service: UserSvc
 ):
     """
@@ -99,8 +100,9 @@ async def update_current_user(
             updated_user = await user_service.update_user(user.id, **updates)
             return _build_user_response(updated_user)
 
-        # No updates provided
-        return _build_user_response(user)
+        # No updates provided — load full user for response
+        full_user = await user_service.get_user(user.id)
+        return _build_user_response(full_user)
 
     except DomainValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -155,7 +157,7 @@ async def get_user_preferences(user: CurrentUser):
 @router.patch("/users/me/preferences", response_model=UserPreferencesResponse)
 async def update_user_preferences(
     request: UpdateUserPreferencesRequest,
-    user: CurrentUserRecord,
+    user: CurrentUser,
     user_service: UserSvc
 ):
     """

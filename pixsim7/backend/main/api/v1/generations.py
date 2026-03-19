@@ -14,7 +14,6 @@ from datetime import datetime
 
 from pixsim7.backend.main.api.dependencies import (
     CurrentUser,
-    CurrentUserRecord,
     GenerationGatewaySvc,
     GenerationTrackingSvc,
     DatabaseSession,
@@ -275,7 +274,7 @@ async def _get_submission_metadata(
 async def create_generation(
     request: CreateGenerationRequest,
     req: Request,
-    user: CurrentUserRecord,
+    user: CurrentUser,
     generation_gateway: GenerationGatewaySvc,
 ):
     """

@@ -234,16 +234,15 @@ class UserService:
 
     # ===== QUOTA MANAGEMENT =====
 
-    async def check_can_create_job(self, user: User) -> None:
+    async def check_can_create_job(self, user_or_id) -> None:
         """
-        Check if user can create a job
+        Check if user can create a job.
 
         Args:
-            user: User to check
-
-        Raises:
-            QuotaError: If user exceeded quotas
+            user_or_id: User ORM instance or user_id (int)
         """
+        user = await self._resolve_user(user_or_id)
+
         if not user.is_active:
             raise QuotaError("User account is inactive")
 
@@ -261,17 +260,16 @@ class UserService:
                 f"Resets at midnight UTC."
             )
 
-    async def check_storage_available(self, user: User, required_gb: float) -> None:
+    async def check_storage_available(self, user_or_id, required_gb: float) -> None:
         """
-        Check if user has storage available
+        Check if user has storage available.
 
         Args:
-            user: User to check
+            user_or_id: User ORM instance or user_id (int)
             required_gb: Storage required in GB
-
-        Raises:
-            QuotaError: If storage quota exceeded
         """
+        user = await self._resolve_user(user_or_id)
+
         if user.current_storage_gb + required_gb > user.max_storage_gb:
             raise QuotaError(
                 f"Storage quota exceeded. "
@@ -279,38 +277,36 @@ class UserService:
                 f"Limit: {user.max_storage_gb:.2f}GB"
             )
 
-    async def increment_job_count(self, user: User) -> None:
-        """
-        Increment user's job count
-
-        Args:
-            user: User
-        """
+    async def increment_job_count(self, user_or_id) -> None:
+        """Increment user's job count. Accepts User or user_id."""
+        user = await self._resolve_user(user_or_id)
         user.jobs_today += 1
         user.total_jobs_created += 1
         await self.db.commit()
 
-    async def increment_storage(self, user: User, gb: float) -> None:
-        """
-        Increment user's storage usage
-
-        Args:
-            user: User
-            gb: Storage to add in GB
-        """
+    async def increment_storage(self, user_or_id, gb: float) -> None:
+        """Increment user's storage usage. Accepts User or user_id."""
+        user = await self._resolve_user(user_or_id)
         user.current_storage_gb += gb
         await self.db.commit()
 
-    async def decrement_storage(self, user: User, gb: float) -> None:
-        """
-        Decrement user's storage usage
-
-        Args:
-            user: User
-            gb: Storage to remove in GB
-        """
+    async def decrement_storage(self, user_or_id, gb: float) -> None:
+        """Decrement user's storage usage. Accepts User or user_id."""
+        user = await self._resolve_user(user_or_id)
         user.current_storage_gb = max(0, user.current_storage_gb - gb)
         await self.db.commit()
+
+    async def _resolve_user(self, user_or_id) -> User:
+        """Resolve a User ORM instance from either a User or an int user_id."""
+        if isinstance(user_or_id, User):
+            return user_or_id
+        if isinstance(user_or_id, int):
+            return await self.get_user(user_or_id)
+        # Duck-type: anything with .id (like RequestPrincipal)
+        uid = getattr(user_or_id, "id", None)
+        if uid is not None and isinstance(uid, int) and uid != 0:
+            return await self.get_user(uid)
+        raise QuotaError("Cannot resolve user for quota check")
 
     async def _reset_daily_quota_if_needed(self, user: User) -> None:
         """
