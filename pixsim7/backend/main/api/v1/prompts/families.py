@@ -10,8 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.services.prompt import PromptVersionService
-from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
+from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
+from pixsim7.backend.main.services.prompt.git import GitBranchService
 from .schemas import (
+    BranchSummary,
+    CreateBranchRequest,
     CreatePromptFamilyRequest,
     CreatePromptVersionRequest,
     ForkFromArtifactRequest,
@@ -21,6 +24,24 @@ from .schemas import (
 )
 
 router = APIRouter()
+
+
+def _version_response(v) -> PromptVersionResponse:
+    return PromptVersionResponse(
+        id=v.id,
+        family_id=v.family_id,
+        version_number=v.version_number,
+        prompt_text=v.prompt_text,
+        commit_message=v.commit_message,
+        author=v.author,
+        parent_version_id=v.parent_version_id,
+        branch_name=v.branch_name,
+        generation_count=v.generation_count,
+        successful_assets=v.successful_assets,
+        tags=v.tags,
+        created_at=str(v.created_at),
+    )
+
 
 @router.post("/families", response_model=PromptFamilyResponse)
 async def create_family(
@@ -43,6 +64,20 @@ async def create_family(
         scene_id=request.scene_id,
         action_concept_id=request.action_concept_id,
         created_by=user.email
+    )
+
+    from pixsim7.backend.main.api.v1.notifications import emit_notification
+    await emit_notification(
+        db,
+        title=f"Prompt family created: {family.title}",
+        category="prompt.created",
+        severity="info",
+        source=user.source,
+        event_type="prompt.family_created",
+        actor_name=user.actor_display_name,
+        actor_user_id=user.user_id,
+        ref_type="prompt_family",
+        ref_id=str(family.id),
     )
 
     return PromptFamilyResponse(
@@ -141,6 +176,23 @@ async def update_family(
     if not family:
         raise HTTPException(status_code=404, detail="Family not found")
 
+    from pixsim7.backend.main.api.v1.notifications import emit_notification
+    changed_fields = list(updates.keys())
+    await emit_notification(
+        db,
+        title=f"Prompt updated: {family.title}",
+        body=f"Fields: {', '.join(changed_fields)}",
+        category="prompt.updated",
+        severity="info",
+        source=user.source,
+        event_type="prompt.family_updated",
+        actor_name=user.actor_display_name,
+        actor_user_id=user.user_id,
+        ref_type="prompt_family",
+        ref_id=str(family.id),
+        payload={"changed_fields": changed_fields},
+    )
+
     return PromptFamilyResponse(
         id=family.id,
         slug=family.slug,
@@ -188,18 +240,22 @@ async def create_version(
         tags=request.tags
     )
 
-    return PromptVersionResponse(
-        id=version.id,
-        family_id=version.family_id,
-        version_number=version.version_number,
-        prompt_text=version.prompt_text,
-        commit_message=version.commit_message,
-        author=version.author,
-        generation_count=version.generation_count,
-        successful_assets=version.successful_assets,
-        tags=version.tags,
-        created_at=str(version.created_at)
+    from pixsim7.backend.main.api.v1.notifications import emit_notification
+    await emit_notification(
+        db,
+        title=f"Prompt version v{version.version_number}: {family.title}",
+        body=request.commit_message,
+        category="prompt.version_created",
+        severity="info",
+        source=user.source,
+        event_type="prompt.version_created",
+        actor_name=user.actor_display_name,
+        actor_user_id=user.user_id,
+        ref_type="prompt_version",
+        ref_id=str(version.id),
     )
+
+    return _version_response(version)
 
 
 @router.get("/families/{family_id}/versions", response_model=List[PromptVersionResponse])
@@ -215,21 +271,7 @@ async def list_versions(
 
     versions = await service.list_versions(family_id, limit=limit, offset=offset)
 
-    return [
-        PromptVersionResponse(
-            id=v.id,
-            family_id=v.family_id,
-            version_number=v.version_number,
-            prompt_text=v.prompt_text,
-            commit_message=v.commit_message,
-            author=v.author,
-            generation_count=v.generation_count,
-            successful_assets=v.successful_assets,
-            tags=v.tags,
-            created_at=str(v.created_at)
-        )
-        for v in versions
-    ]
+    return [_version_response(v) for v in versions]
 
 
 @router.get("/versions/{version_id}", response_model=PromptVersionResponse)
@@ -245,18 +287,7 @@ async def get_version(
     if not version:
         raise HTTPException(status_code=404, detail="Version not found")
 
-    return PromptVersionResponse(
-        id=version.id,
-        family_id=version.family_id,
-        version_number=version.version_number,
-        prompt_text=version.prompt_text,
-        commit_message=version.commit_message,
-        author=version.author,
-        generation_count=version.generation_count,
-        successful_assets=version.successful_assets,
-        tags=version.tags,
-        created_at=str(version.created_at)
-    )
+    return _version_response(version)
 
 
 @router.post("/versions/fork-from-artifact", response_model=PromptVersionResponse)
@@ -279,18 +310,7 @@ async def fork_from_artifact(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    return PromptVersionResponse(
-        id=version.id,
-        family_id=version.family_id,
-        version_number=version.version_number,
-        prompt_text=version.prompt_text,
-        commit_message=version.commit_message,
-        author=version.author,
-        generation_count=version.generation_count,
-        successful_assets=version.successful_assets,
-        tags=version.tags,
-        created_at=str(version.created_at)
-    )
+    return _version_response(version)
 
 
 @router.get("/versions/{version_id}/assets")
@@ -313,16 +333,7 @@ async def get_version_assets(
     return {
         "version_id": str(version_id),
         "asset_count": len(assets),
-        "assets": [
-            {
-                "id": a.id,
-                "media_type": a.media_type.value,
-                "remote_url": a.remote_url,
-                "thumbnail_url": storage_key_to_url(a.thumbnail_key) or a.remote_url,
-                "created_at": str(a.created_at)
-            }
-            for a in assets
-        ]
+        "assets": [AssetResponse.model_validate(a).model_dump() for a in assets]
     }
 
 
@@ -340,17 +351,45 @@ async def get_asset_prompt_version(
     if not version:
         return None
 
-    return PromptVersionResponse(
-        id=version.id,
-        family_id=version.family_id,
-        version_number=version.version_number,
-        prompt_text=version.prompt_text,
-        commit_message=version.commit_message,
-        author=version.author,
-        generation_count=version.generation_count,
-        successful_assets=version.successful_assets,
-        tags=version.tags,
-        created_at=str(version.created_at)
-    )
+    return _version_response(version)
 
 
+# ===== Branch Endpoints =====
+
+
+@router.get("/families/{family_id}/branches", response_model=List[BranchSummary])
+async def list_branches(
+    family_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """List all branches for a prompt family"""
+    branch_service = GitBranchService(db)
+    try:
+        branches = await branch_service.list_branches(family_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return [BranchSummary(**b) for b in branches]
+
+
+@router.post("/families/{family_id}/branches", response_model=PromptVersionResponse)
+async def create_branch(
+    family_id: UUID,
+    request: CreateBranchRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Create a new branch from a version (or latest)"""
+    branch_service = GitBranchService(db)
+    try:
+        version = await branch_service.create_branch(
+            family_id=family_id,
+            branch_name=request.branch_name,
+            from_version_id=request.from_version_id,
+            author=request.author or user.email,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return _version_response(version)

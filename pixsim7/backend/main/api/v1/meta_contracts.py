@@ -751,8 +751,9 @@ async def terminate_agent(agent_id: str) -> TerminateAgentResponse:
 
 class AgentWriteEntry(BaseModel):
     id: str
-    plan_id: str
-    plan_title: str
+    domain: str  # "plan" | "prompt" | "notification" | ...
+    entity_id: str
+    entity_label: str
     event_type: str
     field: Optional[str] = None
     old_value: Optional[str] = None
@@ -773,41 +774,72 @@ async def get_agent_writes(
     days: int = Query(7, ge=1, le=90),
     limit: int = Query(100, ge=1, le=500),
     agent_id: Optional[str] = Query(None, description="Filter by specific agent ID"),
+    domain: Optional[str] = Query(None, description="Filter by domain: plan, prompt, or all"),
     db: AsyncSession = Depends(get_database),
 ):
-    """Query plan write events attributed to agents."""
+    """Query write events attributed to agents across all domains."""
     from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry, Document
+    from pixsim7.backend.main.domain.platform.notification import Notification
 
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    actor_filter = f"agent:{agent_id}" if agent_id else None
+    entries: List[AgentWriteEntry] = []
 
-    stmt = (
-        select(PlanEvent, Document.title)
-        .join(PlanRegistry, PlanEvent.plan_id == PlanRegistry.id)
-        .join(Document, PlanRegistry.document_id == Document.id)
-        .where(PlanEvent.timestamp >= cutoff)
-        .where(PlanEvent.actor.like("agent:%"))
-    )
-    if agent_id:
-        stmt = stmt.where(PlanEvent.actor == f"agent:{agent_id}")
-
-    stmt = stmt.order_by(PlanEvent.timestamp.desc()).limit(limit)
-    rows = (await db.execute(stmt)).all()
-
-    entries = [
-        AgentWriteEntry(
-            id=str(ev.id),
-            plan_id=ev.plan_id,
-            plan_title=title or ev.plan_id,
-            event_type=ev.event_type,
-            field=ev.field,
-            old_value=ev.old_value,
-            new_value=ev.new_value,
-            commit_sha=ev.commit_sha,
-            actor=ev.actor,
-            timestamp=ev.timestamp.isoformat() if ev.timestamp else "",
+    # ── Plan events ──
+    if domain in (None, "plan"):
+        stmt = (
+            select(PlanEvent, Document.title)
+            .join(PlanRegistry, PlanEvent.plan_id == PlanRegistry.id)
+            .join(Document, PlanRegistry.document_id == Document.id)
+            .where(PlanEvent.timestamp >= cutoff)
+            .where(PlanEvent.actor.like("agent:%"))
         )
-        for ev, title in rows
-    ]
+        if actor_filter:
+            stmt = stmt.where(PlanEvent.actor == actor_filter)
+        stmt = stmt.order_by(PlanEvent.timestamp.desc()).limit(limit)
+        for ev, title in (await db.execute(stmt)).all():
+            entries.append(AgentWriteEntry(
+                id=str(ev.id),
+                domain="plan",
+                entity_id=ev.plan_id,
+                entity_label=title or ev.plan_id,
+                event_type=ev.event_type,
+                field=ev.field,
+                old_value=ev.old_value,
+                new_value=ev.new_value,
+                commit_sha=ev.commit_sha,
+                actor=ev.actor,
+                timestamp=ev.timestamp.isoformat() if ev.timestamp else "",
+            ))
+
+    # ── Prompt/other writes via notifications ──
+    if domain in (None, "prompt"):
+        notif_categories = ["prompt.created", "prompt.updated", "prompt.version_created"]
+        stmt = (
+            select(Notification)
+            .where(Notification.created_at >= cutoff)
+            .where(Notification.source.like("agent:%"))
+            .where(Notification.category.in_(notif_categories))
+        )
+        if actor_filter:
+            stmt = stmt.where(Notification.source == actor_filter)
+        stmt = stmt.order_by(Notification.created_at.desc()).limit(limit)
+        for notif in (await db.execute(stmt)).scalars().all():
+            payload = notif.payload or {}
+            entries.append(AgentWriteEntry(
+                id=str(notif.id),
+                domain="prompt",
+                entity_id=notif.ref_id or "",
+                entity_label=notif.title or "",
+                event_type=notif.event_type or notif.category,
+                field=", ".join(payload.get("changed_fields", [])) or None,
+                actor=notif.source,
+                timestamp=notif.created_at.isoformat() if notif.created_at else "",
+            ))
+
+    # Sort combined results by timestamp descending, trim to limit
+    entries.sort(key=lambda e: e.timestamp, reverse=True)
+    entries = entries[:limit]
 
     return AgentWritesResponse(entries=entries, total=len(entries))
 

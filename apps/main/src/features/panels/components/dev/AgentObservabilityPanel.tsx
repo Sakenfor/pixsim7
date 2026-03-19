@@ -866,8 +866,9 @@ function HistoryView() {
 
 interface AgentWriteEntry {
   id: string;
-  plan_id: string;
-  plan_title: string;
+  domain: string;
+  entity_id: string;
+  entity_label: string;
   event_type: string;
   field: string | null;
   old_value: string | null;
@@ -926,14 +927,19 @@ function WritesView() {
           const agentSlug = entry.actor.replace('agent:', '');
           const agentName = profileLabels[agentSlug] || agentSlug;
           const isFieldChange = entry.event_type === 'field_changed';
+          const domainColor = entry.domain === 'plan' ? 'blue' : entry.domain === 'prompt' ? 'green' : 'gray';
           return (
             <div
               key={entry.id}
               className="flex items-start gap-2 px-2 py-1.5 rounded border border-neutral-200 dark:border-neutral-800 text-xs"
             >
-              <Badge color="blue" className="text-[10px] shrink-0">{agentName}</Badge>
+              <Badge color={domainColor} className="text-[10px] shrink-0">{agentName}</Badge>
               <div className="flex-1 min-w-0">
-                <span className="mr-1"><PlanLink planId={entry.plan_id} /></span>
+                {entry.domain === 'plan' ? (
+                  <span className="mr-1"><PlanLink planId={entry.entity_id} /></span>
+                ) : (
+                  <span className="mr-1 text-neutral-600 dark:text-neutral-300">{entry.entity_label}</span>
+                )}
                 {isFieldChange && entry.field && (
                   <span className="text-neutral-500">
                     {entry.field}
