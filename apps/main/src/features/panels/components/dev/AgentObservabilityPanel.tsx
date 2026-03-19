@@ -1139,7 +1139,6 @@ function ProfilesView() {
           <input className={inputCls} placeholder="Label (e.g. Claude Plan Worker)" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
           <select className={inputCls} value={newType} onChange={(e) => setNewType(e.target.value)}>
             <option value="claude-cli">claude-cli</option>
-            <option value="assistant">assistant</option>
             <option value="codex">codex</option>
             <option value="custom">custom</option>
           </select>
