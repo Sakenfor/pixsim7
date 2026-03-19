@@ -569,7 +569,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles }: {
                       tab.profileId === p.id ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
                     }`}
                   >
-                    <Icon name={(p.icon || (p.p.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName} size={12} className="shrink-0" />
+                    <Icon name={(p.icon || (p.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName} size={12} className="shrink-0" />
                     <span className="truncate">{p.label}</span>
                     {p.is_global && <span className="text-[8px] text-neutral-400 ml-auto shrink-0">built-in</span>}
                   </button>
@@ -684,7 +684,7 @@ export function AIAssistantPanel() {
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
             const tabProfile = profiles.find((p) => p.id === tab.profileId);
-            const tabIcon = (tabProfile?.icon || (tabProfile && tabProfile.p.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName;
+            const tabIcon = (tabProfile?.icon || (tabProfile && tabProfile.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName;
             return (
               <div
                 key={tab.id}
