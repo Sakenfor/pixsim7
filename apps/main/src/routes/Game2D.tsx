@@ -36,13 +36,13 @@ import {
 import { saveWorldSession } from '@pixsim7/game.engine';
 import { LocationId as toLocationId, SceneId as toSceneId, SessionId as toSessionId } from '@pixsim7/shared.types';
 import { Button, Panel, Badge, Select } from '@pixsim7/shared.ui';
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { buildWorldLabelMap } from '@lib/game/worldLabels';
 import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 import type { Scene, SessionFlags } from '@lib/registries';
-import { resolveGameLocations, resolveGameWorlds } from '@lib/resolvers';
+import { resolveGameLocations } from '@lib/resolvers';
 
 
 import { getAsset, fromAssetResponse, getAssetDisplayUrls, type AssetModel } from '@features/assets';
@@ -61,6 +61,7 @@ import { getEffectiveViewMode } from '@features/worldTools/lib/playerHudPreferen
 
 import { UserPreferencesPanel } from '@/components/game/panels/UserPreferencesPanel';
 import { SceneGizmoMiniGame } from '@/components/minigames/SceneGizmoMiniGame';
+import { useSharedWorldSelection } from '@/hooks';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import { SimpleDialogue } from '../components/game/DialogueUI';
@@ -84,7 +85,6 @@ import {
   type GameLocationDetail,
   type GameHotspotDTO,
   type NpcExpressionDTO,
-  type GameWorldSummary,
 } from '../lib/api/game';
 import { type InteractionContext, type SessionAPI } from '../lib/game/interactions';
 import { executeSlotInteractions } from '../lib/game/interactions/executor';
@@ -215,15 +215,26 @@ export function Game2D() {
     session: runtimeSession,
     worldTime: runtimeWorldTime,
     ensureSession,
+    detachSession,
     advanceTurn,
     enterRoom: runtimeEnterRoom,
     enterScene: runtimeEnterScene,
     enterConversation: runtimeEnterConversation,
   } = runtime;
 
+  const {
+    worlds,
+    selectedWorldId: sharedSelectedWorldId,
+    selectedWorldSource,
+    setSelectedWorldId: setSharedWorldId,
+    isLoadingWorlds,
+    worldLoadError,
+    reloadWorlds,
+  } = useSharedWorldSelection({ autoSelectFirst: true });
+
   // Derive worldTime in old format for backward compatibility
   const worldTime: WorldTime = runtimeWorldTime;
-  const selectedWorldId = runtimeState.worldId;
+  const selectedWorldId = sharedSelectedWorldId ?? runtimeState.worldId;
 
   // ========================================
   // Session/World state with local overrides for callbacks
@@ -290,7 +301,6 @@ export function Game2D() {
   const [npcExpressions, setNpcExpressions] = useState<NpcExpressionDTO[]>([]);
   const [npcPortraitAsset, setNpcPortraitAsset] = useState<AssetModel | null>(null);
   const [npcPortraitAssetId, setNpcPortraitAssetId] = useState<number | null>(null);
-  const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
   const worldLabelsById = useMemo(() => buildWorldLabelMap(worlds), [worlds]);
   const effectiveBackgroundAsset = roomNavBackgroundAsset ?? backgroundAsset;
   const backgroundUrls = useMemo(
@@ -419,91 +429,89 @@ export function Game2D() {
     }
   }, [selectedWorldId, gameSession, selectedLocationId, locationDetail, runtimeEnterRoom]);
 
-  // Load locations and worlds on mount
+  useEffect(() => {
+    if (!worldLoadError) return;
+    setError(worldLoadError);
+  }, [worldLoadError]);
+
+  useEffect(() => {
+    if (sharedSelectedWorldId == null) {
+      if (runtimeState.worldId != null) {
+        detachSession();
+      }
+      return;
+    }
+    if (runtimeState.worldId === sharedSelectedWorldId) {
+      return;
+    }
+    ensureSession(sharedSelectedWorldId).catch((e) => {
+      const message = e instanceof Error ? e.message : String(e);
+      setError(`Failed to initialize world session: ${message}`);
+      console.error('Failed to initialize world session', e);
+    });
+  }, [sharedSelectedWorldId, runtimeState.worldId, detachSession, ensureSession]);
+
   useEffect(() => {
     (async () => {
       try {
-        const locs = await resolveGameLocations({}, {
-          consumerId: 'Game2D.loadLocations',
-        });
+        const locs = await resolveGameLocations(
+          selectedWorldId != null ? { worldId: selectedWorldId } : {},
+          {
+            consumerId: 'Game2D.loadLocations',
+          },
+        );
         setLocations(locs);
         const locationIdParam = searchParams.get('locationId');
         const locFromParam = locationIdParam ? Number(locationIdParam) : null;
-        if (locFromParam && Number.isFinite(locFromParam)) {
-          setSelectedLocationId(locFromParam);
-        } else if (!selectedLocationId && locs.length > 0) {
-          setSelectedLocationId(locs[0].id);
-        }
+        setSelectedLocationId((previousId) => {
+          if (
+            locFromParam &&
+            Number.isFinite(locFromParam) &&
+            locs.some((loc) => loc.id === locFromParam)
+          ) {
+            return locFromParam;
+          }
+          if (previousId != null && locs.some((loc) => loc.id === previousId)) {
+            return previousId;
+          }
+          return locs[0]?.id ?? null;
+        });
       } catch (e: unknown) {
         setError(String((e as Error)?.message ?? e));
       }
     })();
+  }, [selectedWorldId, searchParams]);
 
-    // Load worlds list (runtime handles session restoration)
-    (async () => {
-      try {
-        const ws = await resolveGameWorlds({
-          consumerId: 'Game2D.loadWorlds',
-        });
-        setWorlds(ws);
-
-        // If runtime hasn't loaded a world yet, initialize from URL or first world
-        if (!selectedWorldId) {
-          const worldIdParam = searchParams.get('worldId');
-          let effectiveWorldId: number | null = null;
-
-          if (worldIdParam) {
-            const wId = Number(worldIdParam);
-            if (Number.isFinite(wId)) {
-              effectiveWorldId = wId;
-            }
-          } else if (ws && ws.length > 0) {
-            effectiveWorldId = ws[0].id;
-          }
-
-          if (effectiveWorldId != null) {
-            // Use runtime to ensure session for this world
-            ensureSession(effectiveWorldId).catch((e) => {
-              const message = e instanceof Error ? e.message : String(e);
-              setError(`Failed to initialize world session: ${message}`);
-              console.error('Failed to initialize world session', e);
-            });
-          }
-        }
-      } catch (e: unknown) {
-        console.error('Failed to list game worlds', e);
+  const handleSelectWorld = useCallback(
+    async (worldId: number | null) => {
+      setSharedWorldId(worldId);
+      if (!worldId) {
+        detachSession();
+        return;
       }
-    })();
-  }, []);
+      try {
+        // Use runtime to ensure session for the selected world
+        await ensureSession(worldId);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        setError(`Failed to select world: ${message}`);
+        console.error('Failed to select GameWorld for Game2D', e);
+      }
+    },
+    [detachSession, ensureSession, setSharedWorldId],
+  );
 
-  // Define handleSelectWorld before it's used in useEffect
-  const handleSelectWorld = async (worldId: number | null) => {
-    if (!worldId) {
-      runtime.detachSession();
-      return;
-    }
-    try {
-      // Use runtime to ensure session for the selected world
-      await ensureSession(worldId);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      setError(`Failed to select world: ${message}`);
-      console.error('Failed to select GameWorld for Game2D', e);
-    }
-  };
-
-  const handleCreateWorld = async () => {
+  const handleCreateWorld = useCallback(async () => {
     const name = window.prompt('World name:', 'My World');
     if (!name) return;
     try {
       const created = await createGameWorld(name, {});
-      const nextWorlds = [...worlds, { id: created.id, name: created.name }];
-      setWorlds(nextWorlds);
+      await reloadWorlds();
       await handleSelectWorld(created.id);
     } catch (e) {
       console.error('Failed to create GameWorld', e);
     }
-  };
+  }, [handleSelectWorld, reloadWorlds]);
 
   // Phase 5: Handle URL params for direct scene playback from editor
   useEffect(() => {
@@ -511,15 +519,14 @@ export function Game2D() {
     const locationIdParam = searchParams.get('locationId');
     const sceneIdParam = searchParams.get('sceneId');
 
-    if (!sceneIdParam) return; // No scene to auto-play
-
-    // Set world and location from params if provided
     if (worldIdParam) {
       const wId = Number(worldIdParam);
-      if (Number.isFinite(wId) && wId !== selectedWorldId) {
-        handleSelectWorld(wId);
+      if (Number.isFinite(wId) && wId !== sharedSelectedWorldId) {
+        setSharedWorldId(wId);
       }
     }
+
+    if (!sceneIdParam) return; // No scene to auto-play
 
     if (locationIdParam) {
       const locId = Number(locationIdParam);
@@ -559,7 +566,16 @@ export function Game2D() {
     }, 500); // Small delay to ensure state has settled
 
     return () => clearTimeout(timer);
-  }, [searchParams, gameSession, selectedWorldId, selectedLocationId, ensureSession, handleSelectWorld, runtimeEnterScene]);
+  }, [
+    searchParams,
+    gameSession,
+    selectedWorldId,
+    selectedLocationId,
+    ensureSession,
+    runtimeEnterScene,
+    setSharedWorldId,
+    sharedSelectedWorldId,
+  ]);
 
   useEffect(() => {
     if (!selectedLocationId) {
@@ -1095,11 +1111,12 @@ export function Game2D() {
                 size="sm"
                 transparent
                 className="py-0.5"
-                value={selectedWorldId ?? ''}
+                value={selectedWorldId ? String(selectedWorldId) : ''}
                 onChange={(e) => {
                   const v = e.target.value;
                   handleSelectWorld(v ? Number(v) : null);
                 }}
+                disabled={isLoadingWorlds}
               >
                 <option value="">(local session)</option>
                 {worlds.map((w) => (
@@ -1108,6 +1125,9 @@ export function Game2D() {
                   </option>
                 ))}
               </Select>
+              <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                ({selectedWorldSource})
+              </span>
             </div>
             <Button size="sm" variant="secondary" onClick={handleCreateWorld}>
               New World

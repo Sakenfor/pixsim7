@@ -11,6 +11,11 @@ export type {
 } from "./hooks";
 export { useRequiredAuthoringWorld } from "./hooks";
 export type { RequiredAuthoringWorldResult } from "./hooks";
+export { useEffectiveAuthoringIds } from "./hooks";
+export type {
+  UseEffectiveAuthoringIdsOptions,
+  EffectiveAuthoringIds,
+} from "./hooks";
 export {
   CAP_ASSET,
   CAP_ASSET_LIST,

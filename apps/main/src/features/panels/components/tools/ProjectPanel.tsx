@@ -35,7 +35,6 @@ import {
   type ProjectBundleExtensionExportReport,
   type ProjectBundleExtensionImportReport,
 } from '@lib/game';
-import { resolveSavedGameProjects } from '@lib/resolvers';
 
 import {
   CAP_EDITOR_CONTEXT,
@@ -43,11 +42,12 @@ import {
   useAuthoringContext,
   useCapability,
 } from '@features/contextHub';
-import { useProjectIndexStore, useProjectSessionStore, useWorldContextStore } from '@features/scene';
+import { useProjectSessionStore, useWorldContextStore } from '@features/scene';
 import { openWorkspacePanel } from '@features/workspace';
 
 import { BlockPrimitivesDebugSection } from '@/components/game/BlockPrimitivesDebugSection';
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
+import { useSharedProjectSelection } from '@/hooks';
 
 import type { ProjectInventoryEntityCategory } from './projectInventory';
 import { useProjectAvailability, type AvailabilityItem } from './useProjectAvailability';
@@ -306,14 +306,14 @@ export function ProjectPanel() {
   const authoringContext = useAuthoringContext();
   const worldId = authoringContext.worldId;
   const { value: editorContext } = useCapability<EditorContextSnapshot>(CAP_EDITOR_CONTEXT);
-  const savedProjects = useProjectIndexStore((state) => state.projects);
-  const selectedProjectId = useProjectIndexStore((state) => state.selectedProjectId);
-  const setSavedProjects = useProjectIndexStore((state) => state.setProjects);
-  const upsertSavedProject = useProjectIndexStore((state) => state.upsertProject);
-  const removeSavedProject = useProjectIndexStore((state) => state.removeProject);
-  const selectSavedProject = useProjectIndexStore((state) => state.selectProject);
-  const currentProjectId = useProjectSessionStore((state) => state.currentProjectId);
-  const currentProjectName = useProjectSessionStore((state) => state.currentProjectName);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const {
+    projects: savedProjects,
+    selectedProjectId: currentProjectId,
+    selectedProjectName: currentProjectName,
+    selectedProjectSource: currentProjectSource,
+    reloadProjects,
+  } = useSharedProjectSelection({ limit: 200, bypassCache: true });
   const currentProjectUpdatedAt = useProjectSessionStore((state) => state.currentProjectUpdatedAt);
   const sourceFileName = useProjectSessionStore((state) => state.sourceFileName);
   const schemaVersion = useProjectSessionStore((state) => state.schemaVersion);
@@ -422,21 +422,7 @@ export function ProjectPanel() {
 
   const loadSavedProjects = async (opts?: { silent?: boolean }) => {
     try {
-      const projects = await resolveSavedGameProjects(
-        { limit: 200 },
-        {
-          consumerId: 'ProjectPanel.loadSavedProjects',
-          bypassCache: true,
-        },
-      );
-      setSavedProjects(projects);
-
-      if (
-        currentProjectId != null &&
-        projects.some((project) => project.id === currentProjectId)
-      ) {
-        selectSavedProject(currentProjectId);
-      }
+      await reloadProjects();
     } catch (error) {
       if (!opts?.silent) {
         toast.error(
@@ -449,20 +435,22 @@ export function ProjectPanel() {
   };
 
   useEffect(() => {
-    void loadSavedProjects({ silent: true });
-    // Intentionally run once for panel bootstrap.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (currentProjectId == null) {
-      return;
-    }
-    if (!savedProjects.some((project) => project.id === currentProjectId)) {
-      return;
-    }
-    selectSavedProject(currentProjectId);
-  }, [currentProjectId, savedProjects, selectSavedProject]);
+    setSelectedProjectId((previousId) => {
+      if (
+        currentProjectId != null &&
+        savedProjects.some((project) => project.id === currentProjectId)
+      ) {
+        return currentProjectId;
+      }
+      if (
+        previousId != null &&
+        savedProjects.some((project) => project.id === previousId)
+      ) {
+        return previousId;
+      }
+      return savedProjects[0]?.id ?? null;
+    });
+  }, [currentProjectId, savedProjects]);
 
   useEffect(() => {
     if (!selectedProject) {
@@ -492,7 +480,7 @@ export function ProjectPanel() {
   }, [activeInventoryChild, inventoryAllCategories]);
 
   const selectProjectById = (nextId: number | null) => {
-    selectSavedProject(nextId);
+    setSelectedProjectId(nextId);
     const nextProject = savedProjects.find((entry) => entry.id === nextId);
     if (!nextProject) {
       if (nextId == null) {
@@ -543,8 +531,8 @@ export function ProjectPanel() {
 
       const saved = await saveGameProject(saveRequest);
 
-      upsertSavedProject(saved);
-      selectSavedProject(saved.id);
+      await reloadProjects();
+      setSelectedProjectId(saved.id);
       setProjectName(saved.name);
 
       setLastAction({
@@ -614,8 +602,8 @@ export function ProjectPanel() {
 
       const saved = await saveGameProject(saveRequest);
 
-      upsertSavedProject(saved);
-      selectSavedProject(saved.id);
+      await reloadProjects();
+      setSelectedProjectId(saved.id);
       setProjectName(saved.name);
 
       setLastAction({
@@ -669,8 +657,8 @@ export function ProjectPanel() {
     setBusy(true);
     try {
       const renamed = await renameSavedGameProject(selectedProjectId, { name: resolvedName });
-      upsertSavedProject(renamed);
-      selectSavedProject(renamed.id);
+      await reloadProjects();
+      setSelectedProjectId(renamed.id);
       setProjectName(renamed.name);
 
       if (currentProjectId === renamed.id) {
@@ -701,8 +689,8 @@ export function ProjectPanel() {
     setBusy(true);
     try {
       const duplicated = await duplicateSavedGameProject(selectedProjectId, { name: resolvedName });
-      upsertSavedProject(duplicated);
-      selectSavedProject(duplicated.id);
+      await reloadProjects();
+      setSelectedProjectId(duplicated.id);
       setProjectName(duplicated.name);
 
       toast.success(`Project duplicated: ${duplicated.name}`);
@@ -728,7 +716,7 @@ export function ProjectPanel() {
       await deleteSavedGameProject(selectedProjectId);
       const deletedId = selectedProjectId;
       const deletedName = selectedProject.name;
-      removeSavedProject(deletedId);
+      await reloadProjects();
 
       if (currentProjectId === deletedId) {
         clearCurrentProject();
@@ -865,8 +853,8 @@ export function ProjectPanel() {
       const firstLocationId = Object.values(response.id_maps.locations)[0];
       setLocationId(toNullableId(firstLocationId));
 
-      upsertSavedProject(project);
-      selectSavedProject(project.id);
+      await reloadProjects();
+      setSelectedProjectId(project.id);
       const loadedPreferences = readBananzaRuntimePreferences(project);
       setBananzaSeederMode(loadedPreferences.seederMode);
       setBananzaSyncMode(loadedPreferences.syncMode);
@@ -1357,6 +1345,7 @@ export function ProjectPanel() {
           {activeSection === 'session' && (
             <div className="space-y-1">
               <div>Status: {dirty ? 'Dirty' : 'Clean'}</div>
+              <div>Active project source: {currentProjectSource}</div>
               <div>Last operation: {lastOperation ?? 'none'}</div>
               <div>Bundle schema: {schemaVersion ?? 'Unknown'}</div>
               <div>Source project: {sourceFileName || 'N/A'}</div>

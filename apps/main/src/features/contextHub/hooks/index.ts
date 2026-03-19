@@ -9,6 +9,13 @@ export type {
 export { useRequiredAuthoringWorld } from "./useRequiredAuthoringWorld";
 export type { RequiredAuthoringWorldResult } from "./useRequiredAuthoringWorld";
 export {
+  useEffectiveAuthoringIds,
+} from "./useEffectiveAuthoringIds";
+export type {
+  UseEffectiveAuthoringIdsOptions,
+  EffectiveAuthoringIds,
+} from "./useEffectiveAuthoringIds";
+export {
   useUnifiedCapabilities,
   useUnifiedCapability,
 } from "./useUnifiedCapabilities";

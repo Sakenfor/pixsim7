@@ -2,14 +2,15 @@ import type { HotspotActionType } from '@pixsim7/game.engine';
 import { Button, Panel, Input, Select } from '@pixsim7/shared.ui';
 import { useEffect, useState } from 'react';
 
-import { resolveGameLocations, resolveGameWorlds } from '@lib/resolvers';
+import { resolveGameLocations } from '@lib/resolvers';
 
 import { InteractionPresetUsagePanel } from '@/components/game/panels/InteractionPresetUsagePanel';
+import { useSharedWorldSelection } from '@/hooks';
 
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
 import { RoomNavigationEditor } from '../components/game/RoomNavigationEditor';
 import { NpcSlotEditor } from '../components/NpcSlotEditor';
-import type { GameLocationSummary, GameLocationDetail, GameHotspotDTO, GameWorldSummary, GameWorldDetail } from '../lib/api/game';
+import type { GameLocationSummary, GameLocationDetail, GameHotspotDTO, GameWorldDetail } from '../lib/api/game';
 import { getGameLocation, saveGameLocationHotspots, getGameWorld } from '../lib/api/game';
 
 
@@ -17,6 +18,14 @@ import { getGameLocation, saveGameLocationHotspots, getGameWorld } from '../lib/
 
 
 export function GameWorld() {
+  const {
+    worlds,
+    selectedWorldId,
+    selectedWorldSource,
+    setSelectedWorldId,
+    isLoadingWorlds,
+    worldLoadError,
+  } = useSharedWorldSelection({ autoSelectFirst: true });
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<GameLocationDetail | null>(null);
@@ -24,31 +33,32 @@ export function GameWorld() {
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState<Record<number, boolean>>({});
   const [activeTab, setActiveTab] = useState<'hotspots' | '2d-layout' | 'room-nav' | 'presets' | 'usage'>('hotspots');
-  const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
-  const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
   const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
+
+  useEffect(() => {
+    if (!worldLoadError) return;
+    setError(worldLoadError);
+  }, [worldLoadError]);
 
   useEffect(() => {
     (async () => {
       try {
         setError(null);
-        const [locs, worldsList] = await Promise.all([
-          resolveGameLocations({}, { consumerId: 'GameWorld.loadLocations' }),
-          resolveGameWorlds({ consumerId: 'GameWorld.loadWorlds' }),
-        ]);
+        const locs = await resolveGameLocations(
+          selectedWorldId != null ? { worldId: selectedWorldId } : {},
+          { consumerId: 'GameWorld.loadLocations' },
+        );
         setLocations(locs);
-        setWorlds(worldsList);
-        if (!selectedId && locs.length > 0) {
-          setSelectedId(locs[0].id);
-        }
-        if (!selectedWorldId && worldsList.length > 0) {
-          setSelectedWorldId(worldsList[0].id);
-        }
+        setSelectedId((prev) =>
+          prev != null && locs.some((loc) => loc.id === prev)
+            ? prev
+            : (locs[0]?.id ?? null),
+        );
       } catch (e: any) {
         setError(String(e?.message ?? e));
       }
     })();
-  }, []);
+  }, [selectedWorldId]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -201,12 +211,16 @@ export function GameWorld() {
             <Select
               value={selectedWorldId ? String(selectedWorldId) : ''}
               onChange={(e: any) => setSelectedWorldId(e.target.value ? Number(e.target.value) : null)}
+              disabled={isLoadingWorlds}
             >
               <option value="">Select world...</option>
               {worlds.map(world => (
                 <option key={world.id} value={world.id}>{world.name}</option>
               ))}
             </Select>
+            <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+              ({selectedWorldSource})
+            </span>
           </div>
           {activeTab === 'hotspots' && (
             <Button size="sm" variant="primary" onClick={handleSave} disabled={!detail || isLoading}>

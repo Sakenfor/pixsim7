@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameWorldSummary } from "@lib/api";
 import { resolveGameWorlds } from "@lib/resolvers";
 
-import { useAuthoringContext } from "@features/contextHub";
+import { useEffectiveAuthoringIds } from "@features/contextHub";
 import { useWorldContextStore } from "@features/scene";
 
 interface UseSharedWorldSelectionOptions {
@@ -13,6 +13,7 @@ interface UseSharedWorldSelectionOptions {
 interface UseSharedWorldSelectionResult {
   worlds: GameWorldSummary[];
   selectedWorldId: number | null;
+  selectedWorldSource: "override" | "authoring-context" | "editor-runtime" | "fallback" | "none";
   setSelectedWorldId: (worldId: number | null) => void;
   isLoadingWorlds: boolean;
   worldLoadError: string | null;
@@ -23,7 +24,8 @@ export function useSharedWorldSelection(
   options: UseSharedWorldSelectionOptions = {},
 ): UseSharedWorldSelectionResult {
   const { autoSelectFirst = false } = options;
-  const { worldId: selectedWorldId } = useAuthoringContext();
+  const effectiveIds = useEffectiveAuthoringIds();
+  const selectedWorldId = effectiveIds.worldId;
   const setWorldId = useWorldContextStore((s) => s.setWorldId);
 
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
@@ -64,6 +66,7 @@ export function useSharedWorldSelection(
   return {
     worlds,
     selectedWorldId,
+    selectedWorldSource: effectiveIds.worldSource,
     setSelectedWorldId: setWorldId,
     isLoadingWorlds,
     worldLoadError,
