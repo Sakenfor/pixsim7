@@ -1,22 +1,25 @@
 """
-AI Assistant Profiles API — CRUD for assistant definitions.
+AI Assistant Profiles API — compatibility layer.
 
-Users can create, list, and switch between assistant profiles
-that configure persona, model, method, and tool scope.
+Reads from the unified ``agent_profiles`` table. Write operations
+redirect to ``/dev/agent-profiles``.
+
+Legacy callers that use ``/assistants`` continue to work.
 """
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
-from pixsim7.backend.main.domain import User
+from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
 
 router = APIRouter()
 
 
-# ── Schemas ───────────────────────────────────────────────────────────
+# ── Schemas (compat shape) ────────────────────────────────────────
 
 
 class AssistantProfileResponse(BaseModel):
@@ -36,37 +39,22 @@ class AssistantProfileResponse(BaseModel):
 
 
 class AssistantProfileCreateRequest(BaseModel):
-    assistant_id: str = Field(..., max_length=100, description="Unique ID (e.g., 'assistant:my-helper')")
+    assistant_id: str = Field(..., max_length=100)
     name: str = Field(..., max_length=255)
     description: Optional[str] = None
     icon: Optional[str] = None
     model_id: Optional[str] = None
     method: Optional[str] = None
     system_prompt: Optional[str] = None
-    audience: str = Field("user", description="Tool scope: 'user' or 'dev'")
+    audience: str = Field("user")
     allowed_contracts: Optional[List[str]] = None
     config: Optional[dict] = None
 
 
-class AssistantProfileUpdateRequest(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    icon: Optional[str] = None
-    model_id: Optional[str] = None
-    method: Optional[str] = None
-    system_prompt: Optional[str] = None
-    audience: Optional[str] = None
-    allowed_contracts: Optional[List[str]] = None
-    config: Optional[dict] = None
-
-
-# ── Endpoints ─────────────────────────────────────────────────────────
-
-
-def _to_response(p) -> AssistantProfileResponse:
+def _to_compat(p: AgentProfile) -> AssistantProfileResponse:
     return AssistantProfileResponse(
-        assistant_id=p.assistant_id,
-        name=p.name,
+        assistant_id=p.id,
+        name=p.label,
         description=p.description,
         icon=p.icon,
         model_id=p.model_id,
@@ -76,9 +64,11 @@ def _to_response(p) -> AssistantProfileResponse:
         allowed_contracts=p.allowed_contracts or [],
         config=p.config or {},
         is_default=p.is_default,
-        is_global=p.owner_user_id is None,
-        version=p.version,
+        is_global=p.is_global,
     )
+
+
+# ── Endpoints ─────────────────────────────────────────────────────
 
 
 @router.get("", response_model=List[AssistantProfileResponse])
@@ -86,10 +76,17 @@ async def list_assistant_profiles(
     user: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ) -> List[AssistantProfileResponse]:
-    """List assistant profiles available to the current user (global + own)."""
-    from pixsim7.backend.main.services.assistant.assistant_service import list_profiles
-    profiles = await list_profiles(db, user_id=user.id)
-    return [_to_response(p) for p in profiles]
+    """List profiles available to the current user (global + own)."""
+    stmt = (
+        select(AgentProfile)
+        .where(
+            AgentProfile.status == "active",
+            or_(AgentProfile.user_id == user.id, AgentProfile.user_id == 0),
+        )
+        .order_by(AgentProfile.is_default.desc(), AgentProfile.label)
+    )
+    profiles = (await db.execute(stmt)).scalars().all()
+    return [_to_compat(p) for p in profiles]
 
 
 @router.get("/{assistant_id}", response_model=AssistantProfileResponse)
@@ -98,12 +95,11 @@ async def get_assistant_profile(
     user: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ) -> AssistantProfileResponse:
-    """Get a specific assistant profile."""
-    from pixsim7.backend.main.services.assistant.assistant_service import get_profile
-    profile = await get_profile(db, assistant_id)
+    """Get a specific profile."""
+    profile = await db.get(AgentProfile, assistant_id)
     if not profile:
         raise HTTPException(status_code=404, detail=f"Assistant not found: {assistant_id}")
-    return _to_response(profile)
+    return _to_compat(profile)
 
 
 @router.post("", response_model=AssistantProfileResponse, status_code=201)
@@ -112,52 +108,35 @@ async def create_assistant_profile(
     user: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ) -> AssistantProfileResponse:
-    """Create a new assistant profile owned by the current user."""
-    from pixsim7.backend.main.services.assistant.assistant_service import create_profile, get_profile
+    """Create a new profile (writes to agent_profiles)."""
+    from pixsim7.backend.main.shared.datetime_utils import utcnow
 
-    # Check for duplicate
-    existing = await get_profile(db, payload.assistant_id)
+    existing = await db.get(AgentProfile, payload.assistant_id)
     if existing:
-        raise HTTPException(status_code=409, detail=f"Assistant ID already exists: {payload.assistant_id}")
+        raise HTTPException(status_code=409, detail=f"Profile already exists: {payload.assistant_id}")
 
-    profile = await create_profile(
-        db,
-        assistant_id=payload.assistant_id,
-        name=payload.name,
-        owner_user_id=user.id,
+    now = utcnow()
+    profile = AgentProfile(
+        id=payload.assistant_id,
+        user_id=user.id,
+        label=payload.name,
         description=payload.description,
         icon=payload.icon,
+        agent_type="claude-cli",
+        system_prompt=payload.system_prompt,
         model_id=payload.model_id,
         method=payload.method,
-        system_prompt=payload.system_prompt,
         audience=payload.audience,
         allowed_contracts=payload.allowed_contracts,
         config=payload.config,
+        status="active",
+        created_at=now,
+        updated_at=now,
     )
-    return _to_response(profile)
-
-
-@router.patch("/{assistant_id}", response_model=AssistantProfileResponse)
-async def update_assistant_profile(
-    assistant_id: str,
-    payload: AssistantProfileUpdateRequest,
-    user: CurrentUser,
-    db: AsyncSession = Depends(get_database),
-) -> AssistantProfileResponse:
-    """Update an assistant profile. Users can only update their own profiles."""
-    from pixsim7.backend.main.services.assistant.assistant_service import get_profile, update_profile
-
-    profile = await get_profile(db, assistant_id)
-    if not profile:
-        raise HTTPException(status_code=404, detail=f"Assistant not found: {assistant_id}")
-
-    # Only owner or admin can update
-    if profile.owner_user_id is not None and profile.owner_user_id != user.id and not user.is_admin():
-        raise HTTPException(status_code=403, detail="Can only update your own profiles")
-
-    updates = {k: v for k, v in payload.dict().items() if v is not None}
-    updated = await update_profile(db, assistant_id, updates)
-    return _to_response(updated)
+    db.add(profile)
+    await db.commit()
+    await db.refresh(profile)
+    return _to_compat(profile)
 
 
 @router.delete("/{assistant_id}")
@@ -166,17 +145,18 @@ async def delete_assistant_profile(
     user: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ) -> dict:
-    """Soft-delete an assistant profile."""
-    from pixsim7.backend.main.services.assistant.assistant_service import get_profile, delete_profile
+    """Archive a profile."""
+    from pixsim7.backend.main.shared.datetime_utils import utcnow
 
-    profile = await get_profile(db, assistant_id)
+    profile = await db.get(AgentProfile, assistant_id)
     if not profile:
         raise HTTPException(status_code=404, detail=f"Assistant not found: {assistant_id}")
-
-    if profile.owner_user_id is not None and profile.owner_user_id != user.id and not user.is_admin():
+    if profile.user_id != 0 and profile.user_id != user.id and not user.is_admin():
         raise HTTPException(status_code=403, detail="Can only delete your own profiles")
 
-    await delete_profile(db, assistant_id)
+    profile.status = "archived"
+    profile.updated_at = utcnow()
+    await db.commit()
     return {"ok": True, "assistant_id": assistant_id}
 
 
@@ -186,12 +166,23 @@ async def set_default_profile(
     user: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ) -> dict:
-    """Set a profile as the user's default assistant."""
-    from pixsim7.backend.main.services.assistant.assistant_service import get_profile, set_user_default
+    """Set a profile as the user's default."""
+    from pixsim7.backend.main.shared.datetime_utils import utcnow
 
-    profile = await get_profile(db, assistant_id)
+    profile = await db.get(AgentProfile, assistant_id)
     if not profile:
         raise HTTPException(status_code=404, detail=f"Assistant not found: {assistant_id}")
 
-    await set_user_default(db, user.id, assistant_id)
+    # Clear existing defaults for this user
+    stmt = select(AgentProfile).where(
+        AgentProfile.user_id == user.id,
+        AgentProfile.is_default == True,  # noqa: E712
+    )
+    for p in (await db.execute(stmt)).scalars().all():
+        p.is_default = False
+        p.updated_at = utcnow()
+
+    profile.is_default = True
+    profile.updated_at = utcnow()
+    await db.commit()
     return {"ok": True, "default": assistant_id}

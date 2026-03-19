@@ -1034,6 +1034,7 @@ class SendMessageResponse(BaseModel):
 async def send_message_to_agent(
     payload: SendMessageRequest,
     authorization: Optional[str] = None,
+    db: AsyncSession = Depends(get_database),
 ) -> SendMessageResponse:
     """Send a message to the AI assistant.
 
@@ -1057,21 +1058,17 @@ async def send_message_to_agent(
         except Exception:
             pass
 
-    # Resolve assistant profile (persona, model override, tool scope)
+    # Resolve unified agent profile (persona, model override, tool scope)
     profile_prompt: Optional[str] = None
-    if user_id is not None:
-        try:
-            from pixsim7.backend.main.api.dependencies import get_database
-            from pixsim7.backend.main.services.assistant.assistant_service import resolve_user_profile
-            db = get_database()
-            profile = await resolve_user_profile(db, user_id, payload.assistant_id)
-            if profile:
-                profile_prompt = profile.system_prompt
-                # Profile can override model/method
-                if profile.model_id:
-                    payload.model = profile.model_id
-        except Exception:
-            pass
+    try:
+        from pixsim7.backend.main.api.v1.agent_profiles import resolve_profile_for_bridge
+        profile = await resolve_profile_for_bridge(db, user_id or 0, payload.assistant_id)
+        if profile:
+            profile_prompt = profile.system_prompt
+            if profile.model_id:
+                payload.model = profile.model_id
+    except Exception:
+        pass
 
     # Resolve provider, model, and delivery method for assistant_chat
     provider_id, model_id, method = await _resolve_assistant_provider(user_id)

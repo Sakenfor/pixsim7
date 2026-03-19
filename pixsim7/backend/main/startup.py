@@ -170,20 +170,8 @@ async def setup_database_and_seed() -> None:
             msg="Continuing startup without content packs"
         )
 
-    # Assistant profile seeding is OPTIONAL
-    try:
-        from pixsim7.backend.main.services.assistant.assistant_service import seed_default_profiles
-        async with get_async_session() as db:
-            count = await seed_default_profiles(db)
-            if count:
-                logger.info("assistant_profiles_seeded", count=count)
-    except Exception as e:
-        logger.warning(
-            "assistant_profile_seed_failed",
-            error=str(e),
-            error_type=e.__class__.__name__,
-            msg="Continuing startup without assistant profiles"
-        )
+    # Assistant profiles now seeded via migration into agent_profiles table.
+    # Legacy assistant_definitions seeding skipped.
 
 
 async def setup_system_config() -> None:
@@ -206,6 +194,12 @@ async def setup_system_config() -> None:
 
     try:
         async with get_async_session() as db:
+            # Migrate file-based settings to DB on first run
+            from pixsim7.backend.main.services.system_config.migration import migrate_file_settings_to_db
+            migrated = await migrate_file_settings_to_db(db)
+            if migrated:
+                logger.info("system_config_migrated_from_files", namespaces=migrated)
+
             applied = await apply_all_from_db(db)
         if applied:
             logger.info("system_config_loaded", namespaces=applied)
