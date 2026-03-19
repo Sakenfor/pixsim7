@@ -9,6 +9,8 @@
 import {
   Badge,
   Button,
+  Dropdown,
+  DropdownItem,
   EmptyState,
   FilterPillGroup,
   type FilterPillOption,
@@ -16,11 +18,10 @@ import {
   SectionHeader,
   SidebarContentLayout,
   type SidebarContentLayoutSection,
-  StatCard,
   useSidebarNav,
   useTheme,
 } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
@@ -36,6 +37,11 @@ interface CheckpointStep {
   tests?: string[];
 }
 
+interface CheckpointEvidence {
+  kind: string;
+  ref: string;
+}
+
 interface Checkpoint {
   id: string;
   label: string;
@@ -43,6 +49,7 @@ interface Checkpoint {
   criteria: string;
   progress?: number;
   steps?: CheckpointStep[];
+  evidence?: CheckpointEvidence[];
 }
 
 interface PlanTarget {
@@ -127,6 +134,22 @@ const STATUS_ICONS: Record<string, string> = {
   parked: 'pause',
 };
 
+const STATUS_DOT_CLASSES: Record<string, string> = {
+  active: 'bg-green-500',
+  done: 'bg-blue-400',
+  parked: 'bg-neutral-400',
+  blocked: 'bg-red-500',
+};
+
+const PLAN_TYPE_ICONS: Record<string, string> = {
+  feature: 'sparkles',
+  bugfix: 'wrench',
+  refactor: 'refreshCw',
+  exploration: 'search',
+  task: 'checkSquare',
+  proposal: 'fileText',
+};
+
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -139,93 +162,218 @@ function formatDate(iso: string): string {
 }
 
 // =============================================================================
-// Plan Actions Bar
+// Clickable Badge with Dropdown
 // =============================================================================
 
-function PlanActions({
-  plan,
-  onUpdate,
+function ClickableBadge({
+  value,
+  color,
+  options,
+  onSelect,
+  disabled,
 }: {
-  plan: PlanDetail;
-  onUpdate: () => void;
+  value: string;
+  color: 'green' | 'blue' | 'gray' | 'orange' | 'red';
+  options: { value: string; label: string; color: 'green' | 'blue' | 'gray' | 'orange' | 'red' }[];
+  onSelect: (value: string) => void;
+  disabled?: boolean;
 }) {
-  const [updating, setUpdating] = useState(false);
-  const [lastResult, setLastResult] = useState<string | null>(null);
-
-  const applyUpdate = useCallback(
-    async (updates: Record<string, string>) => {
-      setUpdating(true);
-      setLastResult(null);
-      try {
-        const res = await pixsimClient.patch<PlanUpdateResponse>(
-          `/dev/plans/update/${plan.id}`,
-          updates,
-        );
-        const changed = res.changes.map((c) => `${c.field}: ${c.old}→${c.new}`).join(', ');
-        setLastResult(
-          res.commitSha
-            ? `Updated (${changed}) — committed ${res.commitSha.slice(0, 7)}`
-            : `Updated (${changed})`,
-        );
-        onUpdate();
-      } catch (err) {
-        setLastResult(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      } finally {
-        setUpdating(false);
-      }
-    },
-    [plan.id, onUpdate],
-  );
-
-  // Build available status transitions
-  const statusActions: { label: string; status: string; color: 'green' | 'blue' | 'gray' | 'orange' | 'red' }[] = [];
-  if (plan.status !== 'active') statusActions.push({ label: 'Activate', status: 'active', color: 'green' });
-  if (plan.status !== 'parked') statusActions.push({ label: 'Park', status: 'parked', color: 'gray' });
-  if (plan.status !== 'done') statusActions.push({ label: 'Mark Done', status: 'done', color: 'blue' });
-  if (plan.status !== 'blocked') statusActions.push({ label: 'Block', status: 'blocked', color: 'red' });
-
-  const priorityActions: { label: string; priority: string }[] = [];
-  if (plan.priority !== 'high') priorityActions.push({ label: 'High', priority: 'high' });
-  if (plan.priority !== 'normal') priorityActions.push({ label: 'Normal', priority: 'normal' });
-  if (plan.priority !== 'low') priorityActions.push({ label: 'Low', priority: 'low' });
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <SectionHeader className="mr-2">Status</SectionHeader>
-        {statusActions.map((a) => (
-          <Button
-            key={a.status}
-            size="sm"
-            variant="outline"
-            onClick={() => void applyUpdate({ status: a.status })}
-            disabled={updating}
+    <span className="relative inline-flex">
+      <button
+        ref={triggerRef}
+        onClick={() => !disabled && setOpen((o) => !o)}
+        className="cursor-pointer hover:opacity-80 transition-opacity"
+        disabled={disabled}
+      >
+        <Badge color={color}>
+          {value}
+          <Icon name="chevronDown" size={8} className="ml-0.5 inline-block opacity-50" />
+        </Badge>
+      </button>
+      <Dropdown
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+        minWidth="100px"
+      >
+        {options.map((opt) => (
+          <DropdownItem
+            key={opt.value}
+            onClick={() => {
+              onSelect(opt.value);
+              setOpen(false);
+            }}
+            icon={<Badge color={opt.color} className="text-[9px] !px-1">{opt.value === value ? '\u2713' : '\u00A0'}</Badge>}
           >
-            {a.label}
-          </Button>
+            {opt.label}
+          </DropdownItem>
         ))}
+      </Dropdown>
+    </span>
+  );
+}
 
-        <span className="mx-1 text-neutral-300 dark:text-neutral-600">|</span>
+// =============================================================================
+// Expandable Checkpoints
+// =============================================================================
 
-        <SectionHeader className="mr-2">Priority</SectionHeader>
-        {priorityActions.map((a) => (
-          <Button
-            key={a.priority}
-            size="sm"
-            variant="ghost"
-            onClick={() => void applyUpdate({ priority: a.priority })}
-            disabled={updating}
-          >
-            {a.label}
-          </Button>
-        ))}
+function CheckpointList({
+  checkpoints,
+  forgeUrlTemplate,
+}: {
+  checkpoints: Checkpoint[];
+  forgeUrlTemplate?: string | null;
+}) {
+  // Active checkpoints start expanded, others collapsed
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set(checkpoints.filter((cp) => cp.status === 'active').map((cp) => cp.id)),
+  );
+
+  const toggle = useCallback((id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  return (
+    <div>
+      <SectionHeader>Checkpoints</SectionHeader>
+      <div className="mt-2 space-y-1">
+        {checkpoints.map((cp) => {
+          const cpSteps = cp.steps ?? [];
+          const cpDone = cpSteps.filter((s) => s.done).length;
+          const cpTotal = cpSteps.length;
+          const cpPct = cpTotal > 0 ? Math.round((cpDone / cpTotal) * 100) : (cp.status === 'done' ? 100 : 0);
+          const isOpen = expanded.has(cp.id);
+          const cpEvidence = cp.evidence ?? [];
+          const hasContent = !!cp.criteria || cpSteps.length > 0 || cpEvidence.length > 0;
+
+          return (
+            <div
+              key={cp.id}
+              className={`rounded-md border overflow-hidden ${
+                cp.status === 'active'
+                  ? 'border-green-300 dark:border-green-700'
+                  : cp.status === 'done'
+                    ? 'border-neutral-200 dark:border-neutral-700 opacity-75'
+                    : 'border-neutral-200 dark:border-neutral-700'
+              }`}
+            >
+              <button
+                onClick={() => hasContent && toggle(cp.id)}
+                className={`w-full px-3 py-1.5 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-2 text-left ${hasContent ? 'cursor-pointer' : 'cursor-default'}`}
+              >
+                {hasContent && (
+                  <Icon
+                    name="chevronRight"
+                    size={10}
+                    className={`text-neutral-400 transition-transform flex-shrink-0 ${isOpen ? 'rotate-90' : ''}`}
+                  />
+                )}
+                <Badge
+                  color={cp.status === 'done' ? 'green' : cp.status === 'active' ? 'blue' : cp.status === 'blocked' ? 'red' : 'gray'}
+                  className="text-[10px]"
+                >
+                  {cp.status}
+                </Badge>
+                <span className="font-medium text-sm text-neutral-800 dark:text-neutral-200 flex-1 truncate">{cp.label}</span>
+                {cpTotal > 0 && (
+                  <span className="text-[10px] text-neutral-400 flex-shrink-0">{cpDone}/{cpTotal} ({cpPct}%)</span>
+                )}
+              </button>
+
+              {/* Progress bar — always visible */}
+              {cpTotal > 0 && (
+                <div className="h-1 bg-neutral-200 dark:bg-neutral-800">
+                  <div
+                    className={`h-full transition-all ${cp.status === 'done' ? 'bg-green-500' : 'bg-blue-500'}`}
+                    style={{ width: `${cpPct}%` }}
+                  />
+                </div>
+              )}
+
+              {isOpen && (
+                <>
+                  {cp.criteria && (
+                    <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400 border-t border-neutral-100 dark:border-neutral-800">
+                      {cp.criteria}
+                    </div>
+                  )}
+
+                  {cpSteps.length > 0 && (
+                    <div className="px-3 py-2 space-y-1">
+                      {cpSteps.map((step) => (
+                        <div key={step.id} className="flex items-start gap-2 text-xs">
+                          <span className={`mt-0.5 ${step.done ? 'text-green-500' : 'text-neutral-400'}`}>
+                            {step.done ? '\u2713' : '\u25CB'}
+                          </span>
+                          <span className={step.done ? 'text-neutral-500 line-through' : 'text-neutral-700 dark:text-neutral-300'}>
+                            {step.label}
+                          </span>
+                          {step.tests && step.tests.length > 0 && (
+                            <span className="ml-auto flex gap-1">
+                              {step.tests.map((t) => (
+                                <Badge key={t} color="purple" className="text-[9px]">{t}</Badge>
+                              ))}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {cpEvidence.length > 0 && (
+                    <div className="px-3 py-2 border-t border-neutral-100 dark:border-neutral-800 space-y-0.5">
+                      <div className="text-[10px] text-neutral-500 font-medium mb-1">Evidence</div>
+                      {cpEvidence.map((ev) => {
+                        const commitUrl =
+                          ev.kind === 'git_commit' && forgeUrlTemplate
+                            ? forgeUrlTemplate.replace('{sha}', ev.ref)
+                            : null;
+                        return (
+                          <div key={`${ev.kind}:${ev.ref}`} className="flex items-center gap-1.5 text-[11px]">
+                            <Badge
+                              color={ev.kind === 'git_commit' ? 'blue' : ev.kind === 'test_suite' ? 'green' : 'gray'}
+                              className="text-[9px] !px-1"
+                            >
+                              {ev.kind === 'git_commit' ? 'commit' : ev.kind}
+                            </Badge>
+                            {commitUrl ? (
+                              <a
+                                href={commitUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 dark:text-blue-400 hover:underline font-mono text-[10px]"
+                                title={ev.ref}
+                              >
+                                {ev.ref.slice(0, 7)}
+                              </a>
+                            ) : (
+                              <code
+                                className="text-neutral-600 dark:text-neutral-400 font-mono text-[10px]"
+                                title={ev.kind === 'git_commit' ? ev.ref : undefined}
+                              >
+                                {ev.kind === 'git_commit' ? ev.ref.slice(0, 7) : ev.ref}
+                              </code>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
-
-      {lastResult && (
-        <div className={`text-xs ${lastResult.startsWith('Failed') ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
-          {lastResult}
-        </div>
-      )}
     </div>
   );
 }
@@ -237,13 +385,18 @@ function PlanActions({
 function PlanDetailView({
   planId,
   onPlanChanged,
+  forgeUrlTemplate,
 }: {
   planId: string;
   onPlanChanged: () => void;
+  forgeUrlTemplate?: string | null;
 }) {
   const [detail, setDetail] = useState<PlanDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [updating, setUpdating] = useState(false);
+  const [lastResult, setLastResult] = useState<string | null>(null);
+  const [planExpanded, setPlanExpanded] = useState(false);
 
   const loadDetail = useCallback(() => {
     setLoading(true);
@@ -263,6 +416,31 @@ function PlanDetailView({
     loadDetail();
     onPlanChanged();
   }, [loadDetail, onPlanChanged]);
+
+  const applyUpdate = useCallback(
+    async (updates: Record<string, string>) => {
+      setUpdating(true);
+      setLastResult(null);
+      try {
+        const res = await pixsimClient.patch<PlanUpdateResponse>(
+          `/dev/plans/update/${planId}`,
+          updates,
+        );
+        const changed = res.changes.map((c) => `${c.field}: ${c.old}\u2192${c.new}`).join(', ');
+        setLastResult(
+          res.commitSha
+            ? `Updated (${changed}) \u2014 committed ${res.commitSha.slice(0, 7)}`
+            : `Updated (${changed})`,
+        );
+        handleUpdate();
+      } catch (err) {
+        setLastResult(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      } finally {
+        setUpdating(false);
+      }
+    },
+    [planId, handleUpdate],
+  );
 
   if (loading) {
     return (
@@ -286,16 +464,41 @@ function PlanDetailView({
   const doneSteps = detail.checkpoints?.reduce((sum, cp) => sum + (cp.steps?.filter((s) => s.done).length ?? 0), 0) ?? 0;
   const overallProgress = totalSteps > 0 ? Math.round((doneSteps / totalSteps) * 100) : null;
 
+  const statusOptions = [
+    { value: 'active', label: 'Active', color: 'green' as const },
+    { value: 'parked', label: 'Parked', color: 'gray' as const },
+    { value: 'done', label: 'Done', color: 'blue' as const },
+    { value: 'blocked', label: 'Blocked', color: 'red' as const },
+  ];
+
+  const priorityOptions = [
+    { value: 'high', label: 'High', color: 'red' as const },
+    { value: 'normal', label: 'Normal', color: 'orange' as const },
+    { value: 'low', label: 'Low', color: 'gray' as const },
+  ];
+
   return (
     <div className="p-4 space-y-4">
-      {/* Header */}
+      {/* Header with clickable status/priority badges */}
       <div>
         <div className="flex items-center gap-2 mb-1">
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
             {detail.title}
           </h2>
-          <Badge color={STATUS_COLORS[detail.status] ?? 'gray'}>{detail.status}</Badge>
-          <Badge color={PRIORITY_COLORS[detail.priority] ?? 'gray'}>{detail.priority}</Badge>
+          <ClickableBadge
+            value={detail.status}
+            color={STATUS_COLORS[detail.status] ?? 'gray'}
+            options={statusOptions}
+            onSelect={(v) => void applyUpdate({ status: v })}
+            disabled={updating}
+          />
+          <ClickableBadge
+            value={detail.priority}
+            color={PRIORITY_COLORS[detail.priority] ?? 'gray'}
+            options={priorityOptions}
+            onSelect={(v) => void applyUpdate({ priority: v })}
+            disabled={updating}
+          />
           <Badge color="gray" className="text-[10px]">{detail.planType}</Badge>
           {detail.visibility !== 'public' && (
             <Badge color={detail.visibility === 'private' ? 'orange' : 'blue'} className="text-[10px]">
@@ -304,21 +507,31 @@ function PlanDetailView({
           )}
         </div>
         <div className="text-sm text-neutral-500 dark:text-neutral-400">{detail.summary}</div>
+        {lastResult && (
+          <div className={`text-xs mt-1 ${lastResult.startsWith('Failed') ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
+            {lastResult}
+          </div>
+        )}
       </div>
 
-      {/* Actions */}
-      <PlanActions plan={detail} onUpdate={handleUpdate} />
-
-      {/* Metadata grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <StatCard label="Owner" value={detail.owner} />
-        <StatCard label="Stage" value={detail.stage} />
-        <StatCard
-          label="Progress"
-          value={overallProgress !== null ? `${overallProgress}%` : detail.scope}
-          sublabel={totalSteps > 0 ? `${doneSteps}/${totalSteps} steps` : undefined}
-        />
-        <StatCard label="Updated" value={formatDate(detail.lastUpdated)} />
+      {/* Compact metadata row */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400">
+        <span><span className="font-medium text-neutral-700 dark:text-neutral-300">{detail.owner}</span></span>
+        <span className="text-neutral-300 dark:text-neutral-600">&middot;</span>
+        <span>Stage: <span className="font-medium text-neutral-700 dark:text-neutral-300">{detail.stage}</span></span>
+        {overallProgress !== null ? (
+          <>
+            <span className="text-neutral-300 dark:text-neutral-600">&middot;</span>
+            <span>{overallProgress}% <span className="text-neutral-400">({doneSteps}/{totalSteps} steps)</span></span>
+          </>
+        ) : (
+          <>
+            <span className="text-neutral-300 dark:text-neutral-600">&middot;</span>
+            <span>{detail.scope}</span>
+          </>
+        )}
+        <span className="text-neutral-300 dark:text-neutral-600">&middot;</span>
+        <span>{formatDate(detail.lastUpdated)}</span>
       </div>
 
       {/* Target */}
@@ -342,81 +555,7 @@ function PlanDetailView({
 
       {/* Checkpoints */}
       {detail.checkpoints && detail.checkpoints.length > 0 && (
-        <div>
-          <SectionHeader>Checkpoints</SectionHeader>
-          <div className="mt-2 space-y-2">
-            {detail.checkpoints.map((cp) => {
-              const cpSteps = cp.steps ?? [];
-              const cpDone = cpSteps.filter((s) => s.done).length;
-              const cpTotal = cpSteps.length;
-              const cpPct = cpTotal > 0 ? Math.round((cpDone / cpTotal) * 100) : (cp.status === 'done' ? 100 : 0);
-
-              return (
-                <div
-                  key={cp.id}
-                  className={`rounded-md border overflow-hidden ${
-                    cp.status === 'active'
-                      ? 'border-green-300 dark:border-green-700'
-                      : cp.status === 'done'
-                        ? 'border-neutral-200 dark:border-neutral-700 opacity-75'
-                        : 'border-neutral-200 dark:border-neutral-700'
-                  }`}
-                >
-                  <div className="px-3 py-2 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-2">
-                    <Badge
-                      color={cp.status === 'done' ? 'green' : cp.status === 'active' ? 'blue' : cp.status === 'blocked' ? 'red' : 'gray'}
-                      className="text-[10px]"
-                    >
-                      {cp.status}
-                    </Badge>
-                    <span className="font-medium text-sm text-neutral-800 dark:text-neutral-200 flex-1">{cp.label}</span>
-                    {cpTotal > 0 && (
-                      <span className="text-[10px] text-neutral-400">{cpDone}/{cpTotal} ({cpPct}%)</span>
-                    )}
-                  </div>
-
-                  {cp.criteria && (
-                    <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400 border-b border-neutral-100 dark:border-neutral-800">
-                      {cp.criteria}
-                    </div>
-                  )}
-
-                  {cpSteps.length > 0 && (
-                    <div className="px-3 py-2 space-y-1">
-                      {cpSteps.map((step) => (
-                        <div key={step.id} className="flex items-start gap-2 text-xs">
-                          <span className={`mt-0.5 ${step.done ? 'text-green-500' : 'text-neutral-400'}`}>
-                            {step.done ? '✓' : '○'}
-                          </span>
-                          <span className={step.done ? 'text-neutral-500 line-through' : 'text-neutral-700 dark:text-neutral-300'}>
-                            {step.label}
-                          </span>
-                          {step.tests && step.tests.length > 0 && (
-                            <span className="ml-auto flex gap-1">
-                              {step.tests.map((t) => (
-                                <Badge key={t} color="purple" className="text-[9px]">{t}</Badge>
-                              ))}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Progress bar */}
-                  {cpTotal > 0 && (
-                    <div className="h-1 bg-neutral-200 dark:bg-neutral-800">
-                      <div
-                        className={`h-full transition-all ${cp.status === 'done' ? 'bg-green-500' : 'bg-blue-500'}`}
-                        style={{ width: `${cpPct}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <CheckpointList checkpoints={detail.checkpoints} forgeUrlTemplate={forgeUrlTemplate} />
       )}
 
       {/* Tags */}
@@ -508,19 +647,31 @@ function PlanDetailView({
         </div>
       )}
 
-      {/* Plan markdown (collapsed by default when checkpoints exist) */}
+      {/* Plan markdown — collapsed by default */}
       {detail.markdown && (
         <div>
-          <SectionHeader
-            trailing={
-              <code className="text-[10px] text-neutral-400">{detail.planPath}</code>
-            }
+          <button
+            onClick={() => setPlanExpanded((e) => !e)}
+            className="flex items-center gap-1.5 w-full text-left group"
           >
-            Full Plan
-          </SectionHeader>
-          <pre className="mt-2 p-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-md text-xs whitespace-pre-wrap overflow-auto max-h-[32rem] leading-relaxed">
-            {detail.markdown}
-          </pre>
+            <Icon
+              name="chevronRight"
+              size={12}
+              className={`text-neutral-400 transition-transform ${planExpanded ? 'rotate-90' : ''}`}
+            />
+            <SectionHeader
+              trailing={
+                <code className="text-[10px] text-neutral-400">{detail.planPath}</code>
+              }
+            >
+              Full Plan
+            </SectionHeader>
+          </button>
+          {planExpanded && (
+            <pre className="mt-2 p-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-md text-xs whitespace-pre-wrap overflow-auto max-h-[32rem] leading-relaxed">
+              {detail.markdown}
+            </pre>
+          )}
         </div>
       )}
     </div>
@@ -540,6 +691,17 @@ export function PlansPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [forgeUrlTemplate, setForgeUrlTemplate] = useState<string | null>(null);
+
+  // Fetch forge commit URL template once
+  useEffect(() => {
+    pixsimClient
+      .get<{ forgeCommitUrlTemplate?: string | null }>('/dev/plans/settings')
+      .then((res) => {
+        if (res.forgeCommitUrlTemplate) setForgeUrlTemplate(res.forgeCommitUrlTemplate);
+      })
+      .catch(() => {/* non-critical */});
+  }, []);
 
   const loadPlans = useCallback(async () => {
     setLoading(true);
@@ -618,7 +780,12 @@ export function PlansPanel() {
         children: statusPlans.map((p) => ({
           id: `plan:${p.id}`,
           label: p.title,
-          icon: <Icon name="fileText" size={11} />,
+          icon: (
+            <span className="relative flex items-center justify-center">
+              <Icon name={(PLAN_TYPE_ICONS[p.planType] ?? 'fileText') as any} size={11} />
+              <span className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ${STATUS_DOT_CLASSES[p.status] ?? 'bg-neutral-400'}`} />
+            </span>
+          ),
         })),
       });
     }
@@ -658,7 +825,7 @@ export function PlansPanel() {
 
   if (activeId.startsWith('plan:')) {
     const planId = activeId.slice(5);
-    content = <PlanDetailView key={`${planId}-${refreshKey}`} planId={planId} onPlanChanged={handlePlanChanged} />;
+    content = <PlanDetailView key={`${planId}-${refreshKey}`} planId={planId} onPlanChanged={handlePlanChanged} forgeUrlTemplate={forgeUrlTemplate} />;
   } else if (activeId.startsWith('status:')) {
     const status = activeId.slice(7);
     const count = grouped.get(status)?.length ?? 0;

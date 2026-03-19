@@ -157,6 +157,502 @@ class TestDevPlansProgressEndpoint:
         assert "Checkpoint not found" in response.json()["detail"]
 
     @pytest.mark.asyncio
+    async def test_progress_commit_sha_added_as_evidence(self):
+        """commit_sha field is auto-converted to git_commit evidence."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {"id": "cp1", "label": "CP 1", "status": "active", "points_done": 1, "points_total": 5}
+                ]
+            )
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "commit_sha": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+            "note": "wired up endpoint",
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=AsyncMock(return_value=update_result)) as mock_update,
+        ):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 200
+        args, kwargs = mock_update.await_args
+        checkpoint = args[2]["checkpoints"][0]
+        evidence = checkpoint["evidence"]
+        assert any(
+            e["kind"] == "git_commit" and e["ref"] == "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+            for e in evidence
+        )
+        # evidence_commit_sha passed through for audit events
+        assert kwargs["evidence_commit_sha"] == "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+
+    @pytest.mark.asyncio
+    async def test_progress_append_commits_added_as_evidence(self):
+        """append_commits list is auto-converted to multiple git_commit evidence items."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {"id": "cp1", "label": "CP 1", "status": "active", "points_done": 0, "points_total": 3}
+                ]
+            )
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "append_commits": ["abcdef1234567", "1234567890abcdef1234567890abcdef12345678"],
+            "note": "two commits",
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=AsyncMock(return_value=update_result)) as mock_update,
+        ):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 200
+        checkpoint = mock_update.await_args.args[2]["checkpoints"][0]
+        git_evidence = [e for e in checkpoint["evidence"] if e["kind"] == "git_commit"]
+        assert len(git_evidence) == 2
+        assert git_evidence[0]["ref"] == "abcdef1234567"
+        assert git_evidence[1]["ref"] == "1234567890abcdef1234567890abcdef12345678"
+
+    @pytest.mark.asyncio
+    async def test_progress_commit_sha_and_append_evidence_merged(self):
+        """commit_sha and append_evidence merge together without duplicates."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {
+                        "id": "cp1", "label": "CP 1", "status": "active",
+                        "evidence": [{"kind": "git_commit", "ref": "aaaaaaa"}],
+                    }
+                ]
+            )
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "commit_sha": "bbbbbbb",
+            "append_evidence": [{"kind": "file_path", "ref": "src/foo.py"}],
+            "note": "mixed evidence",
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=AsyncMock(return_value=update_result)) as mock_update,
+        ):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 200
+        checkpoint = mock_update.await_args.args[2]["checkpoints"][0]
+        evidence = checkpoint["evidence"]
+        refs = [(e["kind"], e["ref"]) for e in evidence]
+        assert ("git_commit", "aaaaaaa") in refs  # existing preserved
+        assert ("file_path", "src/foo.py") in refs
+        assert ("git_commit", "bbbbbbb") in refs
+
+    @pytest.mark.asyncio
+    async def test_progress_invalid_commit_sha_returns_400(self):
+        """Invalid commit SHA format is rejected."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {"id": "cp1", "label": "CP 1", "status": "active"}
+                ]
+            )
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "commit_sha": "not-a-sha!",
+            "note": "bad sha",
+        }
+
+        with patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 400
+        assert "Invalid commit SHA" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_progress_invalid_append_commits_returns_400(self):
+        """Invalid SHA in append_commits list is rejected."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {"id": "cp1", "label": "CP 1", "status": "active"}
+                ]
+            )
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "append_commits": ["abcdef1", "xyz"],
+            "note": "one bad sha",
+        }
+
+        with patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 400
+        assert "Invalid commit SHA" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_progress_short_sha_accepted(self):
+        """Short SHA (7 chars) is accepted."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {"id": "cp1", "label": "CP 1", "status": "active"}
+                ]
+            )
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "commit_sha": "abcdef1",
+            "note": "short sha ok",
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=AsyncMock(return_value=update_result)) as mock_update,
+        ):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 200
+        checkpoint = mock_update.await_args.args[2]["checkpoints"][0]
+        git_refs = [e for e in checkpoint["evidence"] if e["kind"] == "git_commit"]
+        assert len(git_refs) == 1
+        assert git_refs[0]["ref"] == "abcdef1"
+
+    @pytest.mark.asyncio
+    async def test_progress_sha_too_short_rejected(self):
+        """SHA shorter than 7 chars is rejected."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {"id": "cp1", "label": "CP 1", "status": "active"}
+                ]
+            )
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "commit_sha": "abc12",
+            "note": "too short",
+        }
+
+        with patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_progress_without_commits_backward_compatible(self):
+        """Existing payloads without commit fields still work unchanged."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {"id": "cp1", "label": "CP 1", "status": "pending", "points_done": 0, "points_total": 3}
+                ]
+            )
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "points_delta": 1,
+            "note": "no commits",
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=AsyncMock(return_value=update_result)) as mock_update,
+        ):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 200
+        checkpoint = mock_update.await_args.args[2]["checkpoints"][0]
+        # No evidence key added when no evidence provided
+        assert "evidence" not in checkpoint
+        # evidence_commit_sha should be None
+        assert mock_update.await_args.kwargs.get("evidence_commit_sha") is None
+
+    @pytest.mark.asyncio
+    async def test_progress_commit_sha_deduplicates(self):
+        """Duplicate commit SHA is deduplicated in evidence."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {
+                        "id": "cp1", "label": "CP 1", "status": "active",
+                        "evidence": [{"kind": "git_commit", "ref": "abcdef1"}],
+                    }
+                ]
+            )
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "commit_sha": "ABCDEF1",  # same SHA, different case
+            "note": "dup",
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=AsyncMock(return_value=update_result)) as mock_update,
+        ):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 200
+        checkpoint = mock_update.await_args.args[2]["checkpoints"][0]
+        git_refs = [e for e in checkpoint["evidence"] if e["kind"] == "git_commit"]
+        assert len(git_refs) == 1  # deduplicated
+
+    @pytest.mark.asyncio
+    async def test_progress_auto_head_resolves_and_adds_evidence(self):
+        """auto_head=True resolves HEAD and adds it as git_commit evidence."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[{"id": "cp1", "label": "CP 1", "status": "active"}]
+            )
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "auto_head": True,
+            "note": "auto head",
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=AsyncMock(return_value=update_result)) as mock_update,
+            patch("pixsim7.backend.main.api.v1.dev_plans.git_resolve_head", return_value="aabbccdd11223344556677889900aabbccddeeff"),
+        ):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 200
+        checkpoint = mock_update.await_args.args[2]["checkpoints"][0]
+        git_refs = [e for e in checkpoint["evidence"] if e["kind"] == "git_commit"]
+        assert len(git_refs) == 1
+        assert git_refs[0]["ref"] == "aabbccdd11223344556677889900aabbccddeeff"
+
+    @pytest.mark.asyncio
+    async def test_progress_auto_head_noop_when_git_unavailable(self):
+        """auto_head=True with no git doesn't fail — just no commit evidence."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[{"id": "cp1", "label": "CP 1", "status": "active"}]
+            )
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "auto_head": True,
+            "note": "no git",
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=AsyncMock(return_value=update_result)) as mock_update,
+            patch("pixsim7.backend.main.api.v1.dev_plans.git_resolve_head", return_value=None),
+        ):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 200
+        checkpoint = mock_update.await_args.args[2]["checkpoints"][0]
+        assert "evidence" not in checkpoint
+
+    @pytest.mark.asyncio
+    async def test_progress_commit_range_expands_to_evidence(self):
+        """commit_range='sha1..sha2' expands to individual commit evidence items."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[{"id": "cp1", "label": "CP 1", "status": "active"}]
+            )
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+        )
+        expanded = ["aaaaaaa1111111aaaaaaa1111111aaaaaaa1111111", "bbbbbbb2222222bbbbbbb2222222bbbbbbb2222222"]
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "commit_range": "aaaaaaa..bbbbbbb",
+            "note": "range",
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=AsyncMock(return_value=update_result)) as mock_update,
+            patch("pixsim7.backend.main.api.v1.dev_plans.git_rev_list", return_value=expanded),
+        ):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 200
+        checkpoint = mock_update.await_args.args[2]["checkpoints"][0]
+        git_refs = [e for e in checkpoint["evidence"] if e["kind"] == "git_commit"]
+        assert len(git_refs) == 2
+
+    @pytest.mark.asyncio
+    async def test_progress_commit_range_invalid_format_returns_400(self):
+        """Invalid commit range format is rejected."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[{"id": "cp1", "label": "CP 1", "status": "active"}]
+            )
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "commit_range": "not..valid!!",
+            "note": "bad range",
+        }
+
+        with patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 400
+        assert "Invalid commit range format" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_progress_commit_range_empty_expansion_returns_400(self):
+        """commit_range that expands to nothing returns 400."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[{"id": "cp1", "label": "CP 1", "status": "active"}]
+            )
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "commit_range": "aaaaaaa..bbbbbbb",
+            "note": "empty",
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.git_rev_list", return_value=[]),
+        ):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 400
+        assert "Could not expand commit range" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_progress_verify_commits_rejects_missing_sha(self):
+        """verify_commits=True with a non-existent SHA returns 400."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[{"id": "cp1", "label": "CP 1", "status": "active"}]
+            )
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "commit_sha": "abcdef1234567",
+            "verify_commits": True,
+            "note": "verify fails",
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.git_verify_commit", return_value=False),
+        ):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 400
+        assert "Commit not found in repository" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_progress_verify_commits_passes_when_valid(self):
+        """verify_commits=True with an existing SHA succeeds."""
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[{"id": "cp1", "label": "CP 1", "status": "active"}]
+            )
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[], commit_sha=None, new_scope=None,
+        )
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "commit_sha": "abcdef1234567",
+            "verify_commits": True,
+            "note": "verify ok",
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=AsyncMock(return_value=update_result)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.git_verify_commit", return_value=True),
+        ):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
     async def test_progress_requires_authentication(self):
         app = _app(authenticated=False)
 

@@ -31,6 +31,10 @@ from pixsim7.backend.main.services.docs.plan_write import (
     get_active_assignment,
     get_plan_bundle,
     get_plan_documents,
+    git_forge_commit_url_template,
+    git_resolve_head,
+    git_rev_list,
+    git_verify_commit,
     list_plan_bundles,
     make_document_id,
     update_plan,
@@ -197,6 +201,10 @@ class PlanSyncRetentionResponse(BaseModel):
 class PlanRuntimeSettingsResponse(BaseModel):
     plansDbOnlyMode: bool
     source: str = "runtime"
+    forgeCommitUrlTemplate: Optional[str] = Field(
+        None,
+        description='Commit URL template derived from git remote, e.g. "https://github.com/org/repo/commit/{sha}".',
+    )
 
 
 class PlanRuntimeSettingsUpdateRequest(BaseModel):
@@ -316,6 +324,7 @@ def _run_to_entry(run: PlanSyncRun) -> dict:
 CHECKPOINT_STATUSES = frozenset({"pending", "active", "done", "blocked"})
 
 _GIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
+_COMMIT_RANGE_RE = re.compile(r"^[0-9a-fA-F]{7,40}\.\.\.?[0-9a-fA-F]{7,40}$")
 
 
 def _validate_commit_sha(sha: str) -> str:
@@ -448,7 +457,11 @@ async def list_plans(
 async def get_plan_runtime_settings(
     _user: CurrentUser,
 ):
-    return {"plansDbOnlyMode": settings.plans_db_only_mode, "source": "runtime"}
+    return {
+        "plansDbOnlyMode": settings.plans_db_only_mode,
+        "source": "runtime",
+        "forgeCommitUrlTemplate": git_forge_commit_url_template(),
+    }
 
 
 @router.patch("/settings", response_model=PlanRuntimeSettingsResponse)
@@ -830,6 +843,14 @@ class PlanUpdateRequest(BaseModel):
         None,
         description="Git commit SHA associated with this update. Recorded on audit events for traceability.",
     )
+    auto_head: bool = Field(
+        False,
+        description="When true and commit_sha is not set, automatically resolve HEAD as the commit SHA.",
+    )
+    verify_commits: bool = Field(
+        False,
+        description="When true, verify the commit SHA exists in the repository.",
+    )
 
 
 class PlanUpdateResponse(BaseModel):
@@ -849,6 +870,14 @@ async def update_plan_endpoint(
     payload_data = payload.model_dump()
     raw_patch = payload_data.pop("patch", None)
     request_commit_sha = payload_data.pop("commit_sha", None)
+    auto_head = payload_data.pop("auto_head", False)
+    verify_commits_flag = payload_data.pop("verify_commits", False)
+
+    # Resolve auto_head → commit_sha
+    if auto_head and request_commit_sha is None:
+        head = git_resolve_head()
+        if head:
+            request_commit_sha = head
 
     # Validate commit SHA if provided
     if request_commit_sha is not None:
@@ -856,6 +885,13 @@ async def update_plan_endpoint(
             request_commit_sha = _validate_commit_sha(request_commit_sha)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        # Optionally verify it exists in the repo
+        if verify_commits_flag and not git_verify_commit(request_commit_sha):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Commit not found in repository: '{request_commit_sha}'",
+            )
 
     updates: Dict[str, Any] = {}
     if isinstance(raw_patch, dict):
@@ -912,6 +948,18 @@ class PlanProgressRequest(BaseModel):
         None,
         description="List of git commit SHAs to append as checkpoint evidence.",
     )
+    commit_range: Optional[str] = Field(
+        None,
+        description='Git range to expand, e.g. "sha1..sha2". Each commit in the range is added as evidence.',
+    )
+    auto_head: bool = Field(
+        False,
+        description="When true, automatically resolve HEAD and add it as commit evidence.",
+    )
+    verify_commits: bool = Field(
+        False,
+        description="When true, verify all commit SHAs exist in the repository before recording.",
+    )
     note: Optional[str] = Field(None, description="Short progress note.")
     sync_plan_stage: bool = Field(
         False,
@@ -953,6 +1001,8 @@ async def log_plan_progress(
             bool(payload.append_evidence),
             payload.commit_sha is not None,
             bool(payload.append_commits),
+            payload.commit_range is not None,
+            payload.auto_head,
             bool((payload.note or "").strip()),
             payload.sync_plan_stage,
         )
@@ -1031,36 +1081,69 @@ async def log_plan_progress(
             raise HTTPException(status_code=400, detail="blockers must be list[object]")
         checkpoint["blockers"] = payload.blockers
 
-    # Build combined evidence to append (explicit evidence + commit SHAs)
+    # ── Collect all commit SHAs from the various sources ───────────
+    collected_shas: list[str] = []
+
+    # 1. auto_head: resolve current HEAD
+    if payload.auto_head:
+        head = git_resolve_head()
+        if head:
+            collected_shas.append(head)
+
+    # 2. Explicit single SHA
+    if payload.commit_sha is not None:
+        try:
+            collected_shas.append(_validate_commit_sha(payload.commit_sha))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # 3. Explicit SHA list
+    if payload.append_commits:
+        for raw_sha in payload.append_commits:
+            try:
+                collected_shas.append(_validate_commit_sha(raw_sha))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # 4. Commit range expansion
+    if payload.commit_range is not None:
+        if not _COMMIT_RANGE_RE.match(payload.commit_range):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid commit range format: '{payload.commit_range}'. Expected 'sha..sha' or 'sha...sha'.",
+            )
+        expanded = git_rev_list(payload.commit_range)
+        if not expanded:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not expand commit range '{payload.commit_range}'. Verify the range is valid and both commits exist.",
+            )
+        collected_shas.extend(expanded)
+
+    # 5. Optional verification against the repository
+    if payload.verify_commits and collected_shas:
+        for sha in collected_shas:
+            if not git_verify_commit(sha):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Commit not found in repository: '{sha}'",
+                )
+
+    # ── Build evidence items and merge ──────────────────────────────
+    commit_evidence = [{"kind": "git_commit", "ref": sha} for sha in collected_shas]
+
     evidence_to_append: Optional[list] = None
     if payload.append_evidence is not None:
         evidence_to_append = list(payload.append_evidence)
-    if payload.commit_sha is not None:
-        try:
-            validated = _validate_commit_sha(payload.commit_sha)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if commit_evidence:
         if evidence_to_append is None:
             evidence_to_append = []
-        evidence_to_append.append({"kind": "git_commit", "ref": validated})
-    if payload.append_commits:
-        if evidence_to_append is None:
-            evidence_to_append = []
-        for raw_sha in payload.append_commits:
-            try:
-                validated = _validate_commit_sha(raw_sha)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-            evidence_to_append.append({"kind": "git_commit", "ref": validated})
+        evidence_to_append.extend(commit_evidence)
     if evidence_to_append is not None:
         checkpoint["evidence"] = _merge_evidence(checkpoint.get("evidence"), evidence_to_append)
 
-    # Resolve the primary commit SHA for audit events (first supplied SHA)
-    progress_commit_sha: Optional[str] = None
-    if payload.commit_sha is not None:
-        progress_commit_sha = _validate_commit_sha(payload.commit_sha)
-    elif payload.append_commits:
-        progress_commit_sha = _validate_commit_sha(payload.append_commits[0])
+    # Primary commit SHA for audit events
+    progress_commit_sha: Optional[str] = collected_shas[0] if collected_shas else None
 
     note_text = (payload.note or "").strip()
     last_update: Dict[str, Any] = {
@@ -1257,8 +1340,8 @@ async def get_agent_context(
                 "action": "log_progress",
                 "method": "POST",
                 "url": "/dev/plans/progress/{plan_id}",
-                "body": '{"checkpoint_id": "phase_1", "points_delta": 1, "note": "implemented API scaffolding", "commit_sha": "a1b2c3d4e5f6", "append_commits": [], "append_evidence": [{"kind": "test_suite", "ref": "my-feature-tests"}, "pixsim7/backend/tests/api/test_feature.py"]}',
-                "description": "Apply checkpoint progress deltas and metadata (points/status/blockers/evidence) with consistent checkpoint updates. Evidence accepts bare file paths, typed refs ({kind: file_path|test_suite|git_commit, ref: ...}), and convenience commit_sha/append_commits fields (auto-converted to git_commit evidence).",
+                "body": '{"checkpoint_id": "phase_1", "points_delta": 1, "note": "implemented API scaffolding", "commit_sha": "a1b2c3d4e5f6", "append_commits": [], "commit_range": null, "auto_head": false, "verify_commits": false, "append_evidence": [{"kind": "test_suite", "ref": "my-feature-tests"}, "pixsim7/backend/tests/api/test_feature.py"]}',
+                "description": "Apply checkpoint progress deltas and metadata. Commit traceability: commit_sha (single), append_commits (list), commit_range ('sha..sha' auto-expanded), auto_head (resolve HEAD), verify_commits (check SHAs exist). All commit sources auto-convert to git_commit evidence.",
             },
             {
                 "action": "update_markdown",

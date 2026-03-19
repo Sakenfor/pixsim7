@@ -407,6 +407,93 @@ def _git_commit_move(plan_id: str, old_scope: str, new_scope: str, message: str)
 
 
 # ---------------------------------------------------------------------------
+# Git query helpers (used by the API layer for commit traceability)
+# ---------------------------------------------------------------------------
+
+
+def git_resolve_head() -> Optional[str]:
+    """Resolve current HEAD commit SHA (full 40-char hex)."""
+    repo_root = _resolve_repo_root()
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(repo_root), capture_output=True, text=True, timeout=10,
+        )
+        sha = result.stdout.strip()
+        return sha if result.returncode == 0 and sha else None
+    except subprocess.SubprocessError:
+        return None
+
+
+def git_verify_commit(sha: str) -> bool:
+    """Check whether *sha* resolves to a commit object in the repo."""
+    repo_root = _resolve_repo_root()
+    try:
+        result = subprocess.run(
+            ["git", "cat-file", "-t", sha],
+            cwd=str(repo_root), capture_output=True, text=True, timeout=10,
+        )
+        return result.returncode == 0 and result.stdout.strip() == "commit"
+    except subprocess.SubprocessError:
+        return False
+
+
+def git_rev_list(range_spec: str, max_count: int = 50) -> List[str]:
+    """Expand a git range (e.g. ``sha1..sha2``) into individual commit SHAs.
+
+    Returns an empty list if the range is invalid or git is unavailable.
+    Caps output at *max_count* to prevent runaway expansion.
+    """
+    repo_root = _resolve_repo_root()
+    try:
+        result = subprocess.run(
+            ["git", "rev-list", "--max-count", str(max_count), range_spec],
+            cwd=str(repo_root), capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            return []
+        return [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
+    except subprocess.SubprocessError:
+        return []
+
+
+def git_forge_commit_url_template() -> Optional[str]:
+    """Derive a commit URL template from the origin remote.
+
+    Returns a string with ``{sha}`` placeholder, e.g.
+    ``https://github.com/org/repo/commit/{sha}``, or *None*.
+    """
+    repo_root = _resolve_repo_root()
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=str(repo_root), capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            return None
+        url = result.stdout.strip()
+    except subprocess.SubprocessError:
+        return None
+
+    if not url:
+        return None
+
+    import re as _re
+
+    # SSH: git@github.com:org/repo.git
+    m = _re.match(r"git@([^:]+):(.+?)(?:\.git)?$", url)
+    if m:
+        return f"https://{m.group(1)}/{m.group(2)}/commit/{{sha}}"
+
+    # HTTPS: https://github.com/org/repo.git
+    m = _re.match(r"https?://([^/]+)/(.+?)(?:\.git)?$", url)
+    if m:
+        return f"https://{m.group(1)}/{m.group(2)}/commit/{{sha}}"
+
+    return None
+
+
+# ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
 
@@ -691,6 +778,7 @@ async def update_plan(
     plan_id: str,
     updates: Dict[str, Any],
     principal=None,
+    evidence_commit_sha: Optional[str] = None,
 ) -> PlanUpdateResult:
     """
     Apply field updates to a plan (DB-first).
@@ -788,7 +876,7 @@ async def update_plan(
     # Emit events + notification
     sha = None
     actor_source = principal.source if principal else None
-    await _emit_events(db, plan_id, changes, None, actor_source=actor_source)
+    await _emit_events(db, plan_id, changes, evidence_commit_sha, actor_source=actor_source)
     await _emit_plan_notification(db, plan_id, doc.title, changes, principal=principal)
     await db.commit()
 

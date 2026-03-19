@@ -127,6 +127,154 @@ class TestDevPlansUpdateEndpoint:
         assert "No fields to update" in response.json()["detail"]
 
     @pytest.mark.asyncio
+    async def test_update_commit_sha_passed_to_service(self):
+        """commit_sha on update request is validated and passed as evidence_commit_sha."""
+        app = _app(authenticated=True)
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[{"field": "stage"}], commit_sha=None, new_scope=None,
+        )
+        mock_update = AsyncMock(return_value=update_result)
+
+        payload = {
+            "stage": "implementation",
+            "commit_sha": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+        }
+
+        with patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update):
+            async with _client(app) as c:
+                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+
+        assert response.status_code == 200
+        _, kwargs = mock_update.await_args
+        assert kwargs["evidence_commit_sha"] == "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+
+    @pytest.mark.asyncio
+    async def test_update_invalid_commit_sha_returns_400(self):
+        """Invalid commit SHA on update request returns 400."""
+        app = _app(authenticated=True)
+
+        payload = {
+            "stage": "implementation",
+            "commit_sha": "not-valid!!",
+        }
+
+        async with _client(app) as c:
+            response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+
+        assert response.status_code == 400
+        assert "Invalid commit SHA" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_update_without_commit_sha_backward_compatible(self):
+        """Update without commit_sha still works (evidence_commit_sha=None)."""
+        app = _app(authenticated=True)
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[{"field": "stage"}], commit_sha=None, new_scope=None,
+        )
+        mock_update = AsyncMock(return_value=update_result)
+
+        payload = {"stage": "execution"}
+
+        with patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update):
+            async with _client(app) as c:
+                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+
+        assert response.status_code == 200
+        _, kwargs = mock_update.await_args
+        assert kwargs["evidence_commit_sha"] is None
+
+    @pytest.mark.asyncio
+    async def test_update_commit_sha_not_treated_as_plan_field(self):
+        """commit_sha is not passed as a plan update field."""
+        app = _app(authenticated=True)
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[{"field": "stage"}], commit_sha=None, new_scope=None,
+        )
+        mock_update = AsyncMock(return_value=update_result)
+
+        payload = {
+            "stage": "done",
+            "commit_sha": "abcdef1234567",
+        }
+
+        with patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update):
+            async with _client(app) as c:
+                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+
+        assert response.status_code == 200
+        args, _ = mock_update.await_args
+        updates = args[2]
+        assert "commit_sha" not in updates  # not a plan field
+        assert "stage" in updates
+
+    @pytest.mark.asyncio
+    async def test_update_auto_head_resolves_commit_sha(self):
+        """auto_head=True resolves HEAD when commit_sha is not set."""
+        app = _app(authenticated=True)
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[{"field": "stage"}], commit_sha=None, new_scope=None,
+        )
+        mock_update = AsyncMock(return_value=update_result)
+
+        payload = {"stage": "implementation", "auto_head": True}
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update),
+            patch("pixsim7.backend.main.api.v1.dev_plans.git_resolve_head", return_value="aabbccdd11223344556677889900aabbccddeeff"),
+        ):
+            async with _client(app) as c:
+                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+
+        assert response.status_code == 200
+        _, kwargs = mock_update.await_args
+        assert kwargs["evidence_commit_sha"] == "aabbccdd11223344556677889900aabbccddeeff"
+
+    @pytest.mark.asyncio
+    async def test_update_auto_head_does_not_override_explicit_sha(self):
+        """auto_head=True does not override an explicit commit_sha."""
+        app = _app(authenticated=True)
+        update_result = SimpleNamespace(
+            plan_id="plan-a", changes=[{"field": "stage"}], commit_sha=None, new_scope=None,
+        )
+        mock_update = AsyncMock(return_value=update_result)
+
+        payload = {
+            "stage": "implementation",
+            "commit_sha": "1234567890abcdef1234567890abcdef12345678",
+            "auto_head": True,
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update),
+            patch("pixsim7.backend.main.api.v1.dev_plans.git_resolve_head", return_value="aabbccdd11223344556677889900aabbccddeeff"),
+        ):
+            async with _client(app) as c:
+                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+
+        assert response.status_code == 200
+        _, kwargs = mock_update.await_args
+        # Explicit SHA wins over auto_head
+        assert kwargs["evidence_commit_sha"] == "1234567890abcdef1234567890abcdef12345678"
+
+    @pytest.mark.asyncio
+    async def test_update_verify_commits_rejects_missing(self):
+        """verify_commits=True with a missing SHA returns 400."""
+        app = _app(authenticated=True)
+
+        payload = {
+            "stage": "done",
+            "commit_sha": "abcdef1234567",
+            "verify_commits": True,
+        }
+
+        with patch("pixsim7.backend.main.api.v1.dev_plans.git_verify_commit", return_value=False):
+            async with _client(app) as c:
+                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+
+        assert response.status_code == 400
+        assert "Commit not found in repository" in response.json()["detail"]
+
+    @pytest.mark.asyncio
     async def test_update_requires_authentication(self):
         app = _app(authenticated=False)
 
