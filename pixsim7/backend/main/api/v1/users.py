@@ -3,8 +3,9 @@ User management API endpoints
 """
 from typing import Any
 from fastapi import APIRouter, HTTPException, Query
-from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, UserSvc
+from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, CurrentUserRecord, UserSvc
 from pixsim7.backend.main.shared.schemas.user_schemas import (
+    AdminUpdateUserRequest,
     AdminUserPermissionsResponse,
     AdminUsersListResponse,
     UpdateUserRequest,
@@ -15,6 +16,7 @@ from pixsim7.backend.main.shared.schemas.user_schemas import (
     UserPreferencesResponse,
     UserUsageResponse,
 )
+from pixsim7.backend.main.shared.auth import hash_password
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
     ValidationError as DomainValidationError,
@@ -61,7 +63,7 @@ def _build_user_response(user: Any) -> UserResponse:
 # ===== GET CURRENT USER =====
 
 @router.get("/users/me", response_model=UserResponse)
-async def get_current_user(user: CurrentUser):
+async def get_current_user(user: CurrentUserRecord):
     """
     Get current authenticated user profile
 
@@ -75,7 +77,7 @@ async def get_current_user(user: CurrentUser):
 @router.patch("/users/me", response_model=UserResponse)
 async def update_current_user(
     request: UpdateUserRequest,
-    user: CurrentUser,
+    user: CurrentUserRecord,
     user_service: UserSvc
 ):
     """
@@ -153,7 +155,7 @@ async def get_user_preferences(user: CurrentUser):
 @router.patch("/users/me/preferences", response_model=UserPreferencesResponse)
 async def update_user_preferences(
     request: UpdateUserPreferencesRequest,
-    user: CurrentUser,
+    user: CurrentUserRecord,
     user_service: UserSvc
 ):
     """
@@ -237,3 +239,61 @@ async def update_user_permissions_for_admin(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update user permissions: {str(e)}")
+
+
+@router.patch("/admin/users/{user_id}", response_model=AdminUserPermissionsResponse)
+async def admin_update_user(
+    user_id: int,
+    request: AdminUpdateUserRequest,
+    admin: CurrentAdminUser,
+    user_service: UserSvc,
+):
+    """
+    Admin-only endpoint to update a user's role, active status, password, or permissions.
+    """
+    _ = admin
+    try:
+        updates: dict[str, Any] = {}
+        if request.role is not None:
+            updates["role"] = request.role
+        if request.is_active is not None:
+            updates["is_active"] = request.is_active
+        if request.password is not None:
+            updates["password_hash"] = await hash_password(request.password)
+        if request.permissions is not None:
+            updates["permissions"] = _normalize_permissions(request.permissions)
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        updated_user = await user_service.update_user(user_id, **updates)
+        return AdminUserPermissionsResponse.model_validate(updated_user)
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="User not found")
+    except DomainValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update user: {str(e)}")
+
+
+@router.delete("/admin/users/{user_id}", response_model=AdminUserPermissionsResponse)
+async def admin_deactivate_user(
+    user_id: int,
+    admin: CurrentAdminUser,
+    user_service: UserSvc,
+):
+    """
+    Admin-only endpoint to deactivate a user (soft delete).
+    """
+    if admin.id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot deactivate your own account")
+    try:
+        await user_service.delete_user(user_id)
+        user = await user_service.get_user(user_id)
+        return AdminUserPermissionsResponse.model_validate(user)
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="User not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to deactivate user: {str(e)}")
