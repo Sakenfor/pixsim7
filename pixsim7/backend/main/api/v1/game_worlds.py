@@ -3,7 +3,7 @@
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import AliasChoices, BaseModel, Field, ValidationError
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, GameWorldSvc
 from pixsim7.backend.main.domain.game.schemas import (
@@ -34,6 +34,7 @@ from pixsim7.backend.main.domain.game.project_runtime_meta import (
 from pixsim7.backend.main.services.game.project_bundle import GameProjectBundleService
 from pixsim7.backend.main.services.game.project_storage import GameProjectStorageService
 from pixsim7.backend.main.services.game.derived_projections import resync_world_projections, ResyncResult
+from pixsim7.backend.main.services.game.world import WORLD_UPSERT_META_KEY
 
 
 router = APIRouter()
@@ -61,6 +62,10 @@ class GameWorldDetail(BaseModel):
 class CreateWorldRequest(BaseModel):
     name: str
     meta: Optional[Dict[str, Any]] = None
+    upsert_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("upsert_key", "upsertKey"),
+    )
 
 
 class AdvanceWorldTimeRequest(BaseModel):
@@ -91,6 +96,13 @@ async def _build_world_detail(
     world_state = state or await game_world_service.get_world_state(world.id)
     world_time = world_state.world_time if world_state else 0.0
     return GameWorldDetail(id=world.id, name=world.name, meta=world.meta, world_time=world_time)
+
+
+def _normalize_optional_string(value: Optional[Any]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
 
 
 def _to_saved_project_summary(project) -> SavedGameProjectSummary:
@@ -154,6 +166,69 @@ def _to_project_provenance(project) -> ProjectProvenance:
     )
 
 
+def _read_world_meta_dict(world) -> Dict[str, Any]:
+    raw_meta = getattr(world, "meta", None)
+    return raw_meta if isinstance(raw_meta, dict) else {}
+
+
+def _read_world_upsert_key(world) -> Optional[str]:
+    return _normalize_optional_string(_read_world_meta_dict(world).get(WORLD_UPSERT_META_KEY))
+
+
+def _read_world_bootstrap_source(world) -> Optional[str]:
+    bootstrap_raw = _read_world_meta_dict(world).get("bootstrap")
+    if not isinstance(bootstrap_raw, dict):
+        return None
+    return _normalize_optional_string(bootstrap_raw.get("source"))
+
+
+def _normalize_world_name_for_dedupe(name: Optional[Any]) -> str:
+    normalized = _normalize_optional_string(name)
+    if normalized is None:
+        return ""
+    return normalized.casefold()
+
+
+def _dedupe_world_list_for_catalog(worlds: List[Any]) -> List[Any]:
+    """
+    Collapse legacy duplicate worlds while preserving explicit distinct worlds.
+
+    Rules per normalized name:
+    1) If any world has `project_world_upsert_key`, keep newest keyed world.
+    2) Else if all worlds share same non-empty bootstrap source, keep newest world.
+    3) Else keep all rows (possible intentional duplicates).
+    """
+    grouped: Dict[str, List[Any]] = {}
+    for world in worlds:
+        name_key = _normalize_world_name_for_dedupe(getattr(world, "name", None))
+        grouped.setdefault(name_key, []).append(world)
+
+    deduped: List[Any] = []
+    for group in grouped.values():
+        if len(group) <= 1:
+            deduped.extend(group)
+            continue
+
+        keyed = [world for world in group if _read_world_upsert_key(world)]
+        if keyed:
+            deduped.append(max(keyed, key=lambda world: int(getattr(world, "id", 0) or 0)))
+            continue
+
+        bootstrap_sources = {
+            source
+            for source in (_read_world_bootstrap_source(world) for world in group)
+            if source
+        }
+        if len(bootstrap_sources) == 1:
+            deduped.append(max(group, key=lambda world: int(getattr(world, "id", 0) or 0)))
+            continue
+
+        deduped.extend(group)
+
+    deduped.sort(key=lambda world: int(getattr(world, "id", 0) or 0))
+    return deduped
+
+
 @router.get("/", response_model=PaginatedWorldsResponse)
 async def list_worlds(
     game_world_service: GameWorldSvc,
@@ -168,30 +243,25 @@ async def list_worlds(
         offset: Number of records to skip (default: 0)
         limit: Maximum records to return (default: 100, max: 1000)
     """
-    from sqlalchemy import select, func
+    from sqlalchemy import select
     from pixsim7.backend.main.domain.game import GameWorld
 
     # Clamp limit to reasonable range
     limit = min(max(1, limit), 1000)
+    offset = max(0, offset)
 
-    # Get total count
-    count_result = await game_world_service.db.execute(
-        select(func.count()).select_from(GameWorld).where(GameWorld.owner_user_id == user.id)
-    )
-    total = count_result.scalar_one()
-
-    # Get paginated results
+    # Load full user world list, then collapse legacy seed duplicates before paginating.
     result = await game_world_service.db.execute(
         select(GameWorld)
         .where(GameWorld.owner_user_id == user.id)
         .order_by(GameWorld.id)
-        .offset(offset)
-        .limit(limit)
     )
-    worlds = list(result.scalars().all())
+    worlds = _dedupe_world_list_for_catalog(list(result.scalars().all()))
+    total = len(worlds)
+    paged_worlds = worlds[offset : offset + limit]
 
     return PaginatedWorldsResponse(
-        worlds=[GameWorldSummary(id=w.id, name=w.name) for w in worlds],
+        worlds=[GameWorldSummary(id=w.id, name=w.name) for w in paged_worlds],
         total=total,
         offset=offset,
         limit=limit,
@@ -209,11 +279,29 @@ async def create_world(
 
     Schema validation now happens at service layer for defense in depth.
     """
+    normalized_upsert_key = _normalize_optional_string(req.upsert_key)
+    merged_meta = dict(req.meta or {})
+
+    if normalized_upsert_key:
+        existing = await game_world_service.get_world_by_owner_and_upsert_key(
+            owner_user_id=user.id,
+            upsert_key=normalized_upsert_key,
+        )
+        if existing:
+            state = await game_world_service.get_world_state(existing.id)
+            return await _build_world_detail(existing, game_world_service, state=state)
+
+        meta_upsert_key = _normalize_optional_string(merged_meta.get(WORLD_UPSERT_META_KEY))
+        if meta_upsert_key and meta_upsert_key != normalized_upsert_key:
+            raise HTTPException(status_code=400, detail="world_upsert_key_mismatch")
+
+        merged_meta[WORLD_UPSERT_META_KEY] = normalized_upsert_key
+
     try:
         world = await game_world_service.create_world(
             owner_user_id=user.id,
             name=req.name,
-            meta=req.meta or {},
+            meta=merged_meta,
         )
     except ValueError as e:
         msg = str(e)
@@ -429,13 +517,31 @@ async def save_project_snapshot(
     user: CurrentUser,
 ) -> SavedGameProjectSummary:
     storage = GameProjectStorageService(game_world_service.db)
+    overwrite_project_id = req.overwrite_project_id
+    if overwrite_project_id is None:
+        source_key = req.provenance.source_key if req.provenance is not None else None
+        existing_by_source_key = await storage.get_latest_project_by_origin_source_key(
+            owner_user_id=user.id,
+            source_key=source_key,
+        )
+        if existing_by_source_key and existing_by_source_key.id is not None:
+            overwrite_project_id = int(existing_by_source_key.id)
+
+    if overwrite_project_id is None and req.upsert_by_name:
+        existing_by_name = await storage.get_latest_project_by_name(
+            owner_user_id=user.id,
+            name=req.name,
+        )
+        if existing_by_name and existing_by_name.id is not None:
+            overwrite_project_id = int(existing_by_name.id)
+
     try:
         project = await storage.save_project(
             owner_user_id=user.id,
             name=req.name,
             bundle=req.bundle,
             source_world_id=req.source_world_id,
-            overwrite_project_id=req.overwrite_project_id,
+            overwrite_project_id=overwrite_project_id,
             provenance=req.provenance,
             project_behavior_enabled_plugins=req.project_behavior_enabled_plugins,
         )

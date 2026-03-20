@@ -364,7 +364,7 @@ export interface InteractionOutcome {
  */
 export interface InteractionTarget {
   /** Canonical entity reference (e.g., "npc:123") */
-  ref?: EntityRef;
+  ref?: EntityRef | string;
   /** Target kind (e.g., "npc") */
   kind?: string;
 

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.game import (
@@ -103,11 +104,20 @@ class GameProjectBundleService:
 
         expressions_by_npc: Dict[int, List[NpcExpression]] = {npc_id: [] for npc_id in npc_ids}
         if npc_ids:
-            expressions_result = await self.db.execute(
-                select(NpcExpression).where(NpcExpression.npc_id.in_(npc_ids)).order_by(NpcExpression.id)
-            )
-            for expression in expressions_result.scalars().all():
-                expressions_by_npc.setdefault(expression.npc_id, []).append(expression)
+            try:
+                expressions_result = await self.db.execute(
+                    select(NpcExpression).where(NpcExpression.npc_id.in_(npc_ids)).order_by(NpcExpression.id)
+                )
+                for expression in expressions_result.scalars().all():
+                    expressions_by_npc.setdefault(expression.npc_id, []).append(expression)
+            except ProgrammingError as exc:
+                # Backward compatibility: some legacy DBs may miss npc_expressions
+                # until migration 20260319_0001 is applied.
+                message = str(exc).lower()
+                if "npc_expressions" in message and "does not exist" in message:
+                    expressions_by_npc = {npc_id: [] for npc_id in npc_ids}
+                else:
+                    raise
 
         scenes_result = await self.db.execute(
             select(GameScene).where(GameScene.world_id == world_id).order_by(GameScene.id)

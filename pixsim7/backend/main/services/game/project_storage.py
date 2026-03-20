@@ -119,6 +119,47 @@ class GameProjectStorageService:
         )
         return result.scalar_one_or_none()
 
+    async def get_latest_project_by_origin_source_key(
+        self,
+        *,
+        owner_user_id: int,
+        source_key: Optional[Any],
+    ) -> Optional[GameProjectSnapshot]:
+        normalized_source_key = self._normalize_origin_source_key(source_key)
+        if not normalized_source_key:
+            return None
+
+        result = await self.db.execute(
+            select(GameProjectSnapshot)
+            .where(
+                GameProjectSnapshot.owner_user_id == owner_user_id,
+                GameProjectSnapshot.is_draft == False,  # noqa: E712
+                GameProjectSnapshot.origin_source_key == normalized_source_key,
+            )
+            .order_by(GameProjectSnapshot.updated_at.desc(), GameProjectSnapshot.id.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_latest_project_by_name(
+        self,
+        *,
+        owner_user_id: int,
+        name: str,
+    ) -> Optional[GameProjectSnapshot]:
+        normalized_name = self._normalize_project_name(name)
+        result = await self.db.execute(
+            select(GameProjectSnapshot)
+            .where(
+                GameProjectSnapshot.owner_user_id == owner_user_id,
+                GameProjectSnapshot.is_draft == False,  # noqa: E712
+                GameProjectSnapshot.name == normalized_name,
+            )
+            .order_by(GameProjectSnapshot.updated_at.desc(), GameProjectSnapshot.id.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def save_project(
         self,
         *,

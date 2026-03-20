@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,8 @@ except ImportError:
 
 from pixsim7.backend.main.domain.game import GameWorld, GameWorldState, GameSession
 from pixsim7.backend.main.domain.game.schemas.relationship import WorldMetaSchemas
+
+WORLD_UPSERT_META_KEY = "project_world_upsert_key"
 
 
 class GameWorldService:
@@ -68,6 +70,36 @@ class GameWorldService:
             select(GameWorld).where(GameWorld.owner_user_id == owner_user_id).order_by(GameWorld.id)
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    def _normalize_upsert_key(value: Optional[Any]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    async def get_world_by_owner_and_upsert_key(
+        self,
+        *,
+        owner_user_id: int,
+        upsert_key: Optional[Any],
+    ) -> Optional[GameWorld]:
+        """
+        Resolve a world by owner + world meta upsert key.
+
+        Uses in-memory filtering for DB portability across SQLite/Postgres.
+        """
+        normalized_key = self._normalize_upsert_key(upsert_key)
+        if not normalized_key:
+            return None
+
+        worlds = await self.list_worlds_for_user(owner_user_id=owner_user_id)
+        for world in worlds:
+            raw_meta = world.meta if isinstance(world.meta, dict) else {}
+            stored_key = self._normalize_upsert_key(raw_meta.get(WORLD_UPSERT_META_KEY))
+            if stored_key == normalized_key:
+                return world
+        return None
 
     async def get_world(self, world_id: int) -> Optional[GameWorld]:
         return await self.db.get(GameWorld, world_id)
@@ -195,4 +227,3 @@ class GameWorldService:
                 extra={"world_id": world_id, "operation": "cache_invalidate_world"}
             )
             pass
-

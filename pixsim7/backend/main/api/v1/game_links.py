@@ -14,7 +14,9 @@ from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import DatabaseSession, CurrentGamePrincipal
 from pixsim7.backend.main.services.links.template_resolver import (
-    resolve_template_to_runtime,
+    resolve_template_to_runtime_ref,
+    normalize_template_kind,
+    normalize_runtime_kind,
 )
 from pixsim7.backend.main.services.links.integrity import LinkIntegrityService
 
@@ -125,14 +127,17 @@ TEMPLATE_TO_RUNTIME_KIND: Dict[str, str] = {
 
 def get_runtime_kind(template_kind: str) -> Optional[str]:
     """Get the expected runtime kind for a template kind."""
+    normalized_template_kind = normalize_template_kind(template_kind)
     from pixsim7.backend.main.services.links.mapping_registry import get_mapping_registry
 
     try:
-        runtime_kind = get_mapping_registry().get_runtime_kind(template_kind)
+        runtime_kind = get_mapping_registry().get_runtime_kind(normalized_template_kind)
     except ValueError:
         runtime_kind = None
 
-    return runtime_kind or TEMPLATE_TO_RUNTIME_KIND.get(template_kind)
+    fallback = TEMPLATE_TO_RUNTIME_KIND.get(normalized_template_kind)
+    resolved = runtime_kind or fallback
+    return normalize_runtime_kind(resolved) if resolved else None
 
 
 # =============================================================================
@@ -163,14 +168,14 @@ async def resolve_template(
 ) -> ResolveTemplateResponse:
     """Resolve a single template reference to runtime entity."""
     try:
-        runtime_id = await resolve_template_to_runtime(
+        resolution = await resolve_template_to_runtime_ref(
             db,
             request.template_kind,
             request.template_id,
             context=request.context,
         )
 
-        if runtime_id is None:
+        if resolution is None:
             return ResolveTemplateResponse(
                 resolved=False,
                 runtime_kind=None,
@@ -181,8 +186,10 @@ async def resolve_template(
 
         return ResolveTemplateResponse(
             resolved=True,
-            runtime_kind=get_runtime_kind(request.template_kind),
-            runtime_id=runtime_id,
+            runtime_kind=normalize_runtime_kind(
+                str(resolution.get("runtime_kind") or get_runtime_kind(request.template_kind))
+            ),
+            runtime_id=resolution["runtime_id"],
             template_kind=request.template_kind,
             template_id=request.template_id,
         )
@@ -225,21 +232,30 @@ async def resolve_batch(
             context = None
 
         try:
-            runtime_id = await resolve_template_to_runtime(
+            resolution = await resolve_template_to_runtime_ref(
                 db,
                 ref.template_kind,
                 ref.template_id,
                 context=context,
             )
 
-            resolved = runtime_id is not None
+            resolved = resolution is not None
             if resolved:
                 resolved_count += 1
 
             results[key] = ResolveTemplateResponse(
                 resolved=resolved,
-                runtime_kind=get_runtime_kind(ref.template_kind) if resolved else None,
-                runtime_id=runtime_id,
+                runtime_kind=(
+                    normalize_runtime_kind(
+                        str(
+                            (resolution or {}).get("runtime_kind")
+                            or get_runtime_kind(ref.template_kind)
+                        )
+                    )
+                    if resolved
+                    else None
+                ),
+                runtime_id=(resolution or {}).get("runtime_id"),
                 template_kind=ref.template_kind,
                 template_id=ref.template_id,
             )
@@ -408,4 +424,3 @@ async def get_links_for_entity(
         "links": links,
         "count": len(links),
     }
-

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from pixsim7.backend.main.shared.extension_contract import (
     build_extension_identity,
@@ -246,6 +246,10 @@ class SaveGameProjectRequest(BaseModel):
     source_world_id: Optional[int] = None
     overwrite_project_id: Optional[int] = None
     provenance: Optional[ProjectProvenance] = None
+    upsert_by_name: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("upsert_by_name", "upsertByName"),
+    )
     project_behavior_enabled_plugins: Optional[List[str]] = None
 
 

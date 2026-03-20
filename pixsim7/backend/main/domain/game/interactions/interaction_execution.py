@@ -299,7 +299,44 @@ async def apply_inventory_changes(
     Returns:
         Summary of changes (added/removed item IDs)
     """
-    inventory = session.flags.get("inventory", [])
+    raw_inventory = session.flags.get("inventory")
+    raw_items: List[Dict[str, Any]] = []
+
+    if isinstance(raw_inventory, dict):
+        if isinstance(raw_inventory.get("items"), list):
+            raw_items = [item for item in raw_inventory["items"] if isinstance(item, dict)]
+        else:
+            # Legacy map format: {"item_id": quantity, ...}
+            for key, value in raw_inventory.items():
+                if key == "items":
+                    continue
+                if isinstance(value, (int, float)):
+                    qty = max(0, int(value))
+                    raw_items.append({
+                        "id": key,
+                        "itemId": key,
+                        "quantity": qty,
+                        "qty": qty,
+                    })
+    elif isinstance(raw_inventory, list):
+        raw_items = [item for item in raw_inventory if isinstance(item, dict)]
+
+    inventory: List[Dict[str, Any]] = []
+    for item in raw_items:
+        item_id = item.get("id") or item.get("itemId")
+        if not isinstance(item_id, str) or not item_id:
+            continue
+
+        quantity_raw = item.get("quantity", item.get("qty", 1))
+        quantity = int(quantity_raw) if isinstance(quantity_raw, (int, float)) else 1
+        quantity = max(0, quantity)
+
+        normalized = dict(item)
+        normalized["id"] = item_id
+        normalized["itemId"] = item_id
+        normalized["quantity"] = quantity
+        normalized["qty"] = quantity
+        inventory.append(normalized)
     added = []
     removed = []
 
@@ -307,17 +344,33 @@ async def apply_inventory_changes(
     if changes.add:
         for change in changes.add:
             item_id = change.item_id
-            quantity = change.quantity or 1
+            quantity = int(change.quantity or 1)
+            if quantity <= 0:
+                continue
 
             # Find existing item
-            existing = next((item for item in inventory if item.get("itemId") == item_id), None)
+            existing = next(
+                (
+                    item for item in inventory
+                    if item.get("itemId") == item_id or item.get("id") == item_id
+                ),
+                None
+            )
 
             if existing:
-                existing["quantity"] = existing.get("quantity", 1) + quantity
+                current_qty_raw = existing.get("quantity", existing.get("qty", 1))
+                current_qty = int(current_qty_raw) if isinstance(current_qty_raw, (int, float)) else 1
+                new_qty = max(0, current_qty + quantity)
+                existing["quantity"] = new_qty
+                existing["qty"] = new_qty
+                existing["itemId"] = item_id
+                existing["id"] = item_id
             else:
                 inventory.append({
+                    "id": item_id,
                     "itemId": item_id,
                     "quantity": quantity,
+                    "qty": quantity,
                     "acquiredAt": int(time.time())
                 })
 
@@ -327,23 +380,36 @@ async def apply_inventory_changes(
     if changes.remove:
         for change in changes.remove:
             item_id = change.item_id
-            quantity = change.quantity or 1
+            quantity = int(change.quantity or 1)
+            if quantity <= 0:
+                continue
 
             # Find existing item
-            existing = next((item for item in inventory if item.get("itemId") == item_id), None)
+            existing = next(
+                (
+                    item for item in inventory
+                    if item.get("itemId") == item_id or item.get("id") == item_id
+                ),
+                None
+            )
 
             if existing:
-                current_qty = existing.get("quantity", 1)
+                current_qty_raw = existing.get("quantity", existing.get("qty", 1))
+                current_qty = int(current_qty_raw) if isinstance(current_qty_raw, (int, float)) else 1
                 new_qty = current_qty - quantity
 
                 if new_qty <= 0:
                     inventory.remove(existing)
                 else:
                     existing["quantity"] = new_qty
+                    existing["qty"] = new_qty
+                    existing["itemId"] = item_id
+                    existing["id"] = item_id
 
                 removed.append(item_id)
 
-    session.flags["inventory"] = inventory
+    # Canonical write shape
+    session.flags["inventory"] = {"items": inventory}
 
     return InventoryChangeSummary(
         added=added if added else None,
