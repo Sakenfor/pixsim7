@@ -1276,16 +1276,20 @@ async def send_message_to_agent_stream(
     # ── Bridge streaming path ──
     from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
 
-    if not remote_cmd_bridge.has_available:
+    if remote_cmd_bridge.connected_count == 0:
         async def _err():
             yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'agent_id': '', 'error': 'No bridge running. Start one from the AI Agents panel.'})}\n\n"
         return StreamingResponse(_err(), media_type="text/event-stream")
 
+    # Pick any connected agent — the bridge pool handles concurrency internally.
+    # Prefer non-busy, but allow busy agents (pool may have free sessions).
     agent = remote_cmd_bridge.get_available_agent(user_id=user_id)
     if not agent:
-        msg = "All agents are busy" if user_id is None else "No bridge available for your account."
+        agents = remote_cmd_bridge.get_agents(user_id=user_id)
+        agent = agents[0] if agents else None
+    if not agent:
         async def _err2():
-            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'agent_id': '', 'error': msg})}\n\n"
+            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'agent_id': '', 'error': 'No bridge available for your account.'})}\n\n"
         return StreamingResponse(_err2(), media_type="text/event-stream")
 
     task_payload: dict = {
@@ -1439,7 +1443,7 @@ async def _send_via_bridge(
     import time
     from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
 
-    if not remote_cmd_bridge.has_available:
+    if remote_cmd_bridge.connected_count == 0:
         return SendMessageResponse(
             ok=False,
             agent_id="",
@@ -1447,6 +1451,9 @@ async def _send_via_bridge(
         )
 
     agent = remote_cmd_bridge.get_available_agent(user_id=user_id)
+    if not agent:
+        agents = remote_cmd_bridge.get_agents(user_id=user_id)
+        agent = agents[0] if agents else None
     if not agent:
         if user_id is not None:
             return SendMessageResponse(

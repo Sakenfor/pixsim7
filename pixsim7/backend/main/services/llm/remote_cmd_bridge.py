@@ -36,10 +36,15 @@ class RemoteAgent:
     agent_type: str = "claude-cli"
     user_id: Optional[int] = None  # None = shared/admin bridge
     connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    busy: bool = False
-    current_task_id: Optional[str] = None
+    active_tasks: int = 0          # number of in-flight tasks
+    current_task_id: Optional[str] = None  # most recent task (for heartbeat tracking)
     tasks_completed: int = 0
     metadata: Dict[str, str] = field(default_factory=dict)
+
+    @property
+    def busy(self) -> bool:
+        """Backward compat — True if any task is active."""
+        return self.active_tasks > 0
 
 
 class RemoteCommandBridge:
@@ -180,7 +185,7 @@ class RemoteCommandBridge:
             raise RuntimeError("No remote agents available")
 
         task_id = str(uuid.uuid4())
-        agent.busy = True
+        agent.active_tasks += 1
         agent.current_task_id = task_id
 
         # Create future for the result
@@ -210,7 +215,7 @@ class RemoteCommandBridge:
             self._pending_tasks.pop(task_id, None)
             raise TimeoutError(f"Remote agent did not respond within {timeout}s")
         finally:
-            agent.busy = False
+            agent.active_tasks = max(0, agent.active_tasks - 1)
             agent.current_task_id = None
 
     def record_heartbeat(self, agent_id: str, data: Dict[str, Any]) -> None:
@@ -248,7 +253,7 @@ class RemoteCommandBridge:
             raise RuntimeError("No remote agents available")
 
         task_id = str(uuid.uuid4())
-        agent.busy = True
+        agent.active_tasks += 1
         agent.current_task_id = task_id
 
         loop = asyncio.get_event_loop()
@@ -313,13 +318,13 @@ class RemoteCommandBridge:
             # keep agent.current_task_id so heartbeats continue to be tracked.
             # resolve_task/fail_task will clean up when the result arrives.
             if future.done():
-                agent.busy = False
+                agent.active_tasks = max(0, agent.active_tasks - 1)
                 agent.current_task_id = None
             else:
                 # SSE dropped mid-task — leave task_id for heartbeat tracking
                 # but mark agent as not-busy so new requests can use it
                 # (the pending future will be resolved when the result arrives via WS)
-                agent.busy = False
+                agent.active_tasks = max(0, agent.active_tasks - 1)
 
     def resolve_task(self, task_id: str, result: Dict[str, Any]) -> bool:
         """Called when a remote agent sends back a task result."""

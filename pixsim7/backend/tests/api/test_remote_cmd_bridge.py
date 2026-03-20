@@ -29,7 +29,7 @@ def _make_agent(agent_id: str = "test-agent", busy: bool = False, task_id: str |
         agent_type="claude-cli",
         user_id=user_id,
     )
-    agent.busy = busy
+    agent.active_tasks = 1 if busy else 0
     agent.current_task_id = task_id
     return agent
 
