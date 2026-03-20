@@ -446,6 +446,18 @@ export function useAssets(options?: {
   // Subscribe to new asset events (from generation completions)
   useEffect(() => {
     const unsubscribe = assetEvents.subscribe((asset) => {
+      // Skip live-prepend for server-scoped filters that can't be checked client-side.
+      // These views need an explicit refresh to pick up new assets.
+      const hasScopedFilter = !!(
+        filterParams.prompt_version_id
+        || filterParams.source_generation_id
+        || filterParams.source_asset_id
+        || filterParams.asset_ids
+        || filterParams.similar_to
+        || filterParams.sha256
+      );
+      if (hasScopedFilter) return;
+
       const tags = (asset.tags || []).map((tag) => (typeof tag === 'string' ? tag : tag.name));
       // Only prepend if it matches current filters (or no filters)
       const matchesFilters =
@@ -471,7 +483,6 @@ export function useAssets(options?: {
           tags.some(t => t.toLowerCase().includes(filterParams.q!.toLowerCase())));
 
       // Only live-prepend on page 1 with default sort (newest first).
-      // Filtered/sorted/paginated views stay consistent until the user navigates.
       const isDefaultSort = !filterParams.sort_by || (filterParams.sort_by === 'created_at' && filterParams.sort_dir === 'desc');
       if (matchesFilters && currentPageRef.current === 1 && isDefaultSort) {
         prependAsset(asset);

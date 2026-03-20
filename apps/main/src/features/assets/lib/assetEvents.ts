@@ -54,7 +54,7 @@ class AssetEventEmitter {
    * Emit a new asset event (called when generation completes)
    */
   emitAssetCreated(asset: AssetResponse): void {
-    console.log('[AssetEvents] New asset created:', asset.id);
+    console.log('[AssetEvents] New asset created:', asset.id, `(${this.listeners.size} subscriber(s))`);
     this.listeners.forEach((callback) => {
       try {
         callback(asset);

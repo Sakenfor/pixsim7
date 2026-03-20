@@ -11,6 +11,7 @@ import clsx from 'clsx';
 import { useEffect, useRef, useMemo, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
+import { getAspectRatioLabel } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 
 import { useAccentButtonClasses } from '@features/appearance';
@@ -20,6 +21,7 @@ import {
   useContextHubOverridesStore,
 } from '@features/contextHub';
 import { useGenerationWorkbench, useGenerationScopeStores, usePersistedScopeState } from '@features/generation';
+import { useAuthoringHintsStore, type AuthoringHints } from '@features/generation/stores/authoringHintsStore';
 import { useCostEstimate, useProviderIdForModel, useProviderAccounts, useUnlimitedModels } from '@features/providers';
 import { providerCapabilityRegistry } from '@features/providers';
 
@@ -52,6 +54,103 @@ function getModelMatchKeys(value: unknown): string[] {
 
 function isModelInUnlimitedSet(unlimitedModels: Set<string>, value: unknown): boolean {
   return getModelMatchKeys(value).some((key) => unlimitedModels.has(key));
+}
+
+const OP_SHORT: Record<string, string> = {
+  text_to_image: 'T2I',
+  text_to_video: 'T2V',
+  image_to_video: 'I2V',
+  image_to_image: 'I2I',
+  video_extend: 'V-Ext',
+  video_transition: 'V-Trans',
+  video_modify: 'V-Mod',
+  fusion: 'Fusion',
+};
+
+function formatParamLabel(key: string): string {
+  if (key === 'aspect_ratio') return 'ratio';
+  return key.replace(/_/g, ' ');
+}
+
+function formatParamValue(key: string, value: unknown): string {
+  if (key === 'aspect_ratio' && typeof value === 'string') return getAspectRatioLabel(value);
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value === null) return 'null';
+  try { return JSON.stringify(value); } catch { return String(value); }
+}
+
+function AuthoringHintsBadges({
+  hints,
+  currentOperation,
+  currentParams,
+  onToggleOperation,
+  onToggleParam,
+}: {
+  hints: AuthoringHints;
+  currentOperation: string;
+  currentParams: Record<string, any>;
+  onToggleOperation: () => void;
+  onToggleParam: (key: string, value: unknown) => void;
+}) {
+  const entries = Object.entries(hints.suggestedParams);
+  if (!hints.suggestedOperation && entries.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1 px-0.5">
+      <Icon name="sparkles" size={10} className="text-neutral-400 dark:text-neutral-500 flex-shrink-0" />
+      {hints.suggestedOperation && (() => {
+        const match = currentOperation === hints.suggestedOperation;
+        const cls = match
+          ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+          : 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40';
+        const label = OP_SHORT[hints.suggestedOperation] ?? hints.suggestedOperation;
+        return (
+          <button
+            type="button"
+            onClick={onToggleOperation}
+            title={match ? `Operation: ${label} (active)` : `Suggested: ${label} — click to apply`}
+            className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] font-medium cursor-pointer transition-colors ${cls}`}
+          >
+            {match && <Icon name="check" size={9} />}
+            {!match && <Icon name="alertCircle" size={9} />}
+            op: {label}
+            {!match && <span className="opacity-70">({OP_SHORT[currentOperation] ?? currentOperation})</span>}
+          </button>
+        );
+      })()}
+      {entries.map(([key, value]) => {
+        const current = currentParams?.[key];
+        const isEmpty = current === undefined || current === null || current === '';
+        const isMatch = !isEmpty && String(current) === String(value);
+        const isConflict = !isEmpty && !isMatch;
+        const cls = isMatch
+          ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+          : isConflict
+            ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+            : 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40';
+        const tooltip = isMatch
+          ? `${key}: ${formatParamValue(key, value)} (applied — click to clear)`
+          : isConflict
+            ? `${key}: suggested ${formatParamValue(key, value)}, current ${formatParamValue(key, current)} — click to apply`
+            : `${key}: ${formatParamValue(key, value)} — click to apply`;
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onToggleParam(key, value)}
+            title={tooltip}
+            className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] font-medium cursor-pointer transition-colors ${cls}`}
+          >
+            {isMatch && <Icon name="check" size={9} />}
+            {isConflict && <Icon name="alertCircle" size={9} />}
+            {formatParamLabel(key)}: {formatParamValue(key, value)}
+            {isConflict && <span className="opacity-70">({formatParamValue(key, current)})</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export interface GenerationSettingsPanelProps {
@@ -115,7 +214,7 @@ export function GenerationSettingsPanel({
   onGenerateCurrentOnly,
   sourceToggle,
 }: GenerationSettingsPanelProps) {
-  const { useSessionStore, useInputStore, useSettingsStore } = useGenerationScopeStores();
+  const { id: scopeId, useSessionStore, useInputStore, useSettingsStore } = useGenerationScopeStores();
   const operationType = useSessionStore(s => s.operationType);
   const providerId = useSessionStore(s => s.providerId);
   const setProvider = useSessionStore(s => s.setProvider);
@@ -237,6 +336,15 @@ export function GenerationSettingsPanel({
 
   const showTargetButton = canTarget;
 
+  // Authoring hints — only shown when the authoring editor has synced hints for this scope
+  const authoringHints: AuthoringHints | undefined = useAuthoringHintsStore(
+    (s) => s.byScopeId[scopeId],
+  );
+  const hasAuthoringHints = !!authoringHints && (
+    authoringHints.suggestedOperation != null
+    || Object.keys(authoringHints.suggestedParams).length > 0
+  );
+
   return (
     <div className={clsx('h-full flex flex-col bg-neutral-50 dark:bg-neutral-900 rounded-xl', className)}>
       {/* Scrollable content area */}
@@ -327,6 +435,28 @@ export function GenerationSettingsPanel({
             hasMaskParam={hasMaskParam}
             sourceAssetId={currentInputAssetId}
             disabled={generating}
+          />
+        )}
+
+        {/* Authoring suggested overrides */}
+        {hasAuthoringHints && (
+          <AuthoringHintsBadges
+            hints={authoringHints!}
+            currentOperation={operationType}
+            currentParams={workbench.dynamicParams}
+            onToggleOperation={() => {
+              if (authoringHints!.suggestedOperation) {
+                setOperationType(authoringHints!.suggestedOperation);
+              }
+            }}
+            onToggleParam={(key, value) => {
+              const current = workbench.dynamicParams?.[key];
+              if (String(current) === String(value)) {
+                workbench.handleParamChange(key, undefined);
+              } else {
+                workbench.handleParamChange(key, value);
+              }
+            }}
           />
         )}
 

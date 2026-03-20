@@ -4,19 +4,19 @@
  * Registers cube settings schema + settings panel entry.
  */
 
+import type { FormationPattern } from '@pixsim7/pixcubes';
+
 import {
-  DynamicSettingsPanel,
-  settingsRegistry,
   settingsSchemaRegistry,
   type SettingStoreAdapter,
   type SettingTab,
 } from '@features/settings';
-import { useCubeSettingsStore } from '../stores/cubeSettingsStore';
-import type { FormationPattern } from '@pixsim7/pixcubes';
+
+import { useCubeSettingsStore, type CubeFaceMode } from '../stores/cubeSettingsStore';
 
 const cubesTab: SettingTab = {
   id: 'cubes',
-  label: 'Cubes',
+  label: 'Cube Overlay',
   groups: [
     {
       id: 'cubes-visibility',
@@ -52,60 +52,60 @@ const cubesTab: SettingTab = {
         },
       ],
     },
+    {
+      id: 'cubes-default-face',
+      title: 'Default Face',
+      description: 'Which face the cube starts on.',
+      fields: [
+        {
+          id: 'activeFace',
+          type: 'select',
+          label: 'Default Face',
+          options: [
+            { value: 'panels', label: 'Minimized Panels' },
+            { value: 'launcher', label: 'Quick Launcher' },
+            { value: 'pinned', label: 'Pinned (soon)' },
+            { value: 'recent', label: 'Recent (soon)' },
+          ],
+          defaultValue: 'panels',
+        },
+      ],
+    },
   ],
 };
 
 function useCubeSettingsAdapter(): SettingStoreAdapter {
   const visible = useCubeSettingsStore((s) => s.visible);
   const formation = useCubeSettingsStore((s) => s.formation);
+  const activeFace = useCubeSettingsStore((s) => s.activeFace);
   const setVisible = useCubeSettingsStore((s) => s.setVisible);
   const setFormation = useCubeSettingsStore((s) => s.setFormation);
+  const setActiveFace = useCubeSettingsStore((s) => s.setActiveFace);
 
   return {
     get: (fieldId: string) => {
       if (fieldId === 'visible') return visible;
       if (fieldId === 'formation') return formation;
+      if (fieldId === 'activeFace') return activeFace;
       return undefined;
     },
     set: (fieldId: string, value: any) => {
-      if (fieldId === 'visible') {
-        setVisible(Boolean(value));
-      }
-      if (fieldId === 'formation') {
-        setFormation(value as FormationPattern);
-      }
+      if (fieldId === 'visible') setVisible(Boolean(value));
+      if (fieldId === 'formation') setFormation(value as FormationPattern);
+      if (fieldId === 'activeFace') setActiveFace(value as CubeFaceMode);
     },
-    getAll: () => ({
-      visible,
-      formation,
-    }),
+    getAll: () => ({ visible, formation, activeFace }),
   };
 }
 
 export function registerCubeSettings(): () => void {
   const unregisterSchema = settingsSchemaRegistry.register({
-    categoryId: 'cubes',
-    category: {
-      label: 'Cubes',
-      order: 40,
-    },
+    categoryId: 'workspace',
     tab: cubesTab,
     useStore: useCubeSettingsAdapter,
   });
 
-  const moduleId = 'cubes';
-
-  settingsRegistry.register({
-    id: moduleId,
-    label: 'Cubes',
-    order: 40,
-    component: function CubesSettingsPanel() {
-      return <DynamicSettingsPanel categoryId="cubes" />;
-    },
-  });
-
   return () => {
     unregisterSchema();
-    settingsRegistry.unregister(moduleId);
   };
 }

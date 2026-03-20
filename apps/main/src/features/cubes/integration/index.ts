@@ -5,8 +5,8 @@
  */
 
 import { registerCubesCapabilities, unregisterCubesCapabilities } from './capabilities';
-import { registerCubeWidget } from './widget';
 import { registerCubeContextHub, unregisterCubeContextHub } from './contextHub';
+import { registerCubeWidget } from './widget';
 
 // Capabilities
 export {
@@ -20,6 +20,9 @@ export {
   setFormation,
   getFormation,
   subscribeToFormation,
+  setActiveFace,
+  getActiveFace,
+  subscribeToActiveFace,
 } from './capabilities';
 
 // Widget

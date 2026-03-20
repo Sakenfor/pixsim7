@@ -93,6 +93,14 @@ export interface AssetModel {
   versionMessage?: string | null;
 }
 
+/** Video/audio extensions that cannot serve as image thumbnails */
+const NON_IMAGE_MEDIA_RE = /\.(mp4|webm|mov|m4v|mkv|avi|mp3|wav|ogg|m4a|aac|flac)(?:$|[?#])/i;
+
+function isVideoOrAudioUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return NON_IMAGE_MEDIA_RE.test(url);
+}
+
 export function getAssetDisplayUrls(asset: AssetModel): {
   mainUrl: string | undefined;
   thumbnailUrl: string | undefined;
@@ -109,12 +117,17 @@ export function getAssetDisplayUrls(asset: AssetModel): {
 
   let thumbnailUrl = resolveThumbnailUrl(asset);
   if (!thumbnailUrl || thumbnailUrl.startsWith('file://')) {
-    thumbnailUrl = asset.previewUrl || mainUrl;
+    // Only fall back to previewUrl/mainUrl if they're actual image URLs.
+    // Video/audio URLs can't be rendered as <img> thumbnails and would be
+    // rejected by useMediaThumbnail, poisoning the blob cache with a failed entry
+    // that blocks the real thumbnail from appearing once ingestion completes.
+    const fallback = asset.previewUrl || mainUrl;
+    thumbnailUrl = isVideoOrAudioUrl(fallback) ? null : fallback;
   }
 
   let previewUrl = resolvePreviewUrl(asset);
   if (!previewUrl || previewUrl.startsWith('file://')) {
-    previewUrl = thumbnailUrl || mainUrl;
+    previewUrl = thumbnailUrl || (isVideoOrAudioUrl(mainUrl) ? null : mainUrl);
   }
 
   return {
@@ -150,8 +163,8 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     model: response.model ?? null,
     previewKey: response.preview_key,
     previewUrl: response.preview_url,
-    providerAssetId: response.provider_asset_id,
-    providerId: response.provider_id,
+    providerAssetId: response.provider_asset_id ?? '',
+    providerId: response.provider_id ?? '',
     providerStatus: response.provider_status,
     providerUploads: response.provider_uploads
       ? { ...response.provider_uploads }

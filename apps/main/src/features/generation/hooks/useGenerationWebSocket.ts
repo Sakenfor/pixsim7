@@ -60,8 +60,9 @@ function computeWebSocketUrl(): string {
   return 'ws://localhost:8000/api/v1/ws/generations';
 }
 
-const THUMBNAIL_POLL_DELAYS_MS = [1500, 3000, 6000, 10000, 15000, 25000];
+const THUMBNAIL_POLL_DELAYS_MS = [600, 1500, 3000, 5000, 8000, 12000, 18000];
 const pendingThumbnailPolls = new Map<number, ReturnType<typeof setTimeout>>();
+const lastThumbnailSignatures = new Map<number, string>();
 
 function isNonImageUrl(url: string): boolean {
   const lowered = url.toLowerCase();
@@ -76,10 +77,35 @@ function hasUsableThumbnail(asset: AssetResponse): boolean {
   return !isNonImageUrl(url);
 }
 
+function hasLocalThumbnailDerivative(asset: AssetResponse): boolean {
+  return Boolean(asset.thumbnail_key || asset.preview_key);
+}
+
+/**
+ * Decide whether we should keep polling for a better thumbnail.
+ *
+ * For generated videos we wait for local derivatives (thumbnail_key/preview_key)
+ * instead of accepting provider URLs, which can still point to temporary/gray placeholders.
+ */
+function shouldContinueThumbnailPolling(asset: AssetResponse): boolean {
+  const isVideo = asset.media_type === 'video';
+  const isGeneratedVideo = isVideo && (
+    asset.upload_method === 'generated' ||
+    Boolean(asset.source_generation_id)
+  );
+
+  if (isGeneratedVideo) {
+    return !hasLocalThumbnailDerivative(asset);
+  }
+
+  return !hasUsableThumbnail(asset);
+}
+
 async function scheduleThumbnailRefresh(assetId: number, attempt = 0): Promise<void> {
   if (pendingThumbnailPolls.has(assetId) && attempt === 0) return;
   if (attempt >= THUMBNAIL_POLL_DELAYS_MS.length) {
     pendingThumbnailPolls.delete(assetId);
+    lastThumbnailSignatures.delete(assetId);
     return;
   }
 
@@ -87,9 +113,20 @@ async function scheduleThumbnailRefresh(assetId: number, attempt = 0): Promise<v
   const timeout = setTimeout(async () => {
     try {
       const refreshed = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
-      if (hasUsableThumbnail(refreshed)) {
+      const nextSignature = [
+        refreshed.thumbnail_key ?? '',
+        refreshed.preview_key ?? '',
+        refreshed.thumbnail_url ?? '',
+        refreshed.preview_url ?? '',
+      ].join('|');
+      const previousSignature = lastThumbnailSignatures.get(assetId);
+      if (nextSignature !== previousSignature && hasUsableThumbnail(refreshed)) {
+        lastThumbnailSignatures.set(assetId, nextSignature);
         assetEvents.emitAssetUpdated(refreshed);
+      }
+      if (!shouldContinueThumbnailPolling(refreshed)) {
         pendingThumbnailPolls.delete(assetId);
+        lastThumbnailSignatures.delete(assetId);
         return;
       }
     } catch (err) {
@@ -133,6 +170,9 @@ class WebSocketManager {
   private isConnected = false;
   private refCount = 0;
   private isConnecting = false;
+  private _lastError: string | null = null;
+  private _reconnectAttempts = 0;
+  private _currentUrl: string | null = null;
 
   subscribe(callback: () => void) {
     this.subscribers.add(callback);
@@ -187,6 +227,32 @@ class WebSocketManager {
     return this.isConnected;
   }
 
+  getDebugInfo() {
+    return {
+      url: this._currentUrl,
+      lastError: this._lastError,
+      reconnectAttempts: this._reconnectAttempts,
+      readyState: this.ws?.readyState ?? -1,
+      refCount: this.refCount,
+    };
+  }
+
+  forceReconnect() {
+    debugFlags.log('websocket', 'Force reconnect requested');
+    this._reconnectAttempts = 0;
+    this._lastError = null;
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    this.isConnecting = false;
+    this.connect();
+  }
+
   private notify() {
     this.subscribers.forEach(callback => callback());
   }
@@ -207,6 +273,7 @@ class WebSocketManager {
     try {
       const currentIndex = this.candidateIndex % WS_CANDIDATES.length;
       const targetUrl = WS_CANDIDATES[currentIndex];
+      this._currentUrl = targetUrl;
       debugFlags.log('websocket', `Connecting to generation updates (${targetUrl})...`);
       const ws = new WebSocket(targetUrl);
 
@@ -214,6 +281,8 @@ class WebSocketManager {
         debugFlags.log('websocket', 'Connected to generation updates via', targetUrl);
         this.isConnecting = false;
         this.isConnected = true;
+        this._lastError = null;
+        this._reconnectAttempts = 0;
         this.notify();
 
         // Send ping every 30 seconds to keep connection alive
@@ -234,19 +303,24 @@ class WebSocketManager {
         console.error('[WebSocket] Error on', targetUrl, error);
         this.isConnecting = false;
         this.isConnected = false;
+        this._lastError = `Connection error on ${targetUrl}`;
         this.notify();
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         debugFlags.log('websocket', 'Disconnected from', targetUrl, '- will attempt reconnect in 5s…');
         this.isConnecting = false;
         this.isConnected = false;
+        if (!this._lastError) {
+          this._lastError = `Closed (code ${event.code})`;
+        }
         this.notify();
 
         this.candidateIndex = (this.candidateIndex + 1) % WS_CANDIDATES.length;
 
         // Attempt to reconnect after 5 seconds if we still have subscribers
         if (this.refCount > 0) {
+          this._reconnectAttempts++;
           if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
           }
@@ -258,9 +332,11 @@ class WebSocketManager {
     } catch (err) {
       console.error('[WebSocket] Connection failed:', err);
       this.isConnecting = false;
+      this._lastError = err instanceof Error ? err.message : 'Connection failed';
 
       // Retry after 5 seconds if we still have subscribers
       if (this.refCount > 0) {
+        this._reconnectAttempts++;
         if (this.reconnectTimeout) {
           clearTimeout(this.reconnectTimeout);
         }
@@ -412,12 +488,18 @@ class WebSocketManager {
             getIdValue(rawData.asset_id) ?? getIdValue(dataRecord?.asset_id);
 
           if (assetId) {
+            const numericAssetId =
+              typeof assetId === 'string' ? Number(assetId) : assetId;
+            if (!Number.isFinite(numericAssetId)) {
+              console.warn('[WebSocket] Invalid asset ID in asset:created message:', assetId);
+              return;
+            }
             // Small delay to ensure asset is fully synced/downloaded before fetching
             // This prevents showing incomplete assets in the gallery
             setTimeout(async () => {
-              debugFlags.log('websocket', 'Fetching asset data for:', assetId);
+              debugFlags.log('websocket', 'Fetching asset data for:', numericAssetId);
               try {
-                const assetData = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
+                const assetData = await pixsimClient.get<AssetResponse>(`/assets/${numericAssetId}`);
                 debugFlags.log('websocket', 'Asset data fetched:', assetData);
 
                 // Check if asset is ready (downloaded or remote URL available)
@@ -428,27 +510,27 @@ class WebSocketManager {
                 if (isReady) {
                   debugFlags.log('websocket', 'Asset ready, emitting asset:created event to gallery');
                   assetEvents.emitAssetCreated(assetData);
-                  if (!hasUsableThumbnail(assetData)) {
-                    scheduleThumbnailRefresh(assetId);
+                  if (shouldContinueThumbnailPolling(assetData)) {
+                    scheduleThumbnailRefresh(numericAssetId);
                   }
                 } else {
                   // Asset not ready yet, retry after another delay
                   debugFlags.log('websocket', 'Asset not ready, retrying in 1s...');
                   setTimeout(async () => {
                     try {
-                       const retryData = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
+                       const retryData = await pixsimClient.get<AssetResponse>(`/assets/${numericAssetId}`);
                       debugFlags.log('websocket', 'Asset data refetched:', retryData);
                       assetEvents.emitAssetCreated(retryData);
-                      if (!hasUsableThumbnail(retryData)) {
-                        scheduleThumbnailRefresh(assetId);
+                      if (shouldContinueThumbnailPolling(retryData)) {
+                        scheduleThumbnailRefresh(numericAssetId);
                       }
                     } catch (retryErr) {
-                      console.error('[WebSocket] Failed to refetch asset:', assetId, retryErr);
+                      console.error('[WebSocket] Failed to refetch asset:', numericAssetId, retryErr);
                     }
                   }, 1000);
                 }
               } catch (err) {
-                console.error('[WebSocket] Failed to fetch asset:', assetId, err);
+                console.error('[WebSocket] Failed to fetch asset:', numericAssetId, err);
               }
             }, 300); // Initial 300ms delay for sync to complete
           } else {
@@ -517,5 +599,7 @@ export function useGenerationWebSocket() {
 
   return {
     isConnected,
+    getDebugInfo: () => wsManager.getDebugInfo(),
+    forceReconnect: () => wsManager.forceReconnect(),
   };
 }

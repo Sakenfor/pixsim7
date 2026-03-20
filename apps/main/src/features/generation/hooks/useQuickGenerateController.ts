@@ -418,10 +418,17 @@ export function useQuickGenerateController() {
     const hasAssetInput =
       Array.isArray(buildResult.params.composition_assets) && buildResult.params.composition_assets.length > 0;
 
+    const effectiveOperationType = getFallbackOperation(activeOperationType, hasAssetInput);
+
+    // Sync UI operation selector when fallback changes the effective type (e.g. i2v → t2v)
+    if (effectiveOperationType !== activeOperationType) {
+      setOperationType(effectiveOperationType);
+    }
+
     return {
       finalPrompt: buildResult.finalPrompt,
       params: buildResult.params,
-      effectiveOperationType: getFallbackOperation(activeOperationType, hasAssetInput),
+      effectiveOperationType,
       pickStateUpdates: buildResult.pickStateUpdates,
     };
   }
@@ -1192,13 +1199,13 @@ export function useQuickGenerateController() {
 
     if (isOnVirtualSlot) {
       // No asset on virtual slot — force text-to-* with empty inputs
-      return generate({ assetOverrides: [], skipActiveAssetFallback: true });
+      return generate({ assetOverrides: [], skipActiveAssetFallback: true, count });
     }
 
     const { currentInput } = getInputState();
     if (!currentInput?.asset) {
       // Empty carousel or no asset — skip gallery fallback so text-to-* kicks in
-      return generate({ assetOverrides: [], skipActiveAssetFallback: true });
+      return generate({ assetOverrides: [], skipActiveAssetFallback: true, count });
     }
     return generate({ assetOverrides: [currentInput.asset], count });
   }

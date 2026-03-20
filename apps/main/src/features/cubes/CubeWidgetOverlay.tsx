@@ -55,8 +55,6 @@ export function CubeWidgetOverlay() {
     return { regularCubes: regular, panelCubes: panels };
   }, [allCubes]);
 
-  if (regularCubes.length === 0 && panelCubes.length === 0) return null;
-
   return (
     <>
       {/* Regular cubes — visibility-toggled layer */}
@@ -78,10 +76,8 @@ export function CubeWidgetOverlay() {
         </div>
       )}
 
-      {/* Minimized panel stack — always visible when panels are minimized */}
-      {panelCubes.length > 0 && (
-        <MinimizedPanelStack panelCubes={panelCubes} />
-      )}
+      {/* Cube indicator — always visible (multi-face widget hub) */}
+      <MinimizedPanelStack panelCubes={panelCubes} />
     </>
   );
 }

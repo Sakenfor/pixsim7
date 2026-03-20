@@ -13,7 +13,7 @@ import {
   unregisterState,
 } from '@lib/capabilities';
 
-import { useCubeSettingsStore } from '../stores/cubeSettingsStore';
+import { useCubeSettingsStore, type CubeFaceMode } from '../stores/cubeSettingsStore';
 import { useCubeStore } from '../useCubeStore';
 
 // Formation cycle order
@@ -98,6 +98,34 @@ export function subscribeToFormation(callback: (formation: FormationPattern) => 
 }
 
 /**
+ * Set active cube face
+ */
+export function setActiveFace(face: CubeFaceMode): void {
+  useCubeSettingsStore.getState().setActiveFace(face);
+}
+
+/**
+ * Get active cube face
+ */
+export function getActiveFace(): CubeFaceMode {
+  return useCubeSettingsStore.getState().activeFace;
+}
+
+/**
+ * Subscribe to active face changes
+ */
+export function subscribeToActiveFace(
+  callback: (face: CubeFaceMode) => void,
+): () => void {
+  let last = useCubeSettingsStore.getState().activeFace;
+  return useCubeSettingsStore.subscribe((state) => {
+    if (state.activeFace === last) return;
+    last = state.activeFace;
+    callback(state.activeFace);
+  });
+}
+
+/**
  * Register cubes capabilities
  */
 export function registerCubesCapabilities(): void {
@@ -112,6 +140,7 @@ export function registerCubesCapabilities(): void {
       getState: () => ({
         visible: useCubeSettingsStore.getState().visible,
         formation: useCubeSettingsStore.getState().formation,
+        activeFace: useCubeSettingsStore.getState().activeFace,
         cubeCount: Object.keys(useCubeStore.getState().cubes).length,
       }),
       enabled: () => true,
@@ -250,6 +279,13 @@ export function registerCubesCapabilities(): void {
         readonly: true,
       },
       {
+        id: 'cubes.activeFace',
+        name: 'Active Cube Face',
+        getValue: () => useCubeSettingsStore.getState().activeFace,
+        subscribe: subscribeToActiveFace,
+        readonly: true,
+      },
+      {
         id: 'cubes.store',
         name: 'Cube Store',
         getValue: () => useCubeStore.getState(),
@@ -286,6 +322,6 @@ export function unregisterCubesCapabilities(): void {
   actionIds.forEach((id) => unregisterAction(id));
 
   // Unregister states
-  const stateIds = ['cubes.visible', 'cubes.formation', 'cubes.count', 'cubes.store'];
+  const stateIds = ['cubes.visible', 'cubes.formation', 'cubes.activeFace', 'cubes.count', 'cubes.store'];
   stateIds.forEach((id) => unregisterState(id));
 }
