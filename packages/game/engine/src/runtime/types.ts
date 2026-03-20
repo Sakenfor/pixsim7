@@ -9,6 +9,8 @@
 import type {
   GameSessionDTO,
   GameWorldDetail,
+  GameObject,
+  GameObjectCapabilityId,
   ExecuteInteractionRequest,
   ExecuteInteractionResponse,
   ListInteractionsRequest,
@@ -24,6 +26,20 @@ import type {
 import type { NpcRelationshipState } from '../core/types';
 import type { StatSource } from '../session/statAdapters';
 import type { IPluginRegistry, GameTickContext, GameEvent } from '../plugins/types';
+
+export interface RuntimeGameObjectQuery {
+  kind?: string;
+  locationId?: number;
+  capability?: GameObjectCapabilityId | string;
+  tags?: string[];
+}
+
+export type RuntimeGameObjectLookup =
+  | string
+  | {
+      kind: string;
+      id: number | string;
+    };
 
 // ===================
 // API Client Interface
@@ -214,6 +230,8 @@ export interface InteractionIntent {
 export interface SessionLoadedEvent {
   session: GameSessionDTO;
   world: GameWorldDetail | null;
+  isNew?: boolean;
+  hookEvents?: GameEvent[];
 }
 
 /**
@@ -282,6 +300,30 @@ export interface TickCompletedEvent {
   turnNumber?: number;
 }
 
+/**
+ * Event emitted when a location lifecycle transition completes
+ */
+export interface LocationEnteredEvent {
+  worldId: number;
+  sessionId: number;
+  locationId: number;
+  previousLocationId: number | null;
+  worldTimeSeconds: number;
+  events: GameEvent[];
+}
+
+/**
+ * Event emitted when a scene lifecycle transition completes
+ */
+export interface SceneLifecycleEvent {
+  worldId: number;
+  sessionId: number;
+  sceneId: number;
+  npcId?: number;
+  worldTimeSeconds: number;
+  events: GameEvent[];
+}
+
 // ===================
 // Orchestration Options
 // ===================
@@ -319,6 +361,9 @@ export interface GameRuntimeEvents {
   worldTimeAdvanced: WorldTimeAdvancedEvent;
   interactionExecuted: InteractionExecutedEvent;
   tickCompleted: TickCompletedEvent;
+  locationEntered: LocationEnteredEvent;
+  sceneStarted: SceneLifecycleEvent;
+  sceneEnded: SceneLifecycleEvent;
   selectionChanged: SelectionEvent;
   error: RuntimeErrorEvent;
 }
@@ -346,6 +391,21 @@ export interface GameRuntime {
    * Get the current world (read-only)
    */
   getWorld(): Readonly<GameWorldDetail> | null;
+
+  /**
+   * List runtime game objects from canonical store (with legacy hydration fallback).
+   */
+  listGameObjects(query?: RuntimeGameObjectQuery): GameObject[];
+
+  /**
+   * Get a single runtime game object by canonical ref or {kind,id}.
+   */
+  getGameObject(lookup: RuntimeGameObjectLookup): GameObject | null;
+
+  /**
+   * Upsert game objects into canonical session.flags.gameObjects store.
+   */
+  upsertGameObjects(objects: GameObject[]): void;
 
   /**
    * Apply an interaction to the current session
@@ -392,6 +452,21 @@ export interface GameRuntime {
    * Advance one turn with full plugin hook lifecycle (turn-based mode)
    */
   advanceTurnWithHooks(options?: AdvanceTimeOptions): Promise<GameEvent[]>;
+
+  /**
+   * Notify runtime lifecycle that player entered a location.
+   */
+  notifyLocationEntered(locationId: number): Promise<GameEvent[]>;
+
+  /**
+   * Notify runtime lifecycle that a scene has started.
+   */
+  notifySceneStarted(sceneId: number, npcId?: number): Promise<GameEvent[]>;
+
+  /**
+   * Notify runtime lifecycle that a scene has ended.
+   */
+  notifySceneEnded(sceneId: number, npcId?: number): Promise<GameEvent[]>;
 
   /**
    * Subscribe to runtime events

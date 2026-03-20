@@ -248,8 +248,7 @@ export class PixSim7Core implements IPixSim7Core {
       return;
     }
 
-    // worldId 0 is valid for editor mode - backend handles it
-    const worldId = this.config.worldId ?? 0;
+    const worldId = this.resolveWorldId();
 
     // Build input values from relationship
     const inputValues: Record<string, Record<string, number>> = {
@@ -423,7 +422,7 @@ export class PixSim7Core implements IPixSim7Core {
 
     return {
       npcId: NpcId(npcId),
-      worldId: WorldId(0), // World ID not stored in session; would need to be passed in
+      worldId: WorldId(this.resolveWorldId()),
       stats,
       derived,
       computedAt: Date.now(),
@@ -462,7 +461,7 @@ export class PixSim7Core implements IPixSim7Core {
 
       case 'session.stats':
       default:
-        return this.buildGenericSnapshot(definition);
+        return this.buildGenericSnapshot(defId, definition, npcId);
     }
   }
 
@@ -623,11 +622,143 @@ export class PixSim7Core implements IPixSim7Core {
    * Build snapshot for generic stat types (from session.stats)
    */
   private buildGenericSnapshot(
-    definition: StatDefinition
+    defId: string,
+    definition: StatDefinition,
+    npcId: number
   ): { snapshot: BrainStatSnapshot; sourcePackage: string } | null {
-    // Try to get from session.stats (future extension point)
-    // For now, return null - unknown stat types need explicit handling
-    return null;
+    if (!this.session?.stats) {
+      return null;
+    }
+
+    const statsRoot = this.session.stats as Record<string, unknown>;
+    const packageData = statsRoot[defId];
+    if (!packageData || typeof packageData !== 'object') {
+      return null;
+    }
+
+    const packageRecord = packageData as Record<string, unknown>;
+    const entityKeys = [`npc:${npcId}`, `entity:${npcId}`, String(npcId)];
+
+    let entityStats: Record<string, unknown> | null = null;
+    for (const key of entityKeys) {
+      const scoped = packageRecord[key];
+      if (scoped && typeof scoped === 'object') {
+        entityStats = scoped as Record<string, unknown>;
+        break;
+      }
+    }
+
+    if (!entityStats) {
+      const entities = packageRecord.entities;
+      if (entities && typeof entities === 'object') {
+        const entitiesRecord = entities as Record<string, unknown>;
+        for (const key of entityKeys) {
+          const scoped = entitiesRecord[key];
+          if (scoped && typeof scoped === 'object') {
+            entityStats = scoped as Record<string, unknown>;
+            break;
+          }
+        }
+      }
+    }
+
+    // Fallback: allow global/package-level axis values when no per-entity node exists.
+    if (!entityStats) {
+      entityStats = packageRecord;
+    }
+
+    const axes: Record<string, number> = {};
+    for (const axis of definition.axes) {
+      const rawValue = entityStats[axis.name];
+      if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+        axes[axis.name] = rawValue;
+      }
+    }
+
+    if (Object.keys(axes).length === 0) {
+      return null;
+    }
+
+    const tiers: Record<string, string> = {};
+    for (const axis of definition.axes) {
+      const axisTier = entityStats[`${axis.name}TierId`];
+      if (typeof axisTier === 'string' && axisTier.length > 0) {
+        tiers[axis.name] = axisTier;
+      }
+    }
+
+    const explicitTiers = entityStats.tiers;
+    if (explicitTiers && typeof explicitTiers === 'object') {
+      for (const [axisName, tierId] of Object.entries(explicitTiers as Record<string, unknown>)) {
+        if (typeof tierId === 'string' && tierId.length > 0) {
+          tiers[axisName] = tierId;
+        }
+      }
+    }
+
+    const tierId = entityStats.tierId;
+    if (
+      typeof tierId === 'string' &&
+      tierId.length > 0 &&
+      definition.axes.length === 1 &&
+      !tiers[definition.axes[0].name]
+    ) {
+      tiers[definition.axes[0].name] = tierId;
+    }
+
+    const levelIdRaw = entityStats.levelId ?? entityStats.intimacyLevelId;
+    const levelId = typeof levelIdRaw === 'string' && levelIdRaw.length > 0 ? levelIdRaw : undefined;
+    const levelIdsRaw = entityStats.levelIds;
+    const levelIds = Array.isArray(levelIdsRaw)
+      ? levelIdsRaw.filter((value): value is string => typeof value === 'string' && value.length > 0)
+      : undefined;
+
+    return {
+      snapshot: {
+        axes,
+        tiers,
+        levelId,
+        levelIds,
+      },
+      sourcePackage: `session.${defId}`,
+    };
+  }
+
+  private resolveWorldId(): number {
+    const toNonNegativeInt = (value: unknown): number | null => {
+      if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+        return Math.floor(value);
+      }
+      if (typeof value === 'string' && value.trim().length > 0) {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed) && parsed >= 0) {
+          return Math.floor(parsed);
+        }
+      }
+      return null;
+    };
+
+    const sessionWorldId = toNonNegativeInt(this.session?.world_id);
+    if (sessionWorldId !== null) {
+      return sessionWorldId;
+    }
+
+    const flags = (this.session?.flags ?? {}) as Record<string, unknown>;
+    const worldFlags =
+      flags.world && typeof flags.world === 'object'
+        ? (flags.world as Record<string, unknown>)
+        : null;
+    const worldFromFlags = toNonNegativeInt(worldFlags?.id);
+    if (worldFromFlags !== null) {
+      return worldFromFlags;
+    }
+
+    const configuredWorldId = toNonNegativeInt(this.config.worldId);
+    if (configuredWorldId !== null) {
+      return configuredWorldId;
+    }
+
+    return 0;
   }
 
   /**

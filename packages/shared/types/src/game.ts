@@ -197,51 +197,80 @@ export interface SpatialObject {
 // Generic GameObject Types [frontend-only]
 // ===================
 
+export type GameObjectId = number | string;
+
+/**
+ * Built-in capability IDs for object behavior routing.
+ * Custom capabilities are allowed via string extension.
+ */
+export type GameObjectCapabilityId =
+  | 'interactable'
+  | 'dialogue_target'
+  | 'inventory_item'
+  | 'inventory_container'
+  | 'quest_target'
+  | 'navigation_blocker'
+  | (string & {});
+
+/**
+ * Capability descriptor attached to a game object.
+ */
+export interface GameObjectCapability {
+  id: GameObjectCapabilityId;
+  enabled?: boolean;
+  config?: Record<string, unknown>;
+}
+
+/**
+ * Generic component payload for composition-driven object behavior.
+ */
+export interface GameObjectComponent {
+  type: string;
+  enabled?: boolean;
+  data?: Record<string, unknown>;
+}
+
+/**
+ * Optional template/runtime binding metadata.
+ * Used to bridge authored template entities to runtime instances via ObjectLink.
+ */
+export interface GameObjectBinding {
+  templateKind?: string;
+  templateId?: string;
+  runtimeKind?: string;
+  linkId?: string;
+  mappingId?: string;
+}
+
 /**
  * GameObjectBase - shared composition shape for all game entities
  *
  * This is the foundation for a data-driven, entity-agnostic object system.
  * All game entities (NPCs, items, props, players, triggers) compose this shape.
- *
- * Design principles:
- * - Composition, not inheritance
- * - Discriminated unions for type safety
- * - Entity-agnostic mapping and services
- * - 2D-first, 3D-ready via Transform
- *
- * @example
- * // NPC object
- * const npc: NpcObject = {
- *   kind: 'npc',
- *   id: 123,
- *   name: 'Alex',
- *   transform: { worldId: 1, position: { x: 50, y: 100 } },
- *   tags: ['friendly', 'shopkeeper'],
- *   npcData: { personaId: 'alex', expressionState: 'idle' }
- * };
- *
- * @example
- * // Item object
- * const item: ItemObject = {
- *   kind: 'item',
- *   id: 456,
- *   name: 'Health Potion',
- *   transform: { worldId: 1, position: { x: 10, y: 20 } },
- *   tags: ['consumable', 'healing'],
- *   itemData: { itemDefId: 'potion_health', quantity: 1 }
- * };
  */
 export interface GameObjectBase {
   /** Discriminator for type narrowing */
   kind: 'npc' | 'item' | 'prop' | 'player' | 'trigger' | (string & {});
-  /** Entity ID (use branded IDs like NpcId, ItemId, etc.) */
-  id: number;
+  /** Entity ID (supports numeric DB IDs and string runtime IDs) */
+  id: GameObjectId;
+  /** Canonical runtime ref (e.g. "npc:12", "item:flower") */
+  ref?: EntityRef | string;
   /** Display name */
   name: string;
   /** Spatial transform (position, rotation, scale) */
   transform: Transform;
+  /** Runtime kind for link/template resolution (defaults to kind) */
+  runtimeKind?: string;
+  /** Optional capability descriptors */
+  capabilities?: GameObjectCapability[];
+  /** Optional component list for composition-driven behavior */
+  components?: GameObjectComponent[];
+  /** Optional template/runtime binding metadata */
+  binding?: GameObjectBinding;
   /** Optional tags for filtering and categorization */
   tags?: string[];
+  /** Kind-specific data for custom object kinds (or supplemental data for built-in kinds) */
+  kindData?: Record<string, unknown>;
   /** Optional metadata for extensions */
   meta?: Record<string, unknown>;
   /** Selection protocol (opt-in). Objects with this field participate in selection. */
@@ -392,10 +421,32 @@ export interface TriggerObject extends GameObjectBase {
 }
 
 /**
+ * CustomObject - GameObject variant for user-defined kinds
+ *
+ * Any kind string not covered by built-in variants (npc, item, prop, player, trigger)
+ * should use this type. Structured data lives in `kindData`.
+ *
+ * @example
+ * const shuttle: CustomObject = {
+ *   kind: 'vehicle',
+ *   id: 'shuttle_1',
+ *   name: 'Cargo Shuttle',
+ *   transform: { worldId: WorldId(1), position: { x: 0, y: 0 } },
+ *   kindData: { speed: 120, fuelCapacity: 500, currentFuel: 350 },
+ *   capabilities: [{ id: 'interactable', enabled: true }],
+ *   tags: ['transport', 'dockable'],
+ * };
+ */
+export interface CustomObject extends GameObjectBase {
+  kind: string;
+}
+
+/**
  * GameObject - discriminated union of all game object variants
  *
  * Use this for functions/services that work with any game object type.
  * TypeScript will narrow the type based on the 'kind' discriminator.
+ * CustomObject acts as the catch-all for user-defined kinds.
  *
  * @example
  * function renderObject(obj: GameObject) {
@@ -419,6 +470,9 @@ export interface TriggerObject extends GameObjectBase {
  *     case 'trigger':
  *       if (DEBUG_MODE) renderTriggerBounds(obj); // obj is narrowed to TriggerObject
  *       break;
+ *     default:
+ *       renderCustomObject(obj); // custom kinds use kindData
+ *       break;
  *   }
  * }
  */
@@ -427,7 +481,18 @@ export type GameObject =
   | ItemObject
   | PropObject
   | PlayerObject
-  | TriggerObject;
+  | TriggerObject
+  | CustomObject;
+
+/**
+ * Canonical session-level game object store.
+ * This is the bridge between authoring/runtime systems and legacy flag structures.
+ */
+export interface GameObjectStore {
+  schemaVersion?: number;
+  objects: Record<string, GameObject>;
+  meta?: Record<string, unknown>;
+}
 
 // ===================
 // Location Types (API DTOs aliased from OpenAPI)
@@ -1193,6 +1258,8 @@ export interface SessionFlags {
   sessionKind?: SessionKind;
   /** World-specific configuration */
   world?: WorldSessionFlags;
+  /** Canonical runtime object store (entity-agnostic) */
+  gameObjects?: GameObjectStore;
   /** Temporary UI theme override for this session */
   ui?: SessionUiOverride;
   /** Additional custom flags */

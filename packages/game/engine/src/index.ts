@@ -616,6 +616,12 @@ export {
   createGameRuntime,
   GameController,
   createGameController,
+  GAME_OBJECT_STORE_SCHEMA_VERSION,
+  getSessionGameObjectStore,
+  listSessionGameObjects,
+  getSessionGameObject,
+  upsertSessionGameObjects,
+  toGameObjectRef,
 } from './runtime';
 
 export type {
@@ -635,6 +641,8 @@ export type {
   GameRuntimeEvents,
   EnsureSessionOptions,
   AdvanceTimeOptions,
+  RuntimeGameObjectQuery,
+  RuntimeGameObjectLookup,
   GameRuntime as IGameRuntime,
   GameInputIntent,
   GameController as IGameController,

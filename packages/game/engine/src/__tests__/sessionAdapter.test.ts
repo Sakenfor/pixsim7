@@ -80,13 +80,17 @@ describe('createSessionHelpers optimistic updates', () => {
     const helpers = createSessionHelpers(source, onUpdate);
 
     const updated = await helpers.addInventoryItem('flower', 2);
-    const items = ((updated.flags as Record<string, any>).inventory?.items ?? []) as Array<{
-      id: string;
-      qty: number;
-    }>;
+    const items = ((updated.flags as Record<string, any>).inventory?.items ?? []) as Array<
+      Record<string, unknown>
+    >;
 
     expect(onUpdate).toHaveBeenCalledTimes(1);
     expect(items).toHaveLength(1);
-    expect(items[0]).toEqual({ id: 'flower', qty: 2 });
+    expect(items[0]).toMatchObject({
+      id: 'flower',
+      itemId: 'flower',
+      qty: 2,
+      quantity: 2,
+    });
   });
 });

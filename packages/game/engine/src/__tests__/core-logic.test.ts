@@ -75,6 +75,27 @@ describe('core session helpers', () => {
     expect(hasInventoryItem(session, 'flower', 1)).toBe(true);
   });
 
+  it('reads inventory from canonical gameObjects when legacy inventory is missing', () => {
+    const session = createTestSession();
+    session.flags = {
+      gameObjects: {
+        schemaVersion: 1,
+        objects: {
+          'item:flower': {
+            kind: 'item',
+            id: 'flower',
+            ref: 'item:flower',
+            name: 'Flower',
+            transform: { worldId: 1, position: { x: 0, y: 0 } },
+            itemData: { itemDefId: 'flower', quantity: 2 },
+          },
+        },
+      },
+    };
+
+    expect(hasInventoryItem(session, 'flower', 2)).toBe(true);
+  });
+
   it('tracks event state transitions', () => {
     const session = createTestSession();
     triggerEvent(session, 'power_outage_city', 1234.5);

@@ -29,6 +29,8 @@ export interface QuestState {
 export interface InventoryItem {
   id: string;
   qty: number;
+  itemId?: string;
+  quantity?: number;
   [key: string]: any;
 }
 

@@ -7,6 +7,7 @@
 
 import type {
   EntityRef,
+  GameObject,
   GameSessionDTO,
   GameWorldDetail,
   ExecuteInteractionResponse,
@@ -32,8 +33,16 @@ import type {
   EnsureSessionOptions,
   AdvanceTimeOptions,
   TickCompletedEvent,
+  RuntimeGameObjectLookup,
+  RuntimeGameObjectQuery,
 } from './types';
-import type { GameTickContext, GameEvent } from '../plugins/types';
+import type {
+  GameTickContext,
+  GameEvent,
+  SessionLoadedContext,
+  LocationEnteredContext,
+  SceneContext,
+} from '../plugins/types';
 import type { NpcRelationshipState } from '../core/types';
 import {
   getAdapterBySource,
@@ -47,6 +56,11 @@ import {
   createTurnAdvanceFlags,
 } from '../world/turnHelpers';
 import { loadWorldSession, saveWorldSession } from '../session/storage';
+import {
+  getSessionGameObject,
+  listSessionGameObjects,
+  upsertSessionGameObjects,
+} from './gameObjectStore';
 
 type TemplateResolution = {
   runtimeId: number | null;
@@ -121,6 +135,10 @@ export class GameRuntime implements IGameRuntime {
   // Cache for template->runtime resolution (keyed by "templateKind:templateId")
   private templateCache = new Map<string, TemplateResolution>();
 
+  // Session-scoped lifecycle cursors for location/scene transitions
+  private currentLocationId: number | null = null;
+  private currentSceneId: number | null = null;
+
   constructor(config: GameRuntimeConfig) {
     this.config = config;
     this.log('GameRuntime initialized');
@@ -143,7 +161,11 @@ export class GameRuntime implements IGameRuntime {
     templateKind: TemplateKind,
     templateId: string
   ): Promise<TemplateResolution> {
-    const cacheKey = createTemplateRefKey(templateKind, templateId);
+    const normalizedTemplateKind = this.normalizeTemplateKind(templateKind);
+    const cacheKey = createTemplateRefKey(
+      normalizedTemplateKind as TemplateKind,
+      templateId
+    );
 
     // Check cache first
     if (this.templateCache.has(cacheKey)) {
@@ -161,14 +183,14 @@ export class GameRuntime implements IGameRuntime {
       const context = this.buildResolutionContext();
 
       const result = await this.config.apiClient.resolveTemplate(
-        templateKind,
+        normalizedTemplateKind as TemplateKind,
         templateId,
         context
       );
 
       const resolution: TemplateResolution = {
         runtimeId: result.resolved ? (result.runtimeId ?? null) : null,
-        runtimeKind: result.runtimeKind,
+        runtimeKind: this.normalizeRuntimeKind(result.runtimeKind),
       };
 
       // Cache the result
@@ -219,6 +241,63 @@ export class GameRuntime implements IGameRuntime {
     }
 
     return context;
+  }
+
+  private normalizeTemplateKind(kind?: string): string | undefined {
+    if (typeof kind !== 'string') return undefined;
+    const trimmed = kind.trim();
+    if (!trimmed) return undefined;
+    const normalized = trimmed.replace(/-/g, '_').toLowerCase();
+    switch (normalized) {
+      case 'characterinstance':
+      case 'character_instance':
+      case 'npctemplate':
+      case 'npc_template':
+        return 'characterInstance';
+      case 'itemtemplate':
+      case 'item_template':
+        return 'itemTemplate';
+      case 'proptemplate':
+      case 'prop_template':
+        return 'propTemplate';
+      case 'locationtemplate':
+      case 'location_template':
+        return 'locationTemplate';
+      default:
+        return trimmed;
+    }
+  }
+
+  private normalizeRuntimeKind(kind?: string): string | undefined {
+    if (typeof kind !== 'string') return undefined;
+    const trimmed = kind.trim();
+    if (!trimmed) return undefined;
+    const normalized = trimmed.replace(/-/g, '_').toLowerCase();
+    switch (normalized) {
+      case 'gamenpc':
+      case 'npc_instance':
+      case 'character':
+      case 'characterinstance':
+      case 'character_instance':
+        return 'npc';
+      case 'gameitem':
+      case 'item_instance':
+      case 'itemtemplate':
+      case 'item_template':
+        return 'item';
+      case 'gameprop':
+      case 'prop_instance':
+      case 'proptemplate':
+      case 'prop_template':
+        return 'prop';
+      case 'gamelocation':
+      case 'location_instance':
+      case 'locationtemplate':
+      case 'location_template':
+        return 'location';
+      default:
+        return trimmed;
+    }
   }
 
   /**
@@ -342,19 +421,31 @@ export class GameRuntime implements IGameRuntime {
     participant: InteractionParticipant
   ): InteractionParticipant {
     let normalized = participant;
-    if (participant.ref) {
-      const parsed = this.parseEntityRef(participant.ref);
+    if (normalized.kind) {
+      const normalizedKind = this.normalizeRuntimeKind(normalized.kind);
+      if (normalizedKind && normalizedKind !== normalized.kind) {
+        normalized = {
+          ...normalized,
+          kind: normalizedKind,
+        };
+      }
+    }
+    if (typeof participant.ref === 'string' && participant.ref.trim().length > 0) {
+      const normalizedRef = participant.ref.trim();
+      const parsed = this.parseEntityRef(normalizedRef);
       if (parsed) {
         normalized = {
           ...normalized,
+          ref: normalizedRef as EntityRef,
           kind: normalized.kind ?? parsed.kind,
           id: normalized.id ?? parsed.id,
         };
-        if (typeof parsed.id !== 'number') {
-          normalized = { ...normalized, ref: undefined };
-        }
+      } else {
+        normalized = { ...normalized, ref: normalizedRef as EntityRef };
       }
     }
+
+    normalized = this.resolveParticipantFromGameObjects(normalized);
 
     if (!normalized.ref) {
       const ref = this.buildEntityRef(normalized.kind, normalized.id);
@@ -372,7 +463,7 @@ export class GameRuntime implements IGameRuntime {
     if (!ref.includes(':')) return null;
     const parts = ref.split(':');
     if (parts.length < 2) return null;
-    const kind = parts[0];
+    const kind = this.normalizeRuntimeKind(parts[0]) ?? parts[0];
     const rawId = parts[parts.length - 1];
     if (!rawId) return null;
     const numeric = Number(rawId);
@@ -385,28 +476,92 @@ export class GameRuntime implements IGameRuntime {
     id?: number | string
   ): EntityRef | undefined {
     if (!kind || id == null) return undefined;
-    const numeric = typeof id === 'number' ? id : Number(id);
-    const hasNumber = Number.isFinite(numeric);
-    if (!hasNumber) return undefined;
+    const normalizedKind = this.normalizeRuntimeKind(kind.trim()) ?? kind.trim();
+    if (!normalizedKind) return undefined;
+    const normalizedId =
+      typeof id === 'number'
+        ? Number.isFinite(id)
+          ? String(id)
+          : ''
+        : id.trim();
+    if (!normalizedId) return undefined;
 
-    switch (kind) {
+    const numeric = Number(normalizedId);
+    const hasNumber = Number.isFinite(numeric);
+
+    switch (normalizedKind) {
       case 'npc':
+        if (!hasNumber) break;
         return Ref.npc(numeric);
       case 'location':
+        if (!hasNumber) break;
         return Ref.location(numeric);
       case 'scene':
+        if (!hasNumber) break;
         return Ref.scene(numeric);
       case 'asset':
+        if (!hasNumber) break;
         return Ref.asset(numeric);
       case 'generation':
+        if (!hasNumber) break;
         return Ref.generation(numeric);
       case 'world':
+        if (!hasNumber) break;
         return Ref.world(numeric);
       case 'session':
+        if (!hasNumber) break;
         return Ref.session(numeric);
+      case 'item':
+      case 'prop':
+      case 'trigger':
+      case 'player':
+        return `${normalizedKind}:${normalizedId}` as EntityRef;
       default:
-        return `${kind}:${numeric}` as EntityRef;
+        if (hasNumber) {
+          return `${normalizedKind}:${numeric}` as EntityRef;
+        }
+        return `${normalizedKind}:${normalizedId}` as EntityRef;
     }
+
+    return `${normalizedKind}:${normalizedId}` as EntityRef;
+  }
+
+  private resolveParticipantFromGameObjects(
+    participant: InteractionParticipant
+  ): InteractionParticipant {
+    if (!this.session) return participant;
+
+    let runtimeObject = null;
+
+    if (typeof participant.ref === 'string' && participant.ref.trim().length > 0) {
+      runtimeObject = getSessionGameObject(this.session, participant.ref);
+    }
+
+    if (!runtimeObject && participant.kind && participant.id != null) {
+      runtimeObject = getSessionGameObject(this.session, {
+        kind: participant.kind,
+        id: participant.id,
+      });
+    }
+
+    if (!runtimeObject) {
+      return participant;
+    }
+
+    const resolvedKind =
+      this.normalizeRuntimeKind(runtimeObject.runtimeKind ?? runtimeObject.kind) ??
+      runtimeObject.runtimeKind ??
+      runtimeObject.kind;
+    const resolvedRef = typeof runtimeObject.ref === 'string'
+      ? runtimeObject.ref
+      : this.buildEntityRef(resolvedKind, runtimeObject.id);
+
+    return {
+      ...participant,
+      kind: participant.kind ?? resolvedKind,
+      id: participant.id ?? runtimeObject.id,
+      ref: (participant.ref ?? resolvedRef) as EntityRef | undefined,
+    };
   }
 
   private async resolveParticipants(
@@ -448,7 +603,7 @@ export class GameRuntime implements IGameRuntime {
         const resolvedParticipant = {
           ...participant,
           id: resolved.runtimeId,
-          kind: resolved.runtimeKind ?? participant.kind,
+          kind: this.normalizeRuntimeKind(resolved.runtimeKind) ?? participant.kind,
         };
         return this.normalizeParticipantRef(resolvedParticipant);
       });
@@ -475,7 +630,7 @@ export class GameRuntime implements IGameRuntime {
       resolvedParticipants.push(this.normalizeParticipantRef({
         ...participant,
         id: resolution.runtimeId,
-        kind: resolution.runtimeKind ?? participant.kind,
+        kind: this.normalizeRuntimeKind(resolution.runtimeKind) ?? participant.kind,
       }));
     }
 
@@ -531,14 +686,15 @@ export class GameRuntime implements IGameRuntime {
       // Update internal state
       this.session = session;
       this.world = world;
+      this.currentLocationId = this.extractLocationIdFromSession(session);
+      this.currentSceneId = this.coercePositiveInt(session.scene_id);
       this.relationshipCache.clear();
       this.templateCache.clear(); // Invalidate template cache on session load
 
-      // Run plugin hooks
-      await this.runPluginHook('onSessionLoaded', session);
+      const hookEvents = await this.runSessionLoadedLifecycle(session, world, false);
 
       // Emit event
-      const event: SessionLoadedEvent = { session, world };
+      const event: SessionLoadedEvent = { session, world, isNew: false, hookEvents };
       this.events.emit('sessionLoaded', event);
 
       this.log(`Session ${sessionId} loaded successfully`);
@@ -560,6 +716,31 @@ export class GameRuntime implements IGameRuntime {
    */
   getWorld(): Readonly<GameWorldDetail> | null {
     return this.world;
+  }
+
+  listGameObjects(query: RuntimeGameObjectQuery = {}): GameObject[] {
+    if (!this.session) return [];
+    return listSessionGameObjects(this.session, query);
+  }
+
+  getGameObject(lookup: RuntimeGameObjectLookup): GameObject | null {
+    if (!this.session) return null;
+    return getSessionGameObject(this.session, lookup);
+  }
+
+  upsertGameObjects(objects: GameObject[]): void {
+    this.checkDisposed();
+    if (!this.session) {
+      throw new Error('No session loaded');
+    }
+    if (!Array.isArray(objects) || objects.length === 0) {
+      return;
+    }
+
+    const previousSession = this.session;
+    const nextSession = upsertSessionGameObjects(previousSession, objects);
+    this.session = nextSession;
+    this.emitSessionUpdated(previousSession, nextSession, { flags: true });
   }
 
   /**
@@ -777,6 +958,8 @@ export class GameRuntime implements IGameRuntime {
       // Create new session
       const newSession = await this.config.apiClient.createSession(sceneId, flags, worldId);
       this.session = newSession;
+      this.currentLocationId = this.extractLocationIdFromSession(newSession, options.initialLocationId ?? null);
+      this.currentSceneId = this.coercePositiveInt(newSession.scene_id);
 
       // Sync world_time if needed
       if (newSession.world_time !== world.world_time) {
@@ -794,9 +977,12 @@ export class GameRuntime implements IGameRuntime {
       });
 
       // Emit session loaded event
+      const hookEvents = await this.runSessionLoadedLifecycle(this.session, this.world, true);
       this.events.emit('sessionLoaded', {
         session: this.session,
         world: this.world,
+        isNew: true,
+        hookEvents,
       });
 
       this.log(`Created session ${this.session.id} for world ${worldId}`);
@@ -1024,6 +1210,128 @@ export class GameRuntime implements IGameRuntime {
   }
 
   /**
+   * Run location-entered lifecycle hooks.
+   */
+  async notifyLocationEntered(locationId: number): Promise<GameEvent[]> {
+    this.checkDisposed();
+
+    if (!this.session) {
+      throw new Error('No session loaded');
+    }
+
+    const worldId = this.getRuntimeWorldId();
+    if (worldId === null) {
+      this.log('Skipping location lifecycle hook: worldId unavailable');
+      return [];
+    }
+
+    const previousLocationId = this.currentLocationId;
+    this.currentLocationId = locationId;
+    this.updateSessionLocationState(locationId);
+    this.invalidateTemplateCache();
+
+    const context: LocationEnteredContext = {
+      worldId,
+      sessionId: this.session.id,
+      locationId,
+      previousLocationId,
+      worldTimeSeconds: this.getRuntimeWorldTimeSeconds(),
+    };
+
+    const events = this.config.pluginRegistry
+      ? await this.config.pluginRegistry.runLocationEntered(context)
+      : [];
+
+    this.events.emit('locationEntered', {
+      ...context,
+      events,
+    });
+
+    return events;
+  }
+
+  /**
+   * Run scene-started lifecycle hooks.
+   */
+  async notifySceneStarted(sceneId: number, npcId?: number): Promise<GameEvent[]> {
+    this.checkDisposed();
+
+    if (!this.session) {
+      throw new Error('No session loaded');
+    }
+
+    const worldId = this.getRuntimeWorldId();
+    if (worldId === null) {
+      this.log('Skipping scene-started lifecycle hook: worldId unavailable');
+      return [];
+    }
+
+    if (this.currentSceneId !== null && this.currentSceneId !== sceneId) {
+      await this.notifySceneEnded(this.currentSceneId);
+    }
+    this.currentSceneId = sceneId;
+
+    const context: SceneContext = {
+      worldId,
+      sessionId: this.session.id,
+      sceneId,
+      npcId,
+      worldTimeSeconds: this.getRuntimeWorldTimeSeconds(),
+    };
+
+    const events = this.config.pluginRegistry
+      ? await this.config.pluginRegistry.runSceneStarted(context)
+      : [];
+
+    this.events.emit('sceneStarted', {
+      ...context,
+      events,
+    });
+
+    return events;
+  }
+
+  /**
+   * Run scene-ended lifecycle hooks.
+   */
+  async notifySceneEnded(sceneId: number, npcId?: number): Promise<GameEvent[]> {
+    this.checkDisposed();
+
+    if (!this.session) {
+      throw new Error('No session loaded');
+    }
+
+    const worldId = this.getRuntimeWorldId();
+    if (worldId === null) {
+      this.log('Skipping scene-ended lifecycle hook: worldId unavailable');
+      return [];
+    }
+
+    if (this.currentSceneId === sceneId) {
+      this.currentSceneId = null;
+    }
+
+    const context: SceneContext = {
+      worldId,
+      sessionId: this.session.id,
+      sceneId,
+      npcId,
+      worldTimeSeconds: this.getRuntimeWorldTimeSeconds(),
+    };
+
+    const events = this.config.pluginRegistry
+      ? await this.config.pluginRegistry.runSceneEnded(context)
+      : [];
+
+    this.events.emit('sceneEnded', {
+      ...context,
+      events,
+    });
+
+    return events;
+  }
+
+  /**
    * Build a GameTickContext for plugin hooks
    */
   private buildTickContext(
@@ -1159,6 +1467,8 @@ export class GameRuntime implements IGameRuntime {
     this.events.clear();
     this.session = null;
     this.world = null;
+    this.currentLocationId = null;
+    this.currentSceneId = null;
     this.relationshipCache.clear();
     this.templateCache.clear();
     this.disposed = true;
@@ -1168,6 +1478,128 @@ export class GameRuntime implements IGameRuntime {
   // ============================================
   // Private Helper Methods
   // ============================================
+
+  private coercePositiveInt(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return Math.floor(value);
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.floor(parsed);
+      }
+    }
+    return null;
+  }
+
+  private coerceNonNegativeInt(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+      return Math.floor(value);
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        return Math.floor(parsed);
+      }
+    }
+    return null;
+  }
+
+  private extractLocationIdFromSession(
+    session: GameSessionDTO,
+    fallback: number | null = null
+  ): number | null {
+    const flags = (session.flags ?? {}) as Record<string, unknown>;
+    const worldFlags =
+      flags.world && typeof flags.world === 'object'
+        ? (flags.world as Record<string, unknown>)
+        : null;
+
+    const candidates: unknown[] = [
+      worldFlags?.currentLocationId,
+      worldFlags?.current_location_id,
+      flags.currentLocationId,
+      flags.current_location_id,
+      fallback,
+    ];
+
+    for (const candidate of candidates) {
+      const parsed = this.coercePositiveInt(candidate);
+      if (parsed !== null) {
+        return parsed;
+      }
+    }
+
+    return null;
+  }
+
+  private updateSessionLocationState(locationId: number): void {
+    if (!this.session) return;
+
+    const previous = this.session;
+    const nextFlags = JSON.parse(JSON.stringify(previous.flags ?? {})) as Record<string, unknown>;
+    const worldFlags =
+      nextFlags.world && typeof nextFlags.world === 'object'
+        ? { ...(nextFlags.world as Record<string, unknown>) }
+        : {};
+
+    worldFlags.currentLocationId = locationId;
+    nextFlags.world = worldFlags;
+    nextFlags.currentLocationId = locationId;
+
+    const next: GameSessionDTO = {
+      ...previous,
+      flags: nextFlags,
+    };
+
+    this.session = next;
+    this.emitSessionUpdated(previous, next, { flags: true });
+  }
+
+  private getRuntimeWorldId(): number | null {
+    const worldIdFromWorld = this.coerceNonNegativeInt(this.world?.id);
+    if (worldIdFromWorld !== null) {
+      return worldIdFromWorld;
+    }
+    if (this.session) {
+      const worldId = this.coerceNonNegativeInt(this.session.world_id);
+      if (worldId !== null) return worldId;
+    }
+    return null;
+  }
+
+  private getRuntimeWorldTimeSeconds(): number {
+    if (this.session?.world_time !== undefined) {
+      return this.session.world_time;
+    }
+    if (this.world?.world_time !== undefined) {
+      return this.world.world_time;
+    }
+    return 0;
+  }
+
+  private async runSessionLoadedLifecycle(
+    session: GameSessionDTO,
+    world: GameWorldDetail | null,
+    isNew: boolean
+  ): Promise<GameEvent[]> {
+    await this.runPluginHook('onSessionLoaded', session);
+
+    const worldId = this.coerceNonNegativeInt(world?.id ?? session.world_id);
+    if (!this.config.pluginRegistry || worldId === null) {
+      return [];
+    }
+
+    const context: SessionLoadedContext = {
+      worldId,
+      sessionId: session.id,
+      session: session as unknown as Record<string, unknown>,
+      world: (world ?? {}) as Record<string, unknown>,
+      isNew,
+    };
+
+    return this.config.pluginRegistry.runSessionLoaded(context);
+  }
 
   private checkDisposed(): void {
     if (this.disposed) {
@@ -1217,6 +1649,9 @@ export class GameRuntime implements IGameRuntime {
     session: GameSessionDTO,
     changes: SessionChanges
   ): void {
+    this.currentLocationId = this.extractLocationIdFromSession(session, this.currentLocationId);
+    this.currentSceneId = this.coercePositiveInt(session.scene_id) ?? this.currentSceneId;
+
     const event: SessionUpdatedEvent = {
       session,
       previousSession,

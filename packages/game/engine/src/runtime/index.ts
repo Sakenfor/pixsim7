@@ -11,3 +11,11 @@ export * from './types';
 // Export implementations
 export { GameRuntime, createGameRuntime } from './GameRuntime';
 export { GameController, createGameController } from './GameController';
+export {
+  GAME_OBJECT_STORE_SCHEMA_VERSION,
+  getSessionGameObjectStore,
+  listSessionGameObjects,
+  getSessionGameObject,
+  upsertSessionGameObjects,
+  toGameObjectRef,
+} from './gameObjectStore';
