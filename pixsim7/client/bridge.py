@@ -117,8 +117,17 @@ class Bridge:
                 if mcp_config_path:
                     client_log(f"MCP config: {mcp_config_path}")
 
+            # Report pool capacity to backend
+            await ws.send(json.dumps({
+                "type": "pool_status",
+                "max_sessions": self._pool._max_sessions,
+                "ready": self._pool.ready_count,
+                "busy": self._pool.busy_count,
+                "total": len(self._pool._sessions),
+            }))
+
             client_log(f"Connected as {self._agent_id}")
-            client_log(f"Pool: {self._pool.ready_count} ready, {self._pool.busy_count} busy")
+            client_log(f"Pool: {self._pool.ready_count} ready, {self._pool.busy_count} busy, max {self._pool._max_sessions}")
             client_log("Waiting for tasks...\n")
 
             while True:
@@ -132,7 +141,9 @@ class Bridge:
                     return
 
                 if msg_type == "task":
-                    await self._handle_task(ws, msg)
+                    # Fire-and-forget — don't block the message loop
+                    # so concurrent tasks can be dispatched to different pool sessions
+                    asyncio.ensure_future(self._handle_task(ws, msg))
 
                 elif msg_type == "ping":
                     await ws.send(json.dumps({"type": "pong"}))

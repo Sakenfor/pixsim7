@@ -58,9 +58,11 @@ class AgentCmdSession:
         mcp_config_path: str | None = None,
         resume_session_id: str | None = None,
     ):
+        from pixsim7.client.protocols import get_protocol
         self.session_id = session_id
         self._extra_args = extra_args or []
         self._command = command
+        self._protocol = get_protocol(command)
         self._system_prompt = system_prompt
         self._mcp_config_path = mcp_config_path
         self._resume_session_id = resume_session_id
@@ -112,20 +114,13 @@ class AgentCmdSession:
             return True
 
         self.state = SessionState.STARTING
-        cmd = [
+        cmd = self._protocol.build_start_cmd(
             self._command,
-            "--print",
-            "--output-format", "stream-json",
-            "--input-format", "stream-json",
-            "--verbose",
-        ]
-        if self._resume_session_id:
-            cmd.extend(["--resume", self._resume_session_id])
-        if self._system_prompt:
-            cmd.extend(["--append-system-prompt", self._system_prompt])
-        if self._mcp_config_path:
-            cmd.extend(["--mcp-config", self._mcp_config_path])
-        cmd.extend(self._extra_args)
+            resume_session_id=self._resume_session_id,
+            system_prompt=self._system_prompt,
+            mcp_config_path=self._mcp_config_path,
+            extra_args=self._extra_args,
+        )
 
         client_log(f"[{self.session_id}] Starting: {' '.join(cmd)}")
 
@@ -201,12 +196,17 @@ class AgentCmdSession:
     ) -> str:
         """Send a message and wait for the complete response.
 
-        Args:
-            message: Text message
-            timeout: Seconds to wait
-            images: Optional list of {"media_type": "image/png", "data": "<base64>"}
-            on_progress: Optional callback(event_type, detail) for intermediate events
+        For long-running protocols (Claude): sends via stdin to existing process.
+        For single-turn protocols (Codex): restarts the process with --resume.
         """
+        # Single-turn protocol: restart process per message (with resume)
+        if not self._protocol.is_long_running() and self.cli_session_id:
+            self._resume_session_id = self.cli_session_id
+            await self.stop()
+            await asyncio.sleep(0.5)
+            if not await self.start():
+                raise RuntimeError(f"Session {self.session_id} failed to restart for new turn")
+
         if not self.is_alive or not self._process or not self._process.stdin:
             raise RuntimeError(f"Session {self.session_id} is not running")
 
@@ -219,92 +219,72 @@ class AgentCmdSession:
             except asyncio.QueueEmpty:
                 break
 
-        # Build content blocks
-        content: list[dict] = [{"type": "text", "text": message}]
-        for img in (images or []):
-            content.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": img.get("media_type", "image/png"),
-                    "data": img["data"],
-                },
-            })
-
-        # stream-json input format (shared protocol)
-        msg = json.dumps({
-            "type": "user",
-            "message": {
-                "role": "user",
-                "content": content,
-            },
-        }) + "\n"
-
-        self._process.stdin.write(msg.encode())
-        await self._process.stdin.drain()
+        # Build and send payload via protocol adapter
+        payload = self._protocol.build_message_payload(message, images)
+        if payload:
+            self._process.stdin.write(payload.encode())
+            await self._process.stdin.drain()
+        # Single-turn protocols: close stdin to signal end of input
+        if not self._protocol.is_long_running():
+            self._process.stdin.close()
         self.stats.messages_sent += 1
         self.stats.last_activity = datetime.now(timezone.utc)
 
+        result_text = ""
         try:
             while True:
-                event = await asyncio.wait_for(
+                event_raw = await asyncio.wait_for(
                     self._response_queue.get(),
                     timeout=timeout,
                 )
 
-                event_type = event.get("type", "")
+                parsed = self._protocol.parse_event(event_raw)
 
-                if event_type == "result":
-                    result_text = event.get("result", "")
-                    duration = event.get("duration_ms", 0)
-                    if event.get("session_id"):
-                        self.cli_session_id = event["session_id"]
+                if parsed.kind == "init":
+                    if parsed.session_id:
+                        self.cli_session_id = parsed.session_id
+                    if parsed.model:
+                        self.cli_model = parsed.model
+                    client_log(f"[{self.session_id}] Session: {self.cli_session_id} model: {self.cli_model}")
+
+                elif parsed.kind == "result":
+                    if parsed.text:
+                        result_text = parsed.text
+                    if parsed.session_id:
+                        self.cli_session_id = parsed.session_id
                     self.stats.messages_received += 1
-                    self.stats.total_duration_ms += duration
+                    self.stats.total_duration_ms += parsed.duration_ms
                     self.stats.last_activity = datetime.now(timezone.utc)
+
+                    # For single-turn protocols, process exits after result → we're done
+                    if not self._protocol.is_long_running():
+                        self.state = SessionState.READY
+                        return result_text or "(empty response)"
+
+                    # For long-running, "result" is the final event
                     self.state = SessionState.READY
-                    # Deferred restart: config changed while busy
                     if self._pending_restart:
                         self._pending_restart = False
                         client_log(f"[{self.session_id}] Applying deferred restart")
                         asyncio.ensure_future(self.restart())
                     return result_text or "(empty response)"
 
-                elif event_type == "system":
-                    # Init event — capture session ID and model
-                    if event.get("session_id"):
-                        self.cli_session_id = event["session_id"]
-                    if event.get("model"):
-                        self.cli_model = event["model"]
-                    client_log(f"[{self.session_id}] Session: {self.cli_session_id} model: {self.cli_model}")
-
-                elif event_type == "error":
-                    error_msg = event.get("error", {})
-                    if isinstance(error_msg, dict):
-                        error_msg = error_msg.get("message", str(error_msg))
+                elif parsed.kind == "error":
                     self.stats.errors += 1
                     self.state = SessionState.READY
-                    raise RuntimeError(f"CLI error: {error_msg}")
+                    raise RuntimeError(f"Agent error: {parsed.text}")
 
-                elif event_type == "assistant":
-                    # Intermediate content — tool calls, thinking, partial text
-                    content_block = event.get("message", {}).get("content", [{}])
-                    if content_block:
-                        block = content_block[0] if isinstance(content_block, list) else content_block
-                        block_type = block.get("type", "")
-                        if block_type == "tool_use":
-                            detail = f"Using tool: {block.get('name', '?')}"
-                            if on_progress:
-                                on_progress("tool_use", detail)
-                        elif block_type == "thinking":
-                            if on_progress:
-                                on_progress("thinking", "Thinking...")
-                        elif block_type == "text":
-                            text = block.get("text", "")
-                            if on_progress and text:
-                                on_progress("streaming", text[:100])
+                elif parsed.kind == "progress":
+                    # For single-turn protocols, agent_message text arrives as progress
+                    # before the final turn.completed result event
+                    if parsed.raw and parsed.raw.get("type") == "item.completed":
+                        item = parsed.raw.get("item", {})
+                        if item.get("type") == "agent_message" and item.get("text"):
+                            result_text = item["text"]
+                    if on_progress and parsed.text:
+                        on_progress("progress", parsed.text)
 
-                # Skip other events (rate_limit_event, content_block_delta, etc.)
+                # "other" events are silently skipped
 
         except asyncio.TimeoutError:
             self.stats.errors += 1
@@ -325,10 +305,11 @@ class AgentCmdSession:
                     continue
                 try:
                     event = json.loads(text)
-                    # Capture session ID from system init (comes before any message exchange)
-                    if event.get("type") == "system" and event.get("session_id"):
-                        self.cli_session_id = event["session_id"]
-                        self.cli_model = event.get("model")
+                    # Capture session ID from init event (protocol-agnostic)
+                    parsed = self._protocol.parse_event(event)
+                    if parsed.kind == "init" and parsed.session_id:
+                        self.cli_session_id = parsed.session_id
+                        self.cli_model = parsed.model
                         client_log(f"[{self.session_id}] Session: {self.cli_session_id}")
                     await self._response_queue.put(event)
                 except json.JSONDecodeError:
