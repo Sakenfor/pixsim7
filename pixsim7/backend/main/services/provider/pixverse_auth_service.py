@@ -99,6 +99,41 @@ class PixverseAuthService:
             logger.error("Pixverse login failed", exc_info=True)
             raise PixverseAuthError(f"Pixverse login failed: {exc}") from exc
 
+    async def refresh_session(
+        self,
+        session: Dict[str, object],
+    ) -> Dict[str, object]:
+        """
+        Refresh an existing Pixverse session using cookies (no password needed).
+
+        Calls POST /auth/refresh with existing cookies to obtain a fresh JWT.
+        This is a lightweight API-only call — no browser automation.
+
+        Args:
+            session: Existing session dict with cookies and/or jwt_token
+
+        Returns:
+            Refreshed session data with updated cookies/JWT.
+
+        Raises:
+            PixverseAuthError: if refresh fails
+        """
+        try:
+            from pixverse.auth.email_password import EmailPasswordAuth  # type: ignore
+        except ImportError as exc:
+            raise PixverseAuthError("pixverse-py not installed") from exc
+
+        loop = asyncio.get_event_loop()
+        try:
+            refreshed = await loop.run_in_executor(
+                _executor,
+                lambda: EmailPasswordAuth().refresh(session),
+            )
+            return refreshed
+        except Exception as exc:
+            logger.warning("Pixverse session refresh failed: %s", exc)
+            raise PixverseAuthError(f"Pixverse session refresh failed: {exc}") from exc
+
     async def login_with_google_id_token(
         self,
         id_token: str,

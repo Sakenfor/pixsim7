@@ -1,5 +1,5 @@
-"""Docs domain models — plan registry, sync runs, and events."""
+"""Docs domain models — plan registry and sync runs."""
 
-from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry, PlanSyncRun
+from pixsim7.backend.main.domain.docs.models import PlanRegistry, PlanSyncRun
 
-__all__ = ["PlanRegistry", "PlanEvent", "PlanSyncRun"]
+__all__ = ["PlanRegistry", "PlanSyncRun"]

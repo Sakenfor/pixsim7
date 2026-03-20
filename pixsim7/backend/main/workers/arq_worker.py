@@ -80,6 +80,12 @@ async def _load_persisted_system_config_for_worker() -> None:
         import pixsim7.backend.main.services.system_config.appliers  # noqa: F401
 
         async with get_async_session() as db:
+            # Migrate file-based settings to DB on first run
+            from pixsim7.backend.main.services.system_config.migration import migrate_file_settings_to_db
+            migrated = await migrate_file_settings_to_db(db)
+            if migrated:
+                logger.info("worker_system_config_migrated", namespaces=migrated)
+
             applied = await apply_all_from_db(db)
         if applied:
             logger.info("worker_system_config_loaded", namespaces=applied)

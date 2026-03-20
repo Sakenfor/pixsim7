@@ -15,7 +15,6 @@ from typing import Optional, Literal
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from urllib.parse import urlparse
-import json
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 # Import registry from providers domain (canonical location)
@@ -26,7 +25,6 @@ from pixsim7.backend.main.services.generation.pixverse_pricing import (
     estimate_video_credit_change,
     pixverse_calculate_cost,
 )
-from pixsim7.backend.main.shared.path_registry import get_path_registry
 try:  # pragma: no cover - optional SDK dependency
     from pixverse.models import VideoModel, ImageModel  # type: ignore
 except Exception:  # pragma: no cover
@@ -34,8 +32,7 @@ except Exception:  # pragma: no cover
 
 router = APIRouter()
 
-# Provider settings storage (path registry source of truth)
-PROVIDER_SETTINGS_FILE = get_path_registry().provider_settings_file
+# Provider settings — DB-backed via system_config, read from in-memory cache
 
 
 def _method_overridden(provider: Provider, method_name: str) -> bool:
@@ -623,27 +620,16 @@ async def estimate_pixverse_cost(
 # ===== PROVIDER SETTINGS =====
 
 def _load_provider_settings() -> dict[str, ProviderSettings]:
-    """Load provider settings from file"""
-    if not PROVIDER_SETTINGS_FILE.exists():
-        return {}
-    try:
-        with open(PROVIDER_SETTINGS_FILE, 'r') as f:
-            data = json.load(f)
-            return {k: ProviderSettings(**v) for k, v in data.items()}
-    except Exception:
-        return {}
-
-
-def _save_provider_settings(settings: dict[str, ProviderSettings]) -> None:
-    """Save provider settings to file"""
-    try:
-        # Ensure directory exists on first write
-        PROVIDER_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(PROVIDER_SETTINGS_FILE, 'w') as f:
-            data = {k: v.model_dump() for k, v in settings.items()}
-            json.dump(data, f, indent=2)
-    except Exception as e:
-        raise RuntimeError(f"Failed to save provider settings: {e}")
+    """Load provider settings from in-memory cache (DB-backed via system_config)."""
+    from pixsim7.backend.main.services.system_config.settings_store import get_all_provider_settings
+    raw = get_all_provider_settings()
+    result: dict[str, ProviderSettings] = {}
+    for k, v in raw.items():
+        try:
+            result[k] = ProviderSettings(**v)
+        except Exception:
+            pass
+    return result
 
 
 @router.get("/providers/{provider_id}/settings", response_model=ProviderSettings)
@@ -673,7 +659,8 @@ async def get_provider_settings(
 async def update_provider_settings(
     provider_id: str,
     updates: ProviderSettingsUpdate,
-    user: CurrentUser
+    user: CurrentUser,
+    db: DatabaseSession,
 ):
     """
     Update settings for a specific provider
@@ -686,6 +673,9 @@ async def update_provider_settings(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only admins can update provider settings"
         )
+
+    from pixsim7.backend.main.services.system_config import set_config, apply_namespace
+    from pixsim7.backend.main.services.system_config.settings_store import get_all_provider_settings
 
     settings = _load_provider_settings()
 
@@ -700,8 +690,11 @@ async def update_provider_settings(
     for field, value in update_data.items():
         setattr(current, field, value)
 
-    settings[provider_id] = current
-    _save_provider_settings(settings)
+    # Persist to DB and update in-memory cache
+    all_raw = get_all_provider_settings()
+    all_raw[provider_id] = current.model_dump()
+    row = await set_config(db, "provider_settings", all_raw, user.id)
+    apply_namespace("provider_settings", row.data)
 
     return current
 

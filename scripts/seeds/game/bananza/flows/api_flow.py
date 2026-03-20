@@ -27,12 +27,19 @@ from .common import (
     build_behavior_config,
 )
 
+WORLD_UPSERT_META_KEY = "project_world_upsert_key"
+
 
 def _normalize_api_base(api_base: str) -> str:
     normalized = str(api_base or "").strip()
     if not normalized:
         return "http://localhost:8000"
     return normalized.rstrip("/")
+
+
+def _world_upsert_key(world_name: str) -> str:
+    normalized_world_name = str(world_name or "").strip() or "world"
+    return f"{BOOTSTRAP_SOURCE_KEY}:world:{normalized_world_name}"
 
 
 def _response_excerpt(response: httpx.Response, *, limit: int = 500) -> str:
@@ -231,6 +238,11 @@ async def _resolve_auth_token(
     if env_token and env_token.strip():
         return env_token.strip()
 
+    # Alias used by MCP/agent bridge tooling; support it for API-mode seeding too.
+    api_token = os.getenv("PIXSIM_API_TOKEN")
+    if api_token and api_token.strip():
+        return api_token.strip()
+
     async with httpx.AsyncClient(base_url=api_base, timeout=30.0) as auth_client:
         response = await auth_client.post(
             "/api/v1/auth/login",
@@ -266,7 +278,19 @@ async def _api_ensure_world(
     client: httpx.AsyncClient,
     *,
     world_name: str,
+    project_name: Optional[str] = None,
+    project_id: Optional[int] = None,
 ) -> Dict[str, Any]:
+    preferred_world_id: Optional[int] = None
+    if project_name:
+        snapshot = await _api_find_project_snapshot_detail(
+            client,
+            project_name=project_name,
+            project_id=project_id,
+        )
+        if isinstance(snapshot, dict):
+            preferred_world_id = _to_int(snapshot.get("source_world_id"))
+
     worlds_payload = await _api_get_json(
         client,
         "/api/v1/game/worlds",
@@ -279,32 +303,78 @@ async def _api_ensure_world(
     if not isinstance(worlds, list):
         raise RuntimeError("unexpected_worlds_list")
 
-    existing = None
+    matching_world_ids: List[int] = []
     for world in worlds:
-        if isinstance(world, dict) and str(world.get("name")) == world_name:
-            existing = world
-            break
+        if not isinstance(world, dict):
+            continue
+        if str(world.get("name")) != world_name:
+            continue
+        world_id = _to_int(world.get("id"))
+        if world_id is None:
+            continue
+        matching_world_ids.append(world_id)
+
+    candidate_world_ids: List[int] = []
+    if preferred_world_id is not None:
+        candidate_world_ids.append(preferred_world_id)
+    candidate_world_ids.extend(
+        world_id for world_id in sorted(set(matching_world_ids)) if world_id != preferred_world_id
+    )
 
     base_meta = base_world_meta()
-    if existing is None:
+    base_meta[WORLD_UPSERT_META_KEY] = _world_upsert_key(world_name)
+    if not candidate_world_ids:
         created = await _api_post_json(
             client,
             "/api/v1/game/worlds",
-            body={"name": world_name, "meta": base_meta},
+            body={
+                "name": world_name,
+                "meta": base_meta,
+                "upsert_key": base_meta[WORLD_UPSERT_META_KEY],
+            },
             context="create_world",
         )
         if not isinstance(created, dict):
             raise RuntimeError("unexpected_create_world_payload")
         return created
 
-    world_id = int(existing.get("id"))
-    detail = await _api_get_json(
-        client,
-        f"/api/v1/game/worlds/{world_id}",
-        context="get_world",
-    )
+    detail: Optional[Dict[str, Any]] = None
+    for world_id in candidate_world_ids:
+        try:
+            fetched = await _api_get_json(
+                client,
+                f"/api/v1/game/worlds/{int(world_id)}",
+                context="get_world",
+            )
+        except RuntimeError as exc:
+            if _is_http_not_found_error(exc):
+                continue
+            raise
+        if isinstance(fetched, dict):
+            detail = fetched
+            break
+
+    if detail is None:
+        created = await _api_post_json(
+            client,
+            "/api/v1/game/worlds",
+            body={
+                "name": world_name,
+                "meta": base_meta,
+                "upsert_key": base_meta[WORLD_UPSERT_META_KEY],
+            },
+            context="create_world",
+        )
+        if not isinstance(created, dict):
+            raise RuntimeError("unexpected_create_world_payload")
+        return created
+
     if not isinstance(detail, dict):
         raise RuntimeError("unexpected_world_detail_payload")
+    world_id = _to_int(detail.get("id"))
+    if world_id is None:
+        raise RuntimeError("world_id_missing_in_detail")
+
     merged_meta = dict(detail.get("meta") or {})
     merged_meta.update(base_meta)
     updated = await _api_put_json(
@@ -1129,7 +1199,12 @@ async def seed_bananza_boat_slice_via_api(
         block_check = await _api_verify_required_blocks(client)
         template_check = await _api_verify_required_templates(client)
 
-        world = await _api_ensure_world(client, world_name=world_name)
+        world = await _api_ensure_world(
+            client,
+            world_name=world_name,
+            project_name=project_name,
+            project_id=project_id,
+        )
         world_id = int(world.get("id") or 0)
         if world_id <= 0:
             raise RuntimeError("world_id_missing_after_api_seed")

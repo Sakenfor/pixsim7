@@ -234,22 +234,32 @@ class AgentActivityLog(SQLModel, table=True):
     timestamp: datetime = Field(default_factory=utcnow, index=True)
 
 
-class PlanEvent(SQLModel, table=True):
-    """Audit trail entry for plan state transitions."""
+class PlanRevision(SQLModel, table=True):
+    """Immutable snapshot history for plans (git-like revision log)."""
 
-    __tablename__ = "plan_events"
+    __tablename__ = "plan_revisions"
     __table_args__ = (
-        Index("idx_plan_event_plan_ts", "plan_id", "timestamp"),
+        Index("idx_plan_revision_plan_rev", "plan_id", "revision", unique=True),
+        Index("idx_plan_revision_plan_created", "plan_id", "created_at"),
         {"schema": PLAN_META_SCHEMA},
     )
 
     id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
-    run_id: Optional[UUID] = Field(default=None, foreign_key=f"{PLAN_META_SCHEMA}.plan_sync_runs.id", index=True)
-    plan_id: str = Field(foreign_key=f"{PLAN_META_SCHEMA}.plan_registry.id", index=True, max_length=120)
-    event_type: str = Field(max_length=64)
-    field: Optional[str] = Field(default=None, max_length=64)
-    old_value: Optional[str] = Field(default=None, sa_column=Column(Text))
-    new_value: Optional[str] = Field(default=None, sa_column=Column(Text))
-    commit_sha: Optional[str] = Field(default=None, max_length=64)
+    plan_id: str = Field(
+        foreign_key=f"{PLAN_META_SCHEMA}.plan_registry.id",
+        index=True,
+        max_length=120,
+    )
+    document_id: str = Field(
+        foreign_key=f"{PLAN_META_SCHEMA}.documents.id",
+        index=True,
+        max_length=120,
+    )
+    revision: int = Field(index=True)
+    event_type: str = Field(default="snapshot", max_length=64)
     actor: Optional[str] = Field(default=None, max_length=120)
-    timestamp: datetime = Field(default_factory=utcnow, index=True)
+    commit_sha: Optional[str] = Field(default=None, max_length=64)
+    changed_fields: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    restore_from_revision: Optional[int] = Field(default=None)
+    snapshot: Dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    created_at: datetime = Field(default_factory=utcnow, index=True)

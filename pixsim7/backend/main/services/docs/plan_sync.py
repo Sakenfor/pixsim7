@@ -2,7 +2,7 @@
 Plan sync service.
 
 Compares filesystem manifests against DB state, detects changes,
-writes PlanEvent audit entries, and updates Document + PlanRegistry rows.
+writes entity audit entries, and updates Document + PlanRegistry rows.
 """
 from __future__ import annotations
 
@@ -15,7 +15,8 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.docs.models import Document, PlanEvent, PlanRegistry, PlanSyncRun
+from pixsim7.backend.main.domain.docs.models import Document, PlanRegistry, PlanSyncRun
+from pixsim7.backend.main.domain.platform.entity_audit import EntityAudit
 from pixsim7.backend.main.services.docs.plans import PlanEntry, build_plans_index
 from pixsim7.backend.main.services.docs.plan_write import (
     PlanBundle,
@@ -213,7 +214,7 @@ async def sync_plans(
                     id=doc_id, doc_type="plan",
                     title=entry.title, status=entry.status, owner=entry.owner,
                     summary=entry.summary, markdown=entry.markdown,
-                    visibility="public", tags=entry.tags,
+                    visibility="public", namespace="dev/plans", tags=entry.tags,
                     revision=1, created_at=now, updated_at=now,
                 )
                 db.add(doc)
@@ -229,10 +230,13 @@ async def sync_plans(
                 )
                 db.add(plan)
 
-                db.add(PlanEvent(
-                    run_id=sync_run.id, plan_id=plan_id,
-                    event_type="created", new_value=entry.status,
-                    commit_sha=commit_sha, timestamp=now,
+                db.add(EntityAudit(
+                    domain="plan", entity_type="plan_registry",
+                    entity_id=plan_id, entity_label=entry.title,
+                    action="created", new_value=entry.status,
+                    actor="system", commit_sha=commit_sha,
+                    extra={"sync_run_id": str(sync_run.id)},
+                    timestamp=now,
                 ))
                 result.created += 1
                 result.events += 1
@@ -259,11 +263,14 @@ async def sync_plans(
             _apply_entry_to_plan(existing_plan, entry, m_hash)
 
             for field_name, old_val, new_val in changes:
-                db.add(PlanEvent(
-                    run_id=sync_run.id, plan_id=plan_id,
-                    event_type="field_changed", field=field_name,
+                db.add(EntityAudit(
+                    domain="plan", entity_type="plan_registry",
+                    entity_id=plan_id, entity_label=entry.title,
+                    action="field_changed", field=field_name,
                     old_value=old_val, new_value=new_val,
-                    commit_sha=commit_sha, timestamp=now,
+                    actor="system", commit_sha=commit_sha,
+                    extra={"sync_run_id": str(sync_run.id)},
+                    timestamp=now,
                 ))
                 _record_changed_field(result, field_name)
                 result.events += 1
@@ -285,11 +292,14 @@ async def sync_plans(
                 bundle.plan.updated_at = now
                 bundle.plan.last_synced_at = now
 
-                db.add(PlanEvent(
-                    run_id=sync_run.id, plan_id=plan_id,
-                    event_type="removed", field="status",
+                db.add(EntityAudit(
+                    domain="plan", entity_type="plan_registry",
+                    entity_id=plan_id, entity_label=bundle.doc.title,
+                    action="status_changed", field="status",
                     old_value=old_status, new_value="removed",
-                    commit_sha=commit_sha, timestamp=now,
+                    actor="system", commit_sha=commit_sha,
+                    extra={"sync_run_id": str(sync_run.id)},
+                    timestamp=now,
                 ))
                 result.removed += 1
                 _record_changed_field(result, "status")
@@ -352,19 +362,11 @@ async def prune_plan_sync_history(
     )
 
     try:
-        recent_events_exist = (
-            select(PlanEvent.id)
-            .where(
-                PlanEvent.run_id == PlanSyncRun.id,
-                PlanEvent.timestamp >= cutoff_dt,
-            )
-            .exists()
-        )
         result.events_deleted = int(
             (await db.execute(
                 select(func.count())
-                .select_from(PlanEvent)
-                .where(PlanEvent.timestamp < cutoff_dt)
+                .select_from(EntityAudit)
+                .where(EntityAudit.domain == "plan", EntityAudit.timestamp < cutoff_dt)
             )).scalar_one()
             or 0
         )
@@ -373,7 +375,6 @@ async def prune_plan_sync_history(
                 select(func.count())
                 .select_from(PlanSyncRun)
                 .where(func.coalesce(PlanSyncRun.finished_at, PlanSyncRun.started_at) < cutoff_dt)
-                .where(~recent_events_exist)
             )).scalar_one()
             or 0
         )
@@ -382,11 +383,16 @@ async def prune_plan_sync_history(
             await db.commit()
             return result
 
-        await db.execute(delete(PlanEvent).where(PlanEvent.timestamp < cutoff_dt))
+        await db.execute(
+            delete(EntityAudit).where(
+                EntityAudit.domain == "plan",
+                EntityAudit.timestamp < cutoff_dt,
+            )
+        )
         await db.execute(
             delete(PlanSyncRun).where(
                 func.coalesce(PlanSyncRun.finished_at, PlanSyncRun.started_at) < cutoff_dt
-            ).where(~recent_events_exist)
+            )
         )
         await db.commit()
         logger.info(

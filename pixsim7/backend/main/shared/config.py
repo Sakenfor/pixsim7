@@ -127,6 +127,13 @@ class Settings(BaseSettings):
     )
     api_title: str = "PixSim7 API"
     api_version: str = "0.1.0"
+    plans_db_only_mode: bool = Field(
+        default=True,
+        description=(
+            "When true, plans APIs use DB as the only source of truth: "
+            "disable filesystem bootstrap, commit-back exports, and manifest sync endpoint."
+        ),
+    )
 
     # ===== SERVER IDENTITY =====
     server_id: str = Field(

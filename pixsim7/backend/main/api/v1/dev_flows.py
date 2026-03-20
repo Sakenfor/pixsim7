@@ -8,6 +8,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -16,8 +17,14 @@ from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import get_current_user_optional
+from pixsim7.backend.main.api.dependencies import (
+    get_current_user_optional,
+    get_database,
+)
+from pixsim7.backend.main.domain.docs.models import Document
 from pixsim7.backend.main.domain.user import User
 from pixsim7.backend.main.shared.path_registry import get_path_registry
 
@@ -36,31 +43,38 @@ from .dev_flows_contract import (
     FlowTraceResponse,
     FlowRunSummary,
 )
-from .dev_flows_templates import get_flow_templates
 
 router = APIRouter(prefix="/dev/flows", tags=["dev"])
+logger = logging.getLogger(__name__)
 
 _TRACE_LOCK = Lock()
 _TRACE_MAX_EVENTS = 2000
 _TRACE_MAX_RUNS = 1000
 _TRACE_SCHEMA_READY = False
 _TRACE_DB_PATH = (get_path_registry().cache_root / "flow_traces.sqlite3").resolve()
+_FLOW_TEMPLATE_NAMESPACE = "dev/flows/templates"
+_FLOW_TEMPLATE_DOC_TYPE = "flow_template"
+_FLOW_TEMPLATE_EXTRA_KEY = "flow_template"
+_INACTIVE_DOC_STATUSES = frozenset({"archived", "removed"})
 
 
 @dataclass
 class _TemplateEvaluation:
     template: FlowTemplate
     progressed_node_ids: List[str]
-    next_step: Optional[FlowNextStep]
-    blocked_step: Optional[FlowBlockedStep]
+    next_steps: List[FlowNextStep]
+    blocked_steps: List[FlowBlockedStep]
+    suggested_node_ids: List[str]
+    suggested_blocked_step: Optional[FlowBlockedStep]
 
 
 @router.get("/graph", response_model=FlowGraphV1)
 async def get_flow_graph(
     user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_database),
 ):
-    """Return the curated flow template graph."""
-    templates = sorted(get_flow_templates(), key=lambda item: item.id)
+    """Return the DB-backed flow template graph."""
+    templates = await _list_flow_templates(db=db, user=user)
     runs, blocked_edges_24h = _get_trace_snapshot()
     return FlowGraphV1(
         version="1.0.0",
@@ -79,6 +93,7 @@ async def get_flow_graph(
 async def resolve_flow(
     payload: FlowResolveRequest,
     user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_database),
 ):
     """
     Resolve candidate templates and valid next steps for a goal + context.
@@ -89,7 +104,7 @@ async def resolve_flow(
     templates = sorted(
         [
             template
-            for template in get_flow_templates()
+            for template in await _list_flow_templates(db=db, user=user)
             if _template_matches_goal(template, payload.goal)
         ],
         key=lambda item: item.id,
@@ -100,61 +115,55 @@ async def resolve_flow(
         for template in templates
     ]
     evaluations.sort(
-        key=lambda item: (0 if item.blocked_step is None else 1, item.template.id)
+        key=lambda item: (0 if _is_evaluation_ready(item) else 1, item.template.id)
     )
 
-    candidate_templates = [
-        FlowCandidateTemplate(
-            id=f"candidate:{evaluation.template.id}",
-            kind="candidate_template",
-            template_id=evaluation.template.id,
-            label=evaluation.template.label,
-            domain=evaluation.template.domain,
-            status="ready" if evaluation.blocked_step is None else "blocked",
-            progressed_node_ids=evaluation.progressed_node_ids,
-            reason_code=(
-                evaluation.blocked_step.reason_code
-                if evaluation.blocked_step is not None
-                else None
-            ),
-            reason=(
-                evaluation.blocked_step.reason
-                if evaluation.blocked_step is not None
-                else None
-            ),
-            blocked_reason_code=(
-                evaluation.blocked_step.reason_code
-                if evaluation.blocked_step is not None
-                else None
-            ),
-            blocked_reason=(
-                evaluation.blocked_step.reason
-                if evaluation.blocked_step is not None
-                else None
-            ),
+    candidate_templates: List[FlowCandidateTemplate] = []
+    for evaluation in evaluations:
+        blocked_step = _primary_blocked_step(evaluation)
+        candidate_templates.append(
+            FlowCandidateTemplate(
+                id=f"candidate:{evaluation.template.id}",
+                kind="candidate_template",
+                template_id=evaluation.template.id,
+                label=evaluation.template.label,
+                domain=evaluation.template.domain,
+                status="ready" if _is_evaluation_ready(evaluation) else "blocked",
+                progressed_node_ids=evaluation.progressed_node_ids,
+                reason_code=(blocked_step.reason_code if blocked_step is not None else None),
+                reason=(blocked_step.reason if blocked_step is not None else None),
+                blocked_reason_code=(
+                    blocked_step.reason_code if blocked_step is not None else None
+                ),
+                blocked_reason=(blocked_step.reason if blocked_step is not None else None),
+            )
         )
-        for evaluation in evaluations
-    ]
 
     next_steps: List[FlowNextStep] = []
     next_step_seen = set()
     for evaluation in evaluations:
-        if evaluation.next_step is None:
-            continue
-        dedupe_key = (
-            evaluation.next_step.template_id,
-            evaluation.next_step.node_id,
-        )
-        if dedupe_key in next_step_seen:
-            continue
-        next_step_seen.add(dedupe_key)
-        next_steps.append(evaluation.next_step)
+        for next_step in evaluation.next_steps:
+            dedupe_key = (next_step.template_id, next_step.node_id)
+            if dedupe_key in next_step_seen:
+                continue
+            next_step_seen.add(dedupe_key)
+            next_steps.append(next_step)
 
-    blocked_steps = [
-        evaluation.blocked_step
-        for evaluation in evaluations
-        if evaluation.blocked_step is not None
-    ]
+    blocked_steps: List[FlowBlockedStep] = []
+    blocked_seen = set()
+    for evaluation in evaluations:
+        for blocked_step in _all_blocked_steps(evaluation):
+            dedupe_key = (
+                blocked_step.template_id,
+                blocked_step.edge_id,
+                blocked_step.node_id,
+                blocked_step.reason_code,
+            )
+            if dedupe_key in blocked_seen:
+                continue
+            blocked_seen.add(dedupe_key)
+            blocked_steps.append(blocked_step)
+    blocked_steps.sort(key=lambda item: (item.template_id, item.edge_id, item.node_id))
 
     suggested_path = _select_suggested_path(evaluations)
 
@@ -173,13 +182,14 @@ async def resolve_flow(
 async def trace_flow_event(
     payload: FlowTraceRequest,
     user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_database),
 ):
     """
     Ingest compact flow trace events.
 
     v1 stores traces in a lightweight persistent SQLite sink.
     """
-    templates = get_flow_templates()
+    templates = await _list_flow_templates(db=db, user=user)
     template_ids = {template.id for template in templates}
     if payload.template_id not in template_ids:
         raise HTTPException(
@@ -503,6 +513,28 @@ def _template_matches_goal(template: FlowTemplate, goal: str) -> bool:
     )
 
 
+def _is_evaluation_ready(evaluation: _TemplateEvaluation) -> bool:
+    return evaluation.suggested_blocked_step is None
+
+
+def _all_blocked_steps(evaluation: _TemplateEvaluation) -> List[FlowBlockedStep]:
+    blocked = list(evaluation.blocked_steps)
+    if evaluation.suggested_blocked_step is not None:
+        blocked.append(evaluation.suggested_blocked_step)
+    return blocked
+
+
+def _primary_blocked_step(evaluation: _TemplateEvaluation) -> Optional[FlowBlockedStep]:
+    if evaluation.suggested_blocked_step is not None:
+        return evaluation.suggested_blocked_step
+    if not evaluation.blocked_steps:
+        return None
+    return sorted(
+        evaluation.blocked_steps,
+        key=lambda item: (item.edge_id, item.node_id, item.reason_code),
+    )[0]
+
+
 def _evaluate_template(
     template: FlowTemplate,
     context: FlowResolveContext,
@@ -515,70 +547,75 @@ def _evaluate_template(
         edges.sort(key=lambda item: (item.id, item.to))
 
     progressed_node_ids = [template.start_node_id]
-    current_node_id = template.start_node_id
-    next_step: Optional[FlowNextStep] = None
-    blocked_step: Optional[FlowBlockedStep] = None
+    progressed_seen = {template.start_node_id}
+    blocked_steps: List[FlowBlockedStep] = []
+    next_steps: List[FlowNextStep] = []
+    queue = [template.start_node_id]
     visited_node_ids = set()
 
-    while True:
+    while queue:
+        current_node_id = queue.pop(0)
         if current_node_id in visited_node_ids:
-            node_label = nodes_by_id.get(current_node_id).label if current_node_id in nodes_by_id else current_node_id
-            blocked_step = FlowBlockedStep(
-                id=f"blocked:{template.id}:cycle_detected",
-                kind="blocked_step",
-                template_id=template.id,
-                edge_id="cycle_detected",
-                node_id=current_node_id,
-                label=node_label,
-                reason_code="cycle_detected",
-                reason="Template contains a cycle and cannot be resolved deterministically.",
-            )
-            break
+            continue
         visited_node_ids.add(current_node_id)
 
         outgoing_edges = outgoing_by_node.get(current_node_id, [])
-        if not outgoing_edges:
-            break
+        for edge in outgoing_edges:
+            target_node = nodes_by_id.get(edge.to)
+            target_label = target_node.label if target_node is not None else edge.to
 
-        edge = outgoing_edges[0]
-        target_node = nodes_by_id.get(edge.to)
-        target_label = target_node.label if target_node is not None else edge.to
-
-        is_allowed, reason_code, reason = _check_condition(
-            condition=edge.condition,
-            on_fail_reason=edge.on_fail_reason,
-            context=context,
-        )
-        if not is_allowed:
-            blocked_step = FlowBlockedStep(
-                id=f"blocked:{template.id}:{edge.id}",
-                kind="blocked_step",
-                template_id=template.id,
-                edge_id=edge.id,
-                node_id=edge.to,
-                label=target_label,
-                reason_code=reason_code,
-                reason=reason,
+            is_allowed, reason_code, reason = _check_condition(
+                condition=edge.condition,
+                on_fail_reason=edge.on_fail_reason,
+                context=context,
             )
-            break
+            if not is_allowed:
+                blocked_steps.append(
+                    _build_blocked_step(
+                        template_id=template.id,
+                        edge_id=edge.id,
+                        node_id=edge.to,
+                        label=target_label,
+                        reason_code=reason_code,
+                        reason=reason,
+                    )
+                )
+                continue
 
-        progressed_node_ids.append(edge.to)
-        if next_step is None and target_node is not None:
-            next_step = FlowNextStep(
-                id=f"step:{template.id}:{target_node.id}",
-                template_id=template.id,
-                node_id=target_node.id,
-                label=target_node.label,
-                kind=target_node.kind,
-                ref=target_node.ref,
-            )
-        current_node_id = edge.to
+            if current_node_id == template.start_node_id and target_node is not None:
+                next_steps.append(
+                    FlowNextStep(
+                        id=f"step:{template.id}:{target_node.id}",
+                        template_id=template.id,
+                        node_id=target_node.id,
+                        label=target_node.label,
+                        kind=target_node.kind,
+                        ref=target_node.ref,
+                    )
+                )
+
+            if edge.to in progressed_seen:
+                continue
+            progressed_seen.add(edge.to)
+            progressed_node_ids.append(edge.to)
+            queue.append(edge.to)
+
+    suggested_node_ids, suggested_blocked_step = _find_best_path_from_node(
+        template=template,
+        context=context,
+        node_id=template.start_node_id,
+        nodes_by_id=nodes_by_id,
+        outgoing_by_node=outgoing_by_node,
+        visiting=frozenset(),
+    )
 
     return _TemplateEvaluation(
         template=template,
         progressed_node_ids=progressed_node_ids,
-        next_step=next_step,
-        blocked_step=blocked_step,
+        next_steps=next_steps,
+        blocked_steps=blocked_steps,
+        suggested_node_ids=suggested_node_ids,
+        suggested_blocked_step=suggested_blocked_step,
     )
 
 
@@ -640,35 +677,137 @@ def _check_condition(
     )
 
 
+def _build_blocked_step(
+    *,
+    template_id: str,
+    edge_id: str,
+    node_id: str,
+    label: str,
+    reason_code: str,
+    reason: str,
+) -> FlowBlockedStep:
+    return FlowBlockedStep(
+        id=f"blocked:{template_id}:{edge_id}",
+        kind="blocked_step",
+        template_id=template_id,
+        edge_id=edge_id,
+        node_id=node_id,
+        label=label,
+        reason_code=reason_code,
+        reason=reason,
+    )
+
+
+def _find_best_path_from_node(
+    *,
+    template: FlowTemplate,
+    context: FlowResolveContext,
+    node_id: str,
+    nodes_by_id: Dict[str, object],
+    outgoing_by_node: Dict[str, List],
+    visiting: frozenset[str],
+) -> Tuple[List[str], Optional[FlowBlockedStep]]:
+    if node_id in visiting:
+        node_label = (
+            nodes_by_id.get(node_id).label
+            if node_id in nodes_by_id
+            else node_id
+        )
+        blocked = _build_blocked_step(
+            template_id=template.id,
+            edge_id="cycle_detected",
+            node_id=node_id,
+            label=node_label,
+            reason_code="cycle_detected",
+            reason="Template contains a cycle and cannot be resolved deterministically.",
+        )
+        return [node_id], blocked
+
+    outgoing_edges = outgoing_by_node.get(node_id, [])
+    if not outgoing_edges:
+        return [node_id], None
+
+    next_visiting = set(visiting)
+    next_visiting.add(node_id)
+
+    candidates: List[Tuple[List[str], Optional[FlowBlockedStep], str]] = []
+    for edge in outgoing_edges:
+        target_node = nodes_by_id.get(edge.to)
+        target_label = target_node.label if target_node is not None else edge.to
+        is_allowed, reason_code, reason = _check_condition(
+            condition=edge.condition,
+            on_fail_reason=edge.on_fail_reason,
+            context=context,
+        )
+        if not is_allowed:
+            blocked = _build_blocked_step(
+                template_id=template.id,
+                edge_id=edge.id,
+                node_id=edge.to,
+                label=target_label,
+                reason_code=reason_code,
+                reason=reason,
+            )
+            candidates.append(([node_id, edge.to], blocked, edge.id))
+            continue
+
+        child_node_ids, child_blocked = _find_best_path_from_node(
+            template=template,
+            context=context,
+            node_id=edge.to,
+            nodes_by_id=nodes_by_id,
+            outgoing_by_node=outgoing_by_node,
+            visiting=frozenset(next_visiting),
+        )
+        node_ids = [node_id]
+        for child_node_id in child_node_ids:
+            if not node_ids or node_ids[-1] != child_node_id:
+                node_ids.append(child_node_id)
+        candidates.append((node_ids, child_blocked, edge.id))
+
+    if not candidates:
+        return [node_id], None
+
+    best_node_ids, best_blocked, _ = min(candidates, key=_path_candidate_sort_key)
+    return best_node_ids, best_blocked
+
+
+def _path_candidate_sort_key(
+    candidate: Tuple[List[str], Optional[FlowBlockedStep], str],
+) -> Tuple[int, int, str, Tuple[str, ...]]:
+    node_ids, blocked_step, edge_id = candidate
+    return (
+        0 if blocked_step is None else 1,
+        -len(node_ids),
+        edge_id,
+        tuple(node_ids),
+    )
+
+
 def _select_suggested_path(
     evaluations: List[_TemplateEvaluation],
 ) -> Optional[FlowSuggestedPath]:
     if not evaluations:
         return None
 
-    ready_evaluations = [
-        evaluation for evaluation in evaluations if evaluation.blocked_step is None
-    ]
-    if ready_evaluations:
-        chosen = sorted(
-            ready_evaluations,
-            key=lambda item: (len(item.progressed_node_ids), item.template.id),
-        )[0]
-    else:
-        chosen = sorted(
-            evaluations,
-            key=lambda item: (-len(item.progressed_node_ids), item.template.id),
-        )[0]
+    chosen = min(
+        evaluations,
+        key=lambda item: (
+            0 if _is_evaluation_ready(item) else 1,
+            -len(item.suggested_node_ids),
+            item.template.id,
+        ),
+    )
 
-    node_ids = list(chosen.progressed_node_ids)
-    blocked = chosen.blocked_step is not None
+    node_ids = list(chosen.suggested_node_ids or [chosen.template.start_node_id])
+    blocked = chosen.suggested_blocked_step is not None
     blocked_reason_code = None
     blocked_reason = None
-    if chosen.blocked_step is not None:
-        if not node_ids or node_ids[-1] != chosen.blocked_step.node_id:
-            node_ids.append(chosen.blocked_step.node_id)
-        blocked_reason_code = chosen.blocked_step.reason_code
-        blocked_reason = chosen.blocked_step.reason
+    if chosen.suggested_blocked_step is not None:
+        if not node_ids or node_ids[-1] != chosen.suggested_blocked_step.node_id:
+            node_ids.append(chosen.suggested_blocked_step.node_id)
+        blocked_reason_code = chosen.suggested_blocked_step.reason_code
+        blocked_reason = chosen.suggested_blocked_step.reason
 
     return FlowSuggestedPath(
         id=f"path:{chosen.template.id}",
@@ -681,3 +820,84 @@ def _select_suggested_path(
         blocked_reason_code=blocked_reason_code,
         blocked_reason=blocked_reason,
     )
+
+
+async def _list_flow_templates(
+    *,
+    db: AsyncSession,
+    user: Optional[User],
+) -> List[FlowTemplate]:
+    stmt = (
+        select(Document)
+        .where(Document.namespace == _FLOW_TEMPLATE_NAMESPACE)
+        .where(Document.doc_type == _FLOW_TEMPLATE_DOC_TYPE)
+        .order_by(Document.id)
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+
+    templates: List[FlowTemplate] = []
+    for row in rows:
+        if not _document_visible_to_user(row, user):
+            continue
+        status = str(getattr(row, "status", "") or "").strip().lower()
+        if status in _INACTIVE_DOC_STATUSES:
+            continue
+        template = _document_to_flow_template(row)
+        if template is None:
+            continue
+        templates.append(template)
+
+    templates.sort(key=lambda item: item.id)
+    return templates
+
+
+def _document_visible_to_user(doc: Document, user: Optional[User]) -> bool:
+    visibility = str(getattr(doc, "visibility", "private") or "private").strip().lower()
+    if visibility == "public":
+        return True
+    if user is None:
+        return False
+    if getattr(doc, "user_id", None) == getattr(user, "id", None):
+        return True
+    if visibility == "shared":
+        return True
+    return False
+
+
+def _document_to_flow_template(doc: Document) -> Optional[FlowTemplate]:
+    extra = getattr(doc, "extra", None) or {}
+    if not isinstance(extra, dict):
+        logger.warning("dev_flow_template_extra_invalid", extra={"document_id": doc.id})
+        return None
+
+    payload = extra.get(_FLOW_TEMPLATE_EXTRA_KEY)
+    if not isinstance(payload, dict):
+        logger.warning(
+            "dev_flow_template_missing_payload",
+            extra={"document_id": doc.id, "key": _FLOW_TEMPLATE_EXTRA_KEY},
+        )
+        return None
+
+    normalized_payload = dict(payload)
+    if not normalized_payload.get("id"):
+        normalized_payload["id"] = _derive_template_id_from_document(doc.id)
+    if not normalized_payload.get("label"):
+        normalized_payload["label"] = doc.title
+    if not normalized_payload.get("tags") and isinstance(doc.tags, list):
+        normalized_payload["tags"] = list(doc.tags)
+
+    try:
+        return FlowTemplate.model_validate(normalized_payload)
+    except Exception as exc:
+        logger.warning(
+            "dev_flow_template_validation_failed",
+            extra={"document_id": doc.id, "error": str(exc)},
+        )
+        return None
+
+
+def _derive_template_id_from_document(document_id: str) -> str:
+    value = str(document_id or "").strip()
+    if value.startswith("flow:"):
+        return value.split("flow:", 1)[1] or value
+    return value

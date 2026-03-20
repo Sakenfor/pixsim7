@@ -394,7 +394,13 @@ class PixverseSessionManager:
 
         settings_map = load_settings()
         provider_settings = settings_map.get(self.provider.provider_id) if settings_map else None
-        if not provider_settings or not getattr(provider_settings, "auto_reauth_enabled", False):
+        if provider_settings is None:
+            # No settings file or no entry for this provider — use model
+            # defaults (auto_reauth_enabled=True) so reauth isn't silently
+            # disabled just because settings were never explicitly saved.
+            from pixsim7.backend.main.api.v1.providers import ProviderSettings
+            provider_settings = ProviderSettings(provider_id=self.provider.provider_id)
+        if not getattr(provider_settings, "auto_reauth_enabled", False):
             logger.info(
                 "pixverse_auto_reauth_skipped",
                 account_id=account.id,
@@ -404,21 +410,10 @@ class PixverseSessionManager:
             )
             return False
 
-        # Require either a per-account password or a global provider password
-        # before attempting password-based auto-reauth. For OAuth-only accounts,
-        # we expect password to be cleared and auth_method set to GOOGLE, so
-        # they will have been skipped above.
+        # Check for password availability (per-account or global)
         has_account_password = bool(getattr(account, "password", None))
         has_global_password = bool(getattr(provider_settings, "global_password", None))
-        if not (has_account_password or has_global_password):
-            logger.info(
-                "pixverse_auto_reauth_skipped",
-                account_id=account.id,
-                auth_method=auth_method.value,
-                reason="no_password_available",
-                context=context,
-            )
-            return False
+        has_password = has_account_password or has_global_password
 
         # Acquire the shared reauth lock (prevents concurrent reauth from API endpoint too)
         reauth_lock = await acquire_reauth_lock(account_id)
@@ -437,22 +432,56 @@ class PixverseSessionManager:
         _reauth_last_attempt[account_id] = now
 
         async with reauth_lock:
+            # Try password-based reauth first if a password is available
+            if has_password:
+                logger.info(
+                    "pixverse_auto_reauth_attempt",
+                    account_id=account.id,
+                    auth_method=auth_method.value,
+                    error_code=outcome.error_code,
+                    error_reason=outcome.error_reason,
+                    context=context,
+                )
+
+                success = await self.provider._try_auto_reauth(account)
+
+                logger.info(
+                    "pixverse_auto_reauth_completed",
+                    account_id=account.id,
+                    success=success,
+                    context=context,
+                )
+
+                if success:
+                    return True
+
+            # Fallback: try cookie-based session refresh (no password needed).
+            # Works for accounts that have valid cookies but an expired JWT.
+            has_cookies = bool(getattr(account, "cookies", None))
+            if has_cookies:
+                logger.info(
+                    "pixverse_cookie_refresh_attempt",
+                    account_id=account.id,
+                    reason="password_reauth_unavailable" if not has_password else "password_reauth_failed",
+                    context=context,
+                )
+
+                success = await self.provider._try_cookie_refresh(account)
+
+                logger.info(
+                    "pixverse_cookie_refresh_completed",
+                    account_id=account.id,
+                    success=success,
+                    context=context,
+                )
+
+                return success
+
             logger.info(
-                "pixverse_auto_reauth_attempt",
+                "pixverse_auto_reauth_skipped",
                 account_id=account.id,
                 auth_method=auth_method.value,
-                error_code=outcome.error_code,
-                error_reason=outcome.error_reason,
+                reason="no_password_and_no_cookies",
                 context=context,
             )
-
-            success = await self.provider._try_auto_reauth(account)
-
-            logger.info(
-                "pixverse_auto_reauth_completed",
-                account_id=account.id,
-                success=success,
-                context=context,
-            )
-
-            return success
+            return False

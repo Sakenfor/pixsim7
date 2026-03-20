@@ -286,21 +286,23 @@ class AssetResponse(BaseModel):
         # frontend can display it immediately before local ingestion generates a thumbnail.
         media_type = getattr(self, "media_type", None)
         media_type_value = getattr(media_type, "value", media_type)
-        allow_provider_thumb = not (
-            provider_id == "pixverse" and str(media_type_value).lower() == "video"
-        )
         media_metadata = getattr(self, "media_metadata", None) or {}
         provider_thumb = media_metadata.get("provider_thumbnail_url") if isinstance(media_metadata, dict) else None
+        # For video assets the remote/file URLs are video files, not images —
+        # using them as thumbnail/preview causes 404 fetches (CDN propagation)
+        # and confuses frontend thumbnail logic.  Only fall back to them for
+        # non-video (image) assets.
+        is_video = str(media_type_value).lower() == "video"
+
         if thumbnail_key:
             object.__setattr__(self, "thumbnail_url", storage_key_to_url(thumbnail_key))
-        elif allow_provider_thumb and is_valid_url(provider_thumb):
+        elif is_valid_url(provider_thumb):
             object.__setattr__(self, "thumbnail_url", provider_thumb)
-        elif getattr(self, "thumbnail_url", None) is None:
+        elif not is_video and getattr(self, "thumbnail_url", None) is None:
             file_url = getattr(self, "file_url", None)
             if file_url:
                 object.__setattr__(self, "thumbnail_url", file_url)
             elif is_valid_url(remote_url):
-                # Direct fallback to remote_url for thumbnail
                 object.__setattr__(self, "thumbnail_url", remote_url)
             elif is_valid_url(original_source_url):
                 object.__setattr__(self, "thumbnail_url", original_source_url)
@@ -308,7 +310,7 @@ class AssetResponse(BaseModel):
         # Compute preview_url from key
         if preview_key:
             object.__setattr__(self, "preview_url", storage_key_to_url(preview_key))
-        elif getattr(self, "preview_url", None) is None:
+        elif not is_video and getattr(self, "preview_url", None) is None:
             file_url = getattr(self, "file_url", None)
             if file_url:
                 object.__setattr__(self, "preview_url", file_url)

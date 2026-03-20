@@ -34,7 +34,6 @@ from pixsim7.backend.main.domain import Asset
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 from pixsim7.backend.main.services.storage import get_storage_service
 from pixsim7.backend.main.shared.storage_utils import compute_sha256 as shared_compute_sha256
-from pixsim7.backend.main.shared.path_registry import get_path_registry
 from pixsim7.backend.main.services.asset.content import ensure_content_blob
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import normalize_url
 from pixsim_logging import get_logger
@@ -53,7 +52,7 @@ class MediaSettings:
     """
     Media ingestion settings.
 
-    Loaded from JSON file, with defaults for missing values.
+    Backed by system_config DB table via in-memory cache.
     Settings can be changed at runtime without restart.
     """
 
@@ -62,36 +61,12 @@ class MediaSettings:
         self._load()
 
     def _load(self) -> None:
-        """Load settings from file."""
-        import json
-        settings_path = get_path_registry().media_settings_file
-
-        if settings_path.exists():
-            try:
-                with open(settings_path) as f:
-                    self._settings = json.load(f)
-            except Exception as e:
-                logger.warning(
-                    "media_settings_load_failed",
-                    error=str(e),
-                    detail="Using defaults"
-                )
-                self._settings = {}
-
-    def _save(self) -> None:
-        """Save settings to file."""
-        import json
-        settings_path = get_path_registry().media_settings_file
-        settings_path.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            with open(settings_path, 'w') as f:
-                json.dump(self._settings, f, indent=2)
-        except Exception as e:
-            logger.error("media_settings_save_failed", error=str(e))
+        """Load settings from in-memory cache (DB-backed)."""
+        from pixsim7.backend.main.services.system_config.settings_store import get_media_settings_data
+        self._settings = get_media_settings_data()
 
     def reload(self) -> None:
-        """Reload settings from file."""
+        """Reload settings from in-memory cache."""
         self._load()
 
     # Individual settings with defaults
@@ -180,9 +155,11 @@ class MediaSettings:
         return self._settings.get("default_upload_provider", "pixverse")
 
     def update(self, updates: Dict[str, Any]) -> None:
-        """Update settings and save."""
-        self._settings.update(updates)
-        self._save()
+        """Update settings in-memory. DB persistence handled by API endpoint."""
+        from pixsim7.backend.main.services.system_config.settings_store import apply_media_settings
+        merged = {**self._settings, **updates}
+        apply_media_settings(merged)
+        self._settings = merged
 
     def to_dict(self) -> Dict[str, Any]:
         """Get all settings as dict."""

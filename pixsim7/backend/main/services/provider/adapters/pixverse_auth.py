@@ -366,6 +366,80 @@ class PixverseAuthMixin:
             )
             return False
 
+    async def _try_cookie_refresh(self, account: ProviderAccount) -> bool:
+        """Attempt cookie-based session refresh (no password required).
+
+        Calls POST /auth/refresh with existing cookies to get a fresh JWT.
+        Lightweight API-only call — no browser automation.
+        """
+        from pixsim7.backend.main.services.provider.pixverse_auth_service import PixverseAuthService
+
+        session_data = {
+            "cookies": dict(account.cookies or {}),
+            "headers": {},
+        }
+        if account.jwt_token:
+            session_data["headers"]["token"] = account.jwt_token
+            session_data["cookies"]["_ai_token"] = account.jwt_token
+
+        try:
+            logger.info(
+                "pixverse_cookie_refresh_starting",
+                account_id=account.id,
+                email=account.email,
+            )
+
+            async with PixverseAuthService() as auth_service:
+                refreshed = await auth_service.refresh_session(session_data)
+
+            # Extract JWT from response — could be in:
+            # 1. cookies._ai_token (set-cookie from response)
+            # 2. headers.Authorization as "Bearer <token>"
+            # 3. response JSON "token" field (stored in headers by refresh())
+            refreshed_cookies = refreshed.get("cookies") or {}
+            refreshed_headers = refreshed.get("headers") or {}
+
+            refreshed_jwt = refreshed_cookies.get("_ai_token")
+            if not refreshed_jwt:
+                auth_header = refreshed_headers.get("Authorization", "")
+                if auth_header.startswith("Bearer "):
+                    refreshed_jwt = auth_header[7:]
+            if not refreshed_jwt:
+                refreshed_jwt = refreshed_headers.get("token")
+
+            if not refreshed_jwt:
+                logger.warning(
+                    "pixverse_cookie_refresh_no_jwt",
+                    account_id=account.id,
+                    cookie_keys=list(refreshed_cookies.keys())[:10],
+                    header_keys=list(refreshed_headers.keys()),
+                )
+                return False
+
+            # Preserve session sharing IDs
+            old_cookies = account.cookies or {}
+            for key in ("_pxs7_trace_id", "_pxs7_anonymous_id"):
+                if old_cookies.get(key) and key not in refreshed_cookies:
+                    refreshed_cookies[key] = old_cookies[key]
+
+            account.jwt_token = refreshed_jwt
+            account.cookies = refreshed_cookies
+            self._evict_account_cache(account)
+
+            logger.info(
+                "pixverse_cookie_refresh_success",
+                account_id=account.id,
+            )
+            return True
+        except Exception as exc:
+            await self._rollback_session_if_needed(account)
+            logger.warning(
+                "pixverse_cookie_refresh_failed",
+                account_id=account.id,
+                error=str(exc),
+            )
+            return False
+
     async def _rollback_session_if_needed(self, account: ProviderAccount) -> None:
         """Rollback the database session if it's in a bad state."""
         try:

@@ -45,6 +45,7 @@ class Bridge:
         self._tasks_handled = 0
         self._mcp_config_path: Optional[str] = None
         self._token_file_path: Optional[str] = None
+        self._system_prompt: Optional[str] = None
 
     @property
     def is_connected(self) -> bool:
@@ -62,9 +63,11 @@ class Bridge:
             return
 
         self._shutdown_requested = False
+        consecutive_failures = 0
         while not self._shutdown_requested:
             try:
                 await self._connect_and_serve()
+                consecutive_failures = 0  # reset on clean disconnect
             except KeyboardInterrupt:
                 break
             except Exception as e:
@@ -72,13 +75,18 @@ class Bridge:
                 if self._shutdown_requested:
                     client_log("Shutdown requested, not reconnecting.")
                     break
+                consecutive_failures += 1
+                delay = min(5 * consecutive_failures, 30)  # 5s, 10s, 15s... max 30s
                 client_log(f"Connection error: {e}", error=True)
-                client_log("Reconnecting in 5s...")
-                await asyncio.sleep(5)
+                client_log(f"Reconnecting in {delay}s (attempt {consecutive_failures})...")
+                await asyncio.sleep(delay)
 
     async def _connect_and_serve(self) -> None:
         """Single connection session."""
         ws_url = f"{self._url}?agent_type={self._agent_type}"
+        # Reconnect with same identity so backend maps back to the same agent
+        if self._agent_id:
+            ws_url += f"&agent_id={self._agent_id}"
 
         client_log(f"Connecting to {self._url}...")
 
@@ -97,6 +105,8 @@ class Bridge:
             server_system_prompt = welcome.get("system_prompt")
             mcp_config_path = self._ensure_mcp_config(scope=scope, token=service_token)
 
+            if server_system_prompt:
+                self._system_prompt = server_system_prompt
             if server_system_prompt or mcp_config_path:
                 await self._pool.configure(
                     system_prompt=server_system_prompt,
@@ -199,11 +209,17 @@ class Bridge:
         # Engine override (claude, codex, etc.)
         engine = msg.get("engine")
 
-        # Prepend profile persona only on first message (new conversation).
-        # On resumed conversations Claude already has the persona in context.
-        profile_prompt = msg.get("profile_prompt")
-        if profile_prompt and not claude_session_id:
-            prompt = f"[Persona: {profile_prompt}]\n\n{prompt}"
+        # On first message of a new conversation, inject system context + persona.
+        # Resumed conversations already have these in history.
+        if not claude_session_id:
+            preamble_parts: list[str] = []
+            if self._system_prompt:
+                preamble_parts.append(f"[System context]\n{self._system_prompt}")
+            profile_prompt = msg.get("profile_prompt")
+            if profile_prompt:
+                preamble_parts.append(f"[Persona: {profile_prompt}]")
+            if preamble_parts:
+                prompt = "\n\n".join(preamble_parts) + "\n\n" + prompt
 
         # Report busy (use original user text, not persona-prefixed prompt)
         user_text = msg.get("instruction") or msg.get("prompt", "")

@@ -99,76 +99,25 @@ async def setup_database_and_seed() -> None:
     - Testable with test database
     - Explicit error handling policy
     """
-    from pixsim7.backend.main.infrastructure.database.session import (
-        init_database,
-        get_async_session
-    )
+    from pixsim7.backend.main.infrastructure.database.session import init_database
 
     # DB initialization is REQUIRED - no try/except, let it fail
     await init_database()
     logger.info("database_initialized")
 
-    # Default preset seeding is OPTIONAL
-    try:
-        from pixsim7.backend.main.seeds.default_presets import seed_default_presets
-        async with get_async_session() as db:
-            await seed_default_presets(db)
-        logger.info("default_presets_seeded")
-    except Exception as e:
-        logger.warning(
-            "preset_seed_failed",
-            error=str(e),
-            error_type=e.__class__.__name__,
-            msg="Continuing startup without default presets"
-        )
+    # Seed all registered content loaders via the content loader registry.
+    # Each loader handles its own DB session and is non-fatal by default.
+    from pixsim7.backend.main.services.content import content_loader_registry
+    import pixsim7.backend.main.services.content.builtin_loaders  # noqa: F401 — registers built-in loaders
 
-    # Default tag seeding is OPTIONAL
-    try:
-        from pixsim7.backend.main.seeds.default_tags import seed_default_tags
-        async with get_async_session() as db:
-            count = await seed_default_tags(db)
-            if count:
-                logger.info("default_tags_seeded", count=count)
-    except Exception as e:
-        logger.warning(
-            "tag_seed_failed",
-            error=str(e),
-            error_type=e.__class__.__name__,
-            msg="Continuing startup without default tags"
-        )
-
-    # Built-in plugin seeding is OPTIONAL
-    try:
-        from pixsim7.backend.main.services.plugin.plugin_service import PluginCatalogService
-        async with get_async_session() as db:
-            service = PluginCatalogService(db)
-            count = await service.seed_builtin_plugins()
-            if count:
-                logger.info("builtin_plugins_seeded", count=count)
-    except Exception as e:
-        logger.warning(
-            "plugin_seed_failed",
-            error=str(e),
-            error_type=e.__class__.__name__,
-            msg="Continuing startup without built-in plugins"
-        )
-
-    # Content pack seeding is OPTIONAL — auto-discovers plugins with content/ dirs
-    try:
-        from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
-            seed_content_packs,
-        )
-        async with get_async_session() as db:
-            count = await seed_content_packs(db)
-            if count:
-                logger.info("content_packs_seeded", count=count)
-    except Exception as e:
-        logger.warning(
-            "content_pack_seed_failed",
-            error=str(e),
-            error_type=e.__class__.__name__,
-            msg="Continuing startup without content packs"
-        )
+    results = await content_loader_registry.seed_all()
+    summary = content_loader_registry.summary()
+    logger.info(
+        "content_loaders_seeded",
+        total=summary["total_loaders"],
+        healthy=summary["healthy"],
+        failed=summary["failed"],
+    )
 
     # Assistant profiles now seeded via migration into agent_profiles table.
     # Legacy assistant_definitions seeding skipped.

@@ -5,7 +5,7 @@ Provides narrative and primitive block generation for NPC dialogues.
 Converted from api/v1/game_dialogue.py to plugin format.
 """
 
-from typing import Dict, Any, List, Optional, Literal
+from typing import Dict, Any, List, Optional
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
@@ -15,7 +15,6 @@ from pixsim7.backend.main.api.dependencies import (
     CurrentUser,
     DatabaseSession,
     get_narrative_engine,
-    get_block_generator,
 )
 from pixsim7.backend.main.domain.blocks import BlockPrimitive
 from pixsim7.backend.main.domain.game.core.models import (
@@ -33,18 +32,8 @@ from pixsim7.backend.main.domain.narrative.schema import PrimitiveNode
 from pixsim7.backend.main.domain.narrative.action_blocks.types_unified import (
     ActionSelectionContext,
     BranchIntent,
-    ContentRating,
 )
 from pixsim7.backend.main.domain.narrative.action_blocks.ontology import get_ontology
-from pixsim7.backend.main.domain.narrative.action_blocks.generated_store import (
-    GeneratedBlockStore,
-)
-from pixsim7.backend.main.domain.narrative.action_blocks.generator import (
-    DynamicBlockGenerator,
-    GenerationRequest,
-    GenerationResult,
-    PreviousSegmentSnapshot
-)
 from pixsim7.backend.main.infrastructure.database.session import get_async_blocks_session
 from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 from pixsim7.backend.main.services.prompt.block.block_primitive_query import (
@@ -73,76 +62,9 @@ manifest = PluginManifest(
 # ===== API ROUTER =====
 
 router = APIRouter(tags=["game-dialogue"])
-_generated_block_store = GeneratedBlockStore()
 
 
 # ===== HELPER FUNCTIONS =====
-
-def _convert_previous_segment(data: Optional['PreviousSegmentInput']) -> Optional[PreviousSegmentSnapshot]:
-    """Convert API input into a dataclass snapshot."""
-    if not data:
-        return None
-
-    return PreviousSegmentSnapshot(
-        block_id=data.block_id,
-        segment_id=data.segment_id,
-        asset_id=data.asset_id,
-        asset_url=data.asset_url,
-        pose=data.pose,
-        intensity=data.intensity,
-        tags=data.tags or None,
-        mood=data.mood,
-        branch_intent=data.branch_intent,
-        summary=data.summary
-    )
-
-
-def _build_generation_request(req: 'GeneratePrimitiveBlockRequest') -> GenerationRequest:
-    """Create a GenerationRequest from API input."""
-    try:
-        content_rating = ContentRating(req.content_rating)
-    except ValueError:
-        content_rating = ContentRating.SFW
-
-    return GenerationRequest(
-        concept_type=req.concept_type,
-        parameters=req.parameters,
-        content_rating=content_rating,
-        duration=req.duration or 6.0,
-        camera_settings=req.camera_settings,
-        consistency_settings=req.consistency_settings,
-        intensity_settings=req.intensity_settings,
-        previous_segment=_convert_previous_segment(req.previous_segment)
-    )
-
-
-async def _persist_generated_block(
-    db: DatabaseSession,
-    block_data: Dict[str, Any],
-    *,
-    source: str,
-    user_id: int,
-    previous_segment: Optional['PreviousSegmentInput'] = None,
-    selection: Optional['PrimitiveSelectionRequest'] = None
-) -> None:
-    """Store the generated block in the DB cache and register it in memory."""
-    meta: Dict[str, Any] = {
-        "requested_by": user_id,
-        "source": source
-    }
-    if selection:
-        meta["selection"] = selection.dict()
-    if previous_segment:
-        meta["previous_segment"] = previous_segment.dict()
-
-    await _generated_block_store.upsert_block(
-        db,
-        block_data,
-        source=source,
-        previous_block_id=previous_segment.block_id if previous_segment else None,
-        reference_asset_id=previous_segment.asset_id if previous_segment else None,
-        meta=meta
-    )
 
 
 class DialogueNextLineRequest(BaseModel):
@@ -172,20 +94,6 @@ class DialogueDebugResponse(BaseModel):
     visual_prompt: Optional[str] = None
     meta: Dict[str, Any] = {}
     debug: Dict[str, Any] = {}
-
-
-class PreviousSegmentInput(BaseModel):
-    """Snapshot of the previous media segment for continuity-aware generation."""
-    block_id: Optional[str] = None
-    segment_id: Optional[str] = None
-    asset_id: Optional[int] = None
-    asset_url: Optional[str] = None
-    pose: Optional[str] = None
-    intensity: Optional[int] = None
-    tags: List[str] = Field(default_factory=list)
-    mood: Optional[str] = None
-    branch_intent: Optional[str] = None
-    summary: Optional[str] = None
 
 
 @router.post("/next-line", response_model=DialogueNextLineResponse)
@@ -661,6 +569,10 @@ class PrimitiveSelectionRequest(BaseModel):
     session_id: Optional[int] = None
     world_id: Optional[int] = None
 
+    # LLM fallback: generate blocks for unresolved slots via an agent profile
+    allow_llm_fallback: bool = False
+    llm_profile_id: Optional[str] = None
+
 
 class PrimitiveSelectionResponse(BaseModel):
     """Response containing selected primitive blocks."""
@@ -694,51 +606,16 @@ class BuildPrimitiveSelectionRequestFromBehaviorRequest(BaseModel):
     exclude_tags: List[str] = Field(default_factory=list)
     max_duration: Optional[float] = None
 
+    # LLM fallback: generate blocks for unresolved slots via an agent profile
+    allow_llm_fallback: bool = False
+    llm_profile_id: Optional[str] = None
+
 
 class BuildPrimitiveSelectionRequestFromBehaviorResponse(BaseModel):
     """Built primitive-selection request plus derived behavior context."""
 
     request: PrimitiveSelectionRequest
     derived: Dict[str, Any]
-
-
-class GeneratePrimitiveBlockRequest(BaseModel):
-    """Request for generating a new primitive block dynamically."""
-    concept_type: str  # e.g., "creature_interaction", "position_maintenance"
-    parameters: Dict[str, Any]
-    content_rating: Optional[str] = "sfw"
-    duration: Optional[float] = 6.0
-    camera_settings: Optional[Dict[str, Any]] = None
-    consistency_settings: Optional[Dict[str, Any]] = None
-    intensity_settings: Optional[Dict[str, Any]] = None
-    previous_segment: Optional[PreviousSegmentInput] = None
-
-
-class GeneratePrimitiveBlockResponse(BaseModel):
-    """Response containing the generated primitive block."""
-    success: bool
-    primitive_block: Optional[Dict[str, Any]] = None
-    error_message: Optional[str] = None
-    generation_time: float
-    template_used: Optional[str] = None
-
-
-class PrimitiveNextRequest(BaseModel):
-    """Combined request that prefers library selection but can fall back to generation."""
-    selection: PrimitiveSelectionRequest
-    generation: Optional[GeneratePrimitiveBlockRequest] = None
-    compatibility_threshold: float = 0.8
-    prefer_generation: bool = False
-
-
-class PrimitiveNextResponse(BaseModel):
-    """Response describing whether library or generation was used."""
-    mode: Literal["library", "generation"]
-    selection: Optional[PrimitiveSelectionResponse] = None
-    generated_block: Optional[Dict[str, Any]] = None
-    generation_info: Optional[Dict[str, Any]] = None
-    generation_error: Optional[str] = None
-
 
 
 async def _build_primitive_selection_request_from_behavior(
@@ -814,6 +691,8 @@ async def _build_primitive_selection_request_from_behavior(
         max_duration=req.max_duration,
         session_id=req.session_id,
         world_id=req.world_id,
+        allow_llm_fallback=req.allow_llm_fallback,
+        llm_profile_id=req.llm_profile_id,
     )
 
     derived: Dict[str, Any] = {
@@ -927,6 +806,8 @@ async def _run_primitive_selection(
             "requiredTags": list(context.requiredTags or []),
             "excludeTags": list(context.excludeTags or []),
             "maxDuration": context.maxDuration,
+            "allow_llm_fallback": req.allow_llm_fallback,
+            "llm_profile_id": req.llm_profile_id,
         },
         composition="sequential",
     )
@@ -1001,66 +882,6 @@ async def select_primitive_blocks(
     This keeps the selector module pure and testable without DB dependencies.
     """
     return await _run_primitive_selection(req, db, user)
-
-
-@router.post("/primitives/next", response_model=PrimitiveNextResponse)
-async def select_or_generate_primitive(
-    req: PrimitiveNextRequest,
-    db: DatabaseSession,
-    user: CurrentUser,
-    generator: DynamicBlockGenerator = Depends(get_block_generator)
-) -> PrimitiveNextResponse:
-    """
-    Try to use library blocks first, falling back to dynamic generation when needed.
-    """
-    selection_result = await _run_primitive_selection(
-        req.selection,
-        db,
-        user,
-    )
-
-    should_generate = (
-        req.prefer_generation
-        or not selection_result.blocks
-        or selection_result.compatibility_score < req.compatibility_threshold
-    )
-
-    if not should_generate or not req.generation:
-        return PrimitiveNextResponse(
-            mode="library",
-            selection=selection_result
-        )
-
-    gen_request = _build_generation_request(req.generation)
-    gen_result = generator.generate_block(gen_request)
-
-    if not gen_result.success or not gen_result.action_block:
-        return PrimitiveNextResponse(
-            mode="library",
-            selection=selection_result,
-            generation_error=gen_result.error_message or "generation_failed"
-        )
-
-    await _persist_generated_block(
-        db,
-        gen_result.action_block,
-        source="api:primitives/next",
-        user_id=user.id,
-        previous_segment=req.generation.previous_segment if req.generation else None,
-        selection=req.selection
-    )
-
-    generation_info = {
-        "generation_time": gen_result.generation_time,
-        "template_used": gen_result.template_used
-    }
-
-    return PrimitiveNextResponse(
-        mode="generation",
-        selection=selection_result,
-        generated_block=gen_result.action_block,
-        generation_info=generation_info
-    )
 
 
 @router.get("/primitives/blocks")
@@ -1155,291 +976,6 @@ async def list_pose_taxonomy(
     }
 
 
-# ============================================================================
-# DYNAMIC GENERATION ENDPOINTS
-# ============================================================================
-
-
-class GenerateCreatureInteractionRequest(BaseModel):
-    """Specialized request for creature interactions."""
-    creature_type: str  # werewolf, vampire, tentacle, etc.
-    character_name: Optional[str] = "She"
-    position: Optional[str] = "standing"
-    intensity: int = 5
-    relative_position: Optional[str] = "behind them"
-    character_reaction: Optional[str] = "responds"
-    camera_movement: Optional[str] = "begins slow rotation"
-    duration: Optional[float] = 8.0
-    previous_segment: Optional[PreviousSegmentInput] = None
-
-
-class TestGenerationRequest(BaseModel):
-    """Request to test generation quality."""
-    original_prompt: str
-    test_type: str = "werewolf_recreation"  # Type of test to run
-
-
-class TestGenerationResponse(BaseModel):
-    """Response with generation test results."""
-    similarity_score: float
-    generated_prompt: str
-    original_prompt: str
-    key_phrases_matched: int
-    total_key_phrases: int
-    test_passed: bool
-
-
-@router.post("/primitives/generate", response_model=GeneratePrimitiveBlockResponse)
-async def generate_primitive_block(
-    req: GeneratePrimitiveBlockRequest,
-    db: DatabaseSession,
-    user: CurrentUser,
-    generator: DynamicBlockGenerator = Depends(get_block_generator)
-) -> GeneratePrimitiveBlockResponse:
-    """
-    Generate a new primitive block dynamically using templates and concepts.
-
-    This endpoint allows creation of novel primitive blocks without pre-defining
-    them in JSON files. It uses the concept library and template system to
-    generate appropriate prompts.
-    """
-    gen_request = _build_generation_request(req)
-
-    # Generate the block
-    result = generator.generate_block(gen_request)
-
-    if result.success and result.action_block:
-        await _persist_generated_block(
-            db,
-            result.action_block,
-            source="api:primitives/generate",
-            user_id=user.id,
-            previous_segment=req.previous_segment
-        )
-
-    return GeneratePrimitiveBlockResponse(
-        success=result.success,
-        primitive_block=result.action_block,
-        error_message=result.error_message,
-        generation_time=result.generation_time,
-        template_used=result.template_used
-    )
-
-
-@router.post("/primitives/generate/creature", response_model=GeneratePrimitiveBlockResponse)
-async def generate_creature_interaction(
-    req: GenerateCreatureInteractionRequest,
-    db: DatabaseSession,
-    user: CurrentUser,
-    generator: DynamicBlockGenerator = Depends(get_block_generator)
-) -> GeneratePrimitiveBlockResponse:
-    """
-    Generate a creature interaction primitive block.
-
-    This is a specialized endpoint for generating creature-based interactions
-    with simplified parameters.
-    """
-    from pixsim7.backend.main.domain.narrative.action_blocks.concepts import CreatureType
-
-    # Parse creature type
-    try:
-        creature_type = CreatureType(req.creature_type)
-    except ValueError:
-        return GeneratePrimitiveBlockResponse(
-            success=False,
-            error_message=f"Unknown creature type: {req.creature_type}",
-            generation_time=0.0
-        )
-
-    previous_snapshot = _convert_previous_segment(req.previous_segment)
-
-    # Generate using specialized method
-    result = generator.generate_creature_interaction(
-        creature_type=creature_type,
-        character_name=req.character_name,
-        position=req.position,
-        intensity=req.intensity,
-        relative_position=req.relative_position,
-        character_reaction=req.character_reaction,
-        camera_movement=req.camera_movement,
-        duration=req.duration,
-        previous_segment=previous_snapshot
-    )
-
-    if result.success and result.action_block:
-        await _persist_generated_block(
-            db,
-            result.action_block,
-            source="api:primitives/generate/creature",
-            user_id=user.id,
-            previous_segment=req.previous_segment
-        )
-
-    return GeneratePrimitiveBlockResponse(
-        success=result.success,
-        primitive_block=result.action_block,
-        error_message=result.error_message,
-        generation_time=result.generation_time,
-        template_used=result.template_used
-    )
-
-
-@router.post("/primitives/test", response_model=TestGenerationResponse)
-async def test_generation_quality(
-    req: TestGenerationRequest,
-    user: CurrentUser,
-    generator: DynamicBlockGenerator = Depends(get_block_generator)
-) -> TestGenerationResponse:
-    """
-    Test the quality of primitive block generation.
-
-    This endpoint tests whether the generation system can accurately recreate
-    complex prompts from templates, helping to validate the template system.
-    """
-    if req.test_type == "werewolf_recreation":
-        # Import test function
-        from pixsim7.backend.main.domain.narrative.action_blocks.generation_templates import (
-            TemplateGenerator,
-            test_prompt_recreation
-        )
-
-        # Generate the werewolf block
-        generated_block = TemplateGenerator.generate_werewolf_recreation()
-        generated_prompt = generated_block["prompt"]
-
-        # Calculate similarity
-        similarity = test_prompt_recreation(req.original_prompt)
-
-        # Check key phrases
-        key_phrases = [
-            "maintains her position throughout",
-            "camera begins slow rotation",
-            "gripping, releasing, gripping harder",
-            "appearance and lighting remain consistent"
-        ]
-
-        phrase_matches = sum(
-            1 for phrase in key_phrases
-            if phrase.lower() in generated_prompt.lower()
-        )
-
-        return TestGenerationResponse(
-            similarity_score=similarity,
-            generated_prompt=generated_prompt,
-            original_prompt=req.original_prompt,
-            key_phrases_matched=phrase_matches,
-            total_key_phrases=len(key_phrases),
-            test_passed=similarity > 0.7  # 70% threshold
-        )
-    else:
-        return TestGenerationResponse(
-            similarity_score=0.0,
-            generated_prompt="",
-            original_prompt=req.original_prompt,
-            key_phrases_matched=0,
-            total_key_phrases=0,
-            test_passed=False
-    )
-
-
-@router.get("/primitives/templates")
-async def list_generation_templates(
-    template_type: Optional[str] = None,
-    user: CurrentUser = None
-) -> Dict[str, Any]:
-    """
-    List available generation templates.
-
-    This endpoint returns all available templates that can be used for
-    dynamic generation, useful for UI tools and debugging.
-    """
-    from pixsim7.backend.main.domain.narrative.action_blocks.generation_templates import (
-        template_library,
-        TemplateType
-    )
-
-    templates = []
-
-    if template_type:
-        try:
-            tt = TemplateType(template_type)
-            template_list = template_library.get_templates_by_type(tt)
-        except ValueError:
-            template_list = []
-    else:
-        template_list = list(template_library.templates.values())
-
-    for template in template_list:
-        templates.append({
-            "id": template.id,
-            "type": template.type.value,
-            "name": template.name,
-            "required_params": template.required_params,
-            "optional_params": template.optional_params,
-            "content_rating_range": template.content_rating_range,
-            "supports_camera": template.camera_template is not None,
-            "has_consistency": template.consistency_defaults is not None
-        })
-
-    return {
-        "templates": templates,
-        "total": len(templates),
-        "filter": {"type": template_type} if template_type else None
-    }
-
-
-@router.get("/primitives/concepts")
-async def list_available_concepts(
-    concept_type: Optional[str] = None,
-    user: CurrentUser = None
-) -> Dict[str, Any]:
-    """
-    List available concepts from the concept library.
-
-    This shows creatures, interaction patterns, positions, and camera patterns
-    that can be used for generation.
-    """
-    from pixsim7.backend.main.domain.narrative.action_blocks.concepts import (
-        concept_library,
-        CreatureType
-    )
-
-    response = {}
-
-    if not concept_type or concept_type == "creatures":
-        creatures = []
-        for creature_type in CreatureType:
-            creature = concept_library.get_creature(creature_type)
-            if creature:
-                creatures.append({
-                    "type": creature.type.value,
-                    "movement_types": [m.value for m in creature.movement_types],
-                    "special_features": creature.special_features,
-                    "size_category": creature.size_category,
-                    "unique_actions": creature.unique_actions
-                })
-        response["creatures"] = creatures
-
-    if not concept_type or concept_type == "interactions":
-        interactions = []
-        for pattern in concept_library.interaction_patterns:
-            interactions.append({
-                "name": pattern.name,
-                "primary_action": pattern.primary_action,
-                "continuous_actions": pattern.continuous_actions,
-                "intensity_range": pattern.intensity_range
-            })
-        response["interaction_patterns"] = interactions
-
-    if not concept_type or concept_type == "positions":
-        response["positions"] = concept_library.position_library
-
-    if not concept_type or concept_type == "camera":
-        response["camera_patterns"] = concept_library.camera_patterns
-
-    return response
-
-
 # ===== LIFECYCLE HOOKS =====
 
 def on_load(app):
@@ -1459,9 +995,8 @@ async def on_enable():
 
     # Initialize singletons
     get_narrative_engine()
-    get_block_generator()
 
-    logger.info("Game Dialogue plugin enabled - narrative engines initialized")
+    logger.info("Game Dialogue plugin enabled - narrative engine initialized")
 
 
 async def on_disable():

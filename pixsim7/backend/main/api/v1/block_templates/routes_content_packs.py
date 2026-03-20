@@ -167,3 +167,32 @@ async def adopt_orphaned_content_pack(
         "rewrite_packages": rewrite_packages,
         "result": stats,
     }
+
+
+@router.get("/meta/content-loaders/status")
+async def get_content_loader_status():
+    """Return health/status summary for all registered content loaders.
+
+    Used by the Content Map panel to show loader status without
+    needing to query each subsystem independently.
+    """
+    from pixsim7.backend.main.services.content import content_loader_registry
+
+    statuses = content_loader_registry.get_all_status()
+    return {
+        "loaders": [
+            {
+                "id": s.loader_id,
+                "label": s.label,
+                "category": s.category,
+                "healthy": s.healthy,
+                "last_seed": s.last_seed.isoformat() if s.last_seed else None,
+                "count": s.last_result.count if s.last_result else 0,
+                "error": s.last_result.error if s.last_result else None,
+                "duration_ms": s.last_result.duration_ms if s.last_result else None,
+                "watchable": len(s.watch_dirs) > 0,
+            }
+            for s in statuses
+        ],
+        "summary": content_loader_registry.summary(),
+    }

@@ -59,8 +59,6 @@ async def lifespan(app: FastAPI):
         validate_settings,
         setup_domain_registry,
         setup_database_and_seed,
-        setup_system_config,
-        setup_analyzer_definitions,
         setup_redis,
         setup_providers,
         setup_ai_models,
@@ -98,10 +96,10 @@ async def lifespan(app: FastAPI):
     app.state.domain_registry = domain_registry
     logger.info("domain_registry_attached", count=len(domain_registry.registered_models))
 
-    # Setup database and seed defaults
+    # Setup database and seed all registered content loaders
+    # (presets, tags, plugins, content packs, primitives, system config,
+    #  analyzer definitions, authoring modes — all via content loader registry)
     await setup_database_and_seed()
-    await setup_system_config()
-    await setup_analyzer_definitions()
 
     # Setup Redis (optional - degraded mode without it)
     redis_available = await setup_redis()
@@ -161,12 +159,12 @@ async def lifespan(app: FastAPI):
     # Enable middleware lifecycle hooks
     await setup_middleware_lifecycle(app)
 
-    # Start content pack file watcher (auto-reloads YAML on change)
-    from pixsim7.backend.main.services.prompt.block.content_pack_watcher import (
-        start_content_pack_watcher,
-        stop_content_pack_watcher,
+    # Start registry-driven content watchers (auto-reloads YAML on change)
+    from pixsim7.backend.main.services.content.watcher import (
+        start_content_watchers,
+        stop_content_watchers,
     )
-    start_content_pack_watcher()
+    start_content_watchers()
 
     logger.info("pixsim7_ready")
 
@@ -175,8 +173,8 @@ async def lifespan(app: FastAPI):
     # ===== SHUTDOWN =====
     logger.info("pixsim7_shutdown_begin")
 
-    # Stop content pack watcher
-    await stop_content_pack_watcher()
+    # Stop content watchers
+    await stop_content_watchers()
 
     # Disable middleware
     if middleware_manager:

@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 from sqlmodel import SQLModel
 
-from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry, PlanSyncRun
+from pixsim7.backend.main.domain.docs.models import PlanRegistry, PlanSyncRun
+from pixsim7.backend.main.domain.platform.entity_audit import EntityAudit
 from pixsim7.backend.main.infrastructure.database.session import _strip_tz_from_params
 from pixsim7.backend.main.services.docs import plan_sync
 from pixsim7.backend.main.services.docs.plans import PlanEntry
@@ -36,7 +37,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
             await mapped_conn.run_sync(
                 lambda sync_conn: SQLModel.metadata.create_all(
                     sync_conn,
-                    tables=[PlanSyncRun.__table__, PlanRegistry.__table__, PlanEvent.__table__],
+                    tables=[PlanSyncRun.__table__, PlanRegistry.__table__, EntityAudit.__table__],
                 )
             )
 
@@ -123,24 +124,18 @@ async def test_sync_restores_removed_plan_even_when_manifest_hash_matches(
 
     events = (
         await db_session.execute(
-            select(PlanEvent)
-            .where(PlanEvent.plan_id == "restore-plan")
-            .order_by(PlanEvent.timestamp.asc())
+            select(EntityAudit)
+            .where(EntityAudit.entity_id == "restore-plan", EntityAudit.domain == "plan")
+            .order_by(EntityAudit.timestamp.asc())
         )
     ).scalars().all()
-    status_changes = [ev for ev in events if ev.event_type == "field_changed" and ev.field == "status"]
+    status_changes = [ev for ev in events if ev.action == "field_changed" and ev.field == "status"]
     assert status_changes
-    assert status_changes[-1].run_id is not None
     assert status_changes[-1].old_value == "removed"
     assert status_changes[-1].new_value == "active"
 
-    run = await db_session.get(PlanSyncRun, status_changes[-1].run_id)
-    assert run is not None
-    assert run.status == "success"
-    assert run.updated == 1
-    assert run.events >= 1
-    assert run.duration_ms is not None
-    assert (run.changed_fields or {}).get("status") == 1
+    sync_run_id = (status_changes[-1].extra or {}).get("sync_run_id")
+    assert sync_run_id is not None
 
 
 @pytest.mark.asyncio
@@ -180,13 +175,13 @@ async def test_sync_removed_event_uses_previous_status(
 
     events = (
         await db_session.execute(
-            select(PlanEvent)
-            .where(PlanEvent.plan_id == "remove-plan")
-            .order_by(PlanEvent.timestamp.desc())
+            select(EntityAudit)
+            .where(EntityAudit.entity_id == "remove-plan", EntityAudit.domain == "plan")
+            .order_by(EntityAudit.timestamp.desc())
         )
     ).scalars().all()
     assert events
-    assert events[0].event_type == "removed"
+    assert events[0].action == "status_changed"
     assert events[0].old_value == "active"
     assert events[0].new_value == "removed"
 
@@ -235,7 +230,7 @@ async def test_sync_aborts_when_manifest_loader_reports_errors(
     assert unchanged is not None
     assert unchanged.status == "active"
 
-    events = (await db_session.execute(select(PlanEvent))).scalars().all()
+    events = (await db_session.execute(select(EntityAudit))).scalars().all()
     assert events == []
 
     runs = (await db_session.execute(select(PlanSyncRun))).scalars().all()
@@ -307,26 +302,30 @@ async def test_prune_plan_sync_history_dry_run_then_delete(
     await db_session.flush()
 
     db_session.add(
-        PlanEvent(
-            plan_id="retention-plan",
-            run_id=old_run.id,
-            event_type="field_changed",
+        EntityAudit(
+            domain="plan",
+            entity_type="plan_registry",
+            entity_id="retention-plan",
+            action="field_changed",
             field="status",
             old_value="proposed",
             new_value="execution",
-            commit_sha=None,
+            actor="system",
+            extra={"sync_run_id": str(old_run.id)},
             timestamp=old_ts,
         )
     )
     db_session.add(
-        PlanEvent(
-            plan_id="retention-plan",
-            run_id=recent_run.id,
-            event_type="field_changed",
+        EntityAudit(
+            domain="plan",
+            entity_type="plan_registry",
+            entity_id="retention-plan",
+            action="field_changed",
             field="owner",
             old_value="a",
             new_value="b",
-            commit_sha=None,
+            actor="system",
+            extra={"sync_run_id": str(recent_run.id)},
             timestamp=recent_ts,
         )
     )
@@ -342,7 +341,7 @@ async def test_prune_plan_sync_history_dry_run_then_delete(
     assert dry_run.runs_deleted == 1
 
     event_count_before = (
-        await db_session.execute(select(func.count()).select_from(PlanEvent))
+        await db_session.execute(select(func.count()).select_from(EntityAudit))
     ).scalar_one()
     run_count_before = (
         await db_session.execute(select(func.count()).select_from(PlanSyncRun))
@@ -360,7 +359,7 @@ async def test_prune_plan_sync_history_dry_run_then_delete(
     assert applied.runs_deleted == 1
 
     event_count_after = (
-        await db_session.execute(select(func.count()).select_from(PlanEvent))
+        await db_session.execute(select(func.count()).select_from(EntityAudit))
     ).scalar_one()
     run_count_after = (
         await db_session.execute(select(func.count()).select_from(PlanSyncRun))

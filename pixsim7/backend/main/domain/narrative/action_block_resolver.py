@@ -3,10 +3,16 @@ Action Block Node Resolver.
 
 Resolves ActionBlockNode into executable sequences using the primitives-first
 planner -> compiler -> resolver pipeline.
+
+When ``allow_llm_fallback`` is set in the query, unresolved required slots are
+filled by asking an LLM to generate a prompt fragment that matches the slot
+spec (category, role, tags).
 """
 
 from __future__ import annotations
 
+import hashlib
+import logging
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any, Dict, Iterable, List, Optional
@@ -44,6 +50,8 @@ from pixsim7.backend.main.services.prompt.block.resolution_core.types import (
     CandidateBlock,
 )
 
+logger = logging.getLogger(__name__)
+
 
 _RUNTIME_COMPILER_ID = "compiler_v1"
 _RUNTIME_RESOLVER_ID = "next_v1"
@@ -52,6 +60,198 @@ _DEFAULT_DURATION_SEC = 6.0
 _compiler_registry = build_default_compiler_registry()
 _resolver_registry = build_default_resolver_registry()
 _slot_planner = DynamicSlotPlanner()
+
+
+# ---------------------------------------------------------------------------
+# LLM Fallback for Unresolved Slots
+# ---------------------------------------------------------------------------
+
+_LLM_FALLBACK_SYSTEM_PROMPT = """\
+You write concise visual prompt fragments for a video/image generation system.
+Each fragment describes a single visual layer (environment, character pose,
+wardrobe, camera angle, lighting, color palette, mood, etc.).
+
+Rules:
+- Output ONLY the prompt text, nothing else — no labels, no quotes, no explanation.
+- Keep it between 4 and 15 words.
+- Use rich, specific descriptors (prefer "amber-lit cobblestone alley" over "a street").
+- If tags are provided, the text MUST be consistent with them.
+"""
+
+_DEFAULT_PROFILE_ID = "assistant:creative"
+_MAX_FEW_SHOT_EXAMPLES = 3
+
+
+async def _resolve_llm_profile(
+    db: AsyncSession,
+    profile_id: Optional[str],
+) -> tuple[Optional[str], Optional[str]]:
+    """Resolve an agent profile for LLM generation.
+
+    Returns (persona_prompt, model_override).  Both may be None.
+    Falls back to ``assistant:creative`` when no explicit profile is given.
+    """
+    effective_id = profile_id or _DEFAULT_PROFILE_ID
+    try:
+        from pixsim7.backend.main.api.v1.agent_profiles import (
+            resolve_profile_for_bridge,
+        )
+
+        profile = await resolve_profile_for_bridge(db, 0, effective_id)
+        if profile:
+            return profile.system_prompt, profile.model_id
+    except Exception:
+        logger.debug("llm_profile_resolve_failed: profile=%s", effective_id)
+    return None, None
+
+
+async def _fetch_category_examples(category: str) -> List[str]:
+    """Fetch a few real block texts from the primitives DB for few-shot context."""
+    try:
+        from pixsim7.backend.main.services.prompt.block.block_primitive_query import (
+            build_block_primitive_query,
+        )
+
+        query = build_block_primitive_query(category=category)
+        query = query.order_by(BlockPrimitive.usage_count.desc()).limit(
+            _MAX_FEW_SHOT_EXAMPLES
+        )
+        async with get_async_blocks_session() as blocks_db:
+            result = await blocks_db.execute(query)
+            rows = list(result.scalars().all())
+        return [str(row.text).strip() for row in rows if row.text]
+    except Exception:
+        return []
+
+
+def _get_role_description(role_id: Optional[str]) -> Optional[str]:
+    """Get a human-readable role description from the vocabulary registry."""
+    if not role_id:
+        return None
+    try:
+        from pixsim7.backend.main.shared.ontology.vocabularies import get_role
+
+        role_def = get_role(role_id)
+        if role_def and role_def.description:
+            return role_def.description
+    except Exception:
+        pass
+    return None
+
+
+async def _build_slot_prompt(
+    slot: Dict[str, Any],
+    context: ActionSelectionContext,
+) -> str:
+    """Build a user prompt for the LLM from slot spec + real DB examples."""
+    category = slot.get("category") or "general"
+    role = slot.get("role") or ""
+    tags = slot.get("tags") or {}
+    label = slot.get("label") or ""
+
+    parts: List[str] = [f"Generate a {category} prompt fragment."]
+
+    # Role description from vocabulary
+    role_desc = _get_role_description(role)
+    if role_desc:
+        parts.append(f"Role ({role}): {role_desc}")
+    elif role:
+        parts.append(f"Composition role: {role}.")
+    if label:
+        parts.append(f"Slot label: {label}.")
+
+    # Tag constraints
+    all_tags = tags.get("all", {})
+    any_tags = tags.get("any", {})
+    if all_tags:
+        parts.append(f"Required tags: {', '.join(f'{k}={v}' for k, v in all_tags.items())}.")
+    if any_tags:
+        parts.append(f"Preferred tags (any): {', '.join(f'{k}={v}' for k, v in any_tags.items())}.")
+
+    # Scene context
+    context_parts: List[str] = []
+    if context.locationTag:
+        context_parts.append(f"location={context.locationTag}")
+    if context.mood:
+        context_parts.append(f"mood={context.mood}")
+    if context.intimacy_level:
+        context_parts.append(f"intimacy={context.intimacy_level}")
+    if context.pose:
+        context_parts.append(f"pose={context.pose}")
+    if context_parts:
+        parts.append(f"Scene context: {', '.join(context_parts)}.")
+
+    # Few-shot examples from real blocks DB
+    examples = await _fetch_category_examples(category)
+    if examples:
+        parts.append("Examples from existing blocks:")
+        for ex in examples:
+            parts.append(f"- {ex}")
+
+    return "\n".join(parts)
+
+
+async def _llm_generate_for_slot(
+    slot: Dict[str, Any],
+    context: ActionSelectionContext,
+    target_key: str,
+    db: AsyncSession,
+    profile_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Ask the LLM to generate a block for an unresolved slot.
+
+    Pulls real block examples from the primitives DB, role descriptions from
+    the vocabulary registry, and an agent profile persona to ground the
+    generation.  Defaults to the ``assistant:creative`` profile.
+
+    Returns a runtime block dict on success, None on failure.
+    """
+    try:
+        from pixsim7.backend.main.api.dependencies import get_llm_service
+
+        llm = await get_llm_service()
+    except Exception:
+        logger.debug("llm_fallback_unavailable: LLMService not ready")
+        return None
+
+    # Resolve agent profile for persona + optional model override
+    persona_prompt, model_override = await _resolve_llm_profile(db, profile_id)
+
+    system_prompt = _LLM_FALLBACK_SYSTEM_PROMPT
+    if persona_prompt:
+        system_prompt = f"{system_prompt}\nPersona: {persona_prompt}"
+
+    user_prompt = await _build_slot_prompt(slot, context)
+    cache_key = f"block_gen:{hashlib.md5(user_prompt.encode()).hexdigest()}"
+    category = slot.get("category")
+
+    try:
+        text = await llm.generate_text(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            model=model_override,
+            max_tokens=100,
+            temperature=0.8,
+            use_cache=True,
+            cache_key=cache_key,
+            cache_ttl=3600,
+        )
+    except Exception as exc:
+        logger.warning("llm_fallback_failed: slot=%s error=%s", target_key, exc)
+        return None
+
+    text = text.strip().strip('"').strip("'")
+    if not text or len(text) < 4:
+        return None
+
+    block_id = f"llm:{target_key}:{hashlib.md5(text.encode()).hexdigest()[:8]}"
+    return _build_runtime_block(
+        block_id=block_id,
+        text=text,
+        category=category,
+        tags={"source": "llm_fallback"},
+    )
 
 
 @dataclass
@@ -477,10 +677,17 @@ async def _resolve_query_blocks(
     compiled_request.seed = _coerce_int(query.get("seed"))
     resolver_result = _resolver_registry.resolve(compiled_request)
 
+    allow_llm_fallback = _coerce_bool(
+        query.get("allow_llm_fallback") or query.get("allowLlmFallback"),
+        default=False,
+    )
+    llm_profile_id: Optional[str] = query.get("llm_profile_id") or query.get("llmProfileId")
+
     warnings: List[str] = list(slot_plan.warnings)
     selected_blocks: List[Dict[str, Any]] = []
     required_slots_total = 0
     required_slots_selected = 0
+    llm_generated_count = 0
 
     for idx, slot in enumerate(slot_plan.slots):
         if str(slot.get("kind") or "").strip() in {"reinforcement", "audio_cue"}:
@@ -493,6 +700,20 @@ async def _resolve_query_blocks(
         target_key = slot_target_key(slot, idx)
         selected = resolver_result.selected_by_target.get(target_key)
         if selected is None:
+            # LLM fallback for unresolved required slots
+            if not optional and allow_llm_fallback:
+                generated = await _llm_generate_for_slot(
+                    slot, selection_context, target_key,
+                    db=db, profile_id=llm_profile_id,
+                )
+                if generated is not None:
+                    selected_blocks.append(generated)
+                    required_slots_selected += 1
+                    llm_generated_count += 1
+                    warnings.append(
+                        f"Slot '{target_key}' filled by LLM fallback"
+                    )
+                    continue
             if not optional:
                 warnings.append(f"Required slot '{target_key}' unresolved")
             continue

@@ -188,17 +188,9 @@ class AssetCreationMixin:
 
         # Preserve provider thumbnail URL so the frontend can display it
         # immediately (before the ingestion pipeline generates a local thumbnail).
-        #
-        # PixVerse video thumbnails can be transient grey placeholders that also
-        # carry the wrong aspect ratio, which causes fragile gallery/video hover
-        # behavior. Do not persist them for PixVerse video assets.
+        # The UI will replace this with local derivatives once ready.
         provider_thumbnail_url = response.get("thumbnail_url")
-        media_type_value = getattr(media_type, "value", media_type)
-        is_pixverse_video = (
-            submission.provider_id == "pixverse"
-            and str(media_type_value).lower() == "video"
-        )
-        if provider_thumbnail_url and not is_pixverse_video:
+        if provider_thumbnail_url:
             if not metadata:
                 metadata = {}
             metadata["provider_thumbnail_url"] = provider_thumbnail_url

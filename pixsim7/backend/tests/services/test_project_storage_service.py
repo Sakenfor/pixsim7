@@ -190,3 +190,60 @@ async def test_duplicate_project_sets_duplicate_provenance() -> None:
     assert added.origin_meta.get("duplicated_from_project_id") == 11
 
 
+@pytest.mark.asyncio
+async def test_get_latest_project_by_origin_source_key_filters_non_drafts() -> None:
+    db = AsyncMock()
+    result = MagicMock()
+    expected = SimpleNamespace(id=9)
+    result.scalar_one_or_none.return_value = expected
+    db.execute = AsyncMock(return_value=result)
+
+    service = GameProjectStorageService(db)
+    resolved = await service.get_latest_project_by_origin_source_key(
+        owner_user_id=5,
+        source_key="  bananza.seed.v1  ",
+    )
+
+    assert resolved is expected
+    stmt = db.execute.await_args.args[0]
+    sql = str(stmt).lower()
+    assert "origin_source_key" in sql
+    assert "is_draft = false" in sql
+    assert "order by" in sql
+
+
+@pytest.mark.asyncio
+async def test_get_latest_project_by_origin_source_key_skips_blank_key() -> None:
+    db = AsyncMock()
+    db.execute = AsyncMock()
+
+    service = GameProjectStorageService(db)
+    resolved = await service.get_latest_project_by_origin_source_key(
+        owner_user_id=5,
+        source_key="   ",
+    )
+
+    assert resolved is None
+    db.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_latest_project_by_name_filters_non_drafts() -> None:
+    db = AsyncMock()
+    result = MagicMock()
+    expected = SimpleNamespace(id=12)
+    result.scalar_one_or_none.return_value = expected
+    db.execute = AsyncMock(return_value=result)
+
+    service = GameProjectStorageService(db)
+    resolved = await service.get_latest_project_by_name(
+        owner_user_id=7,
+        name="  Bananza Project  ",
+    )
+
+    assert resolved is expected
+    stmt = db.execute.await_args.args[0]
+    sql = str(stmt).lower()
+    assert " is_draft = false" in sql
+    assert "name" in sql
+

@@ -20,11 +20,74 @@ Usage:
         context=execution_context
     )
 """
-from typing import Optional, Dict, Any, List, Iterable
+from typing import Optional, Dict, Any, List, Iterable, TypedDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.services.links.link_service import LinkService
 from pixsim7.backend.main.services.links.activation import evaluate_activation_for_link
+
+
+_TEMPLATE_KIND_ALIASES: Dict[str, str] = {
+    "characterinstance": "characterInstance",
+    "character_instance": "characterInstance",
+    "character-instance": "characterInstance",
+    "npctemplate": "characterInstance",
+    "npc_template": "characterInstance",
+    "npc-template": "characterInstance",
+    "itemtemplate": "itemTemplate",
+    "item_template": "itemTemplate",
+    "item-template": "itemTemplate",
+    "proptemplate": "propTemplate",
+    "prop_template": "propTemplate",
+    "prop-template": "propTemplate",
+    "locationtemplate": "locationTemplate",
+    "location_template": "locationTemplate",
+    "location-template": "locationTemplate",
+}
+
+_RUNTIME_KIND_ALIASES: Dict[str, str] = {
+    "gamenpc": "npc",
+    "game_npc": "npc",
+    "npc_instance": "npc",
+    "npc-instance": "npc",
+    "character": "npc",
+    "characterinstance": "npc",
+    "character_instance": "npc",
+    "gameitem": "item",
+    "game_item": "item",
+    "item_instance": "item",
+    "item-instance": "item",
+    "gameprop": "prop",
+    "game_prop": "prop",
+    "prop_instance": "prop",
+    "prop-instance": "prop",
+    "gamelocation": "location",
+    "game_location": "location",
+    "location_instance": "location",
+    "location-instance": "location",
+}
+
+
+class TemplateRuntimeResolution(TypedDict):
+    template_kind: str
+    runtime_kind: str
+    runtime_id: int
+
+
+def normalize_template_kind(template_kind: str) -> str:
+    raw = str(template_kind).strip()
+    if not raw:
+        return raw
+    normalized = raw.replace("-", "_")
+    return _TEMPLATE_KIND_ALIASES.get(normalized.lower(), raw)
+
+
+def normalize_runtime_kind(runtime_kind: str) -> str:
+    raw = str(runtime_kind).strip()
+    if not raw:
+        return raw
+    normalized = raw.replace("-", "_")
+    return _RUNTIME_KIND_ALIASES.get(normalized.lower(), raw)
 
 
 def _get_value(definition: Any, keys: Iterable[str]) -> Optional[Any]:
@@ -47,6 +110,24 @@ async def resolve_template_to_runtime(
     link_id: Optional[str] = None,
     context: Optional[Dict[str, Any]] = None,
 ) -> Optional[int]:
+    resolution = await resolve_template_to_runtime_ref(
+        db,
+        template_kind,
+        template_id,
+        link_id=link_id,
+        context=context,
+    )
+    return resolution["runtime_id"] if resolution else None
+
+
+async def resolve_template_to_runtime_ref(
+    db: AsyncSession,
+    template_kind: str,
+    template_id: str,
+    *,
+    link_id: Optional[str] = None,
+    context: Optional[Dict[str, Any]] = None,
+) -> Optional[TemplateRuntimeResolution]:
     """
     Resolve a template entity reference to a runtime entity ID via ObjectLink.
 
@@ -70,6 +151,8 @@ async def resolve_template_to_runtime(
             context={'location': {'zone': 'downtown'}}
         )
     """
+    normalized_template_kind = normalize_template_kind(template_kind)
+    normalized_template_id = str(template_id)
     link_service = LinkService(db)
 
     if link_id:
@@ -85,24 +168,43 @@ async def resolve_template_to_runtime(
             return None
 
         # Prevent link_id from bypassing template identity constraints.
-        if link.template_kind != template_kind or link.template_id != template_id:
+        if (
+            normalize_template_kind(str(link.template_kind)) != normalized_template_kind
+            or str(link.template_id) != normalized_template_id
+        ):
             return None
 
         # Match the same activation semantics as LinkService.
         if context is None:
-            return link.runtime_id if not link.activation_conditions else None
+            if link.activation_conditions:
+                return None
+            return {
+                "template_kind": normalized_template_kind,
+                "runtime_kind": normalize_runtime_kind(str(link.runtime_kind)),
+                "runtime_id": link.runtime_id,
+            }
         if not evaluate_activation_for_link(link, context):
             return None
-        return link.runtime_id
+        return {
+            "template_kind": normalized_template_kind,
+            "runtime_kind": normalize_runtime_kind(str(link.runtime_kind)),
+            "runtime_id": link.runtime_id,
+        }
 
     # Delegate to LinkService for canonical filtering (sync_enabled + activation + priority)
     link = await link_service.get_active_link_for_template(
-        template_kind,
-        template_id,
+        normalized_template_kind,
+        normalized_template_id,
         context
     )
 
-    return link.runtime_id if link else None
+    if not link:
+        return None
+    return {
+        "template_kind": normalized_template_kind,
+        "runtime_kind": normalize_runtime_kind(str(link.runtime_kind)),
+        "runtime_id": link.runtime_id,
+    }
 
 
 async def resolve_interaction_targets(

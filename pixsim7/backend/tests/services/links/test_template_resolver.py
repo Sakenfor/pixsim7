@@ -44,6 +44,7 @@ async def test_explicit_link_id_respects_activation_conditions(monkeypatch):
         template_id="char-1",
         sync_enabled=True,
         runtime_id=77,
+        runtime_kind="npc",
         activation_conditions={"location.zone": "downtown"},
     )
 
@@ -93,3 +94,72 @@ async def test_explicit_link_id_rejects_invalid_uuid():
             link_id="not-a-uuid",
         )
 
+
+@pytest.mark.asyncio
+async def test_template_kind_alias_normalized_for_active_lookup(monkeypatch):
+    captured = {}
+    link = SimpleNamespace(
+        template_kind="characterInstance",
+        template_id="char-1",
+        sync_enabled=True,
+        runtime_id=55,
+        runtime_kind="gameNpc",
+        activation_conditions=None,
+    )
+
+    class DummyLinkService:
+        def __init__(self, db):
+            self.db = db
+
+        async def get_link(self, link_id):
+            return None
+
+        async def get_active_link_for_template(self, template_kind, template_id, context):
+            captured["args"] = (template_kind, template_id, context)
+            return link
+
+    monkeypatch.setattr(template_resolver, "LinkService", DummyLinkService)
+
+    resolved = await template_resolver.resolve_template_to_runtime_ref(
+        db=object(),
+        template_kind="npc_template",
+        template_id="char-1",
+        context={"location.zone": "downtown"},
+    )
+
+    assert captured["args"] == ("characterInstance", "char-1", {"location.zone": "downtown"})
+    assert resolved == {
+        "template_kind": "characterInstance",
+        "runtime_kind": "npc",
+        "runtime_id": 55,
+    }
+
+
+@pytest.mark.asyncio
+async def test_explicit_link_id_allows_template_kind_alias(monkeypatch):
+    link = SimpleNamespace(
+        template_kind="characterInstance",
+        template_id="char-1",
+        sync_enabled=True,
+        runtime_id=77,
+        runtime_kind="npc",
+        activation_conditions=None,
+    )
+
+    class DummyLinkService:
+        def __init__(self, db):
+            self.db = db
+
+        async def get_link(self, link_id):
+            return link
+
+    monkeypatch.setattr(template_resolver, "LinkService", DummyLinkService)
+
+    resolved = await template_resolver.resolve_template_to_runtime(
+        db=object(),
+        template_kind="npc_template",
+        template_id="char-1",
+        link_id=str(uuid4()),
+    )
+
+    assert resolved == 77

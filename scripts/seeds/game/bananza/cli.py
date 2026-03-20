@@ -116,7 +116,10 @@ def _parse_args() -> argparse.Namespace:
         "--auth-token",
         type=str,
         default=None,
-        help="Bearer token for API mode (default: env PIXSIM_AUTH_TOKEN or login).",
+        help=(
+            "Bearer token for API mode "
+            "(default: env PIXSIM_AUTH_TOKEN / PIXSIM_API_TOKEN or login)."
+        ),
     )
     parser.add_argument(
         "--username",

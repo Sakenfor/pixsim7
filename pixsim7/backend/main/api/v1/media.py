@@ -84,6 +84,7 @@ async def get_settings(_user: CurrentUser):
 async def update_settings(
     updates: MediaSettingsUpdate,
     user: CurrentUser,
+    db: DatabaseSession,
 ):
     """
     Update media settings.
@@ -98,10 +99,14 @@ async def update_settings(
 
     settings = get_media_settings()
 
-    # Apply updates
+    # Apply updates to in-memory cache
     update_dict = updates.model_dump(exclude_none=True)
     if update_dict:
         settings.update(update_dict)
+
+        # Persist to DB
+        from pixsim7.backend.main.services.system_config import set_config
+        await set_config(db, "media_settings", settings.to_dict(), user.id)
 
     return MediaSettingsResponse(**settings.to_dict())
 
