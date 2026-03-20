@@ -133,6 +133,13 @@ export interface SettingTab {
   groups: SettingGroup[];
   /** Optional footer content (e.g., keyboard shortcuts hint) */
   footer?: ReactNode;
+  /**
+   * Per-tab store adapter hook. When multiple modules contribute tabs
+   * to the same category, each tab can have its own store adapter.
+   * Falls back to the category-level useStore if not set.
+   * @internal Set automatically by the registry during registration.
+   */
+  useStore?: () => SettingStoreAdapter;
 }
 
 /** Settings category (top-level navigation item) */

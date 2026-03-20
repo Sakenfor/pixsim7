@@ -52,9 +52,11 @@ class SettingsSchemaRegistry {
       this.categories.set(categoryId, cat);
     }
 
-    // Add tab if provided (tabs use Map, so duplicates are automatically replaced)
+    // Add tab if provided (tabs use Map, so duplicates are automatically replaced).
+    // Stamp the registrant's useStore onto the tab so each tab can use its own adapter
+    // even when multiple modules contribute tabs to the same category.
     if (tab) {
-      cat.tabs.set(tab.id, tab);
+      cat.tabs.set(tab.id, { ...tab, useStore });
     }
 
     // Add groups if provided (check for duplicates first)
@@ -124,11 +126,12 @@ class SettingsSchemaRegistry {
           results.push({ group, useStore: cat.useStore, sourceLabel: cat.label, sourceIcon: cat.icon });
         }
       }
-      // Groups inside tabs
+      // Groups inside tabs (prefer tab-level useStore)
       for (const tab of cat.tabs.values()) {
+        const tabStore = tab.useStore ?? cat.useStore;
         for (const group of tab.groups) {
           if (group.adminGroup) {
-            results.push({ group, useStore: cat.useStore, sourceLabel: cat.label, sourceIcon: cat.icon });
+            results.push({ group, useStore: tabStore, sourceLabel: cat.label, sourceIcon: cat.icon });
           }
         }
       }

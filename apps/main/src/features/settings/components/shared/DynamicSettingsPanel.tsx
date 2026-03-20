@@ -23,14 +23,19 @@ interface DynamicSettingsPanelProps {
   tabId?: string;
 }
 
+type PanelStore = {
+  get: (id: string) => unknown;
+  set: (id: string, value: unknown) => void;
+  getAll: () => Record<string, unknown>;
+};
+
 export function SettingGroupRenderer({
   group,
-  useStore,
+  store,
 }: {
   group: SettingGroup;
-  useStore: () => { get: (id: string) => any; set: (id: string, value: any) => void; getAll: () => Record<string, any> };
+  store: PanelStore;
 }) {
-  const store = useStore();
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminUser(user);
   const allValues = { ...store.getAll(), __isAdmin: !!isAdmin, __userRole: user?.role };
@@ -71,12 +76,14 @@ function TabContent({
   useStore,
 }: {
   tab: SettingTab;
-  useStore: () => { get: (id: string) => any; set: (id: string, value: any) => void; getAll: () => Record<string, any> };
+  useStore: () => PanelStore;
 }) {
+  const store = useStore();
+
   return (
     <div className="space-y-4">
       {tab.groups.map((group) => (
-        <SettingGroupRenderer key={group.id} group={group} useStore={useStore} />
+        <SettingGroupRenderer key={group.id} group={group} store={store} />
       ))}
       {tab.footer && (
         <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
@@ -84,6 +91,24 @@ function TabContent({
         </div>
       )}
     </div>
+  );
+}
+
+function CategoryContent({
+  groups,
+  useStore,
+}: {
+  groups: SettingGroup[];
+  useStore: () => PanelStore;
+}) {
+  const store = useStore();
+
+  return (
+    <>
+      {groups.map((group) => (
+        <SettingGroupRenderer key={group.id} group={group} store={store} />
+      ))}
+    </>
   );
 }
 
@@ -122,11 +147,14 @@ export function DynamicSettingsPanel({ categoryId, tabId }: DynamicSettingsPanel
   const hasTabs = tabs.length > 0;
   const activeTab = tabs.find((t) => t.id === (tabId || activeTabId)) ?? tabs[0];
 
+  // Resolve per-tab store: prefer tab-level useStore, fall back to category-level
+  const resolveUseStore = (tab: SettingTab) => tab.useStore ?? category.useStore;
+
   // If specific tabId provided, show only that tab's content (no navigation)
   if (tabId && activeTab) {
     return (
       <div className="text-xs text-neutral-800 dark:text-neutral-100 space-y-4">
-        <TabContent tab={activeTab} useStore={category.useStore} />
+        <TabContent key={activeTab.id} tab={activeTab} useStore={resolveUseStore(activeTab)} />
       </div>
     );
   }
@@ -157,7 +185,9 @@ export function DynamicSettingsPanel({ categoryId, tabId }: DynamicSettingsPanel
 
         {/* Right content area */}
         <div className="flex-1 overflow-auto p-4">
-          {activeTab && <TabContent tab={activeTab} useStore={category.useStore} />}
+          {activeTab && (
+            <TabContent key={activeTab.id} tab={activeTab} useStore={resolveUseStore(activeTab)} />
+          )}
         </div>
       </div>
     );
@@ -166,9 +196,7 @@ export function DynamicSettingsPanel({ categoryId, tabId }: DynamicSettingsPanel
   // Non-tabbed layout (direct groups)
   return (
     <div className="flex-1 overflow-auto p-4 text-xs text-neutral-800 dark:text-neutral-100 space-y-6">
-      {category.groups.map((group) => (
-        <SettingGroupRenderer key={group.id} group={group} useStore={category.useStore} />
-      ))}
+      <CategoryContent groups={category.groups} useStore={category.useStore} />
     </div>
   );
 }

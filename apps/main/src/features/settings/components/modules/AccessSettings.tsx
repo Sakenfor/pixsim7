@@ -1,6 +1,19 @@
+import {
+  Badge,
+  Button,
+  ConfirmModal,
+  FormField,
+  Input,
+  SearchInput,
+  SectionHeader,
+  Select,
+  Switch,
+} from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
+  adminDeactivateUser,
+  adminUpdateUser,
   extractErrorMessage,
   listAdminUsers,
   updateAdminUserPermissions,
@@ -24,6 +37,365 @@ function normalizePermissions(permissions: string[]): string[] {
   return normalized;
 }
 
+const ROLE_OPTIONS = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'user', label: 'User' },
+  { value: 'guest', label: 'Guest' },
+] as const;
+
+const ROLE_BADGE_COLOR: Record<string, 'purple' | 'blue' | 'gray'> = {
+  admin: 'purple',
+  user: 'blue',
+  guest: 'gray',
+};
+
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return 'Never';
+  return new Date(dateStr).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+// ─── User List Item ───────────────────────────────────────────────
+
+function UserListItem({
+  user,
+  isSelected,
+  onSelect,
+}: {
+  user: AdminUserPermissions;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`flex w-full items-center gap-2 border-b border-neutral-200 px-3 py-2 text-left text-[11px] transition-colors dark:border-neutral-800 ${
+        isSelected
+          ? 'bg-blue-50 dark:bg-blue-950/40'
+          : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/40'
+      }`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate font-medium text-neutral-900 dark:text-neutral-100">
+            {user.username}
+          </span>
+          {!user.is_active && (
+            <Badge color="red" className="!text-[9px] !px-1.5 !py-0">
+              Inactive
+            </Badge>
+          )}
+        </div>
+        <div className="truncate text-[10px] text-neutral-500">{user.email}</div>
+      </div>
+      <Badge color={ROLE_BADGE_COLOR[user.role] ?? 'gray'} className="!text-[9px] shrink-0">
+        {user.role}
+      </Badge>
+    </button>
+  );
+}
+
+// ─── User Detail Panel ────────────────────────────────────────────
+
+function UserDetailPanel({
+  user,
+  currentUserId,
+  onUpdate,
+}: {
+  user: AdminUserPermissions;
+  currentUserId: number | undefined;
+  onUpdate: (updated: AdminUserPermissions) => void;
+}) {
+  const [editRole, setEditRole] = useState(user.role);
+  const [editActive, setEditActive] = useState(user.is_active);
+  const [newPassword, setNewPassword] = useState('');
+  const [newPermission, setNewPermission] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+
+  const isSelf = currentUserId === user.id;
+  const permissions = normalizePermissions(user.permissions || []);
+  const hasCodegen = permissions.includes(CODEGEN_PERMISSION);
+
+  // Reset form when user changes
+  useEffect(() => {
+    setEditRole(user.role);
+    setEditActive(user.is_active);
+    setNewPassword('');
+    setNewPermission('');
+    setError('');
+    setSuccess('');
+  }, [user.id, user.role, user.is_active]);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      const updates: Record<string, unknown> = {};
+      if (editRole !== user.role) updates.role = editRole;
+      if (editActive !== user.is_active) updates.is_active = editActive;
+      if (newPassword.trim()) updates.password = newPassword.trim();
+
+      if (Object.keys(updates).length === 0) {
+        setError('No changes to save');
+        return;
+      }
+
+      const updated = await adminUpdateUser(user.id, updates as Parameters<typeof adminUpdateUser>[1]);
+      onUpdate(updated);
+      setNewPassword('');
+      setSuccess('Saved');
+      setTimeout(() => setSuccess(''), 2000);
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to update user'));
+    } finally {
+      setSaving(false);
+    }
+  }, [editRole, editActive, newPassword, user, onUpdate]);
+
+  const togglePermission = useCallback(
+    async (permission: string, enabled: boolean) => {
+      const current = normalizePermissions(user.permissions || []);
+      const next = enabled
+        ? normalizePermissions([...current, permission])
+        : current.filter((p) => p !== permission);
+
+      setError('');
+      try {
+        const updated = await updateAdminUserPermissions(user.id, next);
+        onUpdate(updated);
+      } catch (err) {
+        setError(extractErrorMessage(err, 'Failed to update permissions'));
+      }
+    },
+    [user, onUpdate],
+  );
+
+  const addPermission = useCallback(async () => {
+    const perm = newPermission.trim().toLowerCase();
+    if (!perm) return;
+    const current = normalizePermissions(user.permissions || []);
+    if (current.includes(perm)) {
+      setError(`Permission "${perm}" already exists`);
+      return;
+    }
+    setError('');
+    try {
+      const updated = await updateAdminUserPermissions(user.id, [...current, perm]);
+      onUpdate(updated);
+      setNewPermission('');
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to add permission'));
+    }
+  }, [newPermission, user, onUpdate]);
+
+  const removePermission = useCallback(
+    async (permission: string) => {
+      const current = normalizePermissions(user.permissions || []);
+      setError('');
+      try {
+        const updated = await updateAdminUserPermissions(
+          user.id,
+          current.filter((p) => p !== permission),
+        );
+        onUpdate(updated);
+      } catch (err) {
+        setError(extractErrorMessage(err, 'Failed to remove permission'));
+      }
+    },
+    [user, onUpdate],
+  );
+
+  const handleDeactivate = useCallback(async () => {
+    setError('');
+    try {
+      const updated = await adminDeactivateUser(user.id);
+      onUpdate(updated);
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to deactivate user'));
+    }
+  }, [user.id, onUpdate]);
+
+  const hasChanges = editRole !== user.role || editActive !== user.is_active || newPassword.trim() !== '';
+
+  return (
+    <div className="flex h-full flex-col overflow-y-auto">
+      <div className="space-y-4 p-3">
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+              {user.username}
+            </div>
+            <div className="text-[11px] text-neutral-500">{user.email}</div>
+          </div>
+          <Badge color={user.is_active ? 'green' : 'red'}>
+            {user.is_active ? 'Active' : 'Inactive'}
+          </Badge>
+        </div>
+
+        {/* Info row */}
+        <div className="flex gap-4 text-[10px] text-neutral-500">
+          <span>Created: {formatDate(user.created_at)}</span>
+          <span>Last login: {formatDate(user.last_login_at)}</span>
+        </div>
+
+        {/* Error / Success */}
+        {error && (
+          <div className="rounded border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="rounded border border-green-200 bg-green-50 px-2.5 py-1.5 text-[11px] text-green-700 dark:border-green-900/60 dark:bg-green-950/30 dark:text-green-300">
+            {success}
+          </div>
+        )}
+
+        {/* ── Account section ── */}
+        <SectionHeader>Account</SectionHeader>
+
+        <FormField label="Role">
+          <Select
+            value={editRole}
+            onChange={(e) => setEditRole(e.target.value)}
+            size="sm"
+            disabled={isSelf}
+          >
+            {ROLE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+
+        <FormField label="Active">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={editActive}
+              onCheckedChange={setEditActive}
+              size="sm"
+              disabled={isSelf}
+            />
+            <span className="text-[11px] text-neutral-600 dark:text-neutral-400">
+              {editActive ? 'Account enabled' : 'Account disabled'}
+            </span>
+          </div>
+        </FormField>
+
+        <FormField label="Set new password" optional>
+          <Input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Leave blank to keep current"
+            size="sm"
+          />
+        </FormField>
+
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => void handleSave()}
+            loading={saving}
+            disabled={!hasChanges}
+          >
+            Save changes
+          </Button>
+          {isSelf && (
+            <span className="text-[10px] text-amber-600 dark:text-amber-400">
+              Cannot modify own role/status
+            </span>
+          )}
+        </div>
+
+        {/* ── Permissions section ── */}
+        <SectionHeader className="mt-2">Permissions</SectionHeader>
+
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-neutral-700 dark:text-neutral-300">Codegen access</span>
+          <Switch
+            checked={hasCodegen}
+            onCheckedChange={(checked) => void togglePermission(CODEGEN_PERMISSION, checked)}
+            size="sm"
+          />
+        </div>
+
+        {permissions.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {permissions.map((perm) => (
+              <span
+                key={perm}
+                className="inline-flex items-center gap-1 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
+              >
+                <code>{perm}</code>
+                <button
+                  onClick={() => void removePermission(perm)}
+                  className="ml-0.5 text-neutral-400 hover:text-red-500"
+                  title={`Remove ${perm}`}
+                >
+                  x
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center gap-1.5">
+          <Input
+            type="text"
+            value={newPermission}
+            onChange={(e) => setNewPermission(e.target.value)}
+            placeholder="Add permission..."
+            size="sm"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void addPermission();
+            }}
+          />
+          <Button size="sm" variant="outline" onClick={() => void addPermission()}>
+            Add
+          </Button>
+        </div>
+
+        {/* ── Danger zone ── */}
+        {!isSelf && (
+          <>
+            <SectionHeader className="mt-2">Danger zone</SectionHeader>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => setShowDeactivateConfirm(true)}
+              disabled={!user.is_active}
+            >
+              {user.is_active ? 'Deactivate account' : 'Already deactivated'}
+            </Button>
+          </>
+        )}
+      </div>
+
+      <ConfirmModal
+        isOpen={showDeactivateConfirm}
+        onCancel={() => setShowDeactivateConfirm(false)}
+        onConfirm={() => void handleDeactivate()}
+        title="Deactivate user"
+        message={`This will deactivate ${user.username}'s account. They will no longer be able to log in. This can be reversed by re-enabling the Active toggle.`}
+        confirmText="Deactivate"
+        variant="danger"
+      />
+    </div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────
+
 export function AccessSettings() {
   const currentUser = useAuthStore((s) => s.user);
   const canManageAccess = isAdminUser(currentUser);
@@ -32,14 +404,12 @@ export function AccessSettings() {
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [pendingUserIds, setPendingUserIds] = useState<Record<number, boolean>>({});
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
 
   const activeSearch = search.trim();
 
   const refreshUsers = useCallback(async () => {
-    if (!canManageAccess) {
-      return;
-    }
+    if (!canManageAccess) return;
     setIsLoading(true);
     setError('');
     try {
@@ -60,41 +430,23 @@ export function AccessSettings() {
     void refreshUsers();
   }, [refreshUsers]);
 
-  const toggleCodegenPermission = useCallback(
-    async (target: AdminUserPermissions, enabled: boolean) => {
-      const currentPermissions = normalizePermissions(target.permissions || []);
-      const nextPermissions = enabled
-        ? normalizePermissions([...currentPermissions, CODEGEN_PERMISSION])
-        : currentPermissions.filter((permission) => permission !== CODEGEN_PERMISSION);
-
-      setPendingUserIds((prev) => ({ ...prev, [target.id]: true }));
-      setError('');
-      try {
-        const updated = await updateAdminUserPermissions(target.id, nextPermissions);
-        setUsers((prev) => prev.map((user) => (user.id === updated.id ? updated : user)));
-      } catch (err) {
-        setError(extractErrorMessage(err, `Failed to update permissions for ${target.username}`));
-      } finally {
-        setPendingUserIds((prev) => {
-          const next = { ...prev };
-          delete next[target.id];
-          return next;
-        });
-      }
-    },
-    [],
-  );
-
   const sortedUsers = useMemo(
     () =>
       [...users].sort((a, b) => {
-        if (a.role !== b.role) {
-          return a.role.localeCompare(b.role);
-        }
+        if (a.role !== b.role) return a.role.localeCompare(b.role);
         return a.username.localeCompare(b.username);
       }),
     [users],
   );
+
+  const selectedUser = useMemo(
+    () => (selectedUserId != null ? users.find((u) => u.id === selectedUserId) : undefined),
+    [users, selectedUserId],
+  );
+
+  const handleUserUpdated = useCallback((updated: AdminUserPermissions) => {
+    setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+  }, []);
 
   if (!canManageAccess) {
     return (
@@ -105,105 +457,63 @@ export function AccessSettings() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-[11px] text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300">
-        Manage explicit grants for backend scoped permissions. Codegen access is controlled by{' '}
-        <code>{CODEGEN_PERMISSION}</code>.
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search users by email or username..."
-          className="min-w-[260px] flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-[11px] text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
-        />
-        <button
-          onClick={() => void refreshUsers()}
-          disabled={isLoading}
-          className="rounded border border-neutral-300 bg-white px-3 py-2 text-[11px] font-medium hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-neutral-700"
-        >
-          Refresh
-        </button>
-      </div>
-
+    <div className="flex flex-col gap-3">
       {error && (
         <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
           {error}
         </div>
       )}
 
-      <div className="rounded border border-neutral-200 dark:border-neutral-800">
-        <table className="w-full text-left text-[11px]">
-          <thead className="bg-neutral-50 dark:bg-neutral-900/40">
-            <tr className="border-b border-neutral-200 dark:border-neutral-800">
-              <th className="px-3 py-2 font-semibold">User</th>
-              <th className="px-3 py-2 font-semibold">Role</th>
-              <th className="px-3 py-2 font-semibold">Codegen</th>
-              <th className="px-3 py-2 font-semibold">Permissions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td colSpan={4} className="px-3 py-4 text-neutral-500">
-                  Loading users...
-                </td>
-              </tr>
-            ) : sortedUsers.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-3 py-4 text-neutral-500">
-                  No users found.
-                </td>
-              </tr>
-            ) : (
-              sortedUsers.map((user) => {
-                const permissions = normalizePermissions(user.permissions || []);
-                const hasCodegen = permissions.includes(CODEGEN_PERMISSION);
-                const pending = !!pendingUserIds[user.id];
+      <div className="flex overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800" style={{ minHeight: 360 }}>
+        {/* ── Left: User list ── */}
+        <div className="flex w-[220px] shrink-0 flex-col border-r border-neutral-200 bg-neutral-50/50 dark:border-neutral-800 dark:bg-neutral-900/30">
+          <div className="border-b border-neutral-200 p-2 dark:border-neutral-800">
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Search users..."
+              size="sm"
+              debounceMs={250}
+            />
+          </div>
 
-                return (
-                  <tr key={user.id} className="border-b border-neutral-200 dark:border-neutral-800">
-                    <td className="px-3 py-2">
-                      <div className="font-medium">{user.username}</div>
-                      <div className="text-neutral-500">{user.email}</div>
-                    </td>
-                    <td className="px-3 py-2 uppercase text-neutral-600 dark:text-neutral-300">{user.role}</td>
-                    <td className="px-3 py-2">
-                      <label className="inline-flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={hasCodegen}
-                          disabled={pending}
-                          onChange={(event) => void toggleCodegenPermission(user, event.target.checked)}
-                        />
-                        <span>{pending ? 'Updating...' : hasCodegen ? 'Enabled' : 'Disabled'}</span>
-                      </label>
-                    </td>
-                    <td className="px-3 py-2">
-                      {permissions.length === 0 ? (
-                        <span className="text-neutral-500">none</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {permissions.map((permission) => (
-                            <code
-                              key={permission}
-                              className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
-                            >
-                              {permission}
-                            </code>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
+          <div className="flex-1 overflow-y-auto">
+            {isLoading ? (
+              <div className="px-3 py-4 text-[11px] text-neutral-500">Loading...</div>
+            ) : sortedUsers.length === 0 ? (
+              <div className="px-3 py-4 text-[11px] text-neutral-500">No users found.</div>
+            ) : (
+              sortedUsers.map((user) => (
+                <UserListItem
+                  key={user.id}
+                  user={user}
+                  isSelected={selectedUserId === user.id}
+                  onSelect={() => setSelectedUserId(user.id)}
+                />
+              ))
             )}
-          </tbody>
-        </table>
+          </div>
+
+          <div className="border-t border-neutral-200 px-3 py-1.5 text-[10px] text-neutral-500 dark:border-neutral-800">
+            {users.length} user{users.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+
+        {/* ── Right: User detail ── */}
+        <div className="flex-1 overflow-hidden">
+          {selectedUser ? (
+            <UserDetailPanel
+              user={selectedUser}
+              currentUserId={currentUser?.id}
+              onUpdate={handleUserUpdated}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-[11px] text-neutral-400">
+              Select a user to view and edit
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
-

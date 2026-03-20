@@ -1,8 +1,9 @@
 /**
  * Built-in Presets
  *
- * Declarative preset definitions with layout recipes.
- * These are code-defined and never persisted to storage.
+ * Infrastructure for code-defined layout presets.
+ * Currently empty — presets are user-saved only.
+ * Built-in presets may be re-introduced via context menu or other UX later.
  */
 
 import type { PresetScope, LayoutPreset } from "../stores/workspaceStore";
@@ -19,108 +20,7 @@ export interface BuiltinPreset {
   graphEditorId?: string;
 }
 
-const BUILTIN_PRESETS: BuiltinPreset[] = [
-  // ── Workspace presets ─────────────────────────────────────────────
-  {
-    id: "default",
-    name: "Default Workspace",
-    scope: "workspace",
-    description: "Balanced layout for general development",
-    icon: "🏠",
-    recipe: {
-      panels: [
-        { id: "gallery", position: { direction: "left" } },
-        { id: "health", position: { direction: "below", referencePanel: "gallery" } },
-        { id: "project", position: { direction: "below", referencePanel: "health" } },
-        { id: "graph", position: { direction: "right" } },
-        { id: "inspector", position: { direction: "right", referencePanel: "graph" } },
-        { id: "game", position: { direction: "below", referencePanel: "inspector" } },
-      ],
-      ensurePanels: ["gallery", "health", "project", "graph", "inspector", "game"],
-    },
-  },
-  {
-    id: "minimal",
-    name: "Minimal",
-    scope: "workspace",
-    description: "Focus on graph editing and game preview",
-    icon: "⚡",
-    recipe: {
-      panels: [
-        { id: "graph", position: { direction: "left" } },
-        { id: "game", position: { direction: "right" } },
-        { id: "inspector", position: { direction: "within", referencePanel: "game" } },
-      ],
-    },
-  },
-  {
-    id: "creative",
-    name: "Creative Studio",
-    scope: "workspace",
-    description: "Optimized for content creation",
-    icon: "🎨",
-    recipe: {
-      panels: [
-        { id: "gallery", position: { direction: "left" }, initialWidth: 450 },
-        { id: "graph", position: { direction: "right" } },
-        { id: "inspector", position: { direction: "right", referencePanel: "graph" } },
-        { id: "game", position: { direction: "below", referencePanel: "inspector" } },
-        { id: "generations", position: { direction: "within", referencePanel: "gallery" } },
-      ],
-    },
-  },
-  {
-    id: "narrative-flow",
-    name: "Narrative & Flow",
-    scope: "workspace",
-    description: "Flow View-centric layout for designing scenes",
-    icon: "🔀",
-    graphEditorId: "scene-graph-v2",
-    recipe: {
-      panels: [
-        { id: "graph", position: { direction: "left" }, initialWidth: 700 },
-        { id: "inspector", position: { direction: "right" } },
-        { id: "scene-management", position: { direction: "below", referencePanel: "inspector" } },
-        { id: "game", position: { direction: "below", referencePanel: "graph" } },
-      ],
-    },
-  },
-  {
-    id: "playtest-tuning",
-    name: "Playtest & Tuning",
-    scope: "workspace",
-    description: "Game View-centric layout for playtesting",
-    icon: "🎮",
-    recipe: {
-      panels: [
-        { id: "game", position: { direction: "left" }, initialWidth: 600 },
-        { id: "inspector", position: { direction: "right" } },
-        { id: "health", position: { direction: "below", referencePanel: "inspector" } },
-        { id: "graph", position: { direction: "within", referencePanel: "game" } },
-        { id: "game-tools", position: { direction: "within", referencePanel: "health" } },
-      ],
-    },
-  },
-  {
-    id: "dev-default",
-    name: "Dev – Debug",
-    scope: "workspace",
-    description: "Graph, dev tools, and health monitoring",
-    icon: "🧪",
-    graphEditorId: "scene-graph-v2",
-    recipe: {
-      panels: [
-        { id: "graph", position: { direction: "left" } },
-        { id: "inspector", position: { direction: "right" } },
-        { id: "dev-tools", position: { direction: "below", referencePanel: "graph" } },
-        { id: "console", position: { direction: "within", referencePanel: "dev-tools" } },
-        { id: "health", position: { direction: "below", referencePanel: "inspector" } },
-        { id: "game", position: { direction: "within", referencePanel: "health" } },
-      ],
-    },
-  },
-
-];
+const BUILTIN_PRESETS: BuiltinPreset[] = [];
 
 /** Convert a built-in preset to the LayoutPreset shape used by the store/UI. */
 function toLayoutPreset(b: BuiltinPreset): LayoutPreset {

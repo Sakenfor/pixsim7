@@ -112,3 +112,27 @@ def _apply_logging_config(data: dict) -> None:
 
 
 register_applier("logging", _apply_logging_config)
+
+
+# ---------------------------------------------------------------------------
+# "provider_settings" — per-provider reauth / password config
+# ---------------------------------------------------------------------------
+
+def _apply_provider_settings(data: dict) -> None:
+    from .settings_store import apply_provider_settings
+    apply_provider_settings(data)
+
+
+register_applier("provider_settings", _apply_provider_settings)
+
+
+# ---------------------------------------------------------------------------
+# "media_settings" — ingestion, thumbnails, caching
+# ---------------------------------------------------------------------------
+
+def _apply_media_settings(data: dict) -> None:
+    from .settings_store import apply_media_settings
+    apply_media_settings(data)
+
+
+register_applier("media_settings", _apply_media_settings)
