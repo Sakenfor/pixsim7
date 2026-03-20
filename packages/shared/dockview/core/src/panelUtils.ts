@@ -185,16 +185,25 @@ export function addPanel(
     // Retry without position — stale group/panel references in the position
     // cause "invalid location" errors from dockview internals.
     if (options.position) {
-      api.addPanel({
-        id: instanceId,
-        component: panelId,
-        title,
-        params,
-        initialWidth: options.initialWidth,
-        initialHeight: options.initialHeight,
-      });
+      try {
+        api.addPanel({
+          id: instanceId,
+          component: panelId,
+          title,
+          params,
+          initialWidth: options.initialWidth,
+          initialHeight: options.initialHeight,
+        });
+      } catch (retryErr) {
+        // Corrupt dockview state — surface as null so callers can self-heal
+        console.warn(`[addPanel] Failed to add "${panelId}" (corrupt layout state):`, retryErr);
+        return null;
+      }
     } else {
-      throw err;
+      // No position was specified yet dockview still rejected the panel —
+      // the internal grid/tab tree is likely corrupt from a bad fromJSON.
+      console.warn(`[addPanel] Failed to add "${panelId}" (corrupt layout state):`, err);
+      return null;
     }
   }
 

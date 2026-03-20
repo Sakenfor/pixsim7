@@ -247,6 +247,8 @@ const FloatingPanel = memo(function FloatingPanel({
   const bringFloatingPanelToFront = useWorkspaceStore(
     (s) => s.bringFloatingPanelToFront
   );
+  const focusedId = useWorkspaceStore((s) => s.focusedFloatingPanelId);
+  const isUnfocused = focusedId !== null && focusedId !== panel.id;
   const minimizePanelToCube = useCubeStore((s) => s.minimizePanelToCube);
   const cubesVisible = useCubeSettingsStore((s) => s.visible);
   const setCubesVisible = useCubeSettingsStore((s) => s.setVisible);
@@ -472,7 +474,11 @@ const FloatingPanel = memo(function FloatingPanel({
       minHeight={panel.minimized ? 42 : 200}
       bounds="window"
       dragHandleClassName="floating-panel-header"
-      style={{ zIndex: Z.floatPanel + panel.zIndex }}
+      style={{
+        zIndex: Z.floatPanel + panel.zIndex,
+        opacity: isUnfocused ? 0.45 : 1,
+        transition: 'opacity 0.2s ease-out',
+      }}
       className="floating-panel"
       disableDragging={flyingAway}
       enableResizing={!flyingAway && !panel.minimized}
@@ -487,20 +493,22 @@ const FloatingPanel = memo(function FloatingPanel({
             <span className="font-semibold text-neutral-800 dark:text-neutral-200 truncate text-sm">
               {title}
             </span>
-            {panelCategoryBadge && (
+            {!panel.minimized && panelCategoryBadge && (
               <span className="shrink-0 px-1.5 py-0.5 text-[10px] bg-neutral-200/70 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded font-medium uppercase tracking-wide">
                 {panelCategoryBadge}
               </span>
             )}
-            <span className="shrink-0 px-1.5 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded font-medium">
-              FLOATING
-            </span>
-            {panelContextSummary && (
+            {!panel.minimized && (
+              <span className="shrink-0 px-1.5 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded font-medium">
+                FLOATING
+              </span>
+            )}
+            {!panel.minimized && panelContextSummary && (
               <span className="shrink-0 text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
                 {panelContextSummary}
               </span>
             )}
-            {originLabel && (
+            {!panel.minimized && originLabel && (
               <span className="shrink-0 text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
                 From {originLabel}
               </span>
@@ -583,6 +591,17 @@ export function FloatingPanelsManager() {
     selectedProjectSource: activeProjectSource,
   } = useSharedProjectSelection({ loadCatalog: false });
   const [catalogVersion, setCatalogVersion] = useState(0);
+
+  // Blur floating panels when clicking outside any floating panel
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('.floating-panel')) return;
+      useWorkspaceStore.getState().blurFloatingPanels();
+    };
+    document.addEventListener('mousedown', handler, true);
+    return () => document.removeEventListener('mousedown', handler, true);
+  }, []);
 
   // Defer rendering persisted floating panels until the panel catalog has
   // been populated.  Without this guard, panels mount before definitions are

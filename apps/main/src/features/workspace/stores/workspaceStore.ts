@@ -32,6 +32,8 @@ export interface FloatingPanelState {
   height: number;
   zIndex: number;
   minimized?: boolean;
+  /** Width before minimize — restored when un-minimizing */
+  preMinimizedWidth?: number;
   context?: Record<string, any>;
 }
 
@@ -70,6 +72,8 @@ export interface WorkspaceState {
   pinnedQuickAddPanels: string[];
   /** Remembered geometry for floating panels (persists across close/reopen) */
   lastFloatingPanelStates: Record<string, { x: number; y: number; width: number; height: number }>;
+  /** Currently focused floating panel (others fade when set) */
+  focusedFloatingPanelId: string | null;
 }
 
 export interface WorkspaceActions {
@@ -130,6 +134,8 @@ export interface WorkspaceActions {
     height: number,
   ) => void;
   bringFloatingPanelToFront: (panelId: string) => void;
+  /** Clear floating panel focus (all panels return to full opacity) */
+  blurFloatingPanels: () => void;
   updateFloatingPanelContext: (
     panelId: string,
     context: Record<string, any>,
@@ -221,6 +227,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
       floatingPanels: [],
       pinnedQuickAddPanels: ['inspector'],
       lastFloatingPanelStates: {},
+      focusedFloatingPanelId: null,
       activePresetByScope: {
         workspace: "default",
       },
@@ -370,6 +377,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
           floatingPanels: [],
           pinnedQuickAddPanels: ['inspector'],
           lastFloatingPanelStates: {},
+          focusedFloatingPanelId: null,
           activePresetByScope: {
             workspace: "default",
           },
@@ -500,19 +508,27 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         const panel = get().floatingPanels.find((p) => p.id === panelId);
         const defId = getFloatingDefinitionId(panelId);
         const saved = panel
-          ? { ...get().lastFloatingPanelStates, [defId]: { x: panel.x, y: panel.y, width: panel.width, height: panel.height } }
+          ? { ...get().lastFloatingPanelStates, [defId]: { x: panel.x, y: panel.y, width: panel.preMinimizedWidth ?? panel.width, height: panel.height } }
           : get().lastFloatingPanelStates;
         set({
           floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
           lastFloatingPanelStates: saved,
+          focusedFloatingPanelId: get().focusedFloatingPanelId === panelId ? null : get().focusedFloatingPanelId,
         });
       },
 
       minimizeFloatingPanel: (panelId) => {
+        const MINIMIZED_WIDTH = 280;
         set({
-          floatingPanels: get().floatingPanels.map((p) =>
-            p.id === panelId ? { ...p, minimized: !p.minimized } : p,
-          ),
+          floatingPanels: get().floatingPanels.map((p) => {
+            if (p.id !== panelId) return p;
+            if (p.minimized) {
+              // Restore: bring back pre-minimize width
+              return { ...p, minimized: false, width: p.preMinimizedWidth ?? p.width, preMinimizedWidth: undefined };
+            }
+            // Minimize: save current width, shrink
+            return { ...p, minimized: true, preMinimizedWidth: p.width, width: Math.min(p.width, MINIMIZED_WIDTH) };
+          }),
         });
       },
 
@@ -550,7 +566,14 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
           floatingPanels: get().floatingPanels.map((p) =>
             p.id === panelId ? { ...p, zIndex: maxZ + 1 } : p,
           ),
+          focusedFloatingPanelId: panelId,
         });
+      },
+
+      blurFloatingPanels: () => {
+        if (get().focusedFloatingPanelId !== null) {
+          set({ focusedFloatingPanelId: null });
+        }
       },
 
       updateFloatingPanelContext: (panelId, context) => {
@@ -662,7 +685,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
           floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
           lastFloatingPanelStates: {
             ...get().lastFloatingPanelStates,
-            [defId]: { x: floatingPanel.x, y: floatingPanel.y, width: floatingPanel.width, height: floatingPanel.height },
+            [defId]: { x: floatingPanel.x, y: floatingPanel.y, width: floatingPanel.preMinimizedWidth ?? floatingPanel.width, height: floatingPanel.height },
           },
         });
       },

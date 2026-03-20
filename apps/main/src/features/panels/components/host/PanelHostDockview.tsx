@@ -273,12 +273,17 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
               position && 'referencePanel' in position && position.referencePanel
                 ? api.getPanel(position.referencePanel) ? position : undefined
                 : position;
-            ensurePanels(api, [panelId], {
+            const added = ensurePanels(api, [panelId], {
               resolveOptions: () => ({
                 title: effectiveResolvePanelTitle(panelId),
                 position: safePosition,
               }),
             });
+            // addPanel returns null (→ empty added array) when dockview
+            // rejects the panel due to corrupt internal state
+            if (added.length === 0) {
+              failedCount++;
+            }
           } catch (error) {
             failedCount++;
             console.warn(`[PanelHostDockview] Failed to add panel "${panelId}" to dock "${dockId ?? storageKey}":`, error);
@@ -292,7 +297,17 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
           console.warn(
             `[PanelHostDockview] ${failedCount} panel(s) failed to add — clearing corrupted layout "${storageKey}" and resetting.`,
           );
+          // Clear saved layout, then remove all panels to prevent auto-save
+          // from re-persisting the corrupt state before the remount.
           localStorage.removeItem(storageKey);
+          try {
+            const panels = getDockviewPanels(api);
+            for (const panel of panels) {
+              api.removePanel(panel);
+            }
+          } catch {
+            // Best-effort cleanup
+          }
           queueMicrotask(() => setResetKey((k) => k + 1));
         }
       },
