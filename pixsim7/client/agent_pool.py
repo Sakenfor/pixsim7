@@ -128,8 +128,9 @@ class AgentPool:
 
         client_log(f"[pool] Spawning {pool_key} ({command})")
         if not await session.start():
+            err = session.last_error or "unknown error"
             self._sessions.pop(pool_key, None)
-            raise RuntimeError(f"Failed to start session {pool_key}")
+            raise RuntimeError(f"Failed to start session {pool_key}: {err}")
 
         if resume_session_id:
             self._session_id_index[resume_session_id] = pool_key

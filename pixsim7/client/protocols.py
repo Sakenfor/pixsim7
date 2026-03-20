@@ -152,8 +152,8 @@ class CodexProtocol(AgentProtocol):
         if system_prompt:
             # Codex doesn't have --append-system-prompt; prepend to the prompt instead
             pass  # handled in build_message_payload
-        if mcp_config_path:
-            cmd.extend(["--mcp-config", mcp_config_path])
+        # Codex doesn't support --mcp-config per-invocation;
+        # MCP servers are configured globally via `codex mcp add`
         cmd.extend(self.translate_args(extra_args))
         return cmd
 
