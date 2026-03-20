@@ -860,6 +860,7 @@ class CliTokenResponse(BaseModel):
 @router.post("/agents/cli-token", response_model=CliTokenResponse)
 async def generate_cli_token(
     user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
     scope: str = Query("dev", description="Tool scope: 'user' or 'dev'"),
     hours: int = Query(24, ge=1, le=168, description="Token lifetime in hours (max 7 days)"),
 ) -> CliTokenResponse:
@@ -869,16 +870,50 @@ async def generate_cli_token(
     calls made by the CLI agent are distinguishable from human actions.
     """
     import secrets
-    from pixsim7.backend.main.shared.auth import create_agent_token
+    from pixsim7.backend.main.domain import UserSession
+    from pixsim7.backend.main.shared.auth import create_agent_token, decode_access_token
 
     agent_id = f"cli-{secrets.token_hex(4)}"
+    effective_user_id = user.user_id
 
     token = create_agent_token(
         agent_id=agent_id,
         agent_type="claude-cli",
-        on_behalf_of=user.id if user.id != 0 else None,
+        on_behalf_of=effective_user_id,
         ttl_hours=hours,
     )
+
+    claims = decode_access_token(token)
+    token_id = claims.get("jti")
+    if not isinstance(token_id, str) or not token_id.strip():
+        raise HTTPException(status_code=500, detail="minted_cli_token_missing_jti")
+
+    exp_claim = claims.get("exp")
+    if isinstance(exp_claim, (int, float)):
+        expires_at = datetime.fromtimestamp(exp_claim, tz=timezone.utc)
+    elif isinstance(exp_claim, datetime):
+        expires_at = exp_claim if exp_claim.tzinfo else exp_claim.replace(tzinfo=timezone.utc)
+    else:
+        raise HTTPException(status_code=500, detail="minted_cli_token_missing_exp")
+
+    if effective_user_id is None and settings.jwt_require_session:
+        raise HTTPException(
+            status_code=400,
+            detail="cli_token_requires_user_binding_in_strict_mode",
+        )
+
+    if effective_user_id is not None:
+        db.add(
+            UserSession(
+                user_id=int(effective_user_id),
+                token_id=token_id,
+                expires_at=expires_at,
+                client_type="agent_token",
+                client_name=f"claude-cli:{agent_id}",
+                user_agent="agent/claude-cli",
+            )
+        )
+        await db.commit()
 
     command = (
         f'PIXSIM_API_TOKEN="{token}" PIXSIM_SCOPE="{scope}" '
@@ -1019,6 +1054,9 @@ class SendMessageRequest(BaseModel):
     timeout: int = Field(120, ge=10, le=600, description="Timeout in seconds")
     asset_ids: Optional[List[int]] = Field(None, description="Asset IDs to include as images (vision)")
     assistant_id: Optional[str] = Field(None, description="Assistant profile to use (resolves persona + model + scope)")
+    claude_session_id: Optional[str] = Field(None, description="Conversation session UUID to route to / resume")
+    skip_persona: bool = Field(False, description="If true, do not inject the profile persona into the message")
+    engine: str = Field("claude", description="Agent engine command to use (claude, codex, etc.)")
 
 
 class SendMessageResponse(BaseModel):
@@ -1064,7 +1102,8 @@ async def send_message_to_agent(
         from pixsim7.backend.main.api.v1.agent_profiles import resolve_profile_for_bridge
         profile = await resolve_profile_for_bridge(db, user_id or 0, payload.assistant_id)
         if profile:
-            profile_prompt = profile.system_prompt
+            if not payload.skip_persona:
+                profile_prompt = profile.system_prompt
             if profile.model_id:
                 payload.model = profile.model_id
     except Exception:
@@ -1094,6 +1133,129 @@ async def send_message_to_agent(
         start=start,
         profile_prompt=profile_prompt,
     )
+
+
+@router.post("/agents/bridge/send-stream")
+async def send_message_to_agent_stream(
+    payload: SendMessageRequest,
+    authorization: Optional[str] = None,
+    db: AsyncSession = Depends(get_database),
+):
+    """SSE streaming variant of bridge/send.
+
+    Yields NDJSON lines:
+      {"type":"heartbeat","action":"tool_use","detail":"Using tool: Read"}
+      {"type":"result","ok":true,"response":"...","duration_ms":1234}
+    """
+    import json as _json
+    import time
+
+    from fastapi.responses import StreamingResponse
+    from pixsim7.backend.main.api.dependencies import get_auth_service, _extract_bearer_token
+
+    # ── Auth + profile resolution (same as non-streaming) ──
+    user_id: Optional[int] = None
+    raw_token: Optional[str] = None
+    if authorization:
+        try:
+            raw_token = _extract_bearer_token(authorization)
+            auth_service = get_auth_service()
+            user = await auth_service.verify_token(raw_token)
+            user_id = user.id if user else None
+        except Exception:
+            pass
+
+    profile_prompt: Optional[str] = None
+    try:
+        from pixsim7.backend.main.api.v1.agent_profiles import resolve_profile_for_bridge
+        profile = await resolve_profile_for_bridge(db, user_id or 0, payload.assistant_id)
+        if profile:
+            if not payload.skip_persona:
+                profile_prompt = profile.system_prompt
+            if profile.model_id:
+                payload.model = profile.model_id
+    except Exception:
+        pass
+
+    provider_id, model_id, method = await _resolve_assistant_provider(user_id)
+
+    # ── Non-bridge: fall back to non-streaming response wrapped as single SSE event ──
+    if method != "remote":
+        start = time.monotonic()
+        resp = await _send_via_direct_api(
+            payload=payload, provider_id=provider_id, model_id=model_id,
+            user_id=user_id, start=start, profile_prompt=profile_prompt,
+        )
+
+        async def _single():
+            yield f"data: {_json.dumps(resp.model_dump())}\n\n"
+
+        return StreamingResponse(_single(), media_type="text/event-stream")
+
+    # ── Bridge streaming path ──
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
+
+    if not remote_cmd_bridge.has_available:
+        async def _err():
+            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'agent_id': '', 'error': 'No bridge running. Start one from the AI Agents panel.'})}\n\n"
+        return StreamingResponse(_err(), media_type="text/event-stream")
+
+    agent = remote_cmd_bridge.get_available_agent(user_id=user_id)
+    if not agent:
+        msg = "All agents are busy" if user_id is None else "No bridge available for your account."
+        async def _err2():
+            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'agent_id': '', 'error': msg})}\n\n"
+        return StreamingResponse(_err2(), media_type="text/event-stream")
+
+    task_payload: dict = {
+        "task": "message",
+        "prompt": payload.message,
+        "instruction": payload.message,
+        "model": payload.model,
+        "context": payload.context or {},
+    }
+    if raw_token and user_id is not None:
+        task_payload["user_token"] = raw_token
+    if profile_prompt:
+        task_payload["profile_prompt"] = profile_prompt
+    if payload.claude_session_id:
+        task_payload["claude_session_id"] = payload.claude_session_id
+    task_payload["engine"] = payload.engine
+
+    if payload.asset_ids:
+        is_local = agent.metadata.get("local", False) or _is_local_agent(agent)
+        if is_local:
+            image_paths = await _resolve_asset_image_paths(payload.asset_ids)
+            if image_paths:
+                task_payload["image_paths"] = image_paths
+        else:
+            images = await _fetch_asset_images_b64(payload.asset_ids)
+            if images:
+                task_payload["images"] = images
+
+    start = time.monotonic()
+    agent_id = agent.agent_id
+
+    async def _stream():
+        try:
+            async for event in remote_cmd_bridge.dispatch_task_streaming(
+                task_payload, timeout=payload.timeout, user_id=user_id,
+            ):
+                if event.get("type") == "heartbeat":
+                    yield f"data: {_json.dumps({'type': 'heartbeat', 'action': event.get('action', ''), 'detail': event.get('detail', '')})}\n\n"
+                elif event.get("type") == "result":
+                    duration_ms = int((time.monotonic() - start) * 1000)
+                    response_text = (
+                        event.get("edited_prompt")
+                        or event.get("response")
+                        or event.get("output", "")
+                    )
+                    yield f"data: {_json.dumps({'type': 'result', 'ok': True, 'agent_id': agent_id, 'response': response_text, 'claude_session_id': event.get('claude_session_id'), 'duration_ms': duration_ms})}\n\n"
+        except Exception as e:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'agent_id': agent_id, 'error': str(e), 'duration_ms': duration_ms})}\n\n"
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
 
 
 # =============================================================================
@@ -1176,6 +1338,9 @@ async def _send_via_bridge(
         task_payload["user_token"] = raw_token
     if profile_prompt:
         task_payload["profile_prompt"] = profile_prompt
+    if payload.claude_session_id:
+        task_payload["claude_session_id"] = payload.claude_session_id
+    task_payload["engine"] = payload.engine
 
     # Attach asset images for vision
     if payload.asset_ids:

@@ -40,8 +40,8 @@ def _cmd_bridge(args, claude_args: list[str]) -> None:
 
     pool = AgentPool(
         pool_size=args.pool_size,
-        claude_args=claude_args,
-        claude_command=args.claude_command,
+        extra_args=claude_args,
+        command=args.claude_command,
         auto_restart=not args.no_auto_restart,
     )
     if resume:

@@ -7,6 +7,7 @@
  * - Message history (persisted to localStorage)
  */
 
+import { getAuthTokenProvider } from '@pixsim7/shared.auth.core';
 import {
   Badge,
   Button,
@@ -14,7 +15,7 @@ import {
 } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { pixsimClient } from '@lib/api/client';
+import { pixsimClient, API_BASE_URL } from '@lib/api/client';
 import { Icon, type IconName } from '@lib/icons';
 
 // =============================================================================
@@ -39,18 +40,27 @@ interface UnifiedProfile {
 }
 
 interface ChatMessage {
-  role: 'user' | 'assistant' | 'error';
+  role: 'user' | 'assistant' | 'error' | 'system';
   text: string;
   duration_ms?: number;
   timestamp: Date;
 }
 
+/** Supported agent engines */
+type AgentEngine = 'claude' | 'codex';
+const AGENT_ENGINES: { id: AgentEngine; label: string; icon: IconName }[] = [
+  { id: 'claude', label: 'Claude', icon: 'messageSquare' },
+  { id: 'codex', label: 'Codex', icon: 'cpu' },
+];
+
 /** A single chat tab */
 interface ChatTab {
   id: string;
   label: string;
-  sessionId: string | null;    // Claude session UUID (assigned by backend)
-  profileId: string | null;    // unified profile ID
+  sessionId: string | null;    // conversation UUID (assigned by agent)
+  profileId: string | null;    // persona profile ID (system prompt, scope, etc.)
+  engine: AgentEngine;         // which agent command to use
+  usePersona: boolean;         // whether to inject profile persona
   createdAt: string;
 }
 
@@ -75,7 +85,7 @@ interface InjectPromptDetail {
 function loadTabs(): ChatTab[] {
   try {
     const raw = localStorage.getItem(TABS_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) return (JSON.parse(raw) as ChatTab[]).map((t) => ({ usePersona: true, engine: 'claude' as AgentEngine, ...t }));
   } catch { /* ignore */ }
 
   // Migrate from legacy sessions → tabs (one-time)
@@ -241,6 +251,97 @@ function inlineFormat(text: string): React.ReactNode {
 }
 
 // =============================================================================
+// Profile Editor (inline)
+// =============================================================================
+
+interface ProfileEditorProps {
+  profile: UnifiedProfile | null;  // null = create new
+  onSave: (updated: UnifiedProfile) => void;
+  onCancel: () => void;
+}
+
+function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps) {
+  const isNew = !profile;
+  const [id, setId] = useState(profile?.id || '');
+  const [label, setLabel] = useState(profile?.label || '');
+  const [description, setDescription] = useState(profile?.description || '');
+  const [icon, setIcon] = useState(profile?.icon || '');
+  const [systemPrompt, setSystemPrompt] = useState(profile?.system_prompt || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = useCallback(async () => {
+    if (!label.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      if (isNew) {
+        const slug = id.trim() || `profile-${Date.now().toString(36)}`;
+        const res = await pixsimClient.post<{ profile: UnifiedProfile }>('/dev/agent-profiles', {
+          id: slug, label: label.trim(), description: description.trim() || null,
+          icon: icon.trim() || null, system_prompt: systemPrompt.trim() || null,
+          agent_type: 'claude-cli', audience: 'user',
+        });
+        onSave(res.profile);
+      } else {
+        const updates: Record<string, unknown> = {};
+        if (label !== profile.label) updates.label = label.trim();
+        if (description !== (profile.description || '')) updates.description = description.trim() || null;
+        if (icon !== (profile.icon || '')) updates.icon = icon.trim() || null;
+        if (systemPrompt !== (profile.system_prompt || '')) updates.system_prompt = systemPrompt.trim() || null;
+        if (Object.keys(updates).length > 0) {
+          const res = await pixsimClient.patch<{ profile: UnifiedProfile }>(`/dev/agent-profiles/${profile.id}`, updates);
+          onSave(res.profile);
+        } else {
+          onCancel();
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }, [isNew, id, label, description, icon, systemPrompt, profile, onSave, onCancel]);
+
+  return (
+    <div className="p-2 space-y-2">
+      <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300">
+        {isNew ? 'New Profile' : `Edit: ${profile.label}`}
+      </div>
+
+      {isNew && (
+        <input value={id} onChange={(e) => setId(e.target.value)} placeholder="ID (slug, optional)"
+          className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent" />
+      )}
+
+      <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Name *"
+        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent" />
+
+      <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description"
+        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent" />
+
+      <input value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="Icon (e.g. sparkles, code, cpu)"
+        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent" />
+
+      <textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} placeholder="Persona / system prompt"
+        rows={3}
+        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 resize-none focus:outline-none focus:ring-1 focus:ring-accent" />
+
+      {error && <div className="text-[10px] text-red-500">{error}</div>}
+
+      <div className="flex gap-1.5 justify-end">
+        <button onClick={onCancel} className="px-2 py-1 text-[10px] text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300">
+          Cancel
+        </button>
+        <Button size="sm" onClick={handleSave} disabled={saving || !label.trim()}>
+          {saving ? '...' : isNew ? 'Create' : 'Save'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
 // Action Picker
 // =============================================================================
 
@@ -347,6 +448,17 @@ function MessageBubble({ msg, onRetry }: { msg: ChatMessage; onRetry?: () => voi
     navigator.clipboard.writeText(msg.text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
   }, [msg.text]);
 
+  if (msg.role === 'system') {
+    return (
+      <div className="flex justify-center">
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800/50 text-[10px] text-neutral-500 dark:text-neutral-400">
+          <Icon name="refreshCw" size={9} />
+          <span>{msg.text}</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} group`}>
       <div className={`max-w-[85%] rounded-xl px-3 py-2 ${
@@ -390,21 +502,40 @@ const QUICK_SHORTCUTS = [
 // Tab Chat View — one per tab, owns its own message state
 // =============================================================================
 
-function TabChatView({ tab, onUpdateTab, bridge, profiles }: {
+function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: {
   tab: ChatTab;
   onUpdateTab: (updates: Partial<ChatTab>) => void;
   bridge: BridgeStatus | null;
   profiles: UnifiedProfile[];
+  onRefreshProfiles: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadTabMessages(tab.id));
   const [input, setInput] = useState(() => loadTabDraft(tab.id));
   const [sending, setSending] = useState(false);
+  const [activity, setActivity] = useState<string | null>(null);
   const [actionPickerOpen, setActionPickerOpen] = useState(false);
   const [showProfilePicker, setShowProfilePicker] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<UnifiedProfile | null | 'new'>(null); // null=closed, 'new'=create, UnifiedProfile=edit
   const profilePickerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const connected = bridge?.connected ?? 0;
+  const prevConnectedRef = useRef(connected);
+
+  // Detect bridge connect/reconnect → inject system message
+  useEffect(() => {
+    const wasConnected = prevConnectedRef.current;
+    prevConnectedRef.current = connected;
+
+    if (connected > 0 && wasConnected === 0 && messages.length > 0) {
+      const label = tab.sessionId
+        ? 'Reconnected — resuming conversation'
+        : 'Bridge connected';
+      setMessages((prev) => [...prev, { role: 'system', text: label, timestamp: new Date() }]);
+    } else if (connected === 0 && wasConnected > 0 && messages.length > 0) {
+      setMessages((prev) => [...prev, { role: 'system', text: 'Bridge disconnected', timestamp: new Date() }]);
+    }
+  }, [connected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist
   useEffect(() => { persistTabMessages(tab.id, messages); }, [messages, tab.id]);
@@ -423,8 +554,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles }: {
     return () => window.removeEventListener(INJECT_PROMPT_EVENT, handler as EventListener);
   }, []);
 
-  // Auto-scroll
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  // Auto-scroll on new messages or activity updates
+  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, activity]);
 
   // Close profile picker on outside click
   useEffect(() => {
@@ -439,26 +570,77 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles }: {
     setInput('');
     setMessages((prev) => [...prev, { role: 'user', text, timestamp: new Date() }]);
     setSending(true);
+    setActivity(null);
     try {
-      const body: Record<string, unknown> = { message: text, timeout: 120 };
+      const body: Record<string, unknown> = { message: text, timeout: 120, engine: tab.engine };
       if (tab.profileId) body.assistant_id = tab.profileId;
-      const res = await pixsimClient.post<SendResponse>('/meta/agents/bridge/send', body);
-      if (res.ok && res.response) {
-        setMessages((prev) => [...prev, { role: 'assistant', text: res.response!, duration_ms: res.duration_ms ?? undefined, timestamp: new Date() }]);
-        if (res.claude_session_id && res.claude_session_id !== tab.sessionId) {
-          onUpdateTab({ sessionId: res.claude_session_id });
+      if (tab.sessionId) body.claude_session_id = tab.sessionId;
+      if (tab.profileId && !tab.usePersona) body.skip_persona = true;
+
+      // Get auth token for the request
+      const token = await Promise.resolve(getAuthTokenProvider().getAccessToken());
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch(`${API_BASE_URL}/meta/agents/bridge/send-stream`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let event: Record<string, unknown>;
+          try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (event.type === 'heartbeat') {
+            const detail = (event.detail as string) || (event.action as string) || '';
+            setActivity(detail || 'Working...');
+          } else if (event.type === 'result') {
+            setActivity(null);
+            const res = event as unknown as SendResponse;
+            if (res.ok && res.response) {
+              // Detect session change (resume failed → new session, or first message)
+              const prevSessionId = tab.sessionId;
+              if (res.claude_session_id && res.claude_session_id !== prevSessionId) {
+                onUpdateTab({ sessionId: res.claude_session_id as string });
+                if (prevSessionId) {
+                  // Had a session, got a different one → resume didn't work
+                  setMessages((prev) => [...prev, { role: 'system', text: `New session (${(res.claude_session_id as string).slice(0, 8)}) — previous conversation not available`, timestamp: new Date() }]);
+                }
+              }
+              setMessages((prev) => [...prev, { role: 'assistant', text: res.response!, duration_ms: res.duration_ms ?? undefined, timestamp: new Date() }]);
+              if (!prevSessionId) {
+                onUpdateTab({ label: text.slice(0, 30) || tab.label });
+              }
+            } else {
+              setMessages((prev) => [...prev, { role: 'error', text: (res.error || 'No response from agent') as string, timestamp: new Date() }]);
+            }
+          }
         }
-        // Update label from first user message
-        if (!tab.sessionId) {
-          onUpdateTab({ label: text.slice(0, 30) || tab.label });
-        }
-      } else {
-        setMessages((prev) => [...prev, { role: 'error', text: res.error || 'No response from agent', timestamp: new Date() }]);
       }
     } catch (err) {
+      setActivity(null);
       setMessages((prev) => [...prev, { role: 'error', text: err instanceof Error ? err.message : 'Request failed', timestamp: new Date() }]);
     } finally {
       setSending(false);
+      setActivity(null);
     }
   }, [sending, tab.profileId, tab.sessionId, tab.label, onUpdateTab]);
 
@@ -482,9 +664,9 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles }: {
   const isAgentProfile = activeProfile && !activeProfile.id.startsWith('assistant:');
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-3">
         {messages.length === 0 && connected > 0 && (
           <div className="space-y-3">
             <EmptyState message="Ask anything or pick an action" size="sm" />
@@ -512,10 +694,13 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles }: {
         {sending && (
           <div className="flex justify-start">
             <div className="bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-2">
-              <div className="flex gap-1">
-                <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1">
+                  <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                {activity && <span className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate max-w-[200px]">{activity}</span>}
               </div>
             </div>
           </div>
@@ -524,7 +709,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles }: {
       </div>
 
       {/* Input */}
-      <div className="relative border-t border-neutral-200 dark:border-neutral-800 p-2">
+      <div className="relative shrink-0 border-t border-neutral-200 dark:border-neutral-800 p-2">
         <ActionPicker open={actionPickerOpen} onClose={() => setActionPickerOpen(false)} onSelect={(p) => void sendMessage(p)} disabled={connected === 0 || sending} />
         <div className="flex gap-1.5 items-end">
           <button onClick={() => setActionPickerOpen(!actionPickerOpen)} disabled={connected === 0}
@@ -533,10 +718,24 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles }: {
             <Icon name="plus" size={16} />
           </button>
 
+          {/* Engine toggle */}
+          <button
+            onClick={() => {
+              const idx = AGENT_ENGINES.findIndex((e) => e.id === tab.engine);
+              const next = AGENT_ENGINES[(idx + 1) % AGENT_ENGINES.length];
+              onUpdateTab({ engine: next.id, sessionId: null }); // new engine = new session
+            }}
+            className="shrink-0 h-8 flex items-center gap-1 px-1.5 rounded-lg text-[10px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            title={`Engine: ${AGENT_ENGINES.find((e) => e.id === tab.engine)?.label ?? tab.engine} (click to switch)`}
+          >
+            <Icon name={AGENT_ENGINES.find((e) => e.id === tab.engine)?.icon ?? 'cpu'} size={11} />
+            <span className="text-[9px] uppercase tracking-wide">{tab.engine}</span>
+          </button>
+
           {/* Profile picker */}
           <div className="relative shrink-0" ref={profilePickerRef}>
             <button
-              onClick={() => setShowProfilePicker(!showProfilePicker)}
+              onClick={() => { setShowProfilePicker(!showProfilePicker); setEditingProfile(null); }}
               className={`h-8 flex items-center gap-1 px-1.5 rounded-lg text-[10px] transition-colors ${
                 showProfilePicker ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
               }`}
@@ -547,33 +746,87 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles }: {
             </button>
 
             {showProfilePicker && (
-              <div className="absolute bottom-full left-0 mb-1 w-52 max-h-64 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20">
-                {/* No profile = general */}
-                <button
-                  onClick={() => { onUpdateTab({ profileId: null }); setShowProfilePicker(false); }}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-                    !tab.profileId ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
-                  }`}
-                >
-                  <Icon name="messageSquare" size={12} className="shrink-0" />
-                  <span>General</span>
-                </button>
-                <div className="border-t border-neutral-100 dark:border-neutral-800" />
+              <div className="absolute bottom-full left-0 mb-1 w-64 max-h-[400px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-20">
+                {/* Editor mode */}
+                {editingProfile != null ? (
+                  <ProfileEditor
+                    profile={editingProfile === 'new' ? null : editingProfile}
+                    onSave={(updated) => {
+                      setEditingProfile(null);
+                      onRefreshProfiles();
+                      onUpdateTab({ profileId: updated.id });
+                      setShowProfilePicker(false);
+                    }}
+                    onCancel={() => setEditingProfile(null)}
+                  />
+                ) : (
+                  <>
+                    {/* Persona toggle (when a profile is selected) */}
+                    {tab.profileId && activeProfile && (
+                      <label className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={tab.usePersona}
+                          onChange={(e) => onUpdateTab({ usePersona: e.target.checked })}
+                          className="rounded border-neutral-300 text-accent focus:ring-accent h-3 w-3"
+                        />
+                        <span>Use persona</span>
+                        <span className="text-[9px] text-neutral-400 ml-auto truncate max-w-[100px]" title={activeProfile.system_prompt || ''}>
+                          {activeProfile.system_prompt ? activeProfile.system_prompt.slice(0, 30) + '...' : 'none set'}
+                        </span>
+                      </label>
+                    )}
 
-                {/* Unified profile list */}
-                {profiles.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => { onUpdateTab({ profileId: p.id }); setShowProfilePicker(false); }}
-                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-                      tab.profileId === p.id ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
-                    }`}
-                  >
-                    <Icon name={(p.icon || (p.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName} size={12} className="shrink-0" />
-                    <span className="truncate">{p.label}</span>
-                    {p.is_global && <span className="text-[8px] text-neutral-400 ml-auto shrink-0">built-in</span>}
-                  </button>
-                ))}
+                    {tab.profileId && <div className="border-t border-neutral-100 dark:border-neutral-800" />}
+
+                    {/* General (no profile) */}
+                    <button
+                      onClick={() => { onUpdateTab({ profileId: null }); setShowProfilePicker(false); }}
+                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
+                        !tab.profileId ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
+                      }`}
+                    >
+                      <Icon name="messageSquare" size={12} className="shrink-0" />
+                      <span>General</span>
+                    </button>
+                    <div className="border-t border-neutral-100 dark:border-neutral-800" />
+
+                    {/* Profile list with edit buttons */}
+                    {profiles.map((p) => (
+                      <div
+                        key={p.id}
+                        className={`group w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
+                          tab.profileId === p.id ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
+                        }`}
+                      >
+                        <button
+                          onClick={() => { onUpdateTab({ profileId: p.id, usePersona: true }); setShowProfilePicker(false); }}
+                          className="flex items-center gap-2 flex-1 min-w-0"
+                        >
+                          <Icon name={(p.icon || (p.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName} size={12} className="shrink-0" />
+                          <span className="truncate">{p.label}</span>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingProfile(p); }}
+                          className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-opacity shrink-0"
+                          title="Edit profile"
+                        >
+                          <Icon name="edit" size={10} />
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* New profile button */}
+                    <div className="border-t border-neutral-100 dark:border-neutral-800" />
+                    <button
+                      onClick={() => setEditingProfile('new')}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                    >
+                      <Icon name="plus" size={10} className="shrink-0" />
+                      <span>New profile</span>
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -615,11 +868,13 @@ export function AIAssistantPanel() {
   useEffect(() => { persistTabs(tabs); }, [tabs]);
 
   // Load unified profiles
-  useEffect(() => {
+  const refreshProfiles = useCallback(() => {
     pixsimClient.get<{ profiles: UnifiedProfile[] }>('/dev/agent-profiles', { params: { include_global: true } })
       .then((r) => setProfiles(r.profiles))
       .catch(() => {});
   }, []);
+
+  useEffect(() => { refreshProfiles(); }, [refreshProfiles]);
 
   // Poll bridge
   useEffect(() => {
@@ -642,6 +897,8 @@ export function AIAssistantPanel() {
       label: profile?.label || 'New Chat',
       sessionId: null,
       profileId: profileId || null,
+      engine: 'claude',
+      usePersona: true,
       createdAt: new Date().toISOString(),
     };
     setTabs((prev) => [newTab, ...prev]);
@@ -677,9 +934,9 @@ export function AIAssistantPanel() {
   }, [tabs.length, createTab]);
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-neutral-950">
+    <div className="flex flex-col h-full min-h-0 bg-white dark:bg-neutral-950">
       {/* Tab bar */}
-      <div className="flex items-center border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 min-h-[32px]">
+      <div className="flex items-center border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 min-h-[32px] shrink-0">
         <div className="flex-1 flex items-center overflow-x-auto scrollbar-none">
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
@@ -739,6 +996,7 @@ export function AIAssistantPanel() {
           onUpdateTab={(updates) => updateTab(activeTab.id, updates)}
           bridge={bridge}
           profiles={profiles}
+          onRefreshProfiles={refreshProfiles}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center">

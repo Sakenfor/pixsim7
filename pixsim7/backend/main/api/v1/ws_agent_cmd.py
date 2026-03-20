@@ -90,6 +90,8 @@ async def agent_cmd_websocket(
                     remote_cmd_bridge.fail_task(task_id, error)
 
             elif msg_type == "heartbeat":
+                # Forward to streaming dispatch (if active)
+                remote_cmd_bridge.record_heartbeat(agent_id, data)
                 try:
                     from pixsim7.backend.main.services.meta.agent_sessions import agent_session_registry
                     agent_session_registry.heartbeat(

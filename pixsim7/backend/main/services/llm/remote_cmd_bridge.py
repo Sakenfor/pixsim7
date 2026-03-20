@@ -48,6 +48,7 @@ class RemoteCommandBridge:
     def __init__(self) -> None:
         self._agents: Dict[str, RemoteAgent] = {}
         self._pending_tasks: Dict[str, asyncio.Future] = {}
+        self._heartbeat_queues: Dict[str, asyncio.Queue] = {}  # task_id -> queue
 
     async def connect(self, websocket: WebSocket, agent_id: str, agent_type: str = "claude-cli", user_id: Optional[int] = None, metadata: Optional[Dict[str, str]] = None) -> RemoteAgent:
         """Register a new remote agent connection."""
@@ -199,6 +200,98 @@ class RemoteCommandBridge:
         finally:
             agent.busy = False
             agent.current_task_id = None
+
+    def record_heartbeat(self, agent_id: str, data: Dict[str, Any]) -> None:
+        """Forward a heartbeat to the task's heartbeat queue (if streaming)."""
+        agent = self._agents.get(agent_id)
+        if agent and agent.current_task_id:
+            queue = self._heartbeat_queues.get(agent.current_task_id)
+            if queue:
+                try:
+                    queue.put_nowait(data)
+                except asyncio.QueueFull:
+                    pass
+
+    async def dispatch_task_streaming(
+        self,
+        task_payload: Dict[str, Any],
+        timeout: int = 120,
+        user_id: Optional[int] = None,
+    ):
+        """
+        Async generator that yields heartbeat dicts while waiting, then yields the result.
+
+        Each yielded dict has a "type" key: "heartbeat" for progress, "result" for final.
+        Raises on timeout or error (same as dispatch_task).
+        """
+        agent = self.get_available_agent(user_id=user_id)
+        if not agent:
+            raise RuntimeError("No remote agents available")
+
+        task_id = str(uuid.uuid4())
+        agent.busy = True
+        agent.current_task_id = task_id
+
+        loop = asyncio.get_event_loop()
+        future: asyncio.Future[Dict[str, Any]] = loop.create_future()
+        self._pending_tasks[task_id] = future
+        self._heartbeat_queues[task_id] = asyncio.Queue(maxsize=64)
+
+        try:
+            await agent.websocket.send_json({
+                "type": "task",
+                "task_id": task_id,
+                **task_payload,
+            })
+            logger.info("remote_task_dispatched", task_id=task_id, agent_id=agent.agent_id)
+
+            hb_queue = self._heartbeat_queues[task_id]
+            deadline = asyncio.get_event_loop().time() + timeout
+
+            while True:
+                remaining = deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    self._pending_tasks.pop(task_id, None)
+                    raise TimeoutError(f"Remote agent did not respond within {timeout}s")
+
+                # Check if result is ready
+                if future.done():
+                    result = future.result()
+                    agent.tasks_completed += 1
+                    result["type"] = "result"
+                    yield result
+                    return
+
+                # Wait for either a heartbeat or the result (whichever comes first)
+                hb_wait = asyncio.ensure_future(hb_queue.get())
+                done, pending = await asyncio.wait(
+                    [hb_wait, future],
+                    timeout=min(remaining, 10),
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                if hb_wait in done:
+                    hb = hb_wait.result()
+                    # Each heartbeat resets the deadline
+                    deadline = asyncio.get_event_loop().time() + timeout
+                    yield {"type": "heartbeat", **hb}
+                else:
+                    hb_wait.cancel()
+
+                if future in done:
+                    result = future.result()
+                    agent.tasks_completed += 1
+                    result["type"] = "result"
+                    yield result
+                    return
+
+        except asyncio.TimeoutError:
+            self._pending_tasks.pop(task_id, None)
+            raise TimeoutError(f"Remote agent did not respond within {timeout}s")
+        finally:
+            agent.busy = False
+            agent.current_task_id = None
+            self._heartbeat_queues.pop(task_id, None)
 
     def resolve_task(self, task_id: str, result: Dict[str, Any]) -> bool:
         """Called when a remote agent sends back a task result."""

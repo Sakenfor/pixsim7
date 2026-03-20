@@ -193,17 +193,25 @@ class Bridge:
             except OSError:
                 pass
 
-        # Prepend profile persona prompt if provided
+        # Session ID for conversation affinity / resume
+        claude_session_id = msg.get("claude_session_id")
+
+        # Engine override (claude, codex, etc.)
+        engine = msg.get("engine")
+
+        # Prepend profile persona only on first message (new conversation).
+        # On resumed conversations Claude already has the persona in context.
         profile_prompt = msg.get("profile_prompt")
-        if profile_prompt:
+        if profile_prompt and not claude_session_id:
             prompt = f"[Persona: {profile_prompt}]\n\n{prompt}"
 
-        # Report busy
+        # Report busy (use original user text, not persona-prefixed prompt)
+        user_text = msg.get("instruction") or msg.get("prompt", "")
         await ws.send(json.dumps({
             "type": "heartbeat",
             "status": "active",
             "action": "processing_task",
-            "detail": prompt[:100],
+            "detail": user_text[:100],
         }))
 
         try:
@@ -229,7 +237,11 @@ class Bridge:
             def on_progress(event_type: str, detail: str):
                 asyncio.ensure_future(send_progress(event_type, detail))
 
-            session_id, response = await self._pool.send_message(prompt, images=images, on_progress=on_progress)
+            session_id, response = await self._pool.send_message(
+                prompt, images=images, on_progress=on_progress,
+                claude_session_id=claude_session_id,
+                engine=engine,
+            )
             self._tasks_handled += 1
 
             # Get the Claude session UUID for resume support

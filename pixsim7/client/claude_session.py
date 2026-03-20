@@ -1,8 +1,15 @@
 """
-Claude CLI session manager.
+Agent command session manager.
 
-Manages a Claude process in stream-json mode with proper lifecycle,
-health monitoring, and message passing.
+Manages a local agent process (Claude Code, Codex, etc.) via stream-json
+stdin/stdout protocol. The process stays alive between messages — each
+message is a turn in an ongoing conversation.
+
+Stream-json protocol (shared across compatible agents):
+  - Init event: {"type": "system", "session_id": "...", "model": "..."}
+  - Input:      {"type": "user", "message": {"role": "user", "content": [...]}}
+  - Output:     {"type": "result", "result": "...", "session_id": "..."}
+  - Progress:   {"type": "assistant", "message": {"content": [...]}}
 """
 from __future__ import annotations
 
@@ -35,21 +42,25 @@ class SessionStats:
     last_activity: Optional[datetime] = None
 
 
-class ClaudeSession:
-    """Manages a single Claude CLI process with stream-json I/O."""
+class AgentCmdSession:
+    """Manages a single agent process with stream-json I/O.
+
+    Works with any agent command that speaks the stream-json protocol
+    (Claude Code, Codex, etc.). The process stays alive between messages.
+    """
 
     def __init__(
         self,
         session_id: str,
         extra_args: list[str] | None = None,
-        claude_command: str = "claude",
+        command: str = "claude",
         system_prompt: str | None = None,
         mcp_config_path: str | None = None,
         resume_session_id: str | None = None,
     ):
         self.session_id = session_id
         self._extra_args = extra_args or []
-        self._claude_command = claude_command
+        self._command = command
         self._system_prompt = system_prompt
         self._mcp_config_path = mcp_config_path
         self._resume_session_id = resume_session_id
@@ -60,9 +71,28 @@ class ClaudeSession:
         self.state = SessionState.IDLE
         self.stats = SessionStats()
         self._last_error: Optional[str] = None
-        self.claude_session_id: Optional[str] = None  # UUID from Claude's init event
-        self.claude_model: Optional[str] = None
+        self.cli_session_id: Optional[str] = None   # conversation UUID from init event
+        self.cli_model: Optional[str] = None         # model reported by CLI
         self._pending_restart: bool = False
+
+    # ── Backward-compat aliases ────────────────────────────────────
+    @property
+    def claude_session_id(self) -> Optional[str]:
+        return self.cli_session_id
+
+    @claude_session_id.setter
+    def claude_session_id(self, value: Optional[str]) -> None:
+        self.cli_session_id = value
+
+    @property
+    def claude_model(self) -> Optional[str]:
+        return self.cli_model
+
+    @claude_model.setter
+    def claude_model(self, value: Optional[str]) -> None:
+        self.cli_model = value
+
+    # ── Properties ─────────────────────────────────────────────────
 
     @property
     def is_alive(self) -> bool:
@@ -77,13 +107,13 @@ class ClaudeSession:
         return self._process.pid if self._process else None
 
     async def start(self) -> bool:
-        """Start the Claude process. Returns True if successful."""
+        """Start the CLI process. Returns True if successful."""
         if self.is_alive:
             return True
 
         self.state = SessionState.STARTING
         cmd = [
-            self._claude_command,
+            self._command,
             "--print",
             "--output-format", "stream-json",
             "--input-format", "stream-json",
@@ -107,7 +137,7 @@ class ClaudeSession:
                 stderr=asyncio.subprocess.PIPE,
             )
         except FileNotFoundError:
-            self._last_error = f"Command not found: {self._claude_command}"
+            self._last_error = f"Command not found: {self._command}"
             self.state = SessionState.ERRORED
             client_log(f"[{self.session_id}] {self._last_error}", error=True)
             return False
@@ -123,11 +153,11 @@ class ClaudeSession:
         self.stats.started_at = datetime.now(timezone.utc)
         self._last_error = None
 
-        client_log(f"[{self.session_id}] Claude started (PID: {self._process.pid})")
+        client_log(f"[{self.session_id}] Started (PID: {self._process.pid})")
         return True
 
     async def stop(self) -> None:
-        """Stop the Claude process gracefully."""
+        """Stop the CLI process gracefully."""
         if self._reader_task:
             self._reader_task.cancel()
             try:
@@ -155,7 +185,9 @@ class ClaudeSession:
         client_log(f"[{self.session_id}] Stopped (sent: {self.stats.messages_sent}, received: {self.stats.messages_received})")
 
     async def restart(self) -> bool:
-        """Stop and restart the session."""
+        """Stop and restart the session, preserving conversation via --resume."""
+        if self.cli_session_id and not self._resume_session_id:
+            self._resume_session_id = self.cli_session_id
         await self.stop()
         await asyncio.sleep(1)
         return await self.start()
@@ -199,7 +231,7 @@ class ClaudeSession:
                 },
             })
 
-        # Claude stream-json input format
+        # stream-json input format (shared protocol)
         msg = json.dumps({
             "type": "user",
             "message": {
@@ -225,9 +257,8 @@ class ClaudeSession:
                 if event_type == "result":
                     result_text = event.get("result", "")
                     duration = event.get("duration_ms", 0)
-                    # Capture Claude session ID from result events
                     if event.get("session_id"):
-                        self.claude_session_id = event["session_id"]
+                        self.cli_session_id = event["session_id"]
                     self.stats.messages_received += 1
                     self.stats.total_duration_ms += duration
                     self.stats.last_activity = datetime.now(timezone.utc)
@@ -235,7 +266,6 @@ class ClaudeSession:
                     # Deferred restart: config changed while busy
                     if self._pending_restart:
                         self._pending_restart = False
-                        from pixsim7.client.log import client_log
                         client_log(f"[{self.session_id}] Applying deferred restart")
                         asyncio.ensure_future(self.restart())
                     return result_text or "(empty response)"
@@ -243,10 +273,10 @@ class ClaudeSession:
                 elif event_type == "system":
                     # Init event — capture session ID and model
                     if event.get("session_id"):
-                        self.claude_session_id = event["session_id"]
+                        self.cli_session_id = event["session_id"]
                     if event.get("model"):
-                        self.claude_model = event["model"]
-                    client_log(f"[{self.session_id}] Claude session: {self.claude_session_id} model: {self.claude_model}")
+                        self.cli_model = event["model"]
+                    client_log(f"[{self.session_id}] Session: {self.cli_session_id} model: {self.cli_model}")
 
                 elif event_type == "error":
                     error_msg = event.get("error", {})
@@ -254,7 +284,7 @@ class ClaudeSession:
                         error_msg = error_msg.get("message", str(error_msg))
                     self.stats.errors += 1
                     self.state = SessionState.READY
-                    raise RuntimeError(f"Claude error: {error_msg}")
+                    raise RuntimeError(f"CLI error: {error_msg}")
 
                 elif event_type == "assistant":
                     # Intermediate content — tool calls, thinking, partial text
@@ -282,7 +312,7 @@ class ClaudeSession:
             raise RuntimeError(f"No response within {timeout}s")
 
     async def _read_stdout(self) -> None:
-        """Read Claude's stdout, parse JSON events into the response queue."""
+        """Read stdout, parse JSON events into the response queue."""
         if not self._process or not self._process.stdout:
             return
         try:
@@ -297,9 +327,9 @@ class ClaudeSession:
                     event = json.loads(text)
                     # Capture session ID from system init (comes before any message exchange)
                     if event.get("type") == "system" and event.get("session_id"):
-                        self.claude_session_id = event["session_id"]
-                        self.claude_model = event.get("model")
-                        client_log(f"[{self.session_id}] Claude session: {self.claude_session_id}")
+                        self.cli_session_id = event["session_id"]
+                        self.cli_model = event.get("model")
+                        client_log(f"[{self.session_id}] Session: {self.cli_session_id}")
                     await self._response_queue.put(event)
                 except json.JSONDecodeError:
                     client_log(f"[{self.session_id}] [stdout] {text}")
@@ -307,7 +337,7 @@ class ClaudeSession:
             return
 
     async def _read_stderr(self) -> None:
-        """Read Claude's stderr for debug/error output."""
+        """Read stderr for debug/error output."""
         if not self._process or not self._process.stderr:
             return
         try:
@@ -325,8 +355,8 @@ class ClaudeSession:
         """Serialize session status for display and persistence."""
         return {
             "session_id": self.session_id,
-            "claude_session_id": self.claude_session_id,
-            "claude_model": self.claude_model,
+            "cli_session_id": self.cli_session_id,
+            "cli_model": self.cli_model,
             "state": self.state.value,
             "pid": self.pid,
             "last_error": self._last_error,
@@ -337,3 +367,8 @@ class ClaudeSession:
             "started_at": self.stats.started_at.isoformat() if self.stats.started_at else None,
             "last_activity": self.stats.last_activity.isoformat() if self.stats.last_activity else None,
         }
+
+
+# Backward-compat aliases
+ClaudeSession = AgentCmdSession
+CliSession = AgentCmdSession
