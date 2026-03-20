@@ -202,45 +202,48 @@ class Bridge:
 
     @staticmethod
     def _ensure_codex_mcp(mcp_server_script: str, api_base: str, token: str, token_file: str, scope: str) -> None:
-        """Register pixsim MCP server with Codex's global config (idempotent).
+        """Register pixsim MCP server with Codex (idempotent).
 
-        Writes directly to ~/.codex/config.toml for full control over
-        timeout settings that the CLI doesn't expose.
+        Uses `codex mcp` CLI for reliable config management, then patches
+        config.toml for timeout settings the CLI doesn't expose.
         """
-        from pathlib import Path
-        codex_config = Path.home() / ".codex" / "config.toml"
-        if not codex_config.parent.exists():
-            return  # Codex not installed
+        import shutil
+        import subprocess as sp
+        codex_bin = shutil.which("codex")
+        if not codex_bin:
+            return
 
         try:
-            content = codex_config.read_text() if codex_config.exists() else ""
+            # Remove + re-add via CLI (handles TOML correctly)
+            sp.run([codex_bin, "mcp", "remove", "pixsim"], capture_output=True, timeout=5)
+            result = sp.run(
+                [
+                    codex_bin, "mcp", "add", "pixsim",
+                    "--env", f"PIXSIM_API_URL={api_base}",
+                    "--env", f"PIXSIM_API_TOKEN={token}",
+                    "--env", f"PIXSIM_TOKEN_FILE={token_file.replace(chr(92), '/')}",
+                    "--env", f"PIXSIM_SCOPE={scope}",
+                    "--", sys.executable, mcp_server_script,
+                ],
+                capture_output=True, timeout=10,
+            )
+            if result.returncode != 0:
+                client_log(f"codex mcp add failed: {result.stderr.decode()[:200]}", error=True)
+                return
 
-            # Remove ALL existing pixsim sections (main + sub-tables like .env)
-            import re
-            content = re.sub(
-                r'\[mcp_servers\.pixsim[^\]]*\][^\[]*',
-                '', content, flags=re.DOTALL,
-            ).rstrip() + "\n"
+            # Patch config.toml to add timeout settings (CLI doesn't support these)
+            from pathlib import Path
+            codex_config = Path.home() / ".codex" / "config.toml"
+            if codex_config.exists():
+                content = codex_config.read_text()
+                if "startup_timeout_sec" not in content:
+                    content = content.replace(
+                        "[mcp_servers.pixsim.env]",
+                        "startup_timeout_sec = 30\ntool_timeout_sec = 60\n\n[mcp_servers.pixsim.env]",
+                    )
+                    codex_config.write_text(content)
 
-            # Append fresh config — use forward slashes for Windows path compat in TOML
-            exe = sys.executable.replace("\\", "/")
-            script = mcp_server_script.replace("\\", "/")
-            tf = token_file.replace("\\", "/")
-            content += f"""
-[mcp_servers.pixsim]
-command = '{exe}'
-args = ['{script}']
-startup_timeout_sec = 30
-tool_timeout_sec = 60
-
-[mcp_servers.pixsim.env]
-PIXSIM_API_URL = "{api_base}"
-PIXSIM_API_TOKEN = "{token}"
-PIXSIM_TOKEN_FILE = "{tf}"
-PIXSIM_SCOPE = "{scope}"
-"""
-            codex_config.write_text(content)
-            client_log("Registered pixsim MCP server with Codex (config.toml)")
+            client_log("Registered pixsim MCP server with Codex")
         except Exception as e:
             client_log(f"Failed to register Codex MCP: {e}", error=True)
 
