@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const saveGameLocationMetaMock = vi.hoisted(() => vi.fn());
+const saveGameLocationRoomNavigationTransitionCacheMock = vi.hoisted(() => vi.fn());
 const createGenerationMock = vi.hoisted(() => vi.fn());
 const getGenerationMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@lib/api/game', () => ({
-  saveGameLocationMeta: saveGameLocationMetaMock,
+  saveGameLocationRoomNavigationTransitionCache:
+    saveGameLocationRoomNavigationTransitionCacheMock,
 }));
 
 vi.mock('@lib/api/generations', () => ({
@@ -66,12 +67,9 @@ const navigationFixture: RoomNavigationData = {
 describe('roomNavigationTransitions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    saveGameLocationMetaMock.mockImplementation(
-      async (locationId: number, meta: Record<string, unknown>) =>
-        ({
-          id: locationId,
-          meta,
-        }) as unknown as RoomLocation,
+    saveGameLocationRoomNavigationTransitionCacheMock.mockImplementation(
+      async (_locationId: number, transitionCache: Record<string, unknown>) =>
+        transitionCache,
     );
   });
 
@@ -132,7 +130,7 @@ describe('roomNavigationTransitions', () => {
     expect(result.clipAssetRef).toBe('asset:777');
     expect(createGenerationMock).not.toHaveBeenCalled();
     expect(getGenerationMock).not.toHaveBeenCalled();
-    expect(saveGameLocationMetaMock).not.toHaveBeenCalled();
+    expect(saveGameLocationRoomNavigationTransitionCacheMock).not.toHaveBeenCalled();
   });
 
   it('generates and stores cache entry on cache miss', async () => {
@@ -162,17 +160,16 @@ describe('roomNavigationTransitions', () => {
     expect(result.clipAssetRef).toBe('asset:91');
     expect(createGenerationMock).toHaveBeenCalledTimes(1);
     expect(getGenerationMock).toHaveBeenCalledTimes(2);
-    expect(saveGameLocationMetaMock.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(
+      saveGameLocationRoomNavigationTransitionCacheMock.mock.calls.length,
+    ).toBeGreaterThanOrEqual(3);
 
-    const lastSavedMeta = saveGameLocationMetaMock.mock.calls.at(-1)?.[1] as Record<
-      string,
-      unknown
-    >;
-    const cache = lastSavedMeta[ROOM_NAVIGATION_TRANSITION_CACHE_META_KEY] as {
+    const lastSavedCache =
+      saveGameLocationRoomNavigationTransitionCacheMock.mock.calls.at(-1)?.[1] as {
       entries: Record<string, { status?: string; asset_ref?: string }>;
     };
-    expect(cache.entries[result.cacheKey]?.status).toBe('completed');
-    expect(cache.entries[result.cacheKey]?.asset_ref).toBe('asset:91');
+    expect(lastSavedCache.entries[result.cacheKey]?.status).toBe('completed');
+    expect(lastSavedCache.entries[result.cacheKey]?.asset_ref).toBe('asset:91');
   });
 
   it('returns degraded timeout for existing pending generation', async () => {
@@ -219,6 +216,6 @@ describe('roomNavigationTransitions', () => {
     expect(result.status).toBe('degraded_timeout');
     expect(createGenerationMock).not.toHaveBeenCalled();
     expect(getGenerationMock).toHaveBeenCalled();
-    expect(saveGameLocationMetaMock).toHaveBeenCalled();
+    expect(saveGameLocationRoomNavigationTransitionCacheMock).toHaveBeenCalled();
   });
 });

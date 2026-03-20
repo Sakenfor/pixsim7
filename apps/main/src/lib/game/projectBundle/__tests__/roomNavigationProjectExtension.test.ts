@@ -27,14 +27,17 @@ function buildRoomNavigationPayload() {
 
 describe('roomNavigationProjectExtension', () => {
   const readLocationMeta = vi.fn();
-  const writeLocationMeta = vi.fn();
+  const writeLocationRoomNavigation = vi.fn();
+  const writeLocationTransitionCache = vi.fn();
 
   beforeEach(() => {
     readLocationMeta.mockReset();
-    writeLocationMeta.mockReset();
+    writeLocationRoomNavigation.mockReset();
+    writeLocationTransitionCache.mockReset();
     __setRoomNavigationProjectExtensionMetaClientForTests({
       readLocationMeta,
-      writeLocationMeta,
+      writeLocationRoomNavigation,
+      writeLocationTransitionCache,
     });
   });
 
@@ -179,12 +182,13 @@ describe('roomNavigationProjectExtension', () => {
     );
 
     expect(readLocationMeta).toHaveBeenCalledWith(9001);
-    expect(writeLocationMeta).toHaveBeenCalledWith(
+    expect(writeLocationRoomNavigation).toHaveBeenCalledWith(
       9001,
-      expect.objectContaining({
-        room_navigation: expect.objectContaining({ room_id: 'location_101' }),
-        room_navigation_transition_cache: expect.objectContaining({ version: 1 }),
-      }),
+      expect.objectContaining({ room_id: 'location_101' }),
+    );
+    expect(writeLocationTransitionCache).toHaveBeenCalledWith(
+      9001,
+      expect.objectContaining({ version: 1 }),
     );
     expect(outcome).toEqual({});
   });
@@ -232,7 +236,8 @@ describe('roomNavigationProjectExtension', () => {
     );
 
     expect(readLocationMeta).toHaveBeenCalledWith(9001);
-    expect(writeLocationMeta).not.toHaveBeenCalled();
+    expect(writeLocationRoomNavigation).not.toHaveBeenCalled();
+    expect(writeLocationTransitionCache).not.toHaveBeenCalled();
     expect(outcome).toEqual({});
   });
 

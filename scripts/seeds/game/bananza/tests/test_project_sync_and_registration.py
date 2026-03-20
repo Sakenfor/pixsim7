@@ -280,6 +280,161 @@ async def test_api_find_project_snapshot_detail_prefers_non_legacy_when_names_co
 
 
 @pytest.mark.asyncio
+async def test_resolve_auth_token_accepts_pixsim_api_token_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FailAsyncClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            raise AssertionError("unexpected login request")
+
+    monkeypatch.delenv("PIXSIM_AUTH_TOKEN", raising=False)
+    monkeypatch.setenv("PIXSIM_API_TOKEN", "api-token-value")
+    monkeypatch.setattr(api_flow.httpx, "AsyncClient", _FailAsyncClient)
+
+    token = await api_flow._resolve_auth_token(
+        api_base="http://localhost:8000",
+        explicit_token=None,
+        username="admin",
+        password="admin",
+    )
+
+    assert token == "api-token-value"
+
+
+@pytest.mark.asyncio
+async def test_resolve_auth_token_prefers_pixsim_auth_token_over_api_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PIXSIM_AUTH_TOKEN", "auth-token-value")
+    monkeypatch.setenv("PIXSIM_API_TOKEN", "api-token-value")
+
+    token = await api_flow._resolve_auth_token(
+        api_base="http://localhost:8000",
+        explicit_token=None,
+        username="admin",
+        password="admin",
+    )
+
+    assert token == "auth-token-value"
+
+
+@pytest.mark.asyncio
+async def test_api_ensure_world_prefers_snapshot_world_when_names_collide(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fetched_paths: list[str] = []
+    updated_paths: list[str] = []
+    updated_meta: Dict[str, Any] = {}
+
+    async def fake_find_project_snapshot_detail(
+        client: Any,
+        *,
+        project_name: str,
+        project_id: Any = None,
+    ) -> Dict[str, Any]:
+        assert project_name == "Bananza Boat Seed Project"
+        assert project_id is None
+        return {"id": 150, "source_world_id": 22}
+
+    async def fake_get_json(client: Any, path: str, **kwargs: Any) -> Any:
+        if path == "/api/v1/game/worlds":
+            return {
+                "worlds": [
+                    {"id": 11, "name": "Bananza Boat"},
+                    {"id": 22, "name": "Bananza Boat"},
+                ]
+            }
+        fetched_paths.append(path)
+        if path == "/api/v1/game/worlds/22":
+            return {"id": 22, "name": "Bananza Boat", "meta": {"existing": True}}
+        raise AssertionError(f"unexpected path: {path}")
+
+    async def fake_put_json(client: Any, path: str, *, body: Dict[str, Any] | None = None, **kwargs: Any) -> Any:
+        updated_paths.append(path)
+        updated_meta.clear()
+        updated_meta.update((body or {}).get("meta") or {})
+        return {"id": 22, "name": "Bananza Boat", "meta": (body or {}).get("meta") or {}}
+
+    async def fail_post_json(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("unexpected create world call")
+
+    monkeypatch.setattr(api_flow, "_api_find_project_snapshot_detail", fake_find_project_snapshot_detail)
+    monkeypatch.setattr(api_flow, "_api_get_json", fake_get_json)
+    monkeypatch.setattr(api_flow, "_api_put_json", fake_put_json)
+    monkeypatch.setattr(api_flow, "_api_post_json", fail_post_json)
+
+    result = await api_flow._api_ensure_world(
+        object(),
+        world_name="Bananza Boat",
+        project_name="Bananza Boat Seed Project",
+        project_id=None,
+    )
+
+    assert result["id"] == 22
+    assert fetched_paths == ["/api/v1/game/worlds/22"]
+    assert updated_paths == ["/api/v1/game/worlds/22/meta"]
+    assert updated_meta.get("project_world_upsert_key") == f"{BOOTSTRAP_SOURCE_KEY}:world:Bananza Boat"
+
+
+@pytest.mark.asyncio
+async def test_api_ensure_world_creates_when_snapshot_world_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fetched_paths: list[str] = []
+    created_body: Dict[str, Any] = {}
+
+    async def fake_find_project_snapshot_detail(
+        client: Any,
+        *,
+        project_name: str,
+        project_id: Any = None,
+    ) -> Dict[str, Any]:
+        assert project_name == "Bananza Boat Seed Project"
+        assert project_id is None
+        return {"id": 150, "source_world_id": 999}
+
+    async def fake_get_json(client: Any, path: str, **kwargs: Any) -> Any:
+        if path == "/api/v1/game/worlds":
+            return {"worlds": []}
+        fetched_paths.append(path)
+        if path == "/api/v1/game/worlds/999":
+            raise RuntimeError("get_world: HTTP 404 {'detail': 'Not Found'}")
+        raise AssertionError(f"unexpected path: {path}")
+
+    async def fake_post_json(client: Any, path: str, *, body: Dict[str, Any] | None = None, **kwargs: Any) -> Any:
+        assert path == "/api/v1/game/worlds"
+        created_body.update(body or {})
+        return {"id": 77, "name": "Bananza Boat", "meta": created_body.get("meta") or {}}
+
+    async def fail_put_json(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("unexpected meta update call")
+
+    monkeypatch.setattr(api_flow, "_api_find_project_snapshot_detail", fake_find_project_snapshot_detail)
+    monkeypatch.setattr(api_flow, "_api_get_json", fake_get_json)
+    monkeypatch.setattr(api_flow, "_api_post_json", fake_post_json)
+    monkeypatch.setattr(api_flow, "_api_put_json", fail_put_json)
+
+    result = await api_flow._api_ensure_world(
+        object(),
+        world_name="Bananza Boat",
+        project_name="Bananza Boat Seed Project",
+        project_id=None,
+    )
+
+    assert result["id"] == 77
+    assert fetched_paths == ["/api/v1/game/worlds/999"]
+    assert created_body.get("name") == "Bananza Boat"
+    assert created_body.get("upsert_key") == f"{BOOTSTRAP_SOURCE_KEY}:world:Bananza Boat"
+    bootstrap = created_body.get("meta", {}).get("bootstrap")
+    assert isinstance(bootstrap, dict)
+    assert bootstrap.get("source") == BOOTSTRAP_SOURCE_KEY
+    assert (
+        created_body.get("meta", {}).get("project_world_upsert_key")
+        == f"{BOOTSTRAP_SOURCE_KEY}:world:Bananza Boat"
+    )
+
+
+@pytest.mark.asyncio
 async def test_sync_two_way_pushes_file_when_file_mtime_is_newer(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -6,7 +6,7 @@ Focuses on HTTP behavior with mocked dependencies and service methods.
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -83,6 +83,15 @@ def _app(*, authenticated: bool = True, owner_user_id: int = 1):
         )
     )
     service.get_world_state = AsyncMock(return_value=SimpleNamespace(world_time=0.0))
+    service.create_world = AsyncMock(
+        return_value=SimpleNamespace(
+            id=2,
+            owner_user_id=owner_user_id,
+            name="Created World",
+            meta={},
+        )
+    )
+    service.get_world_by_owner_and_upsert_key = AsyncMock(return_value=None)
     app.dependency_overrides[get_game_world_service] = lambda: service
 
     if not authenticated:
@@ -100,11 +109,119 @@ def _client(app: FastAPI):
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url="http://test",
+        follow_redirects=True,
     )
 
 
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
 class TestGameWorldProjectBundleEndpoints:
+
+    @pytest.mark.asyncio
+    async def test_list_worlds_prefers_keyed_world_for_duplicate_name(self):
+        app = _app(authenticated=True)
+        service = app.dependency_overrides[get_game_world_service]()
+
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [
+            SimpleNamespace(id=10, owner_user_id=1, name="Bananza", meta={"bootstrap": {"source": "bananza.bootstrap"}}),
+            SimpleNamespace(id=11, owner_user_id=1, name="Bananza", meta={"project_world_upsert_key": "bananza.bootstrap:world:Bananza"}),
+            SimpleNamespace(id=12, owner_user_id=1, name="Bananza", meta={"bootstrap": {"source": "bananza.bootstrap"}}),
+            SimpleNamespace(id=13, owner_user_id=1, name="Another", meta={}),
+        ]
+        service.db.execute = AsyncMock(return_value=result)
+
+        async with _client(app) as c:
+            response = await c.get("/api/v1/game/worlds?offset=0&limit=100")
+
+        assert response.status_code == 200
+        body = response.json()
+        names_by_id = {int(row["id"]): row["name"] for row in body["worlds"]}
+        assert 11 in names_by_id
+        assert 10 not in names_by_id
+        assert 12 not in names_by_id
+        assert names_by_id[11] == "Bananza"
+        assert names_by_id[13] == "Another"
+        assert body["total"] == 2
+
+    @pytest.mark.asyncio
+    async def test_list_worlds_collapses_legacy_seed_duplicates_by_bootstrap_source(self):
+        app = _app(authenticated=True)
+        service = app.dependency_overrides[get_game_world_service]()
+
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [
+            SimpleNamespace(id=20, owner_user_id=1, name="Bananza", meta={"bootstrap": {"source": "bananza.bootstrap"}}),
+            SimpleNamespace(id=21, owner_user_id=1, name="Bananza", meta={"bootstrap": {"source": "bananza.bootstrap"}}),
+        ]
+        service.db.execute = AsyncMock(return_value=result)
+
+        async with _client(app) as c:
+            response = await c.get("/api/v1/game/worlds?offset=0&limit=100")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == 1
+        assert body["worlds"][0]["id"] == 21
+
+    @pytest.mark.asyncio
+    async def test_list_worlds_keeps_same_name_worlds_when_bootstrap_sources_differ(self):
+        app = _app(authenticated=True)
+        service = app.dependency_overrides[get_game_world_service]()
+
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [
+            SimpleNamespace(id=30, owner_user_id=1, name="Bananza", meta={"bootstrap": {"source": "bananza.bootstrap.v1"}}),
+            SimpleNamespace(id=31, owner_user_id=1, name="Bananza", meta={"bootstrap": {"source": "bananza.bootstrap.v2"}}),
+        ]
+        service.db.execute = AsyncMock(return_value=result)
+
+        async with _client(app) as c:
+            response = await c.get("/api/v1/game/worlds?offset=0&limit=100")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == 2
+        assert [int(row["id"]) for row in body["worlds"]] == [30, 31]
+
+    @pytest.mark.asyncio
+    async def test_list_worlds_keeps_same_name_worlds_without_seed_or_upsert_signals(self):
+        app = _app(authenticated=True)
+        service = app.dependency_overrides[get_game_world_service]()
+
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [
+            SimpleNamespace(id=40, owner_user_id=1, name="Bananza", meta={}),
+            SimpleNamespace(id=41, owner_user_id=1, name="Bananza", meta={"bootstrap": {}}),
+        ]
+        service.db.execute = AsyncMock(return_value=result)
+
+        async with _client(app) as c:
+            response = await c.get("/api/v1/game/worlds?offset=0&limit=100")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == 2
+        assert [int(row["id"]) for row in body["worlds"]] == [40, 41]
+
+    @pytest.mark.asyncio
+    async def test_list_worlds_dedupe_is_case_insensitive_for_legacy_seed_rows(self):
+        app = _app(authenticated=True)
+        service = app.dependency_overrides[get_game_world_service]()
+
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [
+            SimpleNamespace(id=50, owner_user_id=1, name="Bananza", meta={"bootstrap": {"source": "bananza.bootstrap"}}),
+            SimpleNamespace(id=51, owner_user_id=1, name="bananza", meta={"bootstrap": {"source": "bananza.bootstrap"}}),
+        ]
+        service.db.execute = AsyncMock(return_value=result)
+
+        async with _client(app) as c:
+            response = await c.get("/api/v1/game/worlds?offset=0&limit=100")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == 1
+        assert body["worlds"][0]["id"] == 51
 
     @pytest.mark.asyncio
     async def test_export_world_project_success(self):
@@ -188,6 +305,84 @@ class TestGameWorldProjectBundleEndpoints:
                 )
 
         assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_create_world_returns_existing_when_upsert_key_matches(self):
+        app = _app(authenticated=True)
+        service = app.dependency_overrides[get_game_world_service]()
+        service.get_world_by_owner_and_upsert_key = AsyncMock(
+            return_value=SimpleNamespace(
+                id=77,
+                owner_user_id=1,
+                name="Bananza",
+                meta={"project_world_upsert_key": "bananza.world"},
+            )
+        )
+        service.get_world_state = AsyncMock(return_value=SimpleNamespace(world_time=12.5))
+
+        async with _client(app) as c:
+            response = await c.post(
+                "/api/v1/game/worlds/",
+                json={
+                    "name": "Bananza",
+                    "meta": {},
+                    "upsert_key": "bananza.world",
+                },
+            )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == 77
+        assert body["name"] == "Bananza"
+        service.create_world.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_create_world_persists_upsert_key_on_new_world(self):
+        app = _app(authenticated=True)
+        service = app.dependency_overrides[get_game_world_service]()
+        service.get_world_by_owner_and_upsert_key = AsyncMock(return_value=None)
+        service.create_world = AsyncMock(
+            return_value=SimpleNamespace(
+                id=78,
+                owner_user_id=1,
+                name="Bananza",
+                meta={"project_world_upsert_key": "bananza.world"},
+            )
+        )
+
+        async with _client(app) as c:
+            response = await c.post(
+                "/api/v1/game/worlds/",
+                json={
+                    "name": "Bananza",
+                    "meta": {"seed": True},
+                    "upsert_key": "bananza.world",
+                },
+            )
+
+        assert response.status_code == 200
+        kwargs = service.create_world.await_args.kwargs
+        assert kwargs["meta"]["seed"] is True
+        assert kwargs["meta"]["project_world_upsert_key"] == "bananza.world"
+
+    @pytest.mark.asyncio
+    async def test_create_world_rejects_meta_upsert_key_mismatch(self):
+        app = _app(authenticated=True)
+
+        async with _client(app) as c:
+            response = await c.post(
+                "/api/v1/game/worlds/",
+                json={
+                    "name": "Bananza",
+                    "meta": {"project_world_upsert_key": "one"},
+                    "upsert_key": "two",
+                },
+            )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "world_upsert_key_mismatch"
+        service = app.dependency_overrides[get_game_world_service]()
+        service.create_world.assert_not_awaited()
 
 
     @pytest.mark.asyncio
@@ -286,6 +481,87 @@ class TestGameWorldProjectBundleEndpoints:
         body = response.json()
         assert body["id"] == 11
         assert body["name"] == "My Project"
+
+    @pytest.mark.asyncio
+    async def test_save_project_snapshot_auto_overwrites_by_provenance_source_key(self):
+        app = _app(authenticated=True)
+        existing = SimpleNamespace(id=44)
+        saved = SimpleNamespace(
+            id=44,
+            name="My Project",
+            source_world_id=1,
+            schema_version=1,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            bundle=_bundle_payload(),
+        )
+
+        with patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.get_latest_project_by_origin_source_key",
+            new=AsyncMock(return_value=existing),
+        ) as mock_by_source_key, patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.get_latest_project_by_name",
+            new=AsyncMock(return_value=None),
+        ), patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.save_project",
+            new=AsyncMock(return_value=saved),
+        ) as mock_save:
+            async with _client(app) as c:
+                response = await c.post(
+                    "/api/v1/game/worlds/projects/snapshots",
+                    json={
+                        "name": "My Project",
+                        "source_world_id": 1,
+                        "bundle": _bundle_payload(),
+                        "provenance": {
+                            "kind": "seed",
+                            "source_key": "bananza.seed.v1",
+                        },
+                    },
+                )
+
+        assert response.status_code == 200
+        assert mock_by_source_key.await_args.kwargs["source_key"] == "bananza.seed.v1"
+        assert mock_save.await_args.kwargs["overwrite_project_id"] == 44
+
+    @pytest.mark.asyncio
+    async def test_save_project_snapshot_can_upsert_by_name(self):
+        app = _app(authenticated=True)
+        existing = SimpleNamespace(id=19)
+        saved = SimpleNamespace(
+            id=19,
+            name="My Project",
+            source_world_id=1,
+            schema_version=1,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            bundle=_bundle_payload(),
+        )
+
+        with patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.get_latest_project_by_origin_source_key",
+            new=AsyncMock(return_value=None),
+        ), patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.get_latest_project_by_name",
+            new=AsyncMock(return_value=existing),
+        ) as mock_by_name, patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.save_project",
+            new=AsyncMock(return_value=saved),
+        ) as mock_save:
+            async with _client(app) as c:
+                response = await c.post(
+                    "/api/v1/game/worlds/projects/snapshots",
+                    json={
+                        "name": "My Project",
+                        "source_world_id": 1,
+                        "bundle": _bundle_payload(),
+                        "upsert_by_name": True,
+                    },
+                )
+
+        assert response.status_code == 200
+        assert mock_by_name.await_args.kwargs["name"] == "My Project"
+        assert mock_save.await_args.kwargs["overwrite_project_id"] == 19
 
 
     @pytest.mark.asyncio
@@ -533,4 +809,3 @@ class TestGameWorldProjectBundleEndpoints:
         body = response.json()
         assert len(body) == 1
         assert body[0]["name"] == "World Snapshot"
-
