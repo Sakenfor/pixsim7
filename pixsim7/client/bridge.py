@@ -215,10 +215,10 @@ class Bridge:
         try:
             content = codex_config.read_text() if codex_config.exists() else ""
 
-            # Remove existing pixsim section (between [mcp_servers.pixsim] and next section)
+            # Remove ALL existing pixsim sections (main + sub-tables like .env)
             import re
             content = re.sub(
-                r'\[mcp_servers\.pixsim\].*?(?=\n\[|\Z)',
+                r'\[mcp_servers\.pixsim[^\]]*\][^\[]*',
                 '', content, flags=re.DOTALL,
             ).rstrip() + "\n"
 
