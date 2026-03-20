@@ -32,30 +32,18 @@ from pixsim7.backend.main.services.ownership import (
 from .crud_registry import TemplateCRUDSpec, NestedEntitySpec, CustomAction, get_template_crud_registry
 from .crud_service import TemplateCRUDService, NestedEntityService, CRUDValidationError
 
+from pixsim7.backend.main.services.audit import emit_audit
+
 
 # =============================================================================
-# Generic Response Models
+# Generic Response Models (shared with crud.registry)
 # =============================================================================
 
-
-class PaginatedResponse(BaseModel):
-    """Generic paginated list response."""
-    items: List[Any]
-    total: int
-    limit: int
-    offset: int
-    has_more: bool
-
-
-class DeleteResponse(BaseModel):
-    """Response for delete operations."""
-    success: bool
-    message: str
-
-
-class ErrorResponse(BaseModel):
-    """Standard error response."""
-    detail: str
+from pixsim7.backend.main.services.crud.primitives import (
+    PaginatedResponse,
+    DeleteResponse,
+    ErrorResponse,
+)
 
 
 # =============================================================================
@@ -332,6 +320,17 @@ def _register_create_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
         )
         try:
             item = await service.create(data)
+            if spec.audit_config and spec.audit_config.enabled:
+                actor = f"user:{getattr(current_user, 'id', 0)}"
+                if hasattr(current_user, 'source'):
+                    actor = current_user.source
+                await emit_audit(
+                    db, domain=spec.audit_config.domain,
+                    entity_type=spec.audit_config.entity_type,
+                    entity_id=str(getattr(item, spec.id_field, '')),
+                    entity_label=str(getattr(item, spec.audit_config.label_field, '') or ''),
+                    action="created", actor=actor,
+                )
             return await service.transform_response(item)
         except CRUDValidationError as e:
             raise HTTPException(status_code=422, detail=e.message)
@@ -394,6 +393,17 @@ def _register_update_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
             item = await service.update(entity_id, data)
             if not item:
                 raise HTTPException(status_code=404, detail=f"{spec.kind} not found")
+            if spec.audit_config and spec.audit_config.enabled:
+                actor = f"user:{getattr(current_user, 'id', 0)}"
+                if hasattr(current_user, 'source'):
+                    actor = current_user.source
+                await emit_audit(
+                    db, domain=spec.audit_config.domain,
+                    entity_type=spec.audit_config.entity_type,
+                    entity_id=str(entity_id),
+                    entity_label=str(getattr(item, spec.audit_config.label_field, '') or ''),
+                    action="updated", actor=actor,
+                )
             return await service.transform_response(item)
         except CRUDValidationError as e:
             raise HTTPException(status_code=422, detail=e.message)
@@ -457,6 +467,17 @@ def _register_delete_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
 
         if not success:
             raise HTTPException(status_code=404, detail=f"{spec.kind} not found")
+        if spec.audit_config and spec.audit_config.enabled:
+            actor = f"user:{getattr(current_user, 'id', 0)}"
+            if hasattr(current_user, 'source'):
+                actor = current_user.source
+            await emit_audit(
+                db, domain=spec.audit_config.domain,
+                entity_type=spec.audit_config.entity_type,
+                entity_id=str(entity_id),
+                action="deleted" if hard else "deactivated",
+                actor=actor,
+            )
         return DeleteResponse(
             success=True,
             message=f"{spec.kind} {'deleted' if hard else 'deactivated'} successfully"
@@ -952,7 +973,7 @@ def create_template_crud_router(
     # Optional: Add registry info endpoint
     if include_registry_info:
         @router.get(
-            "/templates/registry",
+            "/registry",
             summary="List registered template types",
             description="Returns information about all registered template CRUD types.",
             tags=["templates"],

@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
+from pixsim7.backend.main.api.dependencies import CurrentUser, get_current_user_optional, get_database
 from pixsim7.backend.main.domain.docs.models import AgentActivityLog
 from pixsim7.backend.main.services.meta.contract_registry import (
     meta_contract_registry,
@@ -777,69 +777,39 @@ async def get_agent_writes(
     domain: Optional[str] = Query(None, description="Filter by domain: plan, prompt, or all"),
     db: AsyncSession = Depends(get_database),
 ):
-    """Query write events attributed to agents across all domains."""
-    from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry, Document
-    from pixsim7.backend.main.domain.platform.notification import Notification
+    """Query mutation events attributed to agents across all domains."""
+    from pixsim7.backend.main.domain.platform.entity_audit import EntityAudit
 
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=days)
-    actor_filter = f"agent:{agent_id}" if agent_id else None
-    entries: List[AgentWriteEntry] = []
 
-    # ── Plan events ──
-    if domain in (None, "plan"):
-        stmt = (
-            select(PlanEvent, Document.title)
-            .join(PlanRegistry, PlanEvent.plan_id == PlanRegistry.id)
-            .join(Document, PlanRegistry.document_id == Document.id)
-            .where(PlanEvent.timestamp >= cutoff)
-            .where(PlanEvent.actor.like("agent:%"))
+    stmt = (
+        select(EntityAudit)
+        .where(EntityAudit.timestamp >= cutoff)
+        .where(EntityAudit.actor.like("agent:%"))
+    )
+    if agent_id:
+        stmt = stmt.where(EntityAudit.actor == f"agent:{agent_id}")
+    if domain:
+        stmt = stmt.where(EntityAudit.domain == domain)
+    stmt = stmt.order_by(EntityAudit.timestamp.desc()).limit(limit)
+
+    rows = (await db.execute(stmt)).scalars().all()
+    entries = [
+        AgentWriteEntry(
+            id=str(row.id),
+            domain=row.domain,
+            entity_id=row.entity_id,
+            entity_label=row.entity_label or row.entity_id,
+            event_type=row.action,
+            field=row.field,
+            old_value=row.old_value,
+            new_value=row.new_value,
+            commit_sha=row.commit_sha,
+            actor=row.actor,
+            timestamp=row.timestamp.isoformat() if row.timestamp else "",
         )
-        if actor_filter:
-            stmt = stmt.where(PlanEvent.actor == actor_filter)
-        stmt = stmt.order_by(PlanEvent.timestamp.desc()).limit(limit)
-        for ev, title in (await db.execute(stmt)).all():
-            entries.append(AgentWriteEntry(
-                id=str(ev.id),
-                domain="plan",
-                entity_id=ev.plan_id,
-                entity_label=title or ev.plan_id,
-                event_type=ev.event_type,
-                field=ev.field,
-                old_value=ev.old_value,
-                new_value=ev.new_value,
-                commit_sha=ev.commit_sha,
-                actor=ev.actor,
-                timestamp=ev.timestamp.isoformat() if ev.timestamp else "",
-            ))
-
-    # ── Prompt/other writes via notifications ──
-    if domain in (None, "prompt"):
-        notif_categories = ["prompt.created", "prompt.updated", "prompt.version_created"]
-        stmt = (
-            select(Notification)
-            .where(Notification.created_at >= cutoff)
-            .where(Notification.source.like("agent:%"))
-            .where(Notification.category.in_(notif_categories))
-        )
-        if actor_filter:
-            stmt = stmt.where(Notification.source == actor_filter)
-        stmt = stmt.order_by(Notification.created_at.desc()).limit(limit)
-        for notif in (await db.execute(stmt)).scalars().all():
-            payload = notif.payload or {}
-            entries.append(AgentWriteEntry(
-                id=str(notif.id),
-                domain="prompt",
-                entity_id=notif.ref_id or "",
-                entity_label=notif.title or "",
-                event_type=notif.event_type or notif.category,
-                field=", ".join(payload.get("changed_fields", [])) or None,
-                actor=notif.source,
-                timestamp=notif.created_at.isoformat() if notif.created_at else "",
-            ))
-
-    # Sort combined results by timestamp descending, trim to limit
-    entries.sort(key=lambda e: e.timestamp, reverse=True)
-    entries = entries[:limit]
+        for row in rows
+    ]
 
     return AgentWritesResponse(entries=entries, total=len(entries))
 
@@ -1068,6 +1038,109 @@ class SendMessageResponse(BaseModel):
     claude_session_id: Optional[str] = Field(None, description="Claude session UUID (for resume)")
 
 
+@router.get("/agents/chat-sessions")
+async def list_chat_sessions(
+    engine: Optional[str] = Query(None, description="Filter by engine (claude, codex, api)"),
+    limit: int = Query(20, ge=1, le=100),
+    user: Optional[Any] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_database),
+) -> Dict[str, Any]:
+    """List recent chat sessions for the /resume picker, scoped by engine."""
+    from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+
+    stmt = (
+        select(ChatSession)
+        .where(ChatSession.status == "active")
+    )
+    if user:
+        stmt = stmt.where(ChatSession.user_id == user.id)
+    if engine:
+        stmt = stmt.where(ChatSession.engine == engine)
+    stmt = stmt.order_by(ChatSession.last_used_at.desc()).limit(limit)
+
+    sessions = (await db.execute(stmt)).scalars().all()
+    return {
+        "sessions": [
+            {
+                "id": s.id,
+                "engine": s.engine,
+                "profile_id": s.profile_id,
+                "label": s.label,
+                "message_count": s.message_count,
+                "last_used_at": s.last_used_at.isoformat(),
+                "created_at": s.created_at.isoformat(),
+            }
+            for s in sessions
+        ],
+    }
+
+
+@router.delete("/agents/chat-sessions/{session_id}")
+async def archive_chat_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_database),
+) -> Dict[str, Any]:
+    """Archive a chat session (hide from /resume picker)."""
+    from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+
+    session = await db.get(ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session.status = "archived"
+    await db.commit()
+    return {"ok": True}
+
+
+@router.get("/agents/bridge/active-task")
+async def get_active_task(
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Check if there's an active task (for reconnect after SSE drop).
+
+    Returns the active task status or completed result if available.
+    """
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
+    from pixsim7.backend.main.api.dependencies import get_auth_service, _extract_bearer_token
+
+    user_id: Optional[int] = None
+    if authorization:
+        try:
+            raw_token = _extract_bearer_token(authorization)
+            auth_service = get_auth_service()
+            user = await auth_service.verify_token(raw_token)
+            user_id = user.id if user else None
+        except Exception:
+            pass
+
+    # Check for active (in-progress) task
+    active = remote_cmd_bridge.get_active_task_for_user(user_id)
+    if active:
+        return {"status": "active", **active}
+
+    return {"status": "idle"}
+
+
+@router.get("/agents/bridge/task-result/{task_id}")
+async def get_task_result(task_id: str) -> Dict[str, Any]:
+    """Retrieve a completed task result (cached after SSE drop)."""
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
+
+    result = remote_cmd_bridge.pop_completed_result(task_id)
+    if result:
+        response_text = (
+            result.get("edited_prompt")
+            or result.get("response")
+            or result.get("output", "")
+        )
+        return {
+            "status": "completed",
+            "ok": True,
+            "response": response_text,
+            "claude_session_id": result.get("claude_session_id"),
+        }
+    return {"status": "not_found"}
+
+
 @router.post("/agents/bridge/send", response_model=SendMessageResponse)
 async def send_message_to_agent(
     payload: SendMessageRequest,
@@ -1111,6 +1184,10 @@ async def send_message_to_agent(
 
     # Resolve provider, model, and delivery method for assistant_chat
     provider_id, model_id, method = await _resolve_assistant_provider(user_id)
+
+    # Engine override: "api" forces direct API path
+    if payload.engine == "api":
+        method = "api"
 
     start = time.monotonic()
 
@@ -1178,6 +1255,10 @@ async def send_message_to_agent_stream(
         pass
 
     provider_id, model_id, method = await _resolve_assistant_provider(user_id)
+
+    # Engine override: "api" forces direct API path
+    if payload.engine == "api":
+        method = "api"
 
     # ── Non-bridge: fall back to non-streaming response wrapped as single SSE event ──
     if method != "remote":
@@ -1250,12 +1331,60 @@ async def send_message_to_agent_stream(
                         or event.get("response")
                         or event.get("output", "")
                     )
-                    yield f"data: {_json.dumps({'type': 'result', 'ok': True, 'agent_id': agent_id, 'response': response_text, 'claude_session_id': event.get('claude_session_id'), 'duration_ms': duration_ms})}\n\n"
+                    cli_session_id = event.get("claude_session_id")
+                    if cli_session_id:
+                        import asyncio as _asyncio
+                        _asyncio.ensure_future(_upsert_chat_session(
+                            session_id=cli_session_id, user_id=user_id or 0,
+                            engine=payload.engine, label=payload.message[:60],
+                            profile_id=payload.assistant_id,
+                        ))
+                    yield f"data: {_json.dumps({'type': 'result', 'ok': True, 'agent_id': agent_id, 'response': response_text, 'claude_session_id': cli_session_id, 'duration_ms': duration_ms})}\n\n"
         except Exception as e:
             duration_ms = int((time.monotonic() - start) * 1000)
             yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'agent_id': agent_id, 'error': str(e), 'duration_ms': duration_ms})}\n\n"
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+# =============================================================================
+# Internal helpers — chat session tracking
+# =============================================================================
+
+
+async def _upsert_chat_session(
+    session_id: str,
+    user_id: int,
+    engine: str,
+    label: str,
+    profile_id: Optional[str] = None,
+) -> None:
+    """Create or update a chat session record (fire-and-forget)."""
+    try:
+        from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+        from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
+        from pixsim7.backend.main.shared.datetime_utils import utcnow
+
+        async with AsyncSessionLocal() as db:
+            existing = await db.get(ChatSession, session_id)
+            if existing:
+                existing.message_count += 1
+                existing.last_used_at = utcnow()
+                if label and label != existing.label:
+                    existing.label = label
+            else:
+                db.add(ChatSession(
+                    id=session_id,
+                    user_id=user_id,
+                    engine=engine,
+                    profile_id=profile_id,
+                    label=label or "Untitled",
+                    message_count=1,
+                ))
+            await db.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("chat_session_upsert_failed: %s", e)
 
 
 # =============================================================================
@@ -1366,11 +1495,21 @@ async def _send_via_bridge(
             or result.get("response")
             or result.get("output", "")
         )
+        # Track session for /resume
+        cli_session_id = result.get("claude_session_id")
+        if cli_session_id:
+            await _upsert_chat_session(
+                session_id=cli_session_id,
+                user_id=user_id or 0,
+                engine=payload.engine,
+                label=payload.message[:60],
+                profile_id=payload.assistant_id,
+            )
         return SendMessageResponse(
             ok=True,
             agent_id=agent.agent_id,
             response=response_text,
-            claude_session_id=result.get("claude_session_id"),
+            claude_session_id=cli_session_id,
             duration_ms=duration_ms,
         )
     except Exception as e:

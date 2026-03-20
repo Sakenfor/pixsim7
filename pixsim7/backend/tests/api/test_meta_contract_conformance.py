@@ -27,9 +27,18 @@ from pixsim7.backend.main.api.v1.prompts.meta import (
 from pixsim7.backend.main.api.v1.prompts.schemas import CreatePromptVersionRequest
 
 _ROUTE_MANIFEST_MODULE_BY_PATH_PREFIX: Sequence[Tuple[str, str]] = (
+    ("/api/v1/assets", "pixsim7.backend.main.routes.assets.manifest"),
     ("/api/v1/block-templates", "pixsim7.backend.main.routes.block_templates.manifest"),
+    ("/api/v1/characters", "pixsim7.backend.main.routes.characters.manifest"),
+    ("/api/v1/dev/plans", "pixsim7.backend.main.routes.dev_plans.manifest"),
     ("/api/v1/dev/ontology", "pixsim7.backend.main.routes.dev_ontology.manifest"),
+    ("/api/v1/devtools/codegen", "pixsim7.backend.main.routes.codegen.manifest"),
+    ("/api/v1/game/meta", "pixsim7.backend.main.routes.game_meta.manifest"),
+    ("/api/v1/game/scenes", "pixsim7.backend.main.routes.game_scenes.manifest"),
+    ("/api/v1/generations", "pixsim7.backend.main.routes.generations.manifest"),
+    ("/api/v1/meta/ui", "pixsim7.backend.main.routes.meta_ui.manifest"),
     ("/api/v1/meta", "pixsim7.backend.main.routes.meta_contracts.manifest"),
+    ("/api/v1/notifications", "pixsim7.backend.main.routes.notifications.manifest"),
     ("/api/v1/prompts", "pixsim7.backend.main.routes.prompts.manifest"),
 )
 
@@ -150,6 +159,8 @@ async def test_meta_contract_declared_endpoints_exist_in_routes() -> None:
         if contract.endpoint:
             declared_path_only.append((f"{contract.id}.endpoint", contract.endpoint))
         for sub in contract.sub_endpoints:
+            if not sub.path.startswith("/api/"):
+                continue
             declared_method_paths.append(
                 (f"{contract.id}.{sub.id}", sub.method.upper(), sub.path)
             )

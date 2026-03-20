@@ -269,6 +269,9 @@ class TemplateCRUDSpec:
     custom_actions: List[CustomAction] = field(default_factory=list)
     nested_entities: List[NestedEntitySpec] = field(default_factory=list)
 
+    # Audit (opt-in)
+    audit_config: Optional[Any] = None  # AuditConfig from services.audit
+
     # Metadata
     tags: List[str] = field(default_factory=lambda: ["templates"])
     description: Optional[str] = None

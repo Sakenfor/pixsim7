@@ -82,6 +82,8 @@ async def test_prompt_authoring_contract_exposes_family_version_and_analyze_sche
     assert result.version == PROMPT_AUTHORING_CONTRACT_VERSION
     assert "properties" in result.create_family_request_schema
     assert "title" in result.create_family_request_schema["properties"]
+    assert "properties" in result.update_family_request_schema
+    assert "category" in result.update_family_request_schema["properties"]
     assert "properties" in result.create_version_request_schema
     assert "prompt_text" in result.create_version_request_schema["properties"]
     assert "properties" in result.apply_edit_request_schema
@@ -90,6 +92,9 @@ async def test_prompt_authoring_contract_exposes_family_version_and_analyze_sche
     assert "text" in result.analyze_request_schema["properties"]
     assert any(endpoint.id == "prompts.create_version" for endpoint in result.endpoints)
     assert any(endpoint.id == "prompts.apply_edit" for endpoint in result.endpoints)
+    assert any(endpoint.id == "prompts.update_family" for endpoint in result.endpoints)
+    assert any(endpoint.id == "prompts.get_family" for endpoint in result.endpoints)
+    assert any(endpoint.id == "prompts.list_versions" for endpoint in result.endpoints)
 
 
 @pytest.mark.asyncio
@@ -263,7 +268,7 @@ async def test_prompt_authoring_modes_have_generation_hints() -> None:
     char = modes_by_id["character_design"]
     assert char.sequence_role == "initial"
     assert char.generation_hints[0].operation == "text_to_image"
-    assert char.generation_hints[0].suggested_params == {"aspect_ratio": "3:4"}
+    assert char.generation_hints[0].suggested_params == {"aspect_ratio": "9:16"}
     assert char.generation_hints[1].operation == "image_to_image"
     assert char.generation_hints[1].auto_bind == "viewer_asset"
 

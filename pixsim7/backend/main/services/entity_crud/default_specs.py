@@ -27,6 +27,7 @@ from .crud_registry import (
     parse_uuid,
     parse_int,
 )
+from pixsim7.backend.main.services.audit import AuditConfig
 from pixsim7.backend.main.services.ownership import OwnershipPolicy, OwnershipScope
 
 
@@ -65,6 +66,9 @@ def register_default_template_specs() -> None:
         list_order_desc=True,
         filterable_fields=["is_active", "location_id", "location_type"],
 
+        # Audit
+        audit_config=AuditConfig(domain="game", entity_type="location_template"),
+
         # Metadata
         tags=["templates", "locations"],
         description="Location template definitions for reusable location configurations.",
@@ -93,6 +97,9 @@ def register_default_template_specs() -> None:
         list_order_by="created_at",
         list_order_desc=True,
         filterable_fields=["is_active", "item_id", "category"],
+
+        # Audit
+        audit_config=AuditConfig(domain="game", entity_type="item_template"),
 
         # Metadata
         tags=["templates", "items"],
@@ -162,6 +169,9 @@ def register_default_template_specs() -> None:
                 after_change=sync_location_hotspot_projection,
             ),
         ],
+
+        # Audit
+        audit_config=AuditConfig(domain="game", entity_type="location"),
 
         # Metadata
         tags=["runtime", "locations"],
@@ -240,6 +250,9 @@ def register_default_template_specs() -> None:
             ),
         ],
 
+        # Audit
+        audit_config=AuditConfig(domain="game", entity_type="scene", label_field="title"),
+
         # Metadata
         tags=["runtime", "scenes"],
         description="Game scenes with nodes and edges for branching narratives.",
@@ -310,6 +323,9 @@ def register_default_template_specs() -> None:
             ),
         ],
 
+        # Audit
+        audit_config=AuditConfig(domain="game", entity_type="npc"),
+
         # Metadata
         tags=["runtime", "npcs"],
         description="Game NPCs with schedules and expressions.",
@@ -347,6 +363,9 @@ def register_default_template_specs() -> None:
         filterable_fields=["name", "owner_user_id"],
         search_fields=["name"],
 
+        # Audit
+        audit_config=AuditConfig(domain="game", entity_type="world"),
+
         # Metadata
         tags=["runtime", "worlds"],
         description="Game worlds owned by users.",
@@ -382,6 +401,9 @@ def register_default_template_specs() -> None:
         list_order_desc=True,
         filterable_fields=["name"],
         search_fields=["name", "description"],
+
+        # Audit
+        audit_config=AuditConfig(domain="game", entity_type="item"),
 
         # Metadata
         tags=["runtime", "items"],
@@ -426,6 +448,9 @@ def register_character_instance_spec() -> None:
         list_order_by="created_at",
         list_order_desc=True,
         filterable_fields=["is_active", "instance_id", "character_id", "world_id"],
+
+        # Audit
+        audit_config=AuditConfig(domain="game", entity_type="character_instance"),
 
         # Metadata
         tags=["templates", "characters"],
