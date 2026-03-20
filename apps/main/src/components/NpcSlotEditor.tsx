@@ -4,7 +4,13 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 
 
 import type { GameLocationDetail, GameWorldDetail, NpcSlot2d } from '@lib/api/game';
-import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '@lib/api/game';
+import {
+  getGameLocation,
+  getNpcSlots,
+  setNpcSlots,
+  getGameLocationNpcSlots2d,
+  saveGameLocationNpcSlots2d,
+} from '@lib/api/game';
 import { InteractionConfigForm } from '@lib/game/interactions/InteractionConfigForm';
 import {
   getCombinedPresets,
@@ -27,11 +33,33 @@ interface NpcSlotEditorProps {
   onLocationUpdate: (location: GameLocationDetail) => void;
 }
 
+type LocationWithAuthoringRevision = GameLocationDetail & {
+  authoringRevision?: string | null;
+};
+
+const isLocationAuthoringRevisionConflict = (error: unknown): boolean => {
+  const maybeError = error as {
+    response?: {
+      status?: number;
+      data?: {
+        detail?: {
+          error?: unknown;
+        };
+      };
+    };
+  };
+  return (
+    maybeError?.response?.status === 409 &&
+    maybeError?.response?.data?.detail?.error === 'location_authoring_revision_conflict'
+  );
+};
+
 export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEditorProps) {
   const [slots, setSlots] = useState<NpcSlot2d[]>([]);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [backgroundAsset, setBackgroundAsset] = useState<AssetModel | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSyncingSlots, setIsSyncingSlots] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -54,11 +82,37 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
     return getCombinedPlaylists(world);
   }, [world]);
 
-  // Load slots from location meta
+  // Load local meta slots first, then refresh from dedicated API endpoint.
   useEffect(() => {
-    const loadedSlots = getNpcSlots(location);
-    setSlots(loadedSlots);
-  }, [location]);
+    const fallbackSlots = getNpcSlots(location);
+    setSlots(fallbackSlots);
+    setSelectedSlotId(prev =>
+      prev && fallbackSlots.some(slot => slot.id === prev) ? prev : null
+    );
+
+    let isActive = true;
+    setIsSyncingSlots(true);
+    (async () => {
+      try {
+        const loadedSlots = await getGameLocationNpcSlots2d(location.id);
+        if (!isActive) return;
+        setSlots(loadedSlots);
+        setSelectedSlotId(prev =>
+          prev && loadedSlots.some(slot => slot.id === prev) ? prev : null
+        );
+      } catch {
+        // Keep fallback slots from local meta when endpoint fetch fails.
+      } finally {
+        if (isActive) {
+          setIsSyncingSlots(false);
+        }
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [location.id]);
 
   // Load background asset
   useEffect(() => {
@@ -89,7 +143,7 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
   }, [location.asset_id]);
 
   const handleBackgroundClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current) return;
+    if (isSyncingSlots || !containerRef.current) return;
 
     const rect = containerRef.current.getBoundingClientRect();
     const x = (event.clientX - rect.left) / rect.width;
@@ -116,7 +170,7 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
       setSlots([...slots, newSlot]);
       setSelectedSlotId(newSlot.id);
     }
-  }, [slots]);
+  }, [isSyncingSlots, slots]);
 
   const updateSlot = (id: string, updates: Partial<NpcSlot2d>) => {
     setSlots(prevSlots =>
@@ -135,10 +189,33 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
     setIsSaving(true);
     setError(null);
     try {
-      const updatedLocation = setNpcSlots(location, slots);
-      await saveGameLocationMeta(location.id, updatedLocation.meta!);
+      const expectedAuthoringRevision =
+        (location as LocationWithAuthoringRevision).authoringRevision ?? null;
+      const saveResult = await saveGameLocationNpcSlots2d(location.id, slots, {
+        expectedAuthoringRevision,
+      });
+      const savedSlots = saveResult.npcSlots2d;
+      const updatedLocation = setNpcSlots(location, savedSlots) as LocationWithAuthoringRevision;
+      updatedLocation.authoringRevision = saveResult.authoringRevision ?? null;
       onLocationUpdate(updatedLocation);
+      setSlots(savedSlots);
     } catch (e: any) {
+      if (isLocationAuthoringRevisionConflict(e)) {
+        try {
+          const latestLocation = await getGameLocation(location.id);
+          const latestSlots = await getGameLocationNpcSlots2d(location.id);
+          onLocationUpdate(latestLocation);
+          setSlots(latestSlots);
+          setSelectedSlotId(prev =>
+            prev && latestSlots.some(slot => slot.id === prev) ? prev : null
+          );
+          setError('Location changed elsewhere. Reloaded latest slots. Review and save again.');
+          return;
+        } catch {
+          setError('Location changed elsewhere. Could not auto-refresh latest state.');
+          return;
+        }
+      }
       setError(String(e?.message ?? e));
     } finally {
       setIsSaving(false);
@@ -151,14 +228,21 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">2D NPC Slot Layout</h2>
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={handleSave}
-          disabled={isSaving}
-        >
-          {isSaving ? 'Saving...' : 'Save Slots'}
-        </Button>
+        <div className="flex items-center gap-2">
+          {isSyncingSlots && (
+            <Badge color="gray" className="text-[10px]">
+              Syncing slots...
+            </Badge>
+          )}
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleSave}
+            disabled={isSaving || isSyncingSlots}
+          >
+            {isSaving ? 'Saving...' : 'Save Slots'}
+          </Button>
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-500">Error: {error}</p>}

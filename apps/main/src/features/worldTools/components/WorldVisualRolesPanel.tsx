@@ -107,10 +107,11 @@ export function WorldVisualRolesPanel() {
   const {
     worlds,
     selectedWorldId,
+    selectedWorldSource,
     setSelectedWorldId,
     isLoadingWorlds,
     worldLoadError,
-  } = useSharedWorldSelection();
+  } = useSharedWorldSelection({ autoSelectFirst: true });
 
   const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
   const [visualRoles, setVisualRoles] = useState<WorldVisualRoles>({});
@@ -375,6 +376,9 @@ export function WorldVisualRolesPanel() {
           >
             {isSaving ? 'Saving...' : 'Save Changes'}
           </Button>
+        </div>
+        <div className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+          World source: {selectedWorldSource}
         </div>
 
         {/* Error message */}

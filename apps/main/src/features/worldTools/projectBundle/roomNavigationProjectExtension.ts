@@ -25,9 +25,13 @@ type RoomNavigationData = Extract<
 
 interface RoomNavigationMetaClient {
   readLocationMeta(locationId: number): Promise<Record<string, unknown>>;
-  writeLocationMeta(
+  writeLocationRoomNavigation(
     locationId: number,
-    meta: Record<string, unknown>,
+    roomNavigation: RoomNavigationData,
+  ): Promise<void>;
+  writeLocationTransitionCache(
+    locationId: number,
+    transitionCache: Record<string, unknown>,
   ): Promise<void>;
 }
 
@@ -50,11 +54,23 @@ async function getRoomNavigationMetaClient(): Promise<RoomNavigationMetaClient> 
       const location = await api.getGameLocation(locationId as IDs.LocationId);
       return isObjectRecord(location.meta) ? cloneJson(location.meta) : {};
     },
-    writeLocationMeta: async (
+    writeLocationRoomNavigation: async (
       locationId: number,
-      meta: Record<string, unknown>,
+      roomNavigation: RoomNavigationData,
     ) => {
-      await api.saveGameLocationMeta(locationId as IDs.LocationId, cloneJson(meta));
+      await api.saveGameLocationRoomNavigation(
+        locationId as IDs.LocationId,
+        cloneJson(roomNavigation),
+      );
+    },
+    writeLocationTransitionCache: async (
+      locationId: number,
+      transitionCache: Record<string, unknown>,
+    ) => {
+      await api.saveGameLocationRoomNavigationTransitionCache(
+        locationId as IDs.LocationId,
+        cloneJson(transitionCache),
+      );
     },
   };
 }
@@ -358,38 +374,48 @@ class RoomNavigationAuthoringProjectBundleContributor extends BaseAuthoringProje
         continue;
       }
 
-      const nextMeta: Record<string, unknown> = { ...existingMeta };
-      let changed = false;
-
       const existingRoomNavigation = validateRoomNavigation(
         existingMeta[ROOM_NAVIGATION_META_KEY],
       );
-      if (item.room_navigation && !existingRoomNavigation.ok) {
-        nextMeta[ROOM_NAVIGATION_META_KEY] = cloneJson(item.room_navigation);
-        changed = true;
-      }
+      const shouldWriteRoomNavigation =
+        Boolean(item.room_navigation) && !existingRoomNavigation.ok;
 
       const existingTransitionCache = parseTransitionCachePayload(
         existingMeta[ROOM_NAVIGATION_TRANSITION_CACHE_META_KEY],
       );
-      if (item.transition_cache && !existingTransitionCache) {
-        nextMeta[ROOM_NAVIGATION_TRANSITION_CACHE_META_KEY] = cloneJson(
-          item.transition_cache,
-        );
-        changed = true;
-      }
+      const shouldWriteTransitionCache =
+        Boolean(item.transition_cache) && !existingTransitionCache;
 
-      if (!changed) {
+      if (!shouldWriteRoomNavigation && !shouldWriteTransitionCache) {
         continue;
       }
 
-      try {
-        await metaClient.writeLocationMeta(mappedLocationId, nextMeta);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        warnings.push(
-          `authoring.room_navigation import write location ${item.location_source_id}: ${message}`,
-        );
+      if (shouldWriteRoomNavigation && item.room_navigation) {
+        try {
+          await metaClient.writeLocationRoomNavigation(
+            mappedLocationId,
+            cloneJson(item.room_navigation),
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          warnings.push(
+            `authoring.room_navigation import write location ${item.location_source_id}: ${message}`,
+          );
+        }
+      }
+
+      if (shouldWriteTransitionCache && item.transition_cache) {
+        try {
+          await metaClient.writeLocationTransitionCache(
+            mappedLocationId,
+            cloneJson(item.transition_cache),
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          warnings.push(
+            `authoring.room_navigation import write location ${item.location_source_id}: ${message}`,
+          );
+        }
       }
     }
 

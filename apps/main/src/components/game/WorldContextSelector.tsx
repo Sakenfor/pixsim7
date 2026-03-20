@@ -25,6 +25,7 @@ export function WorldContextSelector() {
   const {
     worlds,
     selectedWorldId: worldId,
+    selectedWorldSource,
     setSelectedWorldId: setWorldId,
     isLoadingWorlds,
     worldLoadError,
@@ -141,6 +142,9 @@ export function WorldContextSelector() {
         >
           + New
         </Button>
+        <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+          ({selectedWorldSource})
+        </span>
       </div>
 
       {/* Location Selector */}

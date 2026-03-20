@@ -57,6 +57,40 @@ export const gameModule = defineModule({
   async initialize() {
     const { registerWorldTools } = await import('@features/worldTools/lib/registerWorldTools');
     await registerWorldTools();
+
+    // Register game entities as @referenceable
+    const { referenceRegistry } = await import('@lib/references');
+    const { pixsimClient } = await import('@lib/api/client');
+
+    referenceRegistry.register({
+      type: 'npc',
+      icon: 'user',
+      label: 'NPCs',
+      fetch: () =>
+        pixsimClient.get<{ npcs: Array<{ id: number; name: string; world_id: number }> }>('/game/npcs/')
+          .then((r) => (r.npcs || []).map((n) => ({ type: 'npc', id: String(n.id), label: n.name, detail: `world:${n.world_id}` })))
+          .catch(() => []),
+    });
+
+    referenceRegistry.register({
+      type: 'location',
+      icon: 'mapPin',
+      label: 'Locations',
+      fetch: () =>
+        pixsimClient.get<{ items: Array<{ id: number; name: string; world_id: number }> }>('/game/locations/')
+          .then((r) => (r.items || []).map((l) => ({ type: 'location', id: String(l.id), label: l.name, detail: `world:${l.world_id}` })))
+          .catch(() => []),
+    });
+
+    referenceRegistry.register({
+      type: 'scene',
+      icon: 'film',
+      label: 'Scenes',
+      fetch: () =>
+        pixsimClient.get<{ scenes: Array<{ id: number; label: string; world_id: number }> }>('/game/scenes/')
+          .then((r) => (r.scenes || []).map((s) => ({ type: 'scene', id: String(s.id), label: s.label, detail: `world:${s.world_id}` })))
+          .catch(() => []),
+    });
   },
 
   page: {

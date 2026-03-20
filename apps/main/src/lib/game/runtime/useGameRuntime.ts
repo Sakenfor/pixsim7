@@ -77,6 +77,34 @@ export interface UseGameRuntimeReturn {
   error: string | null;
 }
 
+function parsePositiveInt(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.floor(parsed);
+    }
+  }
+  return null;
+}
+
+function inferSessionLocationId(sess: GameSessionDTO | null | undefined): number | null {
+  if (!sess) return null;
+  const flags = (sess.flags ?? {}) as Record<string, unknown>;
+  const worldFlags =
+    flags.world && typeof flags.world === 'object'
+      ? (flags.world as Record<string, unknown>)
+      : null;
+  return (
+    parsePositiveInt(worldFlags?.currentLocationId) ??
+    parsePositiveInt(worldFlags?.current_location_id) ??
+    parsePositiveInt(flags.currentLocationId) ??
+    parsePositiveInt(flags.current_location_id)
+  );
+}
+
 /**
  * Hook that provides unified game runtime management
  */
@@ -94,6 +122,7 @@ export function useGameRuntime(): UseGameRuntimeReturn {
   }
   const runtime = runtimeRef.current;
   const ensureSessionInFlightRef = useRef(new Map<string, Promise<GameSessionDTO>>());
+  const activeSceneRef = useRef<number | null>(null);
 
   // React state for reactive updates
   const [world, setWorld] = useState<GameWorldDetail | null>(null);
@@ -124,10 +153,16 @@ export function useGameRuntime(): UseGameRuntimeReturn {
       if (event.world) {
         setWorld(event.world);
       }
+      setLocationId(inferSessionLocationId(event.session));
+      activeSceneRef.current =
+        typeof event.session.scene_id === 'number' && Number.isFinite(event.session.scene_id)
+          ? event.session.scene_id
+          : null;
     });
 
     const unsubUpdate = runtime.on('sessionUpdated', (event) => {
       setSession(event.session);
+      setLocationId((prev) => inferSessionLocationId(event.session) ?? prev);
     });
 
     const unsubTime = runtime.on('worldTimeAdvanced', (event) => {
@@ -233,6 +268,9 @@ export function useGameRuntime(): UseGameRuntimeReturn {
           if (options.initialLocationId) {
             setLocationId(options.initialLocationId);
             storeEnterRoom(worldId, sess.id, `location:${options.initialLocationId}`);
+            void runtime.notifyLocationEntered(options.initialLocationId).catch((hookErr) => {
+              console.error('[useGameRuntime] Failed to run location-entered hooks:', hookErr);
+            });
           }
 
           return sess as GameSessionDTO;
@@ -363,20 +401,42 @@ export function useGameRuntime(): UseGameRuntimeReturn {
   // Mode transition: enter room
   const enterRoom = useCallback(
     (locId: number) => {
+      const activeScene = activeSceneRef.current;
+      if (activeScene !== null) {
+        void runtime.notifySceneEnded(activeScene).catch((hookErr) => {
+          console.error('[useGameRuntime] Failed to run scene-ended hooks:', hookErr);
+        });
+        activeSceneRef.current = null;
+      }
+
       setLocationId(locId);
       syncStoreEnterRoom(locId);
+      void runtime.notifyLocationEntered(locId).catch((hookErr) => {
+        console.error('[useGameRuntime] Failed to run location-entered hooks:', hookErr);
+      });
     },
-    [syncStoreEnterRoom]
+    [runtime, syncStoreEnterRoom]
   );
 
   // Mode transition: enter scene
   const enterScene = useCallback(
     (sceneId: number, npcId?: number) => {
+      const activeScene = activeSceneRef.current;
+      if (activeScene !== null && activeScene !== sceneId) {
+        void runtime.notifySceneEnded(activeScene).catch((hookErr) => {
+          console.error('[useGameRuntime] Failed to run scene-ended hooks:', hookErr);
+        });
+      }
+
       if (world && session) {
         storeEnterScene(world.id, session.id, sceneId, npcId);
       }
+      activeSceneRef.current = sceneId;
+      void runtime.notifySceneStarted(sceneId, npcId).catch((hookErr) => {
+        console.error('[useGameRuntime] Failed to run scene-started hooks:', hookErr);
+      });
     },
-    [world, session, storeEnterScene]
+    [runtime, world, session, storeEnterScene]
   );
 
   // Mode transition: enter conversation
@@ -398,12 +458,23 @@ export function useGameRuntime(): UseGameRuntimeReturn {
 
   // Mode transition: exit back to room
   const exitToRoom = useCallback(() => {
+    const activeScene = activeSceneRef.current;
+    if (activeScene !== null) {
+      void runtime.notifySceneEnded(activeScene).catch((hookErr) => {
+        console.error('[useGameRuntime] Failed to run scene-ended hooks:', hookErr);
+      });
+      activeSceneRef.current = null;
+    }
+
     if (locationId) {
       syncStoreEnterRoom(locationId);
+      void runtime.notifyLocationEntered(locationId).catch((hookErr) => {
+        console.error('[useGameRuntime] Failed to run location-entered hooks:', hookErr);
+      });
     } else {
       clearContext();
     }
-  }, [locationId, syncStoreEnterRoom, clearContext]);
+  }, [runtime, locationId, syncStoreEnterRoom, clearContext]);
 
   // Derived state
   const state = useMemo<GameRuntimeState>(

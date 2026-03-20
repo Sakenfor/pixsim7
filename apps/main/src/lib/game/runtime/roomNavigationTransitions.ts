@@ -3,7 +3,7 @@ import type {
   RoomEdgeMoveKind,
 } from '@pixsim7/shared.types';
 
-import { saveGameLocationMeta } from '@lib/api/game';
+import { saveGameLocationRoomNavigationTransitionCache } from '@lib/api/game';
 import type { GameLocationDetail } from '@lib/api/game';
 import {
   createGeneration,
@@ -269,10 +269,17 @@ const persistTransitionCache = async (
 ): Promise<GameLocationDetail> => {
   const nextMeta = withTransitionCacheInMeta(location, cache);
   try {
-    const savedLocation = await saveGameLocationMeta(
+    const savedCache = await saveGameLocationRoomNavigationTransitionCache(
       location.id as IDs.LocationId,
-      nextMeta,
+      cache as unknown as Record<string, unknown>,
     );
+    const savedLocation: GameLocationDetail = {
+      ...location,
+      meta: {
+        ...(location.meta as Record<string, unknown> | null | undefined),
+        [ROOM_NAVIGATION_TRANSITION_CACHE_META_KEY]: savedCache,
+      },
+    };
     onLocationUpdate?.(savedLocation);
     return savedLocation;
   } catch {

@@ -17,11 +17,15 @@ import {
   type ChangeEvent,
 } from 'react';
 
-import type { GameLocationDetail } from '@lib/api/game';
+import type {
+  GameLocationDetail,
+  GameLocationRoomNavigationPatchOperation,
+} from '@lib/api/game';
 import {
+  getGameLocation,
+  patchGameLocationRoomNavigation,
   getRoomNavigation,
-  saveGameLocationMeta,
-  setRoomNavigation,
+  validateGameLocationRoomNavigation,
 } from '@lib/api/game';
 import {
   ROOM_NAVIGATION_TRANSITION_CACHE_META_KEY,
@@ -129,6 +133,98 @@ const readValidationIssuesFromError = (error: unknown): RoomNavigationValidation
         typeof item.path === 'string' && typeof item.message === 'string',
     )
     .map((item) => ({ path: item.path, message: item.message }));
+};
+
+const isLocationAuthoringRevisionConflict = (error: unknown): boolean => {
+  const maybeError = error as {
+    response?: {
+      status?: number;
+      data?: {
+        detail?: {
+          error?: unknown;
+        };
+      };
+    };
+  };
+  return (
+    maybeError?.response?.status === 409 &&
+    maybeError?.response?.data?.detail?.error === 'location_authoring_revision_conflict'
+  );
+};
+
+const toStableJson = (value: unknown): string => JSON.stringify(value);
+
+const buildRoomNavigationPatchOperations = (
+  previous: RoomNavigationData | null,
+  next: RoomNavigationData,
+): GameLocationRoomNavigationPatchOperation[] => {
+  const operations: GameLocationRoomNavigationPatchOperation[] = [];
+
+  if (!previous || previous.room_id !== next.room_id) {
+    operations.push({
+      op: 'set_room_id',
+      roomId: next.room_id,
+    });
+  }
+
+  const previousEdgesById = new Map((previous?.edges ?? []).map((edge) => [edge.id, edge]));
+  const nextEdgesById = new Map(next.edges.map((edge) => [edge.id, edge]));
+  for (const edge of previous?.edges ?? []) {
+    if (!nextEdgesById.has(edge.id)) {
+      operations.push({
+        op: 'remove_edge',
+        edgeId: edge.id,
+      });
+    }
+  }
+
+  const previousCheckpointsById = new Map(
+    (previous?.checkpoints ?? []).map((checkpoint) => [checkpoint.id, checkpoint]),
+  );
+  const nextCheckpointsById = new Map(next.checkpoints.map((checkpoint) => [checkpoint.id, checkpoint]));
+  for (const checkpoint of previous?.checkpoints ?? []) {
+    if (!nextCheckpointsById.has(checkpoint.id)) {
+      operations.push({
+        op: 'remove_checkpoint',
+        checkpointId: checkpoint.id,
+      });
+    }
+  }
+
+  for (const checkpoint of next.checkpoints) {
+    const previousCheckpoint = previousCheckpointsById.get(checkpoint.id);
+    if (!previousCheckpoint || toStableJson(previousCheckpoint) !== toStableJson(checkpoint)) {
+      operations.push({
+        op: 'upsert_checkpoint',
+        checkpoint,
+      });
+    }
+  }
+
+  for (const edge of next.edges) {
+    const previousEdge = previousEdgesById.get(edge.id);
+    if (!previousEdge || toStableJson(previousEdge) !== toStableJson(edge)) {
+      operations.push({
+        op: 'upsert_edge',
+        edge,
+      });
+    }
+  }
+
+  if (!previous || previous.start_checkpoint_id !== next.start_checkpoint_id) {
+    if (next.start_checkpoint_id) {
+      operations.push({
+        op: 'set_start_checkpoint',
+        startCheckpointId: next.start_checkpoint_id,
+      });
+    } else {
+      operations.push({
+        op: 'clear_start_checkpoint',
+      });
+    }
+  }
+
+  return operations;
 };
 
 export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigationEditorProps) {
@@ -545,15 +641,77 @@ export function RoomNavigationEditor({ location, onLocationUpdate }: RoomNavigat
     setIsSaving(true);
 
     try {
-      const updatedLocation = setRoomNavigation(location, localValidation.data);
-      const savedLocation = await saveGameLocationMeta(
+      const backendValidation = await validateGameLocationRoomNavigation(
         location.id as IDs.LocationId,
-        updatedLocation.meta || {},
+        localValidation.data,
       );
+      if (!backendValidation.valid) {
+        setValidationIssues(backendValidation.errors);
+        setError(
+          `Backend validation found ${backendValidation.errors.length} issue(s).`,
+        );
+        return;
+      }
+
+      const validatedNavigation = backendValidation.roomNavigation ?? localValidation.data;
+      const previousNavigation = getRoomNavigation(location);
+      const expectedAuthoringRevision =
+        (
+          location as GameLocationDetail & {
+            authoringRevision?: string | null;
+          }
+        ).authoringRevision ?? null;
+      const operations = buildRoomNavigationPatchOperations(
+        previousNavigation,
+        validatedNavigation,
+      );
+
+      let persistedNavigation = validatedNavigation;
+      if (operations.length > 0) {
+        persistedNavigation = await patchGameLocationRoomNavigation(
+          location.id as IDs.LocationId,
+          operations,
+          {
+            createIfMissing: previousNavigation == null,
+            initialRoomId: validatedNavigation.room_id,
+            expectedAuthoringRevision,
+          },
+        );
+      }
+
+      const savedLocation = await getGameLocation(location.id as IDs.LocationId);
       onLocationUpdate(savedLocation);
-      const savedNavigation = getRoomNavigation(savedLocation) ?? localValidation.data;
+      const savedNavigation = getRoomNavigation(savedLocation) ?? persistedNavigation;
       setNavigation(savedNavigation);
     } catch (saveError: unknown) {
+      if (isLocationAuthoringRevisionConflict(saveError)) {
+        try {
+          const latestLocation = await getGameLocation(location.id as IDs.LocationId);
+          onLocationUpdate(latestLocation);
+          const latestNavigation =
+            getRoomNavigation(latestLocation) ?? createDefaultRoomNavigation(latestLocation.id);
+          setNavigation(latestNavigation);
+          setSelectedCheckpointId((prev) =>
+            prev && latestNavigation.checkpoints.some((checkpoint) => checkpoint.id === prev)
+              ? prev
+              : null,
+          );
+          setActiveCheckpointId((prev) =>
+            prev && latestNavigation.checkpoints.some((checkpoint) => checkpoint.id === prev)
+              ? prev
+              : null,
+          );
+          setValidationIssues([]);
+          setError(
+            'Location changed elsewhere. Reloaded latest room navigation. Review and save again.',
+          );
+          return;
+        } catch {
+          setError('Location changed elsewhere. Could not auto-refresh latest state.');
+          return;
+        }
+      }
+
       const backendIssues = readValidationIssuesFromError(saveError);
       if (backendIssues.length > 0) {
         setValidationIssues(backendIssues);
