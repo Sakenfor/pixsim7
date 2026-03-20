@@ -985,13 +985,13 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           >
             <option value="">model</option>
             <optgroup label="Claude">
-              <option value="claude-sonnet-4-20250514">sonnet</option>
-              <option value="claude-opus-4-20250514">opus</option>
-              <option value="claude-haiku-4-20250414">haiku</option>
+              <option value="sonnet">sonnet</option>
+              <option value="opus">opus</option>
+              <option value="haiku">haiku</option>
             </optgroup>
             <optgroup label="OpenAI">
               <option value="gpt-4o">gpt-4o</option>
-              <option value="gpt-4o-mini">gpt-4o-mini</option>
+              <option value="gpt-4o-mini">4o-mini</option>
               <option value="o3">o3</option>
             </optgroup>
           </select>
