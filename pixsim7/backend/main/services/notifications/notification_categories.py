@@ -1,15 +1,17 @@
 """
-Notification Category Registry.
+Notification Category & Event-Type Registries.
 
 Categories self-register their defaults and granularity options.
-Notifications code doesn't hardcode what categories exist.
 Filtering happens on the read side — emit_notification() always writes.
+
+Event-type specs centralise required payload fields and default
+category/severity for each known event type.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, FrozenSet, List, Optional
 
 from pixsim7.backend.main.lib.registry.simple import SimpleRegistry
 
@@ -37,6 +39,12 @@ class NotificationCategorySpec:
         default_factory=list
     )
     sort_order: int = 100
+    # Optional grouping metadata for settings UI.
+    # system_id/system_label group related categories (for example: "plans", "generation").
+    # parent_category_id allows nested subcategories under a parent category.
+    system_id: Optional[str] = None
+    system_label: Optional[str] = None
+    parent_category_id: Optional[str] = None
 
 
 def _opt(id: str, label: str, description: str = "") -> NotificationCategoryGranularityOption:
@@ -194,3 +202,107 @@ _BUILTIN_CATEGORIES: List[NotificationCategorySpec] = [
 
 # Global singleton
 notification_category_registry = NotificationCategoryRegistry()
+
+
+# ── Event-Type Registry ──────────────────────────────────────────
+
+
+@dataclass
+class NotificationEventTypeSpec:
+    """Specification for a known notification event type."""
+
+    id: str
+    default_category: str = "system"
+    default_severity: str = "info"
+    required_payload_fields: FrozenSet[str] = field(default_factory=frozenset)
+    required_ref_type: Optional[str] = None
+    description: str = ""
+
+
+class NotificationEventTypeRegistry(SimpleRegistry[str, NotificationEventTypeSpec]):
+    """Registry for known notification event type specifications."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="NotificationEventTypeRegistry",
+            allow_overwrite=True,
+            seed_on_init=True,
+        )
+
+    def _get_item_key(self, item: NotificationEventTypeSpec) -> str:
+        return item.id
+
+    def _seed_defaults(self) -> None:
+        for spec in _BUILTIN_EVENT_TYPES:
+            self.register(spec.id, spec)
+
+    def default_category_for_event(
+        self, event_type: str, payload: Dict[str, object]
+    ) -> str:
+        """Return category for an event, falling back to 'system' for unknown types."""
+        spec = self.get_or_none(event_type)
+        if spec is None:
+            return "system"
+
+        # plan.updated has dynamic sub-category routing
+        if event_type == "plan.updated":
+            changes = payload.get("changes")
+            if isinstance(changes, list):
+                for field_name in ("status", "stage", "priority", "owner"):
+                    if any(
+                        isinstance(c, dict) and c.get("field") == field_name
+                        for c in changes
+                    ):
+                        return f"plan.{field_name}"
+            return "plan"
+
+        return spec.default_category
+
+    def default_severity_for_event(self, event_type: str) -> str:
+        spec = self.get_or_none(event_type)
+        return spec.default_severity if spec is not None else "info"
+
+    def validate_payload(
+        self, event_type: str, payload: Dict[str, object]
+    ) -> Optional[str]:
+        """Return an error message if payload is invalid for the event type, else None."""
+        spec = self.get_or_none(event_type)
+        if spec is None:
+            return None  # unknown event types skip built-in validation
+        missing = spec.required_payload_fields - set(payload.keys())
+        if missing:
+            return f"{event_type} requires payload fields: {', '.join(sorted(missing))}"
+        if spec.required_ref_type:
+            # ref_type validation is handled at callsite level
+            pass
+        return None
+
+
+_BUILTIN_EVENT_TYPES: List[NotificationEventTypeSpec] = [
+    NotificationEventTypeSpec(
+        id="plan.created",
+        default_category="plan.created",
+        default_severity="success",
+        required_payload_fields=frozenset({"planTitle"}),
+        required_ref_type="plan",
+        description="Emitted when a new plan is created.",
+    ),
+    NotificationEventTypeSpec(
+        id="plan.updated",
+        default_category="plan",
+        default_severity="info",
+        required_payload_fields=frozenset({"changes"}),
+        required_ref_type="plan",
+        description="Emitted when a plan has significant field changes.",
+    ),
+    NotificationEventTypeSpec(
+        id="notification.manual",
+        default_category="system",
+        default_severity="info",
+        required_payload_fields=frozenset(),
+        description="Free-form notification created via legacy or manual write path.",
+    ),
+]
+
+
+notification_event_type_registry = NotificationEventTypeRegistry()

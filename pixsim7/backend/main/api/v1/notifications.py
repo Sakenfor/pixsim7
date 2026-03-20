@@ -12,15 +12,16 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
+from pixsim7.backend.main.domain.docs.models import Document, PlanRegistry
 from pixsim7.backend.main.domain.platform.notification import Notification
 from pixsim7.backend.main.domain.user import User
 from pixsim7.backend.main.services.notifications.notification_categories import (
     notification_category_registry,
+    notification_event_type_registry,
 )
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim7.backend.main.shared.schemas.user_schemas import (
     NotificationCategoryPref,
-    UserPreferences,
 )
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -42,6 +43,8 @@ class NotificationResponse(BaseModel):
     broadcast: bool
     read: bool
     createdAt: str
+    eventType: Optional[str] = None
+    payload: Optional[Dict[str, Any]] = None
 
 
 class NotificationListResponse(BaseModel):
@@ -60,6 +63,41 @@ class NotificationCreateRequest(BaseModel):
     user_id: Optional[int] = Field(None, description="Target user (null = broadcast)")
 
 
+class NotificationEmitRequest(BaseModel):
+    event_type: str = Field(..., min_length=1, max_length=120)
+    category: Optional[str] = Field(
+        None,
+        description="Optional explicit category. If omitted, server maps known events.",
+    )
+    severity: Optional[str] = Field(
+        None,
+        description="Optional explicit severity. If omitted, server maps known events.",
+    )
+    source: Optional[str] = Field(
+        None,
+        description="Optional source override. Defaults to authenticated user source.",
+    )
+    ref_type: Optional[str] = Field(None)
+    ref_id: Optional[str] = Field(None)
+    broadcast: bool = Field(True)
+    user_id: Optional[int] = Field(None, description="Target user when broadcast=false")
+    actor_name: Optional[str] = Field(
+        None,
+        description="Optional display actor override. Defaults to authenticated user display name.",
+    )
+    actor_user_id: Optional[int] = Field(
+        None,
+        description="Optional actor user id override. Defaults to authenticated user id.",
+    )
+    title: Optional[str] = Field(
+        None,
+        max_length=255,
+        description="Required for custom event types that do not have built-in renderer rules.",
+    )
+    body: Optional[str] = Field(None)
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
 class CategoryGranularityOptionResponse(BaseModel):
     id: str
     label: str
@@ -75,6 +113,9 @@ class CategoryResponse(BaseModel):
     granularityOptions: List[CategoryGranularityOptionResponse] = Field(default_factory=list)
     sortOrder: int = 100
     currentGranularity: str = "all"
+    systemId: Optional[str] = None
+    systemLabel: Optional[str] = None
+    parentCategoryId: Optional[str] = None
 
 
 class CategoriesListResponse(BaseModel):
@@ -84,20 +125,183 @@ class CategoriesListResponse(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────
 
 
-def _to_response(n: Notification) -> dict:
+def _display_name(user: User) -> str:
+    return user.display_name or user.username or f"user:{user.id}"
+
+
+def _resolve_actor_user_id(source: str, actor_user_id: Optional[int]) -> Optional[int]:
+    if actor_user_id is not None:
+        return actor_user_id
+    if source.startswith("user:"):
+        raw_id = source.split(":", 1)[1].strip()
+        try:
+            return int(raw_id)
+        except ValueError:
+            return None
+    return None
+
+
+def _extract_plan_title(
+    n: Notification,
+    plan_titles: Dict[str, str],
+) -> Optional[str]:
+    if n.ref_type == "plan" and n.ref_id and n.ref_id in plan_titles:
+        return plan_titles[n.ref_id]
+
+    if isinstance(n.payload, dict):
+        payload_title = n.payload.get("planTitle")
+        if isinstance(payload_title, str) and payload_title.strip():
+            return payload_title.strip()
+
+    for prefix in ("Plan created:", "Plan updated:"):
+        if n.title.startswith(prefix):
+            parsed = n.title[len(prefix):].strip()
+            if parsed:
+                return parsed
+
+    if n.ref_id:
+        return n.ref_id
+    return None
+
+
+def _extract_changes(payload: Any) -> List[Dict[str, str]]:
+    if not isinstance(payload, dict):
+        return []
+    raw_changes = payload.get("changes")
+    if not isinstance(raw_changes, list):
+        return []
+
+    changes: List[Dict[str, str]] = []
+    for raw in raw_changes:
+        if not isinstance(raw, dict):
+            continue
+        field = raw.get("field")
+        if not isinstance(field, str) or not field.strip():
+            continue
+
+        old_raw = raw.get("old")
+        new_raw = raw.get("new")
+        old_value = "" if old_raw is None else str(old_raw)
+        new_value = "" if new_raw is None else str(new_raw)
+        changes.append({"field": field.strip(), "old": old_value, "new": new_value})
+
+    return changes
+
+
+def _render_notification_content(
+    n: Notification,
+    *,
+    plan_titles: Dict[str, str],
+) -> tuple[str, Optional[str]]:
+    if n.event_type == "plan.created":
+        plan_title = _extract_plan_title(n, plan_titles) or "Plan"
+        return f"Plan created: {plan_title}", f"New plan: **{plan_title}**"
+
+    if n.event_type == "plan.updated":
+        plan_title = _extract_plan_title(n, plan_titles) or "Plan"
+        changes = _extract_changes(n.payload)
+        if changes:
+            parts: List[str] = []
+            for change in changes:
+                next_value = change["new"] or "?"
+                if change["field"] == "status":
+                    parts.append(f"status -> {next_value}")
+                else:
+                    parts.append(f"{change['field']} -> {next_value}")
+            body = f"**{plan_title}**: {', '.join(parts)}"
+        else:
+            body = n.body or f"**{plan_title}** updated"
+        return f"Plan updated: {plan_title}", body
+
+    return n.title, n.body
+
+
+def _default_category_for_event(event_type: str, payload: Dict[str, Any]) -> str:
+    return notification_event_type_registry.default_category_for_event(event_type, payload)
+
+
+def _default_severity_for_event(event_type: str) -> str:
+    return notification_event_type_registry.default_severity_for_event(event_type)
+
+
+def _build_emit_title_body(payload: NotificationEmitRequest) -> tuple[str, Optional[str]]:
+    if payload.event_type == "plan.created":
+        if payload.ref_type != "plan" or not payload.ref_id:
+            raise HTTPException(
+                status_code=400,
+                detail="plan.created requires ref_type='plan' and ref_id",
+            )
+        plan_title = payload.payload.get("planTitle")
+        if not isinstance(plan_title, str) or not plan_title.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="plan.created requires payload.planTitle",
+            )
+        normalized_title = plan_title.strip()
+        return f"Plan created: {normalized_title}", f"New plan: **{normalized_title}**"
+
+    if payload.event_type == "plan.updated":
+        if payload.ref_type != "plan" or not payload.ref_id:
+            raise HTTPException(
+                status_code=400,
+                detail="plan.updated requires ref_type='plan' and ref_id",
+            )
+        changes = _extract_changes(payload.payload)
+        if not changes:
+            raise HTTPException(
+                status_code=400,
+                detail="plan.updated requires payload.changes with at least one entry",
+            )
+
+        plan_title_raw = payload.payload.get("planTitle")
+        plan_title = (
+            plan_title_raw.strip()
+            if isinstance(plan_title_raw, str) and plan_title_raw.strip()
+            else payload.ref_id
+        )
+        parts: List[str] = []
+        for change in changes:
+            next_value = change["new"] or "?"
+            if change["field"] == "status":
+                parts.append(f"status -> {next_value}")
+            else:
+                parts.append(f"{change['field']} -> {next_value}")
+        return f"Plan updated: {plan_title}", f"**{plan_title}**: {', '.join(parts)}"
+
+    if not payload.title:
+        raise HTTPException(
+            status_code=400,
+            detail="title is required for custom event types",
+        )
+    return payload.title, payload.body
+
+
+def _to_response(
+    n: Notification,
+    *,
+    actor_names: Dict[int, str],
+    plan_titles: Dict[str, str],
+) -> dict:
+    title, body = _render_notification_content(n, plan_titles=plan_titles)
+    actor_name = n.actor_name
+    if n.actor_user_id is not None:
+        actor_name = actor_names.get(n.actor_user_id, actor_name)
+
     return {
         "id": str(n.id),
-        "title": n.title,
-        "body": n.body,
+        "title": title,
+        "body": body,
         "category": n.category,
         "severity": n.severity,
         "source": n.source,
-        "actorName": n.actor_name,
+        "actorName": actor_name,
         "refType": n.ref_type,
         "refId": n.ref_id,
         "broadcast": n.broadcast,
         "read": n.read,
         "createdAt": n.created_at.isoformat() if n.created_at else "",
+        "eventType": n.event_type,
+        "payload": n.payload if isinstance(n.payload, dict) else None,
     }
 
 
@@ -126,8 +330,22 @@ def _resolve_granularity(category_id: str, user_prefs: Dict[str, NotificationCat
     """Resolve effective granularity for a category: user pref > registry default."""
     if category_id in user_prefs:
         return user_prefs[category_id].granularity
+
     spec = notification_category_registry.get_or_none(category_id)
     if spec is not None:
+        # Parent-level preference can suppress child categories.
+        # This keeps top-level toggles meaningful when systems expose subcategories.
+        parent_id = spec.parent_category_id
+        visited: Set[str] = set()
+        while parent_id and parent_id not in visited:
+            visited.add(parent_id)
+            parent_pref = user_prefs.get(parent_id)
+            if parent_pref is not None and parent_pref.granularity == "off":
+                return "off"
+
+            parent_spec = notification_category_registry.get_or_none(parent_id)
+            parent_id = parent_spec.parent_category_id if parent_spec is not None else None
+
         return spec.default_granularity
     return "all"
 
@@ -174,6 +392,45 @@ def _apply_granularity_filter(
     return filtered
 
 
+async def _resolve_actor_names(
+    db: AsyncSession,
+    rows: List[Notification],
+) -> Dict[int, str]:
+    actor_ids = {n.actor_user_id for n in rows if n.actor_user_id is not None}
+    if not actor_ids:
+        return {}
+
+    users = (
+        await db.execute(
+            select(User).where(User.id.in_(actor_ids))
+        )
+    ).scalars().all()
+    result: Dict[int, str] = {}
+    for user in users:
+        if user.id is None:
+            continue
+        result[user.id] = _display_name(user)
+    return result
+
+
+async def _resolve_plan_titles(
+    db: AsyncSession,
+    rows: List[Notification],
+) -> Dict[str, str]:
+    plan_ids = {n.ref_id for n in rows if n.ref_type == "plan" and n.ref_id}
+    if not plan_ids:
+        return {}
+
+    matches = (
+        await db.execute(
+            select(PlanRegistry.id, Document.title)
+            .join(Document, PlanRegistry.document_id == Document.id)
+            .where(PlanRegistry.id.in_(plan_ids))
+        )
+    ).all()
+    return {str(plan_id): title for plan_id, title in matches if isinstance(title, str)}
+
+
 # ── Endpoints ─────────────────────────────────────────────────────
 
 
@@ -199,6 +456,9 @@ async def list_categories(user: CurrentUser):
                 ],
                 sortOrder=spec.sort_order,
                 currentGranularity=current,
+                systemId=spec.system_id,
+                systemLabel=spec.system_label,
+                parentCategoryId=spec.parent_category_id,
             )
         )
     return CategoriesListResponse(categories=categories)
@@ -239,6 +499,9 @@ async def list_notifications(
     if not include_suppressed:
         rows = _apply_granularity_filter(rows, user)
 
+    actor_names = await _resolve_actor_names(db, rows)
+    plan_titles = await _resolve_plan_titles(db, rows)
+
     # Unread count (also respects suppression)
     count_stmt = (
         select(func.count())
@@ -254,37 +517,102 @@ async def list_notifications(
     unread = (await db.execute(count_stmt)).scalar_one() or 0
 
     return NotificationListResponse(
-        notifications=[_to_response(r) for r in rows],
+        notifications=[
+            _to_response(
+                r,
+                actor_names=actor_names,
+                plan_titles=plan_titles,
+            )
+            for r in rows
+        ],
         unreadCount=unread,
     )
 
 
-@router.post("", response_model=NotificationResponse)
+@router.post(
+    "",
+    response_model=NotificationResponse,
+    deprecated=True,
+    summary="Legacy create — prefer POST /notifications/emit",
+)
 async def create_notification(
     payload: NotificationCreateRequest,
     user: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
-    """Create a notification (broadcast or targeted)."""
-    now = utcnow()
-    actor_name = user.display_name or user.username
-    n = Notification(
+    """Create a notification (broadcast or targeted).
+
+    .. deprecated::
+        Use ``POST /notifications/emit`` with an explicit ``event_type`` instead.
+        This endpoint stamps ``event_type='notification.manual'`` automatically.
+    """
+    actor_name = _display_name(user)
+    source = f"user:{user.id}" if user.id is not None else "user:unknown"
+    n = await emit_notification(
+        db,
         title=payload.title,
         body=payload.body,
         category=payload.category,
         severity=payload.severity,
-        source=f"user:{user.id}",
-        actor_name=actor_name,
+        source=source,
+        event_type="notification.manual",
         ref_type=payload.ref_type,
         ref_id=payload.ref_id,
         broadcast=payload.broadcast,
         user_id=payload.user_id,
-        read=False,
-        created_at=now,
+        actor_name=actor_name,
+        actor_user_id=user.id,
+        payload={},
     )
-    db.add(n)
     await db.commit()
-    return _to_response(n)
+    return _to_response(
+        n,
+        actor_names={user.id: _display_name(user)} if user.id is not None else {},
+        plan_titles={},
+    )
+
+
+@router.post("/emit", response_model=NotificationResponse)
+async def emit_structured_notification(
+    payload: NotificationEmitRequest,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Contract-backed structured emit path for agents and system integrations."""
+    title, body = _build_emit_title_body(payload)
+
+    source = payload.source or (f"user:{user.id}" if user.id is not None else "user:unknown")
+    actor_name = payload.actor_name or _display_name(user)
+    actor_user_id = payload.actor_user_id if payload.actor_user_id is not None else user.id
+    category = payload.category or _default_category_for_event(payload.event_type, payload.payload)
+    severity = payload.severity or _default_severity_for_event(payload.event_type)
+
+    n = await emit_notification(
+        db,
+        title=title,
+        body=body,
+        category=category,
+        severity=severity,
+        source=source,
+        event_type=payload.event_type,
+        ref_type=payload.ref_type,
+        ref_id=payload.ref_id,
+        broadcast=payload.broadcast,
+        user_id=payload.user_id,
+        actor_name=actor_name,
+        actor_user_id=actor_user_id,
+        payload=payload.payload,
+    )
+    await db.commit()
+    return _to_response(
+        n,
+        actor_names=(
+            {n.actor_user_id: actor_name}
+            if n.actor_user_id is not None and actor_name
+            else {}
+        ),
+        plan_titles={},
+    )
 
 
 @router.patch("/{notification_id}/read")
@@ -330,22 +658,43 @@ async def emit_notification(
     category: str = "system",
     severity: str = "info",
     source: str = "system",
+    event_type: str,
     ref_type: Optional[str] = None,
     ref_id: Optional[str] = None,
     broadcast: bool = True,
     user_id: Optional[int] = None,
     actor_name: Optional[str] = None,
+    actor_user_id: Optional[int] = None,
+    payload: Optional[Dict[str, Any]] = None,
 ) -> Notification:
-    """Create a notification from backend code (plan hooks, agents, etc.)."""
+    """Create a structured notification from backend code.
+
+    Every notification must carry an ``event_type``.  Use a registered
+    event type for built-in validation, or a custom dotted string
+    (e.g. ``"myfeature.completed"``) for ad-hoc events.
+    """
+    resolved_payload = payload if payload is not None else {}
+
+    # Validate payload for known event types
+    validation_error = notification_event_type_registry.validate_payload(
+        event_type, resolved_payload,
+    )
+    if validation_error:
+        raise ValueError(validation_error)
+
+    resolved_actor_user_id = _resolve_actor_user_id(source, actor_user_id)
     n = Notification(
         title=title,
         body=body,
         category=category,
         severity=severity,
         source=source,
+        event_type=event_type,
         actor_name=actor_name,
+        actor_user_id=resolved_actor_user_id,
         ref_type=ref_type,
         ref_id=ref_id,
+        payload=resolved_payload,
         broadcast=broadcast,
         user_id=user_id,
         read=False,
