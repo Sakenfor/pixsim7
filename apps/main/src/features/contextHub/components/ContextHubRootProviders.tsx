@@ -1,5 +1,5 @@
 import { Ref } from "@pixsim7/shared.types";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { useEditorContext } from "@lib/context";
 import {
@@ -24,6 +24,7 @@ import { useProjectSessionStore } from "@features/scene";
 import { ContextHubCapabilityBridge } from "./ContextHubCapabilityBridge";
 
 export function ContextHubRootProviders() {
+  const suppressBeforeUnloadForHmrRef = useRef(false);
   const editorContext = useEditorContext();
   const currentProjectId = useProjectSessionStore((state) => state.currentProjectId);
   const currentProjectName = useProjectSessionStore((state) => state.currentProjectName);
@@ -49,7 +50,17 @@ export function ContextHubRootProviders() {
   }, [setDirty]);
 
   useEffect(() => {
+    // Vite full reloads should not prompt unsaved-change confirmation.
+    if (import.meta.hot) {
+      import.meta.hot.on("vite:beforeFullReload", () => {
+        suppressBeforeUnloadForHmrRef.current = true;
+      });
+    }
+
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (suppressBeforeUnloadForHmrRef.current) {
+        return;
+      }
       if (!useProjectSessionStore.getState().dirty) {
         return;
       }
@@ -217,4 +228,3 @@ export function ContextHubRootProviders() {
 
   return <ContextHubCapabilityBridge />;
 }
-

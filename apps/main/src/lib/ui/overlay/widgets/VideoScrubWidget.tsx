@@ -786,12 +786,13 @@ export function VideoScrubWidgetRenderer({
       className={`absolute inset-0 cursor-pointer ${className}`}
       style={gestureActive ? { pointerEvents: 'none' } : undefined}
     >
-      {/* Video element for scrubbing - shown when hovering */}
+      {/* Video element for scrubbing - src only set on hover to avoid eager
+          CDN fetches that 404 before provider propagation completes. */}
       {/* Use crossOrigin="anonymous" for external URLs (CDN), omit for local paths */}
       <video
         ref={videoRef}
-        src={effectiveUrl}
-        preload="metadata"
+        src={isHovering || isVideoLoaded ? effectiveUrl : undefined}
+        preload={isHovering || isVideoLoaded ? 'metadata' : 'none'}
         muted={muted}
         crossOrigin={effectiveUrl?.startsWith('http') ? 'anonymous' : undefined}
         onLoadedMetadata={handleLoadedMetadata}

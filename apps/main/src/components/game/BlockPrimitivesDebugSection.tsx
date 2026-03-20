@@ -8,6 +8,8 @@ import {
 } from '@lib/api';
 import { resolveGameNpcs } from '@lib/resolvers';
 
+import { useEffectiveAuthoringIds } from '@features/contextHub';
+
 type NpcChoice = {
   id: number;
   name: string;
@@ -68,6 +70,12 @@ export function BlockPrimitivesDebugSection({
   title = 'Block Primitives Debug',
   className,
 }: BlockPrimitivesDebugSectionProps) {
+  const effectiveIds = useEffectiveAuthoringIds({
+    fallbackWorldId: defaultWorldId,
+    fallbackSessionId: defaultSessionId,
+  });
+  const resolvedDefaultWorldId = effectiveIds.worldId;
+  const resolvedDefaultSessionId = effectiveIds.sessionId;
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [sessionIdInput, setSessionIdInput] = useState('');
@@ -84,20 +92,10 @@ export function BlockPrimitivesDebugSection({
   const [requiredTagsInput, setRequiredTagsInput] = useState('');
   const [excludeTagsInput, setExcludeTagsInput] = useState('');
   const [includeSceneIntentTag, setIncludeSceneIntentTag] = useState(false);
+  const [allowLlmFallback, setAllowLlmFallback] = useState(false);
+  const [llmProfileIdInput, setLlmProfileIdInput] = useState('');
   const [result, setResult] = useState<DebugResult | null>(null);
   const [npcs, setNpcs] = useState<NpcChoice[]>([]);
-
-  useEffect(() => {
-    if (!worldIdInput.trim() && defaultWorldId != null) {
-      setWorldIdInput(String(defaultWorldId));
-    }
-  }, [defaultWorldId, worldIdInput]);
-
-  useEffect(() => {
-    if (!sessionIdInput.trim() && defaultSessionId != null) {
-      setSessionIdInput(String(defaultSessionId));
-    }
-  }, [defaultSessionId, sessionIdInput]);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,28 +135,28 @@ export function BlockPrimitivesDebugSection({
   }, []);
 
   const filteredNpcs = useMemo(() => {
-    const worldFilter = parseOptionalInt(worldIdInput) ?? defaultWorldId;
+    const worldFilter = parseOptionalInt(worldIdInput) ?? resolvedDefaultWorldId;
     if (worldFilter == null) return npcs;
     return npcs.filter((npc) => npc.worldId == null || npc.worldId === worldFilter);
-  }, [defaultWorldId, npcs, worldIdInput]);
+  }, [resolvedDefaultWorldId, npcs, worldIdInput]);
 
   const applyDefaults = () => {
-    if (defaultWorldId != null) {
-      setWorldIdInput(String(defaultWorldId));
+    if (resolvedDefaultWorldId != null) {
+      setWorldIdInput(String(resolvedDefaultWorldId));
     }
-    if (defaultSessionId != null) {
-      setSessionIdInput(String(defaultSessionId));
+    if (resolvedDefaultSessionId != null) {
+      setSessionIdInput(String(resolvedDefaultSessionId));
     }
   };
 
   const buildRequest = (): BuildPrimitiveSelectionRequestFromBehaviorRequest | null => {
-    const sessionId = parseOptionalInt(sessionIdInput);
+    const sessionId = parseOptionalInt(sessionIdInput) ?? resolvedDefaultSessionId;
     if (sessionId == null || sessionId <= 0) {
       toast.warning('Enter a valid session ID');
       return null;
     }
 
-    const worldId = parseOptionalInt(worldIdInput) ?? defaultWorldId;
+    const worldId = parseOptionalInt(worldIdInput) ?? resolvedDefaultWorldId;
     if (worldId == null || worldId <= 0) {
       toast.warning('Enter a valid world ID');
       return null;
@@ -194,6 +192,8 @@ export function BlockPrimitivesDebugSection({
       ...(maxDuration != null ? { max_duration: maxDuration } : {}),
       required_tags: parseTagList(requiredTagsInput),
       exclude_tags: parseTagList(excludeTagsInput),
+      ...(allowLlmFallback ? { allow_llm_fallback: true } : {}),
+      ...(llmProfileIdInput.trim() ? { llm_profile_id: llmProfileIdInput.trim() } : {}),
     };
   };
 
@@ -236,8 +236,13 @@ export function BlockPrimitivesDebugSection({
         Build or run behavior-driven block primitive selection for this context.
       </div>
       <div className="text-neutral-600 dark:text-neutral-300 mb-3 space-y-1">
-        <div>Default world: {defaultWorldId ?? 'N/A'}</div>
-        <div>Default session: {defaultSessionId ?? 'N/A'}</div>
+        <div>Default world: {resolvedDefaultWorldId ?? 'N/A'}</div>
+        <div>Default session: {resolvedDefaultSessionId ?? 'N/A'}</div>
+        <div>World source: {effectiveIds.worldSource}</div>
+        <div>Session source: {effectiveIds.sessionSource}</div>
+        <div className="text-[10px]">
+          Leave world/session empty to follow defaults; enter values to override.
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 mb-2">
@@ -246,7 +251,7 @@ export function BlockPrimitivesDebugSection({
           <input
             value={worldIdInput}
             onChange={(event) => setWorldIdInput(event.target.value)}
-            placeholder={defaultWorldId != null ? String(defaultWorldId) : 'Required'}
+            placeholder={resolvedDefaultWorldId != null ? String(resolvedDefaultWorldId) : 'Required (default context)'}
             className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
           />
         </label>
@@ -255,7 +260,7 @@ export function BlockPrimitivesDebugSection({
           <input
             value={sessionIdInput}
             onChange={(event) => setSessionIdInput(event.target.value)}
-            placeholder={defaultSessionId != null ? String(defaultSessionId) : 'Required'}
+            placeholder={resolvedDefaultSessionId != null ? String(resolvedDefaultSessionId) : 'Required (default context)'}
             className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
           />
         </label>
@@ -408,7 +413,7 @@ export function BlockPrimitivesDebugSection({
         </Button>
       </div>
 
-      <label className="flex items-center gap-2 mb-2">
+      <label className="flex items-center gap-2 mb-1">
         <input
           type="checkbox"
           checked={includeSceneIntentTag}
@@ -416,6 +421,25 @@ export function BlockPrimitivesDebugSection({
         />
         <span className="text-neutral-600 dark:text-neutral-300">Include scene-intent tag</span>
       </label>
+      <label className="flex items-center gap-2 mb-1">
+        <input
+          type="checkbox"
+          checked={allowLlmFallback}
+          onChange={(event) => setAllowLlmFallback(event.target.checked)}
+        />
+        <span className="text-neutral-600 dark:text-neutral-300">LLM fallback for unresolved slots</span>
+      </label>
+      {allowLlmFallback && (
+        <label className="flex flex-col gap-1 mb-2 ml-5">
+          <span className="text-neutral-600 dark:text-neutral-300 text-[10px]">Profile ID (default: assistant:creative)</span>
+          <input
+            value={llmProfileIdInput}
+            onChange={(event) => setLlmProfileIdInput(event.target.value)}
+            placeholder="assistant:creative"
+            className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
+          />
+        </label>
+      )}
 
       <div className="grid grid-cols-1 gap-2 mb-3">
         <label className="flex flex-col gap-1">

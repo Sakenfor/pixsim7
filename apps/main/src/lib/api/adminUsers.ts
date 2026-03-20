@@ -32,3 +32,21 @@ export async function updateAdminUserPermissions(
 ): Promise<AdminUserPermissions> {
   return pixsimClient.put<AdminUserPermissions>(`/admin/users/${userId}/permissions`, { permissions });
 }
+
+export interface AdminUpdateUserParams {
+  role?: string;
+  is_active?: boolean;
+  password?: string;
+  permissions?: string[];
+}
+
+export async function adminUpdateUser(
+  userId: number,
+  params: AdminUpdateUserParams,
+): Promise<AdminUserPermissions> {
+  return pixsimClient.patch<AdminUserPermissions>(`/admin/users/${userId}`, params);
+}
+
+export async function adminDeactivateUser(userId: number): Promise<AdminUserPermissions> {
+  return pixsimClient.delete<AdminUserPermissions>(`/admin/users/${userId}`);
+}

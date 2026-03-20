@@ -916,6 +916,28 @@ function summarizeValue(value: string | null): string {
   return value;
 }
 
+const ACTION_LABELS: Record<string, string> = {
+  created: 'created',
+  updated: 'updated',
+  deleted: 'deleted',
+  deactivated: 'deactivated',
+  field_changed: 'changed',
+  content_updated: 'content updated',
+  status_changed: 'status changed',
+};
+
+const ACTION_BADGE_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  created: 'green',
+  deleted: 'red',
+  deactivated: 'orange',
+};
+
+/** True when value is short enough to show inline (e.g. "proposed → implementation-ready") */
+function isInlineValue(value: string | null): boolean {
+  if (!value) return false;
+  return tryParseJson(value) === null && value.length <= 60;
+}
+
 function WriteEntryRow({
   entry,
   agentName,
@@ -924,12 +946,18 @@ function WriteEntryRow({
   agentName: string;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const isFieldChange = entry.event_type === 'field_changed';
   const domainColor = entry.domain === 'plan' ? 'blue' : entry.domain === 'prompt' ? 'green' : 'gray';
 
   const hasExpandableContent =
-    (entry.new_value && (tryParseJson(entry.new_value) !== null || entry.new_value.length > 60)) ||
-    (entry.old_value && (tryParseJson(entry.old_value) !== null || entry.old_value.length > 60));
+    (entry.new_value && !isInlineValue(entry.new_value)) ||
+    (entry.old_value && !isInlineValue(entry.old_value));
+
+  const actionLabel = ACTION_LABELS[entry.event_type] || entry.event_type;
+  const badgeColor = ACTION_BADGE_COLORS[entry.event_type] || 'gray';
+
+  // Short inline transition: "proposed → implementation-ready"
+  const showInlineTransition =
+    !hasExpandableContent && entry.field && (isInlineValue(entry.old_value) || isInlineValue(entry.new_value));
 
   return (
     <div className="rounded border border-neutral-200 dark:border-neutral-800 text-xs">
@@ -938,11 +966,9 @@ function WriteEntryRow({
         className={`flex items-start gap-2 px-2 py-1.5 ${hasExpandableContent ? 'cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/40' : ''}`}
         onClick={hasExpandableContent ? () => setExpanded((p) => !p) : undefined}
       >
-        {hasExpandableContent && (
-          <span className="shrink-0 text-neutral-400 text-[10px] mt-0.5 w-3 text-center select-none">
-            {expanded ? '\u25be' : '\u25b8'}
-          </span>
-        )}
+        <span className="shrink-0 text-neutral-400 text-[10px] mt-0.5 w-3 text-center select-none">
+          {hasExpandableContent ? (expanded ? '\u25be' : '\u25b8') : ''}
+        </span>
         <Badge color={domainColor} className="text-[10px] shrink-0">{agentName}</Badge>
         <div className="flex-1 min-w-0">
           {entry.domain === 'plan' ? (
@@ -950,16 +976,20 @@ function WriteEntryRow({
           ) : (
             <span className="mr-1 text-neutral-600 dark:text-neutral-300">{entry.entity_label}</span>
           )}
-          {isFieldChange && entry.field && (
-            <span className="text-neutral-500">
-              {entry.field}
-              {!expanded && entry.new_value && (
-                <span className="ml-1 text-neutral-400">{'\u2192 '}{summarizeValue(entry.new_value)}</span>
-              )}
+          <Badge color={badgeColor} className="text-[9px] ml-0.5">{actionLabel}</Badge>
+          {entry.field && (
+            <span className="ml-1 text-neutral-500">{entry.field}</span>
+          )}
+          {showInlineTransition && (
+            <span className="ml-1 text-neutral-400">
+              {entry.old_value && <>{entry.old_value}</>}
+              {entry.old_value && entry.new_value && ' \u2192 '}
+              {!entry.old_value && entry.new_value && '\u2192 '}
+              {entry.new_value && <span className="text-neutral-600 dark:text-neutral-300">{entry.new_value}</span>}
             </span>
           )}
-          {!isFieldChange && (
-            <Badge color="gray" className="text-[9px] ml-1">{entry.event_type}</Badge>
+          {!showInlineTransition && !expanded && hasExpandableContent && entry.new_value && (
+            <span className="ml-1 text-neutral-400">{'\u2192 '}{summarizeValue(entry.new_value)}</span>
           )}
           {entry.commit_sha && (
             <span
@@ -1061,21 +1091,39 @@ function GroupedWriteRow({
 }) {
   const [expanded, setExpanded] = useState(false);
   const domainColor = group.domain === 'plan' ? 'blue' : group.domain === 'prompt' ? 'green' : 'gray';
-  const fieldNames = group.entries.map((e) => e.field).filter(Boolean);
+  const fieldNames = group.entries.map((e) => e.field).filter(Boolean) as string[];
   const eventTypes = [...new Set(group.entries.map((e) => e.event_type))];
-  const isSingleCreated = group.entries.length === 1 && eventTypes[0] === 'created';
+  const hasMultiple = group.entries.length > 1;
+
+  // Primary action label — prefer the most specific if uniform, else "updated"
+  const primaryAction = eventTypes.length === 1
+    ? (ACTION_LABELS[eventTypes[0]] || eventTypes[0])
+    : 'updated';
+  const badgeColor = eventTypes.length === 1
+    ? (ACTION_BADGE_COLORS[eventTypes[0]] || 'gray')
+    : 'gray';
+
+  // Single entry with short inline values — show transition directly
+  const singleEntry = !hasMultiple ? group.entries[0] : null;
+  const singleInline = singleEntry?.field && !hasMultiple
+    && (isInlineValue(singleEntry.old_value) || isInlineValue(singleEntry.new_value))
+    && !(singleEntry.new_value && !isInlineValue(singleEntry.new_value))
+    && !(singleEntry.old_value && !isInlineValue(singleEntry.old_value));
+
+  // Expandable if has multiple entries or has long/JSON values
+  const hasExpandableContent = hasMultiple || group.entries.some(
+    (e) => (e.new_value && !isInlineValue(e.new_value)) || (e.old_value && !isInlineValue(e.old_value)),
+  );
 
   return (
     <div className="rounded border border-neutral-200 dark:border-neutral-800 text-xs">
       <div
-        className={`flex items-start gap-2 px-2 py-1.5 ${!isSingleCreated ? 'cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/40' : ''}`}
-        onClick={!isSingleCreated ? () => setExpanded((p) => !p) : undefined}
+        className={`flex items-start gap-2 px-2 py-1.5 ${hasExpandableContent ? 'cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/40' : ''}`}
+        onClick={hasExpandableContent ? () => setExpanded((p) => !p) : undefined}
       >
-        {!isSingleCreated && (
-          <span className="shrink-0 text-neutral-400 text-[10px] mt-0.5 w-3 text-center select-none">
-            {expanded ? '\u25be' : '\u25b8'}
-          </span>
-        )}
+        <span className="shrink-0 text-neutral-400 text-[10px] mt-0.5 w-3 text-center select-none">
+          {hasExpandableContent ? (expanded ? '\u25be' : '\u25b8') : ''}
+        </span>
         <Badge color={domainColor} className="text-[10px] shrink-0">{agentName}</Badge>
         <div className="flex-1 min-w-0">
           {group.domain === 'plan' ? (
@@ -1083,24 +1131,28 @@ function GroupedWriteRow({
           ) : (
             <span className="mr-1 text-neutral-600 dark:text-neutral-300">{group.entity_label}</span>
           )}
-          {isSingleCreated ? (
-            <Badge color="gray" className="text-[9px] ml-1">created</Badge>
-          ) : (
-            <>
-              {fieldNames.length > 0 && (
-                <span className="text-neutral-500">
-                  {fieldNames.length === 1
-                    ? fieldNames[0]
-                    : `${fieldNames.length} fields`}
-                </span>
-              )}
-              {fieldNames.length === 0 && eventTypes.length > 0 && (
-                <Badge color="gray" className="text-[9px] ml-1">{eventTypes.join(', ')}</Badge>
-              )}
-              {group.entries.length > 1 && (
-                <span className="ml-1 text-neutral-400 text-[10px]">({group.entries.length})</span>
-              )}
-            </>
+          <Badge color={badgeColor} className="text-[9px] ml-0.5">{primaryAction}</Badge>
+          {hasMultiple && fieldNames.length > 0 && (
+            <span className="ml-1 text-neutral-500">
+              {fieldNames.length <= 2 ? fieldNames.join(', ') : `${fieldNames.length} fields`}
+            </span>
+          )}
+          {hasMultiple && (
+            <span className="ml-1 text-neutral-400 text-[10px]">({group.entries.length})</span>
+          )}
+          {!hasMultiple && singleEntry?.field && (
+            <span className="ml-1 text-neutral-500">{singleEntry.field}</span>
+          )}
+          {singleInline && singleEntry && (
+            <span className="ml-1 text-neutral-400">
+              {singleEntry.old_value && <>{singleEntry.old_value}</>}
+              {singleEntry.old_value && singleEntry.new_value && ' \u2192 '}
+              {!singleEntry.old_value && singleEntry.new_value && '\u2192 '}
+              {singleEntry.new_value && <span className="text-neutral-600 dark:text-neutral-300">{singleEntry.new_value}</span>}
+            </span>
+          )}
+          {!singleInline && !hasMultiple && !expanded && hasExpandableContent && singleEntry?.new_value && (
+            <span className="ml-1 text-neutral-400">{'\u2192 '}{summarizeValue(singleEntry.new_value)}</span>
           )}
           {group.commit_sha && (
             <span
@@ -1120,19 +1172,25 @@ function GroupedWriteRow({
 
       {expanded && (
         <div className="border-t border-neutral-100 dark:border-neutral-800 px-3 py-2 space-y-2 bg-neutral-50/50 dark:bg-neutral-900/30">
-          {group.entries.map((entry) => (
-            <div key={entry.id} className="space-y-1">
-              <div className="flex items-center gap-2 text-[10px]">
-                <Badge color="gray" className="text-[9px]">{entry.event_type}</Badge>
-                {entry.field && <span className="text-neutral-500">{entry.field}</span>}
-                {!entry.field && entry.event_type !== 'field_changed' && (
-                  <span className="text-neutral-400">{entry.entity_label}</span>
-                )}
+          {group.entries.map((entry) => {
+            const entryLabel = ACTION_LABELS[entry.event_type] || entry.event_type;
+            const entryBadgeColor = ACTION_BADGE_COLORS[entry.event_type] || 'gray';
+            return (
+              <div key={entry.id} className="space-y-1">
+                <div className="flex items-center gap-2 text-[10px]">
+                  <Badge color={entryBadgeColor} className="text-[9px]">{entryLabel}</Badge>
+                  {entry.field && <span className="text-neutral-500">{entry.field}</span>}
+                  {entry.field && isInlineValue(entry.old_value) && isInlineValue(entry.new_value) && (
+                    <span className="text-neutral-400">
+                      {entry.old_value} {'\u2192'} <span className="text-neutral-600 dark:text-neutral-300">{entry.new_value}</span>
+                    </span>
+                  )}
+                </div>
+                {entry.old_value && !isInlineValue(entry.old_value) && <WriteValueBlock label="Old" value={entry.old_value} />}
+                {entry.new_value && !isInlineValue(entry.new_value) && <WriteValueBlock label="New" value={entry.new_value} />}
               </div>
-              {entry.old_value && <WriteValueBlock label="Old" value={entry.old_value} />}
-              {entry.new_value && <WriteValueBlock label="New" value={entry.new_value} />}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

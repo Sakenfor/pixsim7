@@ -1,5 +1,6 @@
 import { createPromptsApi } from '@pixsim7/shared.api.client/domains';
 import type {
+  BranchSummary,
   PromptFamilyDetail,
   PromptFamilySummary,
   PromptVersionDetail,
@@ -16,7 +17,7 @@ import { pixsimClient } from './client';
 
 const promptsApi = createPromptsApi(pixsimClient);
 
-export type { PromptFamilySummary, PromptFamilyDetail, PromptVersionSummary, PromptVersionDetail };
+export type { BranchSummary, PromptFamilySummary, PromptFamilyDetail, PromptVersionSummary, PromptVersionDetail };
 
 export interface GenerationHintContract {
   operation: string;
@@ -51,6 +52,19 @@ export const getPromptFamily = (familyId: string): Promise<PromptFamilyDetail> =
 
 export const createPromptFamily = (request: CreatePromptFamilyRequest): Promise<PromptFamilyDetail> =>
   promptsApi.createFamily(request);
+
+export const updatePromptFamily = (
+  familyId: string,
+  data: { title?: string; description?: string; category?: string; tags?: string[]; is_active?: boolean },
+): Promise<PromptFamilyDetail> => promptsApi.updateFamily(familyId, data);
+
+export const listBranches = (familyId: string): Promise<BranchSummary[]> =>
+  promptsApi.listBranches(familyId);
+
+export const createBranch = (
+  familyId: string,
+  data: { branch_name: string; from_version_id?: string; author?: string },
+): Promise<PromptVersionDetail> => promptsApi.createBranch(familyId, data);
 
 export const listPromptVersions = (
   familyId: string,
@@ -111,18 +125,10 @@ export const applyPromptEdit = (
     request,
   );
 
-export interface PromptVersionAsset {
-  id: number;
-  media_type: string;
-  remote_url?: string | null;
-  thumbnail_url?: string | null;
-  created_at: string;
-}
-
 export interface PromptVersionAssetsResponse {
   version_id: string;
   asset_count: number;
-  assets: PromptVersionAsset[];
+  assets: Record<string, unknown>[];
 }
 
 export const getPromptVersionAssets = (

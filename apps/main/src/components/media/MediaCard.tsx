@@ -55,6 +55,8 @@ function getCrossOrigin(url: string | undefined): 'anonymous' | undefined {
   return url?.startsWith('http') ? 'anonymous' : undefined;
 }
 
+const MAX_VIDEO_RETRIES = 4;
+
 
 
 export interface MediaCardActions {
@@ -256,26 +258,100 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     exposeToContextMenu: true,
   }), [contextMenuAsset]);
   useProvideCapability(CAP_ASSET, assetProvider, [assetProvider]);
-  const { thumbSrc, thumbFailed, thumbRetry: retryThumb, videoSrc, usePosterImage } =
+  const mediaContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isNearViewport, setIsNearViewport] = useState(false);
+  const shouldActivateVideoMedia =
+    mediaType === 'video' && isNearViewport && !thumbUrl && !previewUrl;
+
+  const { thumbSrc, thumbFailed, thumbRetry: retryThumb, videoSrc } =
     useMediaPreviewSource({
       mediaType,
       thumbUrl,
       previewUrl,
       remoteUrl,
+      mediaActive: shouldActivateVideoMedia,
     });
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoRetryCountRef = useRef(0);
   const [intrinsicVideoAspectRatio, setIntrinsicVideoAspectRatio] = useState<number | null>(null);
   const [intrinsicThumbAspectRatio, setIntrinsicThumbAspectRatio] = useState<number | null>(null);
+  const [videoLoadFailed, setVideoLoadFailed] = useState(false);
+  const [videoRetryToken, setVideoRetryToken] = useState<number | null>(null);
+  const [videoRetrying, setVideoRetrying] = useState(false);
+  const [videoRetryAttempt, setVideoRetryAttempt] = useState(0);
+
+  const resolvedVideoSrc = useMemo(() => {
+    if (!videoSrc) return undefined;
+    if (!videoRetryToken || !videoSrc.startsWith('http')) return videoSrc;
+    const separator = videoSrc.includes('?') ? '&' : '?';
+    return `${videoSrc}${separator}cb=${videoRetryToken}`;
+  }, [videoSrc, videoRetryToken]);
+
+  useEffect(() => {
+    const element = mediaContainerRef.current;
+    if (!element || mediaType !== 'video') {
+      setIsNearViewport(false);
+      return;
+    }
+
+    if (typeof IntersectionObserver === 'undefined') {
+      setIsNearViewport(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.target === element) {
+            setIsNearViewport(entry.isIntersecting);
+          }
+        }
+      },
+      { rootMargin: '350px' },
+    );
+
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, [id, mediaType]);
 
   useEffect(() => {
     if (mediaType !== 'video') {
       setIntrinsicVideoAspectRatio(null);
+      setVideoLoadFailed(false);
+      setVideoRetryToken(null);
+      setVideoRetrying(false);
+      setVideoRetryAttempt(0);
+      videoRetryCountRef.current = 0;
+      if (videoRetryTimeoutRef.current) {
+        clearTimeout(videoRetryTimeoutRef.current);
+        videoRetryTimeoutRef.current = null;
+      }
       return;
     }
     // Reset between assets/src changes so a prior video's metadata ratio does not
     // briefly poison layout for the next card.
     setIntrinsicVideoAspectRatio(null);
+    setVideoLoadFailed(false);
+    setVideoRetryToken(null);
+    setVideoRetrying(false);
+    setVideoRetryAttempt(0);
+    videoRetryCountRef.current = 0;
+    if (videoRetryTimeoutRef.current) {
+      clearTimeout(videoRetryTimeoutRef.current);
+      videoRetryTimeoutRef.current = null;
+    }
   }, [id, mediaType, videoSrc]);
+
+  useEffect(() => {
+    return () => {
+      if (videoRetryTimeoutRef.current) {
+        clearTimeout(videoRetryTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (mediaType !== 'video' || !thumbSrc) {
@@ -317,6 +393,58 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
 
     return intrinsicVideoAspectRatio ?? intrinsicThumbAspectRatio ?? 16 / 9;
   }, [mediaType, width, height, intrinsicThumbAspectRatio, intrinsicVideoAspectRatio, videoSrc]);
+
+  const retryVideo = useCallback(() => {
+    if (mediaType !== 'video' || !videoSrc) return;
+    setVideoLoadFailed(false);
+    setVideoRetrying(false);
+    setVideoRetryAttempt(0);
+    videoRetryCountRef.current = 0;
+    if (videoRetryTimeoutRef.current) {
+      clearTimeout(videoRetryTimeoutRef.current);
+      videoRetryTimeoutRef.current = null;
+    }
+    if (videoSrc.startsWith('http')) {
+      setVideoRetryToken(Date.now());
+    } else if (videoRef.current) {
+      videoRef.current.src = videoSrc;
+      videoRef.current.load();
+    }
+  }, [mediaType, videoSrc]);
+
+  const handleVideoLoadError = useCallback(() => {
+    if (mediaType !== 'video' || !videoSrc) {
+      setVideoLoadFailed(true);
+      setVideoRetrying(false);
+      setVideoRetryAttempt(0);
+      return;
+    }
+
+    if (videoRetryCountRef.current >= MAX_VIDEO_RETRIES) {
+      setVideoLoadFailed(true);
+      setVideoRetrying(false);
+      return;
+    }
+
+    setVideoLoadFailed(false);
+    videoRetryCountRef.current += 1;
+    setVideoRetrying(true);
+    setVideoRetryAttempt(videoRetryCountRef.current);
+
+    if (videoRetryTimeoutRef.current) {
+      clearTimeout(videoRetryTimeoutRef.current);
+      videoRetryTimeoutRef.current = null;
+    }
+
+    videoRetryTimeoutRef.current = setTimeout(() => {
+      if (videoSrc.startsWith('http')) {
+        setVideoRetryToken(Date.now());
+      } else if (videoRef.current) {
+        videoRef.current.src = videoSrc;
+        videoRef.current.load();
+      }
+    }, 2000);
+  }, [mediaType, videoSrc]);
 
   // Extract tag slugs for overlay data (quick tag matching, technical tag filtering)
   const tagSlugs = useMemo(() => tags?.map(t => t.slug) || [], [tags]);
@@ -469,7 +597,9 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
 
   // Video source for overlay widgets (scrubbing, etc.)
   const overlayVideoSrc =
-    mediaType === 'video' ? videoSrc : undefined;
+    mediaType === 'video' ? resolvedVideoSrc : undefined;
+  const shouldShowVideoElement =
+    mediaType === 'video' && !thumbSrc && !!resolvedVideoSrc && !videoLoadFailed;
 
   const overlayData: MediaCardOverlayData = {
     id,
@@ -534,8 +664,9 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
         }}
       >
         <div
+          ref={mediaContainerRef}
           className={`relative w-full bg-neutral-100 dark:bg-neutral-800 cursor-pointer overflow-hidden rounded-t-md touch-none ${
-            !videoSrc && !thumbSrc ? 'aspect-[4/3]' : ''
+            !resolvedVideoSrc && !thumbSrc ? 'aspect-[4/3]' : ''
           }`}
           data-pixsim7="media-thumbnail"
           onClick={handleOpen}
@@ -543,9 +674,9 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
           {...gesture.gestureHandlers}
           style={mediaType === 'video' && videoAspectRatio ? { aspectRatio: `${videoAspectRatio}` } : undefined}
         >
-          {videoSrc || thumbSrc ? (
+          {(thumbSrc || shouldShowVideoElement) ? (
             mediaType === 'video' ? (
-              usePosterImage && thumbSrc ? (
+              thumbSrc ? (
                 <img
                   src={thumbSrc}
                   alt={`Media ${id}`}
@@ -555,13 +686,13 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
               ) : (
                 <video
                   ref={videoRef}
-                  src={videoSrc}
+                  src={resolvedVideoSrc}
                   poster={thumbSrc}
                   className="h-full w-full object-cover"
-                  preload="none"
+                  preload="metadata"
                   muted
                   playsInline
-                  crossOrigin={getCrossOrigin(videoSrc)}
+                  crossOrigin={getCrossOrigin(resolvedVideoSrc)}
                   onLoadedMetadata={(e) => {
                     const el = e.currentTarget;
                     const w = el.videoWidth;
@@ -570,7 +701,12 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
                       const next = w / h;
                       setIntrinsicVideoAspectRatio((prev) => (prev && Math.abs(prev - next) < 0.0001 ? prev : next));
                     }
+                    setVideoLoadFailed(false);
+                    setVideoRetrying(false);
+                    setVideoRetryAttempt(0);
+                    videoRetryCountRef.current = 0;
                   }}
+                  onError={handleVideoLoadError}
                 />
               )
             ) : (
@@ -581,13 +717,14 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
                 loading="lazy"
               />
             )
-          ) : thumbFailed ? (
+          ) : (thumbFailed || videoLoadFailed) ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-neutral-100 dark:bg-neutral-800">
               <Icon name="alert-circle" className="w-6 h-6 text-neutral-400" />
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   retryThumb();
+                  retryVideo();
                 }}
                 className="px-2 py-1 text-xs bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded transition-colors"
               >
@@ -597,6 +734,16 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+          {mediaType === 'video' && videoRetrying && !videoLoadFailed && (
+            <div className="pointer-events-none absolute left-2 top-2 rounded bg-amber-500/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
+              video retry {videoRetryAttempt}/{MAX_VIDEO_RETRIES}
+            </div>
+          )}
+          {mediaType === 'video' && !thumbSrc && shouldShowVideoElement && !videoRetrying && (
+            <div className="pointer-events-none absolute right-2 top-2 rounded bg-sky-600/90 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
+              remote preview
             </div>
           )}
           {gesture.isCommitted && gesture.actionId && gesture.direction ? (

@@ -6,7 +6,7 @@
  */
 
 import type { DevToolId } from '@pixsim7/shared.devtools.core';
-import { Suspense, useMemo } from 'react';
+import { Suspense, useCallback, useSyncExternalStore } from 'react';
 
 import { Icon } from '@lib/icons';
 import { devToolSelectors } from '@lib/plugins/catalogSelectors';
@@ -26,7 +26,12 @@ export interface DevToolHostProps {
  * Host component that dynamically renders dev tools
  */
 export function DevToolHost({ toolId, context, className }: DevToolHostProps) {
-  const tool = useMemo(() => devToolSelectors.get(toolId), [toolId]);
+  // Subscribe to catalog changes so the component re-renders when dev tools
+  // register after initial mount (they load asynchronously via plugin kernel).
+  const tool = useSyncExternalStore(
+    devToolSelectors.subscribe,
+    useCallback(() => devToolSelectors.get(toolId), [toolId]),
+  );
 
   // Tool not found
   if (!tool) {

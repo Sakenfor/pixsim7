@@ -26,10 +26,25 @@ import type {
 
 export type PromptFamilySummary = PromptFamilyResponse;
 export type PromptFamilyDetail = PromptFamilyResponse;
-export type PromptVersionSummary = PromptVersionResponse;
-export type PromptVersionDetail = PromptVersionResponse;
+export type PromptVersionSummary = PromptVersionResponse & {
+  parent_version_id?: string | null;
+  branch_name?: string | null;
+};
+export type PromptVersionDetail = PromptVersionResponse & {
+  parent_version_id?: string | null;
+  branch_name?: string | null;
+};
 export type PromptVariant = PromptVariantResponse;
 export type VariantFeedback = PromptVariantResponse;
+export interface BranchSummary {
+  name: string;
+  head_version_id: string | null;
+  latest_version_number: number | null;
+  commit_count: number;
+  last_commit: string | null;
+  author: string | null;
+  is_main: boolean;
+}
 export type PromptAnalytics = unknown;
 export type PromptComparison = unknown;
 export type SemanticPack = SemanticPackManifest;
@@ -65,6 +80,35 @@ export function createPromptsApi(client: PixSimApiClient) {
 
     async createFamily(data: CreatePromptFamilyRequestSchema): Promise<PromptFamilyDetail> {
       return client.post<PromptFamilyDetail>('/prompts/families', data);
+    },
+
+    async updateFamily(
+      familyId: string,
+      data: { title?: string; description?: string; category?: string; tags?: string[]; is_active?: boolean },
+    ): Promise<PromptFamilyDetail> {
+      return client.patch<PromptFamilyDetail>(
+        `/prompts/families/${encodeURIComponent(familyId)}`,
+        data,
+      );
+    },
+
+    // ===== Branches =====
+
+    async listBranches(familyId: string): Promise<BranchSummary[]> {
+      const response = await client.get<readonly BranchSummary[]>(
+        `/prompts/families/${encodeURIComponent(familyId)}/branches`,
+      );
+      return [...response];
+    },
+
+    async createBranch(
+      familyId: string,
+      data: { branch_name: string; from_version_id?: string; author?: string },
+    ): Promise<PromptVersionDetail> {
+      return client.post<PromptVersionDetail>(
+        `/prompts/families/${encodeURIComponent(familyId)}/branches`,
+        data,
+      );
     },
 
     // ===== Versions =====

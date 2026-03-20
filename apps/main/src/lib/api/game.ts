@@ -22,6 +22,7 @@ import type {
   DraftSummary,
 } from '@pixsim7/shared.api.model';
 import { IDs, ROOM_NAVIGATION_META_KEY, validateRoomNavigation } from '@pixsim7/shared.types';
+import type { RoomNavigationValidationIssue } from '@pixsim7/shared.types';
 
 import type {
   Scene,
@@ -60,6 +61,55 @@ type RoomNavigationData = Extract<
   ReturnType<typeof validateRoomNavigation>,
   { ok: true }
 >['data'];
+
+interface RoomNavigationStateResponse {
+  locationId: number;
+  roomNavigation?: unknown | null;
+  migrationNotes?: string[];
+  authoringRevision?: string | null;
+}
+
+interface RoomNavigationTransitionCacheStateResponse {
+  locationId: number;
+  transitionCache?: unknown | null;
+  authoringRevision?: string | null;
+}
+
+interface NpcSlots2dStateResponse {
+  locationId: number;
+  npcSlots2d?: unknown | null;
+  authoringRevision?: string | null;
+}
+
+interface RoomNavigationValidationResponsePayload {
+  valid: boolean;
+  roomNavigation?: unknown | null;
+  errors?: Array<{
+    path?: unknown;
+    message?: unknown;
+  }>;
+}
+
+export interface GameLocationRoomNavigationPatchOperation {
+  op:
+    | 'set_room_id'
+    | 'set_start_checkpoint'
+    | 'clear_start_checkpoint'
+    | 'upsert_checkpoint'
+    | 'remove_checkpoint'
+    | 'upsert_edge'
+    | 'remove_edge'
+    | 'upsert_hotspot'
+    | 'remove_hotspot';
+  roomId?: string;
+  startCheckpointId?: string;
+  checkpoint?: RoomNavigationData['checkpoints'][number];
+  checkpointId?: string;
+  edge?: RoomNavigationData['edges'][number];
+  edgeId?: string;
+  hotspot?: RoomNavigationData['checkpoints'][number]['hotspots'][number];
+  hotspotId?: string;
+}
 
 // Re-exported from Orval-generated types
 export type { PaginatedWorldsResponse, WorldConfigResponse, InventoryStatsResponse, MessageResponse };
@@ -116,13 +166,216 @@ export async function saveGameLocationHotspots(
 }
 
 // App-specific: meta update endpoint
+// Deprecated for reserved location sections. Use dedicated room-navigation,
+// transition-cache, and npc-slots endpoints for those keys.
 export async function saveGameLocationMeta(
   locationId: IDs.LocationId,
   meta: Record<string, unknown>,
+  opts?: {
+    expectedAuthoringRevision?: string | null;
+  },
 ): Promise<GameLocationDetail> {
   return pixsimClient.patch<GameLocationDetail>(`/game/locations/${locationId}`, {
     meta,
+    ...(opts?.expectedAuthoringRevision
+      ? { expectedAuthoringRevision: opts.expectedAuthoringRevision }
+      : {}),
   });
+}
+
+const _normalizeNpcSlots2d = (value: unknown): NpcSlot2d[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((slot): slot is NpcSlot2d => !!slot && typeof slot === 'object');
+};
+
+export async function getGameLocationNpcSlots2d(
+  locationId: IDs.LocationId,
+): Promise<NpcSlot2d[]> {
+  const response = await pixsimClient.get<NpcSlots2dStateResponse>(
+    `/game/locations/${locationId}/npc-slots-2d`,
+  );
+  return _normalizeNpcSlots2d(response?.npcSlots2d);
+}
+
+export async function saveGameLocationNpcSlots2d(
+  locationId: IDs.LocationId,
+  npcSlots2d: NpcSlot2d[],
+  opts?: {
+    expectedAuthoringRevision?: string | null;
+  },
+): Promise<{
+  npcSlots2d: NpcSlot2d[];
+  authoringRevision?: string | null;
+}> {
+  const response = await pixsimClient.put<NpcSlots2dStateResponse>(
+    `/game/locations/${locationId}/npc-slots-2d`,
+    {
+      npcSlots2d,
+      ...(opts?.expectedAuthoringRevision
+        ? { expectedAuthoringRevision: opts.expectedAuthoringRevision }
+        : {}),
+    },
+  );
+  return {
+    npcSlots2d: _normalizeNpcSlots2d(response?.npcSlots2d),
+    authoringRevision:
+      typeof response?.authoringRevision === 'string' ? response.authoringRevision : null,
+  };
+}
+
+export async function getGameLocationRoomNavigation(
+  locationId: IDs.LocationId,
+): Promise<RoomNavigationData | null> {
+  const response = await pixsimClient.get<RoomNavigationStateResponse>(
+    `/game/locations/${locationId}/room-navigation`,
+  );
+  if (!response?.roomNavigation) {
+    return null;
+  }
+
+  const parsed = validateRoomNavigation(response.roomNavigation);
+  return parsed.ok ? parsed.data : null;
+}
+
+export async function saveGameLocationRoomNavigation(
+  locationId: IDs.LocationId,
+  roomNavigation: RoomNavigationData,
+  opts?: {
+    expectedAuthoringRevision?: string | null;
+  },
+): Promise<RoomNavigationData> {
+  const response = await pixsimClient.put<RoomNavigationStateResponse>(
+    `/game/locations/${locationId}/room-navigation`,
+    {
+      roomNavigation,
+      ...(opts?.expectedAuthoringRevision
+        ? { expectedAuthoringRevision: opts.expectedAuthoringRevision }
+        : {}),
+    },
+  );
+  const parsed = validateRoomNavigation(response?.roomNavigation ?? roomNavigation);
+  return parsed.ok ? parsed.data : roomNavigation;
+}
+
+export async function patchGameLocationRoomNavigation(
+  locationId: IDs.LocationId,
+  operations: GameLocationRoomNavigationPatchOperation[],
+  opts?: {
+    createIfMissing?: boolean;
+    initialRoomId?: string | null;
+    expectedAuthoringRevision?: string | null;
+  },
+): Promise<RoomNavigationData> {
+  const response = await pixsimClient.patch<RoomNavigationStateResponse>(
+    `/game/locations/${locationId}/room-navigation`,
+    {
+      operations,
+      createIfMissing: opts?.createIfMissing ?? true,
+      ...(opts?.initialRoomId ? { initialRoomId: opts.initialRoomId } : {}),
+      ...(opts?.expectedAuthoringRevision
+        ? { expectedAuthoringRevision: opts.expectedAuthoringRevision }
+        : {}),
+    },
+  );
+
+  const parsed = validateRoomNavigation(response?.roomNavigation);
+  if (!parsed.ok) {
+    throw new Error('Server returned invalid room_navigation payload after patch');
+  }
+  return parsed.data;
+}
+
+export async function getGameLocationRoomNavigationTransitionCache(
+  locationId: IDs.LocationId,
+): Promise<Record<string, unknown> | null> {
+  const response = await pixsimClient.get<RoomNavigationTransitionCacheStateResponse>(
+    `/game/locations/${locationId}/room-navigation/transition-cache`,
+  );
+
+  if (!response?.transitionCache || typeof response.transitionCache !== 'object') {
+    return null;
+  }
+  if (Array.isArray(response.transitionCache)) {
+    return null;
+  }
+
+  return response.transitionCache as Record<string, unknown>;
+}
+
+export async function saveGameLocationRoomNavigationTransitionCache(
+  locationId: IDs.LocationId,
+  transitionCache: Record<string, unknown>,
+  opts?: {
+    expectedAuthoringRevision?: string | null;
+  },
+): Promise<Record<string, unknown>> {
+  const response = await pixsimClient.put<RoomNavigationTransitionCacheStateResponse>(
+    `/game/locations/${locationId}/room-navigation/transition-cache`,
+    {
+      transitionCache,
+      ...(opts?.expectedAuthoringRevision
+        ? { expectedAuthoringRevision: opts.expectedAuthoringRevision }
+        : {}),
+    },
+  );
+
+  if (!response?.transitionCache || typeof response.transitionCache !== 'object') {
+    throw new Error('Server returned invalid room-navigation transition cache payload');
+  }
+  if (Array.isArray(response.transitionCache)) {
+    throw new Error('Server returned invalid room-navigation transition cache payload');
+  }
+  return response.transitionCache as Record<string, unknown>;
+}
+
+export async function validateGameLocationRoomNavigation(
+  locationId: IDs.LocationId,
+  roomNavigation: RoomNavigationData,
+): Promise<{
+  valid: boolean;
+  roomNavigation: RoomNavigationData | null;
+  errors: RoomNavigationValidationIssue[];
+}> {
+  const response = await pixsimClient.post<RoomNavigationValidationResponsePayload>(
+    `/game/locations/${locationId}/room-navigation/validate`,
+    {
+      roomNavigation,
+    },
+  );
+
+  const errors: RoomNavigationValidationIssue[] = Array.isArray(response?.errors)
+    ? response.errors
+      .filter(
+        (item): item is { path: string; message: string } =>
+          typeof item?.path === 'string' && typeof item?.message === 'string',
+      )
+      .map((item) => ({ path: item.path, message: item.message }))
+    : [];
+
+  if (!response?.valid) {
+    return {
+      valid: false,
+      roomNavigation: null,
+      errors,
+    };
+  }
+
+  const parsed = validateRoomNavigation(response.roomNavigation ?? roomNavigation);
+  if (!parsed.ok) {
+    return {
+      valid: false,
+      roomNavigation: null,
+      errors: parsed.issues,
+    };
+  }
+
+  return {
+    valid: true,
+    roomNavigation: parsed.data,
+    errors: [],
+  };
 }
 
 // =============================================================================
@@ -217,6 +470,88 @@ export async function getGameScene(sceneId: IDs.SceneId): Promise<Scene> {
 }
 
 // =============================================================================
+// Game Objects API
+// =============================================================================
+
+export interface GameObjectTemplateBinding {
+  templateKind: string;
+  templateId: string;
+  linkId?: string | null;
+}
+
+export interface GameObjectSummary {
+  id: number;
+  worldId?: number | null;
+  name: string;
+  objectKind: string;
+  templateBinding?: GameObjectTemplateBinding | null;
+}
+
+export interface GameObjectDetail extends GameObjectSummary {
+  description?: string | null;
+  meta: Record<string, unknown>;
+  stats: Record<string, unknown>;
+  statsMetadata: Record<string, unknown>;
+}
+
+export type GameObjectWritePayload = Record<string, unknown>;
+
+function _buildWorldScopeQuery(worldId?: number | null): string {
+  if (worldId == null || Number.isNaN(worldId)) {
+    return '';
+  }
+  return `?world_id=${worldId}`;
+}
+
+export async function listGameObjects(opts?: {
+  worldId?: number | null;
+}): Promise<GameObjectSummary[]> {
+  const query = _buildWorldScopeQuery(opts?.worldId ?? null);
+  return pixsimClient.get<GameObjectSummary[]>(
+    query ? `/game/objects${query}` : '/game/objects'
+  );
+}
+
+export async function getGameObject(
+  objectId: number,
+  opts?: {
+    worldId?: number | null;
+  },
+): Promise<GameObjectDetail> {
+  const query = _buildWorldScopeQuery(opts?.worldId ?? null);
+  return pixsimClient.get<GameObjectDetail>(
+    query ? `/game/objects/${objectId}${query}` : `/game/objects/${objectId}`
+  );
+}
+
+export async function createGameObject(
+  payload: GameObjectWritePayload,
+  opts?: {
+    worldId?: number | null;
+  },
+): Promise<GameObjectDetail> {
+  const query = _buildWorldScopeQuery(opts?.worldId ?? null);
+  return pixsimClient.post<GameObjectDetail>(
+    query ? `/game/objects${query}` : '/game/objects',
+    payload
+  );
+}
+
+export async function updateGameObject(
+  objectId: number,
+  payload: GameObjectWritePayload,
+  opts?: {
+    worldId?: number | null;
+  },
+): Promise<GameObjectDetail> {
+  const query = _buildWorldScopeQuery(opts?.worldId ?? null);
+  return pixsimClient.put<GameObjectDetail>(
+    query ? `/game/objects/${objectId}${query}` : `/game/objects/${objectId}`,
+    payload
+  );
+}
+
+// =============================================================================
 // App-specific gameplay endpoints (not in shared client)
 // =============================================================================
 
@@ -249,6 +584,11 @@ export interface BuildPrimitiveSelectionRequestFromBehaviorRequest {
   required_tags?: string[];
   exclude_tags?: string[];
   max_duration?: number | null;
+
+  /** Enable LLM fallback for unresolved slots (uses agent profile persona). */
+  allow_llm_fallback?: boolean;
+  /** Agent profile ID for LLM generation persona (defaults to assistant:creative). */
+  llm_profile_id?: string | null;
 }
 
 export interface PrimitiveSelectionRequestPayload {
