@@ -33,6 +33,8 @@ interface UnifiedProfile {
   description: string | null;
   icon: string | null;
   agent_type: string;
+  method: string | null;
+  model_id: string | null;
   system_prompt: string | null;
   audience: string;
   status: string;
@@ -53,6 +55,14 @@ const AGENT_COMMANDS: { id: AgentCommand; label: string; icon: IconName }[] = [
   { id: 'claude', label: 'Claude', icon: 'messageSquare' },
   { id: 'codex', label: 'Codex', icon: 'cpu' },
 ];
+
+/** Derive engine from profile's agent_type + method */
+function engineFromProfile(profile: UnifiedProfile | null): AgentEngine {
+  if (!profile) return 'claude';
+  if (profile.method === 'api') return 'api';
+  if (profile.agent_type === 'codex') return 'codex';
+  return 'claude';
+}
 
 /** Combined engine value sent to backend */
 type AgentEngine = AgentCommand | 'api';
@@ -270,6 +280,9 @@ function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps) {
   const [label, setLabel] = useState(profile?.label || '');
   const [description, setDescription] = useState(profile?.description || '');
   const [icon, setIcon] = useState(profile?.icon || '');
+  const [agentType, setAgentType] = useState(profile?.agent_type || 'claude-cli');
+  const [method, setMethod] = useState(profile?.method || 'remote');
+  const [modelId, setModelId] = useState(profile?.model_id || '');
   const [systemPrompt, setSystemPrompt] = useState(profile?.system_prompt || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -284,7 +297,8 @@ function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps) {
         const res = await pixsimClient.post<{ profile: UnifiedProfile }>('/dev/agent-profiles', {
           id: slug, label: label.trim(), description: description.trim() || null,
           icon: icon.trim() || null, system_prompt: systemPrompt.trim() || null,
-          agent_type: 'claude-cli', audience: 'user',
+          agent_type: agentType, method: method || null, model_id: modelId.trim() || null,
+          audience: 'user',
         });
         onSave(res.profile);
       } else {
@@ -292,6 +306,9 @@ function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps) {
         if (label !== profile.label) updates.label = label.trim();
         if (description !== (profile.description || '')) updates.description = description.trim() || null;
         if (icon !== (profile.icon || '')) updates.icon = icon.trim() || null;
+        if (agentType !== profile.agent_type) updates.agent_type = agentType;
+        if (method !== (profile.method || 'remote')) updates.method = method || null;
+        if (modelId !== (profile.model_id || '')) updates.model_id = modelId.trim() || null;
         if (systemPrompt !== (profile.system_prompt || '')) updates.system_prompt = systemPrompt.trim() || null;
         if (Object.keys(updates).length > 0) {
           const res = await pixsimClient.patch<{ profile: UnifiedProfile }>(`/dev/agent-profiles/${profile.id}`, updates);
@@ -305,7 +322,7 @@ function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps) {
     } finally {
       setSaving(false);
     }
-  }, [isNew, id, label, description, icon, systemPrompt, profile, onSave, onCancel]);
+  }, [isNew, id, label, description, icon, agentType, method, modelId, systemPrompt, profile, onSave, onCancel]);
 
   return (
     <div className="p-2 space-y-2">
@@ -325,6 +342,24 @@ function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps) {
         className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent" />
 
       <input value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="Icon (e.g. sparkles, code, cpu)"
+        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent" />
+
+      {/* Engine + Method + Model */}
+      <div className="flex gap-1.5">
+        <select value={agentType} onChange={(e) => setAgentType(e.target.value)}
+          className="flex-1 px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent">
+          <option value="claude-cli">Claude</option>
+          <option value="codex">Codex</option>
+          <option value="custom">Custom</option>
+        </select>
+        <select value={method} onChange={(e) => setMethod(e.target.value)}
+          className="flex-1 px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent">
+          <option value="remote">CMD (bridge)</option>
+          <option value="api">API (direct)</option>
+        </select>
+      </div>
+
+      <input value={modelId} onChange={(e) => setModelId(e.target.value)} placeholder="Model (e.g. anthropic:claude-sonnet-4)"
         className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent" />
 
       <textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} placeholder="Persona / system prompt"
@@ -820,57 +855,6 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             <Icon name="plus" size={16} />
           </button>
 
-          {/* Delivery method + command selector */}
-          <div className="shrink-0 flex items-center h-8">
-            {/* CMD / API toggle */}
-            <button
-              disabled={sending}
-              onClick={() => {
-                const isApi = tab.engine === 'api';
-                onUpdateTab({ engine: isApi ? 'claude' : 'api', sessionId: null });
-              }}
-              className={`h-6 px-1.5 text-[9px] font-medium rounded-l transition-colors disabled:opacity-40 disabled:pointer-events-none ${
-                tab.engine !== 'api'
-                  ? 'bg-accent/15 text-accent'
-                  : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-              }`}
-              title={tab.engine === 'api' ? 'Switch to bridge (cmd) mode' : 'Using bridge'}
-            >
-              <Icon name="code" size={10} />
-            </button>
-            <button
-              disabled={sending}
-              onClick={() => {
-                onUpdateTab({ engine: 'api', sessionId: null });
-              }}
-              className={`h-6 px-1.5 text-[9px] font-medium rounded-r transition-colors disabled:opacity-40 disabled:pointer-events-none ${
-                tab.engine === 'api'
-                  ? 'bg-accent/15 text-accent'
-                  : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-              }`}
-              title={tab.engine === 'api' ? 'Using direct API' : 'Switch to direct API'}
-            >
-              <Icon name="zap" size={10} />
-            </button>
-
-            {/* Command picker (only in cmd mode) */}
-            {tab.engine !== 'api' && (
-              <button
-                disabled={sending}
-                onClick={() => {
-                  const idx = AGENT_COMMANDS.findIndex((c) => c.id === tab.engine);
-                  const next = AGENT_COMMANDS[(idx + 1) % AGENT_COMMANDS.length];
-                  onUpdateTab({ engine: next.id, sessionId: null });
-                }}
-                className="h-6 ml-0.5 px-1.5 text-[9px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                title={`Command: ${AGENT_COMMANDS.find((c) => c.id === tab.engine)?.label ?? tab.engine} (click to switch)`}
-              >
-                <Icon name={AGENT_COMMANDS.find((c) => c.id === tab.engine)?.icon ?? 'cpu'} size={10} className="inline mr-0.5" />
-                <span className="uppercase tracking-wide">{tab.engine}</span>
-              </button>
-            )}
-          </div>
-
           {/* Profile picker */}
           <div className="relative shrink-0" ref={profilePickerRef}>
             <button
@@ -883,6 +867,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             >
               <Icon name={(activeProfile?.icon || (isAgentProfile ? 'cpu' : 'messageSquare')) as IconName} size={12} />
               <span className="max-w-[60px] truncate">{profileDisplay}</span>
+              <span className="text-[8px] text-neutral-400 uppercase">{tab.engine}</span>
             </button>
 
             {showProfilePicker && (
@@ -940,7 +925,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                         }`}
                       >
                         <button
-                          onClick={() => { onUpdateTab({ profileId: p.id, usePersona: true }); setShowProfilePicker(false); }}
+                          onClick={() => { onUpdateTab({ profileId: p.id, usePersona: true, engine: engineFromProfile(p), sessionId: null }); setShowProfilePicker(false); }}
                           className="flex items-center gap-2 flex-1 min-w-0"
                         >
                           <Icon name={(p.icon || (p.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName} size={12} className="shrink-0" />
