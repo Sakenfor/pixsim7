@@ -13,7 +13,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, get_database
-from pixsim7.backend.main.domain.docs.models import PlanEvent, PlanRegistry, PlanSyncRun
+from pixsim7.backend.main.domain.docs.models import (
+    PlanRegistry,
+    PlanRevision,
+    PlanSyncRun,
+)
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim7.backend.main.services.docs.plans import get_plans_index
@@ -22,11 +26,15 @@ from pixsim7.backend.main.services.docs.plan_sync import (
     prune_plan_sync_history,
     sync_plans,
 )
+from pixsim7.backend.main.services.crud.primitives import DeleteResponse
 from pixsim7.backend.main.services.docs.plan_write import (
+    HIDDEN_STATUSES,
     PlanBundle,
     PlanNotFoundError,
     PlanWriteError,
-    _status_to_scope,
+    status_to_scope,
+    archive_plan,
+    delete_plan,
     export_plan_to_disk,
     get_active_assignment,
     get_plan_bundle,
@@ -37,6 +45,8 @@ from pixsim7.backend.main.services.docs.plan_write import (
     git_verify_commit,
     list_plan_bundles,
     make_document_id,
+    record_plan_revision,
+    unarchive_plan,
     update_plan,
 )
 from pixsim_logging import get_logger
@@ -88,6 +98,10 @@ class PlansIndexResponse(BaseModel):
     version: str
     generatedAt: Optional[str] = None
     plans: List[PlanSummary] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 0
+    offset: int = 0
+    has_more: bool = False
 
 
 class PlanDetailResponse(PlanSummary):
@@ -120,6 +134,10 @@ class PlanRegistryEntry(BaseModel):
 
 class PlanRegistryListResponse(BaseModel):
     plans: List[PlanRegistryEntry] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 0
+    offset: int = 0
+    has_more: bool = False
 
 
 class PlanEventEntry(BaseModel):
@@ -138,6 +156,49 @@ class PlanEventEntry(BaseModel):
 class PlanEventsResponse(BaseModel):
     planId: str
     events: List[PlanEventEntry] = Field(default_factory=list)
+
+
+class PlanRevisionEntry(BaseModel):
+    id: str
+    planId: str
+    documentId: str
+    revision: int
+    eventType: str
+    actor: Optional[str] = None
+    commitSha: Optional[str] = None
+    changedFields: List[str] = Field(default_factory=list)
+    restoreFromRevision: Optional[int] = None
+    createdAt: str
+    snapshot: Optional[Dict[str, Any]] = None
+
+
+class PlanRevisionListResponse(BaseModel):
+    planId: str
+    revisions: List[PlanRevisionEntry] = Field(default_factory=list)
+
+
+class PlanRestoreRequest(BaseModel):
+    commit_sha: Optional[str] = Field(
+        None,
+        description="Optional git commit SHA for traceability.",
+    )
+    auto_head: bool = Field(
+        False,
+        description="Resolve current HEAD and attach it as commit_sha when commit_sha is omitted.",
+    )
+    verify_commits: bool = Field(
+        False,
+        description="Verify commit_sha exists in the repository.",
+    )
+
+
+class PlanRestoreResponse(BaseModel):
+    planId: str
+    restoredFromRevision: int
+    revision: Optional[int] = None
+    changes: List[Dict[str, Any]] = Field(default_factory=list)
+    commitSha: Optional[str] = None
+    newScope: Optional[str] = None
 
 
 class PlanActivityEntry(BaseModel):
@@ -281,20 +342,60 @@ def _bundle_to_registry_entry(b: PlanBundle) -> dict:
     }
 
 
-def _event_to_entry(ev: PlanEvent, plan_title: str = "") -> dict:
+_RESTORE_DOC_FIELDS = (
+    "title",
+    "status",
+    "owner",
+    "summary",
+    "markdown",
+    "visibility",
+    "namespace",
+    "tags",
+)
+_RESTORE_PLAN_FIELDS = (
+    "stage",
+    "priority",
+    "task_scope",
+    "plan_type",
+    "target",
+    "checkpoints",
+    "code_paths",
+    "companions",
+    "handoffs",
+    "depends_on",
+)
+
+
+def _revision_to_entry(row: PlanRevision, *, include_snapshot: bool) -> dict:
     return {
-        "id": str(ev.id),
-        "runId": str(ev.run_id) if ev.run_id else None,
-        "planId": ev.plan_id,
-        "planTitle": plan_title,
-        "eventType": ev.event_type,
-        "field": ev.field,
-        "oldValue": ev.old_value,
-        "newValue": ev.new_value,
-        "commitSha": ev.commit_sha,
-        "actor": ev.actor,
-        "timestamp": ev.timestamp.isoformat() if ev.timestamp else "",
+        "id": str(row.id),
+        "planId": row.plan_id,
+        "documentId": row.document_id,
+        "revision": row.revision,
+        "eventType": row.event_type,
+        "actor": row.actor,
+        "commitSha": row.commit_sha,
+        "changedFields": list(row.changed_fields or []),
+        "restoreFromRevision": row.restore_from_revision,
+        "createdAt": row.created_at.isoformat() if row.created_at else "",
+        "snapshot": row.snapshot if include_snapshot else None,
     }
+
+
+def _snapshot_to_restore_updates(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    doc_payload = snapshot.get("doc")
+    plan_payload = snapshot.get("plan")
+    if not isinstance(doc_payload, dict) or not isinstance(plan_payload, dict):
+        raise ValueError("Invalid snapshot payload: expected 'doc' and 'plan' objects.")
+
+    updates: Dict[str, Any] = {}
+    for field in _RESTORE_DOC_FIELDS:
+        if field in doc_payload:
+            updates[field] = doc_payload[field]
+    for field in _RESTORE_PLAN_FIELDS:
+        if field in plan_payload:
+            updates[field] = plan_payload[field]
+    return updates
 
 
 def _run_to_entry(run: PlanSyncRun) -> dict:
@@ -417,16 +518,58 @@ def _merge_evidence(existing: Any, appends: Optional[list]) -> List[Dict[str, st
     return out
 
 
+def _filter_bundles(
+    bundles: List[PlanBundle],
+    *,
+    status: Optional[str] = None,
+    owner: Optional[str] = None,
+    namespace: Optional[str] = None,
+    priority: Optional[str] = None,
+    plan_type: Optional[str] = None,
+    tag: Optional[str] = None,
+    include_hidden: bool = False,
+) -> List[PlanBundle]:
+    """Apply common filters to a list of plan bundles."""
+    out: list[PlanBundle] = []
+    for b in sorted(bundles, key=lambda b: b.id):
+        if not include_hidden and not status and b.doc.status in HIDDEN_STATUSES:
+            continue
+        if status and b.doc.status != status:
+            continue
+        if owner and owner.lower() not in b.doc.owner.lower():
+            continue
+        if namespace and b.doc.namespace != namespace:
+            continue
+        if priority and b.plan.priority != priority:
+            continue
+        if plan_type and b.plan.plan_type != plan_type:
+            continue
+        if tag and tag not in (b.doc.tags or []):
+            continue
+        out.append(b)
+    return out
+
+
 @router.get("", response_model=PlansIndexResponse)
 async def list_plans(
     _user: CurrentUser,
-    status: Optional[str] = Query(None, description="Filter by status (active, done, parked)"),
+    status: Optional[str] = Query(None, description="Filter by status (active, done, parked, archived, removed)"),
     owner: Optional[str] = Query(None, description="Filter by owner (substring match)"),
     namespace: Optional[str] = Query(None, description="Filter by namespace"),
+    priority: Optional[str] = Query(None, description="Filter by priority (high, normal, low)"),
+    plan_type: Optional[str] = Query(None, description="Filter by plan type (feature, bugfix, refactor, exploration, task, proposal)"),
+    tag: Optional[str] = Query(None, description="Filter by tag (plans containing this tag)"),
+    include_hidden: bool = Query(False, description="Include archived and removed plans (hidden by default)"),
+    limit: int = Query(100, ge=1, le=500, description="Max plans to return"),
+    offset: int = Query(0, ge=0, description="Number of plans to skip"),
     refresh: bool = Query(False),
     db: AsyncSession = Depends(get_database),
 ):
     bundles = await list_plan_bundles(db)
+    filtered = _filter_bundles(
+        bundles, status=status, owner=owner, namespace=namespace,
+        priority=priority, plan_type=plan_type, tag=tag, include_hidden=include_hidden,
+    )
 
     # Build parent->children index
     children_map: dict[str, list[PlanBundle]] = {}
@@ -435,20 +578,18 @@ async def list_plans(
         if pid:
             children_map.setdefault(pid, []).append(b)
 
-    plans = []
-    for b in sorted(bundles, key=lambda b: b.id):
-        if status and b.doc.status != status:
-            continue
-        if owner and owner.lower() not in b.doc.owner.lower():
-            continue
-        if namespace and b.doc.namespace != namespace:
-            continue
-        plans.append(_bundle_to_summary(b, children=children_map.get(b.id)))
+    total = len(filtered)
+    page = filtered[offset : offset + limit]
+    plans = [_bundle_to_summary(b, children=children_map.get(b.id)) for b in page]
 
     return {
         "version": "1",
         "generatedAt": None,
         "plans": plans,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": offset + limit < total,
     }
 
 
@@ -566,17 +707,18 @@ async def list_registry(
     _user: CurrentUser,
     status: Optional[str] = Query(None),
     owner: Optional[str] = Query(None),
+    include_hidden: bool = Query(False, description="Include archived and removed plans"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_database),
 ):
     bundles = await list_plan_bundles(db)
-    result = []
-    for b in sorted(bundles, key=lambda b: b.id):
-        if status and b.doc.status != status:
-            continue
-        if owner and owner.lower() not in b.doc.owner.lower():
-            continue
-        result.append(_bundle_to_registry_entry(b))
-    return {"plans": result}
+    filtered = _filter_bundles(bundles, status=status, owner=owner, include_hidden=include_hidden)
+
+    total = len(filtered)
+    page = filtered[offset : offset + limit]
+    entries = [_bundle_to_registry_entry(b) for b in page]
+    return {"plans": entries, "total": total, "limit": limit, "offset": offset, "has_more": offset + limit < total}
 
 
 @router.get("/registry/{plan_id}", response_model=PlanRegistryEntry)
@@ -599,35 +741,38 @@ async def get_plan_events(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_database),
 ):
+    from pixsim7.backend.main.domain.platform.entity_audit import EntityAudit
+
     plan = await db.get(PlanRegistry, plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail=f"Plan not in registry: {plan_id}")
 
+    # Read from entity_audit
     stmt = (
-        select(PlanEvent)
-        .where(PlanEvent.plan_id == plan_id)
-        .order_by(PlanEvent.timestamp.desc())
+        select(EntityAudit)
+        .where(EntityAudit.domain == "plan", EntityAudit.entity_id == plan_id)
+        .order_by(EntityAudit.timestamp.desc())
         .offset(offset)
         .limit(limit)
     )
-    events = (await db.execute(stmt)).scalars().all()
+    rows = (await db.execute(stmt)).scalars().all()
 
     return {
         "planId": plan_id,
         "events": [
             {
-                "id": str(ev.id),
-                "runId": str(ev.run_id) if ev.run_id else None,
-                "planId": ev.plan_id,
-                "eventType": ev.event_type,
-                "field": ev.field,
-                "oldValue": ev.old_value,
-                "newValue": ev.new_value,
-                "commitSha": ev.commit_sha,
-                "actor": ev.actor,
-                "timestamp": ev.timestamp.isoformat() if ev.timestamp else "",
+                "id": str(row.id),
+                "runId": (row.extra or {}).get("sync_run_id"),
+                "planId": plan_id,
+                "eventType": row.action,
+                "field": row.field,
+                "oldValue": row.old_value,
+                "newValue": row.new_value,
+                "commitSha": row.commit_sha,
+                "actor": row.actor,
+                "timestamp": row.timestamp.isoformat() if row.timestamp else "",
             }
-            for ev in events
+            for row in rows
         ],
     }
 
@@ -640,35 +785,34 @@ async def get_activity(
     db: AsyncSession = Depends(get_database),
 ):
     from datetime import datetime, timedelta, timezone
-    from pixsim7.backend.main.domain.docs.models import Document
+    from pixsim7.backend.main.domain.platform.entity_audit import EntityAudit
 
     cutoff = datetime.now(tz=timezone.utc) - timedelta(days=days)
 
     stmt = (
-        select(PlanEvent)
-        .where(PlanEvent.timestamp >= cutoff)
-        .order_by(PlanEvent.timestamp.desc())
+        select(EntityAudit)
+        .where(EntityAudit.domain == "plan", EntityAudit.timestamp >= cutoff)
+        .order_by(EntityAudit.timestamp.desc())
         .limit(limit)
     )
-    events = (await db.execute(stmt)).scalars().all()
-
-    # Batch-fetch plan titles from Documents via PlanRegistry
-    plan_ids = {ev.plan_id for ev in events}
-    titles: dict[str, str] = {}
-    if plan_ids:
-        rows = (
-            await db.execute(
-                select(PlanRegistry.id, Document.title)
-                .join(Document, PlanRegistry.document_id == Document.id)
-                .where(PlanRegistry.id.in_(plan_ids))
-            )
-        ).all()
-        titles = {r[0]: r[1] for r in rows}
+    rows = (await db.execute(stmt)).scalars().all()
 
     return {
         "events": [
-            _event_to_entry(ev, titles.get(ev.plan_id, ev.plan_id))
-            for ev in events
+            {
+                "id": str(row.id),
+                "runId": (row.extra or {}).get("sync_run_id"),
+                "planId": row.entity_id,
+                "planTitle": row.entity_label or row.entity_id,
+                "eventType": row.action,
+                "field": row.field,
+                "oldValue": row.old_value,
+                "newValue": row.new_value,
+                "commitSha": row.commit_sha,
+                "actor": row.actor,
+                "timestamp": row.timestamp.isoformat() if row.timestamp else "",
+            }
+            for row in rows
         ],
     }
 
@@ -771,11 +915,30 @@ async def create_plan(
         companions=payload.companions or [],
         handoffs=payload.handoffs or [],
         depends_on=payload.depends_on or [],
-        scope=_status_to_scope(payload.status),
+        scope=status_to_scope(payload.status),
         created_at=now,
         updated_at=now,
     )
     db.add(plan)
+    await db.flush()
+
+    actor_source = getattr(principal, "source", f"user:{principal.id}")
+    await record_plan_revision(
+        db,
+        PlanBundle(plan=plan, doc=doc),
+        event_type="create",
+        actor=actor_source,
+        commit_sha=None,
+        changed_fields=["create"],
+    )
+
+    # Emit audit entry
+    from pixsim7.backend.main.services.audit import emit_audit
+    await emit_audit(
+        db, domain="plan", entity_type="plan_registry",
+        entity_id=payload.id, entity_label=payload.title,
+        action="created", actor=actor_source,
+    )
 
     # Emit notification
     from pixsim7.backend.main.services.docs.plan_write import emit_plan_created_notification
@@ -856,11 +1019,13 @@ class PlanUpdateRequest(BaseModel):
 class PlanUpdateResponse(BaseModel):
     planId: str
     changes: List[Dict[str, Any]] = Field(default_factory=list)
+    revision: Optional[int] = None
     commitSha: Optional[str] = None
     newScope: Optional[str] = None
 
 
-@router.patch("/update/{plan_id}", response_model=PlanUpdateResponse)
+@router.patch("/{plan_id}", response_model=PlanUpdateResponse)
+@router.patch("/update/{plan_id}", response_model=PlanUpdateResponse, deprecated=True)
 async def update_plan_endpoint(
     plan_id: str,
     payload: PlanUpdateRequest,
@@ -916,12 +1081,166 @@ async def update_plan_endpoint(
     return PlanUpdateResponse(
         planId=result.plan_id,
         changes=result.changes,
+        revision=result.revision,
         commitSha=result.commit_sha,
         newScope=result.new_scope,
     )
 
 
 # ── Agent context ─────────────────────────────────────────────────
+@router.get("/revisions/{plan_id}", response_model=PlanRevisionListResponse)
+async def list_plan_revisions(
+    plan_id: str,
+    _user: CurrentUser,
+    include_snapshot: bool = Query(
+        False, description="Include full immutable snapshot payload for each revision."
+    ),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_database),
+):
+    bundle = await get_plan_bundle(db, plan_id)
+    if not bundle:
+        raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+    rows = (
+        await db.execute(
+            select(PlanRevision)
+            .where(PlanRevision.plan_id == plan_id)
+            .order_by(PlanRevision.revision.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+    ).scalars().all()
+
+    return PlanRevisionListResponse(
+        planId=plan_id,
+        revisions=[
+            PlanRevisionEntry(**_revision_to_entry(row, include_snapshot=include_snapshot))
+            for row in rows
+        ],
+    )
+
+
+@router.get("/revisions/{plan_id}/{revision}", response_model=PlanRevisionEntry)
+async def get_plan_revision(
+    plan_id: str,
+    revision: int,
+    _user: CurrentUser,
+    include_snapshot: bool = Query(
+        True, description="Include full immutable snapshot payload."
+    ),
+    db: AsyncSession = Depends(get_database),
+):
+    row = (
+        await db.execute(
+            select(PlanRevision).where(
+                PlanRevision.plan_id == plan_id,
+                PlanRevision.revision == revision,
+            )
+        )
+    ).scalar_one_or_none()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Plan revision not found: {plan_id}@{revision}",
+        )
+    return PlanRevisionEntry(**_revision_to_entry(row, include_snapshot=include_snapshot))
+
+
+@router.post("/restore/{plan_id}/{revision}", response_model=PlanRestoreResponse)
+async def restore_plan_revision(
+    plan_id: str,
+    revision: int,
+    payload: PlanRestoreRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    resolved_commit_sha = payload.commit_sha
+    if payload.auto_head and resolved_commit_sha is None:
+        head = git_resolve_head()
+        if head:
+            resolved_commit_sha = head
+
+    if resolved_commit_sha is not None:
+        try:
+            resolved_commit_sha = _validate_commit_sha(resolved_commit_sha)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if payload.verify_commits and not git_verify_commit(resolved_commit_sha):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Commit not found in repository: '{resolved_commit_sha}'",
+            )
+
+    revision_row = (
+        await db.execute(
+            select(PlanRevision).where(
+                PlanRevision.plan_id == plan_id,
+                PlanRevision.revision == revision,
+            )
+        )
+    ).scalar_one_or_none()
+    if not revision_row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Plan revision not found: {plan_id}@{revision}",
+        )
+
+    snapshot = revision_row.snapshot or {}
+    if not isinstance(snapshot, dict):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Plan revision payload is invalid: {plan_id}@{revision}",
+        )
+
+    try:
+        updates = _snapshot_to_restore_updates(snapshot)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        result = await update_plan(
+            db,
+            plan_id,
+            updates,
+            principal=principal,
+            evidence_commit_sha=resolved_commit_sha,
+            revision_event_type="restore",
+            restore_from_revision=revision,
+        )
+    except PlanNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PlanWriteError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if result.revision is None:
+        bundle = await get_plan_bundle(db, plan_id)
+        if not bundle:
+            raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+        actor_source = getattr(principal, "source", f"user:{principal.id}")
+        noop_revision = await record_plan_revision(
+            db,
+            bundle,
+            event_type="restore_noop",
+            actor=actor_source,
+            commit_sha=resolved_commit_sha,
+            changed_fields=[],
+            restore_from_revision=revision,
+        )
+        await db.commit()
+        result.revision = noop_revision.revision
+
+    return PlanRestoreResponse(
+        planId=plan_id,
+        restoredFromRevision=revision,
+        revision=result.revision,
+        changes=result.changes,
+        commitSha=result.commit_sha,
+        newScope=result.new_scope,
+    )
 
 
 class PlanProgressRequest(BaseModel):
@@ -972,6 +1291,7 @@ class PlanProgressResponse(BaseModel):
     checkpointId: str
     checkpoint: Dict[str, Any] = Field(default_factory=dict)
     changes: List[Dict[str, Any]] = Field(default_factory=list)
+    revision: Optional[int] = None
     commitSha: Optional[str] = None
     newScope: Optional[str] = None
 
@@ -1018,7 +1338,7 @@ async def log_plan_progress(
     if not isinstance(checkpoints, list) or not checkpoints:
         raise HTTPException(
             status_code=400,
-            detail="Plan has no checkpoints. Seed checkpoints via /dev/plans/update/{plan_id} first.",
+            detail="Plan has no checkpoints. Seed checkpoints via PATCH /dev/plans/{plan_id} first.",
         )
 
     checkpoint_index: Optional[int] = None
@@ -1178,6 +1498,7 @@ async def log_plan_progress(
         checkpointId=payload.checkpoint_id,
         checkpoint=checkpoint,
         changes=result.changes,
+        revision=result.revision,
         commitSha=result.commit_sha,
         newScope=result.new_scope,
     )
@@ -1318,21 +1639,21 @@ async def get_agent_context(
             {
                 "action": "update_status",
                 "method": "PATCH",
-                "url": "/dev/plans/update/{plan_id}",
+                "url": "/dev/plans/{plan_id}",
                 "body": '{"status": "active|parked|done|blocked"}',
                 "description": "Change plan status.",
             },
             {
                 "action": "update_fields",
                 "method": "PATCH",
-                "url": "/dev/plans/update/{plan_id}",
+                "url": "/dev/plans/{plan_id}",
                 "body": '{"title": "...", "status": "active|parked|done|blocked", "stage": "...", "priority": "high|normal|low", "task_scope": "plan|user|system", "plan_type": "feature|bugfix|refactor|exploration|task", "owner": "...", "summary": "...", "visibility": "public|shared|private", "namespace": "dev/plans", "target": {}, "checkpoints": [], "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
                 "description": "Update any combination of plan fields in a single call",
             },
             {
                 "action": "patch_fields",
                 "method": "PATCH",
-                "url": "/dev/plans/update/{plan_id}",
+                "url": "/dev/plans/{plan_id}",
                 "body": '{"patch": {"target": {"type": "system", "id": "agent-infra"}, "checkpoints": [{"id": "phase_1", "label": "Phase 1", "status": "active"}]}}',
                 "description": "Generic patch map for mutable fields (explicit fields in body override patch keys).",
             },
@@ -1346,7 +1667,7 @@ async def get_agent_context(
             {
                 "action": "update_markdown",
                 "method": "PATCH",
-                "url": "/dev/plans/update/{plan_id}",
+                "url": "/dev/plans/{plan_id}",
                 "body": '{"markdown": "full plan markdown content"}',
                 "description": "Update plan prose content",
             },
@@ -1363,10 +1684,43 @@ async def get_agent_context(
                 "description": "Get full plan detail with markdown, checkpoints, children",
             },
             {
+                "action": "list_revisions",
+                "method": "GET",
+                "url": "/dev/plans/revisions/{plan_id}",
+                "description": "List immutable revision history snapshots for a plan.",
+            },
+            {
+                "action": "restore_revision",
+                "method": "POST",
+                "url": "/dev/plans/restore/{plan_id}/{revision}",
+                "body": '{"auto_head": false, "commit_sha": null, "verify_commits": false}',
+                "description": "Restore plan HEAD fields from an immutable revision snapshot.",
+            },
+            {
                 "action": "get_documents",
                 "method": "GET",
                 "url": "/dev/plans/documents/{plan_id}",
                 "description": "Fetch companion and handoff documents for a plan",
+            },
+            {
+                "action": "archive_plan",
+                "method": "POST",
+                "url": "/dev/plans/archive/{plan_id}",
+                "body": '{"auto_head": false}',
+                "description": "Archive a plan (hidden from listings, recoverable via unarchive)",
+            },
+            {
+                "action": "unarchive_plan",
+                "method": "POST",
+                "url": "/dev/plans/unarchive/{plan_id}",
+                "body": '{"restore_status": "active", "auto_head": false}',
+                "description": "Unarchive a plan back to active or parked status",
+            },
+            {
+                "action": "delete_plan",
+                "method": "DELETE",
+                "url": "/dev/plans/{plan_id}?hard=false",
+                "description": "Soft-delete (status=removed) or hard-delete (?hard=true) a plan. Soft is recoverable.",
             },
         ],
     )
@@ -1406,6 +1760,109 @@ async def get_plan_documents_endpoint(
             for d in docs
         ],
     )
+
+
+# ── Archive / delete endpoints ───────────────────────────────────
+
+
+class PlanArchiveRequest(BaseModel):
+    commit_sha: Optional[str] = Field(None, description="Git commit SHA for traceability.")
+    auto_head: bool = Field(False, description="Resolve HEAD as commit SHA.")
+
+
+class PlanArchiveResponse(BaseModel):
+    planId: str
+    status: str
+    changes: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/archive/{plan_id}", response_model=PlanArchiveResponse)
+async def archive_plan_endpoint(
+    plan_id: str,
+    payload: PlanArchiveRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Archive a plan — hidden from default listings, recoverable via unarchive."""
+    commit_sha = payload.commit_sha
+    if payload.auto_head and commit_sha is None:
+        commit_sha = git_resolve_head()
+    if commit_sha:
+        try:
+            commit_sha = _validate_commit_sha(commit_sha)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        result = await archive_plan(
+            db, plan_id, principal=principal, evidence_commit_sha=commit_sha,
+        )
+    except PlanNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return PlanArchiveResponse(planId=plan_id, status="archived", changes=result.changes)
+
+
+class PlanUnarchiveRequest(BaseModel):
+    restore_status: Literal["active", "parked"] = Field("active", description="Status to restore to.")
+    commit_sha: Optional[str] = Field(None, description="Git commit SHA for traceability.")
+    auto_head: bool = Field(False, description="Resolve HEAD as commit SHA.")
+
+
+@router.post("/unarchive/{plan_id}", response_model=PlanArchiveResponse)
+async def unarchive_plan_endpoint(
+    plan_id: str,
+    payload: PlanUnarchiveRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Unarchive a plan — restores to active or parked status."""
+    commit_sha = payload.commit_sha
+    if payload.auto_head and commit_sha is None:
+        commit_sha = git_resolve_head()
+    if commit_sha:
+        try:
+            commit_sha = _validate_commit_sha(commit_sha)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        result = await unarchive_plan(
+            db, plan_id,
+            restore_status=payload.restore_status,
+            principal=principal, evidence_commit_sha=commit_sha,
+        )
+    except PlanNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return PlanArchiveResponse(planId=plan_id, status=payload.restore_status, changes=result.changes)
+
+
+@router.delete("/{plan_id}", response_model=DeleteResponse)
+async def delete_plan_endpoint(
+    plan_id: str,
+    principal: CurrentUser,
+    hard: bool = Query(False, description="Permanently delete (irreversible). Default is soft-delete to 'removed' status."),
+    db: AsyncSession = Depends(get_database),
+):
+    """Delete a plan.
+
+    Soft delete (default): sets status to ``removed``, hidden from listings
+    but recoverable by updating status back.
+
+    Hard delete (``?hard=true``): permanently removes all plan data from the
+    database including events, revisions, and companion documents.
+    """
+    try:
+        result = await delete_plan(db, plan_id, hard=hard, principal=principal)
+    except PlanNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return DeleteResponse(success=result.success, message=result.message)
 
 
 # ── Catch-all: plan by ID (must be last) ─────────────────────────

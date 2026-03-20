@@ -51,11 +51,22 @@ def _app_for_tokens(*, principal=None) -> "FastAPI":
     app = FastAPI()
     app.include_router(agent_token_router, prefix="/api/v1")
 
+    class _FakeDb:
+        def __init__(self):
+            self.added = []
+            self.commit = AsyncMock()
+
+        def add(self, obj):
+            self.added.append(obj)
+
+    fake_db = _FakeDb()
+
     async def _db():
-        yield SimpleNamespace()
+        yield fake_db
 
     app.dependency_overrides[get_database] = _db
     app.dependency_overrides[get_current_principal] = lambda: (principal or _admin_principal())
+    app.state.test_db = fake_db
     return app
 
 
@@ -87,6 +98,8 @@ class TestAgentTokenMinting:
         assert data["agent_id"] == "claude-session-abc"
         assert data["expires_in_hours"] == 4
         assert data["access_token"]
+        assert len(app.state.test_db.added) == 1
+        app.state.test_db.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_mint_agent_token_non_admin_rejected(self):
@@ -389,7 +402,7 @@ class TestUpdatePlanPrincipalArg:
         ) as mock_update:
             async with _client(app) as client:
                 resp = await client.patch(
-                    "/api/v1/dev/plans/update/plan-x",
+                    "/api/v1/dev/plans/plan-x",
                     json={"status": "active"},
                 )
             assert resp.status_code == 200

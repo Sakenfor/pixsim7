@@ -1,6 +1,7 @@
 ﻿from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException
+from pixsim7.backend.main.services.crud.primitives import DeleteResponse
 from pydantic import Field
 
 from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, GameTriggerSvc
@@ -107,14 +108,14 @@ async def update_trigger(
     return to_hotspot_dto(trigger)
 
 
-@router.delete("/{trigger_id}", response_model=Dict[str, Any])
+@router.delete("/{trigger_id}", response_model=DeleteResponse)
 async def delete_trigger(
     trigger_id: int,
     game_trigger_service: GameTriggerSvc,
     user: CurrentGamePrincipal,
-) -> Dict[str, Any]:
+):
     deleted = await game_trigger_service.delete_trigger(trigger_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Trigger not found")
-    return {"status": "ok", "deleted": trigger_id}
+    return DeleteResponse(success=True, message=f"Trigger {trigger_id} deleted.")
 

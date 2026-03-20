@@ -423,7 +423,7 @@ function PlanDetailView({
       setLastResult(null);
       try {
         const res = await pixsimClient.patch<PlanUpdateResponse>(
-          `/dev/plans/update/${planId}`,
+          `/dev/plans/${planId}`,
           updates,
         );
         const changed = res.changes.map((c) => `${c.field}: ${c.old}\u2192${c.new}`).join(', ');

@@ -1,4 +1,4 @@
-"""API tests for /dev/plans/update/{plan_id} payload handling."""
+"""API tests for PATCH /dev/plans/{plan_id} payload handling."""
 
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ class TestDevPlansUpdateEndpoint:
 
         with patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update):
             async with _client(app) as c:
-                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+                response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
 
         assert response.status_code == 200
         body = response.json()
@@ -109,7 +109,7 @@ class TestDevPlansUpdateEndpoint:
 
         with patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update):
             async with _client(app) as c:
-                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+                response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
 
         assert response.status_code == 200
         args, _kwargs = mock_update.await_args
@@ -121,7 +121,7 @@ class TestDevPlansUpdateEndpoint:
         app = _app(authenticated=True)
 
         async with _client(app) as c:
-            response = await c.patch("/api/v1/dev/plans/update/plan-a", json={})
+            response = await c.patch("/api/v1/dev/plans/plan-a", json={})
 
         assert response.status_code == 400
         assert "No fields to update" in response.json()["detail"]
@@ -142,7 +142,7 @@ class TestDevPlansUpdateEndpoint:
 
         with patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update):
             async with _client(app) as c:
-                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+                response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
 
         assert response.status_code == 200
         _, kwargs = mock_update.await_args
@@ -159,7 +159,7 @@ class TestDevPlansUpdateEndpoint:
         }
 
         async with _client(app) as c:
-            response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+            response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
 
         assert response.status_code == 400
         assert "Invalid commit SHA" in response.json()["detail"]
@@ -177,7 +177,7 @@ class TestDevPlansUpdateEndpoint:
 
         with patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update):
             async with _client(app) as c:
-                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+                response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
 
         assert response.status_code == 200
         _, kwargs = mock_update.await_args
@@ -199,7 +199,7 @@ class TestDevPlansUpdateEndpoint:
 
         with patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update):
             async with _client(app) as c:
-                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+                response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
 
         assert response.status_code == 200
         args, _ = mock_update.await_args
@@ -223,7 +223,7 @@ class TestDevPlansUpdateEndpoint:
             patch("pixsim7.backend.main.api.v1.dev_plans.git_resolve_head", return_value="aabbccdd11223344556677889900aabbccddeeff"),
         ):
             async with _client(app) as c:
-                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+                response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
 
         assert response.status_code == 200
         _, kwargs = mock_update.await_args
@@ -249,7 +249,7 @@ class TestDevPlansUpdateEndpoint:
             patch("pixsim7.backend.main.api.v1.dev_plans.git_resolve_head", return_value="aabbccdd11223344556677889900aabbccddeeff"),
         ):
             async with _client(app) as c:
-                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+                response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
 
         assert response.status_code == 200
         _, kwargs = mock_update.await_args
@@ -269,7 +269,7 @@ class TestDevPlansUpdateEndpoint:
 
         with patch("pixsim7.backend.main.api.v1.dev_plans.git_verify_commit", return_value=False):
             async with _client(app) as c:
-                response = await c.patch("/api/v1/dev/plans/update/plan-a", json=payload)
+                response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
 
         assert response.status_code == 400
         assert "Commit not found in repository" in response.json()["detail"]
@@ -280,7 +280,7 @@ class TestDevPlansUpdateEndpoint:
 
         async with _client(app) as c:
             response = await c.patch(
-                "/api/v1/dev/plans/update/plan-a",
+                "/api/v1/dev/plans/plan-a",
                 json={"status": "active"},
             )
 

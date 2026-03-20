@@ -81,6 +81,14 @@ def _builtin_prompts_analysis(version: str = "unknown") -> MetaContract:
 
 
 def _builtin_prompts_authoring(version: str = "unknown") -> MetaContract:
+    # Auto-generate authoring-mode CRUD sub-endpoints from the spec
+    try:
+        from pixsim7.backend.main.api.v1.prompts.meta import authoring_mode_crud_spec
+        from pixsim7.backend.main.services.crud.registry import spec_to_meta_sub_endpoints
+        auto_endpoints = spec_to_meta_sub_endpoints(authoring_mode_crud_spec)
+    except ImportError:
+        auto_endpoints = []
+
     return MetaContract(
         id="prompts.authoring",
         name="Prompt Authoring Contract",
@@ -102,11 +110,13 @@ def _builtin_prompts_authoring(version: str = "unknown") -> MetaContract:
             "prompt_versions",
             "authoring_workflows",
             "authoring_modes",
+            "authoring_mode_crud",
             "generation_hints",
             "valid_values",
         ],
         relates_to=["prompts.analysis", "blocks.discovery", "user.assistant"],
         sub_endpoints=[
+            # -- Family CRUD --
             MetaContractEndpoint(
                 id="prompts.list_families",
                 method="GET",
@@ -138,6 +148,7 @@ def _builtin_prompts_authoring(version: str = "unknown") -> MetaContract:
                 ),
                 tags=["families", "write"],
             ),
+            # -- Version CRUD --
             MetaContractEndpoint(
                 id="prompts.list_versions",
                 method="GET",
@@ -166,6 +177,7 @@ def _builtin_prompts_authoring(version: str = "unknown") -> MetaContract:
                 summary="Apply edits to a version, creating a child version.",
                 tags=["versions", "write"],
             ),
+            # -- Analysis & discovery --
             MetaContractEndpoint(
                 id="prompts.analyze",
                 method="POST",
@@ -180,6 +192,8 @@ def _builtin_prompts_authoring(version: str = "unknown") -> MetaContract:
                 summary="Find similar prompts by text similarity.",
                 tags=["discovery"],
             ),
+            # -- Authoring mode CRUD (auto-generated from spec) --
+            *auto_endpoints,
         ],
     )
 
@@ -377,8 +391,8 @@ def _builtin_plans_management() -> MetaContract:
             MetaContractEndpoint(
                 id="plans.update",
                 method="PATCH",
-                path="/api/v1/dev/plans/update/{plan_id}",
-                summary="Update plan fields: title/status/stage/owner/priority/summary/markdown plus tags, code paths, companions, handoffs, and dependencies.",
+                path="/api/v1/dev/plans/{plan_id}",
+                summary="Update plan fields with optional git commit traceability for audit trail.",
                 input_schema={
                     "type": "object",
                     "properties": {
@@ -404,20 +418,32 @@ def _builtin_plans_management() -> MetaContract:
                                 "handoffs": {"type": "array", "items": {"type": "string"}},
                                 "depends_on": {"type": "array", "items": {"type": "string"}},
                                 "patch": {"type": "object"},
+                                "commit_sha": {
+                                    "type": "string",
+                                    "description": "Git commit SHA to record on the audit event.",
+                                },
+                                "auto_head": {
+                                    "type": "boolean",
+                                    "description": "Resolve current HEAD as commit_sha if not provided.",
+                                },
+                                "verify_commits": {
+                                    "type": "boolean",
+                                    "description": "Verify commit SHA exists in the repo.",
+                                },
                             },
                         },
                     },
                     "required": ["plan_id", "body"],
                 },
-                tags=["update", "planning"],
+                tags=["update", "planning", "git"],
             ),
             MetaContractEndpoint(
                 id="plans.progress",
                 method="POST",
                 path="/api/v1/dev/plans/progress/{plan_id}",
                 summary=(
-                    "Log in-flight checkpoint progress using point deltas and execution metadata "
-                    "(status/owner/eta/blockers/evidence) with consistent checkpoint updates."
+                    "Log in-flight checkpoint progress with optional git commit traceability. "
+                    "Supports point deltas, execution metadata, and commit SHA evidence."
                 ),
                 input_schema={
                     "type": "object",
@@ -438,12 +464,33 @@ def _builtin_plans_management() -> MetaContract:
                                 "append_evidence": {"type": "array", "items": {"type": "string"}},
                                 "note": {"type": "string"},
                                 "sync_plan_stage": {"type": "boolean"},
+                                "commit_sha": {
+                                    "type": "string",
+                                    "description": "Git commit SHA to record as evidence (7-40 hex chars).",
+                                },
+                                "append_commits": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Additional commit SHAs to append as evidence.",
+                                },
+                                "commit_range": {
+                                    "type": "string",
+                                    "description": "Git range (e.g. 'abc123..def456') — auto-expanded via rev-list.",
+                                },
+                                "auto_head": {
+                                    "type": "boolean",
+                                    "description": "Resolve current HEAD as commit_sha if not provided.",
+                                },
+                                "verify_commits": {
+                                    "type": "boolean",
+                                    "description": "Verify commit SHAs exist in the repo (default true).",
+                                },
                             },
                         },
                     },
                     "required": ["plan_id", "body"],
                 },
-                tags=["update", "progress", "planning"],
+                tags=["update", "progress", "planning", "git"],
             ),
             MetaContractEndpoint(
                 id="plans.documents",

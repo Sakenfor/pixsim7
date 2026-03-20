@@ -246,7 +246,7 @@ class TestDevPlansCreateEndpoint:
 
     @pytest.mark.asyncio
     async def test_blocked_status_gets_active_scope(self):
-        """Blocked status should derive scope='active' via _status_to_scope."""
+        """Blocked status should derive scope='active' via status_to_scope."""
         app = _app()
         mock_db = _make_mock_db()
         added_objects = []

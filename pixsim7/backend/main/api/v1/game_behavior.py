@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ValidationError
 
+from pixsim7.backend.main.services.crud.primitives import DeleteResponse
+
 from pixsim7.backend.main.api.dependencies import (
     CurrentGamePrincipal,
     DatabaseSession,
@@ -343,7 +345,7 @@ async def update_activity(
     return req.activity
 
 
-@router.delete("/{world_id}/behavior/activities/{activity_id}")
+@router.delete("/{world_id}/behavior/activities/{activity_id}", response_model=DeleteResponse)
 async def delete_activity(
     world_id: int,
     activity_id: str,
@@ -369,7 +371,7 @@ async def delete_activity(
     meta["behavior"] = behavior_config
     await game_world_service.update_world_meta(world_id, meta)
 
-    return {"deleted": activity_id}
+    return DeleteResponse(success=True, message=f"Activity '{activity_id}' deleted.")
 
 
 # ==================
@@ -467,7 +469,7 @@ async def update_routine(
     return req.routine
 
 
-@router.delete("/{world_id}/behavior/routines/{routine_id}")
+@router.delete("/{world_id}/behavior/routines/{routine_id}", response_model=DeleteResponse)
 async def delete_routine(
     world_id: int,
     routine_id: str,
@@ -493,7 +495,7 @@ async def delete_routine(
     meta["behavior"] = behavior_config
     await game_world_service.update_world_meta(world_id, meta)
 
-    return {"deleted": routine_id}
+    return DeleteResponse(success=True, message=f"Routine '{routine_id}' deleted.")
 
 
 # ==================

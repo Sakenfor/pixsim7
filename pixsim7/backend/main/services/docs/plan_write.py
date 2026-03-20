@@ -9,14 +9,21 @@ from __future__ import annotations
 import json
 import subprocess
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.docs.models import Document, PlanDocument, PlanEvent, PlanRegistry
+from pixsim7.backend.main.domain.docs.models import (
+    Document,
+    PlanDocument,
+    PlanRegistry,
+    PlanRevision,
+)
+from pixsim7.backend.main.domain.platform.entity_audit import EntityAudit
 from pixsim7.backend.main.services.docs.plans import (
     MANIFEST_FILENAMES,
     PLAN_SCOPES,
@@ -57,9 +64,12 @@ LIST_MUTABLE_FIELDS = frozenset({"tags", "code_paths", "companions", "handoffs",
 JSON_MUTABLE_FIELDS = frozenset({"target", "checkpoints"})
 ALL_MUTABLE_FIELDS = DOC_MUTABLE_FIELDS | PLAN_MUTABLE_FIELDS
 
-VALID_STATUSES = ("active", "parked", "done", "blocked")
+VALID_STATUSES = ("active", "parked", "done", "blocked", "archived")
 VALID_PRIORITIES = ("high", "normal", "low")
 VALID_TASK_SCOPES = ("plan", "user", "system")
+
+# Statuses hidden from default listings (require explicit include flag).
+HIDDEN_STATUSES = frozenset({"removed", "archived"})
 
 _PLAN_NOTIFICATION_SYSTEM_ID = "plan"
 _PLAN_NOTIFICATION_SYSTEM_LABEL = "Plans"
@@ -203,6 +213,7 @@ class PlanUpdateResult:
     changes: List[Dict[str, Any]] = field(default_factory=list)
     commit_sha: Optional[str] = None
     new_scope: Optional[str] = None
+    revision: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -247,12 +258,13 @@ def _write_plan_md(path: Path, markdown: str) -> None:
     path.write_text(markdown, encoding="utf-8")
 
 
-def _status_to_scope(status: str) -> str:
+def status_to_scope(status: str) -> str:
     """Map plan status to filesystem scope directory."""
     if status in ("active", "blocked"):
         return "active"
     if status == "done":
         return "done"
+    # archived and removed plans park alongside parked ones on disk
     return "parked"
 
 
@@ -311,7 +323,7 @@ def _build_manifest_data(bundle: PlanBundle) -> Dict[str, Any]:
 def export_plan_to_disk(bundle: PlanBundle) -> List[Path]:
     """Write manifest.yaml and plan.md to disk. Returns written paths."""
     repo_root = _resolve_repo_root()
-    scope = _status_to_scope(bundle.doc.status)
+    scope = status_to_scope(bundle.doc.status)
     plan_dir = repo_root / PLANS_DIR / scope / bundle.plan.id
 
     manifest_path = plan_dir / "manifest.yaml"
@@ -657,22 +669,106 @@ async def _emit_events(
     changes: List[Dict[str, Any]],
     commit_sha: Optional[str],
     actor_source: Optional[str] = None,
+    entity_label: Optional[str] = None,
 ) -> None:
-    now = utcnow()
+    from pixsim7.backend.main.services.audit import emit_audit
+
+    actor = actor_source or "system"
     for change in changes:
-        if change["field"] == "markdown":
-            db.add(PlanEvent(
-                plan_id=plan_id, event_type="content_updated",
-                field="markdown", commit_sha=commit_sha,
-                actor=actor_source, timestamp=now,
-            ))
-        else:
-            db.add(PlanEvent(
-                plan_id=plan_id, event_type="field_changed",
-                field=change["field"], old_value=change.get("old"),
-                new_value=change.get("new"), commit_sha=commit_sha,
-                actor=actor_source, timestamp=now,
-            ))
+        action = "content_updated" if change["field"] == "markdown" else "field_changed"
+        await emit_audit(
+            db, domain="plan", entity_type="plan_registry",
+            entity_id=plan_id, entity_label=entity_label,
+            action=action, field=change["field"],
+            old_value=change.get("old"), new_value=change.get("new"),
+            actor=actor, commit_sha=commit_sha,
+        )
+
+
+def _snapshot_timestamp(value: Optional[datetime]) -> Optional[str]:
+    if value is None:
+        return None
+    return value.isoformat()
+
+
+def _build_plan_snapshot(bundle: PlanBundle) -> Dict[str, Any]:
+    """Serialize current Document + PlanRegistry state to JSON-friendly snapshot."""
+    doc, plan = bundle.doc, bundle.plan
+    return {
+        "doc": {
+            "id": doc.id,
+            "doc_type": doc.doc_type,
+            "title": doc.title,
+            "status": doc.status,
+            "owner": doc.owner,
+            "summary": doc.summary,
+            "markdown": doc.markdown,
+            "user_id": doc.user_id,
+            "visibility": doc.visibility,
+            "namespace": doc.namespace,
+            "tags": list(doc.tags or []),
+            "extra": doc.extra,
+            "revision": doc.revision,
+            "created_at": _snapshot_timestamp(doc.created_at),
+            "updated_at": _snapshot_timestamp(doc.updated_at),
+        },
+        "plan": {
+            "id": plan.id,
+            "document_id": plan.document_id,
+            "parent_id": plan.parent_id,
+            "stage": plan.stage,
+            "priority": plan.priority,
+            "scope": plan.scope,
+            "task_scope": plan.task_scope,
+            "plan_type": plan.plan_type,
+            "target": plan.target,
+            "checkpoints": plan.checkpoints,
+            "plan_path": plan.plan_path,
+            "code_paths": list(plan.code_paths or []),
+            "companions": list(plan.companions or []),
+            "handoffs": list(plan.handoffs or []),
+            "depends_on": list(plan.depends_on or []),
+            "manifest_hash": plan.manifest_hash,
+            "last_synced_at": _snapshot_timestamp(plan.last_synced_at),
+            "created_at": _snapshot_timestamp(plan.created_at),
+            "updated_at": _snapshot_timestamp(plan.updated_at),
+        },
+    }
+
+
+async def record_plan_revision(
+    db: AsyncSession,
+    bundle: PlanBundle,
+    *,
+    event_type: str,
+    actor: Optional[str],
+    commit_sha: Optional[str],
+    changed_fields: Optional[List[str]] = None,
+    restore_from_revision: Optional[int] = None,
+) -> PlanRevision:
+    """Persist an immutable revision snapshot for a plan."""
+    max_revision = (
+        await db.execute(
+            select(func.max(PlanRevision.revision)).where(
+                PlanRevision.plan_id == bundle.plan.id
+            )
+        )
+    ).scalar_one_or_none()
+    next_revision = int(max_revision or 0) + 1
+
+    row = PlanRevision(
+        plan_id=bundle.plan.id,
+        document_id=bundle.doc.id,
+        revision=next_revision,
+        event_type=event_type,
+        actor=actor,
+        commit_sha=commit_sha,
+        changed_fields=list(changed_fields or []),
+        restore_from_revision=restore_from_revision,
+        snapshot=_build_plan_snapshot(bundle),
+    )
+    db.add(row)
+    return row
 
 
 async def _emit_plan_notification(
@@ -779,12 +875,14 @@ async def update_plan(
     updates: Dict[str, Any],
     principal=None,
     evidence_commit_sha: Optional[str] = None,
+    revision_event_type: str = "update",
+    restore_from_revision: Optional[int] = None,
 ) -> PlanUpdateResult:
     """
     Apply field updates to a plan (DB-first).
 
     Routes updates: doc fields -> Document, plan fields -> PlanRegistry.
-    Emits PlanEvents, exports to disk, commits to git.
+    Emits audit entries, exports to disk, commits to git.
     """
     for key in updates:
         if key not in ALL_MUTABLE_FIELDS:
@@ -863,9 +961,9 @@ async def update_plan(
         return result
 
     # Track scope change
-    old_scope = plan.scope or _status_to_scope(doc.status)
+    old_scope = plan.scope or status_to_scope(doc.status)
     if "status" in updates:
-        plan.scope = _status_to_scope(updates["status"])
+        plan.scope = status_to_scope(updates["status"])
 
     now = utcnow()
     plan.updated_at = now
@@ -876,14 +974,24 @@ async def update_plan(
     # Emit events + notification
     sha = None
     actor_source = principal.source if principal else None
-    await _emit_events(db, plan_id, changes, evidence_commit_sha, actor_source=actor_source)
+    await _emit_events(db, plan_id, changes, evidence_commit_sha, actor_source=actor_source, entity_label=doc.title)
+    revision_row = await record_plan_revision(
+        db,
+        bundle,
+        event_type=revision_event_type,
+        actor=actor_source,
+        commit_sha=evidence_commit_sha,
+        changed_fields=[c["field"] for c in changes],
+        restore_from_revision=restore_from_revision,
+    )
+    result.revision = revision_row.revision
     await _emit_plan_notification(db, plan_id, doc.title, changes, principal=principal)
     await db.commit()
 
     # Optional commit-back to filesystem (disabled in DB-only mode)
     if not _plans_db_only_mode():
         try:
-            new_scope = _status_to_scope(doc.status)
+            new_scope = status_to_scope(doc.status)
             needs_move = new_scope != old_scope
 
             if needs_move:
@@ -923,6 +1031,112 @@ async def update_plan(
     )
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Archive / delete
+# ---------------------------------------------------------------------------
+
+
+async def archive_plan(
+    db: AsyncSession,
+    plan_id: str,
+    *,
+    principal=None,
+    evidence_commit_sha: Optional[str] = None,
+) -> PlanUpdateResult:
+    """Archive a plan (status → archived). Reversible via unarchive."""
+    return await update_plan(
+        db, plan_id, {"status": "archived"},
+        principal=principal, evidence_commit_sha=evidence_commit_sha,
+    )
+
+
+async def unarchive_plan(
+    db: AsyncSession,
+    plan_id: str,
+    *,
+    restore_status: str = "active",
+    principal=None,
+    evidence_commit_sha: Optional[str] = None,
+) -> PlanUpdateResult:
+    """Unarchive a plan back to *restore_status* (default ``active``)."""
+    if restore_status not in ("active", "parked"):
+        raise ValueError(f"restore_status must be 'active' or 'parked', got '{restore_status}'")
+    return await update_plan(
+        db, plan_id, {"status": restore_status},
+        principal=principal, evidence_commit_sha=evidence_commit_sha,
+    )
+
+
+@dataclass
+class PlanDeleteResult:
+    plan_id: str
+    hard: bool
+    success: bool
+    message: str
+
+
+async def delete_plan(
+    db: AsyncSession,
+    plan_id: str,
+    *,
+    hard: bool = False,
+    principal=None,
+    evidence_commit_sha: Optional[str] = None,
+) -> PlanDeleteResult:
+    """Delete a plan.
+
+    Soft delete (default): sets status to ``removed`` — hidden from listings
+    but recoverable via status update.
+
+    Hard delete (``hard=True``): permanently removes PlanRegistry, Document,
+    audit entries, PlanRevisions, and PlanDocuments from the database.
+    """
+    bundle = await _load_bundle(db, plan_id)
+    if not bundle:
+        raise PlanNotFoundError(f"Plan not found: {plan_id}")
+
+    actor_source = principal.source if principal else None
+
+    if not hard:
+        # Soft delete: status → removed (reuses update_plan for events/revision)
+        await update_plan(
+            db, plan_id, {"status": "removed"},
+            principal=principal, evidence_commit_sha=evidence_commit_sha,
+        )
+        return PlanDeleteResult(
+            plan_id=plan_id, hard=False, success=True,
+            message=f"Plan '{plan_id}' soft-deleted (status=removed).",
+        )
+
+    # Hard delete: cascade removal
+    doc_id = bundle.doc.id
+
+    # Delete child rows first (audit entries, revisions, documents)
+    from sqlalchemy import delete as sa_delete
+
+    await db.execute(sa_delete(EntityAudit).where(
+        EntityAudit.domain == "plan", EntityAudit.entity_id == plan_id,
+    ))
+    await db.execute(sa_delete(PlanRevision).where(PlanRevision.plan_id == plan_id))
+    await db.execute(sa_delete(PlanDocument).where(PlanDocument.plan_id == plan_id))
+
+    # Delete plan registry row, then document
+    await db.execute(sa_delete(PlanRegistry).where(PlanRegistry.id == plan_id))
+    await db.execute(sa_delete(Document).where(Document.id == doc_id))
+    await db.commit()
+
+    # Invalidate filesystem cache
+    import pixsim7.backend.main.services.docs.plans as plans_module
+    plans_module._plans_cache = None
+
+    logger.info("plan_hard_deleted", plan_id=plan_id, actor=actor_source)
+
+    return PlanDeleteResult(
+        plan_id=plan_id, hard=True, success=True,
+        message=f"Plan '{plan_id}' permanently deleted.",
+    )
 
 
 async def get_plan_bundle(db: AsyncSession, plan_id: str) -> Optional[PlanBundle]:

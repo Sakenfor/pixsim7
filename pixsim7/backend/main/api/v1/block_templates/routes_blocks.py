@@ -32,11 +32,11 @@ from pixsim7.backend.main.services.prompt.block.tag_dictionary import (
 from pixsim7.backend.main.services.prompt.block.vocabulary_governance import (
     VocabularyGovernanceService,
 )
+from pixsim7.backend.main.services.crud.primitives import DeleteResponse
 from .schemas import (
     BlockResponse,
     UpsertPrimitiveBlockRequest,
     UpsertPrimitiveBlockResponse,
-    DeletePrimitiveBlockResponse,
     BlockCatalogRowResponse,
     BlockTagDictionaryResponse,
     BlockTagDictionaryKeyResponse,
@@ -250,7 +250,7 @@ async def upsert_block_by_block_id(
         )
 
 
-@router.delete("/blocks/by-block-id/{block_id}", response_model=DeletePrimitiveBlockResponse)
+@router.delete("/blocks/by-block-id/{block_id}", response_model=DeleteResponse)
 async def delete_block_by_block_id(
     block_id: str,
     current_user: User = Depends(get_current_user),
@@ -273,7 +273,7 @@ async def delete_block_by_block_id(
         await blocks_db.delete(block)
         await blocks_db.commit()
 
-    return DeletePrimitiveBlockResponse(deleted_block_id=normalized_block_id)
+    return DeleteResponse(success=True, message=f"Block '{normalized_block_id}' deleted.")
 
 
 @router.get("/meta/blocks/catalog", response_model=List[BlockCatalogRowResponse])

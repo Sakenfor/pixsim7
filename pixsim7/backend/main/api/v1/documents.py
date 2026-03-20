@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_current_user, get_database
+from pixsim7.backend.main.services.crud.primitives import DeleteResponse
 from pixsim7.backend.main.domain.docs.models import Document, DocumentEvent, DocumentShare
 from pixsim7.backend.main.domain.user import User
 from pixsim7.backend.main.shared.datetime_utils import utcnow
@@ -30,6 +31,7 @@ class DocumentCreateRequest(BaseModel):
     summary: Optional[str] = None
     markdown: Optional[str] = None
     visibility: str = Field("private", description="private | shared | public")
+    namespace: Optional[str] = Field(None, max_length=255, description="Optional taxonomy namespace")
     tags: Optional[List[str]] = None
     extra: Optional[Dict[str, Any]] = None
 
@@ -44,6 +46,7 @@ class DocumentResponse(BaseModel):
     markdown: Optional[str] = None
     user_id: Optional[int] = None
     visibility: str
+    namespace: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     extra: Optional[Dict[str, Any]] = None
     revision: int
@@ -62,6 +65,7 @@ class DocumentUpdateRequest(BaseModel):
     summary: Optional[str] = None
     markdown: Optional[str] = None
     visibility: Optional[str] = None
+    namespace: Optional[str] = Field(None, max_length=255)
     tags: Optional[List[str]] = None
     extra: Optional[Dict[str, Any]] = None
 
@@ -80,6 +84,7 @@ def _to_response(doc: Document) -> dict:
         "markdown": doc.markdown,
         "user_id": doc.user_id,
         "visibility": doc.visibility,
+        "namespace": doc.namespace,
         "tags": doc.tags or [],
         "extra": doc.extra,
         "revision": doc.revision,
@@ -129,6 +134,7 @@ async def create_document(
         markdown=payload.markdown,
         user_id=user.id,
         visibility=payload.visibility,
+        namespace=payload.namespace,
         tags=payload.tags or [],
         extra=payload.extra,
         revision=1,
@@ -152,6 +158,7 @@ async def create_document(
 async def list_documents(
     doc_type: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
+    namespace: Optional[str] = Query(None, description="Filter by namespace"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_database),
 ):
@@ -162,6 +169,8 @@ async def list_documents(
         stmt = stmt.where(Document.doc_type == doc_type)
     if status:
         stmt = stmt.where(Document.status == status)
+    if namespace:
+        stmt = stmt.where(Document.namespace == namespace)
 
     rows = (await db.execute(stmt)).scalars().all()
 
@@ -229,7 +238,7 @@ async def update_document(
     return _to_response(doc)
 
 
-@router.delete("/{doc_id}")
+@router.delete("/{doc_id}", response_model=DeleteResponse)
 async def delete_document(
     doc_id: str,
     user: User = Depends(get_current_user),
@@ -244,4 +253,4 @@ async def delete_document(
 
     await db.delete(doc)
     await db.commit()
-    return {"ok": True, "deleted": doc_id}
+    return DeleteResponse(success=True, message=f"Document '{doc_id}' deleted.")
