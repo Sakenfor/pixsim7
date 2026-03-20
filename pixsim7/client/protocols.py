@@ -139,42 +139,35 @@ class ClaudeProtocol(AgentProtocol):
         return ParsedEvent(kind="other", raw=raw)
 
 
-class CodexProtocol(AgentProtocol):
-    """Codex CLI: one process per turn, JSONL output via exec --json."""
+class CodexExecProtocol(AgentProtocol):
+    """Codex CLI exec mode: one process per turn, JSONL output via exec --json."""
 
-    name = "codex"
+    name = "codex-exec"
 
     def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, extra_args=None):
         if resume_session_id:
             cmd = [command, "exec", "resume", resume_session_id, "--json"]
         else:
             cmd = [command, "exec", "--json"]
-        if system_prompt:
-            # Codex doesn't have --append-system-prompt; prepend to the prompt instead
-            pass  # handled in build_message_payload
-        # Codex doesn't support --mcp-config per-invocation;
-        # MCP servers are configured globally via `codex mcp add`
+        # Codex doesn't support --mcp-config or --append-system-prompt per-invocation
         cmd.extend(self.translate_args(extra_args))
         return cmd
 
     def build_message_payload(self, message, images=None):
-        # Codex reads prompt from stdin (plain text, not JSON)
         return message + "\n"
 
     def is_long_running(self):
-        return False  # one process per turn
+        return False
 
     def parse_event(self, raw):
         t = raw.get("type", "")
         if t == "thread.started":
             return ParsedEvent(kind="init", session_id=raw.get("thread_id"), raw=raw)
         if t == "turn.completed":
-            # Final event — signal result (text accumulated from item.completed)
             return ParsedEvent(kind="result", text="", duration_ms=0, raw=raw)
         if t == "item.completed":
             item = raw.get("item", {})
             if item.get("type") == "agent_message":
-                # Accumulate text — not the final result yet (turn.completed is)
                 return ParsedEvent(kind="progress", text=item.get("text", ""), raw=raw)
             if item.get("type") == "tool_call":
                 return ParsedEvent(kind="progress", text=f"Using tool: {item.get('name', '?')}", raw=raw)
@@ -183,11 +176,97 @@ class CodexProtocol(AgentProtocol):
         return ParsedEvent(kind="other", raw=raw)
 
 
+class CodexAppServerProtocol(AgentProtocol):
+    """Codex app-server: long-running JSON-RPC over stdio. Full multi-turn + MCP tools."""
+
+    name = "codex"
+
+    def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, extra_args=None):
+        # app-server is always long-running; resume is handled via thread/resume RPC
+        cmd = [command, "app-server"]
+        # No CLI flags for system prompt or MCP — configured globally
+        return cmd
+
+    def build_message_payload(self, message, images=None):
+        """Build a JSON-RPC turn/start request. Returns None — handled specially in send_message."""
+        # The session handles the full JSON-RPC flow (initialize, thread/start, turn/start)
+        # We encode the user message as a turn/start payload
+        import json
+        user_input: list[dict] = [{"type": "text", "text": message}]
+        for img in (images or []):
+            if img.get("data"):
+                # base64 image — write to temp file for localImage
+                pass  # TODO: image support via localImage
+        # Return the input array as JSON — session code will wrap it in turn/start
+        return json.dumps(user_input)
+
+    def is_long_running(self):
+        return True
+
+    def needs_jsonrpc_init(self) -> bool:
+        """This protocol requires JSON-RPC initialize + thread/start before messages."""
+        return True
+
+    def parse_event(self, raw):
+        """Parse JSON-RPC notifications from app-server."""
+        method = raw.get("method", "")
+        params = raw.get("params", {})
+        rid = raw.get("id")
+
+        # Response to initialize (id=0)
+        if rid == 0 and "result" in raw:
+            return ParsedEvent(kind="init", raw=raw)
+
+        # Response to thread/start (id=1) — contains thread ID
+        if rid == 1 and "result" in raw:
+            thread = raw["result"].get("thread", {})
+            return ParsedEvent(kind="init", session_id=thread.get("id"), raw=raw)
+
+        # Response to turn/start (id >= 2) — ack
+        if rid is not None and rid >= 2 and "result" in raw:
+            return ParsedEvent(kind="other", raw=raw)
+
+        # Error responses
+        if "error" in raw:
+            return ParsedEvent(kind="error", text=raw["error"].get("message", ""), raw=raw)
+
+        # Streaming text deltas
+        if method == "item/agentMessage/delta":
+            return ParsedEvent(kind="progress", text=params.get("delta", ""), raw=raw)
+
+        # Agent message completed — contains full text
+        if method == "item/completed":
+            item = params.get("item", {})
+            if item.get("type") == "agentMessage":
+                return ParsedEvent(kind="progress", text=item.get("text", ""), raw=raw)
+
+        # Turn completed — final event
+        if method == "turn/completed":
+            return ParsedEvent(kind="result", text="", duration_ms=0, raw=raw)
+
+        # Turn started
+        if method == "turn/started":
+            return ParsedEvent(kind="progress", text="Thinking...", raw=raw)
+
+        # MCP startup
+        if method == "codex/event/mcp_startup_complete":
+            return ParsedEvent(kind="progress", text="MCP tools loaded", raw=raw)
+
+        # Thread status
+        if method == "thread/status/changed":
+            status = params.get("status", "")
+            if status:
+                return ParsedEvent(kind="progress", text=f"Status: {status}", raw=raw)
+
+        return ParsedEvent(kind="other", raw=raw)
+
+
 # ── Registry ────────────────────────────────────────────────────────
 
 PROTOCOL_REGISTRY: dict[str, AgentProtocol] = {
     "claude": ClaudeProtocol(),
-    "codex": CodexProtocol(),
+    "codex": CodexAppServerProtocol(),
+    "codex-exec": CodexExecProtocol(),  # fallback single-turn mode
 }
 
 

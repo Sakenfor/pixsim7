@@ -153,9 +153,74 @@ class AgentCmdSession:
         self.state = SessionState.READY
         self.stats.started_at = datetime.now(timezone.utc)
         self._last_error = None
+        self._jsonrpc_id = 10  # start IDs above the init sequence
 
         client_log(f"[{self.session_id}] Started (PID: {self._process.pid})")
+
+        # JSON-RPC protocols (codex app-server) need initialize + thread/start
+        if hasattr(self._protocol, 'needs_jsonrpc_init') and self._protocol.needs_jsonrpc_init():
+            try:
+                await self._jsonrpc_init()
+            except Exception as e:
+                client_log(f"[{self.session_id}] JSON-RPC init failed: {e}", error=True)
+                self._last_error = f"Protocol init failed: {e}"
+                await self.stop()
+                return False
+
         return True
+
+    async def _jsonrpc_init(self) -> None:
+        """Send JSON-RPC initialize + thread/start for protocols that need it."""
+        if not self._process or not self._process.stdin:
+            return
+
+        # initialize
+        init_msg = json.dumps({
+            "jsonrpc": "2.0", "method": "initialize",
+            "params": {"clientInfo": {"name": "pixsim", "version": "1.0"}, "protocolVersion": "2.0"},
+            "id": 0,
+        }) + "\n"
+        self._process.stdin.write(init_msg.encode())
+        await self._process.stdin.drain()
+
+        # Wait for init response
+        init_resp = await asyncio.wait_for(self._response_queue.get(), timeout=10)
+        parsed = self._protocol.parse_event(init_resp)
+        if parsed.kind == "error":
+            raise RuntimeError(f"Init failed: {parsed.text}")
+
+        # thread/start (or thread/resume)
+        if self._resume_session_id:
+            thread_msg = json.dumps({
+                "jsonrpc": "2.0", "method": "thread/resume",
+                "params": {"threadId": self._resume_session_id, "approvalPolicy": "never", "sandbox": "danger-full-access"},
+                "id": 1,
+            }) + "\n"
+        else:
+            thread_msg = json.dumps({
+                "jsonrpc": "2.0", "method": "thread/start",
+                "params": {"approvalPolicy": "never", "sandbox": "danger-full-access"},
+                "id": 1,
+            }) + "\n"
+        self._process.stdin.write(thread_msg.encode())
+        await self._process.stdin.drain()
+
+        # Read events until we get the thread response (skip notifications)
+        deadline = asyncio.get_event_loop().time() + 15
+        while asyncio.get_event_loop().time() < deadline:
+            event = await asyncio.wait_for(self._response_queue.get(), timeout=10)
+            parsed = self._protocol.parse_event(event)
+            if parsed.kind == "error":
+                raise RuntimeError(f"Thread start failed: {parsed.text}")
+            if parsed.kind == "init" and parsed.session_id:
+                self.cli_session_id = parsed.session_id
+                client_log(f"[{self.session_id}] Thread: {self.cli_session_id}")
+                return
+            # Skip notifications (configWarning, thread/started, mcp_startup, etc.)
+            if parsed.kind == "progress":
+                client_log(f"[{self.session_id}] Init: {parsed.text}")
+
+        raise RuntimeError("Timed out waiting for thread ID")
 
     async def stop(self) -> None:
         """Stop the CLI process gracefully."""
@@ -227,14 +292,26 @@ class AgentCmdSession:
             except asyncio.QueueEmpty:
                 break
 
-        # Build and send payload via protocol adapter
-        payload = self._protocol.build_message_payload(message, images)
-        if payload:
-            self._process.stdin.write(payload.encode())
+        # Send message via protocol adapter
+        if hasattr(self._protocol, 'needs_jsonrpc_init') and self._protocol.needs_jsonrpc_init():
+            # JSON-RPC: send turn/start with the thread ID
+            self._jsonrpc_id += 1
+            user_input = json.loads(self._protocol.build_message_payload(message, images))
+            turn_msg = json.dumps({
+                "jsonrpc": "2.0", "method": "turn/start",
+                "params": {"threadId": self.cli_session_id, "input": user_input},
+                "id": self._jsonrpc_id,
+            }) + "\n"
+            self._process.stdin.write(turn_msg.encode())
             await self._process.stdin.drain()
-        # Single-turn protocols: close stdin to signal end of input
-        if not self._protocol.is_long_running():
-            self._process.stdin.close()
+        else:
+            payload = self._protocol.build_message_payload(message, images)
+            if payload:
+                self._process.stdin.write(payload.encode())
+                await self._process.stdin.drain()
+            # Single-turn protocols: close stdin to signal end of input
+            if not self._protocol.is_long_running():
+                self._process.stdin.close()
         self.stats.messages_sent += 1
         self.stats.last_activity = datetime.now(timezone.utc)
 

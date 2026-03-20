@@ -222,18 +222,21 @@ class Bridge:
                 '', content, flags=re.DOTALL,
             ).rstrip() + "\n"
 
-            # Append fresh config
+            # Append fresh config — use forward slashes for Windows path compat in TOML
+            exe = sys.executable.replace("\\", "/")
+            script = mcp_server_script.replace("\\", "/")
+            tf = token_file.replace("\\", "/")
             content += f"""
 [mcp_servers.pixsim]
-command = '{sys.executable}'
-args = ['{mcp_server_script}']
+command = '{exe}'
+args = ['{script}']
 startup_timeout_sec = 30
 tool_timeout_sec = 60
 
 [mcp_servers.pixsim.env]
 PIXSIM_API_URL = "{api_base}"
 PIXSIM_API_TOKEN = "{token}"
-PIXSIM_TOKEN_FILE = "{token_file}"
+PIXSIM_TOKEN_FILE = "{tf}"
 PIXSIM_SCOPE = "{scope}"
 """
             codex_config.write_text(content)
