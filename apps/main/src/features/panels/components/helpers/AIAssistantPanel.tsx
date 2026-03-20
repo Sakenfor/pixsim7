@@ -74,6 +74,7 @@ interface ChatTab {
   sessionId: string | null;    // conversation UUID (assigned by agent)
   profileId: string | null;    // persona profile ID (system prompt, scope, etc.)
   engine: AgentEngine;         // which agent command to use
+  modelOverride: string | null; // per-tab model override (null = use profile default)
   usePersona: boolean;         // whether to inject profile persona
   createdAt: string;
 }
@@ -99,7 +100,7 @@ interface InjectPromptDetail {
 function loadTabs(): ChatTab[] {
   try {
     const raw = localStorage.getItem(TABS_KEY);
-    if (raw) return (JSON.parse(raw) as ChatTab[]).map((t) => ({ usePersona: true, engine: 'claude' as AgentEngine, ...t }));
+    if (raw) return (JSON.parse(raw) as ChatTab[]).map((t) => ({ usePersona: true, engine: 'claude' as AgentEngine, modelOverride: null, ...t }));
   } catch { /* ignore */ }
 
   // Migrate from legacy sessions → tabs (one-time)
@@ -752,6 +753,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     if (tab.profileId) body.assistant_id = tab.profileId;
     if (tab.sessionId) body.claude_session_id = tab.sessionId;
     if (tab.profileId && !tab.usePersona) body.skip_persona = true;
+    if (tab.modelOverride) body.model = tab.modelOverride;
 
     // Fire-and-forget — the bridge singleton manages the SSE fetch.
     // Results are consumed by the useEffect above, even if the panel unmounts.
@@ -973,6 +975,27 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             )}
           </div>
 
+          {/* Model override */}
+          <select
+            value={tab.modelOverride || ''}
+            onChange={(e) => onUpdateTab({ modelOverride: e.target.value || null })}
+            disabled={sending}
+            className="shrink-0 h-8 px-1 text-[9px] text-neutral-500 bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer disabled:opacity-40"
+            title={tab.modelOverride ? `Model override: ${tab.modelOverride}` : 'Model (profile default)'}
+          >
+            <option value="">model</option>
+            <optgroup label="Claude">
+              <option value="claude-sonnet-4-20250514">sonnet</option>
+              <option value="claude-opus-4-20250514">opus</option>
+              <option value="claude-haiku-4-20250414">haiku</option>
+            </optgroup>
+            <optgroup label="OpenAI">
+              <option value="gpt-4o">gpt-4o</option>
+              <option value="gpt-4o-mini">gpt-4o-mini</option>
+              <option value="o3">o3</option>
+            </optgroup>
+          </select>
+
           <div className="flex-1 relative">
             <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
               placeholder={connected > 0 ? 'Ask something... (@ to reference)' : 'No agent connected'}
@@ -1050,6 +1073,7 @@ export function AIAssistantPanel() {
       sessionId: null,
       profileId: profileId || null,
       engine: 'claude',
+      modelOverride: null,
       usePersona: true,
       createdAt: new Date().toISOString(),
     };
@@ -1129,7 +1153,7 @@ export function AIAssistantPanel() {
           </button>
           <ResumeSessionPicker onResume={(sessionId, engine, label) => {
             const id = createTabId();
-            const newTab: ChatTab = { id, label: label || 'Resumed', sessionId, profileId: null, engine: (engine || 'claude') as AgentEngine, usePersona: true, createdAt: new Date().toISOString() };
+            const newTab: ChatTab = { id, label: label || 'Resumed', sessionId, profileId: null, engine: (engine || 'claude') as AgentEngine, modelOverride: null, usePersona: true, createdAt: new Date().toISOString() };
             setTabs((prev) => [newTab, ...prev]);
             setActiveTab(id);
           }} />
