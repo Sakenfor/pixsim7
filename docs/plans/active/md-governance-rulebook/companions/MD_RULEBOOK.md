@@ -2,7 +2,7 @@
 
 Last updated: 2026-03-11  
 Owner: docs-governance lane  
-Canonical plan: `docs/plans/active/md-governance-rulebook/plan.md`
+Canonical plan ID: `md-governance-rulebook` (`GET /api/v1/dev/plans/md-governance-rulebook`)
 
 ## Purpose
 
@@ -19,11 +19,12 @@ Define one shared way to create, update, and retire markdown docs so the repo ke
 1. One canonical doc per topic.
    - If a topic already has a canonical doc, update it instead of creating a parallel doc.
    - If a new doc is needed, link back to canonical from both directions.
-2. Active implementation work must live in a plan bundle.
-   - Use `docs/plans/active/<plan-id>/plan.md` + `manifest.yaml`.
-   - Keep companions/handoffs inside the same plan folder when they are plan-scoped.
+2. Active implementation work must live in a DB plan record.
+   - Use `POST /api/v1/dev/plans` and `PATCH /api/v1/dev/plans/update/{plan_id}`.
+   - Keep companions/handoffs in docs folders when they are plan-scoped, but treat DB plan markdown as canonical.
 3. Generated artifacts are never hand-edited.
-   - `docs/plans/registry.yaml` and the active index table in `docs/plans/README.md` must be produced via `pnpm docs:plans:sync`.
+   - DB records returned by `/api/v1/dev/plans*` are authoritative.
+   - `docs/plans/registry.yaml` is compatibility-only and may remain minimal.
 4. Plan metadata must stay current.
    - `Last updated`, `Owner`, `Status`, `Stage`, and `Update Log` are required in active plans.
 5. Code changes that alter behavior must update docs in the same PR.
@@ -36,7 +37,7 @@ Define one shared way to create, update, and retire markdown docs so the repo ke
 
 ## Doc Taxonomy
 
-1. `Plan` (`docs/plans/active|done|parked/...`)
+1. `Plan` (DB record under `/api/v1/dev/plans/{plan_id}`)
    - Execution tracking, ownership, phased checklist, update log.
 2. `Companion` (`docs/plans/.../companions/*.md`)
    - Design details and rationale tied to one plan.
@@ -64,7 +65,7 @@ Define one shared way to create, update, and retire markdown docs so the repo ke
 ## Naming and Layout Rules
 
 1. Plan IDs use lowercase kebab-case: `my-feature-roadmap`.
-2. Plan bundle path is stable once published; avoid renaming after external references exist.
+2. Plan ID is stable once published; avoid renaming after external references exist.
 3. Companion names are concise, purpose-first, uppercase optional:
    - `MD_RULEBOOK.md`
    - `migration-notes.md`
@@ -78,7 +79,7 @@ Define one shared way to create, update, and retire markdown docs so the repo ke
 1. Search for existing canonical docs in the same topic.
 2. Decide if this is:
    - an existing plan update,
-   - a new plan bundle,
+   - a new plan ID in DB,
    - a companion/handoff under an existing plan.
 3. Declare owner and scope before adding content.
 
@@ -92,9 +93,8 @@ Define one shared way to create, update, and retire markdown docs so the repo ke
 ### C. After Writing
 
 1. Run:
-   - `pnpm docs:plans:sync`
-   - `pnpm docs:plans:check`
-   - `STRICT_PLAN_DOCS=1 pnpm docs:plans:check`
+   - readback verification: `GET /api/v1/dev/plans/{plan_id}`
+   - optional legacy lint: `pnpm docs:plans:check`
 2. Verify links from old paths (if moved) resolve to canonical paths.
 3. Add/update `Update Log` entries in impacted active plans.
 
@@ -102,7 +102,7 @@ Define one shared way to create, update, and retire markdown docs so the repo ke
 
 - [ ] Canonical doc for the changed topic is clear.
 - [ ] Plan metadata is complete and current.
-- [ ] Registry/index were regenerated when manifests changed.
+- [ ] Plan updates were written to DB (`/api/v1/dev/plans/update/{plan_id}`) and verified via readback.
 - [ ] No duplicate source-of-truth docs introduced.
 - [ ] Moved docs have forward pointers.
 - [ ] Update logs mention what changed and why.
@@ -119,23 +119,23 @@ Define one shared way to create, update, and retire markdown docs so the repo ke
 
 ## Minimal Templates
 
-### New Active Plan Bundle
+### New DB Plan
 
-1. Create `docs/plans/active/<plan-id>/`
+1. Create plan via `POST /api/v1/dev/plans` with stable `<plan-id>`.
 2. Add:
-   - `plan.md` from `docs/plans/TEMPLATE.md`
-   - `manifest.yaml` from `docs/plans/MANIFEST_TEMPLATE.yaml`
+   - `markdown` based on `docs/plans/TEMPLATE.md`
+   - structured fields (`status`, `stage`, `owner`, `summary`, `checkpoints`, `code_paths`)
 3. Optional:
-   - `companions/*.md`
-   - `handoffs/*.md`
+   - `companions/*.md` docs
+   - `handoffs/*.md` docs
 
 ### Compatibility Stub (Old Path)
 
 ```md
 # Moved
 
-This document moved to: `docs/plans/active/<plan-id>/plan.md`.
-Use the new path as canonical.
+This document moved to DB plan ID: `<plan-id>`.
+Use `GET /api/v1/dev/plans/<plan-id>` as canonical.
 ```
 
 ## Non-Goals

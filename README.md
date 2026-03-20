@@ -151,6 +151,7 @@ uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 --port 8001
 - **[Architecture Overview](./docs/architecture/README.md)** - System design **← Start here!**
 - **[Getting Started](./docs/getting-started/README.md)** - Setup, launcher, ports
 - **[AI_README.md](./AI_README.md)** - Guide for AI assistants
+- **[DB-first Plans + Meta Contracts](./docs/reference/db-first-plans-and-meta-contracts.md)** - How plans/docs are managed through APIs
 - **[DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md)** - Contribution guide
 
 ### Key References

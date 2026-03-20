@@ -2,7 +2,7 @@
 
 Task: `flow-map-v1`  
 Date: March 10, 2026  
-Primary plan: [`game-journey-flow-mapping/plan.md`](../plan.md)
+Primary plan ID: `game-journey-flow-mapping` (`GET /api/v1/dev/plans/game-journey-flow-mapping`)
 
 ## Copy-Paste Prompt (for Claude)
 
@@ -10,7 +10,7 @@ Primary plan: [`game-journey-flow-mapping/plan.md`](../plan.md)
 You are implementing `flow-map-v1` from the game journey flow mapping plan.
 
 Primary reference:
-- `docs/plans/active/game-journey-flow-mapping/plan.md`
+- `GET /api/v1/dev/plans/game-journey-flow-mapping`
 
 Objective:
 Build the first usable dynamic journey flow mapping slice for scene/character creation paths:
@@ -82,7 +82,7 @@ Acceptance criteria:
 4. Contracts are documented and versioned.
 
 Docs update required:
-1. Update `docs/plans/active/game-journey-flow-mapping/plan.md` checklist statuses for completed phase items.
+1. Update plan checkpoints/notes via `PATCH /api/v1/dev/plans/update/game-journey-flow-mapping`.
 2. Add short implementation notes section with date.
 
 Output format:

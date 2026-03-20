@@ -11,7 +11,7 @@
 > - Legacy prompt-block service modules were removed.
 > - Runtime block selection now resolves through planner/compiler/resolver over primitives.
 >
-> **Current execution plan:** [`docs/plans/active/block-primitives-evolution/plan.md`](../plans/active/block-primitives-evolution/plan.md)
+> **Current execution plan ID:** `block-primitives-evolution` (`GET /api/v1/dev/plans/block-primitives-evolution`)
 > **Current snapshot:** [`docs/architecture/reviews/block-primitives-snapshot-2026-03-10.md`](../architecture/reviews/block-primitives-snapshot-2026-03-10.md)
 ---
 

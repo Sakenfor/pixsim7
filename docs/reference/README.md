@@ -5,6 +5,7 @@ API references and technical specifications for core systems.
 ## Session & Helpers
 
 - **[Session Helpers](../generated/SESSION_HELPERS.md)** - Auto-generated session helper API reference
+- **[db-first-plans-and-meta-contracts.md](./db-first-plans-and-meta-contracts.md)** - Canonical DB-first plan/doc workflow and meta contract API discovery
 
 ## Character Systems
 

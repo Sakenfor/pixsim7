@@ -3,7 +3,7 @@
 Last updated: 2026-03-11
 Owner: prompt-resolver lane
 Type: architecture (design)
-Related plan: `docs/plans/active/prompt-resolver-roadmap/plan.md`
+Related plan ID: `prompt-resolver-roadmap` (`GET /api/v1/dev/plans/prompt-resolver-roadmap`)
 
 ## Core Idea
 

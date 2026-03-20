@@ -4,7 +4,8 @@
 - [Getting Started](./getting-started/README.md) - Setup, launcher, ports
 - [Architecture Overview](./architecture/README.md) - System design
 - [Testing Overview](./testing/TEST_OVERVIEW.md) - Test folders, runner profiles, and commands
-- [Ongoing Work Status](./plans/active/ongoing-work-status/plan.md) - Current active implementation lanes and next steps
+- [Plans Registry](./plans/README.md) - DB-first plan governance and API workflow
+- [DB-first Plans + Meta Contracts](./reference/db-first-plans-and-meta-contracts.md) - Plan APIs and contract discovery
 - [Repository Map](./repo-map.md) - Codebase structure
 - [App Map](./APP_MAP.md) - Auto-generated feature/route/store index
 
@@ -44,7 +45,8 @@
 - [Walkthroughs](./walkthroughs/README.md) - Step-by-step guides
 - [Agent Guidelines](./AGENTS.md) - AI agent conventions
 - [Docs Rulebook](./plans/active/md-governance-rulebook/companions/MD_RULEBOOK.md) - Markdown authoring rules for AI and humans
-- [Plans Registry](./plans/README.md) - Plan governance, active plan index
+- [Plans Registry](./plans/README.md) - Plan governance (DB-first)
+- [DB-first Plans + Meta Contracts](./reference/db-first-plans-and-meta-contracts.md) - API-first plan operations and contract index
 
 ## Archive
 - [Archive](./archive/README.md) - Historical docs, completed plans, legacy tasks

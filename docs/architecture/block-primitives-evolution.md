@@ -1,7 +1,7 @@
 # Block Primitives: Architecture Evolution & Open Questions
 
 > **Status:** Architecture companion (context + rationale), not the canonical execution plan.
-> **Canonical plan:** `docs/plans/active/block-primitives-evolution/plan.md`
+> **Canonical plan ID:** `block-primitives-evolution` (query via `/api/v1/dev/plans/block-primitives-evolution`)
 > **Current snapshot:** `docs/architecture/reviews/block-primitives-snapshot-2026-03-10.md`
 > **Topic:** Block/primitive systems, PromptBlock retirement, composition paths | **Last verified:** 2026-03-03
 > **Related:** `prompt-pipeline-current-state.md` (superseded snapshot), `prompt-resolver-next-v1.md`, `../../docs/actions/README.md` (archived)

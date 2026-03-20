@@ -3,7 +3,7 @@
 Last updated: 2026-03-11
 Owner: contexthub lane
 Type: architecture (canonical)
-Related plan: `docs/plans/active/contexthub-implementation/plan.md`
+Related plan ID: `contexthub-implementation` (`GET /api/v1/dev/plans/contexthub-implementation`)
 
 ## Vision
 

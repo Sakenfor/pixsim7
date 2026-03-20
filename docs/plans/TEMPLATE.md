@@ -1,7 +1,7 @@
 # Plan Title
 
-Use this template for `plan.md` inside a bundle folder, for example:
-`docs/plans/active/<plan-id>/plan.md`.
+Use this template for the `markdown` field when updating a plan via:
+`PATCH /api/v1/dev/plans/update/{plan_id}`.
 
 Last updated: YYYY-MM-DD
 Owner: team or agent lane
