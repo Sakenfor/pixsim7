@@ -950,13 +950,23 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             )}
           </div>
 
-          <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-            placeholder={connected > 0 ? 'Ask something... (@ to reference)' : 'No agent connected'}
-            disabled={connected === 0 || sending} rows={1}
-            className="flex-1 px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 resize-none focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
-            style={{ minHeight: '36px', maxHeight: '120px' }}
-            onInput={handleTextareaInput}
-          />
+          <div className="flex-1 relative">
+            <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
+              placeholder={connected > 0 ? 'Ask something... (@ to reference)' : 'No agent connected'}
+              disabled={connected === 0 || sending} rows={1}
+              className="w-full px-3 py-2 pr-20 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 resize-none focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+              style={{ minHeight: '36px', maxHeight: '120px' }}
+              onInput={handleTextareaInput}
+            />
+            {tab.sessionId && (
+              <span
+                className="absolute right-2 bottom-1.5 text-[8px] text-neutral-300 dark:text-neutral-600 font-mono select-all pointer-events-auto"
+                title={`Session: ${tab.sessionId}`}
+              >
+                {tab.sessionId.slice(0, 8)}
+              </span>
+            )}
+          </div>
           <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || !input.trim()} className="shrink-0">
             <Icon name="send" size={14} />
           </Button>
