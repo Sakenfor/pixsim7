@@ -7,6 +7,7 @@ and a conversation persona (system prompt, model, tool scope).
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,8 +16,10 @@ from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
+from pixsim7.backend.main.domain import UserSession
 from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
-from pixsim7.backend.main.shared.auth import create_agent_token
+from pixsim7.backend.main.shared.auth import create_agent_token, decode_access_token
+from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 router = APIRouter(prefix="/dev/agent-profiles", tags=["dev", "agent-profiles"])
@@ -95,6 +98,15 @@ class AgentProfileTokenResponse(BaseModel):
     profile_id: str
     expires_in_hours: int
     command: str
+
+
+def _read_expiration_datetime(claims: dict) -> datetime:
+    exp_claim = claims.get("exp")
+    if isinstance(exp_claim, (int, float)):
+        return datetime.fromtimestamp(exp_claim, tz=timezone.utc)
+    if isinstance(exp_claim, datetime):
+        return exp_claim if exp_claim.tzinfo else exp_claim.replace(tzinfo=timezone.utc)
+    raise HTTPException(status_code=500, detail="minted_agent_token_missing_exp")
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -212,6 +224,15 @@ async def create_agent_profile(
         updated_at=now,
     )
     db.add(profile)
+
+    from pixsim7.backend.main.services.audit import emit_audit
+    actor = getattr(principal, 'source', f"user:{principal.id}")
+    await emit_audit(
+        db, domain="agent", entity_type="agent_profile",
+        entity_id=payload.id, entity_label=payload.label,
+        action="created", actor=actor,
+    )
+
     await db.commit()
     await db.refresh(profile)
     return _to_response(profile)
@@ -245,6 +266,15 @@ async def update_agent_profile(
         setattr(profile, field, value)
     profile.updated_at = utcnow()
 
+    from pixsim7.backend.main.services.audit import emit_audit
+    actor = getattr(principal, 'source', f"user:{principal.id}")
+    await emit_audit(
+        db, domain="agent", entity_type="agent_profile",
+        entity_id=profile_id, entity_label=profile.label,
+        action="updated", actor=actor,
+        extra={"changed_fields": list(updates.keys())},
+    )
+
     await db.commit()
     await db.refresh(profile)
     return _to_response(profile)
@@ -265,6 +295,15 @@ async def delete_agent_profile(
 
     profile.status = "archived"
     profile.updated_at = utcnow()
+
+    from pixsim7.backend.main.services.audit import emit_audit
+    actor = getattr(principal, 'source', f"user:{principal.id}")
+    await emit_audit(
+        db, domain="agent", entity_type="agent_profile",
+        entity_id=profile_id, entity_label=profile.label,
+        action="deleted", actor=actor,
+    )
+
     await db.commit()
 
 
@@ -294,6 +333,39 @@ async def mint_profile_token(
         on_behalf_of=principal.id if principal.id != 0 else None,
         ttl_hours=hours,
     )
+
+    claims = decode_access_token(token)
+    token_id = claims.get("jti")
+    if not isinstance(token_id, str) or not token_id.strip():
+        raise HTTPException(status_code=500, detail="minted_agent_token_missing_jti")
+
+    effective_user_id = principal.user_id
+    if effective_user_id is None and settings.jwt_require_session:
+        raise HTTPException(
+            status_code=400,
+            detail="agent_profile_token_requires_user_binding_in_strict_mode",
+        )
+
+    if effective_user_id is not None:
+        db.add(
+            UserSession(
+                user_id=int(effective_user_id),
+                token_id=token_id,
+                expires_at=_read_expiration_datetime(claims),
+                client_type="agent_token",
+                client_name=f"{profile.agent_type}:{profile.id}",
+                user_agent=f"agent/{profile.agent_type}",
+            )
+        )
+        from pixsim7.backend.main.services.audit import emit_audit
+        actor = getattr(principal, 'source', f"user:{principal.id}")
+        await emit_audit(
+            db, domain="agent", entity_type="agent_token",
+            entity_id=token_id, entity_label=f"{profile.label} ({hours}h)",
+            action="created", actor=actor,
+            extra={"profile_id": profile.id, "hours": hours, "scope": scope},
+        )
+        await db.commit()
 
     command = (
         f'PIXSIM_API_TOKEN="{token}" PIXSIM_SCOPE="{scope}" '

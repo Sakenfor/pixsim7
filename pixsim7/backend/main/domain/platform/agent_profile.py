@@ -87,6 +87,37 @@ class AgentProfile(SQLModel, table=True):
 
 
 # ---------------------------------------------------------------------------
+# Chat Session — tracks assistant conversation sessions for resume
+# ---------------------------------------------------------------------------
+
+
+class ChatSession(SQLModel, table=True):
+    """A tracked assistant chat session (for /resume picker).
+
+    Created on first message of a new conversation, updated on each subsequent
+    message. Scoped to engine (claude, codex, api) and optionally a profile.
+    """
+
+    __tablename__ = "chat_sessions"
+    __table_args__ = (
+        Index("idx_chat_sessions_user_engine", "user_id", "engine"),
+        Index("idx_chat_sessions_last_used", "last_used_at"),
+        {"schema": PLATFORM_SCHEMA},
+    )
+
+    # The conversation UUID from the agent CLI (session_id from init event)
+    id: str = Field(primary_key=True, max_length=120)
+    user_id: int = Field(default=0, index=True)
+    engine: str = Field(default="claude", max_length=32)
+    profile_id: Optional[str] = Field(default=None, max_length=120)
+    label: str = Field(default="Untitled", max_length=255)
+    message_count: int = Field(default=0)
+    last_used_at: datetime = Field(default_factory=utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    status: str = Field(default="active", max_length=32)  # active | archived
+
+
+# ---------------------------------------------------------------------------
 # Agent Run — per-invocation tracking (stub, v1.1)
 # ---------------------------------------------------------------------------
 

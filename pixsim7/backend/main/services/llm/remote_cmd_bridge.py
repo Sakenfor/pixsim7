@@ -49,10 +49,18 @@ class RemoteCommandBridge:
         self._agents: Dict[str, RemoteAgent] = {}
         self._pending_tasks: Dict[str, asyncio.Future] = {}
         self._heartbeat_queues: Dict[str, asyncio.Queue] = {}  # task_id -> queue
+        # Completed task results cache (task_id -> result dict, kept for 5 min)
+        self._completed_results: Dict[str, Dict[str, Any]] = {}
+        # Active task tracking: agent_id -> {task_id, heartbeats}
+        self._active_tasks: Dict[str, Dict[str, Any]] = {}
 
     async def connect(self, websocket: WebSocket, agent_id: str, agent_type: str = "claude-cli", user_id: Optional[int] = None, metadata: Optional[Dict[str, str]] = None) -> RemoteAgent:
-        """Register a new remote agent connection."""
+        """Register a new remote agent connection (or reconnect an existing one)."""
         await websocket.accept()
+
+        # Reconnect: preserve stats from previous connection
+        old = self._agents.get(agent_id)
+        tasks_completed = old.tasks_completed if old else 0
 
         agent = RemoteAgent(
             agent_id=agent_id,
@@ -61,17 +69,21 @@ class RemoteCommandBridge:
             user_id=user_id,
             metadata=metadata or {},
         )
+        agent.tasks_completed = tasks_completed
         self._agents[agent_id] = agent
 
-        logger.info("remote_agent_connected", agent_id=agent_id, agent_type=agent_type, user_id=user_id)
+        if old:
+            logger.info("remote_agent_reconnected", agent_id=agent_id, tasks_completed=tasks_completed)
+        else:
+            logger.info("remote_agent_connected", agent_id=agent_id, agent_type=agent_type, user_id=user_id)
 
         # Build system prompt — always provide it so agents know the available APIs
         system_prompt = None
         try:
             from pixsim7.backend.main.api.v1.meta_contracts import _build_user_system_prompt
             system_prompt = _build_user_system_prompt()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("system_prompt_build_failed", error=str(e))
 
         # Mint a scoped service token for the bridge to call API endpoints
         service_token = None
@@ -205,7 +217,14 @@ class RemoteCommandBridge:
         """Forward a heartbeat to the task's heartbeat queue (if streaming)."""
         agent = self._agents.get(agent_id)
         if agent and agent.current_task_id:
-            queue = self._heartbeat_queues.get(agent.current_task_id)
+            task_id = agent.current_task_id
+            # Track latest heartbeat with timestamp for staleness detection
+            self._active_tasks[task_id] = {
+                "action": data.get("action", ""),
+                "detail": data.get("detail", ""),
+                "_ts": datetime.now(timezone.utc),
+            }
+            queue = self._heartbeat_queues.get(task_id)
             if queue:
                 try:
                     queue.put_nowait(data)
@@ -289,12 +308,31 @@ class RemoteCommandBridge:
             self._pending_tasks.pop(task_id, None)
             raise TimeoutError(f"Remote agent did not respond within {timeout}s")
         finally:
-            agent.busy = False
-            agent.current_task_id = None
             self._heartbeat_queues.pop(task_id, None)
+            # If the task is still pending (SSE dropped but agent still working),
+            # keep agent.current_task_id so heartbeats continue to be tracked.
+            # resolve_task/fail_task will clean up when the result arrives.
+            if future.done():
+                agent.busy = False
+                agent.current_task_id = None
+            else:
+                # SSE dropped mid-task — leave task_id for heartbeat tracking
+                # but mark agent as not-busy so new requests can use it
+                # (the pending future will be resolved when the result arrives via WS)
+                agent.busy = False
 
     def resolve_task(self, task_id: str, result: Dict[str, Any]) -> bool:
         """Called when a remote agent sends back a task result."""
+        # Cache result for reconnect (even if SSE dropped)
+        self._completed_results[task_id] = result
+        self._active_tasks.pop(task_id, None)
+        self._gc_completed()
+
+        # Clean up agent tracking (may be stale from dropped SSE)
+        for agent in self._agents.values():
+            if agent.current_task_id == task_id:
+                agent.current_task_id = None
+
         future = self._pending_tasks.pop(task_id, None)
         if future and not future.done():
             future.set_result(result)
@@ -303,11 +341,79 @@ class RemoteCommandBridge:
 
     def fail_task(self, task_id: str, error: str) -> bool:
         """Called when a remote agent reports a task failure."""
+        self._completed_results[task_id] = {"error": error, "ok": False}
+        self._active_tasks.pop(task_id, None)
+
+        # Clean up agent tracking
+        for agent in self._agents.values():
+            if agent.current_task_id == task_id:
+                agent.current_task_id = None
+
         future = self._pending_tasks.pop(task_id, None)
         if future and not future.done():
             future.set_exception(RuntimeError(error))
             return True
         return False
+
+    def get_active_task_for_user(self, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """Get the currently active task for a user (if any).
+
+        Checks dispatch state first, then falls back to recent heartbeats
+        (for tasks that outlived their SSE stream).
+        """
+        now = datetime.now(timezone.utc)
+
+        # Primary: check dispatch state
+        for agent in self._agents.values():
+            if user_id is not None and agent.user_id != user_id and agent.user_id is not None:
+                continue
+            if agent.busy and agent.current_task_id:
+                task_info = self._active_tasks.get(agent.current_task_id, {})
+                return {
+                    "task_id": agent.current_task_id,
+                    "agent_id": agent.agent_id,
+                    "status": "active",
+                    "action": task_info.get("action", ""),
+                    "detail": task_info.get("detail", ""),
+                }
+
+        # Fallback: check for tasks with recent heartbeats (< 30s old)
+        # These are tasks where the SSE dropped but the agent is still working
+        stale_keys = []
+        for task_id, info in self._active_tasks.items():
+            ts = info.get("_ts")
+            if ts and (now - ts).total_seconds() > 30:
+                stale_keys.append(task_id)
+                continue
+            # Recent heartbeat — task is still active
+            return {
+                "task_id": task_id,
+                "status": "active",
+                "agent_id": "",
+                "action": info.get("action", ""),
+                "detail": info.get("detail", ""),
+            }
+
+        # Clean up stale entries
+        for k in stale_keys:
+            self._active_tasks.pop(k, None)
+
+        return None
+
+    def get_completed_result(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Get a cached completed result (for SSE reconnect)."""
+        return self._completed_results.get(task_id)
+
+    def pop_completed_result(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Get and remove a cached completed result."""
+        return self._completed_results.pop(task_id, None)
+
+    def _gc_completed(self) -> None:
+        """Keep only the last 20 completed results."""
+        if len(self._completed_results) > 20:
+            keys = list(self._completed_results.keys())
+            for k in keys[:-20]:
+                self._completed_results.pop(k, None)
 
 
 def _mint_bridge_token(user_id: Optional[int], hours: int = 24) -> Optional[str]:

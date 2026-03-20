@@ -10,11 +10,14 @@ import {
   Button,
   ConfirmModal,
   EmptyState,
+  FilterPillGroup,
+  FoldableJson,
   Modal,
   SectionHeader,
   SidebarContentLayout,
   type SidebarContentLayoutSection,
   StatCard,
+  ToolbarToggleButton,
   useSidebarNav,
   useTheme,
 } from '@pixsim7/shared.ui';
@@ -863,7 +866,7 @@ function HistoryView() {
 }
 
 // =============================================================================
-// Writes View — plan changes attributed to agents
+// Audit View — mutations attributed to agents across all domains
 // =============================================================================
 
 interface AgentWriteEntry {
@@ -885,10 +888,263 @@ interface AgentWritesResponse {
   total: number;
 }
 
+/** Try to parse a string as JSON, return parsed object or null */
+function tryParseJson(value: string | null): unknown | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+/** Produce a human-friendly summary of a value (for collapsed row) */
+function summarizeValue(value: string | null): string {
+  if (!value) return '';
+  const parsed = tryParseJson(value);
+  if (parsed !== null) {
+    if (Array.isArray(parsed)) return `[${parsed.length} item${parsed.length !== 1 ? 's' : ''}]`;
+    if (typeof parsed === 'object') {
+      const keys = Object.keys(parsed as Record<string, unknown>);
+      if (keys.length <= 3) return `{ ${keys.join(', ')} }`;
+      return `{ ${keys.slice(0, 3).join(', ')}, \u2026 }`;
+    }
+  }
+  if (value.length > 60) return value.slice(0, 57) + '\u2026';
+  return value;
+}
+
+function WriteEntryRow({
+  entry,
+  agentName,
+}: {
+  entry: AgentWriteEntry;
+  agentName: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const isFieldChange = entry.event_type === 'field_changed';
+  const domainColor = entry.domain === 'plan' ? 'blue' : entry.domain === 'prompt' ? 'green' : 'gray';
+
+  const hasExpandableContent =
+    (entry.new_value && (tryParseJson(entry.new_value) !== null || entry.new_value.length > 60)) ||
+    (entry.old_value && (tryParseJson(entry.old_value) !== null || entry.old_value.length > 60));
+
+  return (
+    <div className="rounded border border-neutral-200 dark:border-neutral-800 text-xs">
+      {/* Summary row */}
+      <div
+        className={`flex items-start gap-2 px-2 py-1.5 ${hasExpandableContent ? 'cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/40' : ''}`}
+        onClick={hasExpandableContent ? () => setExpanded((p) => !p) : undefined}
+      >
+        {hasExpandableContent && (
+          <span className="shrink-0 text-neutral-400 text-[10px] mt-0.5 w-3 text-center select-none">
+            {expanded ? '\u25be' : '\u25b8'}
+          </span>
+        )}
+        <Badge color={domainColor} className="text-[10px] shrink-0">{agentName}</Badge>
+        <div className="flex-1 min-w-0">
+          {entry.domain === 'plan' ? (
+            <span className="mr-1"><PlanLink planId={entry.entity_id} /></span>
+          ) : (
+            <span className="mr-1 text-neutral-600 dark:text-neutral-300">{entry.entity_label}</span>
+          )}
+          {isFieldChange && entry.field && (
+            <span className="text-neutral-500">
+              {entry.field}
+              {!expanded && entry.new_value && (
+                <span className="ml-1 text-neutral-400">{'\u2192 '}{summarizeValue(entry.new_value)}</span>
+              )}
+            </span>
+          )}
+          {!isFieldChange && (
+            <Badge color="gray" className="text-[9px] ml-1">{entry.event_type}</Badge>
+          )}
+          {entry.commit_sha && (
+            <span
+              className="ml-1 font-mono text-blue-500 dark:text-blue-400 text-[10px] cursor-pointer hover:underline"
+              title={entry.commit_sha}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(entry.commit_sha!);
+              }}
+            >
+              {entry.commit_sha.slice(0, 7)}
+            </span>
+          )}
+        </div>
+        <span className="shrink-0 text-neutral-400 text-[10px]">{formatTimestamp(entry.timestamp)}</span>
+      </div>
+
+      {/* Expanded details */}
+      {expanded && (
+        <div className="border-t border-neutral-100 dark:border-neutral-800 px-3 py-2 space-y-2 bg-neutral-50/50 dark:bg-neutral-900/30">
+          {entry.old_value && (
+            <WriteValueBlock label="Old value" value={entry.old_value} />
+          )}
+          {entry.new_value && (
+            <WriteValueBlock label="New value" value={entry.new_value} />
+          )}
+          <div className="flex gap-3 text-[10px] text-neutral-400">
+            <span>domain: <span className="text-neutral-600 dark:text-neutral-300">{entry.domain}</span></span>
+            <span>event: <span className="text-neutral-600 dark:text-neutral-300">{entry.event_type}</span></span>
+            {entry.field && <span>field: <span className="text-neutral-600 dark:text-neutral-300">{entry.field}</span></span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WriteValueBlock({ label, value }: { label: string; value: string }) {
+  const parsed = tryParseJson(value);
+
+  return (
+    <div>
+      <div className="text-[10px] text-neutral-400 mb-0.5">{label}</div>
+      {parsed !== null ? (
+        <FoldableJson data={parsed} defaultExpandDepth={1} compact className="max-h-48 overflow-y-auto" />
+      ) : (
+        <div className="font-mono text-[11px] text-neutral-600 dark:text-neutral-300 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+          {value}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -- Grouping helpers --
+
+interface GroupedWrite {
+  key: string;
+  entity_id: string;
+  entity_label: string;
+  domain: string;
+  actor: string;
+  timestamp: string;
+  commit_sha: string | null;
+  entries: AgentWriteEntry[];
+}
+
+/** Group entries that share the same entity_id and timestamp (rounded to 1 s). */
+function groupWriteEntries(entries: AgentWriteEntry[]): GroupedWrite[] {
+  const map = new Map<string, GroupedWrite>();
+  for (const entry of entries) {
+    const tsKey = entry.timestamp.slice(0, 19); // ISO truncated to seconds
+    const key = `${entry.entity_id}::${tsKey}`;
+    let group = map.get(key);
+    if (!group) {
+      group = {
+        key,
+        entity_id: entry.entity_id,
+        entity_label: entry.entity_label,
+        domain: entry.domain,
+        actor: entry.actor,
+        timestamp: entry.timestamp,
+        commit_sha: entry.commit_sha,
+        entries: [],
+      };
+      map.set(key, group);
+    }
+    group.entries.push(entry);
+  }
+  return Array.from(map.values());
+}
+
+function GroupedWriteRow({
+  group,
+  agentName,
+}: {
+  group: GroupedWrite;
+  agentName: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const domainColor = group.domain === 'plan' ? 'blue' : group.domain === 'prompt' ? 'green' : 'gray';
+  const fieldNames = group.entries.map((e) => e.field).filter(Boolean);
+  const eventTypes = [...new Set(group.entries.map((e) => e.event_type))];
+  const isSingleCreated = group.entries.length === 1 && eventTypes[0] === 'created';
+
+  return (
+    <div className="rounded border border-neutral-200 dark:border-neutral-800 text-xs">
+      <div
+        className={`flex items-start gap-2 px-2 py-1.5 ${!isSingleCreated ? 'cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/40' : ''}`}
+        onClick={!isSingleCreated ? () => setExpanded((p) => !p) : undefined}
+      >
+        {!isSingleCreated && (
+          <span className="shrink-0 text-neutral-400 text-[10px] mt-0.5 w-3 text-center select-none">
+            {expanded ? '\u25be' : '\u25b8'}
+          </span>
+        )}
+        <Badge color={domainColor} className="text-[10px] shrink-0">{agentName}</Badge>
+        <div className="flex-1 min-w-0">
+          {group.domain === 'plan' ? (
+            <span className="mr-1"><PlanLink planId={group.entity_id} /></span>
+          ) : (
+            <span className="mr-1 text-neutral-600 dark:text-neutral-300">{group.entity_label}</span>
+          )}
+          {isSingleCreated ? (
+            <Badge color="gray" className="text-[9px] ml-1">created</Badge>
+          ) : (
+            <>
+              {fieldNames.length > 0 && (
+                <span className="text-neutral-500">
+                  {fieldNames.length === 1
+                    ? fieldNames[0]
+                    : `${fieldNames.length} fields`}
+                </span>
+              )}
+              {fieldNames.length === 0 && eventTypes.length > 0 && (
+                <Badge color="gray" className="text-[9px] ml-1">{eventTypes.join(', ')}</Badge>
+              )}
+              {group.entries.length > 1 && (
+                <span className="ml-1 text-neutral-400 text-[10px]">({group.entries.length})</span>
+              )}
+            </>
+          )}
+          {group.commit_sha && (
+            <span
+              className="ml-1 font-mono text-blue-500 dark:text-blue-400 text-[10px] cursor-pointer hover:underline"
+              title={group.commit_sha}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(group.commit_sha!);
+              }}
+            >
+              {group.commit_sha.slice(0, 7)}
+            </span>
+          )}
+        </div>
+        <span className="shrink-0 text-neutral-400 text-[10px]">{formatTimestamp(group.timestamp)}</span>
+      </div>
+
+      {expanded && (
+        <div className="border-t border-neutral-100 dark:border-neutral-800 px-3 py-2 space-y-2 bg-neutral-50/50 dark:bg-neutral-900/30">
+          {group.entries.map((entry) => (
+            <div key={entry.id} className="space-y-1">
+              <div className="flex items-center gap-2 text-[10px]">
+                <Badge color="gray" className="text-[9px]">{entry.event_type}</Badge>
+                {entry.field && <span className="text-neutral-500">{entry.field}</span>}
+                {!entry.field && entry.event_type !== 'field_changed' && (
+                  <span className="text-neutral-400">{entry.entity_label}</span>
+                )}
+              </div>
+              {entry.old_value && <WriteValueBlock label="Old" value={entry.old_value} />}
+              {entry.new_value && <WriteValueBlock label="New" value={entry.new_value} />}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WritesView() {
   const [data, setData] = useState<AgentWritesResponse | null>(null);
   const [profileLabels, setProfileLabels] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [domainFilter, setDomainFilter] = useState<string | null>(null);
+  const [grouped, setGrouped] = useState(true);
 
   useEffect(() => {
     Promise.all([
@@ -905,6 +1161,20 @@ function WritesView() {
       .finally(() => setLoading(false));
   }, []);
 
+  const filtered = useMemo(() => {
+    if (!data) return [];
+    return domainFilter ? data.entries.filter((e) => e.domain === domainFilter) : data.entries;
+  }, [data, domainFilter]);
+
+  const domainOptions = useMemo(() => {
+    if (!data) return [];
+    const counts = new Map<string, number>();
+    for (const e of data.entries) counts.set(e.domain, (counts.get(e.domain) || 0) + 1);
+    return Array.from(counts.entries()).map(([d, c]) => ({ value: d, label: d, count: c }));
+  }, [data]);
+
+  const groups = useMemo(() => grouped ? groupWriteEntries(filtered) : null, [filtered, grouped]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -916,51 +1186,49 @@ function WritesView() {
   if (!data || data.entries.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <EmptyState message="No agent-attributed writes yet" />
+        <EmptyState message="No agent mutations tracked yet" />
       </div>
     );
   }
 
+  const displayCount = grouped && groups ? groups.length : filtered.length;
+
   return (
     <div className="p-4 space-y-2">
-      <SectionHeader>{data.total} agent write{data.total !== 1 ? 's' : ''} (last 14 days)</SectionHeader>
+      <SectionHeader>{data.total} agent mutation{data.total !== 1 ? 's' : ''} (last 14 days)</SectionHeader>
+      <div className="flex items-center gap-2 flex-wrap">
+        <FilterPillGroup
+          options={domainOptions}
+          value={domainFilter}
+          onChange={setDomainFilter}
+          allLabel="All"
+          allCount={data.total}
+          size="sm"
+        />
+        <ToolbarToggleButton
+          active={grouped}
+          onClick={() => setGrouped((g) => !g)}
+          icon={<Icon name="layers" size={12} />}
+          title={grouped ? 'Ungroup entries' : 'Group by entity + timestamp'}
+        />
+      </div>
+      {domainFilter && displayCount !== data.total && (
+        <div className="text-[10px] text-neutral-400">
+          Showing {displayCount} {grouped ? 'group' : 'entr'}{displayCount !== 1 ? (grouped ? 's' : 'ies') : (grouped ? '' : 'y')}
+        </div>
+      )}
       <div className="space-y-1">
-        {data.entries.map((entry) => {
-          const agentSlug = entry.actor.replace('agent:', '');
-          const agentName = profileLabels[agentSlug] || agentSlug;
-          const isFieldChange = entry.event_type === 'field_changed';
-          const domainColor = entry.domain === 'plan' ? 'blue' : entry.domain === 'prompt' ? 'green' : 'gray';
-          return (
-            <div
-              key={entry.id}
-              className="flex items-start gap-2 px-2 py-1.5 rounded border border-neutral-200 dark:border-neutral-800 text-xs"
-            >
-              <Badge color={domainColor} className="text-[10px] shrink-0">{agentName}</Badge>
-              <div className="flex-1 min-w-0">
-                {entry.domain === 'plan' ? (
-                  <span className="mr-1"><PlanLink planId={entry.entity_id} /></span>
-                ) : (
-                  <span className="mr-1 text-neutral-600 dark:text-neutral-300">{entry.entity_label}</span>
-                )}
-                {isFieldChange && entry.field && (
-                  <span className="text-neutral-500">
-                    {entry.field}
-                    {entry.new_value ? ` \u2192 ${entry.new_value.slice(0, 40)}` : ''}
-                  </span>
-                )}
-                {!isFieldChange && (
-                  <Badge color="gray" className="text-[9px] ml-1">{entry.event_type}</Badge>
-                )}
-                {entry.commit_sha && (
-                  <span className="ml-1 font-mono text-neutral-400 text-[10px]">
-                    {entry.commit_sha.slice(0, 7)}
-                  </span>
-                )}
-              </div>
-              <span className="shrink-0 text-neutral-400 text-[10px]">{formatTimestamp(entry.timestamp)}</span>
-            </div>
-          );
-        })}
+        {grouped && groups
+          ? groups.map((group) => {
+              const agentSlug = group.actor.replace('agent:', '');
+              const agentName = profileLabels[agentSlug] || agentSlug;
+              return <GroupedWriteRow key={group.key} group={group} agentName={agentName} />;
+            })
+          : filtered.map((entry) => {
+              const agentSlug = entry.actor.replace('agent:', '');
+              const agentName = profileLabels[agentSlug] || agentSlug;
+              return <WriteEntryRow key={entry.id} entry={entry} agentName={agentName} />;
+            })}
       </div>
     </div>
   );
@@ -1554,7 +1822,7 @@ export function AgentObservabilityPanel() {
     },
     {
       id: 'writes',
-      label: 'Writes',
+      label: 'Audit',
       icon: <Icon name="edit" size={12} />,
     },
     {

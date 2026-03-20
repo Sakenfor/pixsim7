@@ -7,24 +7,25 @@
  * - Message history (persisted to localStorage)
  */
 
-import { getAuthTokenProvider } from '@pixsim7/shared.auth.core';
 import {
   Badge,
   Button,
   EmptyState,
 } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
-import { pixsimClient, API_BASE_URL } from '@lib/api/client';
+import { pixsimClient } from '@lib/api/client';
 import { Icon, type IconName } from '@lib/icons';
+import { useReferences, useReferenceInput, ReferencePicker } from '@lib/references';
+
+import { chatBridge } from './assistantChatBridge';
+
 
 // =============================================================================
 // Types
 // =============================================================================
 
 interface BridgeStatus { connected: number; available: number }
-interface SendResponse { ok: boolean; agent_id: string; response: string | null; error: string | null; duration_ms: number | null; claude_session_id?: string | null }
-
 /** Unified profile — both agent identity and assistant persona */
 interface UnifiedProfile {
   id: string;
@@ -47,10 +48,11 @@ interface ChatMessage {
 }
 
 /** Supported agent engines */
-type AgentEngine = 'claude' | 'codex';
+type AgentEngine = 'claude' | 'codex' | 'api';
 const AGENT_ENGINES: { id: AgentEngine; label: string; icon: IconName }[] = [
   { id: 'claude', label: 'Claude', icon: 'messageSquare' },
   { id: 'codex', label: 'Codex', icon: 'cpu' },
+  { id: 'api', label: 'API', icon: 'zap' },
 ];
 
 /** A single chat tab */
@@ -342,6 +344,91 @@ function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps) {
 }
 
 // =============================================================================
+// Resume Session Picker
+// =============================================================================
+
+interface ChatSessionEntry {
+  id: string;
+  engine: string;
+  profile_id: string | null;
+  label: string;
+  message_count: number;
+  last_used_at: string;
+}
+
+function ResumeSessionPicker({ onResume }: {
+  onResume: (sessionId: string, engine: string, label: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [sessions, setSessions] = useState<ChatSessionEntry[]>([]);
+  const [filter, setFilter] = useState<string>('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    pixsimClient.get<{ sessions: ChatSessionEntry[] }>('/meta/agents/chat-sessions', { params: { limit: 30 } })
+      .then((r) => setSessions(r.sessions))
+      .catch(() => {});
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const filtered = filter
+    ? sessions.filter((s) => s.engine === filter)
+    : sessions;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
+        title="Resume session"
+      >
+        <Icon name="history" size={12} />
+      </button>
+
+      {open && (
+        <div className="absolute top-full right-0 mt-1 w-72 max-h-[350px] overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg z-30">
+          {/* Engine filter tabs */}
+          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-neutral-100 dark:border-neutral-800">
+            <button onClick={() => setFilter('')} className={`px-1.5 py-0.5 text-[9px] rounded ${!filter ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>All</button>
+            {AGENT_ENGINES.map((e) => (
+              <button key={e.id} onClick={() => setFilter(e.id)} className={`px-1.5 py-0.5 text-[9px] rounded ${filter === e.id ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>{e.label}</button>
+            ))}
+          </div>
+
+          {filtered.length === 0 && (
+            <div className="p-3 text-center text-[11px] text-neutral-500">No sessions found</div>
+          )}
+
+          {filtered.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => { onResume(s.id, s.engine, s.label); setOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 border-b border-neutral-50 dark:border-neutral-800/50 last:border-0"
+            >
+              <Icon name={AGENT_ENGINES.find((e) => e.id === s.engine)?.icon ?? 'messageSquare'} size={11} className="shrink-0 text-neutral-400" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] text-neutral-700 dark:text-neutral-300 truncate">{s.label}</div>
+                <div className="text-[9px] text-neutral-400">
+                  {s.message_count} msgs · {new Date(s.last_used_at).toLocaleDateString()} {new Date(s.last_used_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+              <span className="text-[8px] text-neutral-400 uppercase shrink-0">{s.engine}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
 // Action Picker
 // =============================================================================
 
@@ -511,34 +598,88 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadTabMessages(tab.id));
   const [input, setInput] = useState(() => loadTabDraft(tab.id));
-  const [sending, setSending] = useState(false);
-  const [activity, setActivity] = useState<string | null>(null);
   const [actionPickerOpen, setActionPickerOpen] = useState(false);
+
+  // Sending state derived from the bridge singleton (survives unmount)
+  useSyncExternalStore(chatBridge.subscribe.bind(chatBridge), chatBridge.getSnapshot.bind(chatBridge));
+  const bridgeReq = chatBridge.get(tab.id);
+  const sending = bridgeReq?.status === 'pending' || bridgeReq?.status === 'streaming';
+  const activity = bridgeReq?.activity ?? null;
+
+  // Consume completed/error results (may have arrived while panel was closed)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs every render; consume is idempotent
+  useEffect(() => {
+    if (!bridgeReq || (bridgeReq.status !== 'completed' && bridgeReq.status !== 'error')) return;
+    const result = chatBridge.consume(tab.id);
+    if (!result) return;
+
+    if (result.error === 'cancelled') {
+      setMessages((m) => [...m, { role: 'system', text: 'Request cancelled', timestamp: new Date() }]);
+    } else if (result.ok && result.response) {
+      const prevSessionId = tab.sessionId;
+      if (result.claude_session_id && result.claude_session_id !== prevSessionId) {
+        onUpdateTab({ sessionId: result.claude_session_id });
+        if (prevSessionId) {
+          setMessages((m) => [...m, { role: 'system', text: 'New session — previous conversation not available', timestamp: new Date() }]);
+        }
+      } else if (result.claude_session_id && prevSessionId && result.claude_session_id === prevSessionId) {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'system' && last.text.startsWith('Reconnected')) {
+            return [...prev.slice(0, -1), { ...last, text: `Session resumed (verified: ${prevSessionId.slice(0, 8)})` }];
+          }
+          return prev;
+        });
+      }
+      setMessages((m) => [...m, { role: 'assistant', text: result.response!, duration_ms: result.duration_ms, timestamp: new Date() }]);
+      if (!tab.sessionId) {
+        // Use the first user message as tab label
+        const lastUserMsg = messages.findLast((m) => m.role === 'user');
+        if (lastUserMsg) onUpdateTab({ label: lastUserMsg.text.slice(0, 30) });
+      }
+    } else {
+      setMessages((m) => [...m, { role: 'error', text: result.error || 'No response from agent', timestamp: new Date() }]);
+    }
+  });
+
   const [showProfilePicker, setShowProfilePicker] = useState(false);
   const [editingProfile, setEditingProfile] = useState<UnifiedProfile | null | 'new'>(null); // null=closed, 'new'=create, UnifiedProfile=edit
   const profilePickerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const connected = bridge?.connected ?? 0;
+  // Track connection state transitions. Start with current value so first render is a no-op.
   const prevConnectedRef = useRef(connected);
+  // Only show reconnect after we've seen a real disconnect during this panel's lifetime
+  const sawDisconnectRef = useRef(false);
 
-  // Detect bridge connect/reconnect → inject system message
+  // Detect real bridge connect/disconnect transitions
   useEffect(() => {
-    const wasConnected = prevConnectedRef.current;
+    const prev = prevConnectedRef.current;
     prevConnectedRef.current = connected;
 
-    if (connected > 0 && wasConnected === 0 && messages.length > 0) {
+    // No change
+    if (prev === connected) return;
+
+    if (connected > 0 && prev === 0 && sawDisconnectRef.current && messages.length > 0) {
       const label = tab.sessionId
         ? 'Reconnected — resuming conversation'
         : 'Bridge connected';
-      setMessages((prev) => [...prev, { role: 'system', text: label, timestamp: new Date() }]);
-    } else if (connected === 0 && wasConnected > 0 && messages.length > 0) {
-      setMessages((prev) => [...prev, { role: 'system', text: 'Bridge disconnected', timestamp: new Date() }]);
+      setMessages((m) => [...m, { role: 'system', text: label, timestamp: new Date() }]);
+    } else if (connected === 0 && prev > 0 && messages.length > 0) {
+      sawDisconnectRef.current = true;
+      setMessages((m) => [...m, { role: 'system', text: 'Bridge disconnected', timestamp: new Date() }]);
     }
   }, [connected]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist
-  useEffect(() => { persistTabMessages(tab.id, messages); }, [messages, tab.id]);
+  // Persist (guard: don't wipe messages on transient empty state from HMR remount)
+  const hasPersistedRef = useRef(false);
+  useEffect(() => {
+    if (messages.length > 0 || hasPersistedRef.current) {
+      persistTabMessages(tab.id, messages);
+      hasPersistedRef.current = true;
+    }
+  }, [messages, tab.id]);
   useEffect(() => { persistTabDraft(tab.id, input); }, [input, tab.id]);
 
   // Inject prompt from other panels
@@ -569,80 +710,16 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     if (!text.trim() || sending) return;
     setInput('');
     setMessages((prev) => [...prev, { role: 'user', text, timestamp: new Date() }]);
-    setSending(true);
-    setActivity(null);
-    try {
-      const body: Record<string, unknown> = { message: text, timeout: 120, engine: tab.engine };
-      if (tab.profileId) body.assistant_id = tab.profileId;
-      if (tab.sessionId) body.claude_session_id = tab.sessionId;
-      if (tab.profileId && !tab.usePersona) body.skip_persona = true;
 
-      // Get auth token for the request
-      const token = await Promise.resolve(getAuthTokenProvider().getAccessToken());
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+    const body: Record<string, unknown> = { message: text, timeout: 120, engine: tab.engine };
+    if (tab.profileId) body.assistant_id = tab.profileId;
+    if (tab.sessionId) body.claude_session_id = tab.sessionId;
+    if (tab.profileId && !tab.usePersona) body.skip_persona = true;
 
-      const response = await fetch(`${API_BASE_URL}/meta/agents/bridge/send-stream`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok || !response.body) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          let event: Record<string, unknown>;
-          try { event = JSON.parse(line.slice(6)); } catch { continue; }
-
-          if (event.type === 'heartbeat') {
-            const detail = (event.detail as string) || (event.action as string) || '';
-            setActivity(detail || 'Working...');
-          } else if (event.type === 'result') {
-            setActivity(null);
-            const res = event as unknown as SendResponse;
-            if (res.ok && res.response) {
-              // Detect session change (resume failed → new session, or first message)
-              const prevSessionId = tab.sessionId;
-              if (res.claude_session_id && res.claude_session_id !== prevSessionId) {
-                onUpdateTab({ sessionId: res.claude_session_id as string });
-                if (prevSessionId) {
-                  // Had a session, got a different one → resume didn't work
-                  setMessages((prev) => [...prev, { role: 'system', text: `New session (${(res.claude_session_id as string).slice(0, 8)}) — previous conversation not available`, timestamp: new Date() }]);
-                }
-              }
-              setMessages((prev) => [...prev, { role: 'assistant', text: res.response!, duration_ms: res.duration_ms ?? undefined, timestamp: new Date() }]);
-              if (!prevSessionId) {
-                onUpdateTab({ label: text.slice(0, 30) || tab.label });
-              }
-            } else {
-              setMessages((prev) => [...prev, { role: 'error', text: (res.error || 'No response from agent') as string, timestamp: new Date() }]);
-            }
-          }
-        }
-      }
-    } catch (err) {
-      setActivity(null);
-      setMessages((prev) => [...prev, { role: 'error', text: err instanceof Error ? err.message : 'Request failed', timestamp: new Date() }]);
-    } finally {
-      setSending(false);
-      setActivity(null);
-    }
-  }, [sending, tab.profileId, tab.sessionId, tab.label, onUpdateTab]);
+    // Fire-and-forget — the bridge singleton manages the SSE fetch.
+    // Results are consumed by the useEffect above, even if the panel unmounts.
+    void chatBridge.send(tab.id, body);
+  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona]);
 
   const retryLast = useCallback(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -654,9 +731,24 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     }
   }, [messages, sendMessage]);
 
+  // @reference picker (centralized)
+  const refs = useReferences();
+  const refInput = useReferenceInput(refs);
+
+  const handleTextareaInput = useCallback((e: React.FormEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    refInput.handleInput(e);
+  }, [refInput]);
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage(input); }
-  }, [input, sendMessage]);
+    if (refInput.handleKeyDown(e)) return; // consumed by reference picker
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void sendMessage(input);
+    }
+  }, [input, sendMessage, refInput]);
 
   // Resolve current profile
   const activeProfile = profiles.find((p) => p.id === tab.profileId);
@@ -692,7 +784,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           <MessageBubble key={i} msg={msg} onRetry={msg.role === 'error' ? retryLast : undefined} />
         ))}
         {sending && (
-          <div className="flex justify-start">
+          <div className="flex justify-start gap-2 items-end">
             <div className="bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-2">
               <div className="flex items-center gap-2">
                 <div className="flex gap-1">
@@ -703,6 +795,13 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                 {activity && <span className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate max-w-[200px]">{activity}</span>}
               </div>
             </div>
+            <button
+              onClick={() => chatBridge.cancel(tab.id)}
+              className="text-[10px] text-neutral-400 hover:text-red-500 transition-colors pb-1"
+              title="Cancel request"
+            >
+              <Icon name="x" size={12} />
+            </button>
           </div>
         )}
         <div ref={scrollRef} />
@@ -711,6 +810,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       {/* Input */}
       <div className="relative shrink-0 border-t border-neutral-200 dark:border-neutral-800 p-2">
         <ActionPicker open={actionPickerOpen} onClose={() => setActionPickerOpen(false)} onSelect={(p) => void sendMessage(p)} disabled={connected === 0 || sending} />
+        <ReferencePicker query={refInput.query} items={refs.items} onSelect={(item) => refInput.select(item, setInput)} onClose={refInput.dismiss} visible={refInput.active} />
         <div className="flex gap-1.5 items-end">
           <button onClick={() => setActionPickerOpen(!actionPickerOpen)} disabled={connected === 0}
             className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${actionPickerOpen ? 'bg-accent text-white' : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
@@ -720,13 +820,14 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
           {/* Engine toggle */}
           <button
+            disabled={sending}
             onClick={() => {
               const idx = AGENT_ENGINES.findIndex((e) => e.id === tab.engine);
               const next = AGENT_ENGINES[(idx + 1) % AGENT_ENGINES.length];
               onUpdateTab({ engine: next.id, sessionId: null }); // new engine = new session
             }}
-            className="shrink-0 h-8 flex items-center gap-1 px-1.5 rounded-lg text-[10px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-            title={`Engine: ${AGENT_ENGINES.find((e) => e.id === tab.engine)?.label ?? tab.engine} (click to switch)`}
+            className="shrink-0 h-8 flex items-center gap-1 px-1.5 rounded-lg text-[10px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            title={sending ? 'Cannot switch while processing' : `Engine: ${AGENT_ENGINES.find((e) => e.id === tab.engine)?.label ?? tab.engine} (click to switch)`}
           >
             <Icon name={AGENT_ENGINES.find((e) => e.id === tab.engine)?.icon ?? 'cpu'} size={11} />
             <span className="text-[9px] uppercase tracking-wide">{tab.engine}</span>
@@ -735,8 +836,9 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           {/* Profile picker */}
           <div className="relative shrink-0" ref={profilePickerRef}>
             <button
+              disabled={sending}
               onClick={() => { setShowProfilePicker(!showProfilePicker); setEditingProfile(null); }}
-              className={`h-8 flex items-center gap-1 px-1.5 rounded-lg text-[10px] transition-colors ${
+              className={`h-8 flex items-center gap-1 px-1.5 rounded-lg text-[10px] transition-colors disabled:opacity-40 disabled:pointer-events-none ${
                 showProfilePicker ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
               }`}
               title={`Profile: ${profileDisplay}`}
@@ -791,7 +893,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                     </button>
                     <div className="border-t border-neutral-100 dark:border-neutral-800" />
 
-                    {/* Profile list with edit buttons */}
+                    {/* Profile list with edit + token buttons */}
                     {profiles.map((p) => (
                       <div
                         key={p.id}
@@ -805,6 +907,23 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                         >
                           <Icon name={(p.icon || (p.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName} size={12} className="shrink-0" />
                           <span className="truncate">{p.label}</span>
+                        </button>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              const res = await pixsimClient.post<{ access_token: string }>(`/dev/agent-profiles/${p.id}/token`, null, { params: { hours: 24, scope: 'dev' } });
+                              await navigator.clipboard.writeText(res.access_token);
+                              setMessages((prev) => [...prev, { role: 'system', text: `Token minted for ${p.label} (24h, copied to clipboard)`, timestamp: new Date() }]);
+                              setShowProfilePicker(false);
+                            } catch {
+                              setMessages((prev) => [...prev, { role: 'error', text: `Failed to mint token for ${p.label}`, timestamp: new Date() }]);
+                            }
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-opacity shrink-0"
+                          title="Mint token (copies to clipboard)"
+                        >
+                          <Icon name="key" size={10} />
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setEditingProfile(p); }}
@@ -832,11 +951,11 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           </div>
 
           <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-            placeholder={connected > 0 ? 'Ask something... (Enter to send)' : 'No agent connected'}
+            placeholder={connected > 0 ? 'Ask something... (@ to reference)' : 'No agent connected'}
             disabled={connected === 0 || sending} rows={1}
             className="flex-1 px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 resize-none focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
             style={{ minHeight: '36px', maxHeight: '120px' }}
-            onInput={(e) => { const el = e.currentTarget; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }}
+            onInput={handleTextareaInput}
           />
           <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || !input.trim()} className="shrink-0">
             <Icon name="send" size={14} />
@@ -970,11 +1089,17 @@ export function AIAssistantPanel() {
           })}
         </div>
 
-        {/* New tab + status */}
+        {/* New tab + resume + status */}
         <div className="flex items-center gap-1 px-2 shrink-0">
           <button onClick={() => createTab()} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300" title="New chat">
             <Icon name="plus" size={12} />
           </button>
+          <ResumeSessionPicker onResume={(sessionId, engine, label) => {
+            const id = createTabId();
+            const newTab: ChatTab = { id, label: label || 'Resumed', sessionId, profileId: null, engine: (engine || 'claude') as AgentEngine, usePersona: true, createdAt: new Date().toISOString() };
+            setTabs((prev) => [newTab, ...prev]);
+            setActiveTab(id);
+          }} />
           {connected === 0 && (
             <button
               onClick={() => { setBridgeStarting(true); pixsimClient.post('/meta/agents/bridge/start', { pool_size: 1, claude_args: '--dangerously-skip-permissions' }).catch(() => {}); setTimeout(() => setBridgeStarting(false), 5000); }}
