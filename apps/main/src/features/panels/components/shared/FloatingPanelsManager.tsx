@@ -478,15 +478,18 @@ const FloatingPanel = memo(function FloatingPanel({
         zIndex: Z.floatPanel + panel.zIndex,
         opacity: isUnfocused ? 0.45 : 1,
         transition: 'opacity 0.2s ease-out',
+        pointerEvents: isUnfocused ? 'none' : undefined,
       }}
       className="floating-panel"
       disableDragging={flyingAway}
       enableResizing={!flyingAway && !panel.minimized}
     >
       <div className="h-full flex flex-col bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-300 dark:border-neutral-700 overflow-hidden rounded-lg">
-        {/* Header */}
+        {/* Header — stays interactive when unfocused so users can re-focus */}
         <div
           className="floating-panel-header flex items-center justify-between cursor-move select-none px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border-b dark:border-neutral-700"
+          style={isUnfocused ? { pointerEvents: 'auto' } : undefined}
+          onMouseDown={() => bringFloatingPanelToFront(panel.id)}
           onDoubleClick={() => useWorkspaceStore.getState().minimizeFloatingPanel(panel.id)}
         >
           <div className="flex items-center gap-2 min-w-0">
