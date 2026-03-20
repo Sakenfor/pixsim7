@@ -79,6 +79,22 @@ class PromptFamilyResponse(BaseModel):
         from_attributes = True
 
 
+class BranchSummary(BaseModel):
+    name: str
+    head_version_id: Optional[str] = None
+    latest_version_number: Optional[int] = None
+    commit_count: int = 0
+    last_commit: Optional[str] = None
+    author: Optional[str] = None
+    is_main: bool = False
+
+
+class CreateBranchRequest(BaseModel):
+    branch_name: str = Field(..., description="Name for the new branch")
+    from_version_id: Optional[UUID] = Field(None, description="Branch from this version (latest if omitted)")
+    author: Optional[str] = None
+
+
 class PromptVersionResponse(BaseModel):
     id: UUID
     family_id: UUID
@@ -86,6 +102,8 @@ class PromptVersionResponse(BaseModel):
     prompt_text: str
     commit_message: Optional[str]
     author: Optional[str]
+    parent_version_id: Optional[UUID] = None
+    branch_name: Optional[str] = None
     generation_count: int
     successful_assets: int
     tags: List[str]

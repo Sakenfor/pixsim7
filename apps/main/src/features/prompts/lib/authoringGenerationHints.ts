@@ -56,11 +56,14 @@ export function resolveAuthoringModeId({
 }: ResolveAuthoringHintsInput): string | null {
   if (modes.length === 0) return null;
   const modeIds = new Set(modes.map((mode) => normalize(mode.id)));
-  const modeFromTag = extractModeIdFromTags(tags);
-  if (modeFromTag && modeIds.has(modeFromTag)) return modeFromTag;
 
+  // Family category is authoritative — if set, it wins.
   const categoryMode = familyCategory ? normalize(familyCategory) : '';
   if (categoryMode && modeIds.has(categoryMode)) return categoryMode;
+
+  // Fall back to version-level mode: tag (useful when family has no category)
+  const modeFromTag = extractModeIdFromTags(tags);
+  if (modeFromTag && modeIds.has(modeFromTag)) return modeFromTag;
 
   const fallbackMode = resolveModeIdFallbackFromTags(tags);
   if (fallbackMode && modeIds.has(fallbackMode)) return fallbackMode;

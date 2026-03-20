@@ -2,8 +2,8 @@ import type { ResolverWorkbenchFixture } from './types';
 
 export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
   {
-    id: 'police-allure-basic',
-    name: 'Police Allure (Basic)',
+    id: 'uniform-modifier-basic',
+    name: 'Uniform Modifier (Basic)',
     description: 'Base uniform aesthetic + wardrobe modifier target with allure-like constraints.',
     request: {
       resolver_id: 'next_v1',
@@ -14,7 +14,7 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
           { key: 'wardrobe_modifier', kind: 'slot', label: 'Wardrobe modifier', category: 'wardrobe_modifier' },
         ],
         desired_tags_by_target: {
-          uniform_aesthetic: { aesthetic: 'police_uniform', variant: 'duty' },
+          uniform_aesthetic: { aesthetic: 'expedition_uniform', variant: 'duty' },
           wardrobe_modifier: { modifier_family: 'allure', modifier_target: 'wardrobe', allure_level: 'subtle' },
         },
         avoid_tags_by_target: {
@@ -27,16 +27,16 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
       candidates_by_target: {
         uniform_aesthetic: [
           {
-            block_id: 'police_uniform_duty_01',
-            text: 'a practical duty police uniform with crisp tailoring',
-            tags: { aesthetic: 'police_uniform', variant: 'duty' },
+            block_id: 'expedition_uniform_duty_01',
+            text: 'a practical expedition-duty uniform with crisp tailoring',
+            tags: { aesthetic: 'expedition_uniform', variant: 'duty' },
             avg_rating: 4.2,
             capabilities: ['aesthetic_base'],
           },
           {
-            block_id: 'police_uniform_sleek_01',
-            text: 'a sleek police uniform silhouette with polished lines',
-            tags: { aesthetic: 'police_uniform', variant: 'sleek' },
+            block_id: 'expedition_uniform_sleek_01',
+            text: 'a sleek expedition uniform silhouette with polished lines',
+            tags: { aesthetic: 'expedition_uniform', variant: 'sleek' },
             avg_rating: 4.8,
             capabilities: ['aesthetic_base'],
           },
@@ -66,10 +66,10 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
       },
       constraints: [
         {
-          id: 'uniform-must-be-police',
+          id: 'uniform-must-be-expedition',
           kind: 'requires_tag',
           target_key: 'uniform_aesthetic',
-          payload: { tag: 'aesthetic', value: 'police_uniform' },
+          payload: { tag: 'aesthetic', value: 'expedition_uniform' },
         },
         {
           id: 'wardrobe-must-target-wardrobe',
@@ -83,15 +83,15 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
         include_candidate_scores: true,
       },
       context: {
-        template_slug: 'police-precinct-break-room',
+        template_slug: 'bananza-scene-compose-scaffold-v1',
         resolver_experiment: 'next_v1_fixture',
       },
     },
   },
   {
-    id: 'tribal-theme-allure',
-    name: 'Tribal Theme + Allure',
-    description: 'Demonstrates split between base aesthetic and allure wardrobe modifiers for tribal-style theme.',
+    id: 'crafted-theme-allure',
+    name: 'Crafted Theme + Allure',
+    description: 'Demonstrates split between base aesthetic and allure wardrobe modifiers for a crafted theme.',
     request: {
       resolver_id: 'next_v1',
       seed: 7,
@@ -102,8 +102,8 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
           { key: 'wardrobe_modifier', kind: 'slot', label: 'Wardrobe modifier', category: 'wardrobe_modifier' },
         ],
         desired_tags_by_target: {
-          aesthetic_theme: { theme_family: 'tribal_handcrafted', theme_variant: 'earthy' },
-          subgenre_cue: { theme_family: 'tribal_handcrafted', theme_variant: 'earthy' },
+          aesthetic_theme: { theme_family: 'handcrafted_adventure', theme_variant: 'earthy' },
+          subgenre_cue: { theme_family: 'handcrafted_adventure', theme_variant: 'earthy' },
           wardrobe_modifier: { modifier_family: 'allure', modifier_target: 'wardrobe', allure_level: 'medium' },
         },
         required_capabilities_by_target: {
@@ -113,29 +113,29 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
       candidates_by_target: {
         aesthetic_theme: [
           {
-            block_id: 'tribal_theme_earthy_01',
-            text: 'handcrafted tribal garments with earthy woven textures',
-            tags: { theme_family: 'tribal_handcrafted', theme_variant: 'earthy' },
+            block_id: 'crafted_theme_earthy_01',
+            text: 'handcrafted garments with earthy woven textures',
+            tags: { theme_family: 'handcrafted_adventure', theme_variant: 'earthy' },
             capabilities: ['aesthetic_base'],
           },
           {
-            block_id: 'tribal_theme_ceremonial_01',
-            text: 'ceremonial tribal styling with ornate accents',
-            tags: { theme_family: 'tribal_handcrafted', theme_variant: 'ceremonial' },
+            block_id: 'crafted_theme_ceremonial_01',
+            text: 'ceremonial handcrafted styling with ornate accents',
+            tags: { theme_family: 'handcrafted_adventure', theme_variant: 'ceremonial' },
             capabilities: ['aesthetic_base'],
             avg_rating: 4.7,
           },
         ],
         subgenre_cue: [
           {
-            block_id: 'tribal_cue_earthy_01',
+            block_id: 'crafted_cue_earthy_01',
             text: 'earthy handwoven cue with natural fibers',
-            tags: { theme_family: 'tribal_handcrafted', theme_variant: 'earthy' },
+            tags: { theme_family: 'handcrafted_adventure', theme_variant: 'earthy' },
           },
           {
-            block_id: 'tribal_cue_ceremonial_01',
+            block_id: 'crafted_cue_ceremonial_01',
             text: 'ceremonial cue with ritual ornament influence',
-            tags: { theme_family: 'tribal_handcrafted', theme_variant: 'ceremonial' },
+            tags: { theme_family: 'handcrafted_adventure', theme_variant: 'ceremonial' },
           },
         ],
         wardrobe_modifier: [
@@ -146,7 +146,7 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
             capabilities: ['wardrobe_modifier'],
           },
           {
-            block_id: 'wardrobe_allure_subtle_tribal_01',
+            block_id: 'wardrobe_allure_subtle_crafted_01',
             text: 'subtle fitted tailoring preserving handcrafted readability',
             tags: { modifier_family: 'allure', modifier_target: 'wardrobe', allure_level: 'subtle', tightness: 'fitted' },
             capabilities: ['wardrobe_modifier'],
@@ -158,7 +158,7 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
           id: 'theme-sync-cue-family',
           kind: 'requires_tag',
           target_key: 'subgenre_cue',
-          payload: { tag: 'theme_family', value: 'tribal_handcrafted' },
+          payload: { tag: 'theme_family', value: 'handcrafted_adventure' },
         },
       ],
       debug: {
@@ -166,7 +166,7 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
         include_candidate_scores: true,
       },
       context: {
-        template_slug: 'tribal-theme-woman',
+        template_slug: 'bananza-scene-explore-scaffold-v1',
         resolver_experiment: 'next_v1_fixture',
       },
     },
@@ -338,10 +338,10 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
 
   // -----------------------------------------------------------------------
   {
-    id: 'pairwise-bonus-tribal-compat',
-    name: 'Pairwise Bonus (Tribal Compatibility)',
+    id: 'pairwise-bonus-crafted-compat',
+    name: 'Pairwise Bonus (Crafted Compatibility)',
     description:
-      'Demonstrates pairwise_bonuses: when the tribal base aesthetic is selected, the tribal-compatible modifier gets a score boost over the higher-rated urban modifier.',
+      'Demonstrates pairwise_bonuses: when the crafted base aesthetic is selected, the crafted-compatible modifier gets a score boost over the higher-rated urban modifier.',
     request: {
       resolver_id: 'next_v1',
       seed: 5,
@@ -351,7 +351,7 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
           { key: 'wardrobe_modifier', kind: 'slot', label: 'Wardrobe modifier', category: 'wardrobe_modifier' },
         ],
         desired_tags_by_target: {
-          base_aesthetic: { theme_family: 'tribal_handcrafted' },
+          base_aesthetic: { theme_family: 'handcrafted_adventure' },
         },
         required_capabilities_by_target: {
           wardrobe_modifier: ['wardrobe_modifier'],
@@ -360,9 +360,9 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
       candidates_by_target: {
         base_aesthetic: [
           {
-            block_id: 'tribal_earthy_base',
-            text: 'handcrafted tribal garments with earthy woven textures',
-            tags: { theme_family: 'tribal_handcrafted', theme_variant: 'earthy' },
+            block_id: 'crafted_earthy_base',
+            text: 'handcrafted garments with earthy woven textures',
+            tags: { theme_family: 'handcrafted_adventure', theme_variant: 'earthy' },
             capabilities: ['aesthetic_base'],
             avg_rating: 4.2,
           },
@@ -376,9 +376,9 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
             avg_rating: 4.8,
           },
           {
-            block_id: 'mod_tribal_woven',
+            block_id: 'mod_crafted_woven',
             text: 'body-conforming woven modifier preserving handcrafted silhouette',
-            tags: { modifier_family: 'allure', style_compat: 'tribal', tightness: 'fitted' },
+            tags: { modifier_family: 'allure', style_compat: 'crafted', tightness: 'fitted' },
             capabilities: ['wardrobe_modifier'],
             avg_rating: 3.5,
           },
@@ -387,17 +387,17 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
       constraints: [],
       pairwise_bonuses: [
         {
-          id: 'tribal-modifier-compat',
+          id: 'crafted-modifier-compat',
           source_target: 'base_aesthetic',
           target_key: 'wardrobe_modifier',
-          source_tags: { theme_family: 'tribal_handcrafted' },
-          candidate_tags: { style_compat: 'tribal' },
+          source_tags: { theme_family: 'handcrafted_adventure' },
+          candidate_tags: { style_compat: 'crafted' },
           bonus: 3.0,
         },
       ],
       debug: { include_trace: true, include_candidate_scores: true },
       context: {
-        template_slug: 'tribal-theme-woman',
+        template_slug: 'bananza-scene-refine-scaffold-v1',
         resolver_experiment: 'next_v1_pairwise_fixture',
       },
     },
@@ -465,7 +465,14 @@ export const resolverWorkbenchFixtures: ResolverWorkbenchFixture[] = [
   },
 ];
 
+const FIXTURE_ID_ALIASES: Record<string, string> = {
+  'police-allure-basic': 'uniform-modifier-basic',
+  'tribal-theme-allure': 'crafted-theme-allure',
+  'pairwise-bonus-tribal-compat': 'pairwise-bonus-crafted-compat',
+};
+
 export function getResolverWorkbenchFixture(fixtureId: string | null | undefined): ResolverWorkbenchFixture | null {
   if (!fixtureId) return null;
-  return resolverWorkbenchFixtures.find((fixture) => fixture.id === fixtureId) ?? null;
+  const normalizedFixtureId = FIXTURE_ID_ALIASES[fixtureId] ?? fixtureId;
+  return resolverWorkbenchFixtures.find((fixture) => fixture.id === normalizedFixtureId) ?? null;
 }

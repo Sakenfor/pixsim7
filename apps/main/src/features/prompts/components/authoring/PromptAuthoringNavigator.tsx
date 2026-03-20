@@ -5,192 +5,61 @@
  * Consumes shared state from PromptAuthoringContext.
  */
 
-import { DisclosureSection, Popover, Z } from '@pixsim7/shared.ui';
+import { BranchSelector, Popover } from '@pixsim7/shared.ui';
+import type { BranchInfo } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
-import type { PromptFamilySummary, PromptVersionSummary } from '@lib/api/prompts';
+import { listBranches, createBranch, type BranchSummary } from '@lib/api/prompts';
+import type { PromptFamilySummary } from '@lib/api/prompts';
 import { Icon } from '@lib/icons';
 
-import { ClientFilterBar } from '@features/gallery/components/ClientFilterBar';
-import type { ClientFilterDef, ClientFilterValue } from '@features/gallery/lib/useClientFilters';
 
 
-import type { OperationType } from '@/types/operations';
+import { usePromptAuthoring } from '../../context/PromptAuthoringContext';
 
-import { formatDate, parseTags, usePromptAuthoring } from '../../context/PromptAuthoringContext';
-import {
-  formatOperationTypeLabel,
-  formatOperationTypeShort,
-  resolveAuthoringGenerationHints,
-} from '../../lib/authoringGenerationHints';
-
-const VERSION_TAG_FILTER_KEY = 'version-tag';
-
-function VersionMetadataPopover({
-  version,
-  modeId,
-  prioritizedOperations,
-}: {
-  version: PromptVersionSummary;
-  modeId: string | null;
-  prioritizedOperations: OperationType[];
-}) {
-  const [open, setOpen] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-
-  useLayoutEffect(() => {
-    if (!open || !buttonRef.current) {
-      setAnchorRect(null);
-      return;
-    }
-    const update = () => setAnchorRect(buttonRef.current?.getBoundingClientRect() ?? null);
-    update();
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onMouseDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (buttonRef.current?.contains(target)) return;
-      if (panelRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', onMouseDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onMouseDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
-
-  const popover = open && anchorRect ? (() => {
-    const width = 288;
-    const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - width - 8));
-    const availableAbove = Math.max(0, anchorRect.top - 8);
-    const availableBelow = Math.max(0, window.innerHeight - anchorRect.bottom - 8);
-    const openUp = availableAbove >= 220 || availableAbove >= availableBelow;
-    const top = openUp ? anchorRect.top - 8 : anchorRect.bottom + 8;
-
-    return createPortal(
-      <div
-        className="fixed"
-        style={{
-          zIndex: Z.globalModal,
-          left,
-          top,
-          transform: openUp ? 'translateY(-100%)' : undefined,
-        }}
-      >
-        <div
-          ref={panelRef}
-          className="w-72 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg p-3 space-y-2"
-        >
-          <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200">Saved version metadata</div>
-          <div className="space-y-1 text-[11px]">
-            <div className="text-neutral-700 dark:text-neutral-200">
-              v{version.version_number} ({version.id.slice(0, 8)})
-            </div>
-            <div className="text-neutral-600 dark:text-neutral-300">
-              {version.commit_message || 'No commit message'}
-            </div>
-            <div className="text-neutral-500 dark:text-neutral-400">
-              Created: {formatDate(version.created_at)}
-            </div>
-            {version.author && (
-              <div className="text-neutral-500 dark:text-neutral-400">
-                Author: {version.author}
-              </div>
-            )}
-            {prioritizedOperations.length > 0 && (
-              <div className="pt-1 border-t border-neutral-200 dark:border-neutral-700">
-                <div className="text-neutral-500 dark:text-neutral-400">
-                  Priority op: {formatOperationTypeShort(prioritizedOperations[0])}
-                </div>
-                <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                  Order: {prioritizedOperations.map((operation) => formatOperationTypeLabel(operation)).join(' -> ')}
-                </div>
-                {modeId && (
-                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                    Mode: {modeId}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-          {version.tags.length > 0 ? (
-            <div className="flex flex-wrap gap-1 pt-1 border-t border-neutral-200 dark:border-neutral-700">
-              {version.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center rounded border border-neutral-200 dark:border-neutral-700 px-1.5 py-0.5 text-[10px] text-neutral-600 dark:text-neutral-300"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 pt-1 border-t border-neutral-200 dark:border-neutral-700">
-              No saved tags.
-            </div>
-          )}
-        </div>
-      </div>,
-      document.body,
-    );
-  })() : null;
-
-  return (
-    <>
-      <button
-        ref={buttonRef}
-        type="button"
-        className="rounded border border-neutral-200 dark:border-neutral-700 p-1 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-        title="Saved version metadata"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <Icon name="info" size={10} />
-      </button>
-      {popover}
-    </>
-  );
+function formatRelativeTime(value?: string | null): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 30) return `${diffDay}d ago`;
+  return date.toLocaleDateString();
 }
 
-const CATEGORY_OPTIONS = [
-  '', 'scene_setup', 'scene_continuation', 'character_design',
-  'tool_edit', 'patch_edit', 'variation',
-];
 
 function FamilyEditPopover({
   family,
   onUpdate,
   onClose,
   triggerRef,
+  categoryOptions,
 }: {
   family: PromptFamilySummary;
   onUpdate: (familyId: string, data: { title?: string; category?: string; tags?: string[] }) => Promise<void>;
   onClose: () => void;
   triggerRef: React.RefObject<HTMLElement | null>;
+  categoryOptions: string[];
 }) {
   const [title, setTitle] = useState(family.title);
   const [category, setCategory] = useState(family.category ?? '');
-  const [tagsInput, setTagsInput] = useState((family.tags ?? []).join(', '));
+  const [tags, setTags] = useState<string[]>(family.tags ?? []);
+  const [tagDraft, setTagDraft] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const addTag = (raw: string) => {
+    const t = raw.trim();
+    if (t && !tags.includes(t)) setTags((prev) => [...prev, t]);
+  };
+  const removeTag = (t: string) => setTags((prev) => prev.filter((x) => x !== t));
 
   const handleSave = async () => {
     setSaving(true);
@@ -198,9 +67,8 @@ function FamilyEditPopover({
       const updates: { title?: string; category?: string; tags?: string[] } = {};
       if (title.trim() !== family.title) updates.title = title.trim();
       if (category !== (family.category ?? '')) updates.category = category || undefined;
-      const newTags = parseTags(tagsInput);
       const oldTags = family.tags ?? [];
-      if (JSON.stringify(newTags) !== JSON.stringify(oldTags)) updates.tags = newTags;
+      if (JSON.stringify(tags) !== JSON.stringify(oldTags)) updates.tags = tags;
       if (Object.keys(updates).length > 0) {
         await onUpdate(family.id, updates);
       }
@@ -221,7 +89,7 @@ function FamilyEditPopover({
       triggerRef={triggerRef}
       className="w-72 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg p-3 space-y-2"
     >
-      <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200">Edit family</div>
+      <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200">Edit prompt</div>
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
@@ -235,17 +103,53 @@ function FamilyEditPopover({
           onChange={(e) => setCategory(e.target.value)}
           className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
         >
-          {CATEGORY_OPTIONS.map((opt) => (
+          {categoryOptions.map((opt) => (
             <option key={opt} value={opt}>{opt || '(none)'}</option>
           ))}
         </select>
       </div>
-      <input
-        value={tagsInput}
-        onChange={(e) => setTagsInput(e.target.value)}
-        placeholder="Tags (comma separated)"
-        className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
-      />
+      <div>
+        <div className="text-[10px] text-neutral-500 dark:text-neutral-400 mb-0.5">Tags</div>
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-1.5">
+            {tags.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => removeTag(tag)}
+                className="inline-flex items-center gap-0.5 rounded border border-neutral-200 dark:border-neutral-700 px-1.5 py-0.5 text-[10px] text-neutral-600 dark:text-neutral-300 hover:bg-red-50 hover:border-red-200 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:border-red-800/60 dark:hover:text-red-300"
+                title={`Remove ${tag}`}
+              >
+                <span className="truncate max-w-[140px]">{tag}</span>
+                <Icon name="x" size={8} />
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-1">
+          <input
+            value={tagDraft}
+            onChange={(e) => setTagDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addTag(tagDraft);
+                setTagDraft('');
+              }
+            }}
+            placeholder="Add tag..."
+            className="flex-1 min-w-0 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-[11px]"
+          />
+          <button
+            type="button"
+            onClick={() => { addTag(tagDraft); setTagDraft(''); }}
+            disabled={!tagDraft.trim()}
+            className="rounded border border-neutral-200 dark:border-neutral-700 px-1.5 py-1 text-[11px] text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-40"
+          >
+            +
+          </button>
+        </div>
+      </div>
       <div className="flex items-center gap-2 pt-1">
         <button
           type="button"
@@ -270,9 +174,11 @@ function FamilyEditPopover({
 function FamilyCreatePopover({
   onClose,
   triggerRef,
+  categoryOptions,
 }: {
   onClose: () => void;
   triggerRef: React.RefObject<HTMLElement | null>;
+  categoryOptions: string[];
 }) {
   const {
     newFamilyTitle, setNewFamilyTitle,
@@ -298,7 +204,7 @@ function FamilyCreatePopover({
       triggerRef={triggerRef}
       className="w-72 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg p-3 space-y-2"
     >
-      <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200">New family</div>
+      <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200">New prompt</div>
       <input
         value={newFamilyTitle}
         onChange={(e) => setNewFamilyTitle(e.target.value)}
@@ -320,7 +226,7 @@ function FamilyCreatePopover({
           onChange={(e) => setNewFamilyCategory(e.target.value)}
           className="rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
         >
-          {CATEGORY_OPTIONS.map((opt) => (
+          {categoryOptions.map((opt) => (
             <option key={opt} value={opt}>{opt || '(none)'}</option>
           ))}
         </select>
@@ -346,7 +252,6 @@ function FamilyCreatePopover({
 export function PromptAuthoringNavigator() {
   const {
     families,
-    familiesLoading,
     familiesError,
     selectedFamily,
     selectedFamilyId,
@@ -361,275 +266,237 @@ export function PromptAuthoringNavigator() {
     hydrateFromVersion,
     authoringModes,
   } = usePromptAuthoring();
-  const [activeVersionTagFilters, setActiveVersionTagFilters] = useState<string[]>([]);
 
-  useEffect(() => {
-    setActiveVersionTagFilters([]);
-  }, [selectedFamilyId]);
-
-  const availableVersionTags = useMemo(() => {
-    const counts = new Map<string, number>();
-    versions.forEach((version) => {
-      (version.tags ?? []).forEach((tag) => {
-        const normalized = tag.trim();
-        if (!normalized) return;
-        counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
-      });
-    });
-    return Array.from(counts.entries()).sort((a, b) => {
-      if (b[1] !== a[1]) return b[1] - a[1];
-      return a[0].localeCompare(b[0]);
-    });
-  }, [versions]);
-
-  const filteredVersions = useMemo(() => {
-    if (activeVersionTagFilters.length === 0) return versions;
-    const selected = new Set(activeVersionTagFilters);
-    return versions.filter((version) =>
-      (version.tags ?? []).some((tag) => selected.has(tag.trim())),
-    );
-  }, [activeVersionTagFilters, versions]);
-
-  const versionFilterDefs = useMemo<ClientFilterDef<never>[]>(() => [
-    {
-      key: VERSION_TAG_FILTER_KEY,
-      label: 'Tags',
-      icon: 'tag',
-      type: 'enum',
-      selectionMode: 'multi',
-      order: 0,
-      predicate: () => true,
-    },
-  ], []);
-  const versionFilterState = useMemo<Record<string, ClientFilterValue>>(
-    () => ({
-      [VERSION_TAG_FILTER_KEY]:
-        activeVersionTagFilters.length > 0 ? activeVersionTagFilters : undefined,
-    }),
-    [activeVersionTagFilters],
+  const categoryOptions = useMemo(
+    () => ['', ...authoringModes.map((m) => m.id)],
+    [authoringModes],
   );
-  const versionDerivedOptions = useMemo(
-    () => ({
-      [VERSION_TAG_FILTER_KEY]: availableVersionTags.map(([tag, count]) => ({
-        value: tag,
-        label: tag,
-        count,
-      })),
-    }),
-    [availableVersionTags],
-  );
-  const handleVersionFilterChange = useCallback((key: string, value: ClientFilterValue) => {
-    if (key !== VERSION_TAG_FILTER_KEY) return;
-    if (!Array.isArray(value)) {
-      setActiveVersionTagFilters([]);
-      return;
-    }
-    const next = Array.from(
-      new Set(
-        value
-          .map((entry) => String(entry).trim())
-          .filter((entry) => entry.length > 0),
-      ),
-    );
-    setActiveVersionTagFilters(next);
-  }, []);
 
   const [createOpen, setCreateOpen] = useState(false);
   const createBtnRef = useRef<HTMLButtonElement>(null);
   const [editingFamilyId, setEditingFamilyId] = useState<string | null>(null);
   const editBtnRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
+  // Branch state
+  const [branches, setBranches] = useState<BranchSummary[]>([]);
+  const [currentBranch, setCurrentBranch] = useState<string | null>('main');
+
+  useEffect(() => {
+    if (!selectedFamilyId) { setBranches([]); return; }
+    let cancelled = false;
+    void listBranches(selectedFamilyId).then((result) => {
+      if (cancelled) return;
+      setBranches(result);
+    }).catch(() => {
+      if (!cancelled) setBranches([]);
+    });
+    return () => { cancelled = true; };
+  }, [selectedFamilyId, versions]); // re-fetch when versions change (new branch created)
+
+  const branchInfos: BranchInfo[] = useMemo(
+    () => branches.map((b) => ({
+      name: b.name,
+      isMain: b.is_main,
+      commitCount: b.commit_count,
+      lastCommit: b.last_commit,
+      author: b.author,
+    })),
+    [branches],
+  );
+
+  const filteredByBranch = useMemo(() => {
+    if (!currentBranch || currentBranch === 'main') {
+      return versions.filter((v) => !v.branch_name || v.branch_name === 'main');
+    }
+    return versions.filter((v) => v.branch_name === currentBranch);
+  }, [currentBranch, versions]);
+
+  const handleCreateBranch = useCallback(async (branchName: string) => {
+    if (!selectedFamilyId) return;
+    try {
+      await createBranch(selectedFamilyId, { branch_name: branchName });
+      setCurrentBranch(branchName);
+      // branches re-fetch via the versions dep change in the effect above
+      void refreshFamilies(selectedFamilyId);
+    } catch {
+      // silently fail — branch name conflict etc.
+    }
+  }, [selectedFamilyId, refreshFamilies]);
+
   return (
     <div className="h-full min-h-0 flex flex-col bg-white dark:bg-neutral-900/60">
-      {/* Family + version lists */}
-      <div className="flex-1 min-h-0 flex flex-col">
-        <DisclosureSection
-          label="Families"
-          defaultOpen
-          fillHeight
-          badge={(
-            <span className="flex items-center gap-1">
-              {families.length > 0 && <span className="text-[10px] text-neutral-500 dark:text-neutral-400">({families.length})</span>}
-              <button
-                ref={createBtnRef}
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setCreateOpen((v) => !v); }}
-                className="p-0.5 rounded text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200"
-                title="New family"
-              >
-                <Icon name="plus" size={12} />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); void refreshFamilies(selectedFamilyId); }}
-                disabled={familiesLoading}
-                className="p-0.5 rounded text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-50"
-                title="Refresh families"
-              >
-                <Icon name="refresh" size={11} />
-              </button>
+      {/* ── Prompt selector bar ── */}
+      <div className="px-2.5 pt-2.5 pb-2 space-y-1.5 border-b border-neutral-200 dark:border-neutral-800">
+        <div className="flex items-center gap-1">
+          <select
+            value={selectedFamilyId ?? ''}
+            onChange={(e) => setSelectedFamilyId(e.target.value || null)}
+            className="flex-1 min-w-0 rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-2 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-200 truncate"
+          >
+            <option value="">Select prompt...</option>
+            {families.map((f) => (
+              <option key={f.id} value={f.id}>{f.title}</option>
+            ))}
+          </select>
+          <button
+            ref={createBtnRef}
+            type="button"
+            onClick={() => setCreateOpen((v) => !v)}
+            className="p-1.5 rounded-md border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200"
+            title="New prompt"
+          >
+            <Icon name="plus" size={12} />
+          </button>
+          {selectedFamily && (
+            <button
+              ref={(el) => { if (el && selectedFamily) editBtnRefs.current.set(selectedFamily.id, el); }}
+              type="button"
+              onClick={() => setEditingFamilyId((v) => v === selectedFamilyId ? null : selectedFamilyId)}
+              className="p-1.5 rounded-md border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200"
+              title="Edit prompt"
+            >
+              <Icon name="edit" size={12} />
+            </button>
+          )}
+        </div>
+        {selectedFamily && (
+          <div className="flex items-center gap-1.5 px-0.5">
+            {selectedFamily.category && (
+              <span className="inline-flex items-center rounded border border-neutral-200 dark:border-neutral-700 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 dark:text-neutral-300">
+                {selectedFamily.category}
+              </span>
+            )}
+            <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
+              {selectedFamily.prompt_type}
             </span>
-          )}
-          className="border-b border-neutral-200 dark:border-neutral-800"
-          headerClassName="px-3"
-          contentClassName="!mt-0"
-        >
-          {familiesError && (
-            <div className="px-3 py-1 text-[11px] text-red-600 dark:text-red-300">{familiesError}</div>
-          )}
-          {families.length === 0 && !familiesLoading ? (
-            <div className="px-3 py-4 text-xs text-neutral-500 dark:text-neutral-400">
-              No prompt families found.
-            </div>
-          ) : (
-            <div className="p-2 space-y-1">
-              {families.map((family) => (
-                <div
-                  key={family.id}
-                  className={clsx(
-                    'flex items-start rounded border text-xs',
-                    selectedFamilyId === family.id
-                      ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300'
-                      : 'border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200',
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setSelectedFamilyId(family.id)}
-                    className="flex-1 min-w-0 text-left px-2 py-1.5"
-                  >
-                    <div className="font-medium truncate">{family.title}</div>
-                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
-                      {family.category ? `${family.category} · ` : ''}{family.prompt_type}
-                    </div>
-                  </button>
-                  <button
-                    ref={(el) => { if (el) editBtnRefs.current.set(family.id, el); }}
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setEditingFamilyId((v) => v === family.id ? null : family.id); }}
-                    className="flex-shrink-0 p-1.5 rounded text-neutral-400 dark:text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                    title="Edit family"
-                  >
-                    <Icon name="edit" size={10} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </DisclosureSection>
-
-        {/* Create popover */}
-        {createOpen && (
-          <FamilyCreatePopover
-            onClose={() => setCreateOpen(false)}
-            triggerRef={createBtnRef}
-          />
+          </div>
         )}
-        {/* Edit popover */}
-        {editingFamilyId && (() => {
-          const fam = families.find((f) => f.id === editingFamilyId);
-          const btnEl = editBtnRefs.current.get(editingFamilyId);
-          if (!fam || !btnEl) return null;
-          return (
-            <FamilyEditPopover
-              family={fam}
-              onUpdate={handleUpdateFamily}
-              onClose={() => setEditingFamilyId(null)}
-              triggerRef={{ current: btnEl }}
-            />
-          );
-        })()}
+        {familiesError && (
+          <div className="text-[11px] text-red-600 dark:text-red-300">{familiesError}</div>
+        )}
+      </div>
 
-        <DisclosureSection
-          label="Versions"
-          defaultOpen
-          fillHeight
-          badge={versions.length > 0 ? <span className="text-[10px] text-neutral-500 dark:text-neutral-400">({versions.length})</span> : undefined}
-          headerClassName="px-3"
-          contentClassName="!mt-0"
-        >
-          {versionsError && (
-            <div className="px-3 py-2 text-[11px] text-red-600 dark:text-red-300">{versionsError}</div>
-          )}
-          {versions.length > 0 && (
-            <div className="px-2 pt-2 pb-1 border-b border-neutral-200 dark:border-neutral-800">
-              <ClientFilterBar
-                defs={versionFilterDefs}
-                filterState={versionFilterState}
-                derivedOptions={versionDerivedOptions}
-                onFilterChange={handleVersionFilterChange}
-                onReset={() => setActiveVersionTagFilters([])}
-                popoverMode="inline"
-              />
+      {/* Create popover */}
+      {createOpen && (
+        <FamilyCreatePopover
+          onClose={() => setCreateOpen(false)}
+          triggerRef={createBtnRef}
+          categoryOptions={categoryOptions}
+        />
+      )}
+      {/* Edit popover */}
+      {editingFamilyId && (() => {
+        const fam = families.find((f) => f.id === editingFamilyId);
+        const btnEl = editBtnRefs.current.get(editingFamilyId);
+        if (!fam || !btnEl) return null;
+        return (
+          <FamilyEditPopover
+            family={fam}
+            onUpdate={handleUpdateFamily}
+            onClose={() => setEditingFamilyId(null)}
+            triggerRef={{ current: btnEl }}
+            categoryOptions={categoryOptions}
+          />
+        );
+      })()}
+
+      {/* ── Branch + version history ── */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        {/* Branch selector */}
+        {selectedFamilyId && (
+          <div className="px-2.5 pt-2 pb-1.5 border-b border-neutral-200 dark:border-neutral-800">
+            <BranchSelector
+              branches={branchInfos}
+              currentBranch={currentBranch}
+              onSelect={setCurrentBranch}
+              onCreateBranch={handleCreateBranch}
+              disabled={!selectedFamilyId}
+            />
+          </div>
+        )}
+
+        {versionsError && (
+          <div className="px-3 py-2 text-[11px] text-red-600 dark:text-red-300">{versionsError}</div>
+        )}
+
+        {/* Version history — git log style */}
+        <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar">
+          {!selectedFamilyId ? (
+            <div className="px-3 py-6 text-xs text-neutral-500 dark:text-neutral-400 text-center">
+              Select a prompt to view history.
             </div>
-          )}
-          {versions.length === 0 && !versionsLoading ? (
-            <div className="px-3 py-4 text-xs text-neutral-500 dark:text-neutral-400">
-              Select a family to view versions.
-            </div>
-          ) : filteredVersions.length === 0 && !versionsLoading ? (
-            <div className="px-3 py-4 text-xs text-neutral-500 dark:text-neutral-400">
-              No versions match the selected tag filters.
+          ) : filteredByBranch.length === 0 && !versionsLoading ? (
+            <div className="px-3 py-6 text-xs text-neutral-500 dark:text-neutral-400 text-center">
+              No versions on this branch.
             </div>
           ) : (
-            <div className="p-2 space-y-1">
-              {filteredVersions.map((version) => {
-                const versionHints = resolveAuthoringGenerationHints({
-                  tags: version.tags ?? [],
-                  familyCategory: selectedFamily?.category,
-                  modes: authoringModes,
-                });
-                const prioritizedOperation = versionHints.prioritizedOperations[0] ?? null;
+            <div className="py-1">
+              {filteredByBranch.map((version, idx) => {
+                const isSelected = selectedVersionId === version.id;
+                const isLast = idx === filteredByBranch.length - 1;
 
                 return (
-                  <div
+                  <button
                     key={version.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedVersionId(version.id);
+                      hydrateFromVersion(version);
+                    }}
                     className={clsx(
-                      'rounded border text-xs',
-                      selectedVersionId === version.id
-                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-300'
-                        : 'border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200',
+                      'w-full text-left flex items-start gap-2.5 px-3 py-1.5 transition-colors',
+                      isSelected
+                        ? 'bg-blue-50 dark:bg-blue-900/20'
+                        : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
                     )}
                   >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedVersionId(version.id);
-                        hydrateFromVersion(version);
-                      }}
-                      className="w-full text-left px-2 pt-1.5 pb-1"
-                    >
-                      <div className="font-medium truncate">
-                        v{version.version_number}
-                        <span className="ml-2 text-[10px] text-neutral-500 dark:text-neutral-400">
-                          {version.id.slice(0, 8)}
+                    {/* Git-line: dot + connector */}
+                    <div className="flex flex-col items-center pt-0.5 flex-shrink-0 w-3">
+                      <div className={clsx(
+                        'w-2 h-2 rounded-full border-2 flex-shrink-0',
+                        isSelected
+                          ? 'border-blue-500 bg-blue-500'
+                          : 'border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900',
+                      )} />
+                      {!isLast && (
+                        <div className="w-px flex-1 min-h-[16px] bg-neutral-200 dark:bg-neutral-700 mt-0.5" />
+                      )}
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0 pb-1">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className={clsx(
+                          'text-xs font-medium',
+                          isSelected ? 'text-blue-700 dark:text-blue-300' : 'text-neutral-700 dark:text-neutral-200',
+                        )}>
+                          v{version.version_number}
+                        </span>
+                        <span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono">
+                          {version.id.slice(0, 7)}
+                        </span>
+                        <span className="text-[10px] text-neutral-400 dark:text-neutral-500 ml-auto flex-shrink-0">
+                          {formatRelativeTime(version.created_at)}
                         </span>
                       </div>
-                      <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
-                        {version.commit_message || 'No commit message'}
+                      <div className={clsx(
+                        'text-[11px] truncate mt-0.5',
+                        isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-500 dark:text-neutral-400',
+                      )}>
+                        {version.commit_message || 'No message'}
                       </div>
-                      {prioritizedOperation && (
-                        <div className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">
-                          Priority op: {formatOperationTypeShort(prioritizedOperation)}
+                      {version.author && (
+                        <div className="text-[10px] text-neutral-400 dark:text-neutral-500 mt-0.5">
+                          {version.author}
                         </div>
                       )}
-                    </button>
-                    <div className="px-2 pb-1.5 flex items-center justify-between">
-                      <VersionMetadataPopover
-                        version={version}
-                        modeId={versionHints.modeId}
-                        prioritizedOperations={versionHints.prioritizedOperations}
-                      />
-                      <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                        {formatDate(version.created_at)}
-                      </span>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
           )}
-        </DisclosureSection>
+        </div>
       </div>
     </div>
   );

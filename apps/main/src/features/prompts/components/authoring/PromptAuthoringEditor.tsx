@@ -9,6 +9,7 @@ import { Popover } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
+import { useRegisterDevContext } from '@lib/dockview/contextMenu/devContext';
 import { buildFloatingOriginMetaRecord, readFloatingOriginMeta } from '@lib/dockview/floatingPanelInterop';
 import { Icon } from '@lib/icons';
 
@@ -18,6 +19,7 @@ import {
   type GenerationWidgetContext,
   useCapabilityAll,
 } from '@features/contextHub';
+import { useAuthoringHintsStore } from '@features/generation/stores/authoringHintsStore';
 import {
   getGenerationInputStore,
   getGenerationSessionStore,
@@ -56,7 +58,7 @@ function GenerationPolicyPopover({
   applySuggestedOperation: () => void;
   applySuggestedSettings: () => void;
   canApplySuggestedSettings: boolean;
-  selectedWidget: { value?: { setOperationType?: (op: OperationType) => void } } | null | undefined;
+  selectedWidget: { value?: { setOperationType?: (op: OperationType) => void; scopeId?: string } } | null | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -105,7 +107,7 @@ function GenerationPolicyPopover({
             <button
               type="button"
               onClick={applySuggestedOperation}
-              disabled={!selectedWidget?.value?.setOperationType || !prioritizedOperation}
+              disabled={(!selectedWidget?.value?.setOperationType && !selectedWidget?.value?.scopeId) || !prioritizedOperation}
               className="rounded border border-neutral-200 dark:border-neutral-700 px-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-60"
             >
               Apply suggested op
@@ -123,7 +125,7 @@ function GenerationPolicyPopover({
           </div>
         ) : (
           <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-            No prompt-mode hints resolved for current tags/family.
+            No prompt-mode hints resolved for current tags/category.
           </div>
         )}
         <div className="pt-2 border-t border-neutral-200 dark:border-neutral-700 text-[10px] text-neutral-500 dark:text-neutral-400">
@@ -170,19 +172,47 @@ export function PromptAuthoringEditor() {
     editorText,
     setEditorText,
     instructionInput,
-    setInstructionInput,
     commitMessageInput,
     setCommitMessageInput,
     versionTagsInput,
-    setVersionTagsInput,
     busyAction,
     statusMessage,
-    versionsLoading,
     handleCreateVersion,
-    handleApplyEdit,
-    refreshVersions,
     authoringModes,
   } = usePromptAuthoring();
+
+  // Register dev context for AI Assistant integration
+  useRegisterDevContext(
+    'prompt-authoring-editor',
+    useCallback(() => ({
+      panelId: 'prompt-authoring-editor',
+      panelTitle: 'Prompt Authoring',
+      summary: selectedFamily
+        ? `Editing family "${selectedFamily.title}" (${selectedFamily.prompt_type})${selectedVersion ? `, version v${selectedVersion.version_number}` : ''}`
+        : 'No family selected',
+      state: {
+        familyId: selectedFamilyId ?? null,
+        familyTitle: selectedFamily?.title ?? null,
+        promptType: selectedFamily?.prompt_type ?? null,
+        category: selectedFamily?.category ?? null,
+        versionId: selectedVersionId ?? null,
+        versionNumber: selectedVersion?.version_number ?? null,
+        totalVersions: versions.length,
+        editorTextLength: editorText.length,
+        editorTextPreview: editorText.slice(0, 200) || '(empty)',
+        hasInstruction: !!instructionInput.trim(),
+        busyAction: busyAction ?? null,
+      },
+      keyFiles: [
+        'features/prompts/context/PromptAuthoringContext.tsx',
+        'features/prompts/components/authoring/PromptAuthoringEditor.tsx',
+        'features/prompts/lib/authoringGenerationHints.ts',
+      ],
+    }), [
+      selectedFamily, selectedVersion, selectedFamilyId, selectedVersionId,
+      versions.length, editorText, instructionInput, busyAction,
+    ]),
+  );
 
   const widgets = useCapabilityAll<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
   const dedupedWidgets = useMemo(() => {
@@ -235,7 +265,6 @@ export function PromptAuthoringEditor() {
     try { return localStorage.getItem('prompt-authoring:widgetId'); } catch { return null; }
   });
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
-  const [tagDraft, setTagDraft] = useState('');
   const [pendingGenerateDispatch, setPendingGenerateDispatch] = useState<{
     widgetId: string;
     targetOperation: OperationType | null;
@@ -271,40 +300,6 @@ export function PromptAuthoringEditor() {
 
   const hasText = !!editorText.trim();
   const selectedTags = useMemo(() => parseTagsInput(versionTagsInput), [versionTagsInput]);
-  const availableVersionTags = useMemo(() => {
-    const counts = new Map<string, number>();
-    versions.forEach((version) => {
-      (version.tags ?? []).forEach((tag) => {
-        const normalized = tag.trim();
-        if (!normalized) return;
-        counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
-      });
-    });
-    return Array.from(counts.entries()).sort((a, b) => {
-      if (b[1] !== a[1]) return b[1] - a[1];
-      return a[0].localeCompare(b[0]);
-    });
-  }, [versions]);
-  const toggleVersionTag = useCallback((tag: string) => {
-    const next = parseTagsInput(versionTagsInput);
-    const index = next.findIndex((entry) => entry === tag);
-    if (index >= 0) {
-      next.splice(index, 1);
-    } else {
-      next.push(tag);
-    }
-    setVersionTagsInput(next.join(', '));
-  }, [setVersionTagsInput, versionTagsInput]);
-  const addVersionTag = useCallback((rawTag: string) => {
-    const tag = rawTag.trim();
-    if (!tag) return false;
-    const next = parseTagsInput(versionTagsInput);
-    if (!next.includes(tag)) {
-      next.push(tag);
-      setVersionTagsInput(next.join(', '));
-    }
-    return true;
-  }, [setVersionTagsInput, versionTagsInput]);
   const resolvedGenerationHints = useMemo(
     () =>
       resolveAuthoringGenerationHints({
@@ -329,23 +324,32 @@ export function PromptAuthoringEditor() {
     [hasInputForOperation, resolvedGenerationHints],
   );
   const prioritizedOperation = preferredGenerationHint.operation;
-  const activeWidgetOperation = useMemo(() => {
+  // Reactive: subscribe to session store for live operation type updates
+  const [activeWidgetOperation, setActiveWidgetOperation] = useState<OperationType | null>(() => {
     const widget = selectedWidget?.value;
     if (!widget) return null;
-    if (widget.scopeId) {
-      return getGenerationSessionStore(widget.scopeId).getState().operationType;
-    }
+    if (widget.scopeId) return getGenerationSessionStore(widget.scopeId).getState().operationType;
     return widget.operationType;
+  });
+  useEffect(() => {
+    const widget = selectedWidget?.value;
+    if (!widget) { setActiveWidgetOperation(null); return; }
+    if (!widget.scopeId) { setActiveWidgetOperation(widget.operationType); return; }
+    const store = getGenerationSessionStore(widget.scopeId);
+    const sync = () => setActiveWidgetOperation(store.getState().operationType);
+    sync();
+    return store.subscribe(sync);
   }, [selectedWidget]);
 
   const applySuggestedOperation = useCallback(() => {
     const widget = selectedWidget?.value;
-    if (!widget?.setOperationType || !preferredGenerationHint.operation) return;
-    const currentOperation = widget.scopeId
-      ? getGenerationSessionStore(widget.scopeId).getState().operationType
-      : widget.operationType;
-    if (currentOperation === preferredGenerationHint.operation) return;
-    widget.setOperationType(preferredGenerationHint.operation);
+    if (!widget || !preferredGenerationHint.operation) return;
+    const targetOp = preferredGenerationHint.operation;
+    if (widget.setOperationType) {
+      widget.setOperationType(targetOp);
+    } else if (widget.scopeId) {
+      getGenerationSessionStore(widget.scopeId).getState().setOperationType(targetOp);
+    }
   }, [preferredGenerationHint.operation, selectedWidget]);
   const suggestedParamsEntries = useMemo(
     () => Object.entries(preferredGenerationHint.suggestedParams ?? {}),
@@ -372,6 +376,24 @@ export function PromptAuthoringEditor() {
       ...nextMissingOnly,
     });
   }, [selectedWidget, suggestedParamsEntries]);
+
+  const toggleSuggestedParam = useCallback((key: string, suggestedValue: unknown) => {
+    const widget = selectedWidget?.value;
+    if (!widget?.scopeId) return;
+    const settingsStore = getGenerationSettingsStore(widget.scopeId);
+    const state = settingsStore.getState();
+    const currentParams = state.params ?? {};
+    const current = currentParams[key];
+    if (String(current) === String(suggestedValue)) {
+      // Already matches → clear it so it becomes "will-apply" again
+      const next = { ...currentParams };
+      delete next[key];
+      state.setDynamicParams(next);
+    } else {
+      // Empty or different → apply the suggested value
+      state.setDynamicParams({ ...currentParams, [key]: suggestedValue });
+    }
+  }, [selectedWidget]);
 
   // Reactive override status for inline param badges
   type ParamStatus = 'will-apply' | 'match' | 'conflict';
@@ -406,6 +428,19 @@ export function PromptAuthoringEditor() {
     compute();
     return store.subscribe(compute);
   }, [selectedWidget, suggestedParamsEntries]);
+
+  // Sync authoring hints to the shared store so the settings panel can display them
+  const setAuthoringHints = useAuthoringHintsStore((s) => s.set);
+  const clearAuthoringHints = useAuthoringHintsStore((s) => s.clear);
+  useEffect(() => {
+    const scopeId = selectedWidget?.value?.scopeId;
+    if (!scopeId) return;
+    setAuthoringHints(scopeId, {
+      suggestedOperation: prioritizedOperation,
+      suggestedParams: Object.fromEntries(suggestedParamsEntries),
+    });
+    return () => clearAuthoringHints(scopeId);
+  }, [selectedWidget, prioritizedOperation, suggestedParamsEntries, setAuthoringHints, clearAuthoringHints]);
 
   const handleGenerate = useCallback(() => {
     const widget = selectedWidget?.value;
@@ -484,94 +519,111 @@ export function PromptAuthoringEditor() {
         <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
           {selectedFamily
             ? `${selectedFamily.title} (${selectedFamily.prompt_type})`
-            : 'Create or select a family to start authoring.'}
+            : 'Create or select a prompt to start authoring.'}
         </div>
       </div>
 
       <div className="p-3 space-y-2 border-b border-neutral-200 dark:border-neutral-800">
-        <input
-          value={instructionInput}
-          onChange={(e) => setInstructionInput(e.target.value)}
-          placeholder="Instruction (optional)"
-          className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
-        />
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <input
+            value={commitMessageInput}
+            onChange={(e) => setCommitMessageInput(e.target.value)}
+            placeholder="Commit message..."
+            className="flex-1 min-w-0 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
+          />
           <button
             type="button"
             onClick={() => void handleCreateVersion()}
             disabled={busyAction === 'version' || !selectedFamilyId}
-            className="text-xs px-2 py-1 rounded border border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300 disabled:opacity-60"
+            className="flex-shrink-0 text-xs px-3 py-1 rounded border border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300 font-medium disabled:opacity-60"
           >
-            {busyAction === 'version' ? 'Saving...' : 'Create version'}
+            {busyAction === 'version' ? 'Saving...' : 'Commit'}
           </button>
-          <button
-            type="button"
-            onClick={() => void handleApplyEdit()}
-            disabled={busyAction === 'edit' || !selectedVersionId}
-            className="text-xs px-2 py-1 rounded border border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-800/60 dark:bg-violet-900/20 dark:text-violet-300 disabled:opacity-60"
-          >
-            {busyAction === 'edit' ? 'Applying...' : 'Apply edit as child'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void refreshVersions(selectedFamilyId, selectedVersionId)}
-            disabled={!selectedFamilyId || versionsLoading}
-            className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300"
-          >
-            Refresh versions
-          </button>
-          <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
-            {selectedVersion
-              ? `Selected: v${selectedVersion.version_number} | ${selectedVersion.id.slice(0, 8)} | ${formatDate(selectedVersion.created_at)}`
-              : 'No version selected'}
-          </span>
-          {/* Generation policy: icon + inline color-coded param badges */}
-          <GenerationPolicyPopover
-            prioritizedOperation={prioritizedOperation}
-            activeWidgetOperation={activeWidgetOperation}
-            preferredGenerationHint={preferredGenerationHint}
-            suggestedParamsEntries={suggestedParamsEntries}
-            applySuggestedOperation={applySuggestedOperation}
-            applySuggestedSettings={applySuggestedSettings}
-            canApplySuggestedSettings={canApplySuggestedSettings}
-            selectedWidget={selectedWidget}
-          />
-          {prioritizedOperation && (
-            <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400">
-              {formatOperationTypeShort(prioritizedOperation)}
-            </span>
-          )}
-          {suggestedParamsEntries.map(([key, value]) => {
-            const info = paramOverrideStatus[key];
-            const status = info?.status ?? 'will-apply';
-            const badgeClass =
-              status === 'match'
-                ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-300'
-                : status === 'conflict'
-                  ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300'
-                  : 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300';
-            const tooltip =
-              status === 'match'
-                ? `${key} already set to ${formatSuggestedParamValue(value)}`
-                : status === 'conflict'
-                  ? `${key}: suggested ${formatSuggestedParamValue(value)}, current ${formatSuggestedParamValue(info?.currentValue)}`
-                  : `${key}: ${formatSuggestedParamValue(value)} (will apply)`;
-            return (
-              <span
-                key={key}
-                title={tooltip}
-                className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] font-medium ${badgeClass}`}
-              >
-                {status === 'match' && <Icon name="check" size={9} />}
-                {status === 'conflict' && <Icon name="alertCircle" size={9} />}
-                {key.replace('aspect_ratio', 'ratio')}: {formatSuggestedParamValue(value)}
-                {status === 'conflict' && (
-                  <span className="opacity-70">({formatSuggestedParamValue(info?.currentValue)})</span>
-                )}
-              </span>
-            );
-          })}
         </div>
+        {selectedVersion && (
+          <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
+            v{selectedVersion.version_number} · {selectedVersion.id.slice(0, 7)} · {formatDate(selectedVersion.created_at)}
+          </div>
+        )}
+
+        {/* Generation policy: icon + inline color-coded suggested overrides */}
+        {(prioritizedOperation || suggestedParamsEntries.length > 0) && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <GenerationPolicyPopover
+              prioritizedOperation={prioritizedOperation}
+              activeWidgetOperation={activeWidgetOperation}
+              preferredGenerationHint={preferredGenerationHint}
+              suggestedParamsEntries={suggestedParamsEntries}
+              applySuggestedOperation={applySuggestedOperation}
+              applySuggestedSettings={applySuggestedSettings}
+              canApplySuggestedSettings={canApplySuggestedSettings}
+              selectedWidget={selectedWidget}
+            />
+            {prioritizedOperation && (() => {
+              const opMatch = activeWidgetOperation === prioritizedOperation;
+              const opSet = activeWidgetOperation != null;
+              const opBadgeClass = opMatch
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+                : opSet
+                  ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+                  : 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40';
+              const opTooltip = opMatch
+                ? `Operation: ${formatOperationTypeShort(prioritizedOperation)} (active)`
+                : opSet
+                  ? `Suggested: ${formatOperationTypeShort(prioritizedOperation)}, current: ${formatOperationTypeShort(activeWidgetOperation!)} — click to apply`
+                  : `Operation: ${formatOperationTypeShort(prioritizedOperation)} — click to apply`;
+              return (
+                <button
+                  type="button"
+                  title={opTooltip}
+                  disabled={!selectedWidget?.value?.setOperationType && !selectedWidget?.value?.scopeId}
+                  onClick={applySuggestedOperation}
+                  className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] font-medium cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${opBadgeClass}`}
+                >
+                  {opMatch && <Icon name="check" size={9} />}
+                  {!opMatch && opSet && <Icon name="alertCircle" size={9} />}
+                  op: {formatOperationTypeShort(prioritizedOperation)}
+                  {!opMatch && opSet && (
+                    <span className="opacity-70">({formatOperationTypeShort(activeWidgetOperation!)})</span>
+                  )}
+                </button>
+              );
+            })()}
+            {suggestedParamsEntries.map(([key, value]) => {
+              const info = paramOverrideStatus[key];
+              const status = info?.status ?? 'will-apply';
+              const badgeClass =
+                status === 'match'
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+                  : status === 'conflict'
+                    ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+                    : 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800/60 dark:bg-blue-900/20 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40';
+              const tooltip =
+                status === 'match'
+                  ? `${key}: ${formatSuggestedParamValue(value)} (applied — click to clear)`
+                  : status === 'conflict'
+                    ? `${key}: suggested ${formatSuggestedParamValue(value)}, current ${formatSuggestedParamValue(info?.currentValue)} — click to apply`
+                    : `${key}: ${formatSuggestedParamValue(value)} — click to apply`;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  title={tooltip}
+                  disabled={!selectedWidget?.value?.scopeId}
+                  onClick={() => toggleSuggestedParam(key, value)}
+                  className={`inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] font-medium cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${badgeClass}`}
+                >
+                  {status === 'match' && <Icon name="check" size={9} />}
+                  {status === 'conflict' && <Icon name="alertCircle" size={9} />}
+                  {key.replace('aspect_ratio', 'ratio')}: {formatSuggestedParamValue(value)}
+                  {status === 'conflict' && (
+                    <span className="opacity-70">({formatSuggestedParamValue(info?.currentValue)})</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Generation controls: target selector + settings/assets shortcuts + Go */}
         {dedupedWidgets.length > 0 && (
@@ -664,111 +716,6 @@ export function PromptAuthoringEditor() {
             </button>
           </div>
         )}
-
-        {/* Draft metadata — collapsed by default */}
-        <details className="relative pt-1.5 border-t border-neutral-100 dark:border-neutral-800">
-          <summary
-            className="list-none cursor-pointer select-none flex items-center gap-1 text-[11px] text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
-            title="Draft metadata for next save"
-          >
-            <Icon name="tag" size={10} />
-            <span>Draft metadata</span>
-            {selectedTags.length > 0 && (
-              <span className="text-[10px] text-neutral-400 dark:text-neutral-500">({selectedTags.length})</span>
-            )}
-          </summary>
-          <div className="mt-1.5 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-2.5 space-y-2">
-            <div className="space-y-1">
-              <div className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Version note</div>
-              <input
-                value={commitMessageInput}
-                onChange={(e) => setCommitMessageInput(e.target.value)}
-                placeholder="Describe this revision..."
-                className="w-full rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
-              />
-            </div>
-            <div className="space-y-1 border-t border-neutral-200 dark:border-neutral-700 pt-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Tags</div>
-                {selectedTags.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setVersionTagsInput('')}
-                    className="rounded border border-neutral-200 dark:border-neutral-700 px-1.5 py-0.5 text-[10px] text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                <input
-                  value={tagDraft}
-                  onChange={(e) => setTagDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter') return;
-                    e.preventDefault();
-                    if (!addVersionTag(tagDraft)) return;
-                    setTagDraft('');
-                  }}
-                  placeholder="Add tag..."
-                  className="min-w-0 flex-1 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1 text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!addVersionTag(tagDraft)) return;
-                    setTagDraft('');
-                  }}
-                  className="rounded border border-neutral-200 dark:border-neutral-700 px-2 py-1 text-[11px] text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800"
-                >
-                  Add
-                </button>
-              </div>
-              {selectedTags.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-1">
-                  {selectedTags.map((tag) => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => toggleVersionTag(tag)}
-                      className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-300"
-                      title={`Remove tag: ${tag}`}
-                    >
-                      <span className="max-w-[150px] truncate">{tag}</span>
-                      <Icon name="x" size={10} />
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  No draft tags selected.
-                </div>
-              )}
-              {availableVersionTags.length > 0 && (
-                <div className="max-h-24 overflow-auto rounded border border-neutral-200 dark:border-neutral-700 p-1 space-y-1">
-                  {availableVersionTags.map(([tag, count]) => {
-                    const selected = selectedTags.includes(tag);
-                    return (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => toggleVersionTag(tag)}
-                        className={`w-full text-left px-2 py-1 rounded text-[11px] border ${
-                          selected
-                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-300'
-                            : 'border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-                        }`}
-                      >
-                        <span className="truncate">{tag}</span>
-                        <span className="ml-2 text-[10px] opacity-70">({count})</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </details>
 
         {statusMessage && (
           <div className="text-[11px] text-neutral-600 dark:text-neutral-300">{statusMessage}</div>

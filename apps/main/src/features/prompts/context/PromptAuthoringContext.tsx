@@ -7,6 +7,7 @@
  * can consume state independently via `usePromptAuthoring()`.
  */
 
+import type { AssetResponse } from '@pixsim7/shared.api.client/domains';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -17,23 +18,21 @@ import {
   getPromptVersionAssets,
   listPromptFamilies,
   listPromptVersions,
+  updatePromptFamily,
   type PromptFamilySummary,
   type PromptAuthoringModeContract,
-  type PromptVersionAsset,
   type PromptVersionSummary,
 } from '@lib/api/prompts';
 import { useVersions } from '@lib/ui/versioning';
 import { createHmrSafeContext } from '@lib/utils';
 
+import type { AssetModel } from '@features/assets';
+import { fromAssetResponse } from '@features/assets/models/asset';
 import { useGenerationScopeStores } from '@features/generation';
 
 // ── Types ──
 
 export type AssetScopeMode = 'version' | 'branch' | 'family';
-
-export interface ScopedAssetItem extends PromptVersionAsset {
-  version_id: string;
-}
 
 export interface PromptAuthoringState {
   // Families
@@ -73,7 +72,7 @@ export interface PromptAuthoringState {
   // Assets
   scopeMode: AssetScopeMode;
   setScopeMode: (v: AssetScopeMode) => void;
-  scopeAssets: ScopedAssetItem[];
+  scopeAssets: AssetModel[];
   assetsLoading: boolean;
   assetsError: string | null;
 
@@ -93,6 +92,7 @@ export interface PromptAuthoringState {
   refreshVersions: (familyId: string | null, preferredVersionId?: string | null) => Promise<void>;
   refreshScopeAssets: () => Promise<void>;
   handleCreateFamily: () => Promise<void>;
+  handleUpdateFamily: (familyId: string, data: { title?: string; description?: string; category?: string; tags?: string[]; is_active?: boolean }) => Promise<void>;
   handleCreateVersion: () => Promise<void>;
   handleApplyEdit: () => Promise<void>;
   /** Hydrate all editor fields from a version object. */
@@ -189,7 +189,7 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
 
   // ── Asset state ──
   const [scopeMode, setScopeMode] = useState<AssetScopeMode>('version');
-  const [scopeAssets, setScopeAssets] = useState<ScopedAssetItem[]>([]);
+  const [scopeAssets, setScopeAssets] = useState<AssetModel[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
   const [assetsError, setAssetsError] = useState<string | null>(null);
 
@@ -351,24 +351,21 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
           getPromptVersionAssets(versionId, { limit: 80 }),
         ),
       );
-      const deduped = new Map<number, ScopedAssetItem>();
+      const deduped = new Map<number, AssetModel>();
       responses.forEach((response) => {
-        response.assets.forEach((asset) => {
-          const existing = deduped.get(asset.id);
-          const next: ScopedAssetItem = { ...asset, version_id: response.version_id };
-          if (!existing) {
-            deduped.set(asset.id, next);
-            return;
-          }
-          const existingDate = new Date(existing.created_at).getTime();
-          const nextDate = new Date(next.created_at).getTime();
-          if (nextDate > existingDate) {
-            deduped.set(asset.id, next);
+        response.assets.forEach((raw) => {
+          try {
+            const model = fromAssetResponse(raw as AssetResponse);
+            if (!deduped.has(model.id)) {
+              deduped.set(model.id, model);
+            }
+          } catch {
+            // skip malformed assets
           }
         });
       });
       const rows = Array.from(deduped.values()).sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       );
       setScopeAssets(rows);
     } catch (error) {
@@ -414,6 +411,20 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
       setBusyAction(null);
     }
   }, [newFamilyCategory, newFamilyPromptType, newFamilyTagsInput, newFamilyTitle, refreshFamilies]);
+
+  const handleUpdateFamily = useCallback(async (
+    familyId: string,
+    data: { title?: string; description?: string; category?: string; tags?: string[]; is_active?: boolean },
+  ) => {
+    setStatusMessage(null);
+    try {
+      await updatePromptFamily(familyId, data);
+      await refreshFamilies(familyId);
+      setStatusMessage('Family updated');
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to update family');
+    }
+  }, [refreshFamilies]);
 
   const handleCreateVersion = useCallback(async () => {
     if (!selectedFamilyId) {
@@ -491,7 +502,7 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
       busyAction, statusMessage,
       authoringModes, selectedFamily, selectedVersion, targetVersionIds, truncatedVersionCount,
       refreshFamilies, refreshVersions, refreshScopeAssets,
-      handleCreateFamily, handleCreateVersion, handleApplyEdit,
+      handleCreateFamily, handleUpdateFamily, handleCreateVersion, handleApplyEdit,
       hydrateFromVersion,
     }),
     [
@@ -503,7 +514,7 @@ export function PromptAuthoringProvider({ children }: { children: React.ReactNod
       busyAction, statusMessage,
       authoringModes, selectedFamily, selectedVersion, targetVersionIds, truncatedVersionCount,
       refreshFamilies, refreshVersions, refreshScopeAssets,
-      handleCreateFamily, handleCreateVersion, handleApplyEdit,
+      handleCreateFamily, handleUpdateFamily, handleCreateVersion, handleApplyEdit,
       hydrateFromVersion,
     ],
   );

@@ -16,6 +16,9 @@ from pixsim7.backend.main.services.analysis.analyzer_defaults import (
     resolve_prompt_default_analyzer_ids,
 )
 from pixsim7.backend.main.services.prompt.parser import analyzer_registry
+from pixsim7.backend.main.services.prompt.authoring_mode_registry import (
+    authoring_mode_registry,
+)
 from pixsim7.backend.main.services.prompt.authoring_workflow_registry import (
     authoring_workflow_registry,
 )
@@ -26,16 +29,20 @@ from .operations import (
     ApplyPromptEditRequest,
 )
 from pixsim7.backend.main.shared.schemas.error_response import ErrorResponse
-from .schemas import CreatePromptFamilyRequest, CreatePromptVersionRequest
+from .schemas import CreatePromptFamilyRequest, CreatePromptVersionRequest, UpdatePromptFamilyRequest
 
 router = APIRouter()
 
 PROMPT_ANALYSIS_CONTRACT_VERSION = "2026-03-13.2"
-PROMPT_AUTHORING_CONTRACT_VERSION = "2026-03-16.1"
+PROMPT_AUTHORING_CONTRACT_VERSION = "2026-03-17.1"
 PROMPT_ANALYZE_ENDPOINT = "/api/v1/prompts/analyze"
 PROMPT_CREATE_FAMILY_ENDPOINT = "/api/v1/prompts/families"
 PROMPT_LIST_FAMILIES_ENDPOINT = "/api/v1/prompts/families"
+PROMPT_GET_FAMILY_ENDPOINT = "/api/v1/prompts/families/{family_id}"
+PROMPT_UPDATE_FAMILY_ENDPOINT = "/api/v1/prompts/families/{family_id}"
 PROMPT_CREATE_VERSION_ENDPOINT = "/api/v1/prompts/families/{family_id}/versions"
+PROMPT_LIST_VERSIONS_ENDPOINT = "/api/v1/prompts/families/{family_id}/versions"
+PROMPT_GET_VERSION_ENDPOINT = "/api/v1/prompts/versions/{version_id}"
 PROMPT_APPLY_EDIT_ENDPOINT = "/api/v1/prompts/versions/{version_id}/apply-edit"
 PROMPT_SEARCH_SIMILAR_ENDPOINT = "/api/v1/prompts/search/similar"
 BLOCK_TAG_DICTIONARY_ENDPOINT = "/api/v1/block-templates/meta/blocks/tag-dictionary"
@@ -219,6 +226,7 @@ class PromptAuthoringContractResponse(BaseModel):
     error_schema: Dict[str, Any]
     idempotency: List[IdempotencyRuleContract]
     create_family_request_schema: Dict[str, Any]
+    update_family_request_schema: Dict[str, Any]
     create_version_request_schema: Dict[str, Any]
     apply_edit_request_schema: Dict[str, Any]
     analyze_request_schema: Dict[str, Any]
@@ -425,10 +433,37 @@ async def get_prompt_authoring_contract(
             summary="List existing families. Check before creating to avoid duplicates.",
         ),
         PromptAuthoringEndpointContract(
+            id="prompts.get_family",
+            method="GET",
+            path=PROMPT_GET_FAMILY_ENDPOINT,
+            summary="Get a single family by ID with version count.",
+        ),
+        PromptAuthoringEndpointContract(
             id="prompts.create_family",
             method="POST",
             path=PROMPT_CREATE_FAMILY_ENDPOINT,
             summary="Create a prompt family container.",
+        ),
+        PromptAuthoringEndpointContract(
+            id="prompts.update_family",
+            method="PATCH",
+            path=PROMPT_UPDATE_FAMILY_ENDPOINT,
+            summary=(
+                "Partial update on a family. Send only fields to change: title, "
+                "description, category, tags, is_active. Omitted fields are untouched."
+            ),
+        ),
+        PromptAuthoringEndpointContract(
+            id="prompts.list_versions",
+            method="GET",
+            path=PROMPT_LIST_VERSIONS_ENDPOINT,
+            summary="List versions for a family, ordered by version_number descending.",
+        ),
+        PromptAuthoringEndpointContract(
+            id="prompts.get_version",
+            method="GET",
+            path=PROMPT_GET_VERSION_ENDPOINT,
+            summary="Get a single version by ID with full prompt_text and metadata.",
         ),
         PromptAuthoringEndpointContract(
             id="prompts.create_version",
@@ -489,10 +524,7 @@ async def get_prompt_authoring_contract(
         ),
         PromptValidValuesContract(
             field="category",
-            values=[
-                "scene_setup", "scene_continuation", "tool_edit",
-                "character_design", "environment", "action", "dialogue",
-            ],
+            values=authoring_mode_registry.get_category_ids(),
             extensible=True,
             description="Thematic category. Extensible — agents may introduce new categories.",
         ),
@@ -595,116 +627,8 @@ async def get_prompt_authoring_contract(
         ),
     ]
 
-    authoring_modes = [
-        PromptAuthoringModeContract(
-            id="scene_setup",
-            label="Scene Setup",
-            description="Long-form initial scene prompt with style, setting, and cast setup.",
-            sequence_role="initial",
-            generation_hints=[
-                GenerationHintContract(
-                    operation="text_to_image",
-                    priority=1,
-                    requires_input_asset=False,
-                    suggested_params={"aspect_ratio": "16:9"},
-                ),
-                GenerationHintContract(operation="text_to_video", priority=2, requires_input_asset=False),
-            ],
-            recommended_tags=["sequence:initial", "intent:setup", "mode:scene_setup"],
-            required_fields=["prompt_text"],
-        ),
-        PromptAuthoringModeContract(
-            id="scene_continuation",
-            label="Scene Continuation",
-            description="Short-to-medium continuation prompt that advances from previous context.",
-            sequence_role="continuation",
-            generation_hints=[
-                GenerationHintContract(
-                    operation="image_to_video", priority=1,
-                    requires_input_asset=True, auto_bind="parent_output",
-                    suggested_params={"duration": 5},
-                ),
-                GenerationHintContract(
-                    operation="image_to_image", priority=2,
-                    requires_input_asset=True, auto_bind="parent_output",
-                ),
-                GenerationHintContract(operation="text_to_image", priority=3, requires_input_asset=False),
-            ],
-            recommended_tags=["sequence:continuation", "intent:advance", "mode:continuation"],
-            required_fields=["prompt_text", "parent_version_id"],
-        ),
-        PromptAuthoringModeContract(
-            id="tool_edit",
-            label="Tool Edit",
-            description="Prompt intended for mask/tool-style edits (replace/modify specific regions).",
-            sequence_role=None,
-            generation_hints=[
-                GenerationHintContract(
-                    operation="image_to_image", priority=1,
-                    requires_input_asset=True, auto_bind="viewer_asset",
-                ),
-            ],
-            recommended_tags=["intent:modify", "mode:tool_edit", "scope:region_or_mask"],
-            required_fields=["prompt_text"],
-        ),
-        PromptAuthoringModeContract(
-            id="patch_edit",
-            label="Patch Edit",
-            description="Targeted edit to an existing generation — change specific elements while preserving the rest.",
-            sequence_role=None,
-            generation_hints=[
-                GenerationHintContract(
-                    operation="image_to_image", priority=1,
-                    requires_input_asset=True, auto_bind="parent_output",
-                ),
-            ],
-            recommended_tags=["intent:modify", "mode:patch_edit", "scope:targeted"],
-            required_fields=["prompt_text", "parent_version_id"],
-        ),
-        PromptAuthoringModeContract(
-            id="variation",
-            label="Variation",
-            description=(
-                "Generate a variation of an existing output — same general concept "
-                "with bounded divergence in composition, angle, or detail."
-            ),
-            sequence_role=None,
-            generation_hints=[
-                GenerationHintContract(
-                    operation="image_to_image", priority=1,
-                    requires_input_asset=True, auto_bind="parent_output",
-                ),
-                GenerationHintContract(operation="text_to_image", priority=2, requires_input_asset=False),
-            ],
-            recommended_tags=["intent:generate", "mode:variation", "scope:bounded"],
-            required_fields=["prompt_text"],
-        ),
-        PromptAuthoringModeContract(
-            id="character_design",
-            label="Character Design",
-            description=(
-                "Detailed character or creature concept — anatomical description, "
-                "distinctive features, materials, and personality cues. "
-                "Focus is on defining a single entity, not a full scene."
-            ),
-            sequence_role="initial",
-            generation_hints=[
-                GenerationHintContract(
-                    operation="text_to_image",
-                    priority=1,
-                    requires_input_asset=False,
-                    suggested_params={"aspect_ratio": "3:4"},
-                ),
-                GenerationHintContract(
-                    operation="image_to_image", priority=2,
-                    requires_input_asset=True, auto_bind="viewer_asset",
-                    note="Refine from a rough sketch or reference.",
-                ),
-            ],
-            recommended_tags=["intent:setup", "mode:character_design", "scope:entity"],
-            required_fields=["prompt_text"],
-        ),
-    ]
+    # Authoring modes — read from the canonical registry
+    authoring_modes = [_mode_to_contract(m) for m in authoring_mode_registry.list_all()]
 
     deprecations = [
         {
@@ -751,6 +675,23 @@ async def get_prompt_authoring_contract(
                     "tags": ["style:victorian_etching", "location:consultation_room"],
                 },
             },
+        },
+        {
+            "name": "update-family",
+            "request": {
+                "method": "PATCH",
+                "path": PROMPT_UPDATE_FAMILY_ENDPOINT,
+                "body": {
+                    "category": "character_design",
+                    "tags": ["mode:character_design", "scope:entity"],
+                },
+            },
+            "notes": (
+                "Partial update — only include fields to change. Category drives "
+                "authoring mode resolution (generation hints, suggested params). "
+                "Tags at family level are inherited context; version tags take "
+                "priority for mode resolution."
+            ),
         },
         {
             "name": "create-initial-version-with-analysis",
@@ -846,6 +787,15 @@ async def get_prompt_authoring_contract(
     # -- Idempotency -------------------------------------------------------
     idempotency = [
         IdempotencyRuleContract(
+            scope="update_family",
+            unique_key="family_id",
+            behavior=(
+                "Idempotent — PATCH with the same fields produces the same result. "
+                "Only non-None fields in the request body are applied; omitted fields "
+                "are untouched. Returns the full updated family object."
+            ),
+        ),
+        IdempotencyRuleContract(
             scope="create_family",
             unique_key="slug",
             behavior=(
@@ -893,6 +843,7 @@ async def get_prompt_authoring_contract(
         error_schema=error_schema,
         idempotency=idempotency,
         create_family_request_schema=CreatePromptFamilyRequest.model_json_schema(),
+        update_family_request_schema=UpdatePromptFamilyRequest.model_json_schema(),
         create_version_request_schema=CreatePromptVersionRequest.model_json_schema(),
         apply_edit_request_schema=ApplyPromptEditRequest.model_json_schema(),
         analyze_request_schema=AnalyzePromptRequest.model_json_schema(),
@@ -903,3 +854,112 @@ async def get_prompt_authoring_contract(
         deprecations=deprecations,
         examples=examples,
     )
+
+
+# ── Authoring Mode CRUD ──────────────────────────────────────────────────────
+
+
+class CreateAuthoringModeRequest(BaseModel):
+    id: str = Field(..., description="Unique mode ID (e.g. 'outfit_design')")
+    label: str = Field(..., description="Human-readable label")
+    description: str = Field(..., description="What this mode is for")
+    sequence_role: Optional[str] = Field(None, description="'initial', 'continuation', or null")
+    generation_hints: List[GenerationHintContract] = Field(default_factory=list)
+    recommended_tags: List[str] = Field(default_factory=list)
+    required_fields: List[str] = Field(default_factory=lambda: ["prompt_text"])
+
+
+class UpdateAuthoringModeRequest(BaseModel):
+    label: Optional[str] = None
+    description: Optional[str] = None
+    sequence_role: Optional[str] = None
+    generation_hints: Optional[List[GenerationHintContract]] = None
+    recommended_tags: Optional[List[str]] = None
+    required_fields: Optional[List[str]] = None
+
+
+def _mode_to_contract(mode: 'AuthoringMode') -> PromptAuthoringModeContract:
+    """Convert a registry AuthoringMode to its contract representation."""
+    return PromptAuthoringModeContract(
+        id=mode.id,
+        label=mode.label,
+        description=mode.description,
+        sequence_role=mode.sequence_role,
+        generation_hints=[
+            GenerationHintContract(
+                operation=h.operation, priority=h.priority,
+                requires_input_asset=h.requires_input_asset,
+                auto_bind=h.auto_bind, suggested_params=h.suggested_params,
+                note=h.note,
+            )
+            for h in mode.generation_hints
+        ],
+        recommended_tags=mode.recommended_tags,
+        required_fields=mode.required_fields,
+    )
+
+
+def _create_request_to_mode(request: CreateAuthoringModeRequest) -> 'AuthoringMode':
+    from pixsim7.backend.main.services.prompt.authoring_mode_registry import (
+        AuthoringMode, GenerationHint,
+    )
+    return AuthoringMode(
+        id=request.id,
+        label=request.label,
+        description=request.description,
+        sequence_role=request.sequence_role,
+        generation_hints=[
+            GenerationHint(
+                operation=h.operation, priority=h.priority,
+                requires_input_asset=h.requires_input_asset,
+                auto_bind=h.auto_bind, suggested_params=h.suggested_params,
+                note=h.note,
+            )
+            for h in request.generation_hints
+        ],
+        recommended_tags=request.recommended_tags,
+        required_fields=request.required_fields,
+    )
+
+
+def _apply_update_to_mode(existing: 'AuthoringMode', request: UpdateAuthoringModeRequest) -> 'AuthoringMode':
+    from pixsim7.backend.main.services.prompt.authoring_mode_registry import (
+        AuthoringMode, GenerationHint,
+    )
+    return AuthoringMode(
+        id=existing.id,
+        label=request.label if request.label is not None else existing.label,
+        description=request.description if request.description is not None else existing.description,
+        sequence_role=request.sequence_role if request.sequence_role is not None else existing.sequence_role,
+        generation_hints=[
+            GenerationHint(
+                operation=h.operation, priority=h.priority,
+                requires_input_asset=h.requires_input_asset,
+                auto_bind=h.auto_bind, suggested_params=h.suggested_params,
+                note=h.note,
+            )
+            for h in request.generation_hints
+        ] if request.generation_hints is not None else existing.generation_hints,
+        recommended_tags=request.recommended_tags if request.recommended_tags is not None else existing.recommended_tags,
+        required_fields=request.required_fields if request.required_fields is not None else existing.required_fields,
+        is_builtin=existing.is_builtin,
+    )
+
+
+# Mount CRUD via generic factory
+from pixsim7.backend.main.services.crud.registry import RegistryCrudSpec, mount_registry_crud
+
+authoring_mode_crud_spec = RegistryCrudSpec(
+    prefix="/meta/authoring-modes",
+    tag="authoring-modes",
+    summary_noun="authoring mode",
+    registry=authoring_mode_registry,
+    response_model=PromptAuthoringModeContract,
+    create_request_model=CreateAuthoringModeRequest,
+    update_request_model=UpdateAuthoringModeRequest,
+    to_response=_mode_to_contract,
+    from_create_request=_create_request_to_mode,
+    apply_update_request=_apply_update_to_mode,
+)
+
+mount_registry_crud(router, authoring_mode_crud_spec)

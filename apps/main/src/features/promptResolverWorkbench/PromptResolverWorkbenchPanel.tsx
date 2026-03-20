@@ -129,7 +129,7 @@ export function PromptResolverWorkbenchPanel() {
   const [result, setResult] = useState<ResolutionResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
-  const [templateSlug, setTemplateSlug] = useState<string>('police-precinct-break-room');
+  const [templateSlug, setTemplateSlug] = useState<string>('bananza-scene-compose-scaffold-v1');
   const [templateCandidateLimit, setTemplateCandidateLimit] = useState<number>(24);
   const [controlValuesText, setControlValuesText] = useState<string>('{}');
   const [controlValuesError, setControlValuesError] = useState<string | null>(null);
