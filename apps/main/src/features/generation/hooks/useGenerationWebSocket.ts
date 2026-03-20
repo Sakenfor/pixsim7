@@ -18,11 +18,22 @@ import { assetEvents, useAssetSettingsStore, fromAssetResponse, getAssetDisplayU
 
 import { parseWebSocketMessage, type WebSocketMessage } from '@/types/websocket';
 
-import { fromGenerationResponse } from '../models';
+import { fromGenerationResponse, type GenerationStatus } from '../models';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 import { useGenerationsStore } from '../stores/generationsStore';
 
 type WebSocketRecord = WebSocketMessage & Record<string, unknown>;
+
+/** Map websocket event types to generation statuses for optimistic updates. */
+const WS_EVENT_TO_STATUS: Record<string, GenerationStatus> = {
+  'job:started': 'processing',
+  'job:running': 'processing',
+  'job:completed': 'completed',
+  'job:failed': 'failed',
+  'job:cancelled': 'cancelled',
+  'job:paused': 'paused',
+  'job:resumed': 'processing',
+};
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object') return null;
@@ -355,6 +366,7 @@ class WebSocketManager {
         if (message.type?.startsWith('job:')) {
           debugFlags.log('websocket', 'Job update received:', message.type);
           const addOrUpdateGeneration = useGenerationsStore.getState().addOrUpdate;
+          const patchGeneration = useGenerationsStore.getState().patch;
           const downloadOnGenerate = useAssetSettingsStore.getState().downloadOnGenerate;
 
           // Extract generation ID from various possible fields
@@ -373,10 +385,24 @@ class WebSocketManager {
             return;
           }
 
-          // Handle different job event types
+          const numericGenId = typeof generationId === 'string' ? Number(generationId) : generationId;
+
+          // Optimistic status update — patch the store immediately so the UI
+          // reflects the new status without waiting for the API round-trip.
+          const optimisticStatus = WS_EVENT_TO_STATUS[message.type];
+          if (optimisticStatus && numericGenId) {
+            const errorMsg = message.type === 'job:failed'
+              ? (String(dataRecord?.error ?? rawData.error ?? '') || null)
+              : null;
+            patchGeneration(numericGenId, {
+              status: optimisticStatus,
+              ...(errorMsg ? { errorMessage: errorMsg } : {}),
+            });
+          }
+
+          // Background fetch for full data (timestamps, asset refs, etc.)
           if (message.type === 'job:created') {
-            debugFlags.log('websocket', 'Job created, waiting for completion event...');
-            // Just update the store, wait for job:completed event
+            debugFlags.log('websocket', 'Job created, fetching full data...');
             pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
               debugFlags.log('websocket', 'Generation data:', data);
               addOrUpdateGeneration(fromGenerationResponse(data));
@@ -384,11 +410,8 @@ class WebSocketManager {
               console.error('[WebSocket] Failed to fetch generation:', generationId, err);
             });
           } else if (message.type === 'job:completed') {
-            debugFlags.log('websocket', 'Job completed! Updating generation status...');
-            // Fetch generation data to update status
-            // Note: asset:created event will handle adding the asset to gallery
+            debugFlags.log('websocket', 'Job completed! Fetching full data...');
             pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then(async (data) => {
-              debugFlags.log('websocket', 'Generation data:', data);
               addOrUpdateGeneration(fromGenerationResponse(data));
 
               // Optionally record output asset in history
@@ -412,25 +435,19 @@ class WebSocketManager {
               }
 
               // Sync asset to local storage if setting is enabled
-              // Note: asset_id is accessed from raw API response before mapping
               const assetId = data.asset?.id;
               if (downloadOnGenerate && assetId) {
                 debugFlags.log('websocket', 'Auto-syncing asset to local storage:', assetId);
                 try {
                   await pixsimClient.post(`/assets/${assetId}/sync`);
-                  debugFlags.log('websocket', 'Asset synced to local storage successfully');
-
-                  // Re-fetch asset and emit update event so gallery refreshes thumbnails
-                   const syncedAsset = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
+                  const syncedAsset = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
                   assetEvents.emitAssetUpdated(syncedAsset);
-                  debugFlags.log('websocket', 'Emitted asset update event');
                 } catch (err) {
                   console.error('[WebSocket] Failed to auto-sync asset:', assetId, err);
                 }
               }
 
               // Trigger account cleanup to fix job counters
-              // This ensures accounts don't get stuck showing jobs as running
               pixsimClient.post('/accounts/cleanup').catch(err => {
                 debugFlags.log('websocket', 'Account cleanup after job completion failed:', err);
               });
@@ -439,7 +456,6 @@ class WebSocketManager {
             });
           } else if (message.type === 'job:started' || message.type === 'job:running') {
             debugFlags.log('websocket', 'Job status update:', message.type);
-            // Update generation status in store
             pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
               addOrUpdateGeneration(fromGenerationResponse(data));
             }).catch(err => {
@@ -447,11 +463,8 @@ class WebSocketManager {
             });
           } else if (message.type === 'job:failed') {
             debugFlags.log('websocket', 'Job failed');
-            // Update generation status in store
             pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
               addOrUpdateGeneration(fromGenerationResponse(data));
-
-              // Trigger account cleanup to fix job counters
               pixsimClient.post('/accounts/cleanup').catch(err => {
                 debugFlags.log('websocket', 'Account cleanup after job failure failed:', err);
               });
@@ -460,11 +473,8 @@ class WebSocketManager {
             });
           } else if (message.type === 'job:cancelled') {
             debugFlags.log('websocket', 'Job cancelled');
-            // Update generation status in store
             pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
               addOrUpdateGeneration(fromGenerationResponse(data));
-
-              // Trigger account cleanup to fix job counters
               pixsimClient.post('/accounts/cleanup').catch(err => {
                 debugFlags.log('websocket', 'Account cleanup after job cancellation failed:', err);
               });

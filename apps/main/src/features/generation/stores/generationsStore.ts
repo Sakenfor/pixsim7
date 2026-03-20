@@ -8,6 +8,7 @@
  * at the boundary before being stored.
  */
 import { create } from 'zustand';
+
 import type { GenerationModel, GenerationStatus } from '../models';
 
 export interface GenerationsState {
@@ -19,6 +20,8 @@ export interface GenerationsState {
 
   // Actions
   addOrUpdate: (generation: GenerationModel) => void;
+  /** Optimistic partial update — merges fields into an existing entry without a full replace. */
+  patch: (id: number, fields: Partial<GenerationModel>) => void;
   remove: (id: number) => void;
   setWatchingGeneration: (id: number | null) => void;
   clear: () => void;
@@ -39,6 +42,15 @@ export const useGenerationsStore = create<GenerationsState>((set) => ({
       }
       const newMap = new Map(state.generations);
       newMap.set(generation.id, generation);
+      return { generations: newMap };
+    }),
+
+  patch: (id, fields) =>
+    set((state) => {
+      const existing = state.generations.get(id);
+      if (!existing) return state; // Nothing to patch — wait for full addOrUpdate
+      const newMap = new Map(state.generations);
+      newMap.set(id, { ...existing, ...fields });
       return { generations: newMap };
     }),
 

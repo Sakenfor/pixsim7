@@ -91,9 +91,9 @@ class ConnectionManager:
         if user_id not in self._connections:
             return
 
-        # Send to all connections for this user
+        # Send to all connections for this user (snapshot to avoid mutation during await)
         dead_connections = set()
-        for connection in self._connections[user_id]:
+        for connection in list(self._connections[user_id]):
             try:
                 await connection.send_json(message)
             except Exception as e:
@@ -111,8 +111,11 @@ class ConnectionManager:
         Args:
             message: Message dict to send as JSON
         """
+        # Snapshot the set — concurrent disconnects can mutate _all_connections
+        # during awaits, which would raise RuntimeError on set iteration.
+        snapshot = list(self._all_connections)
         dead_connections = set()
-        for connection in self._all_connections:
+        for connection in snapshot:
             try:
                 await connection.send_json(message)
             except Exception as e:
