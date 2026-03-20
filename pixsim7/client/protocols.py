@@ -25,8 +25,40 @@ class ParsedEvent:
     raw: dict | None = None
 
 
+# Map of CLI-specific flags to their equivalents in other CLIs.
+# If a flag has no equivalent, it's dropped.
+_ARG_TRANSLATIONS: dict[str, dict[str, str | None]] = {
+    "--dangerously-skip-permissions": {
+        "claude": "--dangerously-skip-permissions",
+        "codex": "--dangerously-bypass-approvals-and-sandbox",
+    },
+    "--dangerously-bypass-approvals-and-sandbox": {
+        "claude": "--dangerously-skip-permissions",
+        "codex": "--dangerously-bypass-approvals-and-sandbox",
+    },
+}
+
+
 class AgentProtocol:
     """Base protocol adapter."""
+
+    name: str = "unknown"
+
+    def translate_args(self, extra_args: list[str] | None) -> list[str]:
+        """Translate CLI-specific flags for this protocol."""
+        if not extra_args:
+            return []
+        result = []
+        for arg in extra_args:
+            mapping = _ARG_TRANSLATIONS.get(arg)
+            if mapping:
+                translated = mapping.get(self.name)
+                if translated:
+                    result.append(translated)
+                # else: drop the arg (no equivalent for this CLI)
+            else:
+                result.append(arg)
+        return result
 
     def build_start_cmd(
         self,
@@ -55,6 +87,8 @@ class AgentProtocol:
 class ClaudeProtocol(AgentProtocol):
     """Claude Code: long-running process, stream-json stdin/stdout."""
 
+    name = "claude"
+
     def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, extra_args=None):
         cmd = [command, "--print", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose"]
         if resume_session_id:
@@ -63,7 +97,7 @@ class ClaudeProtocol(AgentProtocol):
             cmd.extend(["--append-system-prompt", system_prompt])
         if mcp_config_path:
             cmd.extend(["--mcp-config", mcp_config_path])
-        cmd.extend(extra_args or [])
+        cmd.extend(self.translate_args(extra_args))
         return cmd
 
     def build_message_payload(self, message, images=None):
@@ -108,6 +142,8 @@ class ClaudeProtocol(AgentProtocol):
 class CodexProtocol(AgentProtocol):
     """Codex CLI: one process per turn, JSONL output via exec --json."""
 
+    name = "codex"
+
     def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, extra_args=None):
         if resume_session_id:
             cmd = [command, "exec", "resume", resume_session_id, "--json"]
@@ -118,7 +154,7 @@ class CodexProtocol(AgentProtocol):
             pass  # handled in build_message_payload
         if mcp_config_path:
             cmd.extend(["--mcp-config", mcp_config_path])
-        cmd.extend(extra_args or [])
+        cmd.extend(self.translate_args(extra_args))
         return cmd
 
     def build_message_payload(self, message, images=None):
