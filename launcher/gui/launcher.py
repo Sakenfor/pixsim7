@@ -4,6 +4,7 @@ import subprocess
 import os
 import signal
 import re
+import time
 from html import escape
 from typing import Dict, Optional
 from datetime import datetime
@@ -13,7 +14,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QSplitter, QMessageBox, QDialog, QFormLayout, QLineEdit, QCheckBox, QDialogButtonBox,
     QScrollArea, QFrame, QGridLayout, QTabWidget, QMenu, QComboBox, QStackedWidget
 )
-from PySide6.QtCore import Qt, QProcess, QProcessEnvironment, QTimer, Signal, QSize, QUrl
+from PySide6.QtCore import Qt, QProcess, QProcessEnvironment, QTimer, Signal, QSize, QUrl, QThread
 from PySide6.QtGui import QColor, QTextCursor, QFont, QPalette, QShortcut, QKeySequence, QAction, QCursor
 
 # Load .env file into environment BEFORE initializing logger
@@ -123,17 +124,26 @@ except Exception:
     from health_worker import HealthWorker
 
 # New launcher_core integration
+_NEW_CORE_AVAILABLE = False
+_NEW_CORE_IMPORT_ERROR: Optional[Exception] = None
 try:
     from .launcher_facade import LauncherFacade
     from .service_adapter import ServiceProcessAdapter
-    USE_NEW_CORE = False
+    _NEW_CORE_AVAILABLE = True
 except Exception:
     try:
         from launcher_facade import LauncherFacade
         from service_adapter import ServiceProcessAdapter
-        USE_NEW_CORE = False
-    except Exception:
-        USE_NEW_CORE = False
+        _NEW_CORE_AVAILABLE = True
+    except Exception as e:
+        _NEW_CORE_IMPORT_ERROR = e
+
+USE_NEW_CORE = _NEW_CORE_AVAILABLE and os.getenv("PIXSIM_LAUNCHER_USE_NEW_CORE", "0").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 # Import centralized theme
 try:
@@ -178,6 +188,52 @@ def _startup_trace(message: str) -> None:
             f.write(f"{datetime.now().isoformat()} {message}\n")
     except Exception:
         pass
+
+
+class ServiceStopWorker(QThread):
+    """Runs blocking service stop operations off the UI thread."""
+
+    stop_finished = Signal(str, bool, bool, str)  # key, graceful, still_running, error
+
+    def __init__(self, key: str, service_process, graceful: bool, parent=None):
+        super().__init__(parent)
+        self._key = key
+        self._service_process = service_process
+        self._graceful = graceful
+
+    def run(self):  # type: ignore[override]
+        error = ""
+        try:
+            self._service_process.stop(graceful=self._graceful)
+        except Exception as exc:
+            error = str(exc)
+
+        still_running = False
+        try:
+            alive_check = getattr(self._service_process, "_is_effective_process_alive", None)
+            if callable(alive_check):
+                still_running = bool(alive_check())
+            else:
+                still_running = bool(getattr(self._service_process, "running", False))
+        except Exception:
+            still_running = bool(getattr(self._service_process, "running", False))
+
+        # Fallback check: detached wrappers may die while a child process still
+        # owns the service port. Preserve that PID so UI state is accurate.
+        if not still_running:
+            try:
+                find_port_owner = getattr(self._service_process, "_find_port_owner_pid", None)
+                port_owner_pid = find_port_owner() if callable(find_port_owner) else None
+                if port_owner_pid:
+                    setattr(self._service_process, "detected_pid", int(port_owner_pid))
+                    setattr(self._service_process, "running", True)
+                    if hasattr(self._service_process, "externally_managed"):
+                        setattr(self._service_process, "externally_managed", True)
+                    still_running = True
+            except Exception:
+                pass
+
+        self.stop_finished.emit(self._key, self._graceful, still_running, error)
 
 
 class LauncherWindow(QWidget):
@@ -251,10 +307,6 @@ class LauncherWindow(QWidget):
         if USE_NEW_CORE:
             # Create facade (wraps core managers)
             self.facade = LauncherFacade(self)
-            # Create adapter instances (provides ServiceProcess-compatible interface)
-            self.processes: Dict[str, ServiceProcessAdapter] = {
-                s.key: ServiceProcessAdapter(s, self.facade) for s in self.services
-            }
             # Log that we're using new core
             if _launcher_logger:
                 try:
@@ -267,15 +319,24 @@ class LauncherWindow(QWidget):
         else:
             # Fall back to old implementation
             self.facade = None
-            self.processes: Dict[str, ServiceProcess] = {s.key: ServiceProcess(s) for s in self.services}
             if _launcher_logger:
                 try:
-                    _launcher_logger.warning(
-                        "launcher_using_old_core",
-                        message="Falling back to old ServiceProcess implementation"
-                    )
+                    if _NEW_CORE_AVAILABLE:
+                        _launcher_logger.info(
+                            "launcher_using_old_core",
+                            message="Using old ServiceProcess implementation (new core available but disabled)",
+                            enable_with_env="PIXSIM_LAUNCHER_USE_NEW_CORE=1",
+                        )
+                    else:
+                        _launcher_logger.warning(
+                            "launcher_using_old_core",
+                            message="Falling back to old ServiceProcess implementation (new core unavailable)",
+                            import_error=str(_NEW_CORE_IMPORT_ERROR) if _NEW_CORE_IMPORT_ERROR else None,
+                        )
                 except Exception:
                     pass
+        self.processes = {}
+        self._rebuild_processes_from_services(preserve_state=False)
 
         # Clean up stale PIDs from previous sessions
         try:
@@ -300,6 +361,23 @@ class LauncherWindow(QWidget):
         self._openapi_gen_process: Optional[QProcess] = None
         self._openapi_gen_service_key: Optional[str] = None
         self._openapi_gen_url: Optional[str] = None
+        # Auto-restart bookkeeping for transient dependency outages (e.g. Docker restart).
+        self._auto_restart_attempts: Dict[str, int] = {}
+        self._auto_restart_pending: Dict[str, bool] = {}
+        self._auto_restart_healthy_since: Dict[str, float] = {}
+        self._auto_restart_recent: Dict[str, list[float]] = {}
+        self._auto_restart_cooldown_until: Dict[str, float] = {}
+        self._auto_restart_reset_stable_sec = 20.0
+        self._auto_restart_dependency_wait_ms = 5000
+        self._auto_restart_flap_window_sec = 45.0
+        self._auto_restart_flap_threshold = 6
+        self._auto_restart_cooldown_sec = 120.0
+        # Suppress restart scheduling during explicit bulk stop operations.
+        self._bulk_stop_active = False
+        self._bulk_stop_until = 0.0
+        self._stop_in_progress_keys: set[str] = set()
+        self._bulk_stop_pending_keys: set[str] = set()
+        self._active_stop_workers: Dict[str, ServiceStopWorker] = {}
 
         # Widget registry for clean reload
         self.widgets: Dict[str, QWidget] = {}
@@ -346,9 +424,41 @@ class LauncherWindow(QWidget):
         # Schedule deferred init for worker services (expensive orphan
         # recovery scan runs after the first paint, not during __init__).
         for sp in self.processes.values():
-            sp.schedule_deferred_init()
+            schedule = getattr(sp, "schedule_deferred_init", None)
+            if callable(schedule):
+                schedule()
 
         self.update_ports_label()
+
+    def _create_service_process(self, service_def: ServiceDef, old_sp=None):
+        """Create a service process object for the current launcher mode."""
+        if USE_NEW_CORE and self.facade:
+            return ServiceProcessAdapter(service_def, self.facade)
+
+        sp = ServiceProcess(service_def)
+        if old_sp:
+            try:
+                sp.running = getattr(old_sp, "running", False)
+            except Exception:
+                pass
+            try:
+                sp.health_status = getattr(old_sp, "health_status", HealthStatus.STOPPED)
+            except Exception:
+                pass
+            try:
+                sp.detected_pid = getattr(old_sp, "detected_pid", None)
+            except Exception:
+                pass
+        return sp
+
+    def _rebuild_processes_from_services(self, *, preserve_state: bool = True):
+        """Rebuild self.processes from self.services with optional state transfer."""
+        old_processes = getattr(self, "processes", {}) if preserve_state else {}
+        new_processes = {}
+        for service_def in self.services:
+            old_sp = old_processes.get(service_def.key) if preserve_state else None
+            new_processes[service_def.key] = self._create_service_process(service_def, old_sp)
+        self.processes = new_processes
 
     def _build_left_panel(self):
         left = QWidget()
@@ -891,6 +1001,31 @@ class LauncherWindow(QWidget):
         if env_key in self.db_cards:
             self.db_cards[env_key].set_selected(True)
 
+    def _missing_dependency_keys(self, service_key: str) -> list[str]:
+        """Return dependency service keys that are not currently running/healthy."""
+        sp = self.processes.get(service_key)
+        if not sp:
+            return []
+
+        depends_on = getattr(getattr(sp, "defn", None), "depends_on", None) or []
+        missing: list[str] = []
+        for dep_key in depends_on:
+            dep_process = self.processes.get(dep_key)
+            dep_running = bool(dep_process and getattr(dep_process, "running", False))
+            dep_healthy = bool(dep_process and getattr(dep_process, "health_status", None) == HealthStatus.HEALTHY)
+            if not dep_process or (not dep_running and not dep_healthy):
+                missing.append(dep_key)
+        return missing
+
+    def _clear_auto_restart_state(self, key: str, *, clear_cooldown: bool = True):
+        """Reset auto-restart bookkeeping for a service key."""
+        self._auto_restart_attempts[key] = 0
+        self._auto_restart_pending[key] = False
+        self._auto_restart_healthy_since.pop(key, None)
+        self._auto_restart_recent.pop(key, None)
+        if clear_cooldown:
+            self._auto_restart_cooldown_until.pop(key, None)
+
     def _start_service(self, key: str):
         """Start a specific service."""
         sp = self.processes.get(key)
@@ -906,34 +1041,29 @@ class LauncherWindow(QWidget):
             return
 
         # Check dependencies before starting
-        if sp.defn.depends_on:
+        missing_dep_keys = self._missing_dependency_keys(key)
+        if missing_dep_keys:
             missing_deps = []
-            for dep_key in sp.defn.depends_on:
-                dep_process = self.processes.get(dep_key)
-                # Treat a dependency as satisfied if either:
-                # - the launcher is managing it and it's running, or
-                # - it's healthy according to health checks (externally managed but OK).
-                dep_running = bool(dep_process and getattr(dep_process, "running", False))
-                dep_healthy = bool(dep_process and getattr(dep_process, "health_status", None) == HealthStatus.HEALTHY)
-                if not dep_process or (not dep_running and not dep_healthy):
-                    dep_service = next((s for s in self.services if s.key == dep_key), None)
-                    dep_title = dep_service.title if dep_service else dep_key
-                    missing_deps.append(dep_title)
+            for dep_key in missing_dep_keys:
+                dep_service = next((s for s in self.services if s.key == dep_key), None)
+                dep_title = dep_service.title if dep_service else dep_key
+                missing_deps.append(dep_title)
 
-            if missing_deps:
-                deps_list = ", ".join(missing_deps)
-                service_title = sp.defn.title
-                QMessageBox.warning(
-                    self,
-                    'Missing Dependencies',
-                    f'{service_title} requires these services to be running first:\n\n{deps_list}\n\nPlease start them before starting {service_title}.'
-                )
-                if _launcher_logger:
-                    try:
-                        _launcher_logger.warning("service_blocked_dependencies", service_key=key, missing=missing_deps)
-                    except Exception:
-                        pass
-                return
+            deps_list = ", ".join(missing_deps)
+            service_title = sp.defn.title
+            QMessageBox.warning(
+                self,
+                'Missing Dependencies',
+                f'{service_title} requires these services to be running first:\n\n{deps_list}\n\nPlease start them before starting {service_title}.'
+            )
+            if _launcher_logger:
+                try:
+                    _launcher_logger.warning("service_blocked_dependencies", service_key=key, missing=missing_deps)
+                except Exception:
+                    pass
+            return
+
+        self._clear_auto_restart_state(key, clear_cooldown=True)
 
         if sp.start():
             self._refresh_console_logs()
@@ -948,28 +1078,105 @@ class LauncherWindow(QWidget):
     def _stop_service(self, key: str):
         """Stop a specific service."""
         sp = self.processes.get(key)
-        if sp:
-            sp.stop(graceful=True)
-            self._refresh_console_logs()
-            # Log service stop
-            if _launcher_logger:
-                try:
-                    _launcher_logger.info("service_stopped", service_key=key)
-                except Exception:
-                    pass
+        if not sp:
+            return
+        self._begin_async_stop(key, graceful=True, from_bulk=False)
 
     def _force_stop_service(self, key: str):
         """Force stop a specific service (kill all processes)."""
         sp = self.processes.get(key)
+        if not sp:
+            return
+        self._begin_async_stop(key, graceful=False, from_bulk=False)
+
+    def _begin_async_stop(self, key: str, graceful: bool, *, from_bulk: bool) -> bool:
+        """Dispatch service stop work to a background thread."""
+        sp = self.processes.get(key)
+        if not sp:
+            return False
+        if key in self._stop_in_progress_keys:
+            return False
+
+        self._clear_auto_restart_state(key, clear_cooldown=True)
+        self._stop_in_progress_keys.add(key)
+        if from_bulk:
+            self._bulk_stop_pending_keys.add(key)
+
+        card = self.cards.get(key)
+        if card and hasattr(card, "set_stopping"):
+            try:
+                card.set_stopping(True)
+            except Exception:
+                pass
+
+        worker = ServiceStopWorker(key, sp, graceful, self)
+        self._active_stop_workers[key] = worker
+        worker.stop_finished.connect(self._on_async_stop_finished)
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+        return True
+
+    def _on_async_stop_finished(self, key: str, graceful: bool, still_running: bool, error: str):
+        """Handle completion of async stop work on the UI thread."""
+        self._stop_in_progress_keys.discard(key)
+        worker = self._active_stop_workers.pop(key, None)
+        if worker:
+            try:
+                worker.stop_finished.disconnect(self._on_async_stop_finished)
+            except Exception:
+                pass
+
+        card = self.cards.get(key)
+        if card and hasattr(card, "set_stopping"):
+            try:
+                card.set_stopping(False)
+            except Exception:
+                pass
+
+        sp = self.processes.get(key)
         if sp:
-            sp.stop(graceful=False)
-            self._refresh_console_logs()
-            # Log service force stop
-            if _launcher_logger:
-                try:
+            if still_running:
+                sp.running = True
+                status = getattr(sp, "health_status", HealthStatus.UNHEALTHY)
+                if status == HealthStatus.STOPPED:
+                    status = HealthStatus.UNHEALTHY
+                self._update_service_health(key, status)
+            else:
+                sp.running = False
+                self._update_service_health(key, HealthStatus.STOPPED)
+
+        if _launcher_logger:
+            try:
+                if error:
+                    _launcher_logger.error(
+                        "service_stop_failed_async",
+                        service_key=key,
+                        graceful=graceful,
+                        error=error,
+                    )
+                elif still_running:
+                    _launcher_logger.warning(
+                        "service_stop_requested_still_running",
+                        service_key=key,
+                        graceful=graceful,
+                        health_status=getattr(getattr(sp, "health_status", None), "value", str(getattr(sp, "health_status", None))) if sp else None,
+                    )
+                elif graceful:
+                    _launcher_logger.info("service_stopped", service_key=key)
+                else:
                     _launcher_logger.info("service_force_stopped", service_key=key)
-                except Exception:
-                    pass
+            except Exception:
+                pass
+
+        if key in self._bulk_stop_pending_keys:
+            self._bulk_stop_pending_keys.discard(key)
+        if self._bulk_stop_active and not self._bulk_stop_pending_keys:
+            self._bulk_stop_active = False
+            self._bulk_stop_until = max(self._bulk_stop_until, time.monotonic() + 3.0)
+            self._set_bulk_buttons_enabled(True)
+            self._restore_status_label()
+
+        self._refresh_console_logs()
 
     def _restart_service(self, key: str):
         """Restart a specific service."""
@@ -984,18 +1191,215 @@ class LauncherWindow(QWidget):
             except Exception:
                 pass
 
-        # Stop the service
-        sp.stop(graceful=True)
+        # Stop asynchronously, then restart when stop completes.
+        if self._begin_async_stop(key, graceful=True, from_bulk=False):
+            QTimer.singleShot(250, lambda: self._restart_when_stopped(key))
 
-        # Wait a moment before restarting
-        QTimer.singleShot(1500, lambda: self._delayed_restart(key))
+    def _restart_when_stopped(self, key: str):
+        """Wait until stop operation finishes, then perform delayed restart."""
+        if key in self._stop_in_progress_keys:
+            QTimer.singleShot(250, lambda: self._restart_when_stopped(key))
+            return
+        QTimer.singleShot(400, lambda: self._delayed_restart(key))
 
     def _delayed_restart(self, key: str):
         """Restart service after a short delay."""
         sp = self.processes.get(key)
         if sp and sp.tool_available:
+            self._clear_auto_restart_state(key, clear_cooldown=True)
             sp.start()
             self._refresh_console_logs()
+
+    def _schedule_auto_restart(self, key: str, reason: str):
+        """Schedule a backoff restart when a requested service drops unexpectedly."""
+        sp = self.processes.get(key)
+        if not sp:
+            return
+        # Never auto-restart docker DB from health transitions; compose up/down can
+        # block for long periods when Docker is degraded and would freeze UI.
+        if key == "db":
+            if _launcher_logger:
+                try:
+                    _launcher_logger.warning(
+                        "service_auto_restart_skipped_db",
+                        service_key=key,
+                        reason=reason,
+                        hint="Restart DB manually from launcher when needed",
+                    )
+                except Exception:
+                    pass
+            return
+        if self._bulk_stop_active or time.monotonic() < self._bulk_stop_until:
+            return
+        if not getattr(sp, "requested_running", False):
+            return
+        if not sp.tool_available:
+            return
+        if getattr(sp, "running", False):
+            return
+        now = time.monotonic()
+        cooldown_until = float(self._auto_restart_cooldown_until.get(key, 0.0) or 0.0)
+        if now < cooldown_until:
+            return
+
+        # Do not queue restart if the underlying process is still alive.
+        try:
+            alive_check = getattr(sp, "_is_effective_process_alive", None)
+            if callable(alive_check) and alive_check():
+                sp.running = True
+                self._clear_auto_restart_state(key, clear_cooldown=True)
+                return
+        except Exception:
+            pass
+
+        if getattr(sp, "running", False):
+            return
+        if self._auto_restart_pending.get(key, False):
+            return
+        missing_dep_keys = self._missing_dependency_keys(key)
+        if missing_dep_keys:
+            self._auto_restart_pending[key] = True
+            delay_ms = int(self._auto_restart_dependency_wait_ms)
+            ts = datetime.now().strftime("%H:%M:%S")
+            try:
+                missing_list = ", ".join(missing_dep_keys)
+                sp.log_buffer.append(
+                    f"[{ts}] [LAUNCHER] auto-restart waiting for deps in {delay_ms}ms "
+                    f"(missing={missing_list}, reason={reason})"
+                )
+            except Exception:
+                pass
+            if _launcher_logger:
+                try:
+                    _launcher_logger.warning(
+                        "service_auto_restart_waiting_dependencies",
+                        service_key=key,
+                        delay_ms=delay_ms,
+                        missing=missing_dep_keys,
+                        reason=reason,
+                    )
+                except Exception:
+                    pass
+            QTimer.singleShot(delay_ms, lambda: self._perform_auto_restart(key, "dependencies_unavailable"))
+            return
+
+        # Circuit breaker: pause auto-restart if we detect repeated restart churn.
+        recent = [ts for ts in self._auto_restart_recent.get(key, []) if (now - ts) <= self._auto_restart_flap_window_sec]
+        recent.append(now)
+        self._auto_restart_recent[key] = recent
+        if len(recent) >= int(self._auto_restart_flap_threshold):
+            cooldown_sec = float(self._auto_restart_cooldown_sec)
+            self._auto_restart_cooldown_until[key] = now + cooldown_sec
+            self._auto_restart_pending[key] = False
+            ts = datetime.now().strftime("%H:%M:%S")
+            try:
+                sp.log_buffer.append(
+                    f"[{ts}] [LAUNCHER] auto-restart paused for {int(cooldown_sec)}s "
+                    f"(flapping: {len(recent)} events in {int(self._auto_restart_flap_window_sec)}s)"
+                )
+            except Exception:
+                pass
+            if _launcher_logger:
+                try:
+                    _launcher_logger.warning(
+                        "service_auto_restart_circuit_open",
+                        service_key=key,
+                        window_s=self._auto_restart_flap_window_sec,
+                        events=len(recent),
+                        cooldown_s=cooldown_sec,
+                        reason=reason,
+                    )
+                except Exception:
+                    pass
+            return
+
+        attempt = int(self._auto_restart_attempts.get(key, 0)) + 1
+        self._auto_restart_attempts[key] = attempt
+        self._auto_restart_pending[key] = True
+
+        delay_ms = min(30000, 1000 * (2 ** max(0, attempt - 1)))
+        ts = datetime.now().strftime("%H:%M:%S")
+        try:
+            sp.log_buffer.append(
+                f"[{ts}] [LAUNCHER] auto-restart scheduled in {delay_ms}ms "
+                f"(attempt={attempt}, reason={reason})"
+            )
+        except Exception:
+            pass
+        if _launcher_logger:
+            try:
+                _launcher_logger.warning(
+                    "service_auto_restart_scheduled",
+                    service_key=key,
+                    attempt=attempt,
+                    delay_ms=delay_ms,
+                    reason=reason,
+                )
+            except Exception:
+                pass
+
+        QTimer.singleShot(delay_ms, lambda: self._perform_auto_restart(key, reason))
+
+    def _perform_auto_restart(self, key: str, reason: str):
+        """Execute auto-restart (main thread) if service still intended to run."""
+        self._auto_restart_pending[key] = False
+        sp = self.processes.get(key)
+        if not sp:
+            return
+        if not getattr(sp, "requested_running", False):
+            return
+        if getattr(sp, "running", False):
+            return
+        if not sp.tool_available:
+            return
+
+        missing_dep_keys = self._missing_dependency_keys(key)
+        if missing_dep_keys:
+            self._schedule_auto_restart(key, reason="dependencies_unavailable")
+            return
+
+        # Re-check liveness right before spawning to avoid duplicate starts.
+        try:
+            alive_check = getattr(sp, "_is_effective_process_alive", None)
+            if callable(alive_check) and alive_check():
+                sp.running = True
+                self._clear_auto_restart_state(key, clear_cooldown=True)
+                return
+        except Exception:
+            pass
+
+        started = False
+        try:
+            started = bool(sp.start())
+        except Exception:
+            started = False
+
+        if started:
+            self._refresh_console_logs()
+            if _launcher_logger:
+                try:
+                    _launcher_logger.info(
+                        "service_auto_restart_succeeded",
+                        service_key=key,
+                        reason=reason,
+                        attempt=self._auto_restart_attempts.get(key, 0),
+                    )
+                except Exception:
+                    pass
+            return
+
+        if _launcher_logger:
+            try:
+                _launcher_logger.warning(
+                    "service_auto_restart_failed",
+                    service_key=key,
+                    reason=reason,
+                    attempt=self._auto_restart_attempts.get(key, 0),
+                )
+            except Exception:
+                pass
+        # Keep retrying with exponential backoff until the user stops the service.
+        self._schedule_auto_restart(key, reason="start_failed")
 
     def _open_service_url(self, key: str):
         """Open a service's URL in the browser."""
@@ -1021,11 +1425,55 @@ class LauncherWindow(QWidget):
                     _launcher_logger.info("service_health", service_key=key, status=status.value, running=sp.running)
                 except Exception:
                     pass
+            # Inject transition into the service's own console log so it's
+            # visible in the launcher Console tab when that service is selected.
+            import datetime
+            ts = datetime.datetime.now().strftime("%H:%M:%S")
+            old_val = old_status.value if hasattr(old_status, 'value') else str(old_status)
+            new_val = status.value if hasattr(status, 'value') else str(status)
+            sp.log_buffer.append(
+                f"[{ts}] [LAUNCHER] health: {old_val} → {new_val}  (running={sp.running})"
+            )
 
         # Update card display
         card = self.cards.get(key)
         if card:
             card.update_status(status)
+
+        # Auto-restart services that were explicitly requested to run but dropped.
+        if status == HealthStatus.HEALTHY:
+            if old_status != HealthStatus.HEALTHY:
+                self._auto_restart_healthy_since[key] = time.monotonic()
+            self._auto_restart_pending[key] = False
+        else:
+            healthy_since = self._auto_restart_healthy_since.pop(key, None)
+            if healthy_since is not None and old_status == HealthStatus.HEALTHY:
+                healthy_for = time.monotonic() - healthy_since
+                if healthy_for >= self._auto_restart_reset_stable_sec:
+                    self._clear_auto_restart_state(key, clear_cooldown=True)
+                    if _launcher_logger:
+                        try:
+                            _launcher_logger.info(
+                                "service_auto_restart_backoff_reset",
+                                service_key=key,
+                                healthy_for_s=round(healthy_for, 2),
+                            )
+                        except Exception:
+                            pass
+                elif self._auto_restart_attempts.get(key, 0) > 0 and _launcher_logger:
+                    try:
+                        _launcher_logger.warning(
+                            "service_auto_restart_backoff_sticky",
+                            service_key=key,
+                            healthy_for_s=round(healthy_for, 2),
+                            threshold_s=self._auto_restart_reset_stable_sec,
+                            attempt=self._auto_restart_attempts.get(key, 0),
+                        )
+                    except Exception:
+                        pass
+
+            if key != "db" and status == HealthStatus.STOPPED and getattr(sp, "requested_running", False):
+                self._schedule_auto_restart(key, reason="health_stopped")
 
         # Refresh architecture panel when ANY backend service becomes healthy
         # Check if this is a backend service (main-api, generation-api, etc.)
@@ -1267,10 +1715,36 @@ class LauncherWindow(QWidget):
         """Restore the status label to show port status."""
         self._update_status_bar()
 
-    def stop_all(self):
-        for sp in self.processes.values():
-            sp.stop(graceful=True)
+    def stop_all(self, synchronous: bool = False):
+        if synchronous:
+            self._bulk_stop_active = True
+            self._bulk_stop_until = time.monotonic() + 8.0
+            try:
+                for key, sp in self.processes.items():
+                    self._clear_auto_restart_state(key, clear_cooldown=True)
+                    sp.stop(graceful=True)
+                self._refresh_console_logs()
+            finally:
+                self._bulk_stop_active = False
+                self._bulk_stop_pending_keys.clear()
+                self._bulk_stop_until = max(self._bulk_stop_until, time.monotonic() + 3.0)
+            return
+
+        self._bulk_stop_active = True
+        self._bulk_stop_until = time.monotonic() + 20.0
+        self._bulk_stop_pending_keys.clear()
+        dispatched = False
+        for key, sp in self.processes.items():
+            self._clear_auto_restart_state(key, clear_cooldown=True)
+            if self._begin_async_stop(key, graceful=True, from_bulk=True):
+                dispatched = True
+
         self._refresh_console_logs()
+        if not dispatched:
+            self._bulk_stop_active = False
+            self._bulk_stop_until = max(self._bulk_stop_until, time.monotonic() + 3.0)
+            self._set_bulk_buttons_enabled(True)
+            self._restore_status_label()
 
     def _stop_all_with_confirmation(self):
         """Stop all services with confirmation dialog."""
@@ -1290,11 +1764,6 @@ class LauncherWindow(QWidget):
             self._set_bulk_buttons_enabled(False)
             self.status_label.setText("Stopping all services...")
             self.stop_all()
-            # Re-enable buttons and restore status after a short delay
-            QTimer.singleShot(500, lambda: (
-                self._set_bulk_buttons_enabled(True),
-                self._restore_status_label()
-            ))
 
     def _restart_all(self):
         """Restart all currently running services."""
@@ -1327,6 +1796,10 @@ class LauncherWindow(QWidget):
 
     def _delayed_restart_all(self, keys):
         """Restart services after delay."""
+        if any(key in self._stop_in_progress_keys for key in keys):
+            QTimer.singleShot(300, lambda: self._delayed_restart_all(keys))
+            return
+
         for key in keys:
             sp = self.processes.get(key)
             if sp and sp.tool_available:
@@ -1396,7 +1869,7 @@ class LauncherWindow(QWidget):
                 if reply == QMessageBox.Yes:
                     # Rebuild services and restart running ones
                     running_keys = [k for k, sp in self.processes.items() if sp.running]
-                    self.stop_all()
+                    self.stop_all(synchronous=True)
                     QTimer.singleShot(2000, lambda: self._restart_services(running_keys))
             except Exception as e:
                 QMessageBox.critical(self, 'Error', f'Failed to save ports: {e}')
@@ -1428,7 +1901,7 @@ class LauncherWindow(QWidget):
                 if reply == QMessageBox.Yes:
                     # Rebuild services and restart running ones
                     running_keys = [k for k, sp in self.processes.items() if sp.running]
-                    self.stop_all()
+                    self.stop_all(synchronous=True)
                     QTimer.singleShot(2000, lambda: self._restart_services(running_keys))
             except Exception as e:
                 QMessageBox.critical(self, 'Error', f'Failed to save environment: {e}')
@@ -1441,7 +1914,7 @@ class LauncherWindow(QWidget):
     def _restart_services(self, keys):
         """Restart specified services after config update."""
         # Stop health worker before rebuilding processes to avoid race condition
-        if hasattr(self, 'health_worker') and self.health_worker:
+        if not USE_NEW_CORE and hasattr(self, 'health_worker') and self.health_worker:
             try:
                 self.health_worker.stop()
                 self.health_worker.wait(2000)  # Wait up to 2 seconds
@@ -1450,22 +1923,7 @@ class LauncherWindow(QWidget):
 
         # Rebuild services and processes
         self.services = build_services_from_manifests()
-        old_processes = self.processes
-        self.processes = {}
-
-        # Transfer state from old processes where possible
-        for s in self.services:
-            if s.key in old_processes:
-                # Preserve running state and detected PIDs
-                old_sp = old_processes[s.key]
-                new_sp = ServiceProcess(s)
-                new_sp.running = old_sp.running
-                new_sp.health_status = old_sp.health_status
-                new_sp.detected_pid = old_sp.detected_pid
-                # Don't copy proc - we want fresh processes
-                self.processes[s.key] = new_sp
-            else:
-                self.processes[s.key] = ServiceProcess(s)
+        self._rebuild_processes_from_services(preserve_state=True)
 
         # Start requested services
         for key in keys:
@@ -1473,20 +1931,28 @@ class LauncherWindow(QWidget):
                 self.processes[key].start()
 
         # Restart health worker with new process dict
-        if hasattr(self, 'health_worker') and self.health_worker:
+        if not USE_NEW_CORE:
+            self.health_worker = HealthWorker(self.processes, ui_state=self.ui_state, parent=self)
+            self.health_worker.health_update.connect(self._update_service_health)
+            self.health_worker.openapi_update.connect(self._update_openapi_status)
+            self.health_worker.start()
+
+        # Rebind existing cards to the rebuilt process instances.
+        for key, card in self.cards.items():
+            sp = self.processes.get(key)
+            if not sp:
+                continue
+            card.service_process = sp
             try:
-                self.health_worker.stop()
-                self.health_worker.wait(2000)  # Wait up to 2 seconds
+                card.update_status(sp.health_status)
             except Exception:
                 pass
-        # Create new health worker
-        self.health_worker = HealthWorker(self.processes, ui_state=self.ui_state, parent=self)
-        self.health_worker.health_update.connect(self._on_health_update)
-        self.health_worker.start()
 
         # Schedule deferred init for new worker processes
         for sp in self.processes.values():
-            sp.schedule_deferred_init()
+            schedule = getattr(sp, "schedule_deferred_init", None)
+            if callable(schedule):
+                schedule()
 
         # Update UI (cards will be updated via health_update signals)
         self._refresh_db_logs()
@@ -1505,6 +1971,24 @@ class LauncherWindow(QWidget):
 
     def _on_pause_logs_changed(self, checked):
         """Pause/resume log updates."""
+        # Debug: capture what triggered this toggle
+        if checked:
+            import traceback
+            trigger_trace = ''.join(traceback.format_stack()[-5:-1])
+            if _launcher_logger:
+                try:
+                    _launcher_logger.warning("pause_toggled_on",
+                                             trigger=trigger_trace.strip())
+                except Exception:
+                    pass
+            # Also inject into the selected service's console buffer
+            sp = self.processes.get(self.selected_service_key) if self.selected_service_key else None
+            if sp:
+                import datetime
+                ts = datetime.datetime.now().strftime("%H:%M:%S")
+                sp.log_buffer.append(
+                    f"[{ts}] [LAUNCHER] ⚠ Console paused — trigger trace:\n{trigger_trace.strip()}"
+                )
         # Update log view widget
         if hasattr(self, 'log_view'):
             self.log_view.set_paused(checked)
@@ -1532,6 +2016,12 @@ class LauncherWindow(QWidget):
     def _refresh_console_logs(self, force: bool = False):
         """Refresh the console log display with service output (only when changed)."""
         _startup_trace("_refresh_console_logs start")
+
+        # Guard: if log_view is paused but the button isn't checked, something
+        # desynchronised — force-unpause to self-heal.
+        if hasattr(self, 'log_view') and hasattr(self, 'pause_logs_button'):
+            if self.log_view.is_paused() and not self.pause_logs_button.isChecked():
+                self.log_view.set_paused(False)
 
         if not self.selected_service_key:
             _startup_trace("_refresh_console_logs skipped (no selection)")
@@ -1598,10 +2088,23 @@ class LauncherWindow(QWidget):
 
             # Format as HTML with syntax highlighting
             enhanced = getattr(self, "console_style_enhanced", True)
-            if enhanced:
-                log_html = format_console_log_html_enhanced(render_buffer)
-            else:
-                log_html = format_console_log_html_classic(render_buffer)
+            try:
+                if enhanced:
+                    log_html = format_console_log_html_enhanced(render_buffer)
+                else:
+                    log_html = format_console_log_html_classic(render_buffer)
+            except Exception as fmt_err:
+                # Fallback to plain text if HTML formatting crashes on
+                # malformed log content — prevents silent refresh death.
+                if _launcher_logger:
+                    try:
+                        _launcher_logger.warning("console_format_error", error=str(fmt_err))
+                    except Exception:
+                        pass
+                log_html = "<pre>" + "\n".join(
+                    str(line).replace("&", "&amp;").replace("<", "&lt;")
+                    for line in render_buffer
+                ) + "</pre>"
 
             if skipped > 0:
                 log_html = (
@@ -1837,6 +2340,17 @@ class LauncherWindow(QWidget):
 
     def _reload_ui(self):
         """Rebuild UI tabs and refresh settings without restarting launcher."""
+        # Recreate health worker after process map rebuild so status updates keep flowing.
+        old_health_worker = None
+        if not USE_NEW_CORE:
+            old_health_worker = getattr(self, "health_worker", None)
+            if old_health_worker:
+                try:
+                    old_health_worker.stop()
+                    old_health_worker.wait(2000)
+                except Exception:
+                    pass
+
         try:
             if hasattr(self, "console_refresh_timer"):
                 self.console_refresh_timer.stop()
@@ -1872,18 +2386,7 @@ class LauncherWindow(QWidget):
 
         try:
             self.services = build_services_from_manifests()
-            old_processes = self.processes
-            self.processes = {}
-            for s in self.services:
-                if s.key in old_processes:
-                    old_sp = old_processes[s.key]
-                    new_sp = ServiceProcess(s)
-                    new_sp.running = old_sp.running
-                    new_sp.health_status = old_sp.health_status
-                    new_sp.detected_pid = old_sp.detected_pid
-                    self.processes[s.key] = new_sp
-                else:
-                    self.processes[s.key] = ServiceProcess(s)
+            self._rebuild_processes_from_services(preserve_state=True)
         except Exception:
             pass
 
@@ -1904,9 +2407,17 @@ class LauncherWindow(QWidget):
         if hasattr(self, "console_refresh_timer"):
             self.console_refresh_timer.start(1000)
 
+        if not USE_NEW_CORE:
+            self.health_worker = HealthWorker(self.processes, ui_state=self.ui_state, parent=self)
+            self.health_worker.health_update.connect(self._update_service_health)
+            self.health_worker.openapi_update.connect(self._update_openapi_status)
+            self.health_worker.start()
+
         # Schedule deferred init for reloaded worker processes
         for sp in self.processes.values():
-            sp.schedule_deferred_init()
+            schedule = getattr(sp, "schedule_deferred_init", None)
+            if callable(schedule):
+                schedule()
 
         self._notify_ui_reloaded()
 
@@ -2045,10 +2556,17 @@ class LauncherWindow(QWidget):
             except Exception:
                 pass
 
+        # Wait briefly for active async stop workers to finish.
+        for worker in list(getattr(self, "_active_stop_workers", {}).values()):
+            try:
+                worker.wait(2000)
+            except Exception:
+                pass
+
         if self.ui_state.stop_services_on_exit:
             # Attempt graceful stop of all services, then enforce after short delay
             try:
-                self.stop_all()
+                self.stop_all(synchronous=True)
                 for sp in self.processes.values():
                     try:
                         if sp.running and getattr(sp, 'proc', None):

@@ -46,6 +46,7 @@ class ServiceCard(QFrame):
         self.service_process = service_process
         self.is_selected = False
         self.is_expanded = False
+        self._stopping = False
         self.start_time = None  # Track when service started
         self.openapi_status: Optional[OpenAPIStatus] = None  # Track OpenAPI freshness
 
@@ -472,6 +473,8 @@ class ServiceCard(QFrame):
             if len(err) > 80:
                 err = err[:77] + '...'
             status_info += f" | {err}"
+        if self._stopping:
+            status_info += " | Stopping..."
         self.status_label.setText(status_info)
         self._refresh_details_panel()
 
@@ -495,12 +498,30 @@ class ServiceCard(QFrame):
         # Keep title in sync with external flag
         self._refresh_title()
         # Update button states based on the new running state
-        self.start_btn.setEnabled(not is_running and self.service_process.tool_available)
-        self.stop_btn.setEnabled(is_running)
-        self.force_stop_btn.setEnabled(is_running)
-        self.restart_btn.setEnabled(is_running)
+        if self._stopping:
+            self.start_btn.setEnabled(False)
+            self.stop_btn.setEnabled(False)
+            self.force_stop_btn.setEnabled(False)
+            self.restart_btn.setEnabled(False)
+        else:
+            self.start_btn.setEnabled(not is_running and self.service_process.tool_available)
+            self.stop_btn.setEnabled(is_running)
+            self.force_stop_btn.setEnabled(is_running)
+            self.restart_btn.setEnabled(is_running)
         # Update card style based on health state
         self._update_style()
+
+    def set_stopping(self, stopping: bool):
+        """Set temporary UI state while stop operation is in progress."""
+        stopping = bool(stopping)
+        if self._stopping == stopping:
+            return
+        self._stopping = stopping
+        try:
+            status = getattr(self.service_process, "health_status", HealthStatus.UNKNOWN)
+        except Exception:
+            status = HealthStatus.UNKNOWN
+        self.update_status(status)
 
     def _toggle_details(self):
         if not self._has_card_details():

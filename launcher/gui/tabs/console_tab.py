@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QCheckBox, QComboBox
 )
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QShortcut, QKeySequence
 
 try:
@@ -150,6 +151,7 @@ class ConsoleTab:
         pause_logs_button.setChecked(False)
         pause_logs_button.setToolTip("Pause log updates to scroll through history")
         pause_logs_button.setStyleSheet(theme.get_icon_button_stylesheet("sm"))
+        pause_logs_button.setFocusPolicy(Qt.NoFocus)  # Prevent accidental Space/Enter toggle
         pause_logs_button.toggled.connect(launcher._on_pause_logs_changed)
         toolbar.addWidget(pause_logs_button)
 

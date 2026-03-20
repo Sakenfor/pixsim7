@@ -5,7 +5,8 @@ import threading
 import json
 from collections import deque
 from typing import Optional, Union
-from PySide6.QtCore import QProcess, QTimer
+from PySide6.QtCore import QProcess, QTimer, QMetaObject, Qt, QThread
+from PySide6.QtWidgets import QApplication
 from pixsim_logging.file_rotation import rotate_file, append_line
 
 try:
@@ -100,6 +101,10 @@ class ServiceProcess:
         self._buffer_char_count = 0
         self._log_file_position = 0  # Track position in log file for incremental reading
         self._log_monitor_timer: Optional[QTimer] = None
+        # DB docker-log polling state (keep blocking compose calls off UI thread)
+        self._docker_log_fetch_lock = threading.Lock()
+        self._docker_log_fetch_in_progress = False
+        self._docker_log_pending_lines: list[str] = []
         self._load_persisted_logs()
 
         # Log file monitoring for detached processes
@@ -259,6 +264,30 @@ class ServiceProcess:
         """Get the best known PID for this service (started > detected > persisted)."""
         return self.started_pid or self.detected_pid or self.persisted_pid
 
+    def _is_effective_process_alive(self) -> bool:
+        """Best-effort liveness check for the process represented by this service."""
+        pid = self.get_effective_pid()
+        try:
+            pu = _get_process_utils()
+            if pid and pu.is_process_alive(pid):
+                return True
+        except Exception:
+            pass
+
+        if isinstance(self.proc, subprocess.Popen):
+            try:
+                return self.proc.poll() is None
+            except Exception:
+                return False
+
+        if isinstance(self.proc, QProcess):
+            try:
+                return self.proc.state() == QProcess.Running
+            except Exception:
+                return False
+
+        return False
+
     def _get_port_from_health_url(self) -> Optional[int]:
         """Extract port from health_url if available."""
         if not getattr(self.defn, "health_url", None):
@@ -266,6 +295,17 @@ class ServiceProcess:
         try:
             from urllib.parse import urlparse
             return urlparse(self.defn.health_url).port
+        except Exception:
+            return None
+
+    def _find_port_owner_pid(self) -> Optional[int]:
+        """Return PID currently bound to this service's health port, if any."""
+        port = self._get_port_from_health_url()
+        if not port:
+            return None
+        try:
+            pu = _get_process_utils()
+            return pu.find_pid_by_port(port)
         except Exception:
             return None
 
@@ -543,21 +583,71 @@ class ServiceProcess:
         if self._log_monitor_timer:
             self._log_monitor_timer.stop()
 
-        self._log_monitor_timer = QTimer()
+        app = QApplication.instance()
+        self._log_monitor_timer = QTimer(app) if app else QTimer()
         self._log_monitor_timer.timeout.connect(self._read_new_log_lines)
         self._log_monitor_timer.start(1000)  # Check every 1s (reduced from 500ms)
 
     def _stop_log_monitor(self):
         """Stop monitoring log file."""
         if self._log_monitor_timer:
-            self._log_monitor_timer.stop()
+            timer = self._log_monitor_timer
+            try:
+                if timer.thread() is not QThread.currentThread():
+                    QMetaObject.invokeMethod(timer, "stop", Qt.QueuedConnection)
+                    # Do not clear/destroy timer from a non-owner thread.
+                    # Keep reference until UI thread reuses/replaces it.
+                    return
+                timer.stop()
+            except Exception:
+                try:
+                    timer.stop()
+                except Exception:
+                    pass
             self._log_monitor_timer = None
 
     def _fetch_docker_logs(self):
-        """Fetch logs from Docker containers for db service."""
+        """Non-blocking poll for Docker container logs (db service)."""
         if self.defn.key != 'db' or not self.running:
             return
 
+        # First, flush any lines fetched by background worker.
+        self._drain_docker_log_lines()
+
+        # If a fetch is already running, do not queue another one.
+        with self._docker_log_fetch_lock:
+            if self._docker_log_fetch_in_progress:
+                return
+            self._docker_log_fetch_in_progress = True
+
+        t = threading.Thread(target=self._fetch_docker_logs_worker, daemon=True)
+        t.start()
+
+    def _drain_docker_log_lines(self):
+        """Move pending docker log lines from worker buffer to service log buffer."""
+        pending: list[str] = []
+        with self._docker_log_fetch_lock:
+            if self._docker_log_pending_lines:
+                pending = self._docker_log_pending_lines
+                self._docker_log_pending_lines = []
+
+        if not pending:
+            return
+
+        for formatted in pending:
+            try:
+                # Only add if not already in recent buffer (avoid duplicates)
+                n = len(self.log_buffer)
+                recent = [self.log_buffer[n - 1 - i] for i in range(min(20, n))]
+                if formatted not in recent:
+                    self._append_log_buffer(formatted)
+                    self._persist_log_line(formatted, sanitized=True)
+            except Exception:
+                pass
+
+    def _fetch_docker_logs_worker(self):
+        """Background worker that runs blocking docker compose logs calls."""
+        pending: list[str] = []
         try:
             compose_file = os.path.join(ROOT, 'docker-compose.db-only.yml')
             ok, logs = compose_logs(compose_file, tail=50, since='30s')
@@ -571,22 +661,22 @@ class ServiceProcess:
                         continue
                     # Format: add timestamp prefix for consistency
                     formatted = f"[{timestamp}] [OUT] {line}"
-                    # Only add if not already in recent buffer (avoid duplicates)
-                    # deque doesn't support slicing, so check last N via iteration
-                    n = len(self.log_buffer)
-                    recent = [self.log_buffer[n - 1 - i] for i in range(min(20, n))]
-                    if formatted not in recent:
-                        self._append_log_buffer(formatted)
-                        self._persist_log_line(formatted, sanitized=True)
+                    pending.append(formatted)
         except Exception as e:
             _log("docker_logs_fetch_failed", "warning", error=str(e))
+        finally:
+            with self._docker_log_fetch_lock:
+                if pending:
+                    self._docker_log_pending_lines.extend(pending)
+                self._docker_log_fetch_in_progress = False
 
     def _start_docker_log_monitor(self):
         """Start monitoring Docker container logs."""
         if self._log_monitor_timer:
             self._log_monitor_timer.stop()
 
-        self._log_monitor_timer = QTimer()
+        app = QApplication.instance()
+        self._log_monitor_timer = QTimer(app) if app else QTimer()
         self._log_monitor_timer.timeout.connect(self._fetch_docker_logs)
         self._log_monitor_timer.start(5000)  # Fetch every 5 seconds
         # Fetch immediately
@@ -642,8 +732,16 @@ class ServiceProcess:
         return available
 
     def start(self):
+        # Guard against duplicate spawns when health checks briefly mark a
+        # still-live process as stopped/unhealthy.
+        if self._is_effective_process_alive():
+            self.running = True
+            if self.health_status == HealthStatus.STOPPED:
+                self.health_status = HealthStatus.STARTING
+            return True
+
         if self.running:
-            return
+            self.running = False
         if not self.check_tool_availability():
             return False
 
@@ -778,15 +876,6 @@ class ServiceProcess:
             return False
 
     def stop(self, graceful=True):
-        effective_pid = self.get_effective_pid()
-        if not self.running and not effective_pid and not self.extra_started_pids:
-            # Worker card may have orphan retry/main ARQ processes from a previous
-            # launcher session (companion PIDs are tracked only in-memory).
-            orphan_killed = self._kill_worker_family_processes(graceful=graceful)
-            if orphan_killed:
-                self._mark_stopped()
-            return
-
         # Mark that user requested the service to be stopped
         self.requested_running = False
         _log("service_stop", service_key=self.defn.key, graceful=graceful)
@@ -809,6 +898,18 @@ class ServiceProcess:
                 except Exception:
                     pass
 
+        effective_pid = self.get_effective_pid()
+        if not self.running and not effective_pid and not self.extra_started_pids:
+            # Worker card may have orphan retry/main ARQ processes from a previous
+            # launcher session (companion PIDs are tracked only in-memory).
+            orphan_killed = self._kill_worker_family_processes(graceful=graceful)
+            if orphan_killed:
+                self._mark_stopped()
+            else:
+                # Explicit stop request should still converge to STOPPED state.
+                self._mark_stopped()
+            return
+
         if self.defn.key == 'db':
             try:
                 compose_file = os.path.join(ROOT, 'docker-compose.db-only.yml')
@@ -821,16 +922,31 @@ class ServiceProcess:
 
         # Handle subprocess.Popen (detached process)
         if isinstance(self.proc, subprocess.Popen):
+            pu = _get_process_utils()
             target_pid = self.get_effective_pid()
             tracked_pids = set(self.extra_started_pids or [])
             if target_pid:
-                pu = _get_process_utils()
                 force = not graceful
                 success = pu.kill_process_by_pid(target_pid, force=force)
                 _log("detached_process_kill", service_key=self.defn.key, pid=target_pid, force=force, success=success)
                 tracked_pids.add(target_pid)
             self._kill_extra_started_processes(graceful=graceful)
             self._kill_worker_family_processes(graceful=graceful, exclude_pids=tracked_pids)
+            # For detached launchers (notably pnpm/vite on Windows), the wrapper
+            # PID can die while the real server PID keeps listening on the port.
+            # Verify the port is actually free; if not, kill the current port owner.
+            port = self._get_port_from_health_url()
+            lingering_pid = None
+            if port:
+                try:
+                    lingering_pid = pu.find_pid_by_port(port)
+                except Exception:
+                    lingering_pid = None
+            if lingering_pid:
+                self.proc = None
+                self.detected_pid = lingering_pid
+                self._stop_detected_process(graceful=graceful)
+                return
             self._mark_stopped()
             return
 
@@ -885,6 +1001,7 @@ class ServiceProcess:
         force = not graceful
         old_pid = self.detected_pid
         port = self._get_port_from_health_url()
+        quick_stop = bool(graceful)
 
         success = pu.kill_process_by_pid(self.detected_pid, force=force)
         _log("detected_process_kill", service_key=self.defn.key, pid=self.detected_pid, force=force, success=success)
@@ -893,10 +1010,12 @@ class ServiceProcess:
         is_backend = self.defn.key.endswith("-api") or self.defn.key in ("backend", "main-api", "generation-api")
 
         if success:
-            time.sleep(0.5)
+            time.sleep(0.2 if quick_stop else 0.5)
 
         # Retry loop: keep killing any PID on the port until free or timeout
-        for retry in range(8):
+        max_retries = 3 if quick_stop else 8
+        retry_sleep_s = 0.2 if quick_stop else 0.8
+        for retry in range(max_retries):
             current_pid = pu.find_pid_by_port(port) if port else None
             if not current_pid:
                 break
@@ -906,10 +1025,11 @@ class ServiceProcess:
                      old_pid=old_pid, new_pid=current_pid, port=port)
 
             pu.kill_process_by_pid(current_pid, force=True)
-            time.sleep(0.8)
+            time.sleep(retry_sleep_s)
 
             # Windows-specific fallbacks for uvicorn reloader
-            if os.name == 'nt' and is_backend:
+            # Keep graceful stop responsive: only run heavyweight fallbacks for force-stop.
+            if os.name == 'nt' and is_backend and not quick_stop:
                 if retry == 2:
                     try:
                         subprocess.run(["taskkill", "/F", "/FI", "WINDOWTITLE eq PixSim7 Backend*"],
@@ -930,9 +1050,15 @@ class ServiceProcess:
 
         # Check final state
         current_pid = pu.find_pid_by_port(port) if port else None
+        if not current_pid and old_pid:
+            try:
+                if pu.is_process_alive(old_pid):
+                    current_pid = old_pid
+            except Exception:
+                pass
         if not current_pid:
             self._mark_stopped()
-        elif os.name == 'nt' and is_backend:
+        elif os.name == 'nt' and is_backend and not quick_stop:
             # Final Windows fallback: kill by command line
             try:
                 cand_pids = pu.find_backend_candidate_pids_windows(port)
@@ -940,7 +1066,8 @@ class ServiceProcess:
                     subprocess.run(["taskkill", "/PID", str(cp), "/T", "/F"],
                                    capture_output=True, text=True, timeout=6)
                 time.sleep(1.0)
-                if not pu.find_pid_by_port(port):
+                current_pid = pu.find_pid_by_port(port) if port else None
+                if not current_pid:
                     _log("fallback_kill_by_commandline_succeeded", service_key=self.defn.key)
                     self._mark_stopped()
                     return
@@ -948,11 +1075,28 @@ class ServiceProcess:
                 pass
             # Exhausted all options
             _log("fallback_exhausted_still_running", "warning", service_key=self.defn.key, port=port)
-            self.running = False
+            self.proc = None
+            self.started_pid = None
+            self.detected_pid = current_pid or old_pid
+            self.running = True
             self.health_status = HealthStatus.UNHEALTHY
             self.externally_managed = True
         else:
-            _log("detected_process_kill_failed", "warning", service_key=self.defn.key, pid=old_pid, port=port)
+            if quick_stop and is_backend:
+                _log(
+                    "graceful_stop_still_running",
+                    "warning",
+                    service_key=self.defn.key,
+                    pid=old_pid,
+                    port=port,
+                    hint="Use Force Stop for aggressive Windows fallback",
+                )
+            else:
+                _log("detected_process_kill_failed", "warning", service_key=self.defn.key, pid=old_pid, port=port)
+            self.proc = None
+            self.started_pid = None
+            self.detected_pid = current_pid or old_pid
+            self.running = True
             self.health_status = HealthStatus.UNHEALTHY
             self.externally_managed = True
 

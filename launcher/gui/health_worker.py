@@ -359,6 +359,18 @@ class HealthWorker(QThread):
 
     def _emit_health_update(self, key: str, status: HealthStatus):
         """Emit health update signal and track state change."""
+        # Log transitions with reason for debugging flapping services
+        prev = getattr(self, '_prev_status', {})
+        old = prev.get(key)
+        if old is not None and old != status:
+            _log("health_transition", "warning",
+                 service_key=key,
+                 old_status=old.value if hasattr(old, 'value') else str(old),
+                 new_status=status.value if hasattr(status, 'value') else str(status),
+                 failure_count=self.failure_counts.get(key, 0))
+        if not hasattr(self, '_prev_status'):
+            self._prev_status = {}
+        self._prev_status[key] = status
         try:
             self.health_update.emit(key, status)
         except Exception:
@@ -374,10 +386,18 @@ class HealthWorker(QThread):
         """Mark service stopped."""
         self._emit_health_update(key, HealthStatus.STOPPED)
 
+    # Stop counting after this many consecutive failures — the number is
+    # high enough to survive any realistic grace period but low enough to
+    # avoid unbounded growth in long-running sessions.
+    MAX_FAILURE_COUNT = 50
+
     def _increment_failures(self, key: str) -> int:
-        """Increment and return the failure count for *key*."""
-        self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
-        return self.failure_counts[key]
+        """Increment and return the failure count for *key* (capped)."""
+        count = self.failure_counts.get(key, 0) + 1
+        if count > self.MAX_FAILURE_COUNT:
+            count = self.MAX_FAILURE_COUNT
+        self.failure_counts[key] = count
+        return count
 
     def _check_openapi_freshness(self, key: str, sp):
         """Check OpenAPI freshness for a service if applicable.
@@ -429,10 +449,6 @@ class HealthWorker(QThread):
         if sp.proc is not None:
             return
 
-        # Skip if we already detected a PID for this service
-        if hasattr(sp, 'detected_pid') and sp.detected_pid:
-            return
-
         # Extract port from URL if not provided
         if url and not port:
             try:
@@ -445,6 +461,34 @@ class HealthWorker(QThread):
 
         if not port:
             return
+
+        # Reuse existing detected PID only if it still looks valid.
+        existing_pid = getattr(sp, "detected_pid", None)
+        if existing_pid:
+            try:
+                alive = is_process_alive(int(existing_pid))
+            except Exception:
+                alive = False
+            if alive:
+                # If the service currently owns the target port, keep it.
+                # If no process owns the port yet, keep it as a STARTING hint.
+                try:
+                    owner_pid = find_pid_by_port(port)
+                except Exception:
+                    owner_pid = None
+                if owner_pid in (None, int(existing_pid)):
+                    return
+            # Existing PID is stale or no longer relevant.
+            try:
+                sp.detected_pid = None
+            except Exception:
+                pass
+            clear_fn = getattr(sp, "_clear_persisted_pid", None)
+            if callable(clear_fn):
+                try:
+                    clear_fn()
+                except Exception:
+                    pass
 
         # Try to find PID by port
         try:
@@ -498,8 +542,16 @@ class HealthWorker(QThread):
                             self._increment_failures(key)
                         continue
 
-                    # Check if service is actually running by checking health URL
-                    # Don't skip health check just because running=False, as service might be running from previous session
+                    # Skip health checks for services the user never started and
+                    # that aren't currently running.  This avoids burning 1.5 s per
+                    # service on Windows where connecting to an unbound port times
+                    # out instead of refusing immediately.
+                    if not getattr(sp, 'requested_running', False) and not sp.running:
+                        # Ensure the UI shows STOPPED (idempotent) without spamming
+                        # the failure counter or log.
+                        if getattr(sp, 'health_status', None) != HealthStatus.STOPPED:
+                            self._emit_health_update(key, HealthStatus.STOPPED)
+                        continue
 
                     # Special-case worker: check process is alive first, then verify Redis
                     if key == 'worker':
@@ -644,8 +696,18 @@ class HealthWorker(QThread):
                                 else:
                                     self._emit_health_update(key, HealthStatus.UNHEALTHY)
                                     self._increment_failures(key)
-                        except Exception:
+                        except Exception as health_err:
                             self._increment_failures(key)
+                            fc = self.failure_counts.get(key, 0)
+                            # Log first 3 failures, then only every 50th to
+                            # avoid flooding the log for services that stay down.
+                            if fc <= 3 or fc % 50 == 0:
+                                _log("health_check_failed", "warning",
+                                     service_key=key,
+                                     health_url=health_url,
+                                     error=str(health_err),
+                                     error_type=type(health_err).__name__,
+                                     failure_count=fc)
                             # Use per-service grace attempts if defined
                             grace = getattr(getattr(sp, 'defn', None), 'health_grace_attempts', self.failure_threshold)
                             current_status = getattr(sp, 'health_status', None)
@@ -657,6 +719,14 @@ class HealthWorker(QThread):
                                 except Exception:
                                     pass
                             detected_pid = getattr(sp, "detected_pid", None)
+                            if detected_pid:
+                                try:
+                                    if not is_process_alive(int(detected_pid)):
+                                        sp.detected_pid = None
+                                        detected_pid = None
+                                except Exception:
+                                    sp.detected_pid = None
+                                    detected_pid = None
                             if detected_pid:
                                 sp.running = True
                                 if hasattr(sp, 'externally_managed'):
@@ -677,14 +747,56 @@ class HealthWorker(QThread):
                             # If service was previously healthy/running, mark as unhealthy
                             elif current_status == HealthStatus.HEALTHY or (sp.running and current_status == HealthStatus.STARTING):
                                 sp.running = False
+                                # Diagnose: is the port still reachable? If Docker
+                                # containers are healthy but port is unreachable,
+                                # this is the Windows WinNAT port-forwarding bug.
+                                port_reachable = None
+                                try:
+                                    from urllib.parse import urlparse
+                                    parsed = urlparse(health_url)
+                                    diag_port = parsed.port
+                                    if diag_port:
+                                        diag_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                                        diag_sock.settimeout(0.5)
+                                        try:
+                                            diag_sock.connect(("localhost", diag_port))
+                                            port_reachable = True
+                                        except Exception:
+                                            port_reachable = False
+                                        finally:
+                                            diag_sock.close()
+                                except Exception:
+                                    pass
+                                _log("service_went_down", "error",
+                                     service_key=key,
+                                     was_status=current_status.value if hasattr(current_status, 'value') else str(current_status),
+                                     health_url=health_url,
+                                     error=str(health_err),
+                                     port_reachable=port_reachable,
+                                     failure_count=self.failure_counts.get(key, 0),
+                                     hint="port unreachable — possible WinNAT issue, try: net stop winnat && net start winnat" if port_reachable is False else None)
                                 self._emit_health_update(key, HealthStatus.UNHEALTHY)
                             # Otherwise, service is just stopped
                             else:
-                                sp.running = False
-                                # Clear externally managed warning when service is fully stopped
-                                if key in self._externally_managed_warned:
-                                    self._externally_managed_warned.pop(key, None)
-                                self._emit_health_update(key, HealthStatus.STOPPED)
+                                # If launcher still has a live managed process, keep it
+                                # UNHEALTHY instead of STOPPED to avoid duplicate spawns.
+                                process_alive = False
+                                try:
+                                    alive_check = getattr(sp, "_is_effective_process_alive", None)
+                                    if callable(alive_check):
+                                        process_alive = bool(alive_check())
+                                except Exception:
+                                    process_alive = False
+
+                                if process_alive:
+                                    sp.running = True
+                                    self._emit_health_update(key, HealthStatus.UNHEALTHY)
+                                else:
+                                    sp.running = False
+                                    # Clear externally managed warning when service is fully stopped
+                                    if key in self._externally_managed_warned:
+                                        self._externally_managed_warned.pop(key, None)
+                                    self._emit_health_update(key, HealthStatus.STOPPED)
                     else:
                         # No health URL: use PID-based detection where possible.
                         # This is especially important for detached services like
