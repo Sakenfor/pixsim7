@@ -47,13 +47,15 @@ interface ChatMessage {
   timestamp: Date;
 }
 
-/** Supported agent engines */
-type AgentEngine = 'claude' | 'codex' | 'api';
-const AGENT_ENGINES: { id: AgentEngine; label: string; icon: IconName }[] = [
+/** Agent commands available in cmd (bridge) mode */
+type AgentCommand = 'claude' | 'codex';
+const AGENT_COMMANDS: { id: AgentCommand; label: string; icon: IconName }[] = [
   { id: 'claude', label: 'Claude', icon: 'messageSquare' },
   { id: 'codex', label: 'Codex', icon: 'cpu' },
-  { id: 'api', label: 'API', icon: 'zap' },
 ];
+
+/** Combined engine value sent to backend */
+type AgentEngine = AgentCommand | 'api';
 
 /** A single chat tab */
 interface ChatTab {
@@ -397,7 +399,7 @@ function ResumeSessionPicker({ onResume }: {
           {/* Engine filter tabs */}
           <div className="flex items-center gap-1 px-2 py-1.5 border-b border-neutral-100 dark:border-neutral-800">
             <button onClick={() => setFilter('')} className={`px-1.5 py-0.5 text-[9px] rounded ${!filter ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>All</button>
-            {AGENT_ENGINES.map((e) => (
+            {[...AGENT_COMMANDS, { id: 'api' as const, label: 'API', icon: 'zap' as IconName }].map((e) => (
               <button key={e.id} onClick={() => setFilter(e.id)} className={`px-1.5 py-0.5 text-[9px] rounded ${filter === e.id ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>{e.label}</button>
             ))}
           </div>
@@ -412,7 +414,7 @@ function ResumeSessionPicker({ onResume }: {
               onClick={() => { onResume(s.id, s.engine, s.label); setOpen(false); }}
               className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 border-b border-neutral-50 dark:border-neutral-800/50 last:border-0"
             >
-              <Icon name={AGENT_ENGINES.find((e) => e.id === s.engine)?.icon ?? 'messageSquare'} size={11} className="shrink-0 text-neutral-400" />
+              <Icon name={AGENT_COMMANDS.find((c) => c.id === s.engine)?.icon ?? (s.engine === 'api' ? 'zap' : 'messageSquare')} size={11} className="shrink-0 text-neutral-400" />
               <div className="flex-1 min-w-0">
                 <div className="text-[11px] text-neutral-700 dark:text-neutral-300 truncate">{s.label}</div>
                 <div className="text-[9px] text-neutral-400">
@@ -818,20 +820,56 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             <Icon name="plus" size={16} />
           </button>
 
-          {/* Engine toggle */}
-          <button
-            disabled={sending}
-            onClick={() => {
-              const idx = AGENT_ENGINES.findIndex((e) => e.id === tab.engine);
-              const next = AGENT_ENGINES[(idx + 1) % AGENT_ENGINES.length];
-              onUpdateTab({ engine: next.id, sessionId: null }); // new engine = new session
-            }}
-            className="shrink-0 h-8 flex items-center gap-1 px-1.5 rounded-lg text-[10px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-            title={sending ? 'Cannot switch while processing' : `Engine: ${AGENT_ENGINES.find((e) => e.id === tab.engine)?.label ?? tab.engine} (click to switch)`}
-          >
-            <Icon name={AGENT_ENGINES.find((e) => e.id === tab.engine)?.icon ?? 'cpu'} size={11} />
-            <span className="text-[9px] uppercase tracking-wide">{tab.engine}</span>
-          </button>
+          {/* Delivery method + command selector */}
+          <div className="shrink-0 flex items-center h-8">
+            {/* CMD / API toggle */}
+            <button
+              disabled={sending}
+              onClick={() => {
+                const isApi = tab.engine === 'api';
+                onUpdateTab({ engine: isApi ? 'claude' : 'api', sessionId: null });
+              }}
+              className={`h-6 px-1.5 text-[9px] font-medium rounded-l transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+                tab.engine !== 'api'
+                  ? 'bg-accent/15 text-accent'
+                  : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+              }`}
+              title={tab.engine === 'api' ? 'Switch to bridge (cmd) mode' : 'Using bridge'}
+            >
+              <Icon name="code" size={10} />
+            </button>
+            <button
+              disabled={sending}
+              onClick={() => {
+                onUpdateTab({ engine: 'api', sessionId: null });
+              }}
+              className={`h-6 px-1.5 text-[9px] font-medium rounded-r transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+                tab.engine === 'api'
+                  ? 'bg-accent/15 text-accent'
+                  : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+              }`}
+              title={tab.engine === 'api' ? 'Using direct API' : 'Switch to direct API'}
+            >
+              <Icon name="zap" size={10} />
+            </button>
+
+            {/* Command picker (only in cmd mode) */}
+            {tab.engine !== 'api' && (
+              <button
+                disabled={sending}
+                onClick={() => {
+                  const idx = AGENT_COMMANDS.findIndex((c) => c.id === tab.engine);
+                  const next = AGENT_COMMANDS[(idx + 1) % AGENT_COMMANDS.length];
+                  onUpdateTab({ engine: next.id, sessionId: null });
+                }}
+                className="h-6 ml-0.5 px-1.5 text-[9px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                title={`Command: ${AGENT_COMMANDS.find((c) => c.id === tab.engine)?.label ?? tab.engine} (click to switch)`}
+              >
+                <Icon name={AGENT_COMMANDS.find((c) => c.id === tab.engine)?.icon ?? 'cpu'} size={10} className="inline mr-0.5" />
+                <span className="uppercase tracking-wide">{tab.engine}</span>
+              </button>
+            )}
+          </div>
 
           {/* Profile picker */}
           <div className="relative shrink-0" ref={profilePickerRef}>
