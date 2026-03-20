@@ -1109,7 +1109,15 @@ export function AIAssistantPanel() {
               {bridgeStarting ? '...' : 'Connect'}
             </button>
           )}
-          <div className={`w-1.5 h-1.5 rounded-full ${connected > 0 ? 'bg-green-500' : 'bg-neutral-300'}`} title={connected > 0 ? 'Connected' : 'Offline'} />
+          {connected > 0 ? (
+            <button
+              onClick={() => { pixsimClient.post('/meta/agents/bridge/stop').catch(() => {}); }}
+              className="w-2 h-2 rounded-full bg-green-500 hover:bg-red-500 transition-colors cursor-pointer"
+              title="Connected — click to disconnect"
+            />
+          ) : (
+            <div className="w-1.5 h-1.5 rounded-full bg-neutral-300" title="Offline" />
+          )}
         </div>
       </div>
 

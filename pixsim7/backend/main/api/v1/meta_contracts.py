@@ -1053,7 +1053,9 @@ async def list_chat_sessions(
         .where(ChatSession.status == "active")
     )
     if user:
-        stmt = stmt.where(ChatSession.user_id == user.id)
+        # Include user's own sessions + shared sessions (user_id=0)
+        from sqlalchemy import or_
+        stmt = stmt.where(or_(ChatSession.user_id == user.id, ChatSession.user_id == 0))
     if engine:
         stmt = stmt.where(ChatSession.engine == engine)
     stmt = stmt.order_by(ChatSession.last_used_at.desc()).limit(limit)
