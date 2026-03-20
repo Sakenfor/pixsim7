@@ -268,7 +268,7 @@ async def list_ai_models() -> AiModelsListResponse:
     items = []
     for m in ai_model_registry.values():
         kind = m.kind.value if hasattr(m.kind, 'value') else str(m.kind)
-        if kind in ("llm", "both"):
+        if kind in ("llm", "both") and m.provider_id != "cmd":
             items.append(AiModelResponse(
                 id=m.id,
                 label=m.label,
