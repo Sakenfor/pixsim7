@@ -202,28 +202,42 @@ class Bridge:
 
     @staticmethod
     def _ensure_codex_mcp(mcp_server_script: str, api_base: str, token: str, token_file: str, scope: str) -> None:
-        """Register pixsim MCP server with Codex's global config (idempotent)."""
-        import shutil
-        import subprocess as sp
-        codex_bin = shutil.which("codex")
-        if not codex_bin:
-            return
+        """Register pixsim MCP server with Codex's global config (idempotent).
+
+        Writes directly to ~/.codex/config.toml for full control over
+        timeout settings that the CLI doesn't expose.
+        """
+        from pathlib import Path
+        codex_config = Path.home() / ".codex" / "config.toml"
+        if not codex_config.parent.exists():
+            return  # Codex not installed
+
         try:
-            # Remove existing (idempotent re-register)
-            sp.run([codex_bin, "mcp", "remove", "pixsim"], capture_output=True, timeout=5)
-            # Add with env vars for auth
-            sp.run(
-                [
-                    codex_bin, "mcp", "add", "pixsim",
-                    "--env", f"PIXSIM_API_URL={api_base}",
-                    "--env", f"PIXSIM_API_TOKEN={token}",
-                    "--env", f"PIXSIM_TOKEN_FILE={token_file}",
-                    "--env", f"PIXSIM_SCOPE={scope}",
-                    "--", sys.executable, mcp_server_script,
-                ],
-                capture_output=True, timeout=10,
-            )
-            client_log("Registered pixsim MCP server with Codex")
+            content = codex_config.read_text() if codex_config.exists() else ""
+
+            # Remove existing pixsim section (between [mcp_servers.pixsim] and next section)
+            import re
+            content = re.sub(
+                r'\[mcp_servers\.pixsim\].*?(?=\n\[|\Z)',
+                '', content, flags=re.DOTALL,
+            ).rstrip() + "\n"
+
+            # Append fresh config
+            content += f"""
+[mcp_servers.pixsim]
+command = '{sys.executable}'
+args = ['{mcp_server_script}']
+startup_timeout_sec = 30
+tool_timeout_sec = 60
+
+[mcp_servers.pixsim.env]
+PIXSIM_API_URL = "{api_base}"
+PIXSIM_API_TOKEN = "{token}"
+PIXSIM_TOKEN_FILE = "{token_file}"
+PIXSIM_SCOPE = "{scope}"
+"""
+            codex_config.write_text(content)
+            client_log("Registered pixsim MCP server with Codex (config.toml)")
         except Exception as e:
             client_log(f"Failed to register Codex MCP: {e}", error=True)
 
