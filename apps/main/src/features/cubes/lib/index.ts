@@ -14,3 +14,13 @@ export {
 } from './cubeExpansionRegistry';
 
 export { registerCubeExpansions } from './registerCubeExpansions';
+
+export {
+  CubeFaceRegistry,
+  cubeFaceRegistry,
+  type CubeFacePosition,
+  type CubeFaceComponentProps,
+  type CubeFaceDefinition,
+} from './cubeFaceRegistry';
+
+export { registerDefaultCubeFaces } from './registerDefaultCubeFaces';

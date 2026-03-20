@@ -18,7 +18,7 @@ export const cubesModule = defineModule({
   priority: 60, // After core, before UI features
 
   async initialize() {
-    const [{ registerCubeSettings }, { initializeCubesIntegration, registerCubeExpansions }] =
+    const [{ registerCubeSettings }, { initializeCubesIntegration, registerCubeExpansions, registerDefaultCubeFaces }] =
       await Promise.all([
         import('./settings/registerCubeSettings'),
         import('./index'),
@@ -29,6 +29,9 @@ export const cubesModule = defineModule({
 
     // Register cube expansions (for cube hover/click content)
     registerCubeExpansions();
+
+    // Register default cube faces (panels, launcher, pinned, recent, top, bottom)
+    registerDefaultCubeFaces();
 
     // Register cubes settings dynamically
     unregisterCubeSettings = registerCubeSettings();

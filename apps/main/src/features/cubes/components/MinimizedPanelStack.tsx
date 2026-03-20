@@ -12,52 +12,26 @@
  */
 
 import { PortalFloat, useHoverExpand, Z } from '@pixsim7/shared.ui';
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo, useSyncExternalStore } from 'react';
 
 import { Icon } from '@lib/icons';
 import { useInsetOn } from '@lib/layout/edgeInsets';
-import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useWorkspaceStore } from '@features/workspace';
-import { openWorkspacePanel } from '@features/workspace';
 import { getFloatingDefinitionId } from '@features/workspace/lib/floatingPanelUtils';
 
-import { useCubeSettingsStore, type CubeFaceMode, type CubeDockPosition } from '../stores/cubeSettingsStore';
+import { cubeFaceRegistry, type CubeFaceRegistry } from '../lib/cubeFaceRegistry';
+import { getCubeSettingsStore, type CubeDockPosition } from '../stores/cubeSettingsStore';
 import { useCubeStore, type ControlCube } from '../useCubeStore';
+
+import { CubeIndicatorContext } from './CubeIndicatorContext';
 
 interface MinimizedPanelStackProps {
   panelCubes: ControlCube[];
-}
-
-// ── Face definitions ──
-
-// Equatorial ring (Y-axis rotation): 4 faces
-const Y_FACES: { mode: CubeFaceMode; icon: string; label: string }[] = [
-  { mode: 'panels',   icon: 'layoutGrid', label: 'Panels' },
-  { mode: 'launcher', icon: 'zap',        label: 'Launch' },
-  { mode: 'pinned',   icon: 'pin',        label: 'Pinned' },
-  { mode: 'recent',   icon: 'clock',      label: 'Recent' },
-];
-
-// Vertical faces (X-axis rotation)
-const TOP_FACE:    { mode: CubeFaceMode; icon: string; label: string } = { mode: 'top',    icon: 'star',     label: 'Favorites' };
-const BOTTOM_FACE: { mode: CubeFaceMode; icon: string; label: string } = { mode: 'bottom', icon: 'settings', label: 'Settings' };
-
-function yFaceIndex(mode: CubeFaceMode): number {
-  const idx = Y_FACES.findIndex((f) => f.mode === mode);
-  return idx >= 0 ? idx : 0;
-}
-
-function isEquatorial(mode: CubeFaceMode): boolean {
-  return Y_FACES.some((f) => f.mode === mode);
-}
-
-// ── Helpers ──
-
-function getPanelMeta(panelId: string) {
-  const defId = getFloatingDefinitionId(panelId);
-  const def = panelSelectors.get(defId);
-  return { title: def?.title ?? defId, icon: def?.icon ?? 'layoutGrid' };
+  /** Registry to source face definitions from. Defaults to the global cubeFaceRegistry. */
+  registry?: CubeFaceRegistry;
+  /** Instance ID — each cube instance gets its own settings store. Defaults to 'default'. */
+  instanceId?: string;
 }
 
 // ── Constants ──
@@ -101,11 +75,35 @@ function findNearestDock(pos: { x: number; y: number }, leftInset: number): Cube
   return nearest;
 }
 
-export function MinimizedPanelStack({ panelCubes }: MinimizedPanelStackProps) {
+export function MinimizedPanelStack({
+  panelCubes,
+  registry = cubeFaceRegistry,
+  instanceId = 'default',
+}: MinimizedPanelStackProps) {
+  // Subscribe to registry changes so face additions/removals re-render
+  useSyncExternalStore(registry.subscribe, registry.getSnapshot);
+
+  const settingsStore = useMemo(() => getCubeSettingsStore(instanceId), [instanceId]);
+
   const indicatorRef = useRef<HTMLDivElement>(null);
   const leftInset = useInsetOn('left');
-  const dockPosition = useCubeSettingsStore((s) => s.dockPosition);
-  const setDockPosition = useCubeSettingsStore((s) => s.setDockPosition);
+  const dockPosition = settingsStore((s) => s.dockPosition);
+  const setDockPosition = settingsStore((s) => s.setDockPosition);
+
+  // ── Registry-derived face arrays (stable across renders unless registry changes) ──
+  const registryRevision = registry.getSnapshot();
+  const yFaces = useMemo(() => registry.getEquatorial(), [registry, registryRevision]);
+  const topFace = useMemo(() => registry.getTop(), [registry, registryRevision]);
+  const bottomFace = useMemo(() => registry.getBottom(), [registry, registryRevision]);
+
+  const yFaceIndex = useCallback(
+    (id: string) => { const idx = yFaces.findIndex((f) => f.id === id); return idx >= 0 ? idx : 0; },
+    [yFaces],
+  );
+  const isEquatorial = useCallback(
+    (id: string) => yFaces.some((f) => f.id === id),
+    [yFaces],
+  );
 
   // Position — either from dock zone or free-floating
   const [floatingPos, setFloatingPos] = useState(() => ({
@@ -124,16 +122,16 @@ export function MinimizedPanelStack({ panelCubes }: MinimizedPanelStackProps) {
   const [hoverTilt, setHoverTilt] = useState({ x: 0, y: 0 });
   // Cumulative rotations — separate axes so they don't interfere
   const [faceRotationY, setFaceRotationY] = useState(() => {
-    const face = useCubeSettingsStore.getState().activeFace;
+    const face = settingsStore.getState().activeFace;
     return isEquatorial(face) ? yFaceIndex(face) * -90 : 0;
   });
   const [faceRotationX, setFaceRotationX] = useState(() => {
-    const face = useCubeSettingsStore.getState().activeFace;
-    return face === 'top' ? 90 : face === 'bottom' ? -90 : 0;
+    const face = settingsStore.getState().activeFace;
+    return face === topFace?.id ? 90 : face === bottomFace?.id ? -90 : 0;
   });
-  const lastEquatorialRef = useRef<CubeFaceMode>('panels'); // remember which equatorial face to return to
-  const activeFace = useCubeSettingsStore((s) => s.activeFace);
-  const setActiveFace = useCubeSettingsStore((s) => s.setActiveFace);
+  const lastEquatorialRef = useRef<string>(yFaces[0]?.id ?? 'panels'); // remember which equatorial face to return to
+  const activeFace = settingsStore((s) => s.activeFace);
+  const setActiveFace = settingsStore((s) => s.setActiveFace);
   const dragOffset = useRef({ x: 0, y: 0 });
   const dragStartPos = useRef({ x: 0, y: 0 });
   const hasMoved = useRef(false);
@@ -148,10 +146,20 @@ export function MinimizedPanelStack({ panelCubes }: MinimizedPanelStackProps) {
   const restorePanelFromCube = useCubeStore((s) => s.restorePanelFromCube);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
+  /** Restore a single cube — skips if a floating panel with the same definition is already open. */
   const handleRestore = useCallback(
     (cubeId: string) => {
       const panelData = restorePanelFromCube(cubeId);
       if (panelData) {
+        // Guard: if a floating panel with the same definition is already open, just bring it to front
+        const ws = useWorkspaceStore.getState();
+        const existing = ws.floatingPanels.find(
+          (p) => getFloatingDefinitionId(p.id) === panelData.panelId,
+        );
+        if (existing) {
+          ws.bringFloatingPanelToFront(existing.id);
+          return;
+        }
         openFloatingPanel(panelData.panelId, {
           x: panelData.originalPosition.x,
           y: panelData.originalPosition.y,
@@ -168,6 +176,15 @@ export function MinimizedPanelStack({ panelCubes }: MinimizedPanelStackProps) {
     for (const cube of panelCubes) {
       const panelData = restorePanelFromCube(cube.id);
       if (panelData) {
+        // Guard: skip if already open as floating (dedup across iterations too)
+        const ws = useWorkspaceStore.getState();
+        const existing = ws.floatingPanels.find(
+          (p) => getFloatingDefinitionId(p.id) === panelData.panelId,
+        );
+        if (existing) {
+          ws.bringFloatingPanelToFront(existing.id);
+          continue;
+        }
         openFloatingPanel(panelData.panelId, {
           x: panelData.originalPosition.x,
           y: panelData.originalPosition.y,
@@ -198,29 +215,28 @@ export function MinimizedPanelStack({ panelCubes }: MinimizedPanelStackProps) {
           return;
         }
         const idx = yFaceIndex(activeFace);
-        const next = (idx + direction + Y_FACES.length) % Y_FACES.length;
+        const next = (idx + direction + yFaces.length) % yFaces.length;
         setFaceRotationY((prev) => prev + direction * -90);
-        setActiveFace(Y_FACES[next].mode);
-        lastEquatorialRef.current = Y_FACES[next].mode;
+        setActiveFace(yFaces[next].id);
+        lastEquatorialRef.current = yFaces[next].id;
       } else {
         // Vertical: toggle between equatorial ↔ top/bottom
+        const topId = topFace?.id;
+        const bottomId = bottomFace?.id;
         if (isEquatorial(activeFace)) {
-          // From equatorial → go to top (up) or bottom (down)
           lastEquatorialRef.current = activeFace;
           if (direction > 0) {
             setFaceRotationX((prev) => prev + 90);
-            setActiveFace('top');
+            if (topId) setActiveFace(topId);
           } else {
             setFaceRotationX((prev) => prev - 90);
-            setActiveFace('bottom');
+            if (bottomId) setActiveFace(bottomId);
           }
-        } else if (activeFace === 'top') {
+        } else if (activeFace === topId) {
           if (direction > 0) {
-            // Continue up past top → go to bottom (full rotation)
             setFaceRotationX((prev) => prev + 90);
-            setActiveFace('bottom');
+            if (bottomId) setActiveFace(bottomId);
           } else {
-            // Come back down to equatorial
             setFaceRotationX((prev) => prev - 90);
             setActiveFace(lastEquatorialRef.current);
           }
@@ -228,7 +244,7 @@ export function MinimizedPanelStack({ panelCubes }: MinimizedPanelStackProps) {
           // bottom
           if (direction < 0) {
             setFaceRotationX((prev) => prev - 90);
-            setActiveFace('top');
+            if (topId) setActiveFace(topId);
           } else {
             setFaceRotationX((prev) => prev + 90);
             setActiveFace(lastEquatorialRef.current);
@@ -236,21 +252,15 @@ export function MinimizedPanelStack({ panelCubes }: MinimizedPanelStackProps) {
         }
       }
     },
-    [activeFace, setActiveFace],
+    [activeFace, setActiveFace, isEquatorial, yFaceIndex, yFaces, topFace, bottomFace],
   );
 
   // Stable ref so repeat timers always call the latest cycleFace
   const cycleFaceRef = useRef(cycleFace);
   cycleFaceRef.current = cycleFace;
 
-  // Auto-rotate away from panels face when no panels left
-  const prevCountRef = useRef(panelCubes.length);
-  useEffect(() => {
-    if (prevCountRef.current > 0 && panelCubes.length === 0 && activeFace === 'panels') {
-      cycleFace(1, 'y');
-    }
-    prevCountRef.current = panelCubes.length;
-  }, [panelCubes.length, activeFace, cycleFace]);
+  // Note: no auto-rotate when panels face empties — let the user stay on the face
+  // they chose and rotate manually if desired.
 
   // ── Drag + click + dock snap ──
   const handleMouseDown = useCallback(
@@ -290,8 +300,11 @@ export function MinimizedPanelStack({ panelCubes }: MinimizedPanelStackProps) {
           if (absY >= absX) {
             cycleFace(hoverTilt.y > 0 ? -1 : 1, 'y');
           } else {
-            cycleFace(hoverTilt.x < 0 ? 1 : -1, 'x');
+            cycleFace(hoverTilt.x < 0 ? -1 : 1, 'x');
           }
+          // Clear stale tilt so peekedFace doesn't highlight the next neighbor
+          // using the old tilt value + new activeFace.
+          setHoverTilt({ x: 0, y: 0 });
         } else {
           setClickExpanded((v) => !v);
         }
@@ -350,7 +363,7 @@ export function MinimizedPanelStack({ panelCubes }: MinimizedPanelStackProps) {
         const isHorizontal = absNx >= absNy;
         const dir: 1 | -1 = isHorizontal
           ? (nx > 0 ? 1 : -1)
-          : (ny < 0 ? 1 : -1);
+          : (ny < 0 ? -1 : 1);
         const axis: 'x' | 'y' = isHorizontal ? 'y' : 'x';
         // Encode direction+axis as a unique key so left/right/up/down don't share
         const dirKey = `${axis}${dir}` as any;
@@ -395,18 +408,39 @@ export function MinimizedPanelStack({ panelCubes }: MinimizedPanelStackProps) {
     : isHovered ? 'animate-cube-bounce'
     : 'animate-cube-wobble';
 
-  // Determine which face the tilt is peeking toward (for highlight)
+  // Determine which face the tilt is peeking toward (for highlight).
+  // The rotation direction is fixed: tiltX<0 (mouse up) → dir=1, tiltX>0 → dir=-1.
+  // From each face, dir maps to a specific destination. Show that destination.
   const absY = Math.abs(hoverTilt.y);
   const absX = Math.abs(hoverTilt.x);
-  const peekedFace: string | null =
-    Math.max(absY, absX) < 12 ? null // not tilted enough
-    : absY >= absX
-      ? (hoverTilt.y < 0 ? 'right' : 'left') // tilt reveals the face in that direction
-      : (hoverTilt.x < 0 ? 'top' : 'bottom');
+  const peekedFace: string | null = (() => {
+    if (Math.max(absY, absX) < 12) return null;
+    if (absY >= absX) {
+      return hoverTilt.y < 0 ? 'right' : 'left';
+    }
+    // Vertical highlight: the navigation labels ('top'/'bottom' on activeFace)
+    // are inverted relative to the face *elements* in the DOM because of the
+    // CSS 3D transform geometry — rotateX(+90) visually brings the bottom
+    // element forward.  So the peek highlight must target the opposite element.
+    const down = hoverTilt.x > 0;
+    if (activeFace === topFace?.id) return down ? 'top' : null;
+    if (activeFace === bottomFace?.id) return down ? null : 'bottom';
+    return down ? 'bottom' : 'top';
+  })();
 
-  return (
+  // ── Context for face components ──
+  const ctxValue = useMemo(() => ({
+    cubeInstanceId: instanceId,
+    panelCubes,
+    onRestore: handleRestore,
+    onRestoreAll: handleRestoreAll,
+    onClearAll: handleClearAll,
+    registry,
+  }), [instanceId, panelCubes, handleRestore, handleRestoreAll, handleClearAll, registry]);
+
+  const content = (
     <div
-      className="pointer-events-auto"
+      className="pointer-events-auto floating-panel-cube-target"
       style={{
         position: 'fixed',
         left: position.x,
@@ -441,13 +475,12 @@ export function MinimizedPanelStack({ panelCubes }: MinimizedPanelStackProps) {
               transition: isDragging ? 'none' : 'transform 300ms cubic-bezier(.25,.1,.25,1)',
             }}
           >
-            {/* 4 equatorial faces (Y-axis) */}
-            {Y_FACES.map((face, i) => {
-              const isActive = activeFace === face.mode;
-              // Determine if this face is being peeked at via tilt
+            {/* Equatorial faces (Y-axis) — from registry */}
+            {yFaces.map((face, i) => {
+              const isActive = activeFace === face.id;
               const eqIdx = isEquatorial(activeFace) ? yFaceIndex(activeFace) : yFaceIndex(lastEquatorialRef.current);
-              const isPeeked = peekedFace === 'right' && i === (eqIdx + 1) % 4
-                || peekedFace === 'left' && i === (eqIdx + 3) % 4;
+              const isPeeked = peekedFace === 'right' && i === (eqIdx + 1) % yFaces.length
+                || peekedFace === 'left' && i === (eqIdx + yFaces.length - 1) % yFaces.length;
               const transforms = [
                 `translateZ(${half}px)`,
                 `translateX(${half}px) rotateY(90deg)`,
@@ -455,22 +488,26 @@ export function MinimizedPanelStack({ panelCubes }: MinimizedPanelStackProps) {
                 `translateX(-${half}px) rotateY(-90deg)`,
               ];
               return (
-                <CubeFace key={face.mode} transform={transforms[i]} active={isActive} peeked={isPeeked} expanded={isExpanded}>
+                <CubeFace key={face.id} transform={transforms[i]} active={isActive} peeked={isPeeked} expanded={isExpanded}>
                   <Icon name={face.icon} size={isExpanded ? 20 : 16} />
                   {isExpanded && <span className="text-[8px] mt-0.5">{face.label}</span>}
                 </CubeFace>
               );
             })}
-            {/* Top face */}
-            <CubeFace transform={`translateY(-${half}px) rotateX(90deg)`} active={activeFace === 'top'} peeked={peekedFace === 'top'} expanded={isExpanded}>
-              <Icon name={TOP_FACE.icon} size={isExpanded ? 20 : 16} />
-              {isExpanded && <span className="text-[8px] mt-0.5">{TOP_FACE.label}</span>}
-            </CubeFace>
-            {/* Bottom face */}
-            <CubeFace transform={`translateY(${half}px) rotateX(-90deg)`} active={activeFace === 'bottom'} peeked={peekedFace === 'bottom'} expanded={isExpanded}>
-              <Icon name={BOTTOM_FACE.icon} size={isExpanded ? 20 : 16} />
-              {isExpanded && <span className="text-[8px] mt-0.5">{BOTTOM_FACE.label}</span>}
-            </CubeFace>
+            {/* Top face — from registry */}
+            {topFace && (
+              <CubeFace transform={`translateY(-${half}px) rotateX(90deg)`} active={activeFace === topFace.id} peeked={peekedFace === 'top'} expanded={isExpanded}>
+                <Icon name={topFace.icon} size={isExpanded ? 20 : 16} />
+                {isExpanded && <span className="text-[8px] mt-0.5">{topFace.label}</span>}
+              </CubeFace>
+            )}
+            {/* Bottom face — from registry */}
+            {bottomFace && (
+              <CubeFace transform={`translateY(${half}px) rotateX(-90deg)`} active={activeFace === bottomFace.id} peeked={peekedFace === 'bottom'} expanded={isExpanded}>
+                <Icon name={bottomFace.icon} size={isExpanded ? 20 : 16} />
+                {isExpanded && <span className="text-[8px] mt-0.5">{bottomFace.label}</span>}
+              </CubeFace>
+            )}
           </div>
           </div>
         </div>
@@ -493,35 +530,40 @@ export function MinimizedPanelStack({ panelCubes }: MinimizedPanelStackProps) {
         )}
       </div>
 
-      {/* ── Face content (portaled) ── */}
-      {isExpanded && activeFace === 'panels' && (
-        <PortalFloat anchor={indicatorRef.current} placement="top" align="center" offset={8} clamp
-          style={{ zIndex: Z.floatOverlayPopover }} onMouseEnter={handlers.onMouseEnter} onMouseLeave={handlers.onMouseLeave}>
-          <PanelsCarousel panelCubes={panelCubes} onRestore={handleRestore} onRestoreAll={handleRestoreAll} onClearAll={handleClearAll} />
-        </PortalFloat>
-      )}
-
-      {isExpanded && activeFace === 'launcher' && (
-        <PortalFloat anchor={indicatorRef.current} placement="top" align="center" offset={8} clamp
-          className="bg-neutral-900/95 backdrop-blur-md border border-neutral-700 rounded-lg shadow-2xl overflow-hidden"
-          style={{ zIndex: Z.floatOverlayPopover }} onMouseEnter={handlers.onMouseEnter} onMouseLeave={handlers.onMouseLeave}>
-          <QuickLauncher />
-        </PortalFloat>
-      )}
-
-      {isExpanded && (activeFace === 'pinned' || activeFace === 'recent' || activeFace === 'top' || activeFace === 'bottom') && (
-        <PortalFloat anchor={indicatorRef.current} placement="top" align="center" offset={8} clamp
-          className="bg-neutral-900/95 backdrop-blur-md border border-neutral-700 rounded-lg shadow-2xl px-4 py-3"
-          style={{ zIndex: Z.floatOverlayPopover }} onMouseEnter={handlers.onMouseEnter} onMouseLeave={handlers.onMouseLeave}>
-          <div className="text-[11px] text-neutral-500 text-center">
-            {activeFace === 'pinned' && 'Pinned items — coming soon'}
-            {activeFace === 'recent' && 'Recent history — coming soon'}
-            {activeFace === 'top' && 'Favorites — coming soon'}
-            {activeFace === 'bottom' && 'Settings — coming soon'}
-          </div>
-        </PortalFloat>
-      )}
+      {/* ── Face content (portaled, dynamic from registry) ── */}
+      {isExpanded && (() => {
+        const faceDef = registry.get(activeFace);
+        if (!faceDef) return null;
+        const FaceComponent = faceDef.component;
+        if (FaceComponent) {
+          return (
+            <PortalFloat anchor={indicatorRef.current} placement="top" align="center" offset={8} clamp
+              className={faceDef.portalClassName}
+              style={{ zIndex: Z.floatOverlayPopover }} onMouseEnter={handlers.onMouseEnter} onMouseLeave={handlers.onMouseLeave}>
+              <FaceComponent cubeInstanceId={instanceId} isExpanded={isExpanded} />
+            </PortalFloat>
+          );
+        }
+        if (faceDef.placeholder) {
+          return (
+            <PortalFloat anchor={indicatorRef.current} placement="top" align="center" offset={8} clamp
+              className="bg-neutral-900/95 backdrop-blur-md border border-neutral-700 rounded-lg shadow-2xl px-4 py-3"
+              style={{ zIndex: Z.floatOverlayPopover }} onMouseEnter={handlers.onMouseEnter} onMouseLeave={handlers.onMouseLeave}>
+              <div className="text-[11px] text-neutral-500 text-center">
+                {faceDef.placeholder}
+              </div>
+            </PortalFloat>
+          );
+        }
+        return null;
+      })()}
     </div>
+  );
+
+  return (
+    <CubeIndicatorContext.Provider value={ctxValue}>
+      {content}
+    </CubeIndicatorContext.Provider>
   );
 }
 
@@ -548,196 +590,5 @@ function CubeFace({ transform, active, peeked, expanded, children }: {
   );
 }
 
-// ── Quick Launcher ──
-
-function QuickLauncher() {
-  const panels = useMemo(() => panelSelectors.getPublicPanels().slice(0, 12), []);
-
-  return (
-    <div className="p-2 w-[200px]">
-      <div className="px-1 pb-1.5 text-[10px] uppercase tracking-wider text-neutral-500 font-medium">
-        Quick Launch
-      </div>
-      <div className="grid grid-cols-3 gap-1">
-        {panels.map((panel) => (
-          <button
-            key={panel.id}
-            type="button"
-            onClick={() => openWorkspacePanel(panel.id)}
-            className="flex flex-col items-center gap-1 px-1 py-2 rounded-md text-neutral-300 hover:bg-cyan-600/20 hover:text-cyan-300 transition-colors"
-            title={panel.title}
-          >
-            <Icon name={panel.icon ?? 'layoutGrid'} size={16} className="shrink-0" />
-            <span className="text-[9px] truncate w-full text-center">{panel.title}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Panels Carousel (arc) ──
-
-const ITEM_SIZE = 44;
-const ARC_RADIUS = 110;
-const ARC_SPAN = (160 * Math.PI) / 180;
-const MAX_VISIBLE = 7;
-const DRAG_OUT_THRESHOLD = 60;
-
-function arcPos(angle: number) {
-  return { x: Math.sin(angle) * ARC_RADIUS, y: -Math.cos(angle) * ARC_RADIUS };
-}
-
-function PanelsCarousel({ panelCubes, onRestore, onRestoreAll, onClearAll }: {
-  panelCubes: ControlCube[]; onRestore: (id: string) => void; onRestoreAll: () => void; onClearAll: () => void;
-}) {
-  const count = panelCubes.length;
-  const [focusIndex, setFocusIndex] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const countRef = useRef(count);
-  countRef.current = count;
-
-  useEffect(() => {
-    if (focusIndex >= count) setFocusIndex(Math.max(0, count - 1));
-  }, [count, focusIndex]);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const c = countRef.current;
-      setFocusIndex((prev) => {
-        if (e.deltaY > 0 || e.deltaX > 0) return Math.min(prev + 1, c - 1);
-        if (e.deltaY < 0 || e.deltaX < 0) return Math.max(prev - 1, 0);
-        return prev;
-      });
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
-
-  const focusedMeta = panelCubes[focusIndex]?.minimizedPanel
-    ? getPanelMeta(panelCubes[focusIndex].minimizedPanel!.panelId) : null;
-
-  const sideCount = Math.floor(MAX_VISIBLE / 2);
-  const angleStep = count > 1 ? ARC_SPAN / Math.min(MAX_VISIBLE - 1, count - 1) : 0;
-  const containerW = ARC_RADIUS * 2 + ITEM_SIZE + 20;
-  const containerH = ARC_RADIUS + ITEM_SIZE / 2 + 4;
-  const cx = containerW / 2;
-  const cy = containerH;
-
-  return (
-    <div ref={containerRef} className="flex flex-col items-center">
-      <div className="text-[11px] text-neutral-300 font-medium truncate max-w-[220px] text-center px-2 mb-2">
-        {focusedMeta?.title ?? panelCubes[focusIndex]?.id ?? ''}
-      </div>
-      <div className="relative" style={{ width: containerW, height: containerH }}>
-        {panelCubes.map((cube, i) => {
-          const offset = i - focusIndex;
-          if (Math.abs(offset) > sideCount) return null;
-          const meta = cube.minimizedPanel ? getPanelMeta(cube.minimizedPanel.panelId) : null;
-          const isFocused = offset === 0;
-          const absOffset = Math.abs(offset);
-          const angle = offset * angleStep;
-          const { x, y } = arcPos(angle);
-          const t = absOffset / Math.max(sideCount, 1);
-          const scale = isFocused ? 1 : Math.max(0.65, 1 - t * 0.3);
-          const opacity = isFocused ? 1 : Math.max(0.25, 1 - t * 0.55);
-
-          return (
-            <CarouselItem key={cube.id} cubeId={cube.id} icon={meta?.icon ?? 'layoutGrid'}
-              title={meta?.title ?? cube.id} isFocused={isFocused}
-              style={{
-                position: 'absolute', left: cx + x - ITEM_SIZE / 2, top: cy + y - ITEM_SIZE / 2,
-                width: ITEM_SIZE, height: ITEM_SIZE, transform: `scale(${scale})`,
-                opacity, zIndex: isFocused ? 10 : 10 - absOffset, transition: 'all 250ms ease-out',
-              }}
-              onRestore={onRestore} onFocus={() => setFocusIndex(i)} />
-          );
-        })}
-        {count > 1 && panelCubes.map((_, i) => {
-          const offset = i - focusIndex;
-          if (Math.abs(offset) > sideCount + 1) return null;
-          const angle = offset * angleStep;
-          const dotR = ARC_RADIUS + ITEM_SIZE / 2 + 8;
-          const dx = Math.sin(angle) * dotR;
-          const dy = -Math.cos(angle) * dotR;
-          const dotOpacity = i === focusIndex ? 1 : Math.max(0.2, 1 - (Math.abs(offset) / Math.max(sideCount + 1, 1)) * 0.6);
-          return (
-            <button key={`dot-${i}`} type="button" onClick={() => setFocusIndex(i)}
-              className={`absolute w-2 h-2 rounded-full transition-all ${i === focusIndex ? 'bg-cyan-400 scale-125' : 'bg-neutral-600 hover:bg-neutral-500'}`}
-              style={{ left: cx + dx - 4, top: cy + dy - 4, opacity: dotOpacity, transition: 'all 250ms ease-out' }} />
-          );
-        })}
-      </div>
-      {count > 0 && (
-        <div className="flex items-center gap-1.5 mt-1">
-          {count > 1 && (
-            <button type="button" onClick={onRestoreAll} title="Restore all panels"
-              className="w-6 h-6 flex items-center justify-center rounded-md text-cyan-400 hover:text-cyan-300 hover:bg-cyan-400/10 transition-colors">
-              <Icon name="maximize2" size={12} />
-            </button>
-          )}
-          <button type="button" onClick={onClearAll} title="Dismiss all"
-            className="w-6 h-6 flex items-center justify-center rounded-md text-neutral-500 hover:text-red-400 hover:bg-red-400/10 transition-colors">
-            <Icon name="trash2" size={12} />
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Carousel Item ──
-
-function CarouselItem({ cubeId, icon, title, isFocused, style, onRestore, onFocus }: {
-  cubeId: string; icon: string; title: string; isFocused: boolean;
-  style: React.CSSProperties; onRestore: (id: string) => void; onFocus: () => void;
-}) {
-  const [dragDelta, setDragDelta] = useState<{ x: number; y: number } | null>(null);
-  const dragStart = useRef<{ x: number; y: number } | null>(null);
-  const isDraggingOut = dragDelta != null && Math.sqrt(dragDelta.x ** 2 + dragDelta.y ** 2) > DRAG_OUT_THRESHOLD;
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    dragStart.current = { x: e.clientX, y: e.clientY };
-    const handleMove = (me: MouseEvent) => {
-      if (!dragStart.current) return;
-      setDragDelta({ x: me.clientX - dragStart.current.x, y: me.clientY - dragStart.current.y });
-    };
-    const handleUp = (me: MouseEvent) => {
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleUp);
-      if (!dragStart.current) return;
-      const dist = Math.sqrt((me.clientX - dragStart.current.x) ** 2 + (me.clientY - dragStart.current.y) ** 2);
-      dragStart.current = null;
-      setDragDelta(null);
-      if (dist > DRAG_OUT_THRESHOLD) onRestore(cubeId);
-    };
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleUp);
-  }, [cubeId, onRestore]);
-
-  const itemStyle: React.CSSProperties = { ...style };
-  if (dragDelta) {
-    itemStyle.transform = `${style.transform ?? ''} translate(${dragDelta.x}px, ${dragDelta.y}px)`;
-    itemStyle.transition = 'none';
-  }
-
-  return (
-    <button type="button" style={itemStyle}
-      onClick={(e) => { e.stopPropagation(); if (isFocused) { onRestore(cubeId); } else { onFocus(); } }}
-      onMouseDown={handleMouseDown}
-      className={`flex items-center justify-center rounded-xl backdrop-blur-md border shadow-lg cursor-grab transition-colors duration-150
-        ${isFocused ? 'bg-neutral-800/95 border-cyan-400/60 shadow-cyan-500/20' : 'bg-neutral-800/80 border-neutral-600/40 hover:border-neutral-500/60'}
-        ${isDraggingOut ? 'ring-2 ring-red-400/60' : ''}`}
-      title={isFocused ? `Click to restore "${title}"` : title}>
-      <Icon name={icon} size={isFocused ? 20 : 16}
-        className={`transition-colors ${isFocused ? 'text-cyan-400' : 'text-neutral-400'}`} />
-    </button>
-  );
-}
+// ── NOTE: PanelsCarousel, QuickLauncher, and CarouselItem have been
+// extracted to components/faces/ and are now loaded via the CubeFaceRegistry. ──

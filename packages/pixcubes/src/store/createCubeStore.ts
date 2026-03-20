@@ -24,6 +24,15 @@ function generateCubeId(): string {
   return `cube-${Date.now()}-${++cubeCounter}`;
 }
 
+/**
+ * Strip instance suffix (e.g. "panel::1" → "panel") for dedup comparisons.
+ * Floating panels use `::N` suffixes for multi-instance IDs.
+ */
+function stripInstanceSuffix(id: string): string {
+  const sep = id.lastIndexOf('::');
+  return sep === -1 ? id : id.slice(0, sep);
+}
+
 function createDefaultCube(type: CubeType, position?: CubePosition): ControlCube {
   return {
     id: generateCubeId(),
@@ -137,6 +146,32 @@ export function createExtendedCubeStore(storageKey = 'pixcubes-store') {
       size: { width: number; height: number },
       context?: Record<string, any>,
     ) => {
+      // Deduplicate: if a cube for this panel definition already exists, update it.
+      // Compare by stripped definition ID so legacy instance-suffixed IDs
+      // (e.g. "settings::1") still match the new definition ID ("settings").
+      const normalizedId = stripInstanceSuffix(panelId);
+      const existing = Object.values(get().cubes).find(
+        (c) => c.minimizedPanel && stripInstanceSuffix(c.minimizedPanel.panelId) === normalizedId,
+      );
+      if (existing) {
+        set((state) => ({
+          cubes: {
+            ...state.cubes,
+            [existing.id]: {
+              ...existing,
+              position,
+              minimizedPanel: {
+                panelId: normalizedId,
+                originalPosition: position,
+                originalSize: size,
+                context,
+              },
+            },
+          },
+        }));
+        return existing.id;
+      }
+
       const cube: ControlCube = {
         id: generateCubeId(),
         type: 'panel',
@@ -145,7 +180,7 @@ export function createExtendedCubeStore(storageKey = 'pixcubes-store') {
         zIndex: 100,
         visible: true,
         minimizedPanel: {
-          panelId,
+          panelId: normalizedId,
           originalPosition: position,
           originalSize: size,
           context,
@@ -253,6 +288,36 @@ export function createExtendedCubeStore(storageKey = 'pixcubes-store') {
     onRehydrateStorage: () => (state) => {
       if (state) {
         state.hydrated = true;
+
+        // Deduplicate minimized panel cubes — keep only the latest per panel definition.
+        // Panel IDs may carry an instance suffix (e.g. "panel::1") — strip it so
+        // different instances of the same definition are treated as duplicates.
+        // Also normalize stored panelIds to definition-only form.
+        const cubes = state.cubes;
+        const seenDefIds = new Set<string>();
+        const duplicateIds: string[] = [];
+        // Iterate in reverse insertion order so the latest cube wins
+        const cubeEntries = Object.entries(cubes).reverse();
+        for (const [cubeId, cube] of cubeEntries) {
+          const panelId = cube.minimizedPanel?.panelId;
+          if (panelId) {
+            const defId = stripInstanceSuffix(panelId);
+            // Normalize legacy instance IDs to definition-only form
+            if (defId !== panelId) {
+              cube.minimizedPanel!.panelId = defId;
+            }
+            if (seenDefIds.has(defId)) {
+              duplicateIds.push(cubeId);
+            } else {
+              seenDefIds.add(defId);
+            }
+          }
+        }
+        if (duplicateIds.length > 0) {
+          for (const id of duplicateIds) {
+            delete cubes[id];
+          }
+        }
       }
     },
   };

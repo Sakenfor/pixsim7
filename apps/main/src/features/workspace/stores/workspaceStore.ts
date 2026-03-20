@@ -517,6 +517,12 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
       },
 
       restoreFloatingPanel: (panelState) => {
+        // Dedup: skip if a floating panel with the same definition is already open
+        const defId = getFloatingDefinitionId(panelState.id);
+        const existing = get().floatingPanels.find(
+          (p) => getFloatingDefinitionId(p.id) === defId,
+        );
+        if (existing) return;
         set({
           floatingPanels: [...get().floatingPanels, panelState],
         });
@@ -706,6 +712,20 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         }
         if (state && (typeof state.lastFloatingPanelStates !== 'object' || state.lastFloatingPanelStates === null)) {
           state.lastFloatingPanelStates = {};
+        }
+        // Deduplicate floating panels — keep only the last entry per definition ID.
+        if (state && Array.isArray(state.floatingPanels) && state.floatingPanels.length > 1) {
+          const seenDefIds = new Set<string>();
+          const deduped: typeof state.floatingPanels = [];
+          // Iterate in reverse so the latest entry (highest zIndex) wins
+          for (let i = state.floatingPanels.length - 1; i >= 0; i--) {
+            const defId = getFloatingDefinitionId(state.floatingPanels[i].id);
+            if (!seenDefIds.has(defId)) {
+              seenDefIds.add(defId);
+              deduped.push(state.floatingPanels[i]);
+            }
+          }
+          state.floatingPanels = deduped.reverse();
         }
       },
     },

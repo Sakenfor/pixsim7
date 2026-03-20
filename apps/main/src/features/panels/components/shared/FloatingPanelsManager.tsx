@@ -1,4 +1,5 @@
 import { IconButton, Z } from "@pixsim7/shared.ui";
+import { runAnimation } from "@pixsim7/shared.ui";
 import { memo, useCallback, useState, useRef, useEffect } from "react";
 import { Rnd } from "react-rnd";
 
@@ -11,17 +12,39 @@ import { hmrSingleton } from "@lib/utils/hmrSafe";
 import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@features/contextHub";
 import { useCubeSettingsStore } from "@features/cubes/stores/cubeSettingsStore";
 import { useCubeStore } from "@features/cubes/useCubeStore";
-import { useProjectSessionStore } from "@features/scene";
 import { useWorkspaceStore, type FloatingPanelState } from "@features/workspace";
 import { getFloatingDefinitionId } from "@features/workspace/lib/floatingPanelUtils";
 import { panelPlacementCoordinator } from "@features/workspace/lib/panelPlacementCoordinator";
 
 import { DevToolDynamicPanel } from "@/components/dev/DevToolDynamicPanel";
+import { useSharedProjectSelection } from "@/hooks";
 
 import { useDragToDock, type DropZone, type DragToDockTarget } from "../../hooks/useDragToDock";
 import { ScopeHost } from "../scope/ScopeHost";
 
 import { DropZoneOverlay } from "./DropZoneOverlay";
+
+// ── Fly-away helpers ───────────────────────────────────────────────
+
+/** Resolve the on-screen center of the cube indicator widget. */
+function getCubeIndicatorPosition(): { x: number; y: number } {
+  const el = document.querySelector('.floating-panel-cube-target');
+  if (el) {
+    const rect = el.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }
+  return { x: window.innerWidth / 2, y: window.innerHeight - 40 };
+}
+
+/** Resolve the on-screen center of a dockview host element. */
+function getDockviewPosition(dockviewId: string): { x: number; y: number } | null {
+  const el = document.querySelector(`[data-smart-dockview="${dockviewId}"]`);
+  if (el) {
+    const rect = el.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }
+  return null;
+}
 
 // ── HMR-resilient component cache ──────────────────────────────────
 // Same pattern as SmartDockview: implRef (mutable) → proxy (stable).
@@ -200,9 +223,19 @@ interface FloatingPanelProps {
   panel: FloatingPanelState;
   onDragStateChange: (panelId: string, isDragging: boolean, zone: DropZone | null, target: DragToDockTarget | null) => void;
   catalogVersion: number;
+  activeProjectId: number | null;
+  activeProjectName: string | null;
+  activeProjectSource: "override" | "authoring-context" | "editor-runtime" | "fallback" | "none";
 }
 
-const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, catalogVersion }: FloatingPanelProps) {
+const FloatingPanel = memo(function FloatingPanel({
+  panel,
+  onDragStateChange,
+  catalogVersion,
+  activeProjectId,
+  activeProjectName,
+  activeProjectSource,
+}: FloatingPanelProps) {
   void catalogVersion;
   const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
   const updateFloatingPanelPosition = useWorkspaceStore(
@@ -217,26 +250,42 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
   const minimizePanelToCube = useCubeStore((s) => s.minimizePanelToCube);
   const cubesVisible = useCubeSettingsStore((s) => s.visible);
   const setCubesVisible = useCubeSettingsStore((s) => s.setVisible);
-  const cubeDockPosition = useCubeSettingsStore((s) => s.dockPosition);
-  const activeProjectId = useProjectSessionStore((s) => s.currentProjectId);
-  const activeProjectName = useProjectSessionStore((s) => s.currentProjectName);
+  // cubeDockPosition removed — handleMinimizeToCube now always flies to cube
+
+  // ── Fly-away animation ──
+  const [flyingAway, setFlyingAway] = useState(false);
+  const flyAnimRef = useRef<Animation | null>(null);
+
+  const flyToAndDo = useCallback((target: { x: number; y: number }, onComplete: () => void) => {
+    const el = rndRef.current?.getSelfElement();
+    if (!el) { onComplete(); return; }
+    setFlyingAway(true);
+    el.style.pointerEvents = 'none';
+    const anim = runAnimation(el, 'flyTo', { targetX: target.x, targetY: target.y });
+    flyAnimRef.current = anim;
+    anim.finished.then(onComplete).catch(() => onComplete());
+  }, []);
 
   const handleMinimizeToCube = useCallback(() => {
-    // Only send to cube when it's free-floating (undocked).
-    // When docked, just close the panel normally.
-    if (cubeDockPosition !== 'floating') {
-      closeFloatingPanel(panel.id);
-      return;
-    }
-    minimizePanelToCube(
-      panel.id,
-      { x: panel.x, y: panel.y },
-      { width: panel.width, height: panel.height },
-      panel.context,
-    );
-    closeFloatingPanel(panel.id);
+    // Ensure cube is visible before animating so the target element exists in the DOM
     if (!cubesVisible) setCubesVisible(true);
-  }, [panel.id, panel.x, panel.y, panel.width, panel.height, panel.context, minimizePanelToCube, closeFloatingPanel, cubesVisible, setCubesVisible, cubeDockPosition]);
+    // Allow a microtask for React to render the cube widget, then read its position
+    queueMicrotask(() => {
+      const cubePos = getCubeIndicatorPosition();
+      flyToAndDo(cubePos, () => {
+        const defId = getFloatingDefinitionId(panel.id);
+        minimizePanelToCube(
+          defId,
+          { x: panel.x, y: panel.y },
+          { width: panel.width, height: panel.height },
+          panel.context,
+        );
+        closeFloatingPanel(panel.id);
+      });
+    });
+  }, [panel.id, panel.x, panel.y, panel.width, panel.height, panel.context, minimizePanelToCube, closeFloatingPanel, cubesVisible, setCubesVisible, flyToAndDo]);
+
+  useEffect(() => () => { flyAnimRef.current?.cancel(); }, []);
 
   // Resolve definition ID (strips ::N suffix for multi-instance floating panels)
   const definitionId = getFloatingDefinitionId(panel.id);
@@ -258,8 +307,8 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
   const dragElRef = useRef<HTMLElement | null>(null);
 
   const {
-    activeDropZone,
-    activeTarget,
+    activeDropZoneRef,
+    activeTargetRef,
     onDragStart,
     onDrag,
     onDragStop,
@@ -270,12 +319,6 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
     activationInsetPx: 24,
     dragElementRef: dragElRef,
   });
-
-  // Keep activeDropZone/activeTarget in refs so handleDrag always reads the latest value
-  const activeDropZoneRef = useRef<DropZone | null>(null);
-  activeDropZoneRef.current = activeDropZone;
-  const activeTargetRef = useRef<DragToDockTarget | null>(null);
-  activeTargetRef.current = activeTarget;
 
   const isDevToolPanel =
     typeof definitionId === "string" && definitionId.startsWith("dev-tool:");
@@ -324,9 +367,9 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
 
       if (definitionId === "project") {
         if (typeof activeProjectName === "string" && activeProjectName.trim().length > 0) {
-          panelContextSummary = `Active project: ${activeProjectName}`;
+          panelContextSummary = `Active project: ${activeProjectName} (${activeProjectSource})`;
         } else if (typeof activeProjectId === "number") {
-          panelContextSummary = `Active project: #${activeProjectId}`;
+          panelContextSummary = `Active project: #${activeProjectId} (${activeProjectSource})`;
         } else {
           panelContextSummary = "Active project: none";
         }
@@ -412,7 +455,7 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
       ref={rndRef}
       key={panel.id}
       position={{ x: panel.x, y: panel.y }}
-      size={{ width: panel.width, height: panel.height }}
+      size={panel.minimized ? { width: panel.width, height: 42 } : { width: panel.width, height: panel.height }}
       onDragStart={handleDragStart}
       onDrag={handleDrag}
       onDragStop={handleDragStop}
@@ -426,17 +469,19 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
       }}
       onMouseDown={() => bringFloatingPanelToFront(panel.id)}
       minWidth={200}
-      minHeight={200}
+      minHeight={panel.minimized ? 42 : 200}
       bounds="window"
       dragHandleClassName="floating-panel-header"
       style={{ zIndex: Z.floatPanel + panel.zIndex }}
       className="floating-panel"
+      disableDragging={flyingAway}
+      enableResizing={!flyingAway && !panel.minimized}
     >
       <div className="h-full flex flex-col bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-300 dark:border-neutral-700 overflow-hidden rounded-lg">
         {/* Header */}
         <div
           className="floating-panel-header flex items-center justify-between cursor-move select-none px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border-b dark:border-neutral-700"
-          onDoubleClick={handleMinimizeToCube}
+          onDoubleClick={() => useWorkspaceStore.getState().minimizeFloatingPanel(panel.id)}
         >
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-semibold text-neutral-800 dark:text-neutral-200 truncate text-sm">
@@ -466,9 +511,17 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
               size="md"
               rounded="md"
               icon={<Icon name="minus" size={12} />}
-              onClick={handleMinimizeToCube}
+              onClick={() => useWorkspaceStore.getState().minimizeFloatingPanel(panel.id)}
               className="text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-              title="Minimize to cube"
+              title="Minimize"
+            />
+            <IconButton
+              size="md"
+              rounded="md"
+              icon={<Icon name="box" size={12} />}
+              onClick={handleMinimizeToCube}
+              className="text-neutral-500 dark:text-neutral-400 hover:bg-cyan-100 dark:hover:bg-cyan-900/30 hover:text-cyan-600 dark:hover:text-cyan-400"
+              title="Send to cube"
             />
             {canReturnToOrigin && (
               <IconButton
@@ -476,7 +529,15 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
                 rounded="md"
                 icon={<Icon name="log-in" size={12} />}
                 onClick={() => {
-                  panelPlacementCoordinator.closeFloatingPanelWithReturn(panel.id);
+                  const dockId = floatingOriginMeta?.sourceDockviewId;
+                  const target = dockId ? getDockviewPosition(dockId) : null;
+                  if (target) {
+                    flyToAndDo(target, () => {
+                      panelPlacementCoordinator.closeFloatingPanelWithReturn(panel.id);
+                    });
+                  } else {
+                    panelPlacementCoordinator.closeFloatingPanelWithReturn(panel.id);
+                  }
                 }}
                 className="text-neutral-500 dark:text-neutral-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 hover:text-emerald-700 dark:hover:text-emerald-400"
                 title={originLabel ? `Return to ${originLabel}` : "Return to original dock"}
@@ -494,19 +555,21 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
             />
           </div>
         </div>
-        {/* Content */}
-        <div className="flex-1 overflow-auto">
-          <ContextHubHost hostId={floatingInstanceId}>
-            <FloatingPanelContextProvider
-              context={panelContext}
-              instanceId={floatingInstanceId}
-            >
-              <PanelErrorBoundary panelId={definitionId}>
-                {renderPanelContent()}
-              </PanelErrorBoundary>
-            </FloatingPanelContextProvider>
-          </ContextHubHost>
-        </div>
+        {/* Content — hidden when minimized */}
+        {!panel.minimized && (
+          <div className="flex-1 overflow-auto">
+            <ContextHubHost hostId={floatingInstanceId}>
+              <FloatingPanelContextProvider
+                context={panelContext}
+                instanceId={floatingInstanceId}
+              >
+                <PanelErrorBoundary panelId={definitionId}>
+                  {renderPanelContent()}
+                </PanelErrorBoundary>
+              </FloatingPanelContextProvider>
+            </ContextHubHost>
+          </div>
+        )}
       </div>
     </Rnd>
   );
@@ -514,6 +577,11 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange, ca
 
 export function FloatingPanelsManager() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
+  const {
+    selectedProjectId: activeProjectId,
+    selectedProjectName: activeProjectName,
+    selectedProjectSource: activeProjectSource,
+  } = useSharedProjectSelection({ loadCatalog: false });
   const [catalogVersion, setCatalogVersion] = useState(0);
 
   // Defer rendering persisted floating panels until the panel catalog has
@@ -573,6 +641,9 @@ export function FloatingPanelsManager() {
             panel={panel}
             onDragStateChange={handleDragStateChange}
             catalogVersion={catalogVersion}
+            activeProjectId={activeProjectId}
+            activeProjectName={activeProjectName}
+            activeProjectSource={activeProjectSource}
           />
         ))}
       <DropZoneOverlay

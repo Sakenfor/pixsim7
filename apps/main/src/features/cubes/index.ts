@@ -13,7 +13,7 @@ export { CubeWidgetOverlay } from './CubeWidgetOverlay';
 
 // Store
 export { useCubeStore } from './useCubeStore';
-export { useCubeSettingsStore } from './stores/cubeSettingsStore';
+export { useCubeSettingsStore, type CubeFaceMode, type CubeDockPosition } from './stores/cubeSettingsStore';
 
 // Components
 export { DraggableCube } from './components/DraggableCube';
@@ -28,6 +28,16 @@ export {
   type ExpansionType,
   type ExpansionComponentProps,
   type ExpansionProvider,
+} from './lib';
+
+// Lib - Face registry
+export {
+  CubeFaceRegistry,
+  cubeFaceRegistry,
+  registerDefaultCubeFaces,
+  type CubeFacePosition,
+  type CubeFaceComponentProps,
+  type CubeFaceDefinition,
 } from './lib';
 
 // Integration - Widget, Capabilities, Context Hub
