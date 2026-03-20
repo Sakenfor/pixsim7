@@ -613,6 +613,69 @@ function MessageBubble({ msg, onRetry }: { msg: ChatMessage; onRetry?: () => voi
 }
 
 // =============================================================================
+// Model Selector (fetches from backend AI model registry)
+// =============================================================================
+
+interface AiModelEntry { id: string; label: string; provider_id: string }
+
+function ModelSelector({ value, onChange, disabled }: {
+  value: string | null;
+  onChange: (v: string | null) => void;
+  disabled: boolean;
+}) {
+  const [models, setModels] = useState<AiModelEntry[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  // Fetch on first open (lazy)
+  const loadModels = useCallback(() => {
+    if (loaded) return;
+    setLoaded(true);
+    pixsimClient.get<{ models: AiModelEntry[] }>('/ai/models')
+      .then((r) => setModels(r.models || []))
+      .catch(() => {
+        // Fallback: common models if backend is unavailable
+        setModels([
+          { id: 'sonnet', label: 'Sonnet', provider_id: 'anthropic' },
+          { id: 'opus', label: 'Opus', provider_id: 'anthropic' },
+          { id: 'haiku', label: 'Haiku', provider_id: 'anthropic' },
+        ]);
+      });
+  }, [loaded]);
+
+  // Group by provider
+  const grouped = useMemo(() => {
+    const map = new Map<string, AiModelEntry[]>();
+    for (const m of models) {
+      const group = map.get(m.provider_id) || [];
+      group.push(m);
+      map.set(m.provider_id, group);
+    }
+    return map;
+  }, [models]);
+
+  return (
+    <select
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value || null)}
+      onFocus={loadModels}
+      disabled={disabled}
+      className="shrink-0 h-8 px-1 text-[9px] text-neutral-500 bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer disabled:opacity-40"
+      title={value ? `Model: ${value}` : 'Model (profile default)'}
+    >
+      <option value="">model</option>
+      {models.length === 0 && !loaded && <option disabled>Loading...</option>}
+      {Array.from(grouped.entries()).map(([provider, items]) => (
+        <optgroup key={provider} label={provider}>
+          {items.map((m) => (
+            <option key={m.id} value={m.id}>{m.label || m.id}</option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
+
+// =============================================================================
 // Quick Shortcuts
 // =============================================================================
 
@@ -975,26 +1038,12 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             )}
           </div>
 
-          {/* Model override */}
-          <select
-            value={tab.modelOverride || ''}
-            onChange={(e) => onUpdateTab({ modelOverride: e.target.value || null })}
+          {/* Model override — fetched from backend registry */}
+          <ModelSelector
+            value={tab.modelOverride}
+            onChange={(v) => onUpdateTab({ modelOverride: v })}
             disabled={sending}
-            className="shrink-0 h-8 px-1 text-[9px] text-neutral-500 bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer disabled:opacity-40"
-            title={tab.modelOverride ? `Model override: ${tab.modelOverride}` : 'Model (profile default)'}
-          >
-            <option value="">model</option>
-            <optgroup label="Claude">
-              <option value="sonnet">sonnet</option>
-              <option value="opus">opus</option>
-              <option value="haiku">haiku</option>
-            </optgroup>
-            <optgroup label="OpenAI">
-              <option value="gpt-4o">gpt-4o</option>
-              <option value="gpt-4o-mini">4o-mini</option>
-              <option value="o3">o3</option>
-            </optgroup>
-          </select>
+          />
 
           <div className="flex-1 relative">
             <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
