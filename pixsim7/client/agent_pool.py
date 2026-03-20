@@ -58,10 +58,12 @@ class AgentPool:
     def busy_count(self) -> int:
         return sum(1 for s in self._sessions.values() if s.state == SessionState.BUSY)
 
-    def get_available(self) -> Optional[AgentCmdSession]:
-        """Get a ready session for task dispatch (any conversation)."""
+    def get_available(self, command: str | None = None) -> Optional[AgentCmdSession]:
+        """Get a ready session for task dispatch, optionally matching a command."""
         for session in self._sessions.values():
             if session.state == SessionState.READY:
+                if command and session._command != command:
+                    continue
                 return session
         return None
 
@@ -99,6 +101,41 @@ class AgentPool:
         self._sessions.pop(oldest.session_id, None)
         return True
 
+    async def _spawn_session(self, command: str, resume_session_id: str | None = None) -> AgentCmdSession:
+        """Spawn a new on-demand session (for a non-default engine or resume)."""
+        if len(self._sessions) >= self._max_sessions:
+            if not await self._evict_oldest_idle():
+                raise RuntimeError("Max sessions reached and no idle sessions to evict")
+
+        cmd_name = command.split("/")[-1].split("\\")[-1]
+        self._next_dynamic_id += 1
+        if resume_session_id:
+            pool_key = f"{cmd_name}-r-{resume_session_id[:8]}"
+        else:
+            pool_key = f"{cmd_name}-{self._next_dynamic_id}"
+        if pool_key in self._sessions:
+            pool_key = f"{pool_key}-{self._next_dynamic_id}"
+
+        session = AgentCmdSession(
+            session_id=pool_key,
+            extra_args=self._extra_args,
+            command=command,
+            system_prompt=self._system_prompt,
+            mcp_config_path=self._mcp_config_path,
+            resume_session_id=resume_session_id,
+        )
+        self._sessions[pool_key] = session
+
+        client_log(f"[pool] Spawning {pool_key} ({command})")
+        if not await session.start():
+            self._sessions.pop(pool_key, None)
+            raise RuntimeError(f"Failed to start session {pool_key}")
+
+        if resume_session_id:
+            self._session_id_index[resume_session_id] = pool_key
+
+        return session
+
     async def _get_or_create_for_session_id(
         self, claude_session_id: str, command: str | None = None,
     ) -> AgentCmdSession:
@@ -111,38 +148,10 @@ class AgentPool:
                 f"Session for conversation {claude_session_id[:8]} is busy"
             )
 
-        cmd = command or self._command
-        cmd_name = cmd.split("/")[-1].split("\\")[-1]
-
-        # Need to spawn a new session with --resume
-        if len(self._sessions) >= self._max_sessions:
-            if not await self._evict_oldest_idle():
-                raise RuntimeError("Max sessions reached and no idle sessions to evict")
-
-        self._next_dynamic_id += 1
-        pool_key = f"{cmd_name}-r-{claude_session_id[:8]}"
-        # Ensure unique key
-        if pool_key in self._sessions:
-            pool_key = f"{pool_key}-{self._next_dynamic_id}"
-
-        session = AgentCmdSession(
-            session_id=pool_key,
-            extra_args=self._extra_args,
-            command=cmd,
-            system_prompt=self._system_prompt,
-            mcp_config_path=self._mcp_config_path,
+        return await self._spawn_session(
+            command=command or self._command,
             resume_session_id=claude_session_id,
         )
-        self._sessions[pool_key] = session
-        self._session_id_index[claude_session_id] = pool_key
-
-        client_log(f"[pool] Spawning {pool_key} to resume conversation {claude_session_id[:8]}")
-        if not await session.start():
-            self._sessions.pop(pool_key, None)
-            self._session_id_index.pop(claude_session_id, None)
-            raise RuntimeError(f"Failed to start session for conversation {claude_session_id[:8]}")
-
-        return session
 
     async def configure(
         self,
@@ -242,7 +251,11 @@ class AgentPool:
         if claude_session_id:
             session = await self._get_or_create_for_session_id(claude_session_id, command=command)
         else:
-            session = self.get_available()
+            # Match engine: prefer a session running the right command
+            session = self.get_available(command=command)
+            if not session and command != self._command:
+                # No session for this engine yet — spawn one
+                session = await self._spawn_session(command=command)
 
         if not session:
             raise RuntimeError(
