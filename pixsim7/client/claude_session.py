@@ -113,9 +113,15 @@ class AgentCmdSession:
         if self.is_alive:
             return True
 
+        import shutil
         self.state = SessionState.STARTING
+
+        # Resolve full path — needed on Windows where .CMD wrappers (npm)
+        # aren't found by asyncio.create_subprocess_exec with bare names
+        resolved_command = shutil.which(self._command) or self._command
+
         cmd = self._protocol.build_start_cmd(
-            self._command,
+            resolved_command,
             resume_session_id=self._resume_session_id,
             system_prompt=self._system_prompt,
             mcp_config_path=self._mcp_config_path,
