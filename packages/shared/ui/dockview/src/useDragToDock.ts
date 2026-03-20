@@ -7,7 +7,7 @@
  * Drop zones only appear after holding over a dockview for a configurable delay.
  */
 
-import { useCallback, useRef, useState, type RefObject } from 'react';
+import React, { useCallback, useRef, useState, type RefObject } from 'react';
 import { getDockviewHost, getDockviewHostIds } from '@pixsim7/shared.dockview.core';
 
 export type DropZone = 'left' | 'right' | 'above' | 'below' | 'center';
@@ -44,12 +44,10 @@ export interface UseDragToDockOptions {
 export interface UseDragToDockReturn {
   /** Whether the panel is currently being dragged */
   isDragging: boolean;
-  /** The currently active drop zone, or null if not over any dockview */
-  activeDropZone: DropZone | null;
-  /** The active target dockview info (rect + id), or null */
-  activeTarget: DragToDockTarget | null;
-  /** The workspace element's bounding rect (backward compat alias for activeTarget?.rect) */
-  workspaceRect: DOMRect | null;
+  /** Ref to the currently active drop zone (updated synchronously, no re-render) */
+  activeDropZoneRef: React.RefObject<DropZone | null>;
+  /** Ref to the active target dockview info (updated synchronously, no re-render) */
+  activeTargetRef: React.RefObject<DragToDockTarget | null>;
   /** Call when drag starts */
   onDragStart: () => void;
   /** Call during drag with the panel's current bounding rect */
@@ -223,10 +221,9 @@ export function useDragToDock({
   dragElementRef,
 }: UseDragToDockOptions): UseDragToDockReturn {
   const [isDragging, setIsDragging] = useState(false);
-  const [activeDropZone, setActiveDropZone] = useState<DropZone | null>(null);
-  const [activeTarget, setActiveTarget] = useState<DragToDockTarget | null>(null);
 
-  // Use refs for values needed in callbacks
+  // Refs are the source of truth during drag — never use setState mid-drag
+  // to avoid re-rendering <Rnd> which can cause react-rnd to lose drag tracking.
   const activeDropZoneRef = useRef<DropZone | null>(null);
   const activeTargetRef = useRef<DragToDockTarget | null>(null);
 
@@ -235,10 +232,6 @@ export function useDragToDock({
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The dockview ID that has been "activated" (hold delay passed)
   const activatedDockviewIdRef = useRef<string | null>(null);
-
-  // Keep refs in sync with state
-  activeDropZoneRef.current = activeDropZone;
-  activeTargetRef.current = activeTarget;
 
   // Throttled zone detection
   const throttledDetectRef = useRef<ReturnType<typeof throttle> | null>(null);
@@ -255,9 +248,7 @@ export function useDragToDock({
     pendingDockviewIdRef.current = null;
     activatedDockviewIdRef.current = null;
     committedAtRef.current = 0;
-    setActiveDropZone(null);
     activeDropZoneRef.current = null;
-    setActiveTarget(null);
     activeTargetRef.current = null;
   };
 
@@ -269,16 +260,14 @@ export function useDragToDock({
   const commitTarget = (target: DragToDockTarget) => {
     committedAtRef.current = Date.now();
     activatedDockviewIdRef.current = target.dockviewId;
-    setActiveDropZone(target.zone);
     activeDropZoneRef.current = target.zone;
-    setActiveTarget(target);
     activeTargetRef.current = target;
   };
 
   const onDragStart = useCallback(() => {
     setIsDragging(true);
-    setActiveDropZone(null);
-    setActiveTarget(null);
+    activeDropZoneRef.current = null;
+    activeTargetRef.current = null;
     pendingDockviewIdRef.current = null;
     activatedDockviewIdRef.current = null;
     clearHoldTimer();
@@ -309,18 +298,15 @@ export function useDragToDock({
 
       const targetId = target.dockviewId;
 
-      // Already activated on this dockview — update zone in real-time
+      // Already activated on this dockview — update zone in real-time (refs only, no re-render)
       if (targetId === activatedDockviewIdRef.current) {
         const prevZone = activeDropZoneRef.current;
         if (target.zone !== prevZone || targetId !== activeTargetRef.current?.dockviewId) {
-          setActiveDropZone(target.zone);
           activeDropZoneRef.current = target.zone;
-          setActiveTarget(target);
           activeTargetRef.current = target;
         } else {
           // Same zone, just update rect for overlay positioning
           activeTargetRef.current = target;
-          setActiveTarget(target);
         }
         return;
       }
@@ -379,8 +365,8 @@ export function useDragToDock({
 
     // Reset state
     setIsDragging(false);
-    setActiveDropZone(null);
-    setActiveTarget(null);
+    activeDropZoneRef.current = null;
+    activeTargetRef.current = null;
     pendingDockviewIdRef.current = null;
     activatedDockviewIdRef.current = null;
     committedAtRef.current = 0;
@@ -390,10 +376,8 @@ export function useDragToDock({
 
   return {
     isDragging,
-    activeDropZone,
-    activeTarget,
-    // Backward compat: workspaceRect is the active target's rect
-    workspaceRect: activeTarget?.rect ?? null,
+    activeDropZoneRef,
+    activeTargetRef,
     onDragStart,
     onDrag,
     onDragStop,

@@ -92,9 +92,20 @@ export {
   contextHubActions,
   cubeActions,
   debugActions,
+  devContextActions,
   allActions,
   registerContextMenuActions,
 } from './actions';
+
+// Dev context registry for AI Assistant integration
+export {
+  devContextRegistry,
+  useRegisterDevContext,
+} from './devContext';
+export type {
+  DevContextSnapshot,
+  DevContextProvider,
+} from './devContext';
 
 // Re-exports from shared context-menu package
 export { ContextMenuRegistry, contextMenuRegistry } from '@pixsim7/shared.ui.context-menu';

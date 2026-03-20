@@ -72,7 +72,7 @@ function getChildClasses(variant: 'light' | 'dark', active: boolean) {
   const base =
     variant === 'light'
       ? 'w-full flex items-center gap-2 pl-3 pr-2 py-1.5 text-left text-[11px] rounded-r-md transition-colors'
-      : 'w-full rounded-r px-2 py-1.5 text-left text-[11px] transition-colors';
+      : 'w-full flex items-center gap-2 rounded-r px-2 py-1.5 text-left text-[11px] transition-colors';
 
   if (variant === 'light') {
     const tone = active

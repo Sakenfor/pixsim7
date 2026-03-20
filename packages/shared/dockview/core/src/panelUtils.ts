@@ -171,15 +171,32 @@ export function addPanel(
   const instanceId = options.instanceId ?? (allowMultiple ? createInstanceId(panelId, api) : panelId);
   const params = { ...(options.params ?? {}), panelId };
 
-  api.addPanel({
-    id: instanceId,
-    component: panelId,
-    title,
-    params,
-    position: options.position,
-    initialWidth: options.initialWidth,
-    initialHeight: options.initialHeight,
-  });
+  try {
+    api.addPanel({
+      id: instanceId,
+      component: panelId,
+      title,
+      params,
+      position: options.position,
+      initialWidth: options.initialWidth,
+      initialHeight: options.initialHeight,
+    });
+  } catch (err) {
+    // Retry without position — stale group/panel references in the position
+    // cause "invalid location" errors from dockview internals.
+    if (options.position) {
+      api.addPanel({
+        id: instanceId,
+        component: panelId,
+        title,
+        params,
+        initialWidth: options.initialWidth,
+        initialHeight: options.initialHeight,
+      });
+    } else {
+      throw err;
+    }
+  }
 
   return instanceId;
 }

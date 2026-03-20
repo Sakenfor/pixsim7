@@ -17,9 +17,10 @@ export function HudDesignerPanel() {
   const {
     worlds,
     selectedWorldId,
+    selectedWorldSource,
     setSelectedWorldId,
     isLoadingWorlds,
-  } = useSharedWorldSelection();
+  } = useSharedWorldSelection({ autoSelectFirst: true });
 
   if (isLoadingWorlds) {
     return (
@@ -76,6 +77,9 @@ export function HudDesignerPanel() {
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+              Source: {selectedWorldSource}
             </div>
           </div>
         ) : undefined

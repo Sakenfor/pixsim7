@@ -6,7 +6,7 @@
  */
 
 import type { DockviewApi } from "dockview-core";
-import { useCallback, useEffect, useImperativeHandle, useMemo, useState, forwardRef } from "react";
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from "react";
 
 import {
   SmartDockview,
@@ -206,6 +206,8 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
     const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
     const [resetKey, setResetKey] = useState(0);
     const [dockviewHost, setDockviewHost] = useState<DockviewHost | null>(null);
+    // Guard against infinite reset loops: only auto-reset once per mount
+    const hasAutoResetRef = useRef(false);
     const scopeOptions = useMemo(() => ({
       dockId,
       panels,
@@ -262,6 +264,7 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
           (panelId) => !excludedFromLayoutSet.has(panelId),
         );
         // Add panels individually so one failure doesn't block the rest
+        let failedCount = 0;
         for (const panelId of panelsToAdd) {
           if (api.getPanel(panelId)) continue;
           try {
@@ -277,11 +280,23 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
               }),
             });
           } catch (error) {
+            failedCount++;
             console.warn(`[PanelHostDockview] Failed to add panel "${panelId}" to dock "${dockId ?? storageKey}":`, error);
           }
         }
+
+        // Self-heal: if panels failed to add, the persisted layout is likely
+        // corrupted. Clear it and remount to get a fresh default layout.
+        if (failedCount > 0 && storageKey && !hasAutoResetRef.current) {
+          hasAutoResetRef.current = true;
+          console.warn(
+            `[PanelHostDockview] ${failedCount} panel(s) failed to add — clearing corrupted layout "${storageKey}" and resetting.`,
+          );
+          localStorage.removeItem(storageKey);
+          queueMicrotask(() => setResetKey((k) => k + 1));
+        }
       },
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- dockId/storageKey used only in warning message
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- dockId/storageKey used only in warning/self-heal
       [excludedFromLayoutSet, scopedPanelIds, resolvePanelPosition, effectiveResolvePanelTitle]
     );
 

@@ -116,18 +116,39 @@ function createPollingSubscribe(
   getItems: () => Identifiable[],
   intervalMs = 1500,
 ): (cb: () => void) => () => void {
+  const listeners = new Set<() => void>();
+  let intervalHandle: ReturnType<typeof setInterval> | null = null;
+  let previousKey = '';
+
+  const buildKey = (items: Identifiable[]): string => items.map((item) => item.id).join('|');
+  const notifyListeners = () => {
+    listeners.forEach((listener) => listener());
+  };
+
+  const poll = () => {
+    const currentItems = getItems();
+    const currentKey = buildKey(currentItems);
+    if (currentKey !== previousKey) {
+      previousKey = currentKey;
+      notifyListeners();
+    }
+  };
+
   return (cb) => {
-    let previous = JSON.stringify(getItems());
-    const interval = globalThis.setInterval(() => {
-      const current = JSON.stringify(getItems());
-      if (current !== previous) {
-        previous = current;
-        cb();
-      }
-    }, intervalMs);
+    listeners.add(cb);
+
+    if (intervalHandle === null) {
+      previousKey = buildKey(getItems());
+      intervalHandle = setInterval(poll, intervalMs);
+    }
 
     return () => {
-      globalThis.clearInterval(interval);
+      listeners.delete(cb);
+      if (listeners.size === 0 && intervalHandle !== null) {
+        clearInterval(intervalHandle);
+        intervalHandle = null;
+        previousKey = '';
+      }
     };
   };
 }

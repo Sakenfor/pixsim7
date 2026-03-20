@@ -1,15 +1,29 @@
-import { Button } from '@pixsim7/shared.ui';
+import {
+  Button,
+  SearchInput,
+  SidebarContentLayout,
+  type SidebarContentLayoutSection,
+  useSidebarNav,
+  useTheme,
+} from '@pixsim7/shared.ui';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
+import {
+  createGameObject,
+  getGameObject,
+  listGameObjects,
+  updateGameObject,
+} from '@lib/api/game';
 
+import { useEffectiveAuthoringIds } from '@features/contextHub';
 import { PanelHeader } from '@features/panels';
 
 /**
  * Template Library Panel
  *
  * Browse and manage templates and runtime entities via the generic CRUD API.
- * - View all registered template types from /templates/registry
+ * - View registered template types from /templates/registry (when available)
  * - Browse entities of each type with pagination
  * - Create, edit, delete entities
  * - View nested entities (e.g., hotspots under locations)
@@ -18,6 +32,8 @@ import { PanelHeader } from '@features/panels';
 interface TemplateTypeInfo {
   kind: string;
   url_prefix: string;
+  source?: 'registry' | 'native';
+  list_mode?: 'paginated' | 'array';
   supports_soft_delete: boolean;
   supports_upsert: boolean;
   scope_to_owner: boolean;
@@ -55,14 +71,73 @@ interface EntityListResponse {
   has_more: boolean;
 }
 
+function normalizeEntityListResponse(
+  data: unknown,
+): { items: Record<string, unknown>[]; total: number } {
+  if (Array.isArray(data)) {
+    return {
+      items: data as Record<string, unknown>[],
+      total: data.length,
+    };
+  }
+
+  if (data && typeof data === 'object') {
+    const maybeItems = (data as { items?: unknown }).items;
+    if (Array.isArray(maybeItems)) {
+      const maybeTotal = (data as { total?: unknown }).total;
+      return {
+        items: maybeItems as Record<string, unknown>[],
+        total: typeof maybeTotal === 'number' ? maybeTotal : maybeItems.length,
+      };
+    }
+  }
+
+  return { items: [], total: 0 };
+}
+
 type ViewMode = 'types' | 'list' | 'detail' | 'edit' | 'create';
 
 const WORLD_ID_STORAGE_KEY = 'templateLibrary.worldId';
 const SESSION_ID_STORAGE_KEY = 'templateLibrary.sessionId';
 
+const GAME_OBJECT_TYPE: TemplateTypeInfo = {
+  kind: 'gameObject',
+  url_prefix: 'objects',
+  source: 'native',
+  list_mode: 'array',
+  supports_soft_delete: false,
+  supports_upsert: false,
+  scope_to_owner: false,
+  ownership: {
+    scope: 'world',
+    owner_field: null,
+    world_field: 'world_id',
+    session_field: null,
+    requires_admin: false,
+  },
+  filterable_fields: ['name', 'objectKind'],
+  search_fields: ['name', 'objectKind'],
+  endpoints: {
+    list: true,
+    get: true,
+    create: true,
+    update: true,
+    delete: false,
+  },
+  custom_actions: [],
+  nested_entities: [],
+  has_hierarchy: false,
+};
+
+function getTemplateTypeNavId(type: TemplateTypeInfo): string {
+  return `${type.kind}::${type.url_prefix}`;
+}
+
 export function TemplateLibraryPanel() {
+  const effectiveIds = useEffectiveAuthoringIds();
+
   // Registry state
-  const [templateTypes, setTemplateTypes] = useState<TemplateTypeInfo[]>([]);
+  const [templateTypes, setTemplateTypes] = useState<TemplateTypeInfo[]>([GAME_OBJECT_TYPE]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,7 +151,9 @@ export function TemplateLibraryPanel() {
   const [totalEntities, setTotalEntities] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
   const pageSize = 20;
+  const { theme: sidebarVariant } = useTheme();
 
   // Form state
   const [formData, setFormData] = useState<Record<string, unknown>>({});
@@ -87,12 +164,19 @@ export function TemplateLibraryPanel() {
   const requiresWorldId = ownershipScope === 'world';
   const requiresSessionId = ownershipScope === 'session';
 
+  const getEffectiveWorldIdText = useCallback(() => {
+    const manual = worldIdInput.trim();
+    if (manual) return manual;
+    if (effectiveIds.worldId != null) return String(effectiveIds.worldId);
+    return '';
+  }, [worldIdInput, effectiveIds.worldId]);
+
   const appendScopeParams = useCallback((params: URLSearchParams) => {
-    const worldId = worldIdInput.trim();
+    const worldId = getEffectiveWorldIdText();
     const sessionId = sessionIdInput.trim();
-    if (worldId) params.set('world_id', worldId);
+    if (worldId && (worldIdInput.trim() || requiresWorldId)) params.set('world_id', worldId);
     if (sessionId) params.set('session_id', sessionId);
-  }, [worldIdInput, sessionIdInput]);
+  }, [worldIdInput, sessionIdInput, requiresWorldId, getEffectiveWorldIdText]);
 
   const withScopeQuery = useCallback((path: string) => {
     const params = new URLSearchParams();
@@ -101,9 +185,17 @@ export function TemplateLibraryPanel() {
     return query ? `${path}?${query}` : path;
   }, [appendScopeParams]);
 
+  const getTypeApiBasePath = useCallback((type: TemplateTypeInfo) => {
+    if (type.source === 'native') {
+      return `/game/${type.url_prefix}`;
+    }
+    return `/game/templates/${type.url_prefix}`;
+  }, []);
+
   const ensureScopeReady = useCallback(() => {
-    if (requiresWorldId && !worldIdInput.trim()) {
-      setError('world_id required');
+    const worldId = getEffectiveWorldIdText();
+    if (requiresWorldId && !worldId) {
+      setError('world_id required (no active world context)');
       return false;
     }
     if (requiresSessionId && !sessionIdInput.trim()) {
@@ -111,7 +203,14 @@ export function TemplateLibraryPanel() {
       return false;
     }
     return true;
-  }, [requiresWorldId, requiresSessionId, worldIdInput, sessionIdInput]);
+  }, [requiresWorldId, requiresSessionId, sessionIdInput, getEffectiveWorldIdText]);
+
+  const parseWorldId = useCallback((): number | null => {
+    const raw = getEffectiveWorldIdText();
+    if (!raw) return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  }, [getEffectiveWorldIdText]);
 
   // Load template types from registry
   useEffect(() => {
@@ -122,11 +221,31 @@ export function TemplateLibraryPanel() {
       try {
         const data = await pixsimClient.get<RegistryResponse>('/game/templates/registry');
         if (!cancelled) {
-          setTemplateTypes(data.template_types);
+          const registryTypes = data.template_types.map((item) => ({
+            ...item,
+            source: item.source ?? 'registry',
+          }));
+          const hasGameObject = data.template_types.some(
+            (item) =>
+              String(item.kind).toLowerCase() === 'gameobject' ||
+              String(item.url_prefix).toLowerCase() === 'objects',
+          );
+          setTemplateTypes(
+            hasGameObject
+              ? registryTypes
+              : [GAME_OBJECT_TYPE, ...registryTypes],
+          );
         }
       } catch (e: unknown) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Failed to load template registry');
+          const status = (e as any)?.response?.status ?? (e as any)?.status;
+          // Registry route is optional in some backend profiles; keep native types usable.
+          if (status === 404) {
+            setTemplateTypes((prev) => (prev.length > 0 ? prev : [GAME_OBJECT_TYPE]));
+            setError(null);
+          } else {
+            setError(e instanceof Error ? e.message : 'Failed to load template registry');
+          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -172,6 +291,29 @@ export function TemplateLibraryPanel() {
     setLoading(true);
     setError(null);
     try {
+      if (selectedType.kind === 'gameObject') {
+        const allObjects = await listGameObjects({ worldId: parseWorldId() });
+        const normalizedQuery = searchQuery.trim().toLowerCase();
+        const filtered = normalizedQuery
+          ? allObjects.filter((obj) => {
+            const name = String(obj.name ?? '').toLowerCase();
+            const kind = String(obj.objectKind ?? '').toLowerCase();
+            const id = String(obj.id ?? '').toLowerCase();
+            return (
+              name.includes(normalizedQuery) ||
+              kind.includes(normalizedQuery) ||
+              id.includes(normalizedQuery)
+            );
+          })
+          : allObjects;
+
+        const start = currentPage * pageSize;
+        const page = filtered.slice(start, start + pageSize);
+        setEntities(page as Record<string, unknown>[]);
+        setTotalEntities(filtered.length);
+        return;
+      }
+
       const params = new URLSearchParams({
         limit: String(pageSize),
         offset: String(currentPage * pageSize),
@@ -182,17 +324,26 @@ export function TemplateLibraryPanel() {
       }
       appendScopeParams(params);
 
-      const data = await pixsimClient.get<EntityListResponse>(
-        `/game/${selectedType.url_prefix}?${params.toString()}`
+      const data = await pixsimClient.get<EntityListResponse | Record<string, unknown>[]>(
+        `${getTypeApiBasePath(selectedType)}?${params.toString()}`
       );
-      setEntities(data.items);
-      setTotalEntities(data.total);
+      const normalized = normalizeEntityListResponse(data);
+      setEntities(normalized.items);
+      setTotalEntities(normalized.total);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load entities');
     } finally {
       setLoading(false);
     }
-  }, [selectedType, currentPage, searchQuery, appendScopeParams, ensureScopeReady]);
+  }, [
+    selectedType,
+    currentPage,
+    searchQuery,
+    appendScopeParams,
+    ensureScopeReady,
+    parseWorldId,
+    getTypeApiBasePath,
+  ]);
 
   useEffect(() => {
     if (viewMode === 'list' && selectedType) {
@@ -210,15 +361,32 @@ export function TemplateLibraryPanel() {
   };
 
   const handleSelectEntity = async (entity: Record<string, unknown>) => {
+    if (selectedType?.kind === 'gameObject' && selectedType.endpoints.get) {
+      const objectId = Number(entity.id);
+      if (Number.isFinite(objectId)) {
+        setLoading(true);
+        setError(null);
+        try {
+          const detail = await getGameObject(objectId, { worldId: parseWorldId() });
+          setSelectedEntity(detail as Record<string, unknown>);
+          setViewMode('detail');
+          return;
+        } catch (e: unknown) {
+          setError(e instanceof Error ? e.message : 'Failed to load entity detail');
+        } finally {
+          setLoading(false);
+        }
+      }
+    }
     setSelectedEntity(entity);
     setViewMode('detail');
   };
 
   const handleBack = () => {
-    if (viewMode === 'detail' || viewMode === 'edit') {
+    if (viewMode === 'detail' || viewMode === 'edit' || viewMode === 'create') {
       setViewMode('list');
       setSelectedEntity(null);
-    } else if (viewMode === 'list' || viewMode === 'create') {
+    } else if (viewMode === 'list') {
       setViewMode('types');
       setSelectedType(null);
     }
@@ -244,7 +412,7 @@ export function TemplateLibraryPanel() {
     if (!confirm(`Delete this ${selectedType.kind}?`)) return;
 
     try {
-      await pixsimClient.delete(withScopeQuery(`/game/${selectedType.url_prefix}/${id}`));
+      await pixsimClient.delete(withScopeQuery(`${getTypeApiBasePath(selectedType)}/${id}`));
       setViewMode('list');
       setSelectedEntity(null);
       loadEntities();
@@ -260,11 +428,21 @@ export function TemplateLibraryPanel() {
     setSaving(true);
     setError(null);
     try {
-      if (viewMode === 'create') {
-        await pixsimClient.post(withScopeQuery(`/game/${selectedType.url_prefix}`), formData);
+      if (selectedType.kind === 'gameObject') {
+        if (viewMode === 'create') {
+          await createGameObject(formData, { worldId: parseWorldId() });
+        } else if (viewMode === 'edit' && selectedEntity) {
+          const id = Number(selectedEntity.id);
+          if (!Number.isFinite(id)) {
+            throw new Error('Invalid object id');
+          }
+          await updateGameObject(id, formData, { worldId: parseWorldId() });
+        }
+      } else if (viewMode === 'create') {
+        await pixsimClient.post(withScopeQuery(getTypeApiBasePath(selectedType)), formData);
       } else if (viewMode === 'edit' && selectedEntity) {
         const id = selectedEntity.id;
-        await pixsimClient.put(withScopeQuery(`/game/${selectedType.url_prefix}/${id}`), formData);
+        await pixsimClient.put(withScopeQuery(`${getTypeApiBasePath(selectedType)}/${id}`), formData);
       }
       setViewMode('list');
       setSelectedEntity(null);
@@ -276,7 +454,20 @@ export function TemplateLibraryPanel() {
     }
   };
 
-  // Group types by tag
+  // Group types for sidebar and apply sidebar filter.
+  const visibleTemplateTypes = useMemo(() => {
+    const query = typeFilter.trim().toLowerCase();
+    if (!query) return templateTypes;
+    return templateTypes.filter((type) => {
+      const nested = type.nested_entities.join(' ').toLowerCase();
+      return (
+        type.kind.toLowerCase().includes(query) ||
+        type.url_prefix.toLowerCase().includes(query) ||
+        nested.includes(query)
+      );
+    });
+  }, [templateTypes, typeFilter]);
+
   const groupedTypes = useMemo(() => {
     const groups: Record<string, TemplateTypeInfo[]> = {
       templates: [],
@@ -284,8 +475,7 @@ export function TemplateLibraryPanel() {
       other: [],
     };
 
-    for (const type of templateTypes) {
-      // Check tags array - types have a 'tags' array like ["templates", "locations"]
+    for (const type of visibleTemplateTypes) {
       const isTemplate = type.kind.toLowerCase().includes('template');
       const isRuntime = !isTemplate;
 
@@ -298,80 +488,107 @@ export function TemplateLibraryPanel() {
       }
     }
 
+    for (const key of Object.keys(groups)) {
+      groups[key].sort((a, b) => a.kind.localeCompare(b.kind));
+    }
+
     return groups;
+  }, [visibleTemplateTypes]);
+
+  const templateTypeByNavId = useMemo(() => {
+    const map = new Map<string, TemplateTypeInfo>();
+    for (const type of templateTypes) {
+      map.set(getTemplateTypeNavId(type), type);
+    }
+    return map;
   }, [templateTypes]);
 
-  // Render type card
-  const renderTypeCard = (type: TemplateTypeInfo) => (
-    <button
-      key={type.kind}
-      type="button"
-      onClick={() => handleSelectType(type)}
-      className="w-full text-left p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-colors"
-    >
-      <div className="font-medium text-sm text-neutral-800 dark:text-neutral-100">
-        {type.kind}
-      </div>
-      <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-        /{type.url_prefix}
-      </div>
-      <div className="flex flex-wrap gap-1 mt-2">
-        {type.nested_entities.length > 0 && (
-          <span className="px-1.5 py-0.5 text-[10px] rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
-            +{type.nested_entities.length} nested
-          </span>
-        )}
-        {type.scope_to_owner && (
-          <span className="px-1.5 py-0.5 text-[10px] rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
-            owner-scoped
-          </span>
-        )}
-        {type.ownership?.scope === 'world' && (
-          <span className="px-1.5 py-0.5 text-[10px] rounded bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300">
-            world-scoped
-          </span>
-        )}
-        {type.ownership?.scope === 'session' && (
-          <span className="px-1.5 py-0.5 text-[10px] rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
-            session-scoped
-          </span>
-        )}
-        {type.ownership?.requires_admin && (
-          <span className="px-1.5 py-0.5 text-[10px] rounded bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300">
-            admin-only
-          </span>
-        )}
-        {type.supports_soft_delete && (
-          <span className="px-1.5 py-0.5 text-[10px] rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
-            soft-delete
-          </span>
-        )}
-      </div>
-    </button>
-  );
+  const sidebarSections = useMemo<SidebarContentLayoutSection[]>(() => {
+    const sections: SidebarContentLayoutSection[] = [];
+    const orderedGroups: Array<{
+      id: 'templates' | 'runtime' | 'other';
+      label: string;
+    }> = [
+      { id: 'templates', label: 'Authoring Templates' },
+      { id: 'runtime', label: 'Runtime Entities' },
+      { id: 'other', label: 'Other' },
+    ];
+
+    for (const group of orderedGroups) {
+      const types = groupedTypes[group.id];
+      if (!types || types.length === 0) continue;
+      sections.push({
+        id: group.id,
+        label: group.label,
+        children: types.map((type) => ({
+          id: getTemplateTypeNavId(type),
+          label: type.kind,
+        })),
+      });
+    }
+
+    return sections;
+  }, [groupedTypes]);
+
+  const sidebarNav = useSidebarNav<string, string>({
+    sections: sidebarSections,
+    storageKey: 'template-library:nav',
+  });
+
+  const handleSidebarSelectSection = (sectionId: string) => {
+    sidebarNav.selectSection(sectionId);
+    const section = sidebarSections.find((item) => item.id === sectionId);
+    const firstChildId = section?.children?.[0]?.id;
+    if (!firstChildId) {
+      setViewMode('types');
+      setSelectedType(null);
+      return;
+    }
+    const type = templateTypeByNavId.get(firstChildId);
+    if (type) {
+      handleSelectType(type);
+    }
+  };
+
+  const handleSidebarSelectChild = (parentId: string, childId: string) => {
+    sidebarNav.selectChild(parentId, childId);
+    const type = templateTypeByNavId.get(childId);
+    if (type) {
+      handleSelectType(type);
+    }
+  };
 
   // Render types view
   const renderTypesView = () => (
-    <div className="p-4 space-y-6">
-      {Object.entries(groupedTypes).map(([group, types]) => {
-        if (types.length === 0) return null;
-        return (
-          <div key={group}>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">
-              {group === 'templates' ? 'Authoring Templates' : group === 'runtime' ? 'Runtime Entities' : 'Other'}
-            </h3>
-            <div className="grid grid-cols-1 gap-2">
-              {types.map(renderTypeCard)}
+    <div className="h-full min-h-0 overflow-auto p-4">
+      <div className="max-w-xl rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50/70 dark:bg-neutral-900/50 p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+          Template Library
+        </h3>
+        <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+          Select a template type from the left sidebar to browse entities, inspect details, or edit JSON payloads.
+        </p>
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-2">
+            <div className="text-neutral-500 dark:text-neutral-400">Templates</div>
+            <div className="font-semibold text-neutral-800 dark:text-neutral-100">
+              {groupedTypes.templates.length}
             </div>
           </div>
-        );
-      })}
-
-      {templateTypes.length === 0 && !loading && (
-        <div className="text-center text-neutral-500 dark:text-neutral-400 py-8">
-          No template types registered
+          <div className="rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-2">
+            <div className="text-neutral-500 dark:text-neutral-400">Runtime</div>
+            <div className="font-semibold text-neutral-800 dark:text-neutral-100">
+              {groupedTypes.runtime.length}
+            </div>
+          </div>
+          <div className="rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-2">
+            <div className="text-neutral-500 dark:text-neutral-400">Total</div>
+            <div className="font-semibold text-neutral-800 dark:text-neutral-100">
+              {visibleTemplateTypes.length}
+            </div>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 
@@ -379,11 +596,15 @@ export function TemplateLibraryPanel() {
   const renderListView = () => {
     if (!selectedType) return null;
 
+    const safeEntities = Array.isArray(entities) ? entities : [];
     const totalPages = Math.ceil(totalEntities / pageSize);
     const listEnabled = selectedType.endpoints.list;
+    const worldFallbackSource = !worldIdInput.trim() && effectiveIds.worldId != null
+      ? `${effectiveIds.worldId} (${effectiveIds.worldSource})`
+      : null;
 
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full min-h-0">
         {/* Search and actions */}
         <div className="p-3 border-b border-neutral-200 dark:border-neutral-700 flex flex-col gap-2">
           <div className="flex gap-2">
@@ -420,7 +641,9 @@ export function TemplateLibraryPanel() {
                     className="w-full px-2 py-1 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
                   />
                   <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                    Required for world-scoped types
+                    {worldFallbackSource
+                      ? `Using active world #${worldFallbackSource}; enter value to override`
+                      : 'Required for world-scoped types'}
                   </span>
                 </div>
               )}
@@ -447,13 +670,13 @@ export function TemplateLibraryPanel() {
         </div>
 
         {/* Entity list */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 min-h-0 overflow-auto">
           {!listEnabled && (
             <div className="text-center text-neutral-500 dark:text-neutral-400 py-8">
               Listing is disabled for this type.
             </div>
           )}
-          {entities.map((entity, idx) => (
+          {safeEntities.map((entity, idx) => (
             <button
               key={String(entity.id ?? idx)}
               type="button"
@@ -469,7 +692,7 @@ export function TemplateLibraryPanel() {
             </button>
           ))}
 
-          {listEnabled && entities.length === 0 && !loading && (
+          {listEnabled && safeEntities.length === 0 && !loading && (
             <div className="text-center text-neutral-500 dark:text-neutral-400 py-8">
               No {selectedType.kind} found
             </div>
@@ -509,7 +732,7 @@ export function TemplateLibraryPanel() {
     if (!selectedType || !selectedEntity) return null;
 
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full min-h-0">
         {/* Actions */}
         <div className="p-3 border-b border-neutral-200 dark:border-neutral-700 flex gap-2">
           {selectedType.endpoints.update && (
@@ -525,7 +748,7 @@ export function TemplateLibraryPanel() {
         </div>
 
         {/* Entity data */}
-        <div className="flex-1 overflow-auto p-3">
+        <div className="flex-1 min-h-0 overflow-auto p-3">
           <pre className="text-xs bg-neutral-100 dark:bg-neutral-800 p-3 rounded overflow-auto whitespace-pre-wrap">
             {JSON.stringify(selectedEntity, null, 2)}
           </pre>
@@ -558,7 +781,7 @@ export function TemplateLibraryPanel() {
     if (!selectedType) return null;
 
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full min-h-0">
         {/* Form header */}
         <div className="p-3 border-b border-neutral-200 dark:border-neutral-700 flex gap-2">
           <Button size="sm" onClick={handleSave} disabled={saving}>
@@ -570,7 +793,7 @@ export function TemplateLibraryPanel() {
         </div>
 
         {/* JSON editor */}
-        <div className="flex-1 overflow-auto p-3">
+        <div className="flex-1 min-h-0 overflow-auto p-3">
           <textarea
             value={JSON.stringify(formData, null, 2)}
             onChange={(e) => {
@@ -599,6 +822,7 @@ export function TemplateLibraryPanel() {
     }
     return 'Template Library';
   };
+  const canNavigateBack = viewMode === 'detail' || viewMode === 'edit' || viewMode === 'create';
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-neutral-900">
@@ -606,9 +830,9 @@ export function TemplateLibraryPanel() {
         title={getTitle()}
         icon="📚"
         category="tools"
-        onClickTitle={viewMode !== 'types' ? handleBack : undefined}
+        onClickTitle={canNavigateBack ? handleBack : undefined}
       >
-        {viewMode !== 'types' && (
+        {canNavigateBack && (
           <Button size="sm" variant="ghost" onClick={handleBack}>
             ← Back
           </Button>
@@ -630,11 +854,41 @@ export function TemplateLibraryPanel() {
       )}
 
       {/* Main content */}
-      <div className="flex-1 overflow-hidden">
-        {viewMode === 'types' && renderTypesView()}
-        {viewMode === 'list' && renderListView()}
-        {viewMode === 'detail' && renderDetailView()}
-        {(viewMode === 'create' || viewMode === 'edit') && renderFormView()}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <SidebarContentLayout
+          sections={sidebarSections}
+          activeSectionId={sidebarNav.activeSectionId}
+          activeChildId={sidebarNav.activeChildId}
+          onSelectSection={handleSidebarSelectSection}
+          onSelectChild={handleSidebarSelectChild}
+          expandedSectionIds={sidebarNav.expandedSectionIds}
+          onToggleExpand={sidebarNav.toggleExpand}
+          sidebarTitle={(
+            <div className="space-y-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                Template Types
+              </div>
+              <SearchInput
+                value={typeFilter}
+                onChange={setTypeFilter}
+                placeholder="Filter types..."
+                size="sm"
+              />
+            </div>
+          )}
+          sidebarWidth="w-60"
+          variant={sidebarVariant}
+          navClassName="space-y-1"
+          contentClassName="overflow-hidden min-h-0"
+          collapsible
+          expandedWidth={240}
+          persistKey="template-library-sidebar"
+        >
+          {viewMode === 'types' && renderTypesView()}
+          {viewMode === 'list' && renderListView()}
+          {viewMode === 'detail' && renderDetailView()}
+          {(viewMode === 'create' || viewMode === 'edit') && renderFormView()}
+        </SidebarContentLayout>
       </div>
     </div>
   );

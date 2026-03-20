@@ -27,6 +27,7 @@ import { assetActions } from './assetActions';
 import { contextHubActions } from './contextHubActions';
 import { cubeActions } from './cubeActions';
 import { debugActions } from './debugActions';
+import { devContextActions } from './devContextActions';
 import {
   splitPanelAction,
   movePanelAction,
@@ -99,6 +100,7 @@ export { assetActions } from './assetActions';
 export { contextHubActions } from './contextHubActions';
 export { cubeActions } from './cubeActions';
 export { debugActions } from './debugActions';
+export { devContextActions } from './devContextActions';
 export { promptActions } from './promptActions';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -266,6 +268,8 @@ export const allActions = [
   ...cubeActions,
   // Dockview debug
   ...debugActions,
+  // Dev context → AI Assistant
+  ...devContextActions,
 ];
 
 let actionsRegistered = false;

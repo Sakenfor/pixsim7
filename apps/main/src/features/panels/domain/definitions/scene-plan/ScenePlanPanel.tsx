@@ -25,7 +25,7 @@ import { resolveGameNpcs } from '@lib/resolvers';
 import {
   CAP_EDITOR_CONTEXT,
   type EditorContextSnapshot,
-  useAuthoringContext,
+  useEffectiveAuthoringIds,
   useCapability,
 } from '@features/contextHub';
 
@@ -616,11 +616,11 @@ function buildScenePlanPreview(args: {
 }
 
 export function ScenePlanPanel() {
-  const authoringContext = useAuthoringContext();
+  const effectiveIds = useEffectiveAuthoringIds();
   const { value: editorContext } = useCapability<EditorContextSnapshot>(CAP_EDITOR_CONTEXT);
-  const defaultWorldId = authoringContext.worldId;
+  const defaultWorldId = effectiveIds.worldId;
   const defaultLocationId = editorContext?.world?.locationId ?? null;
-  const defaultSessionId = editorContext?.runtime?.sessionId ?? null;
+  const defaultSessionId = effectiveIds.sessionId;
   const defaultWorldTimeSeconds = editorContext?.runtime?.worldTimeSeconds ?? null;
   const toast = useToast();
 
@@ -652,18 +652,6 @@ export function ScenePlanPanel() {
   const [builtRequest, setBuiltRequest] = useState<BuildPrimitiveSelectionRequestFromBehaviorResponse | null>(null);
   const [selection, setSelection] = useState<PrimitiveSelectionResponsePayload | null>(null);
   const [scenePlan, setScenePlan] = useState<ScenePlan | null>(null);
-
-  useEffect(() => {
-    if (!worldIdInput.trim() && defaultWorldId != null) {
-      setWorldIdInput(String(defaultWorldId));
-    }
-  }, [defaultWorldId, worldIdInput]);
-
-  useEffect(() => {
-    if (!sessionIdInput.trim() && defaultSessionId != null) {
-      setSessionIdInput(String(defaultSessionId));
-    }
-  }, [defaultSessionId, sessionIdInput]);
 
   useEffect(() => {
     if (!worldTimeInput.trim() && defaultWorldTimeSeconds != null) {
@@ -914,7 +902,7 @@ export function ScenePlanPanel() {
           Build a context-aware scene plan preview from runtime behavior and primitive selection.
         </div>
         <div className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">
-          Context: world {defaultWorldId ?? 'N/A'} | location {defaultLocationId ?? 'N/A'} | session {defaultSessionId ?? 'N/A'}
+          Context: world {defaultWorldId ?? 'N/A'} | location {defaultLocationId ?? 'N/A'} | session {defaultSessionId ?? 'N/A'} | source {effectiveIds.worldSource}
         </div>
       </div>
 
@@ -925,7 +913,7 @@ export function ScenePlanPanel() {
             <input
               value={worldIdInput}
               onChange={(event) => setWorldIdInput(event.target.value)}
-              placeholder={defaultWorldId != null ? String(defaultWorldId) : 'Required'}
+              placeholder={defaultWorldId != null ? String(defaultWorldId) : 'Required (active context)'}
               className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
             />
           </label>
@@ -934,10 +922,13 @@ export function ScenePlanPanel() {
             <input
               value={sessionIdInput}
               onChange={(event) => setSessionIdInput(event.target.value)}
-              placeholder={defaultSessionId != null ? String(defaultSessionId) : 'Required'}
+              placeholder={defaultSessionId != null ? String(defaultSessionId) : 'Required (active runtime)'}
               className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
             />
           </label>
+        </div>
+        <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+          Leave world/session empty to follow active context; enter values to override.
         </div>
 
         <div className="grid grid-cols-3 gap-2">
