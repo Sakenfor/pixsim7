@@ -194,8 +194,38 @@ class Bridge:
         with os.fdopen(fd, "w") as f:
             json.dump(config, f, indent=2)
 
+        # Also register with Codex's global MCP config (if codex is available)
+        self._ensure_codex_mcp(mcp_server_script, api_base, token, token_file, scope)
+
         self._mcp_config_path = path
         return path
+
+    @staticmethod
+    def _ensure_codex_mcp(mcp_server_script: str, api_base: str, token: str, token_file: str, scope: str) -> None:
+        """Register pixsim MCP server with Codex's global config (idempotent)."""
+        import shutil
+        import subprocess as sp
+        codex_bin = shutil.which("codex")
+        if not codex_bin:
+            return
+        try:
+            # Remove existing (idempotent re-register)
+            sp.run([codex_bin, "mcp", "remove", "pixsim"], capture_output=True, timeout=5)
+            # Add with env vars for auth
+            sp.run(
+                [
+                    codex_bin, "mcp", "add", "pixsim",
+                    "--env", f"PIXSIM_API_URL={api_base}",
+                    "--env", f"PIXSIM_API_TOKEN={token}",
+                    "--env", f"PIXSIM_TOKEN_FILE={token_file}",
+                    "--env", f"PIXSIM_SCOPE={scope}",
+                    "--", sys.executable, mcp_server_script,
+                ],
+                capture_output=True, timeout=10,
+            )
+            client_log("Registered pixsim MCP server with Codex")
+        except Exception as e:
+            client_log(f"Failed to register Codex MCP: {e}", error=True)
 
     async def _handle_task(self, ws, msg: dict) -> None:
         """Handle an incoming task from the backend."""
