@@ -205,13 +205,15 @@ class AgentCmdSession:
         For long-running protocols (Claude): sends via stdin to existing process.
         For single-turn protocols (Codex): restarts the process with --resume.
         """
-        # Single-turn protocol: restart process per message (with resume)
-        if not self._protocol.is_long_running() and self.cli_session_id:
-            self._resume_session_id = self.cli_session_id
-            await self.stop()
-            await asyncio.sleep(0.5)
+        # Single-turn protocol: (re)start process per message
+        if not self._protocol.is_long_running():
+            if self.cli_session_id:
+                self._resume_session_id = self.cli_session_id
+            if self.is_alive:
+                await self.stop()
+                await asyncio.sleep(0.5)
             if not await self.start():
-                raise RuntimeError(f"Session {self.session_id} failed to restart for new turn")
+                raise RuntimeError(f"Session {self.session_id} failed to start")
 
         if not self.is_alive or not self._process or not self._process.stdin:
             raise RuntimeError(f"Session {self.session_id} is not running")
