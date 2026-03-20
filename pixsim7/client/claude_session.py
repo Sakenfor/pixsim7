@@ -360,12 +360,17 @@ class AgentCmdSession:
                     raise RuntimeError(f"Agent error: {parsed.text}")
 
                 elif parsed.kind == "progress":
-                    # For single-turn protocols, agent_message text arrives as progress
-                    # before the final turn.completed result event
-                    if parsed.raw and parsed.raw.get("type") == "item.completed":
-                        item = parsed.raw.get("item", {})
-                        if item.get("type") == "agent_message" and item.get("text"):
+                    # Capture agent message text from completed items (both exec JSONL and app-server JSON-RPC)
+                    raw = parsed.raw or {}
+                    raw_method = raw.get("method", "")
+                    raw_type = raw.get("type", "")
+                    if raw_type == "item.completed" or raw_method == "item/completed":
+                        item = raw.get("item") or raw.get("params", {}).get("item", {})
+                        if item.get("type") in ("agent_message", "agentMessage") and item.get("text"):
                             result_text = item["text"]
+                    # Also accumulate streaming deltas (app-server agentMessage/delta)
+                    elif raw_method == "item/agentMessage/delta":
+                        result_text += raw.get("params", {}).get("delta", "")
                     if on_progress and parsed.text:
                         on_progress("progress", parsed.text)
 
