@@ -68,6 +68,7 @@ export function SettingsPanel(props: QuickGenPanelProps) {
   const activePrompt = promptBox?.prompt ?? controller.prompt;
   const canGenerate = requiresPrompt ? activePrompt.trim().length > 0 : true;
 
+
   useProvideCapability<GenerateActionContext>(
     CAP_GENERATE_ACTION,
     {

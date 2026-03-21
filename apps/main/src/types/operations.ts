@@ -241,7 +241,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
     multiAssetMode: 'optional',
     acceptsInput: ['image', 'video'], // video via frame extraction
     outputType: 'image',
-    promptRequired: true,
+    promptRequired: false,
     promptSupported: true,
     compositionRole: 'source_image',
     inputMediaType: 'image',
