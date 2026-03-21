@@ -25,11 +25,13 @@ export interface GenerationScopeStores {
 // Lazily resolve the global scope so it always references the HMR-stable
 // store singletons (which are cached on globalThis via Symbol.for).
 function getGlobalScope(): GenerationScopeStores {
+  // Session store is now a shim over settings — both point to the same global singleton
+  const globalSettings = useGenerationSettingsStore as unknown as GenerationSettingsStoreHook;
   return {
     id: "global",
     label: "Global",
-    useSessionStore: getGenerationSessionStore("global"),
-    useSettingsStore: useGenerationSettingsStore as unknown as GenerationSettingsStoreHook,
+    useSessionStore: globalSettings as unknown as GenerationSessionStoreHook,
+    useSettingsStore: globalSettings,
     useInputStore: useGenerationInputStore as unknown as GenerationInputStoreHook,
   };
 }

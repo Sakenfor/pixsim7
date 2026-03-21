@@ -53,83 +53,43 @@ function providerOpKey(providerId: string | undefined, operationType: OperationT
 }
 
 export interface GenerationSettingsState {
-  /**
-   * Current dynamic generation parameters shared across UIs
-   * (e.g., model, quality, duration, aspect_ratio, advanced flags).
-   * This is the "active" params object, derived from paramsPerOperation.
-   */
+  // ── Provider params ──
   params: Record<string, any>;
-
-  /**
-   * Per-operation-type parameter storage.
-   * Each operation type has its own params that persist independently.
-   */
   paramsPerOperation: Partial<Record<OperationType, Record<string, any>>>;
-
-  /**
-   * Per-provider+operation parameter storage.
-   * Key is `${providerId}::${operationType}`, value is the params snapshot.
-   * Used to save/restore params when switching providers within the same operation.
-   */
   paramsPerProviderOp: Record<string, Record<string, any>>;
-
-  /**
-   * Per-model parameter storage for quality/resolution settings.
-   * Key is model name, value is { quality, resolution, output_resolution }.
-   */
   paramsPerModel: Record<string, Record<string, any>>;
 
-  /**
-   * Currently active operation type for params resolution.
-   */
+  // ── Session fields (merged from generationSessionStore) ──
   activeOperationType: OperationType;
+  /** Alias for activeOperationType — session store consumers use this name */
+  operationType: OperationType;
+  prompt: string;
+  promptMap: Record<string, string>;
+  providerId?: string;
+  generating: boolean;
+  uiState: Record<string, any>;
 
-  /**
-   * Whether the settings bar is expanded/visible.
-   */
+  // ── UI ──
   showSettings: boolean;
-
-  /**
-   * Whether the store has been hydrated from persistence.
-   * Use this to avoid overwriting persisted values with defaults.
-   */
   _hasHydrated: boolean;
 
-  /**
-   * Set the active operation type and switch to its params.
-   */
+  // ── Session actions ──
+  setOperationType: (op: OperationType) => void;
+  setPrompt: (value: string) => void;
+  setProvider: (id?: string) => void;
+  setGenerating: (value: boolean) => void;
+  setUiState: (key: string, value: any) => void;
+
+  // ── Params actions ──
+  /** @deprecated Use setOperationType — kept as alias */
   setActiveOperationType: (operationType: OperationType) => void;
-
-  /**
-   * Save current params under old provider key, load from new provider key.
-   * Call this when the user switches providers to prevent cross-provider
-   * param leakage (model, account, quality, etc.).
-   */
   onProviderChange: (oldProviderId: string | undefined, newProviderId: string | undefined) => void;
-
-  /**
-   * React-style setter for params. Accepts either a new object or an updater
-   * function that receives the previous value and returns the next one.
-   * Updates both params and paramsPerOperation for the active operation.
-   */
   setDynamicParams: (
     updater: Record<string, any> | ((prev: Record<string, any>) => Record<string, any>)
   ) => void;
-
-  /**
-   * Convenience helper to set a single parameter value.
-   */
   setParam: (name: string, value: any) => void;
-
-  /**
-   * Toggle or set settings visibility.
-   */
   setShowSettings: (show: boolean) => void;
   toggleSettings: () => void;
-
-  /**
-   * Reset all dynamic parameters.
-   */
   reset: () => void;
 }
 
@@ -147,8 +107,87 @@ export function createGenerationSettingsStore(
         paramsPerProviderOp: {},
         paramsPerModel: {},
         activeOperationType: 'image_to_video' as OperationType,
+        operationType: 'image_to_video' as OperationType,
+        prompt: '',
+        promptMap: {},
+        providerId: undefined,
+        generating: false,
+        uiState: {},
         showSettings: true,
         _hasHydrated: false,
+
+        // ── Session actions ──
+
+        setOperationType: (operationType) => {
+          const state = get();
+          if (state.activeOperationType === operationType) return;
+
+          // Save/restore prompt via promptMap
+          const oldPK = providerOpKey(state.providerId, state.activeOperationType);
+          const newPK = providerOpKey(state.providerId, operationType);
+          const updatedPromptMap = { ...state.promptMap, [oldPK]: state.prompt };
+
+          // Save/restore params via paramsPerOperation
+          const globals = pickGlobalUiParams(state.params);
+          const updatedParamsPerOp = {
+            ...state.paramsPerOperation,
+            [state.activeOperationType]: state.params,
+          };
+          const baseParams = updatedParamsPerOp[operationType] || {};
+          const newParams = mergeMissingGlobalUiParams(baseParams, globals);
+          if (!newParams.model && state.params.model) {
+            newParams.model = state.params.model;
+          }
+
+          set({
+            activeOperationType: operationType,
+            operationType,
+            prompt: updatedPromptMap[newPK] ?? '',
+            promptMap: updatedPromptMap,
+            params: newParams,
+            paramsPerOperation: {
+              ...updatedParamsPerOp,
+              [operationType]: newParams,
+            },
+          });
+        },
+
+        setPrompt: (value) => {
+          const state = get();
+          if (state.prompt === value) return;
+          const key = providerOpKey(state.providerId, state.activeOperationType);
+          set({
+            prompt: value,
+            promptMap: { ...state.promptMap, [key]: value },
+          });
+        },
+
+        setProvider: (id) => {
+          const state = get();
+          if (state.providerId === id) return;
+
+          // Save/restore prompt via promptMap
+          const oldPK = providerOpKey(state.providerId, state.activeOperationType);
+          const newPK = providerOpKey(id, state.activeOperationType);
+          const updatedPromptMap = { ...state.promptMap, [oldPK]: state.prompt };
+
+          set({
+            providerId: id,
+            prompt: updatedPromptMap[newPK] ?? state.prompt,
+            promptMap: updatedPromptMap,
+          });
+        },
+
+        setGenerating: (value) => {
+          if (get().generating === value) return;
+          set({ generating: value });
+        },
+
+        setUiState: (key, value) => {
+          set({ uiState: { ...get().uiState, [key]: value } });
+        },
+
+        // ── Params actions ──
 
         onProviderChange: (oldProviderId, newProviderId) => {
           const state = get();
@@ -180,32 +219,7 @@ export function createGenerationSettingsStore(
           });
         },
 
-        setActiveOperationType: (operationType) => {
-          const state = get();
-          const globals = pickGlobalUiParams(state.params);
-          // Save current params to the current operation before switching
-          const updatedParamsPerOp = {
-            ...state.paramsPerOperation,
-            [state.activeOperationType]: state.params,
-          };
-          // Load params for the new operation (or empty if none saved)
-          const baseParams = updatedParamsPerOp[operationType] || {};
-          const newParams = mergeMissingGlobalUiParams(baseParams, globals);
-          // Carry over model from current params when the loaded params don't
-          // have one. This prevents the model resetting to spec default when
-          // auto-switching operation types during asset navigation.
-          if (!newParams.model && state.params.model) {
-            newParams.model = state.params.model;
-          }
-          set({
-            activeOperationType: operationType,
-            paramsPerOperation: {
-              ...updatedParamsPerOp,
-              [operationType]: newParams,
-            },
-            params: newParams,
-          });
-        },
+        setActiveOperationType: (operationType) => get().setOperationType(operationType),
 
         setDynamicParams: (updater) =>
           set((prev) => {
@@ -343,6 +357,11 @@ export function createGenerationSettingsStore(
           paramsPerOperation: {},
           paramsPerProviderOp: {},
           paramsPerModel: {},
+          prompt: '',
+          promptMap: {},
+          providerId: undefined,
+          generating: false,
+          uiState: {},
           showSettings: true,
           _hasHydrated: true,
         }),
@@ -390,30 +409,51 @@ export function createGenerationSettingsStore(
             paramsPerModel: state.paramsPerModel,
             activeOperationType: state.activeOperationType,
             showSettings: state.showSettings,
-            // Note: params is derived from paramsPerOperation, _hasHydrated is not persisted
+            // Session fields
+            prompt: state.prompt,
+            promptMap: state.promptMap,
+            providerId: state.providerId,
+            uiState: state.uiState,
+            // Note: params is derived from paramsPerOperation; generating + _hasHydrated not persisted
           };
         },
-        version: 1,
+        version: 2,
+        migrate: (persistedState: any, version: number) => {
+          if (version < 2) {
+            // Absorb old session store data from localStorage
+            const sessionKey = storageKey.replace('generation_settings', 'generation_session');
+            try {
+              const raw = localStorage.getItem(sessionKey);
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                const s = parsed?.state ?? {};
+                if (s.prompt !== undefined) persistedState.prompt = s.prompt;
+                if (s.promptMap) persistedState.promptMap = s.promptMap;
+                if (s.providerId !== undefined) persistedState.providerId = s.providerId;
+                if (s.uiState) persistedState.uiState = s.uiState;
+                if (s.operationType) persistedState.activeOperationType = s.operationType;
+              }
+            } catch { /* best effort */ }
+          }
+          return persistedState;
+        },
         onRehydrateStorage: () => (state) => {
-          // After rehydration, set params from paramsPerOperation for active operation
           if (state) {
             const activeParams = state.paramsPerOperation[state.activeOperationType] || {};
-            // Backward-compat: if a global UI param exists in any other operation bucket,
-            // merge it into the active operation params so feature toggles don't "flip back".
             const globals = { ...pickGlobalUiParams(activeParams) };
             if (Object.keys(globals).length < GLOBAL_UI_PARAMS.size) {
               for (const params of Object.values(state.paramsPerOperation)) {
                 if (!params) continue;
                 Object.assign(globals, pickGlobalUiParams(params));
-                if (Object.keys(globals).length >= GLOBAL_UI_PARAMS.size) {
-                  break;
-                }
+                if (Object.keys(globals).length >= GLOBAL_UI_PARAMS.size) break;
               }
             }
-
             const mergedActive = mergeMissingGlobalUiParams(activeParams, globals);
             state.paramsPerOperation[state.activeOperationType] = mergedActive;
             state.params = mergedActive;
+            state.operationType = state.activeOperationType;
+            state.promptMap = state.promptMap ?? {};
+            state.uiState = state.uiState ?? {};
             state._hasHydrated = true;
           }
         },
@@ -454,6 +494,7 @@ hmrSingleton('generationSettingsStore:rehydration', () => {
     const mergedActive = mergeMissingGlobalUiParams(activeParams, globals);
     useGenerationSettingsStore.setState({
       params: mergedActive,
+      operationType: state.activeOperationType,
       paramsPerOperation: {
         ...state.paramsPerOperation,
         [state.activeOperationType]: mergedActive,
