@@ -74,7 +74,7 @@ def _get_remaker_manifest() -> "ProviderManifest":
             requires_credentials=True,
             domains=["remaker.ai", "api.remaker.ai"],
             credit_types=["web"],  # Remaker only has web credits
-            status_mapping_notes="100000=success, 300006=photo-editor processing, 300013=prompt-editor processing, other=failed",
+            status_mapping_notes="100000=success, 300006=photo-editor processing, 300013=prompt-editor processing, 400000=content filtered, other=failed",
         )
     return _REMAKER_MANIFEST
 
@@ -177,11 +177,16 @@ class RemakerProvider(WebApiProvider):
                 return url_value
         return None
 
+    # All valid task_type values across both modes
+    PHOTO_EDITOR_TASK_TYPES = {"sd", "flux"}
+    PROMPT_EDITOR_TASK_TYPES = {"sd", "flux", "qwen", "nano", "nano2", "nano_pro", "sd5"}
+    ALL_TASK_TYPES = PHOTO_EDITOR_TASK_TYPES | PROMPT_EDITOR_TASK_TYPES
+
     @staticmethod
     def _normalize_task_type(params: Dict[str, Any]) -> str:
-        """Resolve Remaker model selector to sd|flux."""
+        """Resolve Remaker model selector to a valid task_type."""
         raw_task = params.get("task_type")
-        if isinstance(raw_task, str) and raw_task.strip().lower() in {"sd", "flux"}:
+        if isinstance(raw_task, str) and raw_task.strip().lower() in RemakerProvider.ALL_TASK_TYPES:
             return raw_task.strip().lower()
 
         model = str(params.get("model") or "").strip().lower()
@@ -189,16 +194,28 @@ class RemakerProvider(WebApiProvider):
             return "flux"
         return "sd"
 
+    # Per-model resolution constraints
+    _RESOLUTION_PER_MODEL = {
+        "sd": ["1K", "2K", "4K"],
+        "flux": ["1K"],
+        "qwen": ["1K", "2K", "4K"],
+        "nano": ["1K"],
+        "nano2": ["1K", "2K", "4K"],
+        "nano_pro": ["1K", "2K", "4K"],
+        "sd5": ["2K", "3K"],
+    }
+    _RESOLUTION_DEFAULTS = {
+        "sd": "2K", "flux": "1K", "qwen": "2K", "nano": "1K",
+        "nano2": "2K", "nano_pro": "2K", "sd5": "2K",
+    }
+
     @staticmethod
     def _normalize_image_resolution(task_type: str, params: Dict[str, Any]) -> str:
         """
-        Resolve Remaker image_resolution.
-
-        Remaker prompt-editor accepts 1K/2K/4K in observed traffic. Flux jobs are
-        constrained to 1K, so we clamp to 1K for task_type=flux.
+        Resolve Remaker image_resolution, clamped to what each model supports.
         """
-        if task_type == "flux":
-            return "1K"
+        allowed = RemakerProvider._RESOLUTION_PER_MODEL.get(task_type, ["1K", "2K", "4K"])
+        default = RemakerProvider._RESOLUTION_DEFAULTS.get(task_type, "2K")
 
         raw = params.get("image_resolution")
         if raw is None:
@@ -210,12 +227,20 @@ class RemakerProvider(WebApiProvider):
             "1K": "1K",
             "720P": "1K",
             "1080P": "1K",
+            "2048": "2K",
             "2K": "2K",
             "1440P": "2K",
+            "3072": "3K",
+            "3K": "3K",
+            "4096": "4K",
             "4K": "4K",
             "2160P": "4K",
         }
-        return aliases.get(normalized, "2K")
+        resolved = aliases.get(normalized, default)
+        # Clamp to what the model actually supports
+        if resolved not in allowed:
+            return default
+        return resolved
 
     def map_parameters(self, operation_type: OperationType, params: Dict[str, Any]) -> Dict[str, Any]:
         if operation_type not in self.supported_operations:
@@ -239,7 +264,9 @@ class RemakerProvider(WebApiProvider):
         image_resolution = self._normalize_image_resolution(task_type, params)
 
         if mask_source:
-            # Photo-editor mode: image + mask + prompt + model choice
+            # Photo-editor mode only supports sd/flux
+            if task_type not in self.PHOTO_EDITOR_TASK_TYPES:
+                task_type = "sd"
             return {
                 "mode": "photo-editor",
                 "prompt": prompt,
@@ -458,11 +485,19 @@ class RemakerProvider(WebApiProvider):
         msg = (raw_message or {}).get("en") if isinstance(raw_message, dict) else None
         if not msg:
             msg = str(raw_message or payload)
+
+        # 400000 = content filtered by Remaker (commonly triggered by SD/SeeDream)
+        if code == 400000:
+            error_message = "Remaker content filtered — image or prompt was rejected. Try using Flux model instead of SD."
+        else:
+            error_message = f"Remaker unexpected status (code={code}): {msg}"
+
         logger.warning(
             "remaker_status_unexpected",
             provider_job_id=provider_job_id,
             code=code,
             message=msg,
+            full_payload=payload,
         )
         metadata = {"provider_status": code, "provider_message": msg}
         if isinstance(raw_message, dict):
@@ -471,27 +506,52 @@ class RemakerProvider(WebApiProvider):
                 metadata["provider_message_zh"] = zh_message
         return ProviderStatusResult(
             status=ProviderStatus.FAILED,
-            error_message=f"Remaker unexpected status (code={code}): {msg}",
+            error_message=error_message,
             metadata=metadata,
             provider_video_id=provider_job_id,
         )
 
     def get_operation_parameter_spec(self) -> dict:
-        # -- Per-model option maps (Pixverse pattern) --
-        all_ratios = ["match_input_image", "1:1", "2:3", "3:4", "9:16", "3:2", "4:3", "16:9", "21:9"]
-        flux_ratios = list(all_ratios)
+        # -- Per-model option maps --
+        base_ratios = ["match_input_image", "1:1", "2:3", "3:4", "9:16", "3:2", "4:3", "16:9", "21:9"]
+        nano_ratios = ["match_input_image", "1:1", "2:3", "3:4", "9:16", "3:2", "4:3", "16:9", "21:9", "4:5", "5:4"]
+        qwen_ratios = ["match_input_image", "1:1", "2:3", "3:2", "3:4", "4:3", "16:9", "9:16"]
+        all_ratios_union = sorted(set(base_ratios + nano_ratios + qwen_ratios), key=lambda r: r != "match_input_image")
+
         aspect_per_model = {
-            "sd": all_ratios,
-            "flux": flux_ratios,
+            "sd": base_ratios,
+            "flux": base_ratios,
+            "qwen": qwen_ratios,
+            "nano": nano_ratios,
+            "nano2": nano_ratios,
+            "nano_pro": nano_ratios,
+            "sd5": base_ratios,
         }
-        resolution_per_model = {
-            "sd": ["1K", "2K", "4K"],
-            "flux": ["1K"],
-        }
+
         credits_per_model = {
             "sd": 6,
             "flux": 2,
+            "qwen": 2,
+            "nano": 8,
+            "nano2": 5,
+            "nano_pro": 10,
+            "sd5": 8,
         }
+        # Photo-editor mode has different credit costs
+        photo_editor_credits = {"sd": 0, "flux": 8}
+
+        max_images_per_model = {
+            "sd": 9,
+            "flux": 1,
+            "qwen": 3,
+            "nano": 3,
+            "nano2": 13,
+            "nano_pro": 13,
+            "sd5": 13,
+        }
+
+        all_task_types = ["sd", "flux", "qwen", "nano", "nano2", "nano_pro", "sd5"]
+        all_resolutions = ["1K", "2K", "3K", "4K"]
 
         return {
             OperationType.IMAGE_TO_IMAGE.value: {
@@ -521,7 +581,7 @@ class RemakerProvider(WebApiProvider):
                         "required": False,
                         "default": None,
                         "enum": None,
-                        "description": "Inpaint mask (PNG). With mask → photo-editor, without → prompt-editor.",
+                        "description": "Inpaint mask (PNG). With mask → photo-editor (sd/flux only), without → prompt-editor (all models).",
                         "group": "core",
                     },
                     {
@@ -529,11 +589,23 @@ class RemakerProvider(WebApiProvider):
                         "type": "enum",
                         "required": False,
                         "default": "sd",
-                        "enum": ["sd", "flux"],
-                        "description": "Model: Seedream 4 (sd) or Flux",
+                        "enum": all_task_types,
+                        "description": "Model selection. Photo-editor (mask): sd, flux. Prompt-editor: all models.",
                         "group": "core",
                         "metadata": {
                             "credits_per_option": credits_per_model,
+                            "photo_editor_credits": photo_editor_credits,
+                            "max_images_per_option": max_images_per_model,
+                            "photo_editor_only": ["sd", "flux"],
+                            "labels": {
+                                "sd": "SeeDream 4",
+                                "flux": "Flux",
+                                "qwen": "Remaker Image 1.0",
+                                "nano": "Nano Banana",
+                                "nano2": "Nano Banana 2",
+                                "nano_pro": "Nano Banana Pro",
+                                "sd5": "SeeDream 5",
+                            },
                         },
                     },
                     {
@@ -541,7 +613,7 @@ class RemakerProvider(WebApiProvider):
                         "type": "enum",
                         "required": False,
                         "default": "match_input_image",
-                        "enum": all_ratios,
+                        "enum": all_ratios_union,
                         "description": "Aspect ratio (prompt-editor mode only)",
                         "group": "prompt-editor",
                         "metadata": {
@@ -553,11 +625,11 @@ class RemakerProvider(WebApiProvider):
                         "type": "enum",
                         "required": False,
                         "default": "2K",
-                        "enum": ["1K", "2K", "4K"],
+                        "enum": all_resolutions,
                         "description": "Output resolution (prompt-editor mode only)",
                         "group": "prompt-editor",
                         "metadata": {
-                            "per_model_options": resolution_per_model,
+                            "per_model_options": self._RESOLUTION_PER_MODEL,
                         },
                     },
                 ]
