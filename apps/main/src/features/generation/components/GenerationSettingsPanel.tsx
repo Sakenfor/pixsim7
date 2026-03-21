@@ -309,11 +309,22 @@ export function GenerationSettingsPanel({
     return getQuickGenStyleAdvancedParamSpecs(filteredParamSpecs);
   }, [filteredParamSpecs]);
 
-  // Mask picker: detect if provider exposes mask_url param
-  const hasMaskParam = useMemo(
-    () => workbench.allParamSpecs.some((p) => p.name === 'mask_url'),
-    [workbench.allParamSpecs],
-  );
+  // Mask picker: detect if provider exposes mask_url param AND current model supports it
+  const hasMaskParam = useMemo(() => {
+    const maskSpec = workbench.allParamSpecs.find((p) => p.name === 'mask_url');
+    if (!maskSpec) return false;
+    // Check visible_when: { param_name: [allowed_values] }
+    const visibleWhen = maskSpec.metadata?.visible_when;
+    if (visibleWhen && typeof visibleWhen === 'object') {
+      for (const [param, allowedValues] of Object.entries(visibleWhen)) {
+        const currentValue = workbench.dynamicParams?.[param];
+        if (Array.isArray(allowedValues) && currentValue != null && !allowedValues.includes(currentValue)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }, [workbench.allParamSpecs, workbench.dynamicParams]);
   // Read mask and asset ID from the current input item (per-asset masks)
   const { currentInputId, currentInputAssetId, currentInputMaskUrl, currentInputMaskLayers } = useInputStore(
     useShallow((s) => {

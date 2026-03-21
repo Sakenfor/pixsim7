@@ -583,6 +583,9 @@ class RemakerProvider(WebApiProvider):
                         "enum": None,
                         "description": "Inpaint mask (PNG). With mask → photo-editor (sd/flux only), without → prompt-editor (all models).",
                         "group": "core",
+                        "metadata": {
+                            "visible_when": {"task_type": ["sd", "flux"]},
+                        },
                     },
                     {
                         "name": "task_type",
