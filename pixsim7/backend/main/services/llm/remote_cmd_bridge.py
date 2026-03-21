@@ -147,6 +147,15 @@ class RemoteCommandBridge:
             return [a for a in self._agents.values() if a.user_id == user_id or a.user_id is None]
         return list(self._agents.values())
 
+    def get_agent(self, agent_id: str, user_id: Optional[int] = None) -> Optional[RemoteAgent]:
+        """Get a connected agent by ID, optionally enforcing user visibility."""
+        agent = self._agents.get(agent_id)
+        if agent is None:
+            return None
+        if user_id is not None and agent.user_id not in (None, user_id):
+            return None
+        return agent
+
     @property
     def has_available(self) -> bool:
         return any(not a.busy for a in self._agents.values())
@@ -183,7 +192,35 @@ class RemoteCommandBridge:
         agent = self.get_available_agent(user_id=user_id)
         if not agent:
             raise RuntimeError("No remote agents available")
+        return await self._dispatch_to_agent(agent=agent, task_payload=task_payload, timeout=timeout)
 
+    async def dispatch_task_to_agent(
+        self,
+        agent_id: str,
+        task_payload: Dict[str, Any],
+        timeout: int = 120,
+        user_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Dispatch a task to a specific connected agent ID."""
+        target = (agent_id or "").strip()
+        if not target:
+            raise RuntimeError("Target remote agent ID is required")
+
+        agent = self.get_agent(target, user_id=user_id)
+        if not agent:
+            raise RuntimeError(f"Target remote agent '{target}' is not connected")
+        if agent.busy:
+            raise RuntimeError(f"Target remote agent '{target}' is busy")
+
+        return await self._dispatch_to_agent(agent=agent, task_payload=task_payload, timeout=timeout)
+
+    async def _dispatch_to_agent(
+        self,
+        *,
+        agent: RemoteAgent,
+        task_payload: Dict[str, Any],
+        timeout: int,
+    ) -> Dict[str, Any]:
         task_id = str(uuid.uuid4())
         agent.active_tasks += 1
         agent.current_task_id = task_id
@@ -198,13 +235,32 @@ class RemoteCommandBridge:
             await agent.websocket.send_json({
                 "type": "task",
                 "task_id": task_id,
+                "timeout": timeout,
                 **task_payload,
             })
 
             logger.info("remote_task_dispatched", task_id=task_id, agent_id=agent.agent_id)
 
-            # Wait for result
-            result = await asyncio.wait_for(future, timeout=timeout)
+            # Wait for result. If heartbeats are still arriving, treat the task as active
+            # and extend the deadline (same behavior as streaming dispatch).
+            deadline = asyncio.get_event_loop().time() + timeout
+            while True:
+                remaining = deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    self._pending_tasks.pop(task_id, None)
+                    self._active_tasks.pop(task_id, None)
+                    raise TimeoutError(f"Remote agent did not respond within {timeout}s")
+
+                try:
+                    result = await asyncio.wait_for(asyncio.shield(future), timeout=min(remaining, 10))
+                    break
+                except asyncio.TimeoutError:
+                    hb = self._active_tasks.get(task_id, {})
+                    hb_ts = hb.get("_ts")
+                    if isinstance(hb_ts, datetime):
+                        age_s = (datetime.now(timezone.utc) - hb_ts).total_seconds()
+                        if age_s <= timeout:
+                            deadline = asyncio.get_event_loop().time() + timeout
 
             agent.tasks_completed += 1
             logger.info("remote_task_completed", task_id=task_id, agent_id=agent.agent_id)
@@ -213,6 +269,7 @@ class RemoteCommandBridge:
 
         except asyncio.TimeoutError:
             self._pending_tasks.pop(task_id, None)
+            self._active_tasks.pop(task_id, None)
             raise TimeoutError(f"Remote agent did not respond within {timeout}s")
         finally:
             agent.active_tasks = max(0, agent.active_tasks - 1)
@@ -265,6 +322,7 @@ class RemoteCommandBridge:
             await agent.websocket.send_json({
                 "type": "task",
                 "task_id": task_id,
+                "timeout": timeout,
                 **task_payload,
             })
             logger.info("remote_task_dispatched", task_id=task_id, agent_id=agent.agent_id)

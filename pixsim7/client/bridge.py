@@ -13,6 +13,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
+import subprocess as sp
 import sys
 import tempfile
 from typing import Optional
@@ -166,6 +168,7 @@ class Bridge:
         mcp_server_script = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "mcp_server.py"
         )
+        mcp_python_cmd, mcp_python_prefix = self._resolve_mcp_python()
 
         # Create a token file that the bridge updates per-request
         # and the MCP server reads on each API call (fresh auth)
@@ -177,13 +180,14 @@ class Bridge:
         config = {
             "mcpServers": {
                 "pixsim": {
-                    "command": sys.executable,
-                    "args": [mcp_server_script],
+                    "command": mcp_python_cmd,
+                    "args": [*mcp_python_prefix, mcp_server_script],
                     "env": {
                         "PIXSIM_API_URL": api_base,
                         "PIXSIM_API_TOKEN": token,
                         "PIXSIM_TOKEN_FILE": token_file,
                         "PIXSIM_SCOPE": scope,
+                        "PYTHONIOENCODING": "utf-8",
                     },
                 }
             }
@@ -195,20 +199,89 @@ class Bridge:
             json.dump(config, f, indent=2)
 
         # Also register with Codex's global MCP config (if codex is available)
-        self._ensure_codex_mcp(mcp_server_script, api_base, token, token_file, scope)
+        self._ensure_codex_mcp(
+            mcp_server_script,
+            api_base,
+            token,
+            token_file,
+            scope,
+            mcp_python_cmd=mcp_python_cmd,
+            mcp_python_prefix=mcp_python_prefix,
+        )
 
         self._mcp_config_path = path
         return path
 
     @staticmethod
-    def _ensure_codex_mcp(mcp_server_script: str, api_base: str, token: str, token_file: str, scope: str) -> None:
+    def _resolve_mcp_python() -> tuple[str, list[str]]:
+        """Find a Python runtime that can import MCP dependencies.
+
+        Bridge/runtime environments sometimes differ. We probe candidate
+        interpreters so Codex MCP config points to one that can run mcp_server.py.
+        """
+        candidates: list[tuple[str, list[str]]] = []
+        seen: set[tuple[str, tuple[str, ...]]] = set()
+
+        def add_candidate(cmd: str | None, prefix: list[str] | None = None) -> None:
+            if not cmd:
+                return
+            key = (cmd, tuple(prefix or []))
+            if key in seen:
+                return
+            seen.add(key)
+            candidates.append((cmd, list(prefix or [])))
+
+        # Explicit override for debugging/deploy environments.
+        add_candidate(os.environ.get("PIXSIM_MCP_PYTHON"))
+
+        # Prefer current runtime first.
+        add_candidate(sys.executable)
+
+        # Then fall back to common Python launchers on PATH.
+        add_candidate(shutil.which("python"))
+        add_candidate(shutil.which("python3"))
+        py_launcher = shutil.which("py")
+        if py_launcher:
+            add_candidate(py_launcher, ["-3"])
+            add_candidate(py_launcher)
+
+        probe_code = "import mcp, httpx"
+        for cmd, prefix in candidates:
+            try:
+                result = sp.run(
+                    [cmd, *prefix, "-c", probe_code],
+                    capture_output=True,
+                    timeout=5,
+                )
+                if result.returncode == 0:
+                    return cmd, prefix
+            except Exception:
+                continue
+
+        # Keep behavior predictable if probes fail unexpectedly.
+        client_log(
+            "Could not find a Python runtime with mcp/httpx installed; "
+            f"falling back to {sys.executable}",
+            error=True,
+        )
+        return sys.executable, []
+
+    @staticmethod
+    def _ensure_codex_mcp(
+        mcp_server_script: str,
+        api_base: str,
+        token: str,
+        token_file: str,
+        scope: str,
+        *,
+        mcp_python_cmd: str,
+        mcp_python_prefix: list[str],
+    ) -> None:
         """Register pixsim MCP server with Codex (idempotent).
 
         Uses `codex mcp` CLI for reliable config management, then patches
         config.toml for timeout settings the CLI doesn't expose.
         """
-        import shutil
-        import subprocess as sp
         codex_bin = shutil.which("codex")
         if not codex_bin:
             return
@@ -223,7 +296,8 @@ class Bridge:
                     "--env", f"PIXSIM_API_TOKEN={token}",
                     "--env", f"PIXSIM_TOKEN_FILE={token_file.replace(chr(92), '/')}",
                     "--env", f"PIXSIM_SCOPE={scope}",
-                    "--", sys.executable, mcp_server_script,
+                    "--env", "PYTHONIOENCODING=utf-8",
+                    "--", mcp_python_cmd, *mcp_python_prefix, mcp_server_script,
                 ],
                 capture_output=True, timeout=10,
             )
@@ -292,6 +366,12 @@ class Bridge:
         }))
 
         try:
+            try:
+                timeout = int(msg.get("timeout", 120))
+            except (TypeError, ValueError):
+                timeout = 120
+            timeout = max(10, min(timeout, 900))
+
             # Images: either pre-encoded base64 or local file paths to read
             images = msg.get("images")  # [{media_type, data}] — already base64
             image_paths = msg.get("image_paths")  # [{path, media_type}] — local files
@@ -299,7 +379,9 @@ class Bridge:
             if image_paths and not images:
                 images = self._read_local_images(image_paths)
 
-            # Progress callback — sends heartbeats with live status
+            # Progress callback - sends heartbeats with live status
+            last_detail = user_text[:100] or "Working..."
+
             async def send_progress(event_type: str, detail: str):
                 try:
                     await ws.send(json.dumps({
@@ -311,31 +393,61 @@ class Bridge:
                 except Exception:
                     pass
 
+            keepalive_done = asyncio.Event()
+
+            async def send_keepalive():
+                """Emit periodic heartbeats so backend does not time out on quiet turns."""
+                while not keepalive_done.is_set():
+                    await asyncio.sleep(15)
+                    if keepalive_done.is_set():
+                        break
+                    try:
+                        await ws.send(json.dumps({
+                            "type": "heartbeat",
+                            "status": "active",
+                            "action": "processing_task",
+                            "detail": last_detail,
+                        }))
+                    except Exception:
+                        pass
+
             def on_progress(event_type: str, detail: str):
+                nonlocal last_detail
+                if detail:
+                    last_detail = detail[:200]
                 asyncio.ensure_future(send_progress(event_type, detail))
 
-            session_id, response = await self._pool.send_message(
-                prompt, images=images, on_progress=on_progress,
-                claude_session_id=claude_session_id,
-                engine=engine,
-            )
-            self._tasks_handled += 1
+            keepalive_task = asyncio.create_task(send_keepalive())
+            try:
+                session_id, response = await self._pool.send_message(
+                    prompt, timeout=timeout, images=images, on_progress=on_progress,
+                    claude_session_id=claude_session_id,
+                    engine=engine,
+                )
+                self._tasks_handled += 1
 
-            # Get the Claude session UUID for resume support
-            session = next((s for s in self._pool.sessions if s.session_id == session_id), None)
-            claude_session_id = session.claude_session_id if session else None
+                # Get the Claude session UUID for resume support
+                session = next((s for s in self._pool.sessions if s.session_id == session_id), None)
+                claude_session_id = session.claude_session_id if session else None
 
-            preview = response[:120].replace('\n', ' ')
-            client_log(f"[task:{task_id[:8]}] Done via {session_id} ({len(response)} chars): {preview}")
+                preview = response[:120].replace('\n', ' ')
+                client_log(f"[task:{task_id[:8]}] Done via {session_id} ({len(response)} chars): {preview}")
 
-            result_msg: dict = {
-                "type": "result",
-                "task_id": task_id,
-                "edited_prompt": response,
-            }
-            if claude_session_id:
-                result_msg["claude_session_id"] = claude_session_id
-            await ws.send(json.dumps(result_msg))
+                result_msg: dict = {
+                    "type": "result",
+                    "task_id": task_id,
+                    "edited_prompt": response,
+                }
+                if claude_session_id:
+                    result_msg["claude_session_id"] = claude_session_id
+                await ws.send(json.dumps(result_msg))
+            finally:
+                keepalive_done.set()
+                keepalive_task.cancel()
+                try:
+                    await keepalive_task
+                except asyncio.CancelledError:
+                    pass
 
         except Exception as e:
             client_log(f"[task:{task_id[:8]}] Error: {e}", error=True)

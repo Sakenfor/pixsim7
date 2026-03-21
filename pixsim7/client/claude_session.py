@@ -169,58 +169,156 @@ class AgentCmdSession:
 
         return True
 
-    async def _jsonrpc_init(self) -> None:
-        """Send JSON-RPC initialize + thread/start for protocols that need it."""
+    async def _jsonrpc_call(
+        self,
+        method: str,
+        params: dict | None,
+        request_id: int,
+        timeout: float = 15,
+    ) -> dict:
+        """Send a JSON-RPC request and wait for its response while handling notifications."""
         if not self._process or not self._process.stdin:
-            return
+            raise RuntimeError("JSON-RPC call attempted without a running process")
 
-        # initialize
-        init_msg = json.dumps({
-            "jsonrpc": "2.0", "method": "initialize",
-            "params": {"clientInfo": {"name": "pixsim", "version": "1.0"}, "protocolVersion": "2.0"},
-            "id": 0,
+        msg = json.dumps({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params or {},
+            "id": request_id,
         }) + "\n"
-        self._process.stdin.write(init_msg.encode())
+        self._process.stdin.write(msg.encode())
         await self._process.stdin.drain()
 
-        # Wait for init response
-        init_resp = await asyncio.wait_for(self._response_queue.get(), timeout=10)
-        parsed = self._protocol.parse_event(init_resp)
-        if parsed.kind == "error":
-            raise RuntimeError(f"Init failed: {parsed.text}")
-
-        # thread/start (or thread/resume)
-        if self._resume_session_id:
-            thread_msg = json.dumps({
-                "jsonrpc": "2.0", "method": "thread/resume",
-                "params": {"threadId": self._resume_session_id, "approvalPolicy": "never", "sandbox": "danger-full-access"},
-                "id": 1,
-            }) + "\n"
-        else:
-            thread_msg = json.dumps({
-                "jsonrpc": "2.0", "method": "thread/start",
-                "params": {"approvalPolicy": "never", "sandbox": "danger-full-access"},
-                "id": 1,
-            }) + "\n"
-        self._process.stdin.write(thread_msg.encode())
-        await self._process.stdin.drain()
-
-        # Read events until we get the thread response (skip notifications)
-        deadline = asyncio.get_event_loop().time() + 15
+        deadline = asyncio.get_event_loop().time() + timeout
         while asyncio.get_event_loop().time() < deadline:
-            event = await asyncio.wait_for(self._response_queue.get(), timeout=10)
+            remaining = max(0.1, deadline - asyncio.get_event_loop().time())
+            event = await asyncio.wait_for(self._response_queue.get(), timeout=min(5, remaining))
+
+            if event.get("id") == request_id:
+                if "error" in event:
+                    err = event["error"]
+                    message = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+                    raise RuntimeError(message)
+                return event.get("result", {})
+
             parsed = self._protocol.parse_event(event)
             if parsed.kind == "error":
-                raise RuntimeError(f"Thread start failed: {parsed.text}")
-            if parsed.kind == "init" and parsed.session_id:
-                self.cli_session_id = parsed.session_id
-                client_log(f"[{self.session_id}] Thread: {self.cli_session_id}")
-                return
-            # Skip notifications (configWarning, thread/started, mcp_startup, etc.)
-            if parsed.kind == "progress":
+                raise RuntimeError(parsed.text or f"{method} failed")
+            if parsed.kind == "progress" and parsed.text:
                 client_log(f"[{self.session_id}] Init: {parsed.text}")
 
-        raise RuntimeError("Timed out waiting for thread ID")
+        raise RuntimeError(f"Timed out waiting for response to {method} (id={request_id})")
+
+    async def _wait_for_mcp_startup_complete(self, timeout: float = 15) -> None:
+        """Wait for MCP startup complete notification when available."""
+        deadline = asyncio.get_event_loop().time() + timeout
+        saw_mcp_event = False
+
+        while asyncio.get_event_loop().time() < deadline:
+            remaining = max(0.1, deadline - asyncio.get_event_loop().time())
+            try:
+                event = await asyncio.wait_for(self._response_queue.get(), timeout=min(2, remaining))
+            except asyncio.TimeoutError:
+                continue
+
+            method = event.get("method", "")
+            parsed = self._protocol.parse_event(event)
+
+            if method.startswith("codex/event/mcp_startup_"):
+                saw_mcp_event = True
+                if parsed.kind == "error":
+                    raise RuntimeError(parsed.text or "MCP startup failed")
+                if parsed.kind == "progress" and parsed.text:
+                    client_log(f"[{self.session_id}] Init: {parsed.text}")
+                if method == "codex/event/mcp_startup_complete":
+                    return
+                continue
+
+            if parsed.kind == "error":
+                raise RuntimeError(parsed.text)
+            if parsed.kind == "progress" and parsed.text:
+                client_log(f"[{self.session_id}] Init: {parsed.text}")
+
+        if saw_mcp_event:
+            client_log(
+                f"[{self.session_id}] Init: MCP startup did not complete within {int(timeout)}s",
+                error=True,
+            )
+
+    async def _log_mcp_server_status(self) -> None:
+        """Log MCP server/tool counts for observability."""
+        try:
+            result = await self._jsonrpc_call("mcpServerStatus/list", {}, request_id=2, timeout=10)
+        except Exception as e:
+            client_log(f"[{self.session_id}] Init: mcpServerStatus/list failed: {e}", error=True)
+            return
+
+        data = result.get("data") if isinstance(result, dict) else None
+        if not isinstance(data, list):
+            return
+
+        if not data:
+            client_log(f"[{self.session_id}] Init: No MCP servers configured")
+            return
+
+        summaries = []
+        for server in data:
+            if not isinstance(server, dict):
+                continue
+            name = server.get("name", "unknown")
+            tools = server.get("tools") or {}
+            tool_count = len(tools) if isinstance(tools, dict) else 0
+            summaries.append(f"{name}={tool_count}")
+
+        if summaries:
+            client_log(f"[{self.session_id}] Init: MCP tool counts: {', '.join(summaries)}")
+
+    async def _jsonrpc_init(self) -> None:
+        """Send JSON-RPC initialize + thread/start for protocols that need it."""
+        await self._jsonrpc_call(
+            "initialize",
+            {
+                "clientInfo": {"name": "pixsim", "version": "1.0"},
+                "capabilities": {"experimentalApi": True},
+            },
+            request_id=0,
+            timeout=10,
+        )
+
+        if self._resume_session_id:
+            thread_result = await self._jsonrpc_call(
+                "thread/resume",
+                {
+                    "threadId": self._resume_session_id,
+                    "approvalPolicy": "never",
+                    "sandbox": "danger-full-access",
+                    "persistExtendedHistory": False,
+                },
+                request_id=1,
+                timeout=20,
+            )
+        else:
+            thread_result = await self._jsonrpc_call(
+                "thread/start",
+                {
+                    "approvalPolicy": "never",
+                    "sandbox": "danger-full-access",
+                    "experimentalRawEvents": False,
+                    "persistExtendedHistory": False,
+                },
+                request_id=1,
+                timeout=20,
+            )
+
+        thread = thread_result.get("thread", {}) if isinstance(thread_result, dict) else {}
+        thread_id = thread.get("id")
+        if not thread_id:
+            raise RuntimeError("thread/start returned no thread ID")
+        self.cli_session_id = thread_id
+        client_log(f"[{self.session_id}] Thread: {self.cli_session_id}")
+
+        await self._wait_for_mcp_startup_complete(timeout=15)
+        await self._log_mcp_server_status()
 
     async def stop(self) -> None:
         """Stop the CLI process gracefully."""

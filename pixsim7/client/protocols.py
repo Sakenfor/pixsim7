@@ -248,9 +248,36 @@ class CodexAppServerProtocol(AgentProtocol):
         if method == "turn/started":
             return ParsedEvent(kind="progress", text="Thinking...", raw=raw)
 
-        # MCP startup
+        # MCP startup progress
+        if method == "codex/event/mcp_startup_update":
+            msg = params.get("msg", params)
+            server = msg.get("server", "unknown")
+            status = msg.get("status", {})
+            state = status.get("state", "")
+            if state == "failed":
+                err = status.get("error", "unknown error")
+                return ParsedEvent(kind="error", text=f"MCP startup failed for {server}: {err}", raw=raw)
+            if state == "ready":
+                return ParsedEvent(kind="progress", text=f"MCP ready: {server}", raw=raw)
+            if state == "starting":
+                return ParsedEvent(kind="progress", text=f"MCP starting: {server}", raw=raw)
+            if state == "cancelled":
+                return ParsedEvent(kind="progress", text=f"MCP cancelled: {server}", raw=raw)
+
+        # MCP startup summary
         if method == "codex/event/mcp_startup_complete":
-            return ParsedEvent(kind="progress", text="MCP tools loaded", raw=raw)
+            msg = params.get("msg", params)
+            ready = msg.get("ready", []) or []
+            failed = msg.get("failed", []) or []
+            if failed:
+                details = "; ".join(
+                    f"{entry.get('server', 'unknown')}: {entry.get('error', 'unknown error')}"
+                    for entry in failed
+                )
+                return ParsedEvent(kind="error", text=f"MCP startup failed: {details}", raw=raw)
+            if ready:
+                return ParsedEvent(kind="progress", text=f"MCP tools loaded: {', '.join(ready)}", raw=raw)
+            return ParsedEvent(kind="progress", text="MCP startup complete (no servers ready)", raw=raw)
 
         # Thread status
         if method == "thread/status/changed":
