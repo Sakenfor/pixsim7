@@ -73,7 +73,7 @@ export function DevToolHost({ toolId, context, className }: DevToolHostProps) {
   const ToolComponent = tool.panelComponent;
 
   return (
-    <div className={`h-full ${className || ''}`}>
+    <div className={`h-full flex flex-col ${className || ''}`}>
       <Suspense fallback={<div className="flex items-center justify-center h-full text-neutral-500 text-sm">Loading...</div>}>
         <ToolComponent context={context} />
       </Suspense>

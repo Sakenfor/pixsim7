@@ -1,11 +1,15 @@
 import type { ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { useSidebarCollapse } from './hooks/useSidebarCollapse';
+import { useResizeHandle } from './hooks/useResizeHandle';
+import { ResizeDivider } from './ResizeDivider';
 
 export const SIDEBAR_WIDTHS = { narrow: 144, default: 192, wide: 224 } as const;
 
 const COLLAPSED_WIDTH = 32;
+const MIN_SIDEBAR_WIDTH = 120;
+const MAX_SIDEBAR_WIDTH = 480;
 
 export interface SidebarPaneShellProps {
   title?: ReactNode;
@@ -34,6 +38,8 @@ export interface SidebarPaneShellProps {
    * that already shows a title (floating panel or visible dockview tab bar).
    */
   autoHideTitle?: boolean;
+  /** Enable drag-to-resize on the right edge. Works with collapsible. Default: false. */
+  resizable?: boolean;
   /** Enable detach/dock-back support. Shows a pop-out button in the header. */
   detachable?: {
     /** Whether the sidebar is currently detached. */
@@ -55,6 +61,7 @@ export function SidebarPaneShell({
   bodyClassName,
   bodyScrollable = true,
   collapsible = false,
+  resizable = false,
   expandedWidth = SIDEBAR_WIDTHS.default,
   persistKey,
   defaultCollapsed = false,
@@ -107,6 +114,25 @@ export function SidebarPaneShell({
     }
   };
 
+  // Resize state — stored width overrides expandedWidth when resizable
+  const [resizedWidth, setResizedWidth] = useState<number | null>(null);
+  const widthAtDragStart = useRef(0);
+
+  const { isDragging, handleMouseDown: onResizeMouseDown } = useResizeHandle({
+    onResize: useCallback(({ delta }) => {
+      const newWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, widthAtDragStart.current + delta));
+      setResizedWidth(newWidth);
+    }, []),
+    orientation: 'vertical',
+  });
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    widthAtDragStart.current = resizedWidth ?? expandedWidth;
+    onResizeMouseDown(e);
+  }, [resizedWidth, expandedWidth, onResizeMouseDown]);
+
+  const effectiveExpandedWidth = resizedWidth ?? expandedWidth;
+
   const borderClass =
     variant === 'light' ? 'border-neutral-200 dark:border-neutral-800' : 'border-neutral-800';
   const titleClass =
@@ -115,7 +141,7 @@ export function SidebarPaneShell({
       : 'text-sm font-semibold text-neutral-200';
 
   const widthStyle = collapsible
-    ? { width: collapsed ? COLLAPSED_WIDTH : expandedWidth }
+    ? { width: collapsed ? COLLAPSED_WIDTH : effectiveExpandedWidth }
     : undefined;
 
   const effectiveTitle = autoHideTitle && hasExternalTitle ? undefined : title;
@@ -125,7 +151,7 @@ export function SidebarPaneShell({
       ref={rootRef}
       className={clsx(
         !collapsible && widthClassName,
-        'flex shrink-0 flex-col border-r relative',
+        'flex shrink-0 flex-col border-r relative min-h-0',
         collapsible && 'transition-[width] duration-200 ease-in-out',
         borderClass,
         className,
@@ -279,6 +305,15 @@ export function SidebarPaneShell({
             {children}
           </div>
         </>
+      )}
+      {resizable && !collapsed && (
+        <div className="absolute top-0 -right-1 h-full z-10">
+          <ResizeDivider
+            onMouseDown={handleResizeStart}
+            isDragging={isDragging}
+            orientation="vertical"
+          />
+        </div>
       )}
     </div>
   );

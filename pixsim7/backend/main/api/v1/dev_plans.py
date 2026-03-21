@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Literal, Optional, Set
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, get_database
@@ -65,6 +65,11 @@ from pixsim7.backend.main.services.docs.plan_stages import (
     normalize_plan_stage,
     plan_stage_options,
     validate_plan_stage,
+)
+from pixsim7.backend.main.services.docs.plan_authoring_policy import (
+    PLAN_AUTHORING_CONTRACT_ENDPOINT,
+    get_plan_authoring_contract,
+    validate_plan_create_policy,
 )
 from pixsim_logging import get_logger
 
@@ -573,6 +578,7 @@ class PlanReviewAssigneeEntry(BaseModel):
     tasksCompleted: int = 0
     connectedAt: Optional[str] = None
     lastSeenAt: Optional[str] = None
+    modelId: Optional[str] = None
 
 
 class PlanReviewAssigneesResponse(BaseModel):
@@ -731,7 +737,11 @@ class PlanStagesResponse(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────────
 
 
-def _bundle_to_summary(b: PlanBundle, children: Optional[List[PlanBundle]] = None) -> dict:
+def _bundle_to_summary(
+    b: PlanBundle,
+    children: Optional[List[PlanBundle]] = None,
+    review_counts: Optional[tuple[int, int]] = None,
+) -> dict:
     """Build summary dict from PlanBundle (Document + PlanRegistry)."""
     doc, plan = b.doc, b.plan
     stage_value = _normalize_stage_for_response(plan.stage)
@@ -757,6 +767,8 @@ def _bundle_to_summary(b: PlanBundle, children: Optional[List[PlanBundle]] = Non
         "handoffs": plan.handoffs or [],
         "tags": doc.tags or [],
         "dependsOn": plan.depends_on or [],
+        "reviewRoundCount": review_counts[0] if review_counts else 0,
+        "activeReviewRoundCount": review_counts[1] if review_counts else 0,
         "children": [],
     }
     if children:
@@ -2047,6 +2059,7 @@ def _list_live_bridge_agents(principal: CurrentUser) -> List[Dict[str, Any]]:
                 "active_tasks": int(getattr(agent, "active_tasks", 0) or 0),
                 "tasks_completed": int(getattr(agent, "tasks_completed", 0) or 0),
                 "connected_at": agent.connected_at,
+                "model": agent.metadata.get("model"),
             }
         )
     rows.sort(
@@ -2737,7 +2750,34 @@ async def list_plans(
 
     total = len(filtered)
     page = filtered[offset : offset + limit]
-    plans = [_bundle_to_summary(b, children=children_map.get(b.id)) for b in page]
+
+    # Batch-load review round counts for plans in this page
+    page_plan_ids = [b.id for b in page]
+    review_counts: dict[str, tuple[int, int]] = {}
+    if page_plan_ids:
+        rows = (
+            await db.execute(
+                select(
+                    PlanReviewRound.plan_id,
+                    func.count(PlanReviewRound.id).label("total"),
+                    func.count(PlanReviewRound.id).filter(
+                        PlanReviewRound.status.in_(("open", "changes_requested"))
+                    ).label("active"),
+                )
+                .where(PlanReviewRound.plan_id.in_(page_plan_ids))
+                .group_by(PlanReviewRound.plan_id)
+            )
+        ).all()
+        review_counts = {r[0]: (r[1], r[2]) for r in rows}
+
+    plans = [
+        _bundle_to_summary(
+            b,
+            children=children_map.get(b.id),
+            review_counts=review_counts.get(b.id),
+        )
+        for b in page
+    ]
 
     return {
         "version": "1",
@@ -3046,6 +3086,49 @@ class PlanCreateResponse(BaseModel):
     exportError: Optional[str] = None
 
 
+class PlanAuthoringRuleEntry(BaseModel):
+    id: str
+    endpointId: str
+    field: str
+    level: Literal["required", "suggested"]
+    appliesToPrincipalTypes: List[str] = Field(default_factory=list)
+    description: str
+    constraint: Dict[str, Any] = Field(default_factory=dict)
+    message: str
+
+
+class PlanAuthoringContractResponse(BaseModel):
+    version: str
+    endpoint: str
+    summary: str
+    rules: List[PlanAuthoringRuleEntry] = Field(default_factory=list)
+
+
+@router.get("/meta/authoring-contract", response_model=PlanAuthoringContractResponse)
+async def get_plan_authoring_contract_endpoint(
+    _user: CurrentUser,
+):
+    contract = get_plan_authoring_contract()
+    return PlanAuthoringContractResponse(
+        version=contract["version"],
+        endpoint=contract["endpoint"],
+        summary=contract["summary"],
+        rules=[
+            PlanAuthoringRuleEntry(
+                id=str(rule.get("id") or ""),
+                endpointId=str(rule.get("endpoint_id") or ""),
+                field=str(rule.get("field") or ""),
+                level=str(rule.get("level") or "suggested"),
+                appliesToPrincipalTypes=list(rule.get("applies_to_principal_types") or []),
+                description=str(rule.get("description") or ""),
+                constraint=dict(rule.get("constraint") or {}),
+                message=str(rule.get("message") or ""),
+            )
+            for rule in (contract.get("rules") or [])
+        ],
+    )
+
+
 @router.post("", response_model=PlanCreateResponse)
 async def create_plan(
     payload: PlanCreateRequest,
@@ -3056,6 +3139,17 @@ async def create_plan(
     from pixsim7.backend.main.domain.docs.models import Document, PlanRegistry
     from pixsim7.backend.main.services.docs.plan_write import _git_commit
     from pixsim7.backend.main.shared.datetime_utils import utcnow
+
+    policy_violations = validate_plan_create_policy(payload, principal)
+    if policy_violations:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Plan authoring policy violation",
+                "errors": policy_violations,
+                "contract": PLAN_AUTHORING_CONTRACT_ENDPOINT,
+            },
+        )
 
     # Check for duplicate
     existing = await db.get(PlanRegistry, payload.id)
@@ -3555,6 +3649,7 @@ async def list_plan_review_assignees(
             tasksCompleted=int(row.get("tasks_completed", 0) or 0),
             connectedAt=row["connected_at"].isoformat() if row.get("connected_at") else None,
             lastSeenAt=row["connected_at"].isoformat() if row.get("connected_at") else None,
+            modelId=row.get("model"),
         )
         for row in live_rows
     ]
@@ -4636,6 +4731,7 @@ class AgentContextResponse(BaseModel):
     discovery: Dict[str, str] = Field(
         default_factory=lambda: {
             "metaContracts": "/api/v1/meta/contracts",
+            "planAuthoringContract": PLAN_AUTHORING_CONTRACT_ENDPOINT,
             "hint": "GET /api/v1/meta/contracts for full API surface discovery across all domains (prompts, blocks, plans, codegen, ui, assistant).",
         }
     )
@@ -4708,7 +4804,13 @@ async def get_agent_context(
                 "method": "POST",
                 "url": "/dev/plans",
                 "body": '{"id": "slug", "title": "...", "summary": "...", "markdown": "...", "namespace": "dev/plans", "plan_type": "feature|bugfix|refactor|exploration|task", "task_scope": "plan|user|system", "status": "active", "stage": "backlog|proposed|discovery|design|implementation|validation|rollout|completed", "owner": "unassigned", "priority": "normal", "parent_id": null, "target": {}, "checkpoints": [], "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
-                "description": "Create a new plan (Document + PlanRegistry). Use parent_id to create sub-plans under an initiative.",
+                "description": "Create a new plan (Document + PlanRegistry). Use parent_id to create sub-plans under an initiative. Automated callers must include checkpoints; see get_authoring_contract.",
+            },
+            {
+                "action": "get_authoring_contract",
+                "method": "GET",
+                "url": PLAN_AUTHORING_CONTRACT_ENDPOINT,
+                "description": "Canonical required/suggested plan authoring rules by principal type. Use this instead of hard-coded assumptions.",
             },
             {
                 "action": "list_stages",

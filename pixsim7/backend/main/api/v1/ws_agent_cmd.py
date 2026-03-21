@@ -39,9 +39,11 @@ async def _resolve_user_id(token: str | None) -> int | None:
         return None
     try:
         from pixsim7.backend.main.api.dependencies import get_auth_service
+        from pixsim7.backend.main.shared.actor import RequestPrincipal
         auth_service = get_auth_service()
-        user = await auth_service.verify_token(token)
-        return user.id if user else None
+        payload = await auth_service.verify_token_claims(token, update_last_used=False)
+        principal = RequestPrincipal.from_jwt_payload(payload)
+        return principal.user_id
     except Exception:
         return None
 
@@ -49,9 +51,10 @@ async def _resolve_user_id(token: str | None) -> int | None:
 @router.websocket("/ws/agent-cmd")
 async def agent_cmd_websocket(
     websocket: WebSocket,
-    agent_type: str = "claude-cli",
+    agent_type: str = "unknown",
     agent_id: str = None,
     token: str = None,
+    model: str = None,
 ):
     """
     WebSocket for remote agent command execution.
@@ -69,8 +72,12 @@ async def agent_cmd_websocket(
         prefix = f"user-{user_id}" if user_id else "shared"
         agent_id = f"{prefix}-{uuid.uuid4().hex[:8]}"
 
+    metadata = {}
+    if model:
+        metadata["model"] = model
     agent = await remote_cmd_bridge.connect(
         websocket, agent_id=agent_id, agent_type=agent_type, user_id=user_id,
+        metadata=metadata or None,
     )
 
     try:
@@ -90,21 +97,28 @@ async def agent_cmd_websocket(
                     remote_cmd_bridge.fail_task(task_id, error)
 
             elif msg_type == "heartbeat":
-                # Forward to streaming dispatch (if active)
+                # Timestamp-only tracking for bridge deadline extension
                 remote_cmd_bridge.record_heartbeat(agent_id, data)
+                # Canonical heartbeat → single authority for activity state
                 try:
-                    from pixsim7.backend.main.services.meta.agent_sessions import agent_session_registry
-                    agent_session_registry.heartbeat(
-                        session_id=agent_id,
+                    from pixsim7.backend.main.services.meta.agent_sessions import agent_session_registry, from_ws_heartbeat
+                    hb = from_ws_heartbeat(
+                        agent_id=agent_id,
                         agent_type=agent_type,
-                        status=data.get("status", "active"),
-                        contract_id=data.get("contract_id"),
-                        plan_id=data.get("plan_id"),
-                        action=data.get("action", ""),
-                        detail=data.get("detail", ""),
+                        data=data,
+                        task_id=agent.current_task_id,
                     )
+                    agent_session_registry.record(hb)
                 except Exception:
                     pass
+
+            elif msg_type == "models_available":
+                models = data.get("models", [])
+                models_agent_type = data.get("agent_type") or agent_type
+                remote_cmd_bridge.update_agent_models(agent_id, models, engine=models_agent_type)
+
+            elif msg_type == "pool_status":
+                remote_cmd_bridge.update_pool_status(agent_id, data)
 
             elif msg_type == "pong":
                 pass

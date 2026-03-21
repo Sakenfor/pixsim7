@@ -84,10 +84,10 @@ interface AgentSessionEntry {
   started_at: string;
   last_heartbeat: string;
   duration_seconds: number;
-  current_plan_id: string | null;
-  current_contract_id: string | null;
-  current_action: string;
-  current_detail: string;
+  plan_id: string | null;
+  contract_id: string | null;
+  action: string;
+  detail: string;
   recent_activity: {
     action: string;
     detail: string;
@@ -440,6 +440,16 @@ function ContractGraphView() {
 // Active Sessions View (sessions + bridges combined)
 // =============================================================================
 
+interface PoolSession {
+  session_id: string;
+  engine: string;
+  state: string;
+  cli_session_id: string | null;
+  cli_model: string | null;
+  messages_sent: number;
+  messages_received: number;
+}
+
 interface BridgeAgent {
   agent_id: string;
   agent_type: string;
@@ -447,6 +457,8 @@ interface BridgeAgent {
   connected_at: string;
   busy: boolean;
   tasks_completed: number;
+  engines: string[];
+  pool_sessions: PoolSession[];
 }
 
 interface BridgeStatusResponse {
@@ -468,12 +480,6 @@ interface CliTokenResponse {
   command: string;
 }
 
-const MODELS = [
-  { id: 'sonnet', label: 'Sonnet', desc: 'Fast, good balance' },
-  { id: 'opus', label: 'Opus', desc: 'Most capable' },
-  { id: 'haiku', label: 'Haiku', desc: 'Fastest, lightweight' },
-] as const;
-
 function ActiveSessionsView() {
   const [sessions, setSessions] = useState<AgentSessionsResponse | null>(null);
   const [bridges, setBridges] = useState<BridgeStatusResponse | null>(null);
@@ -482,8 +488,7 @@ function ActiveSessionsView() {
   const [tokenCopied, setTokenCopied] = useState(false);
 
   // Bridge config
-  const [poolSize, setPoolSize] = useState(1);
-  const [model, setModel] = useState('sonnet');
+  const [poolSize] = useState(1);
   const [skipPermissions, setSkipPermissions] = useState(true);
 
   const load = useCallback(async () => {
@@ -500,18 +505,17 @@ function ActiveSessionsView() {
   const startServerBridge = useCallback(async () => {
     setBridgeAction('starting');
     try {
-      const args = [`--model ${model}`];
-      if (skipPermissions) args.push('--dangerously-skip-permissions');
+      const extraArgs = skipPermissions ? '--dangerously-skip-permissions' : undefined;
       const res = await pixsimClient.post<StartBridgeResponse>('/meta/agents/bridge/start', {
         pool_size: poolSize,
-        claude_args: args.join(' '),
+        extra_args: extraArgs,
       });
       setBridgeAction(res.message);
       setTimeout(() => { void load(); setBridgeAction(''); }, 3000);
     } catch (e) {
       setBridgeAction(e instanceof Error ? e.message : 'Failed');
     }
-  }, [load, poolSize, model, skipPermissions]);
+  }, [load, poolSize, skipPermissions]);
 
   const stopServerBridge = useCallback(async () => {
     setBridgeAction('stopping');
@@ -569,83 +573,45 @@ function ActiveSessionsView() {
 
       {bridgeAgents.length === 0 ? (
         <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-          {/* Config row */}
           <div className="px-4 py-3 bg-neutral-50 dark:bg-neutral-900 space-y-2.5">
-            {/* Model */}
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-neutral-500 w-14 shrink-0">Model</span>
-              <div className="flex gap-1">
-                {MODELS.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => setModel(m.id)}
-                    className={`px-2 py-1 text-[11px] rounded transition-colors ${
-                      model === m.id
-                        ? 'bg-accent text-white'
-                        : 'border border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                    }`}
-                    title={m.desc}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Pool size */}
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-neutral-500 w-14 shrink-0">Sessions</span>
-              <div className="flex gap-1">
-                {[1, 2, 3].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setPoolSize(n)}
-                    className={`w-7 h-7 text-[11px] rounded transition-colors ${
-                      poolSize === n
-                        ? 'bg-accent text-white'
-                        : 'border border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
+            <div className="text-[11px] text-neutral-500">
+              Auto-detects available engines (claude, codex). Sessions spawn on demand.
             </div>
 
             {/* Skip permissions toggle */}
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-neutral-500 w-14 shrink-0">Options</span>
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={skipPermissions}
-                  onChange={(e) => setSkipPermissions(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-neutral-300 accent-accent"
-                />
-                <span className="text-[11px] text-neutral-500">Skip permissions</span>
-              </label>
-            </div>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={skipPermissions}
+                onChange={(e) => setSkipPermissions(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-neutral-300 accent-accent"
+              />
+              <span className="text-[11px] text-neutral-500">Skip permissions</span>
+            </label>
           </div>
 
-          {/* Start button */}
-          <div className="px-4 py-2.5 flex items-center justify-between">
-            <span className="text-[10px] text-neutral-400">
-              {poolSize} {model} session{poolSize > 1 ? 's' : ''}
-            </span>
+          <div className="px-4 py-2.5 flex items-center justify-end">
             <Button size="sm" onClick={startServerBridge} disabled={bridgeAction === 'starting'}>
               {bridgeAction === 'starting' ? 'Starting...' : 'Start Bridge'}
             </Button>
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-2">
-          <Badge color="green" className="text-[10px]">
-            {bridgeAgents.length} running
-          </Badge>
-          <div className="ml-auto">
-            <Button size="sm" variant="ghost" onClick={stopServerBridge} disabled={bridgeAction === 'stopping'}>
-              {bridgeAction === 'stopping' ? 'Stopping...' : 'Stop Bridge'}
-            </Button>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Badge color="green" className="text-[10px]">
+              {bridgeAgents.length} bridge{bridgeAgents.length !== 1 ? 's' : ''} connected
+            </Badge>
+            {bridgeAgents.map((a) => (
+              <span key={a.agent_id} className="text-[10px] text-neutral-400">
+                {a.agent_type} · {a.tasks_completed} tasks{a.busy ? ' · busy' : ''}
+              </span>
+            ))}
+            <div className="ml-auto">
+              <Button size="sm" variant="ghost" onClick={stopServerBridge} disabled={bridgeAction === 'stopping'}>
+                {bridgeAction === 'stopping' ? 'Stopping...' : 'Stop Bridge'}
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -714,21 +680,28 @@ function ActiveSessionsView() {
                     </Button>
                   </div>
                 </div>
-                {/* Show current activity from heartbeat session if available */}
-                {(() => {
-                  const session = (sessions?.active ?? []).find((s) => s.session_id === agent.agent_id);
-                  if (!session || !session.current_action) return null;
-                  return (
-                    <div className="px-4 py-1.5 text-xs">
-                      <span className="text-neutral-500">
-                        {session.current_action === 'thinking' ? 'Thinking...' :
-                         session.current_action === 'tool_use' ? session.current_detail :
-                         session.current_action === 'streaming' ? 'Generating...' :
-                         session.current_detail || session.current_action}
-                      </span>
-                    </div>
-                  );
-                })()}
+                {/* Pool sessions within this bridge */}
+                {agent.pool_sessions.length > 0 && (
+                  <div className="px-4 py-1.5 space-y-1">
+                    {agent.pool_sessions.map((ps) => (
+                      <div key={ps.session_id} className="flex items-center gap-2 text-[10px]">
+                        <Badge color={ps.state === 'ready' ? 'green' : ps.state === 'busy' ? 'orange' : 'gray'} className="text-[9px]">
+                          {ps.state}
+                        </Badge>
+                        <span className="font-mono text-neutral-500">{ps.session_id}</span>
+                        {ps.cli_model && <span className="text-neutral-400">{ps.cli_model}</span>}
+                        {ps.messages_sent > 0 && (
+                          <span className="text-neutral-400">{ps.messages_sent} sent</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {agent.pool_sessions.length === 0 && (
+                  <div className="px-4 py-1.5 text-[10px] text-neutral-400">
+                    No active sessions — engines: {agent.engines.join(', ') || 'auto-detect'}
+                  </div>
+                )}
                 <div className="px-4 py-1.5 text-[10px] text-neutral-400">
                   Connected {formatTimestamp(agent.connected_at)}
                 </div>
@@ -755,25 +728,25 @@ function ActiveSessionsView() {
                 </div>
 
                 <div className="px-4 py-2 space-y-1 text-xs">
-                  {session.current_action && (
+                  {session.action && (
                     <div>
                       <span className="text-neutral-500">Action: </span>
-                      <span className="font-medium">{session.current_action}</span>
+                      <span className="font-medium">{session.action}</span>
                     </div>
                   )}
-                  {session.current_detail && (
-                    <div className="text-neutral-500">{session.current_detail}</div>
+                  {session.detail && (
+                    <div className="text-neutral-500">{session.detail}</div>
                   )}
-                  {session.current_contract_id && (
+                  {session.contract_id && (
                     <div>
                       <span className="text-neutral-500">Contract: </span>
-                      <Badge color="blue" className="text-[10px]">{session.current_contract_id}</Badge>
+                      <Badge color="blue" className="text-[10px]">{session.contract_id}</Badge>
                     </div>
                   )}
-                  {session.current_plan_id && (
+                  {session.plan_id && (
                     <div>
                       <span className="text-neutral-500">Plan: </span>
-                      <PlanLink planId={session.current_plan_id} />
+                      <PlanLink planId={session.plan_id} />
                     </div>
                   )}
                 </div>
@@ -921,9 +894,9 @@ const ACTION_LABELS: Record<string, string> = {
   updated: 'updated',
   deleted: 'deleted',
   deactivated: 'deactivated',
-  field_changed: 'changed',
-  content_updated: 'content updated',
-  status_changed: 'status changed',
+  field_changed: 'updated',
+  content_updated: 'updated',
+  status_changed: 'updated',
 };
 
 const ACTION_BADGE_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
@@ -1354,7 +1327,7 @@ function ProfilesView() {
   // Create form
   const [newId, setNewId] = useState('');
   const [newLabel, setNewLabel] = useState('');
-  const [newType, setNewType] = useState('claude-cli');
+  const [newType, setNewType] = useState('claude');
 
   const loadProfiles = useCallback(() => {
     pixsimClient
@@ -1464,7 +1437,7 @@ function ProfilesView() {
           <input className={inputCls} placeholder="ID (slug, e.g. plan-worker)" value={newId} onChange={(e) => setNewId(e.target.value)} />
           <input className={inputCls} placeholder="Label (e.g. Claude Plan Worker)" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
           <select className={inputCls} value={newType} onChange={(e) => setNewType(e.target.value)}>
-            <option value="claude-cli">claude-cli</option>
+            <option value="claude">claude</option>
             <option value="codex">codex</option>
             <option value="custom">custom</option>
           </select>
@@ -1548,7 +1521,7 @@ function ProfilesView() {
             <div className="flex-1">
               <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400 mb-1">Type</label>
               <select className={inputCls} value={editForm.agent_type} onChange={(e) => setEditForm({ ...editForm, agent_type: e.target.value })}>
-                <option value="claude-cli">claude-cli</option>
+                <option value="claude">claude</option>
                 <option value="assistant">assistant</option>
                 <option value="codex">codex</option>
                 <option value="custom">custom</option>

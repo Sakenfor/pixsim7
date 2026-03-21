@@ -7,12 +7,15 @@ which plan, what status). Sessions expire after a configurable timeout.
 
 No DB persistence — this is ephemeral runtime state. If the server
 restarts, agents re-register on their next heartbeat.
+
+Exports ``CanonicalHeartbeat`` — the single normalised shape for all
+heartbeat data (from WS, HTTP, or internal callers).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, FrozenSet, List, Optional
 
 from pixsim_logging import get_logger
 
@@ -20,6 +23,64 @@ logger = get_logger()
 
 SESSION_TIMEOUT_SECONDS = 120  # expire after 2 minutes of no heartbeat
 
+# ── Canonical heartbeat contract ─────────────────────────────────
+
+_KNOWN_HB_FIELDS: FrozenSet[str] = frozenset({
+    "type", "status", "action", "detail",
+    "contract_id", "plan_id", "endpoint",
+    "model", "task_id",
+})
+
+
+@dataclass(frozen=True)
+class CanonicalHeartbeat:
+    """Immutable, typed heartbeat record."""
+
+    session_id: str
+    agent_type: str = "claude"
+    status: str = "active"
+    action: str = ""
+    detail: str = ""
+    contract_id: Optional[str] = None
+    plan_id: Optional[str] = None
+    endpoint: Optional[str] = None
+    task_id: Optional[str] = None
+    model: Optional[str] = None
+    timestamp: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc),
+    )
+    metadata: Dict[str, str] = field(default_factory=dict)
+
+
+def from_ws_heartbeat(
+    agent_id: str,
+    agent_type: str,
+    data: Dict[str, Any],
+    *,
+    task_id: Optional[str] = None,
+) -> CanonicalHeartbeat:
+    """Build a ``CanonicalHeartbeat`` from a raw WS heartbeat dict."""
+    model_raw = data.get("model")
+    return CanonicalHeartbeat(
+        session_id=agent_id,
+        agent_type=agent_type,
+        status=data.get("status", "active"),
+        action=data.get("action", ""),
+        detail=data.get("detail", ""),
+        contract_id=data.get("contract_id"),
+        plan_id=data.get("plan_id"),
+        endpoint=data.get("endpoint"),
+        task_id=task_id,
+        model=model_raw if isinstance(model_raw, str) and model_raw else None,
+        metadata={
+            k: v
+            for k, v in data.items()
+            if k not in _KNOWN_HB_FIELDS and isinstance(v, str)
+        },
+    )
+
+
+# ── Activity / session dataclasses ───────────────────────────────
 
 @dataclass
 class AgentActivity:
@@ -40,10 +101,10 @@ class AgentSession:
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     last_heartbeat: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     status: str = "active"  # active, paused, completed, errored
-    current_plan_id: Optional[str] = None
-    current_contract_id: Optional[str] = None
-    current_action: str = ""
-    current_detail: str = ""
+    plan_id: Optional[str] = None
+    contract_id: Optional[str] = None
+    action: str = ""
+    detail: str = ""
     activity_log: List[AgentActivity] = field(default_factory=list)
     metadata: Dict[str, str] = field(default_factory=dict)
 
@@ -62,6 +123,20 @@ class AgentSessionRegistry:
 
     def __init__(self) -> None:
         self._sessions: Dict[str, AgentSession] = {}
+
+    def record(self, hb: CanonicalHeartbeat) -> AgentSession:
+        """Accept a CanonicalHeartbeat and update session state."""
+        return self.heartbeat(
+            session_id=hb.session_id,
+            agent_type=hb.agent_type,
+            status=hb.status,
+            contract_id=hb.contract_id,
+            endpoint=hb.endpoint,
+            plan_id=hb.plan_id,
+            action=hb.action,
+            detail=hb.detail,
+            metadata=dict(hb.metadata) if hb.metadata else None,
+        )
 
     def heartbeat(
         self,
@@ -91,10 +166,10 @@ class AgentSessionRegistry:
 
         session.last_heartbeat = now
         session.status = status
-        session.current_plan_id = plan_id
-        session.current_contract_id = contract_id
-        session.current_action = action
-        session.current_detail = detail
+        session.plan_id = plan_id
+        session.contract_id = contract_id
+        session.action = action
+        session.detail = detail
         if metadata:
             session.metadata.update(metadata)
 
@@ -146,14 +221,14 @@ class AgentSessionRegistry:
         """Get active sessions currently working on a specific contract."""
         return [
             s for s in self.get_active()
-            if s.current_contract_id == contract_id
+            if s.contract_id == contract_id
         ]
 
     def get_by_plan(self, plan_id: str) -> List[AgentSession]:
         """Get active sessions currently working on a specific plan."""
         return [
             s for s in self.get_active()
-            if s.current_plan_id == plan_id
+            if s.plan_id == plan_id
         ]
 
     def _cleanup(self) -> None:

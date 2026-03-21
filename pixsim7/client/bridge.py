@@ -37,11 +37,12 @@ class Bridge:
         self,
         pool: AgentPool,
         url: str = "ws://localhost:8000/api/v1/ws/agent-cmd",
-        agent_type: str = "claude-cli",
+        agent_type: str | None = None,
     ):
         self._pool = pool
         self._url = url
-        self._agent_type = agent_type
+        # Derive agent_type from pool command name (e.g. "claude", "codex")
+        self._agent_type = agent_type or pool._prefix or "claude"
         self._agent_id: Optional[str] = None
         self._connected = False
         self._tasks_handled = 0
@@ -89,6 +90,12 @@ class Bridge:
         # Reconnect with same identity so backend maps back to the same agent
         if self._agent_id:
             ws_url += f"&agent_id={self._agent_id}"
+        # Send model info if known from any pool session
+        pool_model = next(
+            (s.cli_model for s in self._pool.sessions if s.cli_model), None
+        )
+        if pool_model:
+            ws_url += f"&model={pool_model}"
 
         client_log(f"Connecting to {self._url}...")
 
@@ -120,13 +127,10 @@ class Bridge:
                     client_log(f"MCP config: {mcp_config_path}")
 
             # Report pool capacity to backend
-            await ws.send(json.dumps({
-                "type": "pool_status",
-                "max_sessions": self._pool._max_sessions,
-                "ready": self._pool.ready_count,
-                "busy": self._pool.busy_count,
-                "total": len(self._pool._sessions),
-            }))
+            await self._send_pool_status(ws)
+
+            # Report available models from pool sessions (if any)
+            await self._report_models(ws)
 
             client_log(f"Connected as {self._agent_id}")
             client_log(f"Pool: {self._pool.ready_count} ready, {self._pool.busy_count} busy, max {self._pool._max_sessions}")
@@ -149,6 +153,110 @@ class Bridge:
 
                 elif msg_type == "ping":
                     await ws.send(json.dumps({"type": "pong"}))
+
+    async def _send_pool_status(self, ws) -> None:
+        """Send current pool session info to backend."""
+        await ws.send(json.dumps({
+            "type": "pool_status",
+            "max_sessions": self._pool._max_sessions,
+            "ready": self._pool.ready_count,
+            "busy": self._pool.busy_count,
+            "total": len(self._pool._sessions),
+            "engines": [e.split("/")[-1].split("\\")[-1] for e in self._pool._engines],
+            "sessions": [s.to_dict() for s in self._pool.sessions],
+        }))
+
+    async def _report_models(self, ws) -> None:
+        """Probe engines for available models and report to backend.
+
+        Uses lightweight probes (initialize + model/list only, no thread/MCP)
+        for engines that support it. Sessions are stopped immediately after.
+        """
+        for engine in self._pool._engines:
+            engine_name = engine.split("/")[-1].split("\\")[-1]
+            models = await self._probe_models(engine)
+            if models:
+                await ws.send(json.dumps({
+                    "type": "models_available",
+                    "agent_type": engine_name,
+                    "models": models,
+                }))
+                client_log(f"Reported {len(models)} models for '{engine_name}'")
+
+    async def _probe_models(self, engine: str) -> list[dict]:
+        """Lightweight model probe — initialize + model/list, no thread or MCP."""
+        try:
+            return await asyncio.wait_for(self._probe_models_impl(engine), timeout=15)
+        except asyncio.TimeoutError:
+            client_log(f"Model probe for '{engine}' timed out", error=True)
+            return []
+        except Exception as e:
+            client_log(f"Model probe for '{engine}' failed: {e}", error=True)
+            return []
+
+    async def _probe_models_impl(self, engine: str) -> list[dict]:
+        if not shutil.which(engine):
+            return []
+
+        from pixsim7.client.protocols import get_protocol
+        protocol = get_protocol(engine)
+
+        if not (hasattr(protocol, 'needs_jsonrpc_init') and protocol.needs_jsonrpc_init()):
+            return []
+
+        resolved = shutil.which(engine) or engine
+        cmd = protocol.build_start_cmd(resolved)
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+
+        import json as _json
+        try:
+            # Send initialize + model/list back to back
+            msgs = _json.dumps({
+                "jsonrpc": "2.0", "method": "initialize",
+                "params": {"clientInfo": {"name": "pixsim-probe", "version": "1.0"}, "capabilities": {"experimentalApi": True}},
+                "id": 0,
+            }) + "\n" + _json.dumps({
+                "jsonrpc": "2.0", "method": "model/list",
+                "params": {"includeHidden": True}, "id": 1,
+            }) + "\n"
+            proc.stdin.write(msgs.encode())
+            await proc.stdin.drain()
+
+            # Read lines until we get model/list response (id=1)
+            while True:
+                line = await asyncio.wait_for(proc.stdout.readline(), timeout=10)
+                if not line:
+                    break
+                try:
+                    d = _json.loads(line.decode(errors="replace").strip())
+                    if d.get("id") == 1 and "result" in d:
+                        raw_models = d["result"].get("data", [])
+                        return [
+                            {
+                                "id": m.get("id", ""),
+                                "model": m.get("model", m.get("id", "")),
+                                "label": m.get("displayName", m.get("id", "")),
+                                "is_default": m.get("isDefault", False),
+                                "hidden": m.get("hidden", False),
+                                "input_modalities": m.get("inputModalities", []),
+                            }
+                            for m in raw_models if isinstance(m, dict)
+                        ]
+                except _json.JSONDecodeError:
+                    pass
+            return []
+        finally:
+            proc.terminate()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=3)
+            except asyncio.TimeoutError:
+                proc.kill()
 
     def _ensure_mcp_config(self, scope: str = "dev", token: str = "") -> Optional[str]:
         """Generate MCP config file pointing to the pixsim MCP server."""
@@ -441,6 +549,9 @@ class Bridge:
                 if claude_session_id:
                     result_msg["claude_session_id"] = claude_session_id
                 await ws.send(json.dumps(result_msg))
+
+                # Report updated pool status (new sessions may have spawned)
+                await self._send_pool_status(ws)
             finally:
                 keepalive_done.set()
                 keepalive_task.cancel()

@@ -213,13 +213,13 @@ def _discover_game_route_group_contracts(
                 session_id=s.session_id,
                 agent_type=s.agent_type,
                 status=s.status,
-                action=s.current_action,
-                detail=s.current_detail,
-                plan_id=s.current_plan_id,
+                action=s.action,
+                detail=s.detail,
+                plan_id=s.plan_id,
                 duration_seconds=s.duration_seconds,
             )
             for s in active_sessions
-            if s.current_contract_id == contract_id
+            if s.contract_id == contract_id
         ]
 
         method_summary = ", ".join(methods) if methods else "none"
@@ -306,13 +306,13 @@ async def list_contract_endpoints(
                 session_id=s.session_id,
                 agent_type=s.agent_type,
                 status=s.status,
-                action=s.current_action,
-                detail=s.current_detail,
-                plan_id=s.current_plan_id,
+                action=s.action,
+                detail=s.detail,
+                plan_id=s.plan_id,
                 duration_seconds=s.duration_seconds,
             )
             for s in active_sessions
-            if s.current_contract_id == c.id
+            if s.contract_id == c.id
         ]
 
         contracts.append(ContractIndexEntry(
@@ -389,10 +389,10 @@ class AgentSessionEntry(BaseModel):
     started_at: str
     last_heartbeat: str
     duration_seconds: int
-    current_plan_id: Optional[str] = None
-    current_contract_id: Optional[str] = None
-    current_action: str = ""
-    current_detail: str = ""
+    plan_id: Optional[str] = None
+    contract_id: Optional[str] = None
+    action: str = ""
+    detail: str = ""
     metadata: Dict[str, str] = Field(default_factory=dict)
     recent_activity: List[Dict[str, Any]] = Field(default_factory=list)
 
@@ -481,10 +481,10 @@ async def list_agent_sessions() -> AgentSessionsResponse:
                 started_at=s.started_at.isoformat(),
                 last_heartbeat=s.last_heartbeat.isoformat(),
                 duration_seconds=s.duration_seconds,
-                current_plan_id=s.current_plan_id,
-                current_contract_id=s.current_contract_id,
-                current_action=s.current_action,
-                current_detail=s.current_detail,
+                plan_id=s.plan_id,
+                contract_id=s.contract_id,
+                action=s.action,
+                detail=s.detail,
                 metadata=s.metadata,
                 recent_activity=[
                     {
@@ -658,6 +658,15 @@ async def get_agent_stats(
 # =============================================================================
 
 
+class PoolSessionEntry(BaseModel):
+    session_id: str
+    engine: str
+    state: str
+    cli_session_id: Optional[str] = None
+    cli_model: Optional[str] = None
+    messages_sent: int = 0
+    messages_received: int = 0
+
 class RemoteAgentEntry(BaseModel):
     agent_id: str
     agent_type: str
@@ -665,6 +674,8 @@ class RemoteAgentEntry(BaseModel):
     connected_at: str
     busy: bool
     tasks_completed: int
+    engines: List[str] = []
+    pool_sessions: List[PoolSessionEntry] = []
 
 
 class RemoteAgentBridgeStatus(BaseModel):
@@ -696,20 +707,38 @@ async def get_bridge_status(
             pass
 
     agents = remote_cmd_bridge.get_agents(user_id=user_id)
+
+    def _build_agent_entry(a) -> RemoteAgentEntry:
+        pool = a.pool_status or {}
+        sessions_raw = pool.get("sessions", [])
+        pool_sessions = [
+            PoolSessionEntry(
+                session_id=s.get("session_id", ""),
+                engine=s.get("session_id", "").split("-")[0] if s.get("session_id") else "unknown",
+                state=s.get("state", "unknown"),
+                cli_session_id=s.get("cli_session_id"),
+                cli_model=s.get("cli_model"),
+                messages_sent=s.get("messages_sent", 0),
+                messages_received=s.get("messages_received", 0),
+            )
+            for s in sessions_raw if isinstance(s, dict)
+        ]
+        engines = sorted({s.engine for s in pool_sessions}) if pool_sessions else [a.agent_type]
+        return RemoteAgentEntry(
+            agent_id=a.agent_id,
+            agent_type=a.agent_type,
+            user_id=a.user_id,
+            connected_at=a.connected_at.isoformat(),
+            busy=a.busy,
+            tasks_completed=a.tasks_completed,
+            engines=engines,
+            pool_sessions=pool_sessions,
+        )
+
     return RemoteAgentBridgeStatus(
         connected=len(agents),
         available=sum(1 for a in agents if not a.busy),
-        agents=[
-            RemoteAgentEntry(
-                agent_id=a.agent_id,
-                agent_type=a.agent_type,
-                user_id=a.user_id,
-                connected_at=a.connected_at.isoformat(),
-                busy=a.busy,
-                tasks_completed=a.tasks_completed,
-            )
-            for a in agents
-        ],
+        agents=[_build_agent_entry(a) for a in agents],
     )
 
 
@@ -848,7 +877,7 @@ async def generate_cli_token(
 
     token = create_agent_token(
         agent_id=agent_id,
-        agent_type="claude-cli",
+        agent_type="cli",
         on_behalf_of=effective_user_id,
         ttl_hours=hours,
     )
@@ -879,8 +908,8 @@ async def generate_cli_token(
                 token_id=token_id,
                 expires_at=expires_at,
                 client_type="agent_token",
-                client_name=f"claude-cli:{agent_id}",
-                user_agent="agent/claude-cli",
+                client_name=f"agent:{agent_id}",
+                user_agent="agent/bridge",
             )
         )
         await db.commit()
@@ -900,9 +929,10 @@ async def generate_cli_token(
 
 
 class StartBridgeRequest(BaseModel):
-    pool_size: int = Field(1, ge=1, le=5, description="Number of Claude sessions")
-    claude_args: Optional[str] = Field(None, description="Extra args for Claude CLI")
-    resume_session_id: Optional[str] = Field(None, description="Claude session UUID to resume")
+    pool_size: int = Field(1, ge=1, le=5, description="Number of sessions for primary engine")
+    engines: Optional[str] = Field(None, description="Comma-separated engines (e.g. claude,codex). Auto-detects if omitted.")
+    extra_args: Optional[str] = Field(None, description="Extra CLI args passed to agent sessions")
+    resume_session_id: Optional[str] = Field(None, description="Session UUID to resume")
 
 
 class StartBridgeResponse(BaseModel):
@@ -966,10 +996,12 @@ async def start_server_bridge(
         ws_url += f"?token={bridge_token}"
 
     cmd = [sys.executable, "-m", "pixsim7.client", "--url", ws_url, "--pool-size", str(payload.pool_size)]
+    if payload.engines:
+        cmd.extend(["--engines", payload.engines])
     if payload.resume_session_id:
         cmd.extend(["--resume-session", payload.resume_session_id])
-    if payload.claude_args:
-        cmd.extend(payload.claude_args.split())
+    if payload.extra_args:
+        cmd.extend(payload.extra_args.split())
 
     env = dict(os.environ)
     pythonpath = env.get("PYTHONPATH", "")
@@ -981,8 +1013,6 @@ async def start_server_bridge(
             cmd,
             cwd=repo_root,
             env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
         )
         scope = f"user:{user_id}" if user_id else "shared"
         return StartBridgeResponse(
@@ -1091,6 +1121,17 @@ async def archive_chat_session(
     session.status = "archived"
     await db.commit()
     return {"ok": True}
+
+
+@router.get("/agents/bridge/models")
+async def get_bridge_models(
+    agent_type: Optional[str] = Query(None, description="Filter by agent type (e.g. codex)"),
+) -> Dict[str, Any]:
+    """Get available models reported by connected bridge agents."""
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
+
+    models = remote_cmd_bridge.get_available_models(agent_type=agent_type)
+    return {"models": models}
 
 
 @router.get("/agents/bridge/active-task")
@@ -1217,7 +1258,7 @@ async def send_message_to_agent(
 @router.post("/agents/bridge/send-stream")
 async def send_message_to_agent_stream(
     payload: SendMessageRequest,
-    authorization: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
     db: AsyncSession = Depends(get_database),
 ):
     """SSE streaming variant of bridge/send.

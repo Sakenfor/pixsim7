@@ -33,13 +33,15 @@ class RemoteAgent:
     """A connected remote agent terminal."""
     agent_id: str
     websocket: WebSocket
-    agent_type: str = "claude-cli"
+    agent_type: str = "unknown"
     user_id: Optional[int] = None  # None = shared/admin bridge
     connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     active_tasks: int = 0          # number of in-flight tasks
     current_task_id: Optional[str] = None  # most recent task (for heartbeat tracking)
     tasks_completed: int = 0
     metadata: Dict[str, str] = field(default_factory=dict)
+    available_models: List[Dict[str, Any]] = field(default_factory=list)
+    pool_status: Dict[str, Any] = field(default_factory=dict)  # pool sessions info
 
     @property
     def busy(self) -> bool:
@@ -58,8 +60,10 @@ class RemoteCommandBridge:
         self._completed_results: Dict[str, Dict[str, Any]] = {}
         # Active task tracking: agent_id -> {task_id, heartbeats}
         self._active_tasks: Dict[str, Dict[str, Any]] = {}
+        # Available models per engine (engine -> list of model dicts)
+        self._engine_models: Dict[str, List[Dict[str, Any]]] = {}
 
-    async def connect(self, websocket: WebSocket, agent_id: str, agent_type: str = "claude-cli", user_id: Optional[int] = None, metadata: Optional[Dict[str, str]] = None) -> RemoteAgent:
+    async def connect(self, websocket: WebSocket, agent_id: str, agent_type: str = "unknown", user_id: Optional[int] = None, metadata: Optional[Dict[str, str]] = None) -> RemoteAgent:
         """Register a new remote agent connection (or reconnect an existing one)."""
         await websocket.accept()
 
@@ -166,6 +170,33 @@ class RemoteCommandBridge:
     @property
     def connected_count(self) -> int:
         return len(self._agents)
+
+    def update_pool_status(self, agent_id: str, status: Dict[str, Any]) -> None:
+        """Update pool status for a connected agent."""
+        agent = self._agents.get(agent_id)
+        if agent:
+            agent.pool_status = status
+
+    def update_agent_models(self, agent_id: str, models: List[Dict[str, Any]], engine: Optional[str] = None) -> None:
+        """Update available models. Stored per engine, not per agent."""
+        engine_key = engine or (self._agents[agent_id].agent_type if agent_id in self._agents else "unknown")
+        self._engine_models[engine_key] = models
+        logger.info("engine_models_updated", engine=engine_key, count=len(models), agent_id=agent_id)
+
+    def get_available_models(self, agent_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get available models, optionally filtered by engine/agent_type."""
+        if agent_type:
+            return list(self._engine_models.get(agent_type, []))
+        # Return all models across engines
+        seen: set = set()
+        result: List[Dict[str, Any]] = []
+        for models in self._engine_models.values():
+            for m in models:
+                mid = m.get("id", "")
+                if mid and mid not in seen:
+                    seen.add(mid)
+                    result.append(m)
+        return result
 
     async def dispatch_task(
         self,
@@ -276,16 +307,23 @@ class RemoteCommandBridge:
             agent.current_task_id = None
 
     def record_heartbeat(self, agent_id: str, data: Dict[str, Any]) -> None:
-        """Forward a heartbeat to the task's heartbeat queue (if streaming)."""
+        """Update timestamp tracking and forward to heartbeat queue (if streaming).
+
+        Activity state (action/detail) is tracked by AgentSessionRegistry,
+        not here.  This method only maintains the timestamp needed for
+        deadline extension in dispatch_task / dispatch_task_streaming.
+        """
         agent = self._agents.get(agent_id)
-        if agent and agent.current_task_id:
+        if not agent:
+            return
+        # Capture model info from heartbeat if provided
+        model = data.get("model")
+        if isinstance(model, str) and model:
+            agent.metadata["model"] = model
+        if agent.current_task_id:
             task_id = agent.current_task_id
-            # Track latest heartbeat with timestamp for staleness detection
-            self._active_tasks[task_id] = {
-                "action": data.get("action", ""),
-                "detail": data.get("detail", ""),
-                "_ts": datetime.now(timezone.utc),
-            }
+            # Timestamp-only tracking for deadline extension
+            self._active_tasks[task_id] = {"_ts": datetime.now(timezone.utc)}
             queue = self._heartbeat_queues.get(task_id)
             if queue:
                 try:
@@ -423,7 +461,10 @@ class RemoteCommandBridge:
 
         Checks dispatch state first, then falls back to recent heartbeats
         (for tasks that outlived their SSE stream).
+        Activity state (action/detail) is read from AgentSessionRegistry.
         """
+        from pixsim7.backend.main.services.meta.agent_sessions import agent_session_registry
+
         now = datetime.now(timezone.utc)
 
         # Primary: check dispatch state
@@ -431,33 +472,30 @@ class RemoteCommandBridge:
             if user_id is not None and agent.user_id != user_id and agent.user_id is not None:
                 continue
             if agent.busy and agent.current_task_id:
-                task_info = self._active_tasks.get(agent.current_task_id, {})
+                session = agent_session_registry.get_session(agent.agent_id)
                 return {
                     "task_id": agent.current_task_id,
                     "agent_id": agent.agent_id,
                     "status": "active",
-                    "action": task_info.get("action", ""),
-                    "detail": task_info.get("detail", ""),
+                    "action": session.action if session else "",
+                    "detail": session.detail if session else "",
                 }
 
         # Fallback: check for tasks with recent heartbeats (< 30s old)
-        # These are tasks where the SSE dropped but the agent is still working
         stale_keys = []
         for task_id, info in self._active_tasks.items():
             ts = info.get("_ts")
             if ts and (now - ts).total_seconds() > 30:
                 stale_keys.append(task_id)
                 continue
-            # Recent heartbeat — task is still active
             return {
                 "task_id": task_id,
                 "status": "active",
                 "agent_id": "",
-                "action": info.get("action", ""),
-                "detail": info.get("detail", ""),
+                "action": "",
+                "detail": "",
             }
 
-        # Clean up stale entries
         for k in stale_keys:
             self._active_tasks.pop(k, None)
 

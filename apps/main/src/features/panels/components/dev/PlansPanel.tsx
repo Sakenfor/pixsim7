@@ -9,6 +9,7 @@
 import {
   Badge,
   Button,
+  DisclosureSection,
   Dropdown,
   DropdownItem,
   EmptyState,
@@ -31,7 +32,7 @@ import { Icon } from '@lib/icons';
 // =============================================================================
 
 interface CheckpointStep {
-  id: string;
+  id?: string;
   label: string;
   done: boolean;
   tests?: string[];
@@ -88,6 +89,8 @@ interface PlanSummary {
   handoffs: string[];
   tags: string[];
   dependsOn: string[];
+  reviewRoundCount?: number;
+  activeReviewRoundCount?: number;
   children: PlanChildSummary[];
 }
 
@@ -109,11 +112,345 @@ interface PlanUpdateResponse {
   newScope: string | null;
 }
 
+interface PlanStageOptionEntry {
+  value: string;
+  label: string;
+  description: string;
+  aliases: string[];
+}
+
+interface PlanStagesResponse {
+  defaultStage: string;
+  stages: PlanStageOptionEntry[];
+}
+
+type ReviewRoundStatus = 'open' | 'changes_requested' | 'approved' | 'concluded';
+type ReviewNodeKind = 'review_comment' | 'agent_response' | 'conclusion' | 'note';
+type ReviewAuthorRole = 'reviewer' | 'author' | 'agent' | 'system';
+type ReviewRequestStatus = 'open' | 'in_progress' | 'fulfilled' | 'cancelled';
+type ReviewRequestQueuePolicy = 'start_now' | 'queue_next' | 'auto_reroute';
+
+interface PlanReviewRound {
+  id: string;
+  planId: string;
+  roundNumber: number;
+  reviewRevision: number | null;
+  status: ReviewRoundStatus;
+  note: string | null;
+  conclusion: string | null;
+  createdBy: string | null;
+  actorPrincipalType: 'user' | 'agent' | 'service' | null;
+  actorAgentId: string | null;
+  actorRunId: string | null;
+  actorUserId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface PlanReviewNode {
+  id: string;
+  planId: string;
+  roundId: string;
+  kind: ReviewNodeKind;
+  authorRole: ReviewAuthorRole;
+  body: string;
+  severity: 'info' | 'low' | 'medium' | 'high' | 'critical' | null;
+  planAnchor: Record<string, unknown> | null;
+  meta: Record<string, unknown> | null;
+  createdBy: string | null;
+  actorPrincipalType: 'user' | 'agent' | 'service' | null;
+  actorAgentId: string | null;
+  actorRunId: string | null;
+  actorUserId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface PlanReviewLink {
+  id: string;
+  planId: string;
+  roundId: string;
+  sourceNodeId: string;
+  targetNodeId: string | null;
+  relation: 'replies_to' | 'addresses' | 'because_of' | 'supports' | 'contradicts' | 'supersedes';
+  sourceAnchor: Record<string, unknown> | null;
+  targetAnchor: Record<string, unknown> | null;
+  targetPlanAnchor: Record<string, unknown> | null;
+  quote: string | null;
+  meta: Record<string, unknown> | null;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+interface PlanReviewGraphResponse {
+  planId: string;
+  rounds: PlanReviewRound[];
+  nodes: PlanReviewNode[];
+  links: PlanReviewLink[];
+  requests: PlanReviewRequest[];
+}
+
+interface PlanReviewRoundCreateRequest {
+  round_number?: number;
+  review_revision?: number;
+  status?: 'open' | 'changes_requested' | 'approved';
+  note?: string;
+}
+
+interface PlanReviewRoundUpdateRequest {
+  status?: ReviewRoundStatus;
+  conclusion?: string;
+  note?: string;
+}
+
+interface PlanReviewRefInput {
+  relation: PlanReviewLink['relation'];
+  target_node_id?: string;
+  target_plan_anchor?: Record<string, unknown>;
+  quote?: string;
+}
+
+interface PlanReviewNodeCreateRequest {
+  round_id: string;
+  kind: ReviewNodeKind;
+  author_role: ReviewAuthorRole;
+  body: string;
+  severity?: NonNullable<PlanReviewNode['severity']>;
+  refs?: PlanReviewRefInput[];
+}
+
+interface PlanReviewNodeCreateResponse {
+  node: PlanReviewNode;
+  links: PlanReviewLink[];
+}
+
+interface PlanReviewRequest {
+  id: string;
+  planId: string;
+  roundId: string | null;
+  title: string;
+  body: string;
+  status: ReviewRequestStatus;
+  targetMode: 'auto' | 'session' | 'recent_agent' | null;
+  targetAgentId: string | null;
+  targetAgentType: string | null;
+  targetSessionId: string | null;
+  preferredAgentId: string | null;
+  targetProfileId: string | null;
+  targetMethod: string | null;
+  targetModelId: string | null;
+  targetProvider: string | null;
+  queueIfBusy: boolean;
+  autoRerouteIfBusy: boolean;
+  dispatchState: 'assigned' | 'queued' | 'unassigned' | null;
+  dispatchReason: string | null;
+  requestedBy: string | null;
+  requestedByPrincipalType: 'user' | 'agent' | 'service' | null;
+  requestedByAgentId: string | null;
+  requestedByRunId: string | null;
+  requestedByUserId: number | null;
+  meta: Record<string, unknown> | null;
+  resolutionNote: string | null;
+  resolvedNodeId: string | null;
+  resolvedBy: string | null;
+  resolvedByPrincipalType: 'user' | 'agent' | 'service' | null;
+  resolvedByAgentId: string | null;
+  resolvedByRunId: string | null;
+  resolvedByUserId: number | null;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+}
+
+interface PlanReviewRequestCreateRequest {
+  round_id?: string;
+  title: string;
+  body: string;
+  target_mode?: 'auto' | 'session' | 'recent_agent';
+  target_agent_id?: string;
+  target_agent_type?: string;
+  target_session_id?: string;
+  preferred_agent_id?: string;
+  target_profile_id?: string;
+  target_method?: string;
+  target_model_id?: string;
+  target_provider?: string;
+  queue_if_busy?: boolean;
+  auto_reroute_if_busy?: boolean;
+}
+
+interface PlanReviewRequestUpdateRequest {
+  status?: ReviewRequestStatus;
+  resolution_note?: string;
+  resolved_node_id?: string;
+}
+
+interface PlanReviewRequestDispatchRequest {
+  timeout_seconds?: number;
+  spawn_if_missing?: boolean;
+  create_round_if_missing?: boolean;
+}
+
+interface PlanReviewRequestDispatchResponse {
+  request: PlanReviewRequest;
+  node: PlanReviewNode | null;
+  executed: boolean;
+  message: string;
+  durationMs: number | null;
+}
+
+interface PlanReviewDispatchTickItem {
+  planId: string;
+  requestId: string;
+  status: string;
+  executed: boolean;
+  message: string;
+  dispatchState: 'assigned' | 'queued' | 'unassigned' | null;
+  resolvedNodeId: string | null;
+}
+
+interface PlanReviewDispatchTickResponse {
+  attempted: number;
+  processed: number;
+  items: PlanReviewDispatchTickItem[];
+}
+
+interface PlanReviewAssignee {
+  id: string;
+  label: string;
+  source: 'live' | 'recent';
+  targetMode: 'session' | 'recent_agent';
+  targetSessionId: string | null;
+  agentId: string;
+  agentType: string | null;
+  busy: boolean;
+  availableNow: boolean;
+  activeTasks: number;
+  tasksCompleted: number;
+  connectedAt: string | null;
+  lastSeenAt: string | null;
+  modelId: string | null;
+}
+
+interface PlanReviewAssigneesResponse {
+  planId: string;
+  generatedAt: string;
+  liveSessions: PlanReviewAssignee[];
+  recentAgents: PlanReviewAssignee[];
+}
+
+interface PlanParticipant {
+  id: string;
+  planId: string;
+  role: 'builder' | 'reviewer';
+  principalType: 'user' | 'agent' | 'service' | null;
+  agentId: string | null;
+  agentType: string | null;
+  profileId: string | null;
+  runId: string | null;
+  sessionId: string | null;
+  userId: number | null;
+  touches: number;
+  lastAction: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  meta: Record<string, unknown> | null;
+}
+
+interface PlanParticipantsResponse {
+  planId: string;
+  generatedAt: string;
+  participants: PlanParticipant[];
+  reviewers: PlanParticipant[];
+  builders: PlanParticipant[];
+}
+
+interface ReviewAgentProfileEntry {
+  id: string;
+  label: string;
+  agent_type: string;
+  model_id: string | null;
+  method: string | null;
+  config: Record<string, unknown> | null;
+  status: string;
+}
+
+interface ReviewAgentProfileListResponse {
+  profiles: ReviewAgentProfileEntry[];
+  total: number;
+}
+
+interface PlanSourcePreviewLine {
+  lineNumber: number;
+  text: string;
+}
+
+interface PlanSourcePreviewResponse {
+  planId: string;
+  path: string;
+  startLine: number;
+  endLine: number;
+  lines: PlanSourcePreviewLine[];
+}
+
+interface SourceRefMatch {
+  raw: string;
+  path: string;
+  startLine: number;
+  endLine: number;
+}
+
+interface AgentSessionActivity {
+  action: string;
+  detail: string;
+  timestamp: string;
+}
+
+interface AgentSessionSnapshot {
+  session_id: string;
+  agent_type: string;
+  status: string;
+  action: string;
+  detail: string;
+  recent_activity: AgentSessionActivity[];
+}
+
+interface AgentSessionsSnapshot {
+  active: AgentSessionSnapshot[];
+}
+
 // =============================================================================
 // Constants
 // =============================================================================
 
 const STATUS_ORDER = ['active', 'done', 'parked'] as const;
+
+const FALLBACK_PLAN_STAGE_OPTIONS: PlanStageOptionEntry[] = [
+  { value: 'backlog', label: 'Backlog', description: 'Known work not yet actively proposed.', aliases: [] },
+  { value: 'proposed', label: 'Proposed', description: 'Idea has scope, but implementation has not started.', aliases: [] },
+  { value: 'discovery', label: 'Discovery', description: 'Research, analysis, and requirement clarification.', aliases: [] },
+  { value: 'design', label: 'Design', description: 'Architecture/contract/design decisions are being finalized.', aliases: [] },
+  { value: 'implementation', label: 'Implementation', description: 'Code/content changes are actively being built.', aliases: [] },
+  { value: 'validation', label: 'Validation', description: 'Testing, verification, and stabilization before release.', aliases: [] },
+  { value: 'rollout', label: 'Rollout', description: 'Deployment, migration, and staged release execution.', aliases: [] },
+  { value: 'completed', label: 'Completed', description: 'Work is fully delivered and closed out.', aliases: [] },
+];
+
+const STAGE_ICONS: Record<string, string> = {
+  backlog: 'pause',
+  proposed: 'fileText',
+  discovery: 'search',
+  design: 'checkSquare',
+  implementation: 'code',
+  validation: 'search',
+  rollout: 'git-branch',
+  completed: 'checkCircle',
+  // Legacy values kept to avoid a visual regression while old rows are still in DB.
+  'design-approved': 'checkSquare',
+  'implementation-ready': 'code',
+  'in-progress': 'play',
+  complete: 'checkCircle',
+};
 
 const STATUS_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
   active: 'green',
@@ -150,6 +487,106 @@ const PLAN_TYPE_ICONS: Record<string, string> = {
   proposal: 'fileText',
 };
 
+const STAGE_SHORT: Record<string, string> = {
+  backlog: 'back',
+  proposed: 'prop',
+  discovery: 'disc',
+  design: 'des',
+  implementation: 'impl',
+  validation: 'val',
+  rollout: 'roll',
+  completed: 'done',
+  'implementation-ready': 'ready',
+  'in-progress': 'wip',
+  complete: 'done',
+};
+
+const STAGE_COLORS: Record<string, string> = {
+  backlog: 'text-neutral-500',
+  proposed: 'text-neutral-400',
+  discovery: 'text-sky-400',
+  design: 'text-blue-400',
+  implementation: 'text-amber-400',
+  validation: 'text-orange-400',
+  rollout: 'text-indigo-400',
+  completed: 'text-green-400',
+  'implementation-ready': 'text-blue-400',
+  'in-progress': 'text-amber-400',
+  complete: 'text-green-400',
+};
+
+const STAGE_BADGE_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  backlog: 'gray',
+  proposed: 'gray',
+  discovery: 'blue',
+  design: 'blue',
+  implementation: 'orange',
+  validation: 'orange',
+  rollout: 'blue',
+  completed: 'green',
+  'implementation-ready': 'blue',
+  'in-progress': 'orange',
+  complete: 'green',
+};
+
+const PRIORITY_DOT: Record<string, string> = {
+  high: 'bg-red-500',
+  medium: 'bg-amber-400',
+};
+
+const PLAN_ID_RE = /^[a-z0-9][a-z0-9-]{0,119}$/;
+
+const REVIEW_ROUND_STATUS_COLORS: Record<ReviewRoundStatus, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  open: 'blue',
+  changes_requested: 'orange',
+  approved: 'green',
+  concluded: 'gray',
+};
+
+const REVIEW_REQUEST_STATUS_COLORS: Record<ReviewRequestStatus, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  open: 'blue',
+  in_progress: 'orange',
+  fulfilled: 'green',
+  cancelled: 'gray',
+};
+
+const REVIEW_REQUEST_DISPATCH_COLORS: Record<'assigned' | 'queued' | 'unassigned', 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  assigned: 'green',
+  queued: 'orange',
+  unassigned: 'gray',
+};
+
+const REVIEW_AUTHOR_ROLE_COLORS: Record<ReviewAuthorRole, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  reviewer: 'orange',
+  author: 'blue',
+  agent: 'green',
+  system: 'gray',
+};
+
+const REVIEW_SEVERITY_COLORS: Record<NonNullable<PlanReviewNode['severity']>, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
+  info: 'gray',
+  low: 'blue',
+  medium: 'orange',
+  high: 'red',
+  critical: 'red',
+};
+
+const REVIEW_RELATIONS: { value: PlanReviewLink['relation']; label: string; requiresTargetNode: boolean }[] = [
+  { value: 'replies_to', label: 'Replies To', requiresTargetNode: false },
+  { value: 'addresses', label: 'Addresses', requiresTargetNode: false },
+  { value: 'because_of', label: 'Because Of', requiresTargetNode: true },
+  { value: 'supports', label: 'Supports', requiresTargetNode: true },
+  { value: 'contradicts', label: 'Contradicts', requiresTargetNode: true },
+  { value: 'supersedes', label: 'Supersedes', requiresTargetNode: true },
+];
+
+const REVIEW_CAUSAL_RELATIONS = new Set<PlanReviewLink['relation']>([
+  'because_of',
+  'supports',
+  'contradicts',
+  'supersedes',
+]);
+
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -161,18 +598,104 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function formatDateTime(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function toErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
+function isCanonicalPlanId(value: string): boolean {
+  return PLAN_ID_RE.test(value);
+}
+
+function humanizeToken(value: string): string {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function stageLabelFromValue(stage: string, stageOptionsByValue: Map<string, PlanStageOptionEntry>): string {
+  const fromOptions = stageOptionsByValue.get(stage)?.label;
+  if (fromOptions) return fromOptions;
+  return stage
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map(humanizeToken)
+    .join(' ');
+}
+
+const SOURCE_REF_RE = /([A-Za-z0-9_./\\-]+\.[A-Za-z0-9_]+):(\d+)(?:-(\d+))?/g;
+
+function extractSourceRefs(text: string): SourceRefMatch[] {
+  if (!text) return [];
+  const out: SourceRefMatch[] = [];
+  const seen = new Set<string>();
+
+  for (const match of text.matchAll(SOURCE_REF_RE)) {
+    const path = (match[1] ?? '').replace(/\\/g, '/');
+    const startRaw = match[2] ?? '';
+    const endRaw = match[3] ?? startRaw;
+    const startLine = Number.parseInt(startRaw, 10);
+    const endLine = Number.parseInt(endRaw, 10);
+    if (!path || !Number.isFinite(startLine) || !Number.isFinite(endLine)) continue;
+    if (startLine < 1 || endLine < startLine) continue;
+    const key = `${path}:${startLine}-${endLine}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      raw: `${path}:${startLine}${endLine !== startLine ? `-${endLine}` : ''}`,
+      path,
+      startLine,
+      endLine,
+    });
+  }
+
+  return out;
+}
+
+function formatReviewRelation(relation: PlanReviewLink['relation']): string {
+  return relation.replace(/_/g, ' ');
+}
+
+function buildAssigneeOptionValue(kind: 'live' | 'recent', id: string): string {
+  return `${kind}:${id}`;
+}
+
+function parseAssigneeOptionValue(value: string): { kind: 'live' | 'recent'; id: string } | null {
+  if (!value.includes(':')) return null;
+  const [kindRaw, ...rest] = value.split(':');
+  const id = rest.join(':').trim();
+  if (!id) return null;
+  if (kindRaw === 'live' || kindRaw === 'recent') {
+    return { kind: kindRaw, id };
+  }
+  return null;
+}
+
 // =============================================================================
 // Clickable Badge with Dropdown
 // =============================================================================
 
 function ClickableBadge({
   value,
+  displayValue,
   color,
   options,
   onSelect,
   disabled,
 }: {
   value: string;
+  displayValue?: string;
   color: 'green' | 'blue' | 'gray' | 'orange' | 'red';
   options: { value: string; label: string; color: 'green' | 'blue' | 'gray' | 'orange' | 'red' }[];
   onSelect: (value: string) => void;
@@ -190,7 +713,7 @@ function ClickableBadge({
         disabled={disabled}
       >
         <Badge color={color}>
-          {value}
+          {displayValue ?? value}
           <Icon name="chevronDown" size={8} className="ml-0.5 inline-block opacity-50" />
         </Badge>
       </button>
@@ -246,7 +769,8 @@ function CheckpointList({
     <div>
       <SectionHeader>Checkpoints</SectionHeader>
       <div className="mt-2 space-y-1">
-        {checkpoints.map((cp) => {
+        {checkpoints.map((cp, cpIdx) => {
+          const checkpointKey = `${cp.id}:${cpIdx}`;
           const cpSteps = cp.steps ?? [];
           const cpDone = cpSteps.filter((s) => s.done).length;
           const cpTotal = cpSteps.length;
@@ -257,7 +781,7 @@ function CheckpointList({
 
           return (
             <div
-              key={cp.id}
+              key={checkpointKey}
               className={`rounded-md border overflow-hidden ${
                 cp.status === 'active'
                   ? 'border-green-300 dark:border-green-700'
@@ -309,8 +833,12 @@ function CheckpointList({
 
                   {cpSteps.length > 0 && (
                     <div className="px-3 py-2 space-y-1">
-                      {cpSteps.map((step) => (
-                        <div key={step.id} className="flex items-start gap-2 text-xs">
+                      {cpSteps.map((step, stepIdx) => {
+                        const stepKey = step.id?.trim()
+                          ? `id:${step.id}`
+                          : `idx:${stepIdx}:${step.label}`;
+                        return (
+                        <div key={`${checkpointKey}:${stepKey}`} className="flex items-start gap-2 text-xs">
                           <span className={`mt-0.5 ${step.done ? 'text-green-500' : 'text-neutral-400'}`}>
                             {step.done ? '\u2713' : '\u25CB'}
                           </span>
@@ -319,26 +847,26 @@ function CheckpointList({
                           </span>
                           {step.tests && step.tests.length > 0 && (
                             <span className="ml-auto flex gap-1">
-                              {step.tests.map((t) => (
-                                <Badge key={t} color="purple" className="text-[9px]">{t}</Badge>
+                              {step.tests.map((t, testIdx) => (
+                                <Badge key={`${checkpointKey}:${stepKey}:test:${t}:${testIdx}`} color="purple" className="text-[9px]">{t}</Badge>
                               ))}
                             </span>
                           )}
                         </div>
-                      ))}
+                      )})}
                     </div>
                   )}
 
                   {cpEvidence.length > 0 && (
                     <div className="px-3 py-2 border-t border-neutral-100 dark:border-neutral-800 space-y-0.5">
                       <div className="text-[10px] text-neutral-500 font-medium mb-1">Evidence</div>
-                      {cpEvidence.map((ev) => {
+                      {cpEvidence.map((ev, evIdx) => {
                         const commitUrl =
                           ev.kind === 'git_commit' && forgeUrlTemplate
                             ? forgeUrlTemplate.replace('{sha}', ev.ref)
                             : null;
                         return (
-                          <div key={`${ev.kind}:${ev.ref}`} className="flex items-center gap-1.5 text-[11px]">
+                          <div key={`${checkpointKey}:ev:${ev.kind}:${ev.ref}:${evIdx}`} className="flex items-center gap-1.5 text-[11px]">
                             <Badge
                               color={ev.kind === 'git_commit' ? 'blue' : ev.kind === 'test_suite' ? 'green' : 'gray'}
                               className="text-[9px] !px-1"
@@ -386,10 +914,12 @@ function PlanDetailView({
   planId,
   onPlanChanged,
   forgeUrlTemplate,
+  stageOptions,
 }: {
   planId: string;
   onPlanChanged: () => void;
   forgeUrlTemplate?: string | null;
+  stageOptions: PlanStageOptionEntry[];
 }) {
   const [detail, setDetail] = useState<PlanDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -397,25 +927,183 @@ function PlanDetailView({
   const [updating, setUpdating] = useState(false);
   const [lastResult, setLastResult] = useState<string | null>(null);
   const [planExpanded, setPlanExpanded] = useState(false);
+  const [reviewGraph, setReviewGraph] = useState<PlanReviewGraphResponse | null>(null);
+  const [loadingReviews, setLoadingReviews] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  const [reviewNotice, setReviewNotice] = useState<string | null>(null);
+  const [selectedRoundId, setSelectedRoundId] = useState('');
+  const [newRoundStatus, setNewRoundStatus] = useState<'open' | 'changes_requested' | 'approved'>('open');
+  const [newRoundRevision, setNewRoundRevision] = useState('');
+  const [newRoundNote, setNewRoundNote] = useState('');
+  const [creatingRound, setCreatingRound] = useState(false);
+  const [roundStatusDraft, setRoundStatusDraft] = useState<ReviewRoundStatus>('open');
+  const [roundNoteDraft, setRoundNoteDraft] = useState('');
+  const [roundConclusionDraft, setRoundConclusionDraft] = useState('');
+  const [updatingRound, setUpdatingRound] = useState(false);
+  const [newNodeKind, setNewNodeKind] = useState<ReviewNodeKind>('review_comment');
+  const [newNodeAuthorRole, setNewNodeAuthorRole] = useState<ReviewAuthorRole>('reviewer');
+  const [newNodeSeverity, setNewNodeSeverity] = useState<NonNullable<PlanReviewNode['severity']> | ''>('');
+  const [newNodeBody, setNewNodeBody] = useState('');
+  const [newNodeRefRelation, setNewNodeRefRelation] = useState<PlanReviewLink['relation']>('replies_to');
+  const [newNodeRefTargetId, setNewNodeRefTargetId] = useState('');
+  const [newNodeRefPlanAnchor, setNewNodeRefPlanAnchor] = useState('');
+  const [newNodeRefQuote, setNewNodeRefQuote] = useState('');
+  const [creatingNode, setCreatingNode] = useState(false);
+  const [newRequestTitle, setNewRequestTitle] = useState('');
+  const [newRequestBody, setNewRequestBody] = useState('');
+  const [reviewAssignees, setReviewAssignees] = useState<PlanReviewAssigneesResponse | null>(null);
+  const [loadingAssignees, setLoadingAssignees] = useState(false);
+  const [planParticipants, setPlanParticipants] = useState<PlanParticipantsResponse | null>(null);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [reviewProfiles, setReviewProfiles] = useState<ReviewAgentProfileEntry[]>([]);
+  const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [newRequestAssignee, setNewRequestAssignee] = useState('auto');
+  const [newRequestProfileId, setNewRequestProfileId] = useState('');
+  const [newRequestMethod, setNewRequestMethod] = useState('');
+  const [newRequestModelId, setNewRequestModelId] = useState('');
+  const [newRequestProvider, setNewRequestProvider] = useState('');
+  const [newRequestQueuePolicy, setNewRequestQueuePolicy] = useState<ReviewRequestQueuePolicy>('auto_reroute');
+  const [creatingRequest, setCreatingRequest] = useState(false);
+  const [updatingRequestId, setUpdatingRequestId] = useState<string | null>(null);
+  const [dispatchingRequestId, setDispatchingRequestId] = useState<string | null>(null);
+  const [dispatchingTick, setDispatchingTick] = useState(false);
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  const [pendingFocusNodeId, setPendingFocusNodeId] = useState<string | null>(null);
+  const [sourcePreview, setSourcePreview] = useState<{
+    nodeId: string;
+    ref: SourceRefMatch;
+    data: PlanSourcePreviewResponse;
+  } | null>(null);
+  const [sourcePreviewError, setSourcePreviewError] = useState<{
+    nodeId: string;
+    message: string;
+  } | null>(null);
+  const [sourcePreviewLoadingKey, setSourcePreviewLoadingKey] = useState<string | null>(null);
+  const composeTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const nodeCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Auto-dismiss review notices (4s) and errors (8s)
+  useEffect(() => {
+    if (!reviewNotice) return;
+    const t = setTimeout(() => setReviewNotice(null), 4000);
+    return () => clearTimeout(t);
+  }, [reviewNotice]);
+  useEffect(() => {
+    if (!reviewError) return;
+    const t = setTimeout(() => setReviewError(''), 8000);
+    return () => clearTimeout(t);
+  }, [reviewError]);
+
+  const encodedPlanId = useMemo(() => encodeURIComponent(planId), [planId]);
+  const stageOptionsByValue = useMemo(
+    () => new Map(stageOptions.map((stage) => [stage.value, stage])),
+    [stageOptions],
+  );
+  const inputClassName =
+    'w-full px-2 py-1 border rounded text-xs bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 text-neutral-900 dark:text-neutral-100';
+  const textAreaClassName =
+    'w-full px-2 py-1 border rounded text-xs bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 text-neutral-900 dark:text-neutral-100';
 
   const loadDetail = useCallback(() => {
     setLoading(true);
     setError('');
     pixsimClient
-      .get<PlanDetail>(`/dev/plans/${planId}?refresh=true`)
+      .get<PlanDetail>(`/dev/plans/${encodedPlanId}?refresh=true`)
       .then((res) => setDetail(res))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load plan'))
+      .catch((err) => setError(toErrorMessage(err, 'Failed to load plan')))
       .finally(() => setLoading(false));
-  }, [planId]);
+  }, [encodedPlanId]);
+
+  const loadReviewGraph = useCallback(async () => {
+    setLoadingReviews(true);
+    setLoadingAssignees(true);
+    setLoadingParticipants(true);
+    setLoadingProfiles(true);
+    setReviewError('');
+    try {
+      const [graph, assignees, participants, profileList] = await Promise.all([
+        pixsimClient.get<PlanReviewGraphResponse>(
+          `/dev/plans/reviews/${encodedPlanId}/graph`,
+        ),
+        pixsimClient.get<PlanReviewAssigneesResponse>(
+          `/dev/plans/reviews/${encodedPlanId}/assignees`,
+        ).catch(() => null),
+        pixsimClient.get<PlanParticipantsResponse>(
+          `/dev/plans/${encodedPlanId}/participants`,
+        ).catch(() => null),
+        pixsimClient.get<ReviewAgentProfileListResponse>(
+          '/dev/agent-profiles',
+        ).catch(() => ({ profiles: [], total: 0 })),
+      ]);
+      setReviewGraph(graph);
+      setReviewAssignees(assignees);
+      setPlanParticipants(participants);
+      setReviewProfiles((profileList.profiles ?? []).filter((p) => p.status === 'active'));
+    } catch (err) {
+      const message = toErrorMessage(err, 'Failed to load plan review graph');
+      setReviewError(
+        message.includes('404')
+          ? 'Review API is unavailable. Restart backend with the latest review routes.'
+          : message,
+      );
+      setReviewGraph(null);
+      setReviewAssignees(null);
+      setPlanParticipants(null);
+      setReviewProfiles([]);
+    } finally {
+      setLoadingReviews(false);
+      setLoadingAssignees(false);
+      setLoadingParticipants(false);
+      setLoadingProfiles(false);
+    }
+  }, [encodedPlanId]);
 
   useEffect(() => {
     loadDetail();
   }, [loadDetail]);
 
+  useEffect(() => {
+    void loadReviewGraph();
+  }, [loadReviewGraph]);
+
+  // Poll agent sessions while any review request is in_progress
+  const [agentSessions, setAgentSessions] = useState<Map<string, AgentSessionSnapshot>>(new Map());
+  const hasInProgressRequests = useMemo(
+    () => (reviewGraph?.requests ?? []).some((r) => r.status === 'in_progress'),
+    [reviewGraph?.requests],
+  );
+  useEffect(() => {
+    if (!hasInProgressRequests) {
+      setAgentSessions(new Map());
+      return;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await pixsimClient.get<AgentSessionsSnapshot>('/meta/agents');
+        if (cancelled) return;
+        const map = new Map<string, AgentSessionSnapshot>();
+        for (const s of res.active) map.set(s.session_id, s);
+        setAgentSessions(map);
+      } catch { /* non-critical */ }
+    };
+    void poll();
+    const interval = setInterval(() => { void poll(); }, 5_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [hasInProgressRequests]);
+
+  // Also auto-refresh the review graph while requests are in-progress
+  useEffect(() => {
+    if (!hasInProgressRequests) return;
+    const interval = setInterval(() => { void loadReviewGraph(); }, 10_000);
+    return () => clearInterval(interval);
+  }, [hasInProgressRequests, loadReviewGraph]);
+
   const handleUpdate = useCallback(() => {
     loadDetail();
+    void loadReviewGraph();
     onPlanChanged();
-  }, [loadDetail, onPlanChanged]);
+  }, [loadDetail, loadReviewGraph, onPlanChanged]);
 
   const applyUpdate = useCallback(
     async (updates: Record<string, string>) => {
@@ -423,7 +1111,7 @@ function PlanDetailView({
       setLastResult(null);
       try {
         const res = await pixsimClient.patch<PlanUpdateResponse>(
-          `/dev/plans/${planId}`,
+          `/dev/plans/${encodedPlanId}`,
           updates,
         );
         const changed = res.changes.map((c) => `${c.field}: ${c.old}\u2192${c.new}`).join(', ');
@@ -434,13 +1122,672 @@ function PlanDetailView({
         );
         handleUpdate();
       } catch (err) {
-        setLastResult(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        setLastResult(`Failed: ${toErrorMessage(err, 'Unknown error')}`);
       } finally {
         setUpdating(false);
       }
     },
-    [planId, handleUpdate],
+    [encodedPlanId, handleUpdate],
   );
+
+  const reviewRounds = useMemo(() => {
+    const rounds = reviewGraph?.rounds ?? [];
+    return [...rounds].sort((a, b) => {
+      if (a.roundNumber !== b.roundNumber) return b.roundNumber - a.roundNumber;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [reviewGraph?.rounds]);
+
+  const reviewRoundNumberById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const round of reviewGraph?.rounds ?? []) {
+      map.set(round.id, round.roundNumber);
+    }
+    return map;
+  }, [reviewGraph?.rounds]);
+
+  const reviewNodeCountByRound = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const node of reviewGraph?.nodes ?? []) {
+      counts.set(node.roundId, (counts.get(node.roundId) ?? 0) + 1);
+    }
+    return counts;
+  }, [reviewGraph?.nodes]);
+
+  const reviewerParticipants = useMemo(
+    () => planParticipants?.reviewers ?? [],
+    [planParticipants?.reviewers],
+  );
+
+  const builderParticipants = useMemo(
+    () => planParticipants?.builders ?? [],
+    [planParticipants?.builders],
+  );
+
+  useEffect(() => {
+    if (reviewRounds.length === 0) {
+      setSelectedRoundId('');
+      return;
+    }
+    setSelectedRoundId((prev) =>
+      prev && reviewRounds.some((round) => round.id === prev) ? prev : reviewRounds[0]!.id,
+    );
+  }, [reviewRounds]);
+
+  const selectedRound = useMemo(
+    () => reviewRounds.find((round) => round.id === selectedRoundId) ?? null,
+    [reviewRounds, selectedRoundId],
+  );
+
+  useEffect(() => {
+    if (!selectedRound) {
+      setRoundStatusDraft('open');
+      setRoundNoteDraft('');
+      setRoundConclusionDraft('');
+      return;
+    }
+    setRoundStatusDraft(selectedRound.status);
+    setRoundNoteDraft(selectedRound.note ?? '');
+    setRoundConclusionDraft(selectedRound.conclusion ?? '');
+  }, [selectedRound]);
+
+  useEffect(() => {
+    setSourcePreview(null);
+    setSourcePreviewError(null);
+    setSourcePreviewLoadingKey(null);
+  }, [selectedRoundId]);
+
+  const selectedRoundNodes = useMemo(() => {
+    if (!selectedRoundId) return [];
+    const nodes = (reviewGraph?.nodes ?? []).filter((node) => node.roundId === selectedRoundId);
+    return [...nodes].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+  }, [reviewGraph?.nodes, selectedRoundId]);
+
+  const selectedRoundRequests = useMemo(() => {
+    const requests = reviewGraph?.requests ?? [];
+    return [...requests]
+      .filter((request) => !selectedRoundId || request.roundId === selectedRoundId || request.roundId === null)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [reviewGraph?.requests, selectedRoundId]);
+
+  const liveAssigneeOptions = useMemo(
+    () => (reviewAssignees?.liveSessions ?? []),
+    [reviewAssignees?.liveSessions],
+  );
+
+  const recentAssigneeOptions = useMemo(
+    () => (reviewAssignees?.recentAgents ?? []),
+    [reviewAssignees?.recentAgents],
+  );
+
+  const reviewProfileById = useMemo(
+    () => new Map(reviewProfiles.map((profile) => [profile.id, profile])),
+    [reviewProfiles],
+  );
+
+  const applyRequestProfileSelection = useCallback(
+    (profileId: string) => {
+      setNewRequestProfileId(profileId);
+      if (!profileId) return;
+      const profile = reviewProfileById.get(profileId);
+      if (!profile) return;
+      setNewRequestMethod(profile.method ?? '');
+      setNewRequestModelId(profile.model_id ?? '');
+      const config = profile.config && typeof profile.config === 'object' ? profile.config : null;
+      const providerRaw = config ? config['provider'] : null;
+      const providerIdRaw = config ? config['provider_id'] : null;
+      const providerValue =
+        (typeof providerRaw === 'string' && providerRaw.trim())
+          || (typeof providerIdRaw === 'string' && providerIdRaw.trim())
+          || '';
+      setNewRequestProvider(providerValue);
+    },
+    [reviewProfileById],
+  );
+
+  useEffect(() => {
+    if (newRequestAssignee === 'auto') return;
+    const parsed = parseAssigneeOptionValue(newRequestAssignee);
+    if (!parsed) {
+      setNewRequestAssignee('auto');
+      return;
+    }
+    if (parsed.kind === 'live') {
+      const exists = liveAssigneeOptions.some((opt) => opt.agentId === parsed.id);
+      if (!exists) setNewRequestAssignee('auto');
+      return;
+    }
+    const exists = recentAssigneeOptions.some((opt) => opt.agentId === parsed.id);
+    if (!exists) setNewRequestAssignee('auto');
+  }, [liveAssigneeOptions, newRequestAssignee, recentAssigneeOptions]);
+
+  useEffect(() => {
+    if (!newRequestProfileId) return;
+    if (reviewProfileById.has(newRequestProfileId)) return;
+    setNewRequestProfileId('');
+  }, [newRequestProfileId, reviewProfileById]);
+
+  const selectedRoundLinksBySource = useMemo(() => {
+    const bySource = new Map<string, PlanReviewLink[]>();
+    for (const link of reviewGraph?.links ?? []) {
+      if (selectedRoundId && link.roundId !== selectedRoundId) continue;
+      const links = bySource.get(link.sourceNodeId) ?? [];
+      links.push(link);
+      bySource.set(link.sourceNodeId, links);
+    }
+    return bySource;
+  }, [reviewGraph?.links, selectedRoundId]);
+
+  const selectedRoundNodeOrder = useMemo(() => {
+    const order = new Map<string, number>();
+    selectedRoundNodes.forEach((node, idx) => {
+      order.set(node.id, idx + 1);
+    });
+    return order;
+  }, [selectedRoundNodes]);
+
+  const selectedRoundThreadRefByChild = useMemo(() => {
+    const relationRank: Record<PlanReviewLink['relation'], number> = {
+      replies_to: 0,
+      addresses: 1,
+      because_of: 2,
+      supports: 2,
+      contradicts: 2,
+      supersedes: 2,
+    };
+    const selectedIds = new Set(selectedRoundNodes.map((node) => node.id));
+    const bestRefByChild = new Map<
+      string,
+      { parentId: string; linkId: string; relation: PlanReviewLink['relation']; rank: number }
+    >();
+    for (const link of reviewGraph?.links ?? []) {
+      if (selectedRoundId && link.roundId !== selectedRoundId) continue;
+      if (!selectedIds.has(link.sourceNodeId)) continue;
+      if (!link.targetNodeId || !selectedIds.has(link.targetNodeId)) continue;
+      if (link.targetNodeId === link.sourceNodeId) continue;
+      const rank = relationRank[link.relation] ?? 99;
+      const existing = bestRefByChild.get(link.sourceNodeId);
+      if (!existing || rank < existing.rank) {
+        bestRefByChild.set(link.sourceNodeId, {
+          parentId: link.targetNodeId,
+          linkId: link.id,
+          relation: link.relation,
+          rank,
+        });
+      }
+    }
+    const result = new Map<string, { parentId: string; linkId: string; relation: PlanReviewLink['relation'] }>();
+    for (const [childId, ref] of bestRefByChild) {
+      result.set(childId, {
+        parentId: ref.parentId,
+        linkId: ref.linkId,
+        relation: ref.relation,
+      });
+    }
+    return result;
+  }, [reviewGraph?.links, selectedRoundId, selectedRoundNodes]);
+
+  const selectedRoundThread = useMemo(() => {
+    const nodeById = new Map(selectedRoundNodes.map((node) => [node.id, node]));
+    const childrenByParent = new Map<string, PlanReviewNode[]>();
+    const childIds = new Set<string>();
+
+    for (const node of selectedRoundNodes) {
+      const parentId = selectedRoundThreadRefByChild.get(node.id)?.parentId;
+      if (!parentId || !nodeById.has(parentId)) continue;
+      childIds.add(node.id);
+      const siblings = childrenByParent.get(parentId) ?? [];
+      siblings.push(node);
+      childrenByParent.set(parentId, siblings);
+    }
+
+    for (const siblings of childrenByParent.values()) {
+      siblings.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    }
+
+    const roots = selectedRoundNodes.filter((node) => !childIds.has(node.id));
+    return {
+      roots: roots.length > 0 ? roots : selectedRoundNodes,
+      childrenByParent,
+    };
+  }, [selectedRoundNodes, selectedRoundThreadRefByChild]);
+
+  const nodeById = useMemo(() => {
+    const map = new Map<string, PlanReviewNode>();
+    for (const node of reviewGraph?.nodes ?? []) map.set(node.id, node);
+    return map;
+  }, [reviewGraph?.nodes]);
+
+  const focusLinkedNode = useCallback(
+    (targetNodeId: string) => {
+      const targetNode = nodeById.get(targetNodeId);
+      if (!targetNode) return;
+      if (targetNode.roundId !== selectedRoundId) {
+        setSelectedRoundId(targetNode.roundId);
+      }
+      setPendingFocusNodeId(targetNode.id);
+    },
+    [nodeById, selectedRoundId],
+  );
+
+  const previewSourceRef = useCallback(
+    async (nodeId: string, ref: SourceRefMatch) => {
+      const key = `${nodeId}:${ref.path}:${ref.startLine}-${ref.endLine}`;
+      setSourcePreviewLoadingKey(key);
+      setSourcePreviewError(null);
+      try {
+        const query = new URLSearchParams({
+          path: ref.path,
+          start_line: String(ref.startLine),
+          end_line: String(ref.endLine),
+        });
+        const data = await pixsimClient.get<PlanSourcePreviewResponse>(
+          `/dev/plans/reviews/${encodedPlanId}/source-preview?${query.toString()}`,
+        );
+        setSourcePreview({ nodeId, ref, data });
+      } catch (err) {
+        setSourcePreviewError({
+          nodeId,
+          message: toErrorMessage(err, 'Failed to load source preview'),
+        });
+      } finally {
+        setSourcePreviewLoadingKey(null);
+      }
+    },
+    [encodedPlanId],
+  );
+
+  useEffect(() => {
+    if (!pendingFocusNodeId) return;
+    const el = nodeCardRefs.current.get(pendingFocusNodeId);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setFocusedNodeId(pendingFocusNodeId);
+    setPendingFocusNodeId(null);
+    const timeout = window.setTimeout(() => {
+      setFocusedNodeId((current) => (current === pendingFocusNodeId ? null : current));
+    }, 1600);
+    return () => window.clearTimeout(timeout);
+  }, [pendingFocusNodeId, selectedRoundId, selectedRoundNodes]);
+
+  const relationOptions = useMemo(
+    () => REVIEW_RELATIONS.filter((r) => newNodeRefTargetId || !r.requiresTargetNode),
+    [newNodeRefTargetId],
+  );
+
+  useEffect(() => {
+    if (!newNodeRefTargetId && REVIEW_CAUSAL_RELATIONS.has(newNodeRefRelation)) {
+      setNewNodeRefRelation('addresses');
+    }
+  }, [newNodeRefTargetId, newNodeRefRelation]);
+
+  const handleCreateRound = useCallback(async () => {
+    setCreatingRound(true);
+    setReviewError('');
+    setReviewNotice(null);
+    try {
+      const payload: PlanReviewRoundCreateRequest = { status: newRoundStatus };
+      const note = newRoundNote.trim();
+      if (note) payload.note = note;
+
+      const revisionRaw = newRoundRevision.trim();
+      if (revisionRaw) {
+        const parsed = Number.parseInt(revisionRaw, 10);
+        if (!Number.isFinite(parsed) || parsed < 1) {
+          setReviewError('Round revision must be a positive integer.');
+          return;
+        }
+        payload.review_revision = parsed;
+      }
+
+      const round = await pixsimClient.post<PlanReviewRound>(
+        `/dev/plans/reviews/${encodedPlanId}/rounds`,
+        payload,
+      );
+      setNewRoundRevision('');
+      setNewRoundNote('');
+      setSelectedRoundId(round.id);
+      setReviewNotice(`Created review round #${round.roundNumber}.`);
+      await loadReviewGraph();
+    } catch (err) {
+      setReviewError(toErrorMessage(err, 'Failed to create review round'));
+    } finally {
+      setCreatingRound(false);
+    }
+  }, [encodedPlanId, loadReviewGraph, newRoundNote, newRoundRevision, newRoundStatus]);
+
+  const handleUpdateRound = useCallback(
+    async (payload: PlanReviewRoundUpdateRequest, successMessage: string) => {
+      if (!selectedRound) {
+        setReviewError('Select a review round first.');
+        return;
+      }
+      setUpdatingRound(true);
+      setReviewError('');
+      setReviewNotice(null);
+      try {
+        await pixsimClient.patch<PlanReviewRound>(
+          `/dev/plans/reviews/${encodedPlanId}/rounds/${encodeURIComponent(selectedRound.id)}`,
+          payload,
+        );
+        setReviewNotice(successMessage);
+        await loadReviewGraph();
+      } catch (err) {
+        setReviewError(toErrorMessage(err, 'Failed to update review round'));
+      } finally {
+        setUpdatingRound(false);
+      }
+    },
+    [encodedPlanId, loadReviewGraph, selectedRound],
+  );
+
+  const handleSaveRoundState = useCallback(async () => {
+    if (!selectedRound) {
+      setReviewError('Select a review round first.');
+      return;
+    }
+
+    const nextNote = roundNoteDraft.trim();
+    const currentNote = (selectedRound.note ?? '').trim();
+    const nextConclusion = roundConclusionDraft.trim();
+    const currentConclusion = (selectedRound.conclusion ?? '').trim();
+
+    if (roundStatusDraft === 'concluded' && !nextConclusion) {
+      setReviewError('Concluded rounds require a non-empty conclusion.');
+      return;
+    }
+
+    const payload: PlanReviewRoundUpdateRequest = {};
+    if (roundStatusDraft !== selectedRound.status) payload.status = roundStatusDraft;
+    if (nextNote !== currentNote) payload.note = nextNote;
+    if (roundStatusDraft === 'concluded' && nextConclusion !== currentConclusion) {
+      payload.conclusion = nextConclusion;
+    }
+
+    if (!payload.status && payload.note === undefined && payload.conclusion === undefined) {
+      setReviewNotice('No round changes to save.');
+      return;
+    }
+
+    await handleUpdateRound(payload, `Updated review round #${selectedRound.roundNumber}.`);
+  }, [
+    handleUpdateRound,
+    roundConclusionDraft,
+    roundNoteDraft,
+    roundStatusDraft,
+    selectedRound,
+  ]);
+
+  const handleCreateNode = useCallback(async () => {
+    if (!selectedRound) {
+      setReviewError('Select a review round first.');
+      return;
+    }
+    if (selectedRound.status === 'concluded') {
+      setReviewError('Round is concluded. Re-open it before adding new responses.');
+      return;
+    }
+
+    const body = newNodeBody.trim();
+    if (!body) {
+      setReviewError('Response body is required.');
+      return;
+    }
+
+    if (!newNodeRefTargetId && REVIEW_CAUSAL_RELATIONS.has(newNodeRefRelation)) {
+      setReviewError(`Relation '${newNodeRefRelation}' requires a target node.`);
+      return;
+    }
+
+    setCreatingNode(true);
+    setReviewError('');
+    setReviewNotice(null);
+    try {
+      const refs: PlanReviewRefInput[] = [];
+      const quote = newNodeRefQuote.trim();
+      if (newNodeRefTargetId) {
+        refs.push({
+          relation: newNodeRefRelation,
+          target_node_id: newNodeRefTargetId,
+          quote: quote || undefined,
+        });
+      } else {
+        const planAnchor = newNodeRefPlanAnchor.trim();
+        if (planAnchor) {
+          refs.push({
+            relation: newNodeRefRelation,
+            target_plan_anchor: { label: planAnchor },
+            quote: quote || undefined,
+          });
+        }
+      }
+
+      const payload: PlanReviewNodeCreateRequest = {
+        round_id: selectedRound.id,
+        kind: newNodeKind,
+        author_role: newNodeAuthorRole,
+        body,
+      };
+      if (newNodeSeverity) payload.severity = newNodeSeverity;
+      if (refs.length > 0) payload.refs = refs;
+
+      const created = await pixsimClient.post<PlanReviewNodeCreateResponse>(
+        `/dev/plans/reviews/${encodedPlanId}/nodes`,
+        payload,
+      );
+      setReviewNotice(`Added response node ${created.node.id.slice(0, 8)}.`);
+      setNewNodeBody('');
+      setNewNodeSeverity('');
+      setNewNodeRefRelation('replies_to');
+      setNewNodeRefTargetId('');
+      setNewNodeRefPlanAnchor('');
+      setNewNodeRefQuote('');
+      await loadReviewGraph();
+    } catch (err) {
+      setReviewError(toErrorMessage(err, 'Failed to add response node'));
+    } finally {
+      setCreatingNode(false);
+    }
+  }, [
+    encodedPlanId,
+    loadReviewGraph,
+    newNodeAuthorRole,
+    newNodeBody,
+    newNodeKind,
+    newNodeRefPlanAnchor,
+    newNodeRefQuote,
+    newNodeRefRelation,
+    newNodeRefTargetId,
+    newNodeSeverity,
+    selectedRound,
+  ]);
+
+  const handleCreateRequest = useCallback(async () => {
+    const title = newRequestTitle.trim();
+    const body = newRequestBody.trim();
+    if (!title) {
+      setReviewError('Request title is required.');
+      return;
+    }
+    if (!body) {
+      setReviewError('Request body is required.');
+      return;
+    }
+
+    setCreatingRequest(true);
+    setReviewError('');
+    setReviewNotice(null);
+    try {
+      const payload: PlanReviewRequestCreateRequest = {
+        title,
+        body,
+      };
+      if (selectedRound) payload.round_id = selectedRound.id;
+
+      if (newRequestAssignee === 'auto') {
+        payload.target_mode = 'auto';
+      } else {
+        const parsed = parseAssigneeOptionValue(newRequestAssignee);
+        if (parsed?.kind === 'live') {
+          // Store as preference — dispatcher re-checks availability at dispatch time
+          payload.target_mode = 'auto';
+          payload.preferred_agent_id = parsed.id;
+        } else if (parsed?.kind === 'recent') {
+          payload.target_mode = 'auto';
+          payload.preferred_agent_id = parsed.id;
+        } else {
+          payload.target_mode = 'auto';
+        }
+      }
+
+      payload.queue_if_busy = newRequestQueuePolicy === 'queue_next';
+      payload.auto_reroute_if_busy = newRequestQueuePolicy === 'auto_reroute';
+      const targetProfileId = newRequestProfileId.trim();
+      const targetMethod = newRequestMethod.trim();
+      const targetModelId = newRequestModelId.trim();
+      const targetProvider = newRequestProvider.trim();
+      if (targetProfileId) payload.target_profile_id = targetProfileId;
+      if (targetMethod) payload.target_method = targetMethod;
+      if (targetModelId) payload.target_model_id = targetModelId;
+      if (targetProvider) payload.target_provider = targetProvider;
+
+      const created = await pixsimClient.post<PlanReviewRequest>(
+        `/dev/plans/reviews/${encodedPlanId}/requests`,
+        payload,
+      );
+      setNewRequestTitle('');
+      setNewRequestBody('');
+      setNewRequestAssignee('auto');
+      setNewRequestProfileId('');
+      setNewRequestMethod('');
+      setNewRequestModelId('');
+      setNewRequestProvider('');
+
+      // Auto-dispatch when assignee is "auto" (idle agent dispatch)
+      if (newRequestAssignee === 'auto' && created.status === 'open') {
+        try {
+          const result = await pixsimClient.post<PlanReviewRequestDispatchResponse>(
+            `/dev/plans/reviews/${encodedPlanId}/requests/${encodeURIComponent(created.id)}/dispatch`,
+            { timeout_seconds: 240, create_round_if_missing: true, spawn_if_missing: false },
+          );
+          const nodeSuffix = result.node ? ` (node ${result.node.id.slice(0, 8)})` : '';
+          setReviewNotice(`Request created & dispatched: ${result.message}${nodeSuffix}`);
+        } catch {
+          setReviewNotice('Request created but auto-dispatch failed — dispatch manually.');
+        }
+      } else {
+        const dispatchLabel = created.dispatchState ? ` (${created.dispatchState})` : '';
+        setReviewNotice(`Review request created${dispatchLabel}.`);
+      }
+      await loadReviewGraph();
+    } catch (err) {
+      setReviewError(toErrorMessage(err, 'Failed to create review request'));
+    } finally {
+      setCreatingRequest(false);
+    }
+  }, [
+    encodedPlanId,
+    loadReviewGraph,
+    newRequestBody,
+    newRequestAssignee,
+    newRequestMethod,
+    newRequestModelId,
+    newRequestProfileId,
+    newRequestProvider,
+    newRequestQueuePolicy,
+    newRequestTitle,
+    selectedRound,
+  ]);
+
+  const handleUpdateRequestStatus = useCallback(
+    async (request: PlanReviewRequest, status: ReviewRequestStatus) => {
+      if (request.status === status) return;
+      setUpdatingRequestId(request.id);
+      setReviewError('');
+      setReviewNotice(null);
+      try {
+        const payload: PlanReviewRequestUpdateRequest = { status };
+        if (status === 'fulfilled' && !request.resolutionNote) {
+          payload.resolution_note = `Marked fulfilled on ${new Date().toISOString()}`;
+        }
+        await pixsimClient.patch<PlanReviewRequest>(
+          `/dev/plans/reviews/${encodedPlanId}/requests/${encodeURIComponent(request.id)}`,
+          payload,
+        );
+        setReviewNotice(`Review request '${request.title}' set to ${status}.`);
+        await loadReviewGraph();
+      } catch (err) {
+        setReviewError(toErrorMessage(err, 'Failed to update review request'));
+      } finally {
+        setUpdatingRequestId(null);
+      }
+    },
+    [encodedPlanId, loadReviewGraph],
+  );
+
+  const handleDispatchRequest = useCallback(
+    async (request: PlanReviewRequest) => {
+      if (request.status !== 'open') return;
+      setDispatchingRequestId(request.id);
+      setReviewError('');
+      setReviewNotice(null);
+      try {
+        const payload: PlanReviewRequestDispatchRequest = {
+          timeout_seconds: 240,
+          create_round_if_missing: true,
+          spawn_if_missing: false,
+        };
+        const result = await pixsimClient.post<PlanReviewRequestDispatchResponse>(
+          `/dev/plans/reviews/${encodedPlanId}/requests/${encodeURIComponent(request.id)}/dispatch`,
+          payload,
+        );
+        const nodeSuffix = result.node ? ` (node ${result.node.id.slice(0, 8)})` : '';
+        setReviewNotice(`${result.message}${nodeSuffix}`);
+        await loadReviewGraph();
+      } catch (err) {
+        setReviewError(toErrorMessage(err, 'Failed to dispatch review request'));
+      } finally {
+        setDispatchingRequestId(null);
+      }
+    },
+    [encodedPlanId, loadReviewGraph],
+  );
+
+  const handleDispatchTick = useCallback(async () => {
+    setDispatchingTick(true);
+    setReviewError('');
+    setReviewNotice(null);
+    try {
+      const result = await pixsimClient.post<PlanReviewDispatchTickResponse>(
+        '/dev/plans/reviews/dispatch/tick',
+        {
+          plan_id: planId,
+          limit: 5,
+          timeout_seconds: 240,
+          create_round_if_missing: true,
+          spawn_if_missing: false,
+        },
+      );
+      setReviewNotice(`Dispatch tick: processed ${result.processed}/${result.attempted} open requests.`);
+      await loadReviewGraph();
+    } catch (err) {
+      setReviewError(toErrorMessage(err, 'Failed to dispatch open review requests'));
+    } finally {
+      setDispatchingTick(false);
+    }
+  }, [loadReviewGraph, planId]);
+
+  const handleReplyToNode = useCallback((node: PlanReviewNode) => {
+    setNewNodeKind('agent_response');
+    setNewNodeAuthorRole('agent');
+    setNewNodeRefTargetId(node.id);
+    setNewNodeRefPlanAnchor('');
+    setNewNodeRefRelation('replies_to');
+    setReviewNotice(`Reply target set to ${node.id.slice(0, 8)}.`);
+    setTimeout(() => composeTextareaRef.current?.focus(), 0);
+  }, []);
 
   if (loading) {
     return (
@@ -476,6 +1823,227 @@ function PlanDetailView({
     { value: 'normal', label: 'Normal', color: 'orange' as const },
     { value: 'low', label: 'Low', color: 'gray' as const },
   ];
+  const stageBadgeOptions = stageOptions.map((stage) => ({
+    value: stage.value,
+    label: stage.label,
+    color: STAGE_BADGE_COLORS[stage.value] ?? 'gray',
+  }));
+  const stageLabel = stageLabelFromValue(detail.stage, stageOptionsByValue);
+  const renderDiscussionNode = (
+    node: PlanReviewNode,
+    depth: number,
+    ancestry: Set<string>,
+  ): React.ReactNode => {
+    if (ancestry.has(node.id)) {
+      return null;
+    }
+
+    const nextAncestry = new Set(ancestry);
+    nextAncestry.add(node.id);
+
+    const threadRef = selectedRoundThreadRefByChild.get(node.id);
+    const parentId = threadRef?.parentId ?? null;
+    const parentOrder = parentId ? selectedRoundNodeOrder.get(parentId) : null;
+    const threadedLinkId = threadRef?.linkId;
+    const links = (selectedRoundLinksBySource.get(node.id) ?? []).filter((link) => link.id !== threadedLinkId);
+    const children = selectedRoundThread.childrenByParent.get(node.id) ?? [];
+    const nodeOrder = selectedRoundNodeOrder.get(node.id) ?? 0;
+    const indentPx = Math.min(depth, 8) * 16;
+    const isFocused = focusedNodeId === node.id;
+    const sourceRefs = extractSourceRefs(node.body);
+    const sourcePreviewForNode = sourcePreview?.nodeId === node.id ? sourcePreview : null;
+    const sourcePreviewErrorForNode = sourcePreviewError?.nodeId === node.id ? sourcePreviewError.message : null;
+    const threadedRelationLabel = threadRef?.relation
+      ? formatReviewRelation(threadRef.relation)
+      : 'reply to';
+
+    return (
+      <div key={node.id} className="space-y-2" style={{ marginLeft: `${indentPx}px` }}>
+        <div
+          ref={(el) => {
+            if (el) nodeCardRefs.current.set(node.id, el);
+            else nodeCardRefs.current.delete(node.id);
+          }}
+          className={`rounded border border-neutral-200 dark:border-neutral-700 p-2 ${
+            depth > 0 ? 'bg-neutral-50/60 dark:bg-neutral-900/30' : ''
+          } ${isFocused ? 'ring-2 ring-blue-400 ring-offset-1 dark:ring-blue-500' : ''}`}
+        >
+          <div className="flex items-center gap-1.5 flex-wrap mb-1">
+            <span className="text-[10px] text-neutral-400">#{nodeOrder}</span>
+            <Badge color={REVIEW_AUTHOR_ROLE_COLORS[node.authorRole]} className="text-[9px]">
+              {node.authorRole}
+            </Badge>
+            <Badge color="gray" className="text-[9px]">
+              {node.kind}
+            </Badge>
+            {node.severity && (
+              <Badge color={REVIEW_SEVERITY_COLORS[node.severity]} className="text-[9px]">
+                {node.severity}
+              </Badge>
+            )}
+            {node.actorAgentId && (
+              <Badge color="green" className="text-[9px]">
+                {node.actorAgentId}
+              </Badge>
+            )}
+            {node.actorRunId && (
+              <Badge color="gray" className="text-[9px]">
+                run {node.actorRunId.slice(0, 16)}
+              </Badge>
+            )}
+            {parentOrder && parentId && (
+              <button
+                type="button"
+                onClick={() => focusLinkedNode(parentId)}
+                className="hover:opacity-80"
+                title="Jump to parent node"
+              >
+                <Badge color="blue" className="text-[9px]">
+                  {threadedRelationLabel} #{parentOrder}
+                </Badge>
+              </button>
+            )}
+            {node.createdBy && !node.actorAgentId && (
+              <span className="text-[10px] text-neutral-400">{node.createdBy}</span>
+            )}
+            <span className="text-[10px] text-neutral-400">{formatDateTime(node.createdAt)}</span>
+          </div>
+          <div className="text-xs text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">
+            {node.body}
+          </div>
+
+          {sourceRefs.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {sourceRefs.map((ref, refIdx) => {
+                const refRequestKey = `${node.id}:${ref.path}:${ref.startLine}-${ref.endLine}`;
+                const isLoading = sourcePreviewLoadingKey === refRequestKey;
+                return (
+                  <button
+                    key={`${refRequestKey}:${refIdx}`}
+                    type="button"
+                    onClick={() => void previewSourceRef(node.id, ref)}
+                    className="hover:opacity-85"
+                    disabled={isLoading}
+                    title="Preview source snippet"
+                  >
+                    <Badge color="gray" className="text-[9px]">
+                      {isLoading ? 'loading...' : ref.raw}
+                    </Badge>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {sourcePreviewErrorForNode && (
+            <div className="mt-2 text-[11px] text-red-600 dark:text-red-400">
+              {sourcePreviewErrorForNode}
+            </div>
+          )}
+
+          {sourcePreviewForNode && (
+            <div className="mt-2 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-2">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <code className="text-[10px] text-neutral-600 dark:text-neutral-300">
+                  {sourcePreviewForNode.data.path}:{sourcePreviewForNode.data.startLine}-{sourcePreviewForNode.data.endLine}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => setSourcePreview(null)}
+                  className="text-[10px] text-neutral-500 hover:underline"
+                >
+                  Close
+                </button>
+              </div>
+              <pre className="text-[11px] leading-relaxed overflow-auto max-h-56">
+                {sourcePreviewForNode.data.lines.map((line) => (
+                  <div key={`${sourcePreviewForNode.data.path}:${line.lineNumber}`} className="flex gap-2">
+                    <span className="w-10 shrink-0 text-right text-neutral-400 select-none">{line.lineNumber}</span>
+                    <code className="text-neutral-700 dark:text-neutral-200 whitespace-pre">{line.text}</code>
+                  </div>
+                ))}
+              </pre>
+            </div>
+          )}
+
+          {links.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {links.map((link, linkIdx) => {
+                const targetNode = link.targetNodeId ? nodeById.get(link.targetNodeId) : undefined;
+                const targetNodeOrder = targetNode ? selectedRoundNodeOrder.get(targetNode.id) : undefined;
+                const targetRoundNumber = targetNode ? reviewRoundNumberById.get(targetNode.roundId) : undefined;
+                const targetInDifferentRound =
+                  !!targetNode && targetNode.roundId !== selectedRoundId;
+                return (
+                  <div
+                    key={`${node.id}:link:${link.id}:${linkIdx}`}
+                    className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1.5 flex-wrap"
+                  >
+                    {targetNode ? (
+                      <button
+                        type="button"
+                        onClick={() => focusLinkedNode(targetNode.id)}
+                        className="hover:opacity-80"
+                        title="Jump to referenced node"
+                      >
+                        <Badge color="blue" className="text-[9px]">{link.relation}</Badge>
+                      </button>
+                    ) : (
+                      <Badge color="gray" className="text-[9px]">{link.relation}</Badge>
+                    )}
+                    {targetNode ? (
+                      <button
+                        type="button"
+                        onClick={() => focusLinkedNode(targetNode.id)}
+                        className="text-blue-600 dark:text-blue-400 hover:underline"
+                        title="Jump to referenced node"
+                      >
+                        to <code className="font-mono">{targetNodeOrder ? `#${targetNodeOrder}` : targetNode.id.slice(0, 8)}</code>{' '}
+                        ({targetNode.authorRole}/{targetNode.kind}
+                        {targetInDifferentRound ? `, round #${targetRoundNumber ?? '?'}` : ''})
+                      </button>
+                    ) : link.targetPlanAnchor ? (
+                      <span>
+                        plan anchor <code className="font-mono">{JSON.stringify(link.targetPlanAnchor)}</code>
+                      </span>
+                    ) : (
+                      <span>reference</span>
+                    )}
+                    {link.quote && (
+                      <span className="italic text-neutral-400">"{link.quote}"</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => handleReplyToNode(node)}
+              className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Reply to this node
+            </button>
+          </div>
+        </div>
+
+        {children.length > 0 && (
+          <DisclosureSection
+            label={`${children.length} ${children.length === 1 ? 'reply' : 'replies'}`}
+            defaultOpen={depth < 2}
+            size="sm"
+            bordered
+          >
+            <div className="space-y-2">
+              {children.map((child) => renderDiscussionNode(child, depth + 1, nextAncestry))}
+            </div>
+          </DisclosureSection>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -499,6 +2067,14 @@ function PlanDetailView({
             onSelect={(v) => void applyUpdate({ priority: v })}
             disabled={updating}
           />
+          <ClickableBadge
+            value={detail.stage}
+            displayValue={stageLabel}
+            color={STAGE_BADGE_COLORS[detail.stage] ?? 'gray'}
+            options={stageBadgeOptions}
+            onSelect={(v) => void applyUpdate({ stage: v })}
+            disabled={updating}
+          />
           <Badge color="gray" className="text-[10px]">{detail.planType}</Badge>
           {detail.visibility !== 'public' && (
             <Badge color={detail.visibility === 'private' ? 'orange' : 'blue'} className="text-[10px]">
@@ -518,7 +2094,7 @@ function PlanDetailView({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400">
         <span><span className="font-medium text-neutral-700 dark:text-neutral-300">{detail.owner}</span></span>
         <span className="text-neutral-300 dark:text-neutral-600">&middot;</span>
-        <span>Stage: <span className="font-medium text-neutral-700 dark:text-neutral-300">{detail.stage}</span></span>
+        <span>Stage: <span className="font-medium text-neutral-700 dark:text-neutral-300">{stageLabel}</span></span>
         {overallProgress !== null ? (
           <>
             <span className="text-neutral-300 dark:text-neutral-600">&middot;</span>
@@ -533,6 +2109,80 @@ function PlanDetailView({
         <span className="text-neutral-300 dark:text-neutral-600">&middot;</span>
         <span>{formatDate(detail.lastUpdated)}</span>
       </div>
+
+      {(loadingParticipants || (planParticipants?.participants.length ?? 0) > 0) && (
+        <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3">
+          <SectionHeader
+            trailing={(
+              <span className="text-[10px] text-neutral-400">
+                {loadingParticipants
+                  ? 'Refreshing...'
+                  : `${planParticipants?.participants.length ?? 0} tracked`}
+              </span>
+            )}
+          >
+            Participants
+          </SectionHeader>
+          {!loadingParticipants && (planParticipants?.participants.length ?? 0) === 0 ? (
+            <div className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+              No attributed participants yet.
+            </div>
+          ) : (
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                  Builders ({builderParticipants.length})
+                </div>
+                <div className="space-y-1">
+                  {builderParticipants.map((participant) => {
+                    const label =
+                      participant.agentId ??
+                      (participant.userId !== null ? `user:${participant.userId}` : participant.principalType ?? 'unknown');
+                    const trace = [participant.runId ? `run ${participant.runId.slice(0, 12)}` : null, participant.sessionId ? `session ${participant.sessionId.slice(0, 12)}` : null]
+                      .filter(Boolean)
+                      .join(' • ');
+                    return (
+                      <div key={participant.id} className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                        <span className="font-mono text-neutral-700 dark:text-neutral-300">{label}</span>
+                        <span className="ml-1 text-neutral-400">({participant.touches}x)</span>
+                        {trace && <div className="text-[10px] text-neutral-400">{trace}</div>}
+                      </div>
+                    );
+                  })}
+                  {builderParticipants.length === 0 && (
+                    <div className="text-[11px] text-neutral-400">None</div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                  Reviewers ({reviewerParticipants.length})
+                </div>
+                <div className="space-y-1">
+                  {reviewerParticipants.map((participant) => {
+                    const label =
+                      participant.agentId ??
+                      (participant.userId !== null ? `user:${participant.userId}` : participant.principalType ?? 'unknown');
+                    const trace = [participant.runId ? `run ${participant.runId.slice(0, 12)}` : null, participant.sessionId ? `session ${participant.sessionId.slice(0, 12)}` : null]
+                      .filter(Boolean)
+                      .join(' • ');
+                    return (
+                      <div key={participant.id} className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                        <span className="font-mono text-neutral-700 dark:text-neutral-300">{label}</span>
+                        <span className="ml-1 text-neutral-400">({participant.touches}x)</span>
+                        {trace && <div className="text-[10px] text-neutral-400">{trace}</div>}
+                      </div>
+                    );
+                  })}
+                  {reviewerParticipants.length === 0 && (
+                    <div className="text-[11px] text-neutral-400">None</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Target */}
       {detail.target && (
@@ -640,6 +2290,674 @@ function PlanDetailView({
         </div>
       )}
 
+      <DisclosureSection
+        label="Review Loop"
+        defaultOpen={false}
+        className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3"
+        contentClassName="space-y-3 mt-2"
+        badge={
+          <span className="text-[10px] text-neutral-400">
+            {reviewGraph ? `${reviewGraph.rounds.length} rounds` : '0 rounds'}
+          </span>
+        }
+        actions={
+          <Button size="sm" onClick={() => void loadReviewGraph()} disabled={loadingReviews}>
+            {loadingReviews ? 'Refreshing...' : 'Refresh'}
+          </Button>
+        }
+      >
+
+        {reviewError && (
+          <div className="text-xs text-red-600 dark:text-red-400">
+            {reviewError}
+          </div>
+        )}
+        {reviewNotice && !reviewError && (
+          <div className="text-xs text-green-600 dark:text-green-400">
+            {reviewNotice}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+          <div className="space-y-3">
+            <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2">
+              <div className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                Review Rounds
+              </div>
+              {loadingReviews && reviewRounds.length === 0 ? (
+                <div className="text-xs text-neutral-500 dark:text-neutral-400">Loading review graph...</div>
+              ) : reviewRounds.length === 0 ? (
+                <div className="text-xs text-neutral-500 dark:text-neutral-400">No review rounds yet.</div>
+              ) : (
+                <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                  {reviewRounds.map((round) => {
+                    const selected = round.id === selectedRoundId;
+                    return (
+                      <button
+                        key={round.id}
+                        onClick={() => setSelectedRoundId(round.id)}
+                        className={`w-full text-left p-2 rounded border text-xs ${
+                          selected
+                            ? 'border-blue-400 bg-blue-50 dark:bg-blue-950/20'
+                            : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="font-medium text-neutral-800 dark:text-neutral-200">
+                            Round #{round.roundNumber}
+                          </span>
+                          <Badge color={REVIEW_ROUND_STATUS_COLORS[round.status]} className="text-[9px]">
+                            {round.status}
+                          </Badge>
+                        </div>
+                        <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                          {reviewNodeCountByRound.get(round.id) ?? 0} nodes
+                          {round.reviewRevision != null ? ` - rev ${round.reviewRevision}` : ''}
+                        </div>
+                        {(round.actorAgentId || round.actorRunId || round.createdBy) && (
+                          <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                            {(round.actorAgentId || round.createdBy) ?? 'unknown'}
+                            {round.actorRunId ? ` - run ${round.actorRunId.slice(0, 16)}` : ''}
+                          </div>
+                        )}
+                        <div className="text-[10px] text-neutral-400 mt-0.5">
+                          {formatDateTime(round.updatedAt)}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <DisclosureSection
+              label="Start New Round"
+              defaultOpen={false}
+              className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
+              contentClassName="space-y-2"
+            >
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                  Status
+                  <select
+                    value={newRoundStatus}
+                    onChange={(e) => setNewRoundStatus(e.target.value as 'open' | 'changes_requested' | 'approved')}
+                    className={inputClassName}
+                  >
+                    <option value="open">open</option>
+                    <option value="changes_requested">changes_requested</option>
+                    <option value="approved">approved</option>
+                  </select>
+                </label>
+                <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                  Revision
+                  <input
+                    value={newRoundRevision}
+                    onChange={(e) => setNewRoundRevision(e.target.value)}
+                    className={inputClassName}
+                    placeholder="optional"
+                  />
+                </label>
+              </div>
+              <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+                Note
+                <input
+                  value={newRoundNote}
+                  onChange={(e) => setNewRoundNote(e.target.value)}
+                  className={inputClassName}
+                  placeholder="Optional context for this round"
+                />
+              </label>
+              <Button size="sm" onClick={() => void handleCreateRound()} disabled={creatingRound}>
+                {creatingRound ? 'Creating...' : 'Create Round'}
+              </Button>
+            </DisclosureSection>
+          </div>
+
+          <div className="space-y-3 xl:col-span-2">
+            <div className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2 space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                  {selectedRound ? `Round #${selectedRound.roundNumber}` : 'Round State'}
+                </span>
+                {selectedRound && (
+                  <Badge color={REVIEW_ROUND_STATUS_COLORS[selectedRound.status]} className="text-[9px]">
+                    {selectedRound.status}
+                  </Badge>
+                )}
+                {selectedRound?.reviewRevision != null && (
+                  <Badge color="gray" className="text-[9px]">
+                    rev {selectedRound.reviewRevision}
+                  </Badge>
+                )}
+              </div>
+
+              {!selectedRound ? (
+                <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                  Select a review round to inspect responses.
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                      Status
+                      <select
+                        value={roundStatusDraft}
+                        onChange={(e) => setRoundStatusDraft(e.target.value as ReviewRoundStatus)}
+                        className={inputClassName}
+                      >
+                        <option value="open">open</option>
+                        <option value="changes_requested">changes_requested</option>
+                        <option value="approved">approved</option>
+                        <option value="concluded">concluded</option>
+                      </select>
+                    </label>
+                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400 sm:col-span-2">
+                      Note
+                      <input
+                        value={roundNoteDraft}
+                        onChange={(e) => setRoundNoteDraft(e.target.value)}
+                        className={inputClassName}
+                        placeholder="Optional round note"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+                    Conclusion (required when status=concluded)
+                    <textarea
+                      value={roundConclusionDraft}
+                      onChange={(e) => setRoundConclusionDraft(e.target.value)}
+                      className={textAreaClassName}
+                      rows={2}
+                    />
+                  </label>
+
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" onClick={() => void handleSaveRoundState()} disabled={updatingRound}>
+                      {updatingRound ? 'Saving...' : 'Save Round State'}
+                    </Button>
+                    <span className="text-[10px] text-neutral-400">
+                      Updated {formatDateTime(selectedRound.updatedAt)}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <DisclosureSection
+              label="Review Requests"
+              defaultOpen
+              className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
+              contentClassName="space-y-2"
+              badge={
+                <Badge color="gray" className="text-[9px]">{selectedRoundRequests.length}</Badge>
+              }
+              actions={
+                <Button
+                  size="sm"
+                  onClick={() => void handleDispatchTick()}
+                  disabled={dispatchingTick || !selectedRoundRequests.some((request) => request.status === 'open')}
+                >
+                  {dispatchingTick ? 'Dispatching...' : 'Dispatch Open'}
+                </Button>
+              }
+            >
+
+              {selectedRoundRequests.length === 0 ? (
+                <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                  No review requests yet.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                  {selectedRoundRequests.map((request) => (
+                    <div key={request.id} className="rounded border border-neutral-200 dark:border-neutral-700 p-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-medium text-neutral-800 dark:text-neutral-200">
+                          {request.title}
+                        </span>
+                        <Badge color={REVIEW_REQUEST_STATUS_COLORS[request.status]} className="text-[9px]">
+                          {request.status}
+                        </Badge>
+                        {request.dispatchState && (
+                          <Badge color={REVIEW_REQUEST_DISPATCH_COLORS[request.dispatchState]} className="text-[9px]">
+                            {request.dispatchState}
+                          </Badge>
+                        )}
+                        {request.targetMode && (
+                          <Badge color="gray" className="text-[9px]">
+                            {request.targetMode}
+                          </Badge>
+                        )}
+                        {request.targetAgentId && (
+                          <Badge color="green" className="text-[9px]">
+                            {request.targetAgentId}
+                          </Badge>
+                        )}
+                        {request.roundId && (
+                          <Badge color="gray" className="text-[9px]">
+                            round-bound
+                          </Badge>
+                        )}
+                        <span className="text-[10px] text-neutral-400">{formatDateTime(request.createdAt)}</span>
+                      </div>
+                      <div className="mt-1 text-[11px] text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">
+                        {request.body}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                          by {request.requestedByAgentId || request.requestedBy || 'unknown'}
+                        </span>
+                        {request.targetModelId && (
+                          <Badge color="purple" className="text-[9px]">{request.targetModelId}</Badge>
+                        )}
+                        {request.targetProvider && (
+                          <Badge color="gray" className="text-[9px]">{request.targetProvider}</Badge>
+                        )}
+                        {request.targetMethod && (
+                          <Badge color="gray" className="text-[9px]">{request.targetMethod}</Badge>
+                        )}
+                        {request.targetProfileId && (
+                          <Badge color="indigo" className="text-[9px]">{request.targetProfileId}</Badge>
+                        )}
+                        {request.queueIfBusy && (
+                          <Badge color="yellow" className="text-[9px]">queued</Badge>
+                        )}
+                        {(request.resolvedByAgentId || request.resolvedBy) && (
+                          <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                            resolved by {request.resolvedByAgentId || request.resolvedBy}
+                          </span>
+                        )}
+                      </div>
+                      {request.dispatchReason && request.status !== 'in_progress' && (
+                        <div className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+                          dispatch: {request.dispatchReason}
+                        </div>
+                      )}
+                      {request.status === 'in_progress' && (() => {
+                        const agentId = request.targetAgentId || request.targetSessionId;
+                        const session = agentId ? agentSessions.get(agentId) : undefined;
+                        return (
+                          <div className="mt-1.5 rounded border border-green-200 dark:border-green-800/50 bg-green-50/50 dark:bg-green-950/20 p-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                              </span>
+                              {session ? (
+                                <span className="text-[10px] text-green-700 dark:text-green-300">
+                                  {session.action || 'Working'}{session.detail ? `: ${session.detail.slice(0, 80)}` : ''}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-green-700 dark:text-green-300">
+                                  Agent working{agentId ? ` (${agentId})` : ''}...
+                                </span>
+                              )}
+                            </div>
+                            {session && session.recent_activity.length > 0 && (
+                              <div className="mt-1 space-y-0.5 max-h-20 overflow-y-auto">
+                                {session.recent_activity.slice(0, 5).map((a, i) => (
+                                  <div key={`${session.session_id}:activity:${i}`} className="flex items-start gap-1.5 text-[9px] text-neutral-500 dark:text-neutral-400">
+                                    <span className="shrink-0 w-12 text-right text-neutral-400">
+                                      {new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                    </span>
+                                    <span className="font-medium text-neutral-600 dark:text-neutral-300">{a.action}</span>
+                                    {a.detail && <span className="truncate">{a.detail.slice(0, 60)}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {request.resolutionNote && (
+                        <div className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400 italic">
+                          {request.resolutionNote}
+                        </div>
+                      )}
+                      {request.resolvedNodeId && (() => {
+                        const resolvedNode = nodeById.get(request.resolvedNodeId!);
+                        const resolvedOrder = resolvedNode ? selectedRoundNodeOrder.get(resolvedNode.id) : undefined;
+                        return (
+                          <div className="mt-1">
+                            <button
+                              type="button"
+                              onClick={() => focusLinkedNode(request.resolvedNodeId!)}
+                              className="hover:opacity-80"
+                              title="Jump to resolved node"
+                            >
+                              <Badge color="green" className="text-[9px]">
+                                resolved → #{resolvedOrder ?? request.resolvedNodeId!.slice(0, 8)}
+                              </Badge>
+                            </button>
+                          </div>
+                        );
+                      })()}
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Button
+                          size="sm"
+                          onClick={() => void handleDispatchRequest(request)}
+                          disabled={dispatchingRequestId === request.id || request.status !== 'open'}
+                        >
+                          {dispatchingRequestId === request.id ? 'Dispatching...' : 'Dispatch'}
+                        </Button>
+                        {(['open', 'in_progress', 'fulfilled', 'cancelled'] as const).map((statusValue) => (
+                          <Button
+                            key={`${request.id}:${statusValue}`}
+                            size="sm"
+                            onClick={() => void handleUpdateRequestStatus(request, statusValue)}
+                            disabled={updatingRequestId === request.id || dispatchingRequestId === request.id}
+                          >
+                            {request.status === statusValue ? `* ${statusValue}` : statusValue}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <DisclosureSection
+                label="New Request"
+                defaultOpen={false}
+                className="rounded border border-neutral-200 dark:border-neutral-700 p-2"
+                contentClassName="space-y-2"
+              >
+                <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+                  Title
+                  <input
+                    value={newRequestTitle}
+                    onChange={(e) => setNewRequestTitle(e.target.value)}
+                    className={inputClassName}
+                    placeholder="e.g. Re-review after fixes"
+                  />
+                </label>
+                <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+                  Agent Profile (optional)
+                  <select
+                    value={newRequestProfileId}
+                    onChange={(e) => applyRequestProfileSelection(e.target.value)}
+                    className={inputClassName}
+                  >
+                    <option value="">none</option>
+                    {reviewProfiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.label} ({profile.id})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+                    Method (optional)
+                    <input
+                      value={newRequestMethod}
+                      onChange={(e) => setNewRequestMethod(e.target.value)}
+                      className={inputClassName}
+                      placeholder="remote"
+                    />
+                  </label>
+                  <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+                    Provider (optional)
+                    <input
+                      value={newRequestProvider}
+                      onChange={(e) => setNewRequestProvider(e.target.value)}
+                      className={inputClassName}
+                      placeholder="anthropic"
+                    />
+                  </label>
+                  <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+                    Model (optional)
+                    <input
+                      value={newRequestModelId}
+                      onChange={(e) => setNewRequestModelId(e.target.value)}
+                      className={inputClassName}
+                      placeholder="claude-3-7-sonnet"
+                    />
+                  </label>
+                </div>
+                <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+                  Assignee
+                  <select
+                    value={newRequestAssignee}
+                    onChange={(e) => setNewRequestAssignee(e.target.value)}
+                    className={inputClassName}
+                  >
+                    <option value="auto">Auto (dispatcher)</option>
+                    {liveAssigneeOptions.length > 0 && (
+                      <optgroup label="Live Sessions">
+                        {liveAssigneeOptions.map((option) => {
+                          const parts = [option.agentId];
+                          if (option.modelId) parts.push(option.modelId);
+                          else if (option.agentType) parts.push(option.agentType);
+                          parts.push(option.busy ? `busy (${option.activeTasks})` : 'idle');
+                          if (option.tasksCompleted > 0) parts.push(`${option.tasksCompleted} done`);
+                          return (
+                            <option key={`live:${option.agentId}`} value={buildAssigneeOptionValue('live', option.agentId)}>
+                              {parts.join(' · ')}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    )}
+                    {recentAssigneeOptions.length > 0 && (
+                      <optgroup label="Recent Reviewers">
+                        {recentAssigneeOptions.map((option) => {
+                          const parts = [option.agentId];
+                          if (option.agentType) parts.push(option.agentType);
+                          if (option.tasksCompleted > 0) parts.push(`${option.tasksCompleted} done`);
+                          return (
+                            <option key={`recent:${option.agentId}`} value={buildAssigneeOptionValue('recent', option.agentId)}>
+                              {parts.join(' · ')}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    )}
+                  </select>
+                </label>
+                <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+                  Queue Policy
+                  <select
+                    value={newRequestQueuePolicy}
+                    onChange={(e) => setNewRequestQueuePolicy(e.target.value as ReviewRequestQueuePolicy)}
+                    className={inputClassName}
+                  >
+                    <option value="auto_reroute">Auto reroute if busy (recommended)</option>
+                    <option value="start_now">Start now only</option>
+                    <option value="queue_next">Queue next if busy</option>
+                  </select>
+                </label>
+                {loadingAssignees && (
+                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                    Refreshing live assignees...
+                  </div>
+                )}
+                {loadingProfiles && (
+                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                    Refreshing agent profiles...
+                  </div>
+                )}
+                <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+                  Body
+                  <textarea
+                    value={newRequestBody}
+                    onChange={(e) => setNewRequestBody(e.target.value)}
+                    className={textAreaClassName}
+                    rows={3}
+                    placeholder="What should the reviewer verify or challenge?"
+                  />
+                </label>
+                <Button size="sm" onClick={() => void handleCreateRequest()} disabled={creatingRequest}>
+                  {creatingRequest ? 'Creating...' : 'Create Review Request'}
+                </Button>
+              </DisclosureSection>
+            </DisclosureSection>
+
+            <DisclosureSection
+              label="Discussion"
+              defaultOpen
+              className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
+              contentClassName="space-y-2"
+              badge={
+                <Badge color="gray" className="text-[9px]">{selectedRoundNodes.length}</Badge>
+              }
+            >
+              {!selectedRound ? (
+                <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                  Select a review round to view discussion.
+                </div>
+              ) : selectedRoundNodes.length === 0 ? (
+                <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                  No responses yet in this round.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[24rem] overflow-y-auto pr-1">
+                  {selectedRoundThread.roots.map((node) => renderDiscussionNode(node, 0, new Set()))}
+                </div>
+              )}
+            </DisclosureSection>
+
+            <DisclosureSection
+              label="Add Response"
+              defaultOpen={false}
+              className="rounded-md border border-neutral-200 dark:border-neutral-700 p-2"
+              contentClassName="space-y-2"
+            >
+              {!selectedRound ? (
+                <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                  Select a round before adding responses.
+                </div>
+              ) : (
+                <>
+                  {selectedRound.status === 'concluded' && (
+                    <div className="text-xs text-orange-600 dark:text-orange-400">
+                      This round is concluded. Re-open it to continue discussion.
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                      Kind
+                      <select
+                        value={newNodeKind}
+                        onChange={(e) => setNewNodeKind(e.target.value as ReviewNodeKind)}
+                        className={inputClassName}
+                      >
+                        <option value="review_comment">review_comment</option>
+                        <option value="agent_response">agent_response</option>
+                        <option value="note">note</option>
+                        <option value="conclusion">conclusion</option>
+                      </select>
+                    </label>
+                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                      Role
+                      <select
+                        value={newNodeAuthorRole}
+                        onChange={(e) => setNewNodeAuthorRole(e.target.value as ReviewAuthorRole)}
+                        className={inputClassName}
+                      >
+                        <option value="reviewer">reviewer</option>
+                        <option value="author">author</option>
+                        <option value="agent">agent</option>
+                        <option value="system">system</option>
+                      </select>
+                    </label>
+                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                      Severity
+                      <select
+                        value={newNodeSeverity}
+                        onChange={(e) => setNewNodeSeverity(e.target.value as NonNullable<PlanReviewNode['severity']> | '')}
+                        className={inputClassName}
+                      >
+                        <option value="">none</option>
+                        <option value="info">info</option>
+                        <option value="low">low</option>
+                        <option value="medium">medium</option>
+                        <option value="high">high</option>
+                        <option value="critical">critical</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <label className="text-[11px] text-neutral-600 dark:text-neutral-400 block">
+                    Body
+                    <textarea
+                      ref={composeTextareaRef}
+                      value={newNodeBody}
+                      onChange={(e) => setNewNodeBody(e.target.value)}
+                      className={textAreaClassName}
+                      rows={5}
+                      placeholder="Add review feedback, response, or conclusion details..."
+                    />
+                  </label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                      Target Node (optional)
+                      <select
+                        value={newNodeRefTargetId}
+                        onChange={(e) => setNewNodeRefTargetId(e.target.value)}
+                        className={inputClassName}
+                      >
+                        <option value="">none</option>
+                        {selectedRoundNodes.map((node, idx) => (
+                          <option key={node.id} value={node.id}>
+                            #{idx + 1} {node.authorRole}/{node.kind} {node.id.slice(0, 8)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                      Relation
+                      <select
+                        value={newNodeRefRelation}
+                        onChange={(e) => setNewNodeRefRelation(e.target.value as PlanReviewLink['relation'])}
+                        className={inputClassName}
+                      >
+                        {relationOptions.map((relation) => (
+                          <option key={relation.value} value={relation.value}>
+                            {relation.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                      Plan Anchor (optional)
+                      <input
+                        value={newNodeRefPlanAnchor}
+                        onChange={(e) => setNewNodeRefPlanAnchor(e.target.value)}
+                        className={inputClassName}
+                        placeholder="e.g. checkpoint:cp-2"
+                      />
+                    </label>
+                    <label className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                      Quote (optional)
+                      <input
+                        value={newNodeRefQuote}
+                        onChange={(e) => setNewNodeRefQuote(e.target.value)}
+                        className={inputClassName}
+                        placeholder="Short quoted context"
+                      />
+                    </label>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    onClick={() => void handleCreateNode()}
+                    disabled={creatingNode || selectedRound.status === 'concluded'}
+                  >
+                    {creatingNode ? 'Posting...' : 'Add Response'}
+                  </Button>
+                </>
+              )}
+            </DisclosureSection>
+          </div>
+        </div>
+      </DisclosureSection>
+
       {/* Parent reference */}
       {detail.parentId && (
         <div className="text-xs text-neutral-500 dark:text-neutral-400">
@@ -682,7 +3000,7 @@ function PlanDetailView({
 // Main Component
 // =============================================================================
 
-export function PlansPanel() {
+export function PlansPanel({ context }: { context?: { targetPlanId?: string; [key: string]: any } }) {
   const { theme: variant } = useTheme();
 
   const [plans, setPlans] = useState<PlanSummary[]>([]);
@@ -692,6 +3010,13 @@ export function PlansPanel() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [forgeUrlTemplate, setForgeUrlTemplate] = useState<string | null>(null);
+  const [stageOptions, setStageOptions] = useState<PlanStageOptionEntry[]>(
+    FALLBACK_PLAN_STAGE_OPTIONS,
+  );
+  const stageOptionsByValue = useMemo(
+    () => new Map(stageOptions.map((stage) => [stage.value, stage])),
+    [stageOptions],
+  );
 
   // Fetch forge commit URL template once
   useEffect(() => {
@@ -703,12 +3028,28 @@ export function PlansPanel() {
       .catch(() => {/* non-critical */});
   }, []);
 
+  // Fetch canonical stage options once; keep fallback for older backends.
+  useEffect(() => {
+    pixsimClient
+      .get<PlanStagesResponse>('/dev/plans/stages')
+      .then((res) => {
+        if (Array.isArray(res.stages) && res.stages.length > 0) {
+          setStageOptions(res.stages);
+        }
+      })
+      .catch(() => {/* non-critical */});
+  }, []);
+
   const loadPlans = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const res = await pixsimClient.get<PlansIndexResponse>('/dev/plans?refresh=true');
-      setPlans(res.plans);
+      const canonicalPlans = res.plans.filter((p) => isCanonicalPlanId(p.id));
+      if (canonicalPlans.length !== res.plans.length) {
+        console.warn('PlansPanel: dropped non-canonical plan IDs from sidebar list');
+      }
+      setPlans(canonicalPlans);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load plans');
     } finally {
@@ -755,48 +3096,129 @@ export function PlansPanel() {
       .map((s) => ({ value: s, label: s, count: counts.get(s) }));
   }, [plans]);
 
-  // Group filtered plans by status for sidebar sections
+  // Group filtered plans by stage for sidebar sections, with parent-child nesting.
+  // Child plans (parentId set) are excluded from top-level and placed after their parent.
   const grouped = useMemo(() => {
     const map = new Map<string, PlanSummary[]>();
+    const childOf = new Map<string, PlanSummary[]>(); // parentId → children
+
     for (const p of filteredPlans) {
-      if (!map.has(p.status)) map.set(p.status, []);
-      map.get(p.status)!.push(p);
+      if (p.parentId) {
+        if (!childOf.has(p.parentId)) childOf.set(p.parentId, []);
+        childOf.get(p.parentId)!.push(p);
+      } else {
+        const key = p.stage || p.status;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(p);
+      }
     }
-    return map;
+    return { byStage: map, childOf };
   }, [filteredPlans]);
 
-  // Build sidebar sections
+  // Build sidebar sections — grouped by stage, with children nested under parent
   const sections = useMemo<SidebarContentLayoutSection[]>(() => {
     const result: SidebarContentLayoutSection[] = [];
 
-    for (const status of STATUS_ORDER) {
-      const statusPlans = grouped.get(status);
-      if (!statusPlans || statusPlans.length === 0) continue;
+    // Use stage order first, then fall back to status order for any remaining groups
+    const allKeys = new Set([...grouped.byStage.keys()]);
+    const orderedKeys: string[] = [];
+    for (const s of stageOptions.map((stage) => stage.value)) {
+      if (allKeys.has(s)) { orderedKeys.push(s); allKeys.delete(s); }
+    }
+    for (const s of STATUS_ORDER) {
+      if (allKeys.has(s)) { orderedKeys.push(s); allKeys.delete(s); }
+    }
+    // Any remaining (unknown stages)
+    for (const s of allKeys) orderedKeys.push(s);
 
-      result.push({
-        id: `status:${status}`,
-        label: `${status} (${statusPlans.length})`,
-        icon: <Icon name={(STATUS_ICONS[status] ?? 'circle') as any} size={12} />,
-        children: statusPlans.map((p) => ({
-          id: `plan:${p.id}`,
-          label: p.title,
-          icon: (
-            <span className="relative flex items-center justify-center">
-              <Icon name={(PLAN_TYPE_ICONS[p.planType] ?? 'fileText') as any} size={11} />
-              <span className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ${STATUS_DOT_CLASSES[p.status] ?? 'bg-neutral-400'}`} />
+    const makePlanEntry = (p: PlanSummary, groupKey: string, indented = false) => ({
+      id: `plan:${p.id}`,
+      label: indented ? `  ${p.title}` : p.title,
+      icon: (
+        <span className="relative flex items-center justify-center">
+          {indented
+            ? <Icon name="git-branch" size={9} className="text-neutral-500" />
+            : <Icon name={(PLAN_TYPE_ICONS[p.planType] ?? 'fileText') as any} size={11} />
+          }
+          <span className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ${STATUS_DOT_CLASSES[p.status] ?? 'bg-neutral-400'}`} />
+        </span>
+      ),
+      extra: (
+        <span className="flex items-center gap-1">
+          {(p.reviewRoundCount ?? 0) > 0 && (
+            <span
+              className={`text-[9px] leading-none px-1 rounded ${
+                (p.activeReviewRoundCount ?? 0) > 0
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                  : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400'
+              }`}
+              title={`${p.reviewRoundCount} review round${p.reviewRoundCount !== 1 ? 's' : ''}${
+                (p.activeReviewRoundCount ?? 0) > 0 ? ` (${p.activeReviewRoundCount} active)` : ''
+              }`}
+            >
+              {(p.activeReviewRoundCount ?? 0) > 0
+                ? `${p.activeReviewRoundCount}/${p.reviewRoundCount}`
+                : p.reviewRoundCount}
             </span>
-          ),
-        })),
+          )}
+          {PRIORITY_DOT[p.priority] && (
+            <span className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[p.priority]}`} title={`${p.priority} priority`} />
+          )}
+          {!indented && STAGE_SHORT[p.stage] && p.stage !== groupKey && (
+            <span className={`text-[9px] leading-none ${STAGE_COLORS[p.stage] ?? 'text-neutral-400'}`} title={p.stage}>
+              {STAGE_SHORT[p.stage]}
+            </span>
+          )}
+        </span>
+      ),
+    });
+
+    for (const key of orderedKeys) {
+      const stagePlans = grouped.byStage.get(key);
+      if (!stagePlans || stagePlans.length === 0) continue;
+
+      // Count children that belong to parents in this group
+      let totalCount = stagePlans.length;
+      for (const p of stagePlans) totalCount += (grouped.childOf.get(p.id)?.length ?? 0);
+
+      const children: { id: string; label: string; icon: React.ReactNode; extra: React.ReactNode }[] = [];
+      for (const p of stagePlans) {
+        children.push(makePlanEntry(p, key, false));
+        // Insert children right after their parent
+        const subPlans = grouped.childOf.get(p.id);
+        if (subPlans) {
+          for (const child of subPlans) {
+            children.push(makePlanEntry(child, key, true));
+          }
+        }
+      }
+
+      const stageLabel = stageLabelFromValue(key, stageOptionsByValue);
+      result.push({
+        id: `stage:${key}`,
+        label: `${stageLabel} (${totalCount})`,
+        icon: <Icon name={(STAGE_ICONS[key] ?? STATUS_ICONS[key] ?? 'circle') as any} size={12} />,
+        children,
       });
     }
 
     return result;
-  }, [grouped]);
+  }, [grouped, stageOptions, stageOptionsByValue]);
 
   const nav = useSidebarNav({
     sections,
     storageKey: 'plans-panel:nav',
   });
+
+  // Navigate to a specific plan when opened via notification or cross-panel link
+  const targetPlanId = context?.targetPlanId;
+  useEffect(() => {
+    if (!targetPlanId) return;
+    const navId = `plan:${targetPlanId}`;
+    if (nav.activeId !== navId) {
+      nav.navigate(navId);
+    }
+  }, [targetPlanId]); // eslint-disable-line react-hooks/exhaustive-deps -- only react to context changes
 
   if (loading && plans.length === 0) {
     return (
@@ -825,16 +3247,38 @@ export function PlansPanel() {
 
   if (activeId.startsWith('plan:')) {
     const planId = activeId.slice(5);
-    content = <PlanDetailView key={`${planId}-${refreshKey}`} planId={planId} onPlanChanged={handlePlanChanged} forgeUrlTemplate={forgeUrlTemplate} />;
-  } else if (activeId.startsWith('status:')) {
-    const status = activeId.slice(7);
-    const count = grouped.get(status)?.length ?? 0;
+    const selectedPlanExists = plans.some((p) => p.id === planId);
+    if (!isCanonicalPlanId(planId) || !selectedPlanExists) {
+      content = (
+        <div className="flex items-center justify-center h-full">
+          <EmptyState
+            message="Selected plan is unavailable"
+            description="Pick a plan from the sidebar."
+            icon={<Icon name="alertCircle" size={20} />}
+          />
+        </div>
+      );
+    } else {
+      content = (
+        <PlanDetailView
+          key={`${planId}-${refreshKey}`}
+          planId={planId}
+          onPlanChanged={handlePlanChanged}
+          forgeUrlTemplate={forgeUrlTemplate}
+          stageOptions={stageOptions}
+        />
+      );
+    }
+  } else if (activeId.startsWith('stage:') || activeId.startsWith('status:')) {
+    const groupKey = activeId.includes(':') ? activeId.slice(activeId.indexOf(':') + 1) : activeId;
+    const count = grouped.byStage.get(groupKey)?.length ?? 0;
+    const groupLabel = stageLabelFromValue(groupKey, stageOptionsByValue);
     content = (
       <div className="flex items-center justify-center h-full">
         <EmptyState
-          message={`${count} ${status} plan${count !== 1 ? 's' : ''}`}
+          message={`${count} ${groupLabel} plan${count !== 1 ? 's' : ''}`}
           description="Select a plan from the sidebar"
-          icon={<Icon name={(STATUS_ICONS[status] ?? 'fileText') as any} size={20} />}
+          icon={<Icon name={(STAGE_ICONS[groupKey] ?? STATUS_ICONS[groupKey] ?? 'fileText') as any} size={20} />}
         />
       </div>
     );
@@ -876,6 +3320,7 @@ export function PlansPanel() {
       sidebarWidth="w-52"
       variant={variant}
       collapsible
+      resizable
       expandedWidth={208}
       persistKey="plans-panel-sidebar"
       contentClassName="overflow-y-auto"

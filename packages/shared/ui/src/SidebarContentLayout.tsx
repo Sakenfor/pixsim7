@@ -8,7 +8,7 @@ export interface SidebarContentLayoutSection {
   id: string;
   label: string;
   icon?: ReactNode;
-  children?: { id: string; label: string; icon?: ReactNode }[];
+  children?: { id: string; label: string; icon?: ReactNode; extra?: ReactNode }[];
 }
 
 export interface SidebarContentLayoutProps {
@@ -28,6 +28,8 @@ export interface SidebarContentLayoutProps {
   className?: string;
   /** Enable collapse toggle on the sidebar. */
   collapsible?: boolean;
+  /** Enable drag-to-resize on the sidebar edge. */
+  resizable?: boolean;
   /** Width in px when expanded (used when collapsible=true). */
   expandedWidth?: number;
   /** localStorage persistence key for collapse state. */
@@ -60,6 +62,7 @@ export function SidebarContentLayout({
   navClassName,
   className,
   collapsible,
+  resizable,
   expandedWidth,
   persistKey,
   defaultCollapsed,
@@ -77,6 +80,7 @@ export function SidebarContentLayout({
         widthClassName={sidebarWidth}
         variant={variant}
         collapsible={collapsible}
+        resizable={resizable}
         expandedWidth={expandedWidth}
         persistKey={persistKey}
         defaultCollapsed={defaultCollapsed}
