@@ -1405,7 +1405,7 @@ async def _resolve_assistant_provider(user_id: Optional[int]) -> tuple[str, str,
     from pixsim7.backend.main.services.ai_model.registry import ai_model_registry
 
     fallback_model, fallback_method = FALLBACK_DEFAULTS.get(
-        AiModelCapability.ASSISTANT_CHAT, ("anthropic:claude-3.5", "remote")
+        AiModelCapability.ASSISTANT_CHAT, ("anthropic:sonnet", "remote")
     )
 
     # Try user-scoped default

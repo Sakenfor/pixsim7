@@ -89,11 +89,11 @@ def initialize_ai_models() -> None:
         )
     )
 
-    # Anthropic Claude 3.5 Sonnet
+    # Anthropic Claude models
     ai_model_registry.register(
         AiModel(
-            id="anthropic:claude-3.5",
-            label="Claude 3.5 Sonnet",
+            id="anthropic:sonnet",
+            label="Claude Sonnet",
             provider_id="anthropic",
             kind=AiModelKind.LLM,
             capabilities=[
@@ -102,7 +102,36 @@ def initialize_ai_models() -> None:
             ],
             default_for=[AiModelCapability.ASSISTANT_CHAT],
             supported_methods=[DeliveryMethod.API, DeliveryMethod.REMOTE],
-            description="Anthropic Claude 3.5 Sonnet — via API or bridge with MCP tools",
+            description="Anthropic Claude Sonnet — balanced speed and quality",
+        )
+    )
+    ai_model_registry.register(
+        AiModel(
+            id="anthropic:opus",
+            label="Claude Opus",
+            provider_id="anthropic",
+            kind=AiModelKind.LLM,
+            capabilities=[
+                AiModelCapability.PROMPT_EDIT,
+                AiModelCapability.ASSISTANT_CHAT,
+            ],
+            supported_methods=[DeliveryMethod.API, DeliveryMethod.REMOTE],
+            description="Anthropic Claude Opus — highest capability",
+        )
+    )
+    ai_model_registry.register(
+        AiModel(
+            id="anthropic:haiku",
+            label="Claude Haiku",
+            provider_id="anthropic",
+            kind=AiModelKind.LLM,
+            capabilities=[
+                AiModelCapability.PROMPT_EDIT,
+                AiModelCapability.TAG_SUGGEST,
+                AiModelCapability.ASSISTANT_CHAT,
+            ],
+            supported_methods=[DeliveryMethod.API, DeliveryMethod.REMOTE],
+            description="Anthropic Claude Haiku — fast and lightweight",
         )
     )
 

@@ -48,7 +48,7 @@ FALLBACK_DEFAULTS: dict[AiModelCapability, tuple[str, str | None]] = {
     AiModelCapability.PROMPT_PARSE: ("prompt-dsl:simple", None),
     AiModelCapability.TAG_SUGGEST: ("openai:gpt-4o-mini", None),
     AiModelCapability.EMBEDDING: ("openai:text-embedding-3-small", None),
-    AiModelCapability.ASSISTANT_CHAT: ("anthropic:claude-3.5", "remote"),
+    AiModelCapability.ASSISTANT_CHAT: ("anthropic:sonnet", "remote"),
 }
 
 
