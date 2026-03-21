@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -17,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
 from pixsim7.backend.main.domain import UserSession
-from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
+from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile, AgentRun
 from pixsim7.backend.main.shared.auth import create_agent_token, decode_access_token
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
@@ -166,6 +167,154 @@ async def list_agent_profiles(
     return {
         "profiles": [_to_response(p) for p in profiles],
         "total": len(profiles),
+    }
+
+
+# ── Agent Runs (before /{profile_id} to avoid route capture) ─────
+
+
+class AgentRunResponse(BaseModel):
+    id: str
+    profile_id: str
+    run_id: str
+    status: str
+    started_at: str
+    ended_at: Optional[str] = None
+    summary: Optional[Dict[str, Any]] = None
+    token_jti: Optional[str] = None
+
+
+class AgentRunCompleteRequest(BaseModel):
+    status: str = Field(default="completed", description='"completed" or "failed"')
+    summary: Optional[Dict[str, Any]] = None
+
+
+def _run_to_response(r: AgentRun) -> dict:
+    return {
+        "id": str(r.id),
+        "profile_id": r.profile_id,
+        "run_id": r.run_id,
+        "status": r.status,
+        "started_at": r.started_at.isoformat() if r.started_at else "",
+        "ended_at": r.ended_at.isoformat() if r.ended_at else None,
+        "summary": r.summary,
+        "token_jti": r.token_jti,
+    }
+
+
+@router.get("/runs", response_model=List[AgentRunResponse])
+async def list_agent_runs(
+    principal: CurrentUser,
+    profile_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: AsyncSession = Depends(get_database),
+):
+    """List agent runs, optionally filtered by profile or status."""
+    from pixsim7.backend.main.services.audit import AgentTrackingService
+    svc = AgentTrackingService(db)
+    runs = await svc.list_runs(profile_id=profile_id, status=status, limit=limit)
+    return [_run_to_response(r) for r in runs]
+
+
+@router.post("/runs/{run_id}/complete", response_model=AgentRunResponse)
+async def complete_agent_run(
+    run_id: str,
+    payload: AgentRunCompleteRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Mark an agent run as completed or failed."""
+    from pixsim7.backend.main.services.audit import AgentTrackingService, resolve_actor
+
+    svc = AgentTrackingService(db)
+    try:
+        run = await svc.complete_run(
+            run_id, status=payload.status,
+            summary=payload.summary, actor=resolve_actor(principal),
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    await db.commit()
+    await db.refresh(run)
+    return _run_to_response(run)
+
+
+# ── Git Commit Audit ─────────────────────────────────────────────
+
+
+class GitCommitAuditRequest(BaseModel):
+    """Payload an agent sends after making a git commit."""
+    commit_sha: str = Field(..., min_length=7, max_length=64)
+    message: str = Field(..., min_length=1, max_length=4000)
+    branch: Optional[str] = Field(None, max_length=255)
+    files_changed: Optional[List[str]] = None
+    insertions: Optional[int] = None
+    deletions: Optional[int] = None
+    run_id: Optional[str] = Field(None, description="Agent run ID for grouping")
+
+
+class GitCommitAuditResponse(BaseModel):
+    ok: bool = True
+    audit_id: str
+    commit_sha: str
+
+
+@router.post("/audit/git-commit", response_model=GitCommitAuditResponse, status_code=201)
+async def audit_git_commit(
+    payload: GitCommitAuditRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Record a git commit made by an agent for audit tracking."""
+    from pixsim7.backend.main.services.audit import AgentTrackingService, resolve_actor
+
+    svc = AgentTrackingService(db)
+    entry = await svc.record_git_commit(
+        actor=resolve_actor(principal),
+        commit_sha=payload.commit_sha,
+        message=payload.message,
+        branch=payload.branch,
+        files_changed=payload.files_changed,
+        insertions=payload.insertions,
+        deletions=payload.deletions,
+        agent_id=principal.agent_id,
+        agent_type=principal.agent_type,
+        run_id=payload.run_id or principal.run_id,
+    )
+    await db.commit()
+    return GitCommitAuditResponse(audit_id=str(entry.id), commit_sha=payload.commit_sha)
+
+
+@router.get("/audit/git-commits")
+async def list_git_commit_audits(
+    principal: CurrentUser,
+    profile_id: Optional[str] = Query(None, description="Filter by agent profile"),
+    run_id: Optional[str] = Query(None, description="Filter by run ID"),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: AsyncSession = Depends(get_database),
+):
+    """List audited git commits, optionally filtered by agent or run."""
+    from pixsim7.backend.main.services.audit import AgentTrackingService
+
+    svc = AgentTrackingService(db)
+    rows = await svc.list_git_commits(profile_id=profile_id, run_id=run_id, limit=limit)
+    return {
+        "commits": [
+            {
+                "audit_id": str(r.id),
+                "commit_sha": r.commit_sha,
+                "message": r.entity_label,
+                "actor": r.actor,
+                "timestamp": r.timestamp.isoformat(),
+                "metadata": r.extra,
+            }
+            for r in rows
+        ],
+        "total": len(rows),
     }
 
 
@@ -326,11 +475,13 @@ async def mint_profile_token(
     if profile.status != "active":
         raise HTTPException(status_code=400, detail=f"Profile is {profile.status}, cannot mint tokens")
 
+    run_id = str(uuid4())
     token = create_agent_token(
         agent_id=profile.id,
         agent_type=profile.agent_type,
         scopes=profile.default_scopes,
         on_behalf_of=principal.id if principal.id != 0 else None,
+        run_id=run_id,
         ttl_hours=hours,
     )
 
@@ -357,13 +508,19 @@ async def mint_profile_token(
                 user_agent=f"agent/{profile.agent_type}",
             )
         )
+
+        # Create AgentRun to track this invocation
+        from pixsim7.backend.main.services.audit import AgentTrackingService
+        svc = AgentTrackingService(db)
+        await svc.create_run(profile_id=profile.id, run_id=run_id, token_jti=token_id)
+
         from pixsim7.backend.main.services.audit import emit_audit
         actor = getattr(principal, 'source', f"user:{principal.id}")
         await emit_audit(
             db, domain="agent", entity_type="agent_token",
             entity_id=token_id, entity_label=f"{profile.label} ({hours}h)",
             action="created", actor=actor,
-            extra={"profile_id": profile.id, "hours": hours, "scope": scope},
+            extra={"profile_id": profile.id, "hours": hours, "scope": scope, "run_id": run_id},
         )
         await db.commit()
 

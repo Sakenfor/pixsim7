@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import JSON, Text
 from sqlmodel import Column, Field, Index, SQLModel
 
+from pixsim7.backend.main.services.audit.model_hooks import AuditMeta
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 PLAN_META_SCHEMA = "dev_meta"
@@ -113,6 +114,10 @@ class PlanRegistry(SQLModel, table=True):
 
     __tablename__ = "plan_registry"
     __table_args__ = {"schema": PLAN_META_SCHEMA}
+    __audit__ = AuditMeta(
+        domain="plan", entity_type="plan_registry",
+        tracked_fields=("stage", "priority", "scope", "task_scope", "plan_type"),
+    )
 
     id: str = Field(primary_key=True, max_length=120)
     document_id: str = Field(
@@ -262,4 +267,197 @@ class PlanRevision(SQLModel, table=True):
     changed_fields: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
     restore_from_revision: Optional[int] = Field(default=None)
     snapshot: Dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class PlanParticipant(SQLModel, table=True):
+    """Per-plan participant ledger for build/review activity attribution."""
+
+    __tablename__ = "plan_participants"
+    __table_args__ = (
+        Index("idx_plan_participant_plan_role_last_seen", "plan_id", "role", "last_seen_at"),
+        Index("idx_plan_participant_agent_last_seen", "agent_id", "last_seen_at"),
+        {"schema": PLAN_META_SCHEMA},
+    )
+
+    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
+    plan_id: str = Field(
+        foreign_key=f"{PLAN_META_SCHEMA}.plan_registry.id",
+        index=True,
+        max_length=120,
+    )
+    role: str = Field(default="builder", max_length=32, index=True)
+    principal_type: Optional[str] = Field(default=None, max_length=16)
+    agent_id: Optional[str] = Field(default=None, max_length=120, index=True)
+    agent_type: Optional[str] = Field(default=None, max_length=64)
+    profile_id: Optional[str] = Field(default=None, max_length=120, index=True)
+    run_id: Optional[str] = Field(default=None, max_length=120, index=True)
+    session_id: Optional[str] = Field(default=None, max_length=120, index=True)
+    user_id: Optional[int] = Field(default=None, index=True)
+    first_seen_at: datetime = Field(default_factory=utcnow, index=True)
+    last_seen_at: datetime = Field(default_factory=utcnow, index=True)
+    touches: int = Field(default=1)
+    last_action: Optional[str] = Field(default=None, max_length=64)
+    meta: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
+
+
+class PlanReviewRound(SQLModel, table=True):
+    """Review round metadata for iterative plan reviews."""
+
+    __tablename__ = "plan_review_rounds"
+    __table_args__ = (
+        Index("idx_plan_review_round_plan_round", "plan_id", "round_number", unique=True),
+        Index("idx_plan_review_round_plan_status", "plan_id", "status"),
+        {"schema": PLAN_META_SCHEMA},
+    )
+    __audit__ = AuditMeta(
+        domain="plan", entity_type="plan_review_round",
+        tracked_fields=("status", "conclusion"),
+    )
+
+    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
+    plan_id: str = Field(
+        foreign_key=f"{PLAN_META_SCHEMA}.plan_registry.id",
+        index=True,
+        max_length=120,
+    )
+    round_number: int = Field(index=True)
+    review_revision: Optional[int] = Field(default=None, index=True)
+    status: str = Field(default="open", max_length=32, index=True)
+    note: Optional[str] = Field(default=None, sa_column=Column(Text))
+    conclusion: Optional[str] = Field(default=None, sa_column=Column(Text))
+    created_by: Optional[str] = Field(default=None, max_length=120)
+    actor_principal_type: Optional[str] = Field(default=None, max_length=16)
+    actor_agent_id: Optional[str] = Field(default=None, max_length=120)
+    actor_run_id: Optional[str] = Field(default=None, max_length=120)
+    actor_user_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class PlanReviewRequest(SQLModel, table=True):
+    """User-requested review work item for a plan/round."""
+
+    __tablename__ = "plan_review_requests"
+    __table_args__ = (
+        Index("idx_plan_review_request_plan_status", "plan_id", "status"),
+        Index("idx_plan_review_request_plan_created", "plan_id", "created_at"),
+        {"schema": PLAN_META_SCHEMA},
+    )
+    __audit__ = AuditMeta(
+        domain="plan", entity_type="plan_review_request",
+        tracked_fields=("status", "resolution_note", "resolved_node_id"),
+    )
+
+    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
+    plan_id: str = Field(
+        foreign_key=f"{PLAN_META_SCHEMA}.plan_registry.id",
+        index=True,
+        max_length=120,
+    )
+    round_id: Optional[UUID] = Field(
+        default=None,
+        foreign_key=f"{PLAN_META_SCHEMA}.plan_review_rounds.id",
+        index=True,
+    )
+    title: str = Field(max_length=200)
+    body: str = Field(sa_column=Column(Text, nullable=False))
+    status: str = Field(default="open", max_length=32, index=True)
+    target_agent_id: Optional[str] = Field(default=None, max_length=120)
+    target_agent_type: Optional[str] = Field(default=None, max_length=64)
+    requested_by: Optional[str] = Field(default=None, max_length=120)
+    requested_by_principal_type: Optional[str] = Field(default=None, max_length=16)
+    requested_by_agent_id: Optional[str] = Field(default=None, max_length=120)
+    requested_by_run_id: Optional[str] = Field(default=None, max_length=120)
+    requested_by_user_id: Optional[int] = Field(default=None)
+    meta: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
+    resolution_note: Optional[str] = Field(default=None, sa_column=Column(Text))
+    resolved_node_id: Optional[UUID] = Field(
+        default=None,
+        foreign_key=f"{PLAN_META_SCHEMA}.plan_review_nodes.id",
+        index=True,
+    )
+    resolved_by: Optional[str] = Field(default=None, max_length=120)
+    resolved_by_principal_type: Optional[str] = Field(default=None, max_length=16)
+    resolved_by_agent_id: Optional[str] = Field(default=None, max_length=120)
+    resolved_by_run_id: Optional[str] = Field(default=None, max_length=120)
+    resolved_by_user_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
+    resolved_at: Optional[datetime] = Field(default=None, index=True)
+
+
+class PlanReviewNode(SQLModel, table=True):
+    """A single review/response message node in a plan review round."""
+
+    __tablename__ = "plan_review_nodes"
+    __table_args__ = (
+        Index("idx_plan_review_node_round_created", "round_id", "created_at"),
+        Index("idx_plan_review_node_plan_kind", "plan_id", "kind"),
+        {"schema": PLAN_META_SCHEMA},
+    )
+    __audit__ = AuditMeta(domain="plan", entity_type="plan_review_node")
+
+    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
+    plan_id: str = Field(
+        foreign_key=f"{PLAN_META_SCHEMA}.plan_registry.id",
+        index=True,
+        max_length=120,
+    )
+    round_id: UUID = Field(
+        foreign_key=f"{PLAN_META_SCHEMA}.plan_review_rounds.id",
+        index=True,
+    )
+    kind: str = Field(default="review_comment", max_length=32, index=True)
+    author_role: str = Field(default="reviewer", max_length=32, index=True)
+    body: str = Field(sa_column=Column(Text, nullable=False))
+    severity: Optional[str] = Field(default=None, max_length=16, index=True)
+    plan_anchor: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
+    meta: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
+    created_by: Optional[str] = Field(default=None, max_length=120)
+    actor_principal_type: Optional[str] = Field(default=None, max_length=16)
+    actor_agent_id: Optional[str] = Field(default=None, max_length=120)
+    actor_run_id: Optional[str] = Field(default=None, max_length=120)
+    actor_user_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class PlanReviewLink(SQLModel, table=True):
+    """Directed relation edge between review nodes and/or plan anchors."""
+
+    __tablename__ = "plan_review_links"
+    __table_args__ = (
+        Index("idx_plan_review_link_source_created", "source_node_id", "created_at"),
+        Index("idx_plan_review_link_target_created", "target_node_id", "created_at"),
+        Index("idx_plan_review_link_plan_round", "plan_id", "round_id"),
+        {"schema": PLAN_META_SCHEMA},
+    )
+
+    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
+    plan_id: str = Field(
+        foreign_key=f"{PLAN_META_SCHEMA}.plan_registry.id",
+        index=True,
+        max_length=120,
+    )
+    round_id: UUID = Field(
+        foreign_key=f"{PLAN_META_SCHEMA}.plan_review_rounds.id",
+        index=True,
+    )
+    source_node_id: UUID = Field(
+        foreign_key=f"{PLAN_META_SCHEMA}.plan_review_nodes.id",
+        index=True,
+    )
+    target_node_id: Optional[UUID] = Field(
+        default=None,
+        foreign_key=f"{PLAN_META_SCHEMA}.plan_review_nodes.id",
+        index=True,
+    )
+    relation: str = Field(max_length=32, index=True)
+    source_anchor: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
+    target_anchor: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
+    target_plan_anchor: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
+    quote: Optional[str] = Field(default=None, sa_column=Column(Text))
+    meta: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
+    created_by: Optional[str] = Field(default=None, max_length=120)
     created_at: datetime = Field(default_factory=utcnow, index=True)

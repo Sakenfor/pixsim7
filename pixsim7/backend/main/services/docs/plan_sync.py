@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.docs.models import Document, PlanRegistry, PlanSyncRun
 from pixsim7.backend.main.domain.platform.entity_audit import EntityAudit
+from pixsim7.backend.main.services.audit import emit_audit
 from pixsim7.backend.main.services.docs.plans import PlanEntry, build_plans_index
 from pixsim7.backend.main.services.docs.plan_write import (
     PlanBundle,
@@ -24,6 +25,7 @@ from pixsim7.backend.main.services.docs.plan_write import (
     _apply_entry_to_plan,
     make_document_id,
 )
+from pixsim7.backend.main.services.docs.plan_stages import normalize_plan_stage
 from pixsim7.backend.main.shared.config import _resolve_repo_root
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim_logging import get_logger
@@ -115,6 +117,8 @@ def _diff_entry(
     for f in TRACKED_PLAN_FIELDS:
         old_val = getattr(bundle.plan, f, None)
         new_val = getattr(entry, f, None)
+        if f == "stage" and isinstance(new_val, str):
+            new_val = normalize_plan_stage(new_val, strict=False)
         old_str = str(old_val) if old_val is not None else ""
         new_str = str(new_val) if new_val is not None else ""
         if old_str != new_str:
@@ -222,22 +226,16 @@ async def sync_plans(
 
                 plan = PlanRegistry(
                     id=plan_id, document_id=doc_id,
-                    stage=entry.stage, priority=entry.priority, scope=entry.scope,
+                    stage=normalize_plan_stage(entry.stage, strict=False),
+                    priority=entry.priority,
+                    scope=entry.scope,
                     plan_path=entry.plan_path, code_paths=entry.code_paths,
                     companions=entry.companions, handoffs=entry.handoffs,
                     depends_on=entry.depends_on, manifest_hash=m_hash,
                     last_synced_at=now, created_at=now, updated_at=now,
                 )
                 db.add(plan)
-
-                db.add(EntityAudit(
-                    domain="plan", entity_type="plan_registry",
-                    entity_id=plan_id, entity_label=entry.title,
-                    action="created", new_value=entry.status,
-                    actor="system", commit_sha=commit_sha,
-                    extra={"sync_run_id": str(sync_run.id)},
-                    timestamp=now,
-                ))
+                # Audit: PlanRegistry.__audit__ model hook handles creation tracking
                 result.created += 1
                 result.events += 1
                 result.details.append({"plan_id": plan_id, "action": "created"})
@@ -262,16 +260,8 @@ async def sync_plans(
             _apply_entry_to_doc(bundle.doc, entry)
             _apply_entry_to_plan(existing_plan, entry, m_hash)
 
-            for field_name, old_val, new_val in changes:
-                db.add(EntityAudit(
-                    domain="plan", entity_type="plan_registry",
-                    entity_id=plan_id, entity_label=entry.title,
-                    action="field_changed", field=field_name,
-                    old_value=old_val, new_value=new_val,
-                    actor="system", commit_sha=commit_sha,
-                    extra={"sync_run_id": str(sync_run.id)},
-                    timestamp=now,
-                ))
+            # Audit: PlanRegistry.__audit__ model hook handles field-level tracking
+            for field_name, _, _ in changes:
                 _record_changed_field(result, field_name)
                 result.events += 1
 
@@ -292,15 +282,14 @@ async def sync_plans(
                 bundle.plan.updated_at = now
                 bundle.plan.last_synced_at = now
 
-                db.add(EntityAudit(
-                    domain="plan", entity_type="plan_registry",
+                await emit_audit(
+                    db, domain="plan", entity_type="plan_registry",
                     entity_id=plan_id, entity_label=bundle.doc.title,
-                    action="status_changed", field="status",
+                    action="updated", field="status",
                     old_value=old_status, new_value="removed",
                     actor="system", commit_sha=commit_sha,
                     extra={"sync_run_id": str(sync_run.id)},
-                    timestamp=now,
-                ))
+                )
                 result.removed += 1
                 _record_changed_field(result, "status")
                 result.events += 1

@@ -20,6 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.domain.docs.models import (
     Document,
     PlanDocument,
+    PlanParticipant,
+    PlanReviewLink,
+    PlanReviewNode,
+    PlanReviewRequest,
+    PlanReviewRound,
     PlanRegistry,
     PlanRevision,
 )
@@ -29,6 +34,9 @@ from pixsim7.backend.main.services.docs.plans import (
     PLAN_SCOPES,
     PlanEntry,
     get_plans_index,
+)
+from pixsim7.backend.main.services.docs.plan_stages import (
+    normalize_plan_stage,
 )
 from pixsim7.backend.main.services.notifications.notification_categories import (
     NotificationCategoryGranularityOption,
@@ -64,7 +72,7 @@ LIST_MUTABLE_FIELDS = frozenset({"tags", "code_paths", "companions", "handoffs",
 JSON_MUTABLE_FIELDS = frozenset({"target", "checkpoints"})
 ALL_MUTABLE_FIELDS = DOC_MUTABLE_FIELDS | PLAN_MUTABLE_FIELDS
 
-VALID_STATUSES = ("active", "parked", "done", "blocked", "archived")
+VALID_STATUSES = ("active", "parked", "done", "blocked", "archived", "removed")
 VALID_PRIORITIES = ("high", "normal", "low")
 VALID_TASK_SCOPES = ("plan", "user", "system")
 
@@ -582,7 +590,7 @@ def _apply_entry_to_doc(doc: Document, entry: PlanEntry) -> None:
 
 def _apply_entry_to_plan(plan: PlanRegistry, entry: PlanEntry, manifest_hash: str) -> None:
     """Apply filesystem PlanEntry plan-specific fields to PlanRegistry."""
-    plan.stage = entry.stage
+    plan.stage = normalize_plan_stage(entry.stage, strict=False)
     plan.priority = entry.priority
     plan.scope = entry.scope
     plan.plan_path = entry.plan_path
@@ -647,7 +655,11 @@ async def _ensure_bundle(
     plan = PlanRegistry(
         id=plan_id,
         document_id=doc_id,
-        stage=entry.stage if entry else d.get("stage", "unknown"),
+        stage=(
+            normalize_plan_stage(entry.stage, strict=False)
+            if entry
+            else normalize_plan_stage(str(d.get("stage", "unknown")), strict=False)
+        ),
         priority=entry.priority if entry else d.get("priority", "normal"),
         scope=entry.scope if entry else "active",
         plan_path=entry.plan_path if entry else None,
@@ -661,28 +673,6 @@ async def _ensure_bundle(
     db.add(plan)
     await db.flush()
     return PlanBundle(plan=plan, doc=doc)
-
-
-async def _emit_events(
-    db: AsyncSession,
-    plan_id: str,
-    changes: List[Dict[str, Any]],
-    commit_sha: Optional[str],
-    actor_source: Optional[str] = None,
-    entity_label: Optional[str] = None,
-) -> None:
-    from pixsim7.backend.main.services.audit import emit_audit
-
-    actor = actor_source or "system"
-    for change in changes:
-        action = "content_updated" if change["field"] == "markdown" else "field_changed"
-        await emit_audit(
-            db, domain="plan", entity_type="plan_registry",
-            entity_id=plan_id, entity_label=entity_label,
-            action=action, field=change["field"],
-            old_value=change.get("old"), new_value=change.get("new"),
-            actor=actor, commit_sha=commit_sha,
-        )
 
 
 def _snapshot_timestamp(value: Optional[datetime]) -> Optional[str]:
@@ -889,6 +879,11 @@ async def update_plan(
             raise ValueError(f"Cannot update field '{key}'. Mutable: {', '.join(sorted(ALL_MUTABLE_FIELDS))}")
     if "status" in updates and updates["status"] not in VALID_STATUSES:
         raise ValueError(f"Invalid status '{updates['status']}'. Valid: {', '.join(VALID_STATUSES)}")
+    if "stage" in updates:
+        stage_value = updates["stage"]
+        if not isinstance(stage_value, str) or not stage_value.strip():
+            raise ValueError("Invalid 'stage': expected non-empty string")
+        updates["stage"] = normalize_plan_stage(stage_value, strict=False)
     if "priority" in updates and updates["priority"] not in VALID_PRIORITIES:
         raise ValueError(f"Invalid priority '{updates['priority']}'. Valid: {', '.join(VALID_PRIORITIES)}")
     if "task_scope" in updates and updates["task_scope"] not in VALID_TASK_SCOPES:
@@ -971,10 +966,12 @@ async def update_plan(
     doc.revision = (doc.revision or 0) + 1
     result.changes = changes
 
-    # Emit events + notification
-    sha = None
+    # Audit: PlanRegistry.__audit__ model hook handles field-level tracking.
+    # Set commit_sha in context so the hook picks it up.
+    if evidence_commit_sha:
+        from pixsim7.backend.main.services.audit.context import set_audit_commit_sha
+        set_audit_commit_sha(evidence_commit_sha)
     actor_source = principal.source if principal else None
-    await _emit_events(db, plan_id, changes, evidence_commit_sha, actor_source=actor_source, entity_label=doc.title)
     revision_row = await record_plan_revision(
         db,
         bundle,
@@ -989,6 +986,7 @@ async def update_plan(
     await db.commit()
 
     # Optional commit-back to filesystem (disabled in DB-only mode)
+    sha: Optional[str] = None
     if not _plans_db_only_mode():
         try:
             new_scope = status_to_scope(doc.status)
@@ -1119,6 +1117,11 @@ async def delete_plan(
     await db.execute(sa_delete(EntityAudit).where(
         EntityAudit.domain == "plan", EntityAudit.entity_id == plan_id,
     ))
+    await db.execute(sa_delete(PlanParticipant).where(PlanParticipant.plan_id == plan_id))
+    await db.execute(sa_delete(PlanReviewLink).where(PlanReviewLink.plan_id == plan_id))
+    await db.execute(sa_delete(PlanReviewNode).where(PlanReviewNode.plan_id == plan_id))
+    await db.execute(sa_delete(PlanReviewRequest).where(PlanReviewRequest.plan_id == plan_id))
+    await db.execute(sa_delete(PlanReviewRound).where(PlanReviewRound.plan_id == plan_id))
     await db.execute(sa_delete(PlanRevision).where(PlanRevision.plan_id == plan_id))
     await db.execute(sa_delete(PlanDocument).where(PlanDocument.plan_id == plan_id))
 
@@ -1225,7 +1228,7 @@ async def list_plan_bundles(db: AsyncSession) -> List[PlanBundle]:
         plan = PlanRegistry(
             id=plan_id,
             document_id=doc_id,
-            stage=entry.stage,
+            stage=normalize_plan_stage(entry.stage, strict=False),
             priority=entry.priority,
             scope=entry.scope,
             plan_path=entry.plan_path,

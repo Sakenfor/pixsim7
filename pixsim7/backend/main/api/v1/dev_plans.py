@@ -4,21 +4,31 @@ Dev Plans API — DB-first plan management.
 Plans are backed by Document (shared fields) + PlanRegistry (plan-specific fields).
 The DB is authoritative. Filesystem markdown is a convenience export.
 """
+import asyncio
+import json
 import re
-from typing import Any, Dict, List, Literal, Optional
+from collections import defaultdict
+from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional, Set
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-from sqlalchemy import select
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, get_database
 from pixsim7.backend.main.domain.docs.models import (
+    PlanParticipant,
+    PlanReviewLink,
+    PlanReviewNode,
+    PlanReviewRequest,
+    PlanReviewRound,
     PlanRegistry,
     PlanRevision,
     PlanSyncRun,
 )
-from pixsim7.backend.main.shared.config import settings
+from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
+from pixsim7.backend.main.shared.config import _resolve_repo_root, settings
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim7.backend.main.services.docs.plans import get_plans_index
 from pixsim7.backend.main.services.docs.plan_sync import (
@@ -48,6 +58,13 @@ from pixsim7.backend.main.services.docs.plan_write import (
     record_plan_revision,
     unarchive_plan,
     update_plan,
+)
+from pixsim7.backend.main.services.docs.plan_stages import (
+    CANONICAL_PLAN_STAGES,
+    DEFAULT_PLAN_STAGE,
+    normalize_plan_stage,
+    plan_stage_options,
+    validate_plan_stage,
 )
 from pixsim_logging import get_logger
 
@@ -177,6 +194,433 @@ class PlanRevisionListResponse(BaseModel):
     revisions: List[PlanRevisionEntry] = Field(default_factory=list)
 
 
+class PlanReviewRoundEntry(BaseModel):
+    id: str
+    planId: str
+    roundNumber: int
+    reviewRevision: Optional[int] = None
+    status: str
+    note: Optional[str] = None
+    conclusion: Optional[str] = None
+    createdBy: Optional[str] = None
+    actorPrincipalType: Optional[str] = None
+    actorAgentId: Optional[str] = None
+    actorRunId: Optional[str] = None
+    actorUserId: Optional[int] = None
+    createdAt: str
+    updatedAt: str
+
+
+class PlanReviewRoundListResponse(BaseModel):
+    planId: str
+    rounds: List[PlanReviewRoundEntry] = Field(default_factory=list)
+
+
+class PlanReviewRoundCreateRequest(BaseModel):
+    round_number: Optional[int] = Field(
+        None, ge=1, description="Optional explicit round number; auto-increments when omitted."
+    )
+    review_revision: Optional[int] = Field(
+        None, ge=1, description="Optional immutable plan revision being reviewed."
+    )
+    status: Literal["open", "changes_requested", "approved"] = Field(
+        "open", description="Initial review round status."
+    )
+    note: Optional[str] = Field(None, description="Optional context note for the round.")
+
+
+class PlanReviewRoundUpdateRequest(BaseModel):
+    status: Optional[Literal["open", "changes_requested", "approved", "concluded"]] = Field(
+        None,
+        description="Updated round status.",
+    )
+    conclusion: Optional[str] = Field(
+        None,
+        description="Final conclusion text (typically set when status='concluded').",
+    )
+    note: Optional[str] = Field(
+        None,
+        description="Optional note update.",
+    )
+
+
+class PlanReviewRefInput(BaseModel):
+    relation: Literal[
+        "replies_to",
+        "addresses",
+        "because_of",
+        "supports",
+        "contradicts",
+        "supersedes",
+    ] = Field(..., description="Typed relation to target node or plan anchor.")
+    target_node_id: Optional[str] = Field(
+        None, description="Referenced review node UUID (for cross-response links)."
+    )
+    source_anchor: Optional[Dict[str, Any]] = Field(
+        None, description="Anchor in the source response, e.g. paragraph/checkpoint selector."
+    )
+    target_anchor: Optional[Dict[str, Any]] = Field(
+        None, description="Anchor inside target node content."
+    )
+    target_plan_anchor: Optional[Dict[str, Any]] = Field(
+        None, description="Anchor into plan content when linking directly to plan sections."
+    )
+    quote: Optional[str] = Field(None, description="Optional short quote excerpt for context.")
+    meta: Optional[Dict[str, Any]] = Field(None, description="Optional relation metadata.")
+
+    @field_validator("target_node_id")
+    @classmethod
+    def validate_target_node_id(cls, value: Optional[str]):
+        if value is None:
+            return value
+        try:
+            UUID(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid 'target_node_id': '{value}' (expected UUID).") from exc
+        return value
+
+
+class PlanReviewNodeCreateRequest(BaseModel):
+    round_id: str = Field(..., description="Review round UUID.")
+    kind: Literal["review_comment", "agent_response", "conclusion", "note"] = Field(
+        "review_comment"
+    )
+    author_role: Literal["reviewer", "author", "agent", "system"] = Field("reviewer")
+    body: str = Field(..., min_length=1, description="Review/response body text.")
+    severity: Optional[Literal["info", "low", "medium", "high", "critical"]] = Field(
+        None, description="Optional severity for reviewer findings."
+    )
+    plan_anchor: Optional[Dict[str, Any]] = Field(
+        None, description="Optional anchor into plan structure (checkpoint/section/path)."
+    )
+    meta: Optional[Dict[str, Any]] = Field(None, description="Optional node metadata.")
+    refs: List[PlanReviewRefInput] = Field(
+        default_factory=list,
+        description="References to prior nodes or plan anchors.",
+    )
+
+    @field_validator("round_id")
+    @classmethod
+    def validate_round_id(cls, value: str):
+        try:
+            UUID(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid 'round_id': '{value}' (expected UUID).") from exc
+        return value
+
+
+class PlanReviewNodeEntry(BaseModel):
+    id: str
+    planId: str
+    roundId: str
+    kind: str
+    authorRole: str
+    body: str
+    severity: Optional[str] = None
+    planAnchor: Optional[Dict[str, Any]] = None
+    meta: Optional[Dict[str, Any]] = None
+    createdBy: Optional[str] = None
+    actorPrincipalType: Optional[str] = None
+    actorAgentId: Optional[str] = None
+    actorRunId: Optional[str] = None
+    actorUserId: Optional[int] = None
+    createdAt: str
+    updatedAt: str
+
+
+class PlanReviewLinkEntry(BaseModel):
+    id: str
+    planId: str
+    roundId: str
+    sourceNodeId: str
+    targetNodeId: Optional[str] = None
+    relation: str
+    sourceAnchor: Optional[Dict[str, Any]] = None
+    targetAnchor: Optional[Dict[str, Any]] = None
+    targetPlanAnchor: Optional[Dict[str, Any]] = None
+    quote: Optional[str] = None
+    meta: Optional[Dict[str, Any]] = None
+    createdBy: Optional[str] = None
+    createdAt: str
+
+
+class PlanReviewNodeCreateResponse(BaseModel):
+    node: PlanReviewNodeEntry
+    links: List[PlanReviewLinkEntry] = Field(default_factory=list)
+
+
+class PlanReviewRequestEntry(BaseModel):
+    id: str
+    planId: str
+    roundId: Optional[str] = None
+    title: str
+    body: str
+    status: str
+    targetMode: Optional[Literal["auto", "session", "recent_agent"]] = None
+    targetAgentId: Optional[str] = None
+    targetAgentType: Optional[str] = None
+    targetSessionId: Optional[str] = None
+    preferredAgentId: Optional[str] = None
+    targetProfileId: Optional[str] = None
+    targetMethod: Optional[str] = None
+    targetModelId: Optional[str] = None
+    targetProvider: Optional[str] = None
+    queueIfBusy: bool = False
+    autoRerouteIfBusy: bool = True
+    dispatchState: Optional[Literal["assigned", "queued", "unassigned"]] = None
+    dispatchReason: Optional[str] = None
+    requestedBy: Optional[str] = None
+    requestedByPrincipalType: Optional[str] = None
+    requestedByAgentId: Optional[str] = None
+    requestedByRunId: Optional[str] = None
+    requestedByUserId: Optional[int] = None
+    meta: Optional[Dict[str, Any]] = None
+    resolutionNote: Optional[str] = None
+    resolvedNodeId: Optional[str] = None
+    resolvedBy: Optional[str] = None
+    resolvedByPrincipalType: Optional[str] = None
+    resolvedByAgentId: Optional[str] = None
+    resolvedByRunId: Optional[str] = None
+    resolvedByUserId: Optional[int] = None
+    createdAt: str
+    updatedAt: str
+    resolvedAt: Optional[str] = None
+
+
+class PlanReviewRequestListResponse(BaseModel):
+    planId: str
+    requests: List[PlanReviewRequestEntry] = Field(default_factory=list)
+
+
+class PlanReviewRequestCreateRequest(BaseModel):
+    round_id: Optional[str] = Field(
+        None, description="Optional review round UUID this request belongs to."
+    )
+    title: str = Field(..., min_length=1, max_length=200, description="Short request title.")
+    body: str = Field(..., min_length=1, description="Detailed request body/instructions.")
+    target_mode: Literal["auto", "session", "recent_agent"] = Field(
+        "auto",
+        description="Assignee resolution mode: auto dispatcher, specific live session, or preferred recent agent.",
+    )
+    target_agent_id: Optional[str] = Field(
+        None,
+        max_length=120,
+        description="Legacy/manual target agent/session ID (kept for compatibility).",
+    )
+    target_agent_type: Optional[str] = Field(
+        None, max_length=64, description="Optional target reviewer agent type."
+    )
+    target_session_id: Optional[str] = Field(
+        None, max_length=120, description="Explicit live session/bridge agent ID when target_mode=session."
+    )
+    preferred_agent_id: Optional[str] = Field(
+        None, max_length=120, description="Preferred historical reviewer agent ID when target_mode=recent_agent."
+    )
+    target_profile_id: Optional[str] = Field(
+        None, max_length=120, description="Optional target agent profile ID used for persona/model defaults."
+    )
+    target_method: Optional[str] = Field(
+        None, max_length=32, description="Optional execution/provider method override (e.g. remote, direct)."
+    )
+    target_model_id: Optional[str] = Field(
+        None, max_length=120, description="Optional model identifier override."
+    )
+    target_provider: Optional[str] = Field(
+        None, max_length=64, description="Optional provider override (e.g. anthropic, openai)."
+    )
+    queue_if_busy: bool = Field(
+        False,
+        description="If true, keep assignment on a busy target session and queue as next task.",
+    )
+    auto_reroute_if_busy: bool = Field(
+        True,
+        description="If true, reroute to another idle live session when target is busy/unavailable.",
+    )
+    meta: Optional[Dict[str, Any]] = Field(None, description="Optional request metadata.")
+
+    @field_validator("round_id")
+    @classmethod
+    def validate_round_id(cls, value: Optional[str]):
+        if value is None:
+            return value
+        try:
+            UUID(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid 'round_id': '{value}' (expected UUID).") from exc
+        return value
+
+
+class PlanReviewRequestUpdateRequest(BaseModel):
+    status: Optional[Literal["open", "in_progress", "fulfilled", "cancelled"]] = Field(
+        None, description="Updated request status."
+    )
+    resolution_note: Optional[str] = Field(None, description="Optional closure/resolution note.")
+    resolved_node_id: Optional[str] = Field(
+        None, description="Optional review node UUID that resolved this request."
+    )
+    meta: Optional[Dict[str, Any]] = Field(
+        None, description="Optional full metadata replacement for the request."
+    )
+
+    @field_validator("resolved_node_id")
+    @classmethod
+    def validate_resolved_node_id(cls, value: Optional[str]):
+        if value is None:
+            return value
+        try:
+            UUID(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Invalid 'resolved_node_id': '{value}' (expected UUID)."
+            ) from exc
+        return value
+
+
+class PlanReviewRequestDispatchRequest(BaseModel):
+    timeout_seconds: int = Field(
+        240,
+        ge=20,
+        le=1800,
+        description="Execution timeout in seconds for the review task.",
+    )
+    spawn_if_missing: bool = Field(
+        False,
+        description="Attempt to start a shared bridge when remote method is requested but no bridge is connected.",
+    )
+    create_round_if_missing: bool = Field(
+        True,
+        description="Create/open a review round automatically when the request has no round_id.",
+    )
+
+
+class PlanReviewRequestDispatchResponse(BaseModel):
+    request: PlanReviewRequestEntry
+    node: Optional[PlanReviewNodeEntry] = None
+    executed: bool = False
+    message: str
+    durationMs: Optional[int] = None
+
+
+class PlanReviewDispatchTickRequest(BaseModel):
+    plan_id: Optional[str] = Field(
+        None,
+        description="Optional plan ID filter; when omitted, dispatches across all plans.",
+    )
+    limit: int = Field(
+        5,
+        ge=1,
+        le=50,
+        description="Maximum number of open review requests to attempt in this tick.",
+    )
+    timeout_seconds: int = Field(
+        240,
+        ge=20,
+        le=1800,
+        description="Per-request execution timeout in seconds.",
+    )
+    spawn_if_missing: bool = Field(
+        False,
+        description="Attempt to start a shared bridge when remote requests have no connected sessions.",
+    )
+    create_round_if_missing: bool = Field(
+        True,
+        description="Create/open rounds automatically for requests that are not round-bound.",
+    )
+
+    @field_validator("plan_id")
+    @classmethod
+    def validate_plan_id_value(cls, value: Optional[str]):
+        if value is None:
+            return value
+        return _validate_plan_id(value, field_name="plan_id")
+
+
+class PlanReviewDispatchTickItem(BaseModel):
+    planId: str
+    requestId: str
+    status: str
+    executed: bool
+    message: str
+    dispatchState: Optional[str] = None
+    resolvedNodeId: Optional[str] = None
+
+
+class PlanReviewDispatchTickResponse(BaseModel):
+    attempted: int
+    processed: int
+    items: List[PlanReviewDispatchTickItem] = Field(default_factory=list)
+
+
+class PlanReviewGraphResponse(BaseModel):
+    planId: str
+    rounds: List[PlanReviewRoundEntry] = Field(default_factory=list)
+    nodes: List[PlanReviewNodeEntry] = Field(default_factory=list)
+    links: List[PlanReviewLinkEntry] = Field(default_factory=list)
+    requests: List[PlanReviewRequestEntry] = Field(default_factory=list)
+
+
+class PlanReviewAssigneeEntry(BaseModel):
+    id: str
+    label: str
+    source: Literal["live", "recent"]
+    targetMode: Literal["session", "recent_agent"]
+    targetSessionId: Optional[str] = None
+    agentId: str
+    agentType: Optional[str] = None
+    busy: bool = False
+    availableNow: bool = True
+    activeTasks: int = 0
+    tasksCompleted: int = 0
+    connectedAt: Optional[str] = None
+    lastSeenAt: Optional[str] = None
+
+
+class PlanReviewAssigneesResponse(BaseModel):
+    planId: str
+    generatedAt: str
+    liveSessions: List[PlanReviewAssigneeEntry] = Field(default_factory=list)
+    recentAgents: List[PlanReviewAssigneeEntry] = Field(default_factory=list)
+
+
+class PlanParticipantEntry(BaseModel):
+    id: str
+    planId: str
+    role: Literal["builder", "reviewer"]
+    principalType: Optional[Literal["user", "agent", "service"]] = None
+    agentId: Optional[str] = None
+    agentType: Optional[str] = None
+    profileId: Optional[str] = None
+    runId: Optional[str] = None
+    sessionId: Optional[str] = None
+    userId: Optional[int] = None
+    touches: int = 0
+    lastAction: Optional[str] = None
+    firstSeenAt: str
+    lastSeenAt: str
+    meta: Optional[Dict[str, Any]] = None
+
+
+class PlanParticipantsResponse(BaseModel):
+    planId: str
+    generatedAt: str
+    participants: List[PlanParticipantEntry] = Field(default_factory=list)
+    reviewers: List[PlanParticipantEntry] = Field(default_factory=list)
+    builders: List[PlanParticipantEntry] = Field(default_factory=list)
+
+
+class PlanSourceSnippetLine(BaseModel):
+    lineNumber: int
+    text: str
+
+
+class PlanSourcePreviewResponse(BaseModel):
+    planId: str
+    path: str
+    startLine: int
+    endLine: int
+    lines: List[PlanSourceSnippetLine] = Field(default_factory=list)
+
+
 class PlanRestoreRequest(BaseModel):
     commit_sha: Optional[str] = Field(
         None,
@@ -272,19 +716,32 @@ class PlanRuntimeSettingsUpdateRequest(BaseModel):
     plans_db_only_mode: bool = Field(..., description="Toggle DB-only plan mode for this running backend instance.")
 
 
+class PlanStageOptionEntry(BaseModel):
+    value: str
+    label: str
+    description: str
+    aliases: List[str] = Field(default_factory=list)
+
+
+class PlanStagesResponse(BaseModel):
+    defaultStage: str
+    stages: List[PlanStageOptionEntry] = Field(default_factory=list)
+
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 
 def _bundle_to_summary(b: PlanBundle, children: Optional[List[PlanBundle]] = None) -> dict:
     """Build summary dict from PlanBundle (Document + PlanRegistry)."""
     doc, plan = b.doc, b.plan
+    stage_value = _normalize_stage_for_response(plan.stage)
     result = {
         "id": plan.id,
         "documentId": doc.id,
         "parentId": plan.parent_id,
         "title": doc.title,
         "status": doc.status,
-        "stage": plan.stage,
+        "stage": stage_value,
         "owner": doc.owner,
         "lastUpdated": (plan.updated_at or doc.updated_at).date().isoformat() if (plan.updated_at or doc.updated_at) else "",
         "priority": plan.priority,
@@ -308,7 +765,7 @@ def _bundle_to_summary(b: PlanBundle, children: Optional[List[PlanBundle]] = Non
                 "id": c.id,
                 "title": c.doc.title,
                 "status": c.doc.status,
-                "stage": c.plan.stage,
+                "stage": _normalize_stage_for_response(c.plan.stage),
                 "priority": c.plan.priority,
             }
             for c in children
@@ -323,7 +780,7 @@ def _bundle_to_registry_entry(b: PlanBundle) -> dict:
         "documentId": doc.id,
         "title": doc.title,
         "status": doc.status,
-        "stage": plan.stage,
+        "stage": _normalize_stage_for_response(plan.stage),
         "owner": doc.owner,
         "revision": doc.revision,
         "priority": plan.priority,
@@ -415,8 +872,112 @@ def _run_to_entry(run: PlanSyncRun) -> dict:
         "events": run.events or 0,
         "changedFields": run.changed_fields or {},
     }
+def _normalize_stage_for_response(value: Optional[str]) -> str:
+    if isinstance(value, str) and value.strip():
+        try:
+            return normalize_plan_stage(value, strict=False)
+        except ValueError:
+            pass
+    return DEFAULT_PLAN_STAGE
 
 
+_SOURCE_PREVIEW_MAX_LINES = 400
+
+
+def _principal_is_admin(principal: CurrentUser) -> bool:
+    is_admin_attr = getattr(principal, "is_admin", None)
+    if callable(is_admin_attr):
+        try:
+            return bool(is_admin_attr())
+        except Exception:
+            return False
+    return bool(is_admin_attr)
+
+
+def _principal_matches_plan_owner(principal: CurrentUser, owner: str) -> bool:
+    owner_key = (owner or "").strip().lower()
+    if not owner_key:
+        return False
+
+    aliases: Set[str] = set()
+    for candidate in (
+        getattr(principal, "actor_display_name", None),
+        getattr(principal, "username", None),
+        getattr(principal, "display_name", None),
+        getattr(principal, "source", None),
+        getattr(principal, "email", None),
+    ):
+        if candidate is None:
+            continue
+        text = str(candidate).strip().lower()
+        if text:
+            aliases.add(text)
+
+    principal_id = getattr(principal, "id", None)
+    if principal_id is not None:
+        aliases.add(f"user:{principal_id}".lower())
+
+    return owner_key in aliases
+
+
+def _can_preview_plan_source(principal: CurrentUser, bundle: PlanBundle) -> bool:
+    if _principal_is_admin(principal):
+        return True
+    return _principal_matches_plan_owner(principal, bundle.doc.owner or "")
+
+
+def _resolve_repo_file(path_value: str) -> tuple[Path, str]:
+    raw = (path_value or "").strip()
+    if not raw:
+        raise ValueError("Invalid 'path': expected non-empty path.")
+
+    repo_root = _resolve_repo_root().resolve()
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = (repo_root / raw).resolve()
+    else:
+        candidate = candidate.resolve()
+
+    try:
+        relative = candidate.relative_to(repo_root)
+    except ValueError as exc:
+        raise ValueError(
+            f"Path '{path_value}' must resolve under repository root."
+        ) from exc
+
+    if not candidate.exists() or not candidate.is_file():
+        raise FileNotFoundError(f"Source file not found: {path_value}")
+
+    rel_text = str(relative).replace("\\", "/")
+    return candidate, rel_text
+
+
+def _read_source_snippet(
+    file_path: Path,
+    *,
+    start_line: int,
+    end_line: int,
+) -> tuple[List[PlanSourceSnippetLine], int]:
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        text = file_path.read_text(encoding="utf-8", errors="replace")
+
+    file_lines = text.splitlines()
+    total_lines = len(file_lines)
+    if total_lines <= 0:
+        raise ValueError("Source file is empty.")
+    if start_line > total_lines:
+        raise ValueError(
+            f"start_line {start_line} exceeds file length ({total_lines} lines)."
+        )
+
+    clipped_end = min(end_line, total_lines)
+    rows = [
+        PlanSourceSnippetLine(lineNumber=n, text=file_lines[n - 1])
+        for n in range(start_line, clipped_end + 1)
+    ]
+    return rows, clipped_end
 
 
 # ── List endpoint ─────────────────────────────────────────────────
@@ -424,8 +985,25 @@ def _run_to_entry(run: PlanSyncRun) -> dict:
 
 CHECKPOINT_STATUSES = frozenset({"pending", "active", "done", "blocked"})
 
+_PLAN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,119}$")
 _GIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 _COMMIT_RANGE_RE = re.compile(r"^[0-9a-fA-F]{7,40}\.\.\.?[0-9a-fA-F]{7,40}$")
+_CAUSAL_REVIEW_RELATIONS: Set[str] = frozenset(
+    {"because_of", "supports", "contradicts", "supersedes"}
+)
+_TERMINAL_REVIEW_REQUEST_STATUSES: Set[str] = frozenset({"fulfilled", "cancelled"})
+_REVIEW_REQUEST_TARGET_MODES: Set[str] = frozenset({"auto", "session", "recent_agent"})
+_REVIEW_REQUEST_DISPATCH_STATES: Set[str] = frozenset({"assigned", "queued", "unassigned"})
+_REVIEW_REQUEST_REMOTE_METHODS: Set[str] = frozenset({"remote", "cmd"})
+
+
+def _validate_plan_id(value: str, *, field_name: str = "id") -> str:
+    """Validate canonical plan IDs used as DB keys and optional path segments."""
+    if not _PLAN_ID_RE.match(value):
+        raise ValueError(
+            f"Invalid {field_name!r}: '{value}'. Use lowercase letters, numbers, and hyphens only."
+        )
+    return value
 
 
 def _validate_commit_sha(sha: str) -> str:
@@ -436,6 +1014,1515 @@ def _validate_commit_sha(sha: str) -> str:
             f"Invalid commit SHA format: '{sha}'. Expected 7-40 hex characters."
         )
     return sha.lower()
+
+
+def _parse_uuid_or_400(value: str, *, field_name: str) -> UUID:
+    try:
+        return UUID(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {field_name!r}: '{value}' (expected UUID).",
+        ) from exc
+
+
+def _principal_actor_fields(principal: CurrentUser) -> Dict[str, Any]:
+    principal_type = getattr(principal, "principal_type", None)
+    if principal_type not in {"user", "agent", "service"}:
+        if getattr(principal, "is_agent", False):
+            principal_type = "agent"
+        elif getattr(principal, "is_service", False):
+            principal_type = "service"
+        else:
+            principal_type = "user"
+
+    user_id = getattr(principal, "user_id", None)
+    if user_id is None:
+        principal_id = getattr(principal, "id", None)
+        user_id = principal_id if isinstance(principal_id, int) and principal_id > 0 else None
+
+    return {
+        "principal_type": principal_type,
+        "agent_id": getattr(principal, "agent_id", None),
+        "agent_type": getattr(principal, "agent_type", None),
+        "profile_id": getattr(principal, "agent_id", None) if principal_type == "agent" else None,
+        "run_id": getattr(principal, "run_id", None),
+        "user_id": user_id,
+    }
+
+
+def _normalize_participant_value(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    trimmed = str(value).strip()
+    return trimmed or None
+
+
+def _participant_merge_meta(
+    existing: Optional[Dict[str, Any]],
+    incoming: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    base = dict(existing) if isinstance(existing, dict) else {}
+    patch = incoming if isinstance(incoming, dict) else {}
+    if not patch:
+        return base or None
+    base.update(patch)
+    return base or None
+
+
+async def _record_plan_participant(
+    db: AsyncSession,
+    *,
+    plan_id: str,
+    role: Literal["builder", "reviewer"],
+    action: str,
+    principal_type: Optional[str],
+    agent_id: Optional[str],
+    agent_type: Optional[str] = None,
+    profile_id: Optional[str] = None,
+    run_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    user_id: Optional[int] = None,
+    seen_at=None,
+    meta: Optional[Dict[str, Any]] = None,
+) -> None:
+    if not hasattr(db, "execute"):
+        return
+
+    normalized_principal_type = _normalize_participant_value(principal_type)
+    normalized_agent_id = _normalize_participant_value(agent_id)
+    normalized_agent_type = _normalize_participant_value(agent_type)
+    normalized_profile_id = _normalize_participant_value(profile_id)
+    normalized_run_id = _normalize_participant_value(run_id)
+    normalized_session_id = _normalize_participant_value(session_id)
+    normalized_user_id = int(user_id) if isinstance(user_id, int) and user_id > 0 else None
+
+    # Skip records that cannot be attributed to either an agent/session or a user.
+    if normalized_agent_id is None and normalized_user_id is None:
+        return
+
+    observed_at = seen_at or utcnow()
+
+    stmt = select(PlanParticipant).where(
+        PlanParticipant.plan_id == plan_id,
+        PlanParticipant.role == role,
+    )
+    if normalized_principal_type is None:
+        stmt = stmt.where(PlanParticipant.principal_type.is_(None))
+    else:
+        stmt = stmt.where(PlanParticipant.principal_type == normalized_principal_type)
+
+    if normalized_agent_id is None:
+        stmt = stmt.where(PlanParticipant.agent_id.is_(None))
+    else:
+        stmt = stmt.where(PlanParticipant.agent_id == normalized_agent_id)
+
+    if normalized_run_id is None:
+        stmt = stmt.where(PlanParticipant.run_id.is_(None))
+    else:
+        stmt = stmt.where(PlanParticipant.run_id == normalized_run_id)
+
+    if normalized_session_id is None:
+        stmt = stmt.where(PlanParticipant.session_id.is_(None))
+    else:
+        stmt = stmt.where(PlanParticipant.session_id == normalized_session_id)
+
+    if normalized_user_id is None:
+        stmt = stmt.where(PlanParticipant.user_id.is_(None))
+    else:
+        stmt = stmt.where(PlanParticipant.user_id == normalized_user_id)
+
+    row = (await db.execute(stmt.limit(1))).scalar_one_or_none()
+    if row is None:
+        row = PlanParticipant(
+            plan_id=plan_id,
+            role=role,
+            principal_type=normalized_principal_type,
+            agent_id=normalized_agent_id,
+            agent_type=normalized_agent_type,
+            profile_id=normalized_profile_id or normalized_agent_id,
+            run_id=normalized_run_id,
+            session_id=normalized_session_id,
+            user_id=normalized_user_id,
+            first_seen_at=observed_at,
+            last_seen_at=observed_at,
+            touches=1,
+            last_action=action,
+            meta=meta,
+        )
+        db.add(row)
+        return
+
+    row.last_seen_at = observed_at
+    row.touches = int(row.touches or 0) + 1
+    row.last_action = action
+    if not row.agent_type and normalized_agent_type:
+        row.agent_type = normalized_agent_type
+    if not row.profile_id and (normalized_profile_id or normalized_agent_id):
+        row.profile_id = normalized_profile_id or normalized_agent_id
+    row.meta = _participant_merge_meta(row.meta, meta)
+
+
+async def _record_plan_participant_from_principal(
+    db: AsyncSession,
+    *,
+    plan_id: str,
+    role: Literal["builder", "reviewer"],
+    action: str,
+    principal: CurrentUser,
+    session_id: Optional[str] = None,
+    meta: Optional[Dict[str, Any]] = None,
+) -> None:
+    actor = _principal_actor_fields(principal)
+    await _record_plan_participant(
+        db,
+        plan_id=plan_id,
+        role=role,
+        action=action,
+        principal_type=actor.get("principal_type"),
+        agent_id=actor.get("agent_id"),
+        agent_type=actor.get("agent_type"),
+        profile_id=actor.get("profile_id"),
+        run_id=actor.get("run_id"),
+        session_id=session_id,
+        user_id=actor.get("user_id"),
+        meta=meta,
+    )
+
+
+def _review_round_to_entry(row: PlanReviewRound) -> PlanReviewRoundEntry:
+    return PlanReviewRoundEntry(
+        id=str(row.id),
+        planId=row.plan_id,
+        roundNumber=row.round_number,
+        reviewRevision=row.review_revision,
+        status=row.status,
+        note=row.note,
+        conclusion=row.conclusion,
+        createdBy=row.created_by,
+        actorPrincipalType=row.actor_principal_type,
+        actorAgentId=row.actor_agent_id,
+        actorRunId=row.actor_run_id,
+        actorUserId=row.actor_user_id,
+        createdAt=row.created_at.isoformat() if row.created_at else "",
+        updatedAt=row.updated_at.isoformat() if row.updated_at else "",
+    )
+
+
+def _review_node_to_entry(row: PlanReviewNode) -> PlanReviewNodeEntry:
+    return PlanReviewNodeEntry(
+        id=str(row.id),
+        planId=row.plan_id,
+        roundId=str(row.round_id),
+        kind=row.kind,
+        authorRole=row.author_role,
+        body=row.body,
+        severity=row.severity,
+        planAnchor=row.plan_anchor,
+        meta=row.meta,
+        createdBy=row.created_by,
+        actorPrincipalType=row.actor_principal_type,
+        actorAgentId=row.actor_agent_id,
+        actorRunId=row.actor_run_id,
+        actorUserId=row.actor_user_id,
+        createdAt=row.created_at.isoformat() if row.created_at else "",
+        updatedAt=row.updated_at.isoformat() if row.updated_at else "",
+    )
+
+
+def _participant_to_entry(row: PlanParticipant) -> PlanParticipantEntry:
+    return PlanParticipantEntry(
+        id=str(row.id),
+        planId=row.plan_id,
+        role=row.role,
+        principalType=row.principal_type,
+        agentId=row.agent_id,
+        agentType=row.agent_type,
+        profileId=row.profile_id,
+        runId=row.run_id,
+        sessionId=row.session_id,
+        userId=row.user_id,
+        touches=int(row.touches or 0),
+        lastAction=row.last_action,
+        firstSeenAt=row.first_seen_at.isoformat() if row.first_seen_at else "",
+        lastSeenAt=row.last_seen_at.isoformat() if row.last_seen_at else "",
+        meta=row.meta,
+    )
+
+
+def _review_link_to_entry(row: PlanReviewLink) -> PlanReviewLinkEntry:
+    return PlanReviewLinkEntry(
+        id=str(row.id),
+        planId=row.plan_id,
+        roundId=str(row.round_id),
+        sourceNodeId=str(row.source_node_id),
+        targetNodeId=str(row.target_node_id) if row.target_node_id else None,
+        relation=row.relation,
+        sourceAnchor=row.source_anchor,
+        targetAnchor=row.target_anchor,
+        targetPlanAnchor=row.target_plan_anchor,
+        quote=row.quote,
+        meta=row.meta,
+        createdBy=row.created_by,
+        createdAt=row.created_at.isoformat() if row.created_at else "",
+    )
+
+
+def _request_meta_dict(row: PlanReviewRequest) -> Dict[str, Any]:
+    return dict(row.meta) if isinstance(row.meta, dict) else {}
+
+
+def _request_dispatch_meta(row: PlanReviewRequest) -> Dict[str, Any]:
+    raw = _request_meta_dict(row).get("dispatch")
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _review_request_dispatch_view(row: PlanReviewRequest) -> Dict[str, Any]:
+    dispatch = _request_dispatch_meta(row)
+    mode = dispatch.get("target_mode")
+    if mode not in _REVIEW_REQUEST_TARGET_MODES:
+        mode = "session" if row.target_agent_id else "auto"
+
+    target_session_id = dispatch.get("target_session_id")
+    if not isinstance(target_session_id, str):
+        target_session_id = None
+
+    preferred_agent_id = dispatch.get("preferred_agent_id")
+    if not isinstance(preferred_agent_id, str):
+        preferred_agent_id = None
+
+    target_profile_id = dispatch.get("target_profile_id")
+    if not isinstance(target_profile_id, str):
+        target_profile_id = None
+
+    target_method = dispatch.get("target_method")
+    if not isinstance(target_method, str):
+        target_method = None
+
+    target_model_id = dispatch.get("target_model_id")
+    if not isinstance(target_model_id, str):
+        target_model_id = None
+
+    target_provider = dispatch.get("target_provider")
+    if not isinstance(target_provider, str):
+        target_provider = None
+
+    dispatch_state = dispatch.get("dispatch_state")
+    if dispatch_state not in _REVIEW_REQUEST_DISPATCH_STATES:
+        dispatch_state = "assigned" if row.target_agent_id else "unassigned"
+
+    dispatch_reason = dispatch.get("dispatch_reason")
+    if not isinstance(dispatch_reason, str):
+        dispatch_reason = None
+
+    queue_if_busy = bool(dispatch.get("queue_if_busy", False))
+    auto_reroute_if_busy = bool(dispatch.get("auto_reroute_if_busy", True))
+
+    return {
+        "target_mode": mode,
+        "target_session_id": target_session_id,
+        "preferred_agent_id": preferred_agent_id,
+        "target_profile_id": target_profile_id,
+        "target_method": target_method,
+        "target_model_id": target_model_id,
+        "target_provider": target_provider,
+        "queue_if_busy": queue_if_busy,
+        "auto_reroute_if_busy": auto_reroute_if_busy,
+        "dispatch_state": dispatch_state,
+        "dispatch_reason": dispatch_reason,
+    }
+
+
+def _request_dispatch_payload_from_row(
+    row: PlanReviewRequest,
+) -> PlanReviewRequestCreateRequest:
+    dispatch = _review_request_dispatch_view(row)
+    return PlanReviewRequestCreateRequest(
+        round_id=str(row.round_id) if row.round_id else None,
+        title=row.title,
+        body=row.body,
+        target_mode=dispatch["target_mode"],
+        target_agent_id=row.target_agent_id,
+        target_agent_type=row.target_agent_type,
+        target_session_id=dispatch["target_session_id"],
+        preferred_agent_id=dispatch["preferred_agent_id"],
+        target_profile_id=dispatch["target_profile_id"],
+        target_method=dispatch["target_method"],
+        target_model_id=dispatch["target_model_id"],
+        target_provider=dispatch["target_provider"],
+        queue_if_busy=dispatch["queue_if_busy"],
+        auto_reroute_if_busy=dispatch["auto_reroute_if_busy"],
+        meta=_request_meta_dict(row) or None,
+    )
+
+
+def _truncate_prompt_block(text: Optional[str], limit: int) -> str:
+    value = (text or "").strip()
+    if not value:
+        return ""
+    if len(value) <= limit:
+        return value
+    return value[:limit].rstrip() + "\n...[truncated]"
+
+
+def _build_review_request_prompt(
+    *,
+    bundle: PlanBundle,
+    request_row: PlanReviewRequest,
+    round_row: PlanReviewRound,
+) -> str:
+    checkpoints = bundle.plan.checkpoints if isinstance(bundle.plan.checkpoints, list) else []
+    compact_checkpoints: List[Dict[str, Any]] = []
+    for item in checkpoints[:20]:
+        if not isinstance(item, dict):
+            continue
+        compact_checkpoints.append(
+            {
+                "id": item.get("id"),
+                "label": item.get("label"),
+                "status": item.get("status"),
+                "owner": item.get("owner"),
+            }
+        )
+
+    summary_block = _truncate_prompt_block(bundle.doc.summary, 1200)
+    markdown_block = _truncate_prompt_block(bundle.doc.markdown, 12000)
+    request_body = _truncate_prompt_block(request_row.body, 4000)
+
+    parts = [
+        "You are reviewing a development plan and must produce actionable review feedback.",
+        "Focus on correctness risks, missing requirements, sequencing, and validation gaps.",
+        "",
+        f"Plan ID: {bundle.id}",
+        f"Plan Title: {bundle.doc.title}",
+        f"Plan Status: {bundle.doc.status}",
+        f"Plan Stage: {bundle.plan.stage}",
+        f"Round Number: {round_row.round_number}",
+        f"Review Request: {request_row.title}",
+        "",
+        "Request Instructions:",
+        request_body or "(empty)",
+    ]
+    if summary_block:
+        parts.extend(["", "Plan Summary:", summary_block])
+    if compact_checkpoints:
+        parts.extend(
+            [
+                "",
+                "Checkpoints (compact):",
+                json.dumps(compact_checkpoints, ensure_ascii=True, indent=2),
+            ]
+        )
+    if markdown_block:
+        parts.extend(["", "Plan Markdown:", markdown_block])
+
+    parts.extend(
+        [
+            "",
+            "Respond with these sections:",
+            "1) Findings (severity + rationale).",
+            "2) Suggested changes.",
+            "3) What still needs clarification.",
+            "4) Conclusion.",
+        ]
+    )
+    return "\n".join(parts)
+
+
+def _merge_request_meta_with_execution(
+    base_meta: Optional[Dict[str, Any]],
+    patch: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    merged: Dict[str, Any] = dict(base_meta) if isinstance(base_meta, dict) else {}
+    existing = merged.get("execution")
+    execution_meta = dict(existing) if isinstance(existing, dict) else {}
+    for key, value in patch.items():
+        if value is None:
+            continue
+        execution_meta[key] = value
+    if execution_meta:
+        merged["execution"] = execution_meta
+    return merged or None
+
+
+def _infer_provider_from_model_id(model_id: Optional[str]) -> Optional[str]:
+    model = (model_id or "").strip()
+    if not model:
+        return None
+    if ":" in model:
+        return model.split(":", 1)[0].strip() or None
+    return None
+
+
+def _resolve_review_request_execution_config(
+    *,
+    dispatch_view: Dict[str, Any],
+    profile_hint: Optional[Dict[str, Any]],
+) -> Dict[str, Optional[str]]:
+    from pixsim7.backend.main.shared.schemas.ai_model_schemas import AiModelCapability
+    from pixsim7.backend.main.services.ai_model.defaults import FALLBACK_DEFAULTS
+    from pixsim7.backend.main.services.ai_model.registry import ai_model_registry
+
+    fallback_model, fallback_method = FALLBACK_DEFAULTS.get(
+        AiModelCapability.ASSISTANT_CHAT,
+        ("anthropic:claude-3.5", "remote"),
+    )
+
+    target_method = (dispatch_view.get("target_method") or "").strip().lower()
+    if not target_method and profile_hint:
+        target_method = str(profile_hint.get("method") or "").strip().lower()
+    if not target_method:
+        target_method = (fallback_method or "remote").strip().lower()
+    if target_method == "direct":
+        target_method = "api"
+
+    target_model_id = (dispatch_view.get("target_model_id") or "").strip()
+    if not target_model_id and profile_hint:
+        target_model_id = str(profile_hint.get("model_id") or "").strip()
+    if not target_model_id:
+        target_model_id = (fallback_model or "anthropic:claude-3.5").strip()
+
+    target_provider = (dispatch_view.get("target_provider") or "").strip().lower()
+    if not target_provider and profile_hint:
+        target_provider = str(profile_hint.get("provider") or "").strip().lower()
+
+    registry_model = ai_model_registry.get_or_none(target_model_id) if target_model_id else None
+    if not target_provider and registry_model and registry_model.provider_id:
+        target_provider = str(registry_model.provider_id).strip().lower()
+    if not target_provider:
+        target_provider = _infer_provider_from_model_id(target_model_id) or ""
+
+    return {
+        "method": target_method or "remote",
+        "model_id": target_model_id or None,
+        "provider": target_provider or None,
+    }
+
+
+async def _try_start_shared_bridge(*, pool_size: int = 1) -> Dict[str, Any]:
+    try:
+        from pixsim7.backend.main.api.v1.meta_contracts import (
+            StartBridgeRequest,
+            start_server_bridge,
+        )
+
+        result = await start_server_bridge(
+            StartBridgeRequest(pool_size=pool_size),
+            authorization=None,
+        )
+        return {
+            "ok": bool(getattr(result, "ok", False)),
+            "message": str(getattr(result, "message", "")),
+            "pid": getattr(result, "pid", None),
+        }
+    except Exception as exc:
+        return {"ok": False, "message": str(exc), "pid": None}
+
+
+async def _resolve_round_for_request_dispatch(
+    db: AsyncSession,
+    *,
+    plan_id: str,
+    request_row: PlanReviewRequest,
+    principal: CurrentUser,
+    create_round_if_missing: bool,
+) -> PlanReviewRound:
+    if request_row.round_id is not None:
+        return await _load_review_round(db, plan_id=plan_id, round_id=request_row.round_id)
+
+    open_round = (
+        await db.execute(
+            select(PlanReviewRound)
+            .where(
+                PlanReviewRound.plan_id == plan_id,
+                PlanReviewRound.status != "concluded",
+            )
+            .order_by(PlanReviewRound.round_number.desc(), PlanReviewRound.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if open_round is not None:
+        request_row.round_id = open_round.id
+        return open_round
+
+    latest_round = (
+        await db.execute(
+            select(PlanReviewRound)
+            .where(PlanReviewRound.plan_id == plan_id)
+            .order_by(PlanReviewRound.round_number.desc(), PlanReviewRound.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest_round is not None and not create_round_if_missing:
+        request_row.round_id = latest_round.id
+        return latest_round
+
+    if latest_round is not None and create_round_if_missing:
+        next_round_number = int(latest_round.round_number) + 1
+    elif not create_round_if_missing:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Request is not bound to a review round and no rounds exist. "
+                "Enable create_round_if_missing to auto-create one."
+            ),
+        )
+    else:
+        next_round_number = 1
+
+    actor_source = getattr(principal, "source", f"user:{principal.id}")
+    actor_fields = _principal_actor_fields(principal)
+    now = utcnow()
+    round_row = PlanReviewRound(
+        plan_id=plan_id,
+        round_number=next_round_number,
+        status="open",
+        note=f"Auto-created for review request {request_row.id}",
+        created_by=actor_source,
+        actor_principal_type=actor_fields["principal_type"],
+        actor_agent_id=actor_fields["agent_id"],
+        actor_run_id=actor_fields["run_id"],
+        actor_user_id=actor_fields["user_id"],
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(round_row)
+    await db.flush()
+    request_row.round_id = round_row.id
+    return round_row
+
+
+async def _run_review_request_via_bridge(
+    *,
+    plan_id: str,
+    request_row: PlanReviewRequest,
+    prompt: str,
+    model_id: Optional[str],
+    timeout_seconds: int,
+    user_id: Optional[int],
+) -> Dict[str, Any]:
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
+
+    target_agent_id = (request_row.target_agent_id or "").strip() or None
+    agent_type = (request_row.target_agent_type or "").lower()
+    engine = "codex" if "codex" in agent_type else "claude"
+    task_payload: Dict[str, Any] = {
+        "task": "message",
+        "prompt": prompt,
+        "instruction": prompt,
+        "model": model_id or "default",
+        "context": {
+            "plan_id": plan_id,
+            "review_request_id": str(request_row.id),
+            "review_round_id": str(request_row.round_id) if request_row.round_id else None,
+        },
+        "engine": engine,
+    }
+
+    if target_agent_id:
+        result = await remote_cmd_bridge.dispatch_task_to_agent(
+            target_agent_id,
+            task_payload,
+            timeout=timeout_seconds,
+            user_id=user_id,
+        )
+    else:
+        result = await remote_cmd_bridge.dispatch_task(
+            task_payload,
+            timeout=timeout_seconds,
+            user_id=user_id,
+        )
+
+    response_text = (
+        str(result.get("edited_prompt") or "")
+        or str(result.get("response") or "")
+        or str(result.get("output") or "")
+    ).strip()
+    if not response_text:
+        raise RuntimeError("Remote review request completed without response text.")
+
+    return {
+        "response_text": response_text,
+        "agent_id": target_agent_id or (request_row.target_agent_id or None),
+        "run_id": result.get("claude_session_id"),
+        "meta": {
+            "claude_session_id": result.get("claude_session_id"),
+        },
+    }
+
+
+async def _run_review_request_via_api(
+    *,
+    prompt: str,
+    provider_id: Optional[str],
+    model_id: Optional[str],
+) -> Dict[str, Any]:
+    from pixsim7.backend.main.api.v1.meta_contracts import _build_user_system_prompt
+    from pixsim7.backend.main.services.llm.models import LLMRequest
+    from pixsim7.backend.main.services.llm.providers import get_provider
+
+    provider_name = (provider_id or "").strip().lower()
+    resolved_model_id = (model_id or "").strip()
+    if not provider_name:
+        provider_name = _infer_provider_from_model_id(resolved_model_id) or "anthropic"
+    model_name = (
+        resolved_model_id.split(":", 1)[-1]
+        if ":" in resolved_model_id
+        else (resolved_model_id or "claude-3.5")
+    )
+
+    provider = get_provider(provider_name)
+    response = await provider.generate(
+        LLMRequest(
+            prompt=prompt,
+            system_prompt=_build_user_system_prompt(),
+            model=model_name,
+            max_tokens=2048,
+        )
+    )
+    response_text = (response.text or "").strip()
+    if not response_text:
+        raise RuntimeError("Direct API review request completed without response text.")
+
+    return {
+        "response_text": response_text,
+        "agent_id": None,
+        "run_id": None,
+        "meta": {
+            "provider": provider_name,
+            "model": model_name,
+        },
+    }
+
+
+async def _dispatch_review_request_execution(
+    db: AsyncSession,
+    *,
+    plan_id: str,
+    request_row: PlanReviewRequest,
+    principal: CurrentUser,
+    timeout_seconds: int,
+    spawn_if_missing: bool,
+    create_round_if_missing: bool,
+) -> Dict[str, Any]:
+    if request_row.status in _TERMINAL_REVIEW_REQUEST_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Review request '{request_row.id}' is already {request_row.status} "
+                "and cannot be dispatched."
+            ),
+        )
+    if request_row.status == "in_progress":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Review request '{request_row.id}' is already in_progress.",
+        )
+
+    actor_source = getattr(principal, "source", f"user:{principal.id}")
+    actor_fields = _principal_actor_fields(principal)
+    dispatch_view = _review_request_dispatch_view(request_row)
+    profile_hint = await _load_target_profile_hint(
+        db,
+        principal=principal,
+        profile_id=dispatch_view.get("target_profile_id"),
+    )
+    execution_cfg = _resolve_review_request_execution_config(
+        dispatch_view=dispatch_view,
+        profile_hint=profile_hint,
+    )
+    method = str(execution_cfg.get("method") or "remote").strip().lower()
+    model_id = execution_cfg.get("model_id")
+    provider_id = execution_cfg.get("provider")
+
+    live_agents = _list_live_bridge_agents(principal)
+    spawn_meta: Optional[Dict[str, Any]] = None
+    if method in _REVIEW_REQUEST_REMOTE_METHODS and not live_agents and spawn_if_missing:
+        spawn_meta = await _try_start_shared_bridge(pool_size=1)
+        if spawn_meta.get("ok"):
+            await asyncio.sleep(0.6)
+            live_agents = _list_live_bridge_agents(principal)
+
+    try:
+        dispatch_payload = _request_dispatch_payload_from_row(request_row)
+        dispatch = _resolve_review_request_targeting(
+            payload=dispatch_payload,
+            live_agents=live_agents,
+            profile_hint=profile_hint,
+        )
+    except HTTPException as exc:
+        dispatch = {
+            "target_mode": dispatch_view.get("target_mode"),
+            "target_session_id": dispatch_view.get("target_session_id"),
+            "preferred_agent_id": dispatch_view.get("preferred_agent_id"),
+            "target_profile_id": dispatch_view.get("target_profile_id"),
+            "target_method": dispatch_view.get("target_method"),
+            "target_model_id": dispatch_view.get("target_model_id"),
+            "target_provider": dispatch_view.get("target_provider"),
+            "queue_if_busy": bool(dispatch_view.get("queue_if_busy", False)),
+            "auto_reroute_if_busy": bool(dispatch_view.get("auto_reroute_if_busy", True)),
+            "dispatch_state": "unassigned",
+            "dispatch_reason": "dispatch_resolution_error",
+            "target_agent_id": request_row.target_agent_id,
+            "target_agent_type": request_row.target_agent_type,
+        }
+        request_row.meta = _merge_request_meta_with_dispatch(request_row.meta, dispatch)
+        request_row.meta = _merge_request_meta_with_execution(
+            request_row.meta,
+            {
+                "state": "deferred",
+                "deferred_at": utcnow().isoformat(),
+                "deferred_reason": str(exc.detail),
+                "spawn": spawn_meta,
+            },
+        )
+        request_row.status = "open"
+        request_row.updated_at = utcnow()
+        await db.commit()
+        return {
+            "executed": False,
+            "message": str(exc.detail),
+            "duration_ms": None,
+            "request_row": request_row,
+            "node_row": None,
+            "error": None,
+        }
+
+    request_row.target_agent_id = dispatch.get("target_agent_id")
+    request_row.target_agent_type = dispatch.get("target_agent_type")
+    request_row.meta = _merge_request_meta_with_dispatch(request_row.meta, dispatch)
+    request_row.updated_at = utcnow()
+
+    dispatch_state = dispatch.get("dispatch_state")
+    if dispatch_state != "assigned":
+        request_row.status = "open"
+        request_row.meta = _merge_request_meta_with_execution(
+            request_row.meta,
+            {
+                "state": "deferred",
+                "deferred_at": utcnow().isoformat(),
+                "deferred_reason": dispatch.get("dispatch_reason"),
+                "spawn": spawn_meta,
+            },
+        )
+        await db.commit()
+        reason = dispatch.get("dispatch_reason") or "not_assigned"
+        message = f"Dispatch deferred ({dispatch_state or 'unknown'}): {reason}"
+        if spawn_meta and spawn_meta.get("message"):
+            message += f". {spawn_meta['message']}"
+        return {
+            "executed": False,
+            "message": message,
+            "duration_ms": None,
+            "request_row": request_row,
+            "node_row": None,
+            "error": None,
+        }
+
+    request_row.status = "in_progress"
+    request_row.meta = _merge_request_meta_with_execution(
+        request_row.meta,
+        {
+            "state": "in_progress",
+            "started_at": utcnow().isoformat(),
+            "started_by": actor_source,
+            "method": method,
+            "model_id": model_id,
+            "provider": provider_id,
+            "target_agent_id": request_row.target_agent_id,
+            "spawn": spawn_meta,
+        },
+    )
+    await db.commit()
+
+    started_mono = asyncio.get_event_loop().time()
+    try:
+        bundle = await get_plan_bundle(db, plan_id)
+        if bundle is None:
+            raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+        round_row = await _resolve_round_for_request_dispatch(
+            db,
+            plan_id=plan_id,
+            request_row=request_row,
+            principal=principal,
+            create_round_if_missing=create_round_if_missing,
+        )
+        prompt = _build_review_request_prompt(
+            bundle=bundle,
+            request_row=request_row,
+            round_row=round_row,
+        )
+
+        if method in _REVIEW_REQUEST_REMOTE_METHODS:
+            result = await _run_review_request_via_bridge(
+                plan_id=plan_id,
+                request_row=request_row,
+                prompt=prompt,
+                model_id=model_id,
+                timeout_seconds=timeout_seconds,
+                user_id=_principal_effective_user_id(principal),
+            )
+        else:
+            result = await _run_review_request_via_api(
+                prompt=prompt,
+                provider_id=provider_id,
+                model_id=model_id,
+            )
+
+        node_actor = dict(actor_fields)
+        node_created_by = actor_source
+        execution_agent_id = result.get("agent_id")
+        execution_run_id = result.get("run_id")
+        if execution_agent_id:
+            node_created_by = f"agent:{execution_agent_id}"
+            node_actor["principal_type"] = "agent"
+            node_actor["agent_id"] = execution_agent_id
+        if execution_run_id:
+            node_actor["run_id"] = execution_run_id
+
+        now = utcnow()
+        node_meta: Dict[str, Any] = {
+            "request_id": str(request_row.id),
+            "dispatch": {
+                "method": method,
+                "model_id": model_id,
+                "provider": provider_id,
+                "target_agent_id": request_row.target_agent_id,
+                "target_agent_type": request_row.target_agent_type,
+                "dispatch_reason": dispatch.get("dispatch_reason"),
+            },
+        }
+        result_meta = result.get("meta")
+        if isinstance(result_meta, dict) and result_meta:
+            node_meta["execution"] = result_meta
+
+        execution_session_id: Optional[str] = None
+        if isinstance(result_meta, dict):
+            raw_session_id = result_meta.get("claude_session_id") or result_meta.get("session_id")
+            if isinstance(raw_session_id, str) and raw_session_id.strip():
+                execution_session_id = raw_session_id.strip()
+
+        node_row = PlanReviewNode(
+            plan_id=plan_id,
+            round_id=round_row.id,
+            kind="agent_response",
+            author_role="agent",
+            body=str(result.get("response_text") or "").strip(),
+            meta=node_meta,
+            created_by=node_created_by,
+            actor_principal_type=node_actor.get("principal_type"),
+            actor_agent_id=node_actor.get("agent_id"),
+            actor_run_id=node_actor.get("run_id"),
+            actor_user_id=node_actor.get("user_id"),
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(node_row)
+        await db.flush()
+
+        request_row.status = "fulfilled"
+        request_row.resolved_node_id = node_row.id
+        request_row.resolution_note = (
+            f"Auto-dispatched via {method}"
+            + (f" ({provider_id})" if provider_id else "")
+            + "."
+        )
+        request_row.resolved_by = node_created_by
+        request_row.resolved_by_principal_type = node_actor.get("principal_type")
+        request_row.resolved_by_agent_id = node_actor.get("agent_id")
+        request_row.resolved_by_run_id = node_actor.get("run_id")
+        request_row.resolved_by_user_id = actor_fields.get("user_id")
+        request_row.resolved_at = now
+        request_row.updated_at = now
+        request_row.meta = _merge_request_meta_with_execution(
+            request_row.meta,
+            {
+                "state": "succeeded",
+                "finished_at": now.isoformat(),
+            },
+        )
+        await _record_plan_participant(
+            db,
+            plan_id=plan_id,
+            role="reviewer",
+            action="dispatch_review_request",
+            principal_type=node_actor.get("principal_type"),
+            agent_id=node_actor.get("agent_id"),
+            agent_type=request_row.target_agent_type,
+            profile_id=node_actor.get("agent_id"),
+            run_id=node_actor.get("run_id"),
+            session_id=execution_session_id,
+            user_id=node_actor.get("user_id"),
+            seen_at=now,
+            meta={
+                "request_id": str(request_row.id),
+                "round_id": str(round_row.id),
+                "method": method,
+                "provider": provider_id,
+                "model_id": model_id,
+            },
+        )
+        await db.commit()
+
+        duration_ms = int((asyncio.get_event_loop().time() - started_mono) * 1000)
+        return {
+            "executed": True,
+            "message": "Review request dispatched and fulfilled.",
+            "duration_ms": duration_ms,
+            "request_row": request_row,
+            "node_row": node_row,
+            "error": None,
+        }
+    except HTTPException as exc:
+        failed_at = utcnow()
+        request_row.status = "open"
+        request_row.updated_at = failed_at
+        request_row.meta = _merge_request_meta_with_execution(
+            request_row.meta,
+            {
+                "state": "failed",
+                "failed_at": failed_at.isoformat(),
+                "error": str(exc.detail),
+                "http_status": exc.status_code,
+            },
+        )
+        await db.commit()
+        duration_ms = int((asyncio.get_event_loop().time() - started_mono) * 1000)
+        return {
+            "executed": False,
+            "message": str(exc.detail),
+            "duration_ms": duration_ms,
+            "request_row": request_row,
+            "node_row": None,
+            "error": str(exc.detail),
+        }
+    except Exception as exc:
+        logger.warning(
+            "plan_review_request_dispatch_failed",
+            plan_id=plan_id,
+            request_id=str(request_row.id),
+            error=str(exc),
+        )
+        failed_at = utcnow()
+        request_row.status = "open"
+        request_row.updated_at = failed_at
+        request_row.meta = _merge_request_meta_with_execution(
+            request_row.meta,
+            {
+                "state": "failed",
+                "failed_at": failed_at.isoformat(),
+                "error": str(exc),
+            },
+        )
+        await db.commit()
+        duration_ms = int((asyncio.get_event_loop().time() - started_mono) * 1000)
+        return {
+            "executed": False,
+            "message": f"Dispatch failed: {exc}",
+            "duration_ms": duration_ms,
+            "request_row": request_row,
+            "node_row": None,
+            "error": str(exc),
+        }
+
+
+def _principal_effective_user_id(principal: CurrentUser) -> Optional[int]:
+    actor = _principal_actor_fields(principal)
+    return actor.get("user_id")
+
+
+def _list_live_bridge_agents(principal: CurrentUser) -> List[Dict[str, Any]]:
+    """List bridge-backed live sessions visible to principal, idle-first sorted."""
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
+
+    user_id = _principal_effective_user_id(principal)
+    rows: List[Dict[str, Any]] = []
+    for agent in remote_cmd_bridge.get_agents(user_id=user_id):
+        rows.append(
+            {
+                "agent_id": agent.agent_id,
+                "agent_type": agent.agent_type,
+                "busy": bool(agent.busy),
+                "active_tasks": int(getattr(agent, "active_tasks", 0) or 0),
+                "tasks_completed": int(getattr(agent, "tasks_completed", 0) or 0),
+                "connected_at": agent.connected_at,
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            row["busy"],
+            row["active_tasks"],
+            row["tasks_completed"],
+            str(row["agent_id"]).lower(),
+        )
+    )
+    return rows
+
+
+def _profile_provider_hint(profile: AgentProfile) -> Optional[str]:
+    config = profile.config if isinstance(profile.config, dict) else {}
+    for key in ("provider", "provider_id"):
+        value = config.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+async def _load_target_profile_hint(
+    db: AsyncSession,
+    *,
+    principal: CurrentUser,
+    profile_id: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    target = (profile_id or "").strip()
+    if not target:
+        return None
+
+    stmt = select(AgentProfile).where(AgentProfile.id == target)
+    if not _principal_is_admin(principal):
+        user_id = _principal_effective_user_id(principal)
+        if user_id is None:
+            stmt = stmt.where(AgentProfile.user_id == 0)
+        else:
+            stmt = stmt.where(or_(AgentProfile.user_id == user_id, AgentProfile.user_id == 0))
+
+    row = (await db.execute(stmt)).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Agent profile not found or inaccessible: {target}",
+        )
+    if row.status != "active":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Agent profile '{target}' is not active (status={row.status}).",
+        )
+
+    return {
+        "id": row.id,
+        "agent_type": row.agent_type,
+        "method": row.method,
+        "model_id": row.model_id,
+        "provider": _profile_provider_hint(row),
+    }
+
+
+def _pick_idle_bridge_agent(
+    live_agents: List[Dict[str, Any]],
+    *,
+    exclude_agent_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    for agent in live_agents:
+        if agent.get("busy"):
+            continue
+        if exclude_agent_id and agent.get("agent_id") == exclude_agent_id:
+            continue
+        return agent
+    return None
+
+
+def _pick_least_loaded_bridge_agent(
+    live_agents: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    if not live_agents:
+        return None
+    return min(
+        live_agents,
+        key=lambda row: (
+            int(row.get("active_tasks", 0)),
+            int(row.get("tasks_completed", 0)),
+            str(row.get("agent_id", "")).lower(),
+        ),
+    )
+
+
+def _resolve_review_request_targeting(
+    *,
+    payload: PlanReviewRequestCreateRequest,
+    live_agents: List[Dict[str, Any]],
+    profile_hint: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    target_mode = payload.target_mode
+    queue_if_busy = bool(payload.queue_if_busy)
+    auto_reroute_if_busy = bool(payload.auto_reroute_if_busy)
+
+    manual_target = (payload.target_agent_id or "").strip() or None
+    requested_session_id = (payload.target_session_id or "").strip() or None
+    preferred_agent_id = (payload.preferred_agent_id or "").strip() or None
+    target_profile_id = (payload.target_profile_id or "").strip() or None
+    requested_agent_type = (payload.target_agent_type or "").strip() or None
+    target_method = (payload.target_method or "").strip() or None
+    target_model_id = (payload.target_model_id or "").strip() or None
+    target_provider = (payload.target_provider or "").strip() or None
+
+    if profile_hint:
+        target_profile_id = target_profile_id or str(profile_hint.get("id") or "").strip() or None
+        requested_agent_type = requested_agent_type or str(profile_hint.get("agent_type") or "").strip() or None
+        target_method = target_method or str(profile_hint.get("method") or "").strip() or None
+        target_model_id = target_model_id or str(profile_hint.get("model_id") or "").strip() or None
+        target_provider = target_provider or str(profile_hint.get("provider") or "").strip() or None
+
+    profile_agent_id = target_profile_id
+
+    # Backward compatibility for older clients that only send target_agent_id.
+    if target_mode == "auto" and not requested_session_id and manual_target:
+        target_mode = "session"
+        requested_session_id = manual_target
+    if target_mode == "session" and not requested_session_id and manual_target:
+        requested_session_id = manual_target
+    if target_mode == "recent_agent" and not preferred_agent_id and manual_target:
+        preferred_agent_id = manual_target
+
+    by_id = {str(agent["agent_id"]): agent for agent in live_agents}
+
+    def _dispatch_result(
+        *,
+        state: Literal["assigned", "queued", "unassigned"],
+        reason: str,
+        assigned_agent: Optional[Dict[str, Any]] = None,
+        explicit_target_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        assigned_id = str(assigned_agent["agent_id"]) if assigned_agent else None
+        assigned_type = (
+            str(assigned_agent["agent_type"])
+            if assigned_agent and assigned_agent.get("agent_type")
+            else requested_agent_type
+        )
+        target_agent_id = assigned_id or explicit_target_id
+        target_session_id = assigned_id or (
+            explicit_target_id if target_mode == "session" else None
+        )
+        return {
+            "target_mode": target_mode,
+            "target_session_id": target_session_id,
+            "preferred_agent_id": preferred_agent_id,
+            "target_profile_id": target_profile_id,
+            "target_method": target_method,
+            "target_model_id": target_model_id,
+            "target_provider": target_provider,
+            "queue_if_busy": queue_if_busy,
+            "auto_reroute_if_busy": auto_reroute_if_busy,
+            "dispatch_state": state,
+            "dispatch_reason": reason,
+            "target_agent_id": target_agent_id,
+            "target_agent_type": assigned_type,
+        }
+
+    if target_mode == "session":
+        if not requested_session_id:
+            raise HTTPException(
+                status_code=400,
+                detail="target_session_id is required when target_mode='session'.",
+            )
+        target = by_id.get(requested_session_id)
+        if target is None:
+            if auto_reroute_if_busy:
+                idle = _pick_idle_bridge_agent(live_agents)
+                if idle is not None:
+                    return _dispatch_result(
+                        state="assigned",
+                        reason="target_session_missing_rerouted",
+                        assigned_agent=idle,
+                        explicit_target_id=requested_session_id,
+                    )
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Target session '{requested_session_id}' is not connected."
+                    " Refresh assignees and retry."
+                ),
+            )
+
+        if not target.get("busy"):
+            return _dispatch_result(
+                state="assigned",
+                reason="target_session_idle",
+                assigned_agent=target,
+                explicit_target_id=requested_session_id,
+            )
+        if queue_if_busy:
+            return _dispatch_result(
+                state="queued",
+                reason="target_session_busy_queued",
+                assigned_agent=target,
+                explicit_target_id=requested_session_id,
+            )
+        if auto_reroute_if_busy:
+            idle = _pick_idle_bridge_agent(live_agents, exclude_agent_id=requested_session_id)
+            if idle is not None:
+                return _dispatch_result(
+                    state="assigned",
+                    reason="target_session_busy_rerouted",
+                    assigned_agent=idle,
+                    explicit_target_id=requested_session_id,
+                )
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Target session '{requested_session_id}' is busy."
+                " Enable queueing or auto-reroute to proceed."
+            ),
+        )
+
+    if target_mode == "recent_agent":
+        if not preferred_agent_id:
+            raise HTTPException(
+                status_code=400,
+                detail="preferred_agent_id is required when target_mode='recent_agent'.",
+            )
+        preferred_live = by_id.get(preferred_agent_id)
+        if preferred_live and not preferred_live.get("busy"):
+            return _dispatch_result(
+                state="assigned",
+                reason="preferred_agent_live_idle",
+                assigned_agent=preferred_live,
+                explicit_target_id=preferred_agent_id,
+            )
+        if preferred_live and queue_if_busy:
+            return _dispatch_result(
+                state="queued",
+                reason="preferred_agent_busy_queued",
+                assigned_agent=preferred_live,
+                explicit_target_id=preferred_agent_id,
+            )
+        if auto_reroute_if_busy:
+            idle = _pick_idle_bridge_agent(
+                live_agents,
+                exclude_agent_id=preferred_agent_id if preferred_live else None,
+            )
+            if idle is not None:
+                return _dispatch_result(
+                    state="assigned",
+                    reason="preferred_agent_rerouted",
+                    assigned_agent=idle,
+                    explicit_target_id=preferred_agent_id,
+                )
+        return _dispatch_result(
+            state="unassigned",
+            reason="preferred_agent_unavailable",
+            explicit_target_id=preferred_agent_id,
+        )
+
+    # target_mode == "auto"
+    if profile_agent_id:
+        profile_live = by_id.get(profile_agent_id)
+        if profile_live and not profile_live.get("busy"):
+            return _dispatch_result(
+                state="assigned",
+                reason="profile_live_idle",
+                assigned_agent=profile_live,
+                explicit_target_id=profile_agent_id,
+            )
+        if profile_live and queue_if_busy:
+            return _dispatch_result(
+                state="queued",
+                reason="profile_live_busy_queued",
+                assigned_agent=profile_live,
+                explicit_target_id=profile_agent_id,
+            )
+        if profile_live and auto_reroute_if_busy:
+            idle_after_profile = _pick_idle_bridge_agent(
+                live_agents,
+                exclude_agent_id=profile_agent_id,
+            )
+            if idle_after_profile is not None:
+                return _dispatch_result(
+                    state="assigned",
+                    reason="profile_live_busy_rerouted",
+                    assigned_agent=idle_after_profile,
+                    explicit_target_id=profile_agent_id,
+                )
+
+    idle = _pick_idle_bridge_agent(live_agents)
+    if idle is not None:
+        return _dispatch_result(state="assigned", reason="auto_idle", assigned_agent=idle)
+
+    if queue_if_busy:
+        busy_target = _pick_least_loaded_bridge_agent(live_agents)
+        if busy_target is not None:
+            return _dispatch_result(
+                state="queued",
+                reason="auto_all_busy_queued",
+                assigned_agent=busy_target,
+            )
+
+    return _dispatch_result(
+        state="unassigned",
+        reason="auto_no_live_agents",
+        explicit_target_id=profile_agent_id or manual_target or preferred_agent_id,
+    )
+
+
+def _merge_request_meta_with_dispatch(
+    base_meta: Optional[Dict[str, Any]],
+    dispatch: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    merged: Dict[str, Any] = dict(base_meta) if isinstance(base_meta, dict) else {}
+    merged["dispatch"] = {
+        "target_mode": dispatch.get("target_mode"),
+        "target_session_id": dispatch.get("target_session_id"),
+        "preferred_agent_id": dispatch.get("preferred_agent_id"),
+        "target_profile_id": dispatch.get("target_profile_id"),
+        "target_method": dispatch.get("target_method"),
+        "target_model_id": dispatch.get("target_model_id"),
+        "target_provider": dispatch.get("target_provider"),
+        "queue_if_busy": bool(dispatch.get("queue_if_busy", False)),
+        "auto_reroute_if_busy": bool(dispatch.get("auto_reroute_if_busy", True)),
+        "dispatch_state": dispatch.get("dispatch_state"),
+        "dispatch_reason": dispatch.get("dispatch_reason"),
+        "resolved_agent_id": dispatch.get("target_agent_id"),
+        "resolved_agent_type": dispatch.get("target_agent_type"),
+        "dispatched_at": utcnow().isoformat(),
+    }
+    return merged or None
+
+
+async def _list_recent_review_agents(
+    db: AsyncSession,
+    *,
+    plan_id: str,
+    limit: int = 12,
+) -> List[Dict[str, Any]]:
+    """Collect recent agent IDs from review activity for continuity targeting."""
+    by_agent: Dict[str, Dict[str, Any]] = {}
+
+    def _remember(agent_id: Optional[str], agent_type: Optional[str], seen_at: Any) -> None:
+        if not agent_id:
+            return
+        key = str(agent_id).strip()
+        if not key:
+            return
+        row = by_agent.get(key)
+        if row is None:
+            by_agent[key] = {
+                "agent_id": key,
+                "agent_type": (str(agent_type).strip() if agent_type else None),
+                "last_seen_at": seen_at,
+            }
+            return
+        if seen_at and (row.get("last_seen_at") is None or seen_at > row["last_seen_at"]):
+            row["last_seen_at"] = seen_at
+        if not row.get("agent_type") and agent_type:
+            row["agent_type"] = str(agent_type).strip()
+
+    request_rows = (
+        await db.execute(
+            select(
+                PlanReviewRequest.target_agent_id,
+                PlanReviewRequest.target_agent_type,
+                PlanReviewRequest.updated_at,
+            )
+            .where(
+                PlanReviewRequest.plan_id == plan_id,
+                PlanReviewRequest.target_agent_id.is_not(None),
+            )
+            .order_by(PlanReviewRequest.updated_at.desc())
+            .limit(max(limit * 6, 24))
+        )
+    ).all()
+    for agent_id, agent_type, seen_at in request_rows:
+        _remember(agent_id, agent_type, seen_at)
+
+    node_rows = (
+        await db.execute(
+            select(
+                PlanReviewNode.actor_agent_id,
+                PlanReviewNode.created_at,
+            )
+            .where(
+                PlanReviewNode.plan_id == plan_id,
+                PlanReviewNode.actor_agent_id.is_not(None),
+            )
+            .order_by(PlanReviewNode.created_at.desc())
+            .limit(max(limit * 6, 24))
+        )
+    ).all()
+    for agent_id, seen_at in node_rows:
+        _remember(agent_id, None, seen_at)
+
+    round_rows = (
+        await db.execute(
+            select(
+                PlanReviewRound.actor_agent_id,
+                PlanReviewRound.created_at,
+            )
+            .where(
+                PlanReviewRound.plan_id == plan_id,
+                PlanReviewRound.actor_agent_id.is_not(None),
+            )
+            .order_by(PlanReviewRound.created_at.desc())
+            .limit(max(limit * 6, 24))
+        )
+    ).all()
+    for agent_id, seen_at in round_rows:
+        _remember(agent_id, None, seen_at)
+
+    out = sorted(
+        by_agent.values(),
+        key=lambda row: row.get("last_seen_at") or utcnow(),
+        reverse=True,
+    )
+    return out[:limit]
+
+
+def _review_request_to_entry(row: PlanReviewRequest) -> PlanReviewRequestEntry:
+    dispatch = _review_request_dispatch_view(row)
+    return PlanReviewRequestEntry(
+        id=str(row.id),
+        planId=row.plan_id,
+        roundId=str(row.round_id) if row.round_id else None,
+        title=row.title,
+        body=row.body,
+        status=row.status,
+        targetMode=dispatch["target_mode"],
+        targetAgentId=row.target_agent_id,
+        targetAgentType=row.target_agent_type,
+        targetSessionId=dispatch["target_session_id"],
+        preferredAgentId=dispatch["preferred_agent_id"],
+        targetProfileId=dispatch["target_profile_id"],
+        targetMethod=dispatch["target_method"],
+        targetModelId=dispatch["target_model_id"],
+        targetProvider=dispatch["target_provider"],
+        queueIfBusy=dispatch["queue_if_busy"],
+        autoRerouteIfBusy=dispatch["auto_reroute_if_busy"],
+        dispatchState=dispatch["dispatch_state"],
+        dispatchReason=dispatch["dispatch_reason"],
+        requestedBy=row.requested_by,
+        requestedByPrincipalType=row.requested_by_principal_type,
+        requestedByAgentId=row.requested_by_agent_id,
+        requestedByRunId=row.requested_by_run_id,
+        requestedByUserId=row.requested_by_user_id,
+        meta=row.meta,
+        resolutionNote=row.resolution_note,
+        resolvedNodeId=str(row.resolved_node_id) if row.resolved_node_id else None,
+        resolvedBy=row.resolved_by,
+        resolvedByPrincipalType=row.resolved_by_principal_type,
+        resolvedByAgentId=row.resolved_by_agent_id,
+        resolvedByRunId=row.resolved_by_run_id,
+        resolvedByUserId=row.resolved_by_user_id,
+        createdAt=row.created_at.isoformat() if row.created_at else "",
+        updatedAt=row.updated_at.isoformat() if row.updated_at else "",
+        resolvedAt=row.resolved_at.isoformat() if row.resolved_at else None,
+    )
+
+
+def _graph_has_path(adjacency: Dict[UUID, Set[UUID]], start: UUID, goal: UUID) -> bool:
+    if start == goal:
+        return True
+    stack = [start]
+    visited: Set[UUID] = set()
+    while stack:
+        node = stack.pop()
+        if node in visited:
+            continue
+        visited.add(node)
+        for nxt in adjacency.get(node, set()):
+            if nxt == goal:
+                return True
+            if nxt not in visited:
+                stack.append(nxt)
+    return False
 
 
 def _checkpoint_int(value: Any) -> Optional[int]:
@@ -550,6 +2637,76 @@ def _filter_bundles(
     return out
 
 
+async def _ensure_plan_exists(db: AsyncSession, plan_id: str) -> None:
+    plan_row = (
+        await db.execute(select(PlanRegistry.id).where(PlanRegistry.id == plan_id))
+    ).scalar_one_or_none()
+    if plan_row is None:
+        raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+
+async def _load_review_round(
+    db: AsyncSession,
+    *,
+    plan_id: str,
+    round_id: UUID,
+) -> PlanReviewRound:
+    row = (
+        await db.execute(
+            select(PlanReviewRound).where(
+                PlanReviewRound.id == round_id,
+                PlanReviewRound.plan_id == plan_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Review round not found: {plan_id}/{round_id}",
+        )
+    return row
+
+
+async def _load_review_request(
+    db: AsyncSession,
+    *,
+    plan_id: str,
+    request_id: UUID,
+) -> PlanReviewRequest:
+    row = await db.get(PlanReviewRequest, request_id)
+    if row is None or row.plan_id != plan_id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Review request not found: {plan_id}/{request_id}",
+        )
+    return row
+
+
+async def _load_causal_review_adjacency(
+    db: AsyncSession,
+    *,
+    plan_id: str,
+) -> Dict[UUID, Set[UUID]]:
+    rows = (
+        await db.execute(
+            select(
+                PlanReviewLink.source_node_id,
+                PlanReviewLink.target_node_id,
+            ).where(
+                PlanReviewLink.plan_id == plan_id,
+                PlanReviewLink.target_node_id.is_not(None),
+                PlanReviewLink.relation.in_(tuple(_CAUSAL_REVIEW_RELATIONS)),
+            )
+        )
+    ).all()
+    adjacency: Dict[UUID, Set[UUID]] = defaultdict(set)
+    for src_id, target_id in rows:
+        if src_id is None or target_id is None:
+            continue
+        adjacency[src_id].add(target_id)
+    return adjacency
+
+
 @router.get("", response_model=PlansIndexResponse)
 async def list_plans(
     _user: CurrentUser,
@@ -603,6 +2760,16 @@ async def get_plan_runtime_settings(
         "source": "runtime",
         "forgeCommitUrlTemplate": git_forge_commit_url_template(),
     }
+
+
+@router.get("/stages", response_model=PlanStagesResponse)
+async def list_plan_stages(
+    _user: CurrentUser,
+):
+    return PlanStagesResponse(
+        defaultStage=DEFAULT_PLAN_STAGE,
+        stages=[PlanStageOptionEntry(**opt) for opt in plan_stage_options()],
+    )
 
 
 @router.patch("/settings", response_model=PlanRuntimeSettingsResponse)
@@ -829,7 +2996,10 @@ class PlanCreateRequest(BaseModel):
     status: Literal["active", "parked", "done", "blocked"] = Field(
         "active", description="active | parked | done | blocked"
     )
-    stage: str = Field("proposed", description="Free-form stage label")
+    stage: str = Field(
+        DEFAULT_PLAN_STAGE,
+        description=f"Canonical stage ({' | '.join(CANONICAL_PLAN_STAGES)})",
+    )
     owner: str = Field("unassigned", description="Owner / lane")
     priority: Literal["high", "normal", "low"] = Field("normal", description="high | normal | low")
     summary: str = Field("", description="Plan summary")
@@ -845,6 +3015,27 @@ class PlanCreateRequest(BaseModel):
     target: Optional[Dict[str, Any]] = Field(None, description="Structured target metadata object.")
     checkpoints: Optional[List[Dict[str, Any]]] = Field(None, description="Structured checkpoints list.")
     parent_id: Optional[str] = Field(None, description="Parent plan ID for sub-plans")
+
+    @field_validator("id", "parent_id")
+    @classmethod
+    def validate_plan_id_fields(cls, value: Optional[str]):
+        if value is None:
+            return value
+        return _validate_plan_id(value)
+
+    @field_validator("depends_on")
+    @classmethod
+    def validate_depends_on_ids(cls, value: Optional[List[str]]):
+        if value is None:
+            return value
+        for dep in value:
+            _validate_plan_id(dep, field_name="depends_on[]")
+        return value
+
+    @field_validator("stage")
+    @classmethod
+    def validate_stage_value(cls, value: str):
+        return validate_plan_stage(value)
 
 
 class PlanCreateResponse(BaseModel):
@@ -931,14 +3122,15 @@ async def create_plan(
         commit_sha=None,
         changed_fields=["create"],
     )
-
-    # Emit audit entry
-    from pixsim7.backend.main.services.audit import emit_audit
-    await emit_audit(
-        db, domain="plan", entity_type="plan_registry",
-        entity_id=payload.id, entity_label=payload.title,
-        action="created", actor=actor_source,
+    await _record_plan_participant_from_principal(
+        db,
+        plan_id=payload.id,
+        role="builder",
+        action="create_plan",
+        principal=principal,
     )
+
+    # Audit: PlanRegistry.__audit__ model hook handles creation tracking
 
     # Emit notification
     from pixsim7.backend.main.services.docs.plan_write import emit_plan_created_notification
@@ -982,7 +3174,10 @@ async def create_plan(
 class PlanUpdateRequest(BaseModel):
     title: Optional[str] = Field(None, description="Plan title")
     status: Optional[str] = Field(None, description="active | parked | done | blocked")
-    stage: Optional[str] = Field(None, description="Free-form stage label")
+    stage: Optional[str] = Field(
+        None,
+        description=f"Canonical stage ({' | '.join(CANONICAL_PLAN_STAGES)})",
+    )
     owner: Optional[str] = Field(None, description="Owner / lane")
     priority: Optional[str] = Field(None, description="high | normal | low")
     task_scope: Optional[str] = Field(None, description="plan | user | system")
@@ -1014,6 +3209,22 @@ class PlanUpdateRequest(BaseModel):
         False,
         description="When true, verify the commit SHA exists in the repository.",
     )
+
+    @field_validator("depends_on")
+    @classmethod
+    def validate_depends_on_ids(cls, value: Optional[List[str]]):
+        if value is None:
+            return value
+        for dep in value:
+            _validate_plan_id(dep, field_name="depends_on[]")
+        return value
+
+    @field_validator("stage")
+    @classmethod
+    def validate_stage_value(cls, value: Optional[str]):
+        if value is None:
+            return value
+        return validate_plan_stage(value)
 
 
 class PlanUpdateResponse(BaseModel):
@@ -1063,6 +3274,14 @@ async def update_plan_endpoint(
         updates.update(raw_patch)
 
     updates.update({k: v for k, v in payload_data.items() if v is not None})
+    if "stage" in updates:
+        stage_value = updates["stage"]
+        if not isinstance(stage_value, str) or not stage_value.strip():
+            raise HTTPException(status_code=400, detail="Invalid 'stage': expected non-empty string.")
+        try:
+            updates["stage"] = normalize_plan_stage(stage_value, strict=True)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
@@ -1077,6 +3296,17 @@ async def update_plan_endpoint(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if result.changes:
+        await _record_plan_participant_from_principal(
+            db,
+            plan_id=plan_id,
+            role="builder",
+            action="update_plan",
+            principal=principal,
+            meta={"changed_fields": [str(c.get("field")) for c in result.changes if c.get("field")]},
+        )
+        await db.commit()
 
     return PlanUpdateResponse(
         planId=result.plan_id,
@@ -1233,6 +3463,16 @@ async def restore_plan_revision(
         await db.commit()
         result.revision = noop_revision.revision
 
+    await _record_plan_participant_from_principal(
+        db,
+        plan_id=plan_id,
+        role="builder",
+        action="restore_plan_revision",
+        principal=principal,
+        meta={"restored_from_revision": revision, "new_revision": result.revision},
+    )
+    await db.commit()
+
     return PlanRestoreResponse(
         planId=plan_id,
         restoredFromRevision=revision,
@@ -1240,6 +3480,840 @@ async def restore_plan_revision(
         changes=result.changes,
         commitSha=result.commit_sha,
         newScope=result.new_scope,
+    )
+
+
+@router.get("/reviews/{plan_id}/requests", response_model=PlanReviewRequestListResponse)
+async def list_plan_review_requests(
+    plan_id: str,
+    _user: CurrentUser,
+    status: Optional[Literal["open", "in_progress", "fulfilled", "cancelled"]] = Query(
+        None, description="Optional review request status filter."
+    ),
+    round_id: Optional[str] = Query(
+        None, description="Optional review round UUID filter."
+    ),
+    db: AsyncSession = Depends(get_database),
+):
+    try:
+        _validate_plan_id(plan_id, field_name="plan_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _ensure_plan_exists(db, plan_id)
+
+    round_uuid: Optional[UUID] = None
+    if round_id is not None:
+        round_uuid = _parse_uuid_or_400(round_id, field_name="round_id")
+
+    stmt = (
+        select(PlanReviewRequest)
+        .where(PlanReviewRequest.plan_id == plan_id)
+        .order_by(PlanReviewRequest.created_at.desc())
+    )
+    if status is not None:
+        stmt = stmt.where(PlanReviewRequest.status == status)
+    if round_uuid is not None:
+        stmt = stmt.where(PlanReviewRequest.round_id == round_uuid)
+
+    rows = (await db.execute(stmt)).scalars().all()
+    return PlanReviewRequestListResponse(
+        planId=plan_id,
+        requests=[_review_request_to_entry(row) for row in rows],
+    )
+
+
+@router.get("/reviews/{plan_id}/assignees", response_model=PlanReviewAssigneesResponse)
+async def list_plan_review_assignees(
+    plan_id: str,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    try:
+        _validate_plan_id(plan_id, field_name="plan_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _ensure_plan_exists(db, plan_id)
+
+    live_rows = _list_live_bridge_agents(principal)
+    live_ids = {str(row.get("agent_id")) for row in live_rows}
+    recent_rows = await _list_recent_review_agents(db, plan_id=plan_id, limit=12)
+
+    live_entries = [
+        PlanReviewAssigneeEntry(
+            id=str(row["agent_id"]),
+            label=(
+                f"{row['agent_id']} ({'busy' if row.get('busy') else 'idle'})"
+            ),
+            source="live",
+            targetMode="session",
+            targetSessionId=str(row["agent_id"]),
+            agentId=str(row["agent_id"]),
+            agentType=row.get("agent_type"),
+            busy=bool(row.get("busy")),
+            availableNow=not bool(row.get("busy")),
+            activeTasks=int(row.get("active_tasks", 0) or 0),
+            tasksCompleted=int(row.get("tasks_completed", 0) or 0),
+            connectedAt=row["connected_at"].isoformat() if row.get("connected_at") else None,
+            lastSeenAt=row["connected_at"].isoformat() if row.get("connected_at") else None,
+        )
+        for row in live_rows
+    ]
+
+    recent_entries = []
+    for row in recent_rows:
+        agent_id = str(row.get("agent_id") or "").strip()
+        if not agent_id or agent_id in live_ids:
+            continue
+        last_seen_at = row.get("last_seen_at")
+        recent_entries.append(
+            PlanReviewAssigneeEntry(
+                id=agent_id,
+                label=f"{agent_id} (recent)",
+                source="recent",
+                targetMode="recent_agent",
+                targetSessionId=None,
+                agentId=agent_id,
+                agentType=row.get("agent_type"),
+                busy=False,
+                availableNow=False,
+                activeTasks=0,
+                tasksCompleted=0,
+                connectedAt=None,
+                lastSeenAt=last_seen_at.isoformat() if last_seen_at else None,
+            )
+        )
+
+    return PlanReviewAssigneesResponse(
+        planId=plan_id,
+        generatedAt=utcnow().isoformat(),
+        liveSessions=live_entries,
+        recentAgents=recent_entries,
+    )
+
+
+@router.get("/{plan_id}/participants", response_model=PlanParticipantsResponse)
+async def list_plan_participants(
+    plan_id: str,
+    _user: CurrentUser,
+    role: Optional[Literal["builder", "reviewer"]] = Query(
+        None, description="Optional participant role filter."
+    ),
+    db: AsyncSession = Depends(get_database),
+):
+    try:
+        _validate_plan_id(plan_id, field_name="plan_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _ensure_plan_exists(db, plan_id)
+
+    stmt = (
+        select(PlanParticipant)
+        .where(PlanParticipant.plan_id == plan_id)
+        .order_by(PlanParticipant.last_seen_at.desc(), PlanParticipant.first_seen_at.desc())
+    )
+    if role is not None:
+        stmt = stmt.where(PlanParticipant.role == role)
+
+    rows = (await db.execute(stmt)).scalars().all()
+    participants = [_participant_to_entry(row) for row in rows]
+    reviewers = [entry for entry in participants if entry.role == "reviewer"]
+    builders = [entry for entry in participants if entry.role == "builder"]
+    return PlanParticipantsResponse(
+        planId=plan_id,
+        generatedAt=utcnow().isoformat(),
+        participants=participants,
+        reviewers=reviewers,
+        builders=builders,
+    )
+
+
+@router.post("/reviews/{plan_id}/requests", response_model=PlanReviewRequestEntry)
+async def create_plan_review_request(
+    plan_id: str,
+    payload: PlanReviewRequestCreateRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    try:
+        _validate_plan_id(plan_id, field_name="plan_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _ensure_plan_exists(db, plan_id)
+
+    title = payload.title.strip()
+    body = payload.body.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Request title is required.")
+    if not body:
+        raise HTTPException(status_code=400, detail="Request body is required.")
+
+    round_uuid: Optional[UUID] = None
+    if payload.round_id is not None:
+        round_uuid = _parse_uuid_or_400(payload.round_id, field_name="round_id")
+        await _load_review_round(db, plan_id=plan_id, round_id=round_uuid)
+
+    profile_hint = await _load_target_profile_hint(
+        db,
+        principal=principal,
+        profile_id=payload.target_profile_id,
+    )
+    live_agents = _list_live_bridge_agents(principal)
+    dispatch = _resolve_review_request_targeting(
+        payload=payload,
+        live_agents=live_agents,
+        profile_hint=profile_hint,
+    )
+
+    actor_source = getattr(principal, "source", f"user:{principal.id}")
+    actor_fields = _principal_actor_fields(principal)
+    now = utcnow()
+    row = PlanReviewRequest(
+        plan_id=plan_id,
+        round_id=round_uuid,
+        title=title,
+        body=body,
+        status="open",
+        target_agent_id=dispatch.get("target_agent_id"),
+        target_agent_type=dispatch.get("target_agent_type"),
+        requested_by=actor_source,
+        requested_by_principal_type=actor_fields["principal_type"],
+        requested_by_agent_id=actor_fields["agent_id"],
+        requested_by_run_id=actor_fields["run_id"],
+        requested_by_user_id=actor_fields["user_id"],
+        meta=_merge_request_meta_with_dispatch(payload.meta, dispatch),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(row)
+    await _record_plan_participant_from_principal(
+        db,
+        plan_id=plan_id,
+        role="reviewer",
+        action="create_review_request",
+        principal=principal,
+        meta={"round_id": str(round_uuid) if round_uuid else None},
+    )
+    await db.commit()
+    return _review_request_to_entry(row)
+
+
+@router.patch(
+    "/reviews/{plan_id}/requests/{request_id}",
+    response_model=PlanReviewRequestEntry,
+)
+async def update_plan_review_request(
+    plan_id: str,
+    request_id: str,
+    payload: PlanReviewRequestUpdateRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    try:
+        _validate_plan_id(plan_id, field_name="plan_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _ensure_plan_exists(db, plan_id)
+
+    request_uuid = _parse_uuid_or_400(request_id, field_name="request_id")
+    row = await _load_review_request(db, plan_id=plan_id, request_id=request_uuid)
+
+    if (
+        payload.status is None
+        and payload.resolution_note is None
+        and payload.resolved_node_id is None
+        and payload.meta is None
+    ):
+        raise HTTPException(status_code=400, detail="No request fields to update.")
+
+    now = utcnow()
+
+    if payload.resolved_node_id is not None:
+        resolved_node_uuid = _parse_uuid_or_400(
+            payload.resolved_node_id, field_name="resolved_node_id"
+        )
+        resolved_node = (
+            await db.execute(
+                select(PlanReviewNode.id).where(
+                    PlanReviewNode.id == resolved_node_uuid,
+                    PlanReviewNode.plan_id == plan_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if resolved_node is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "Resolved review node not found for plan "
+                    f"'{plan_id}': {resolved_node_uuid}"
+                ),
+            )
+        row.resolved_node_id = resolved_node_uuid
+
+    if payload.status is not None:
+        row.status = payload.status
+    if payload.resolution_note is not None:
+        row.resolution_note = payload.resolution_note
+    if payload.meta is not None:
+        row.meta = payload.meta
+
+    actor_source = getattr(principal, "source", f"user:{principal.id}")
+    actor_fields = _principal_actor_fields(principal)
+    if row.status in _TERMINAL_REVIEW_REQUEST_STATUSES:
+        row.resolved_by = actor_source
+        row.resolved_by_principal_type = actor_fields["principal_type"]
+        row.resolved_by_agent_id = actor_fields["agent_id"]
+        row.resolved_by_run_id = actor_fields["run_id"]
+        row.resolved_by_user_id = actor_fields["user_id"]
+        row.resolved_at = row.resolved_at or now
+    elif payload.status is not None:
+        row.resolved_by = None
+        row.resolved_by_principal_type = None
+        row.resolved_by_agent_id = None
+        row.resolved_by_run_id = None
+        row.resolved_by_user_id = None
+        row.resolved_at = None
+        row.resolved_node_id = None
+
+    row.updated_at = now
+    await _record_plan_participant_from_principal(
+        db,
+        plan_id=plan_id,
+        role="reviewer",
+        action="update_review_request",
+        principal=principal,
+        meta={"status": row.status},
+    )
+    await db.commit()
+    return _review_request_to_entry(row)
+
+
+@router.post(
+    "/reviews/{plan_id}/requests/{request_id}/dispatch",
+    response_model=PlanReviewRequestDispatchResponse,
+)
+async def dispatch_plan_review_request(
+    plan_id: str,
+    request_id: str,
+    payload: PlanReviewRequestDispatchRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    try:
+        _validate_plan_id(plan_id, field_name="plan_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _ensure_plan_exists(db, plan_id)
+
+    request_uuid = _parse_uuid_or_400(request_id, field_name="request_id")
+    row = await _load_review_request(db, plan_id=plan_id, request_id=request_uuid)
+    outcome = await _dispatch_review_request_execution(
+        db,
+        plan_id=plan_id,
+        request_row=row,
+        principal=principal,
+        timeout_seconds=payload.timeout_seconds,
+        spawn_if_missing=payload.spawn_if_missing,
+        create_round_if_missing=payload.create_round_if_missing,
+    )
+
+    node_row = outcome.get("node_row")
+    return PlanReviewRequestDispatchResponse(
+        request=_review_request_to_entry(outcome["request_row"]),
+        node=_review_node_to_entry(node_row) if node_row is not None else None,
+        executed=bool(outcome.get("executed", False)),
+        message=str(outcome.get("message") or ""),
+        durationMs=outcome.get("duration_ms"),
+    )
+
+
+@router.post("/reviews/dispatch/tick", response_model=PlanReviewDispatchTickResponse)
+async def dispatch_plan_review_requests_tick(
+    payload: PlanReviewDispatchTickRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    if payload.plan_id is not None:
+        await _ensure_plan_exists(db, payload.plan_id)
+
+    stmt = (
+        select(PlanReviewRequest)
+        .where(PlanReviewRequest.status == "open")
+        .order_by(PlanReviewRequest.created_at.asc())
+        .limit(payload.limit)
+    )
+    if payload.plan_id is not None:
+        stmt = stmt.where(PlanReviewRequest.plan_id == payload.plan_id)
+
+    rows = (await db.execute(stmt)).scalars().all()
+    items: List[PlanReviewDispatchTickItem] = []
+    processed = 0
+
+    for row in rows:
+        try:
+            outcome = await _dispatch_review_request_execution(
+                db,
+                plan_id=row.plan_id,
+                request_row=row,
+                principal=principal,
+                timeout_seconds=payload.timeout_seconds,
+                spawn_if_missing=payload.spawn_if_missing,
+                create_round_if_missing=payload.create_round_if_missing,
+            )
+            request_entry = _review_request_to_entry(outcome["request_row"])
+            if bool(outcome.get("executed", False)):
+                processed += 1
+            items.append(
+                PlanReviewDispatchTickItem(
+                    planId=row.plan_id,
+                    requestId=str(row.id),
+                    status=request_entry.status,
+                    executed=bool(outcome.get("executed", False)),
+                    message=str(outcome.get("message") or ""),
+                    dispatchState=request_entry.dispatchState,
+                    resolvedNodeId=request_entry.resolvedNodeId,
+                )
+            )
+        except HTTPException as exc:
+            items.append(
+                PlanReviewDispatchTickItem(
+                    planId=row.plan_id,
+                    requestId=str(row.id),
+                    status=row.status,
+                    executed=False,
+                    message=str(exc.detail),
+                    dispatchState=_review_request_dispatch_view(row).get("dispatch_state"),
+                    resolvedNodeId=str(row.resolved_node_id) if row.resolved_node_id else None,
+                )
+            )
+
+    return PlanReviewDispatchTickResponse(
+        attempted=len(rows),
+        processed=processed,
+        items=items,
+    )
+
+
+@router.get("/reviews/{plan_id}/rounds", response_model=PlanReviewRoundListResponse)
+async def list_plan_review_rounds(
+    plan_id: str,
+    _user: CurrentUser,
+    status: Optional[Literal["open", "changes_requested", "approved", "concluded"]] = Query(
+        None, description="Optional review round status filter."
+    ),
+    db: AsyncSession = Depends(get_database),
+):
+    try:
+        _validate_plan_id(plan_id, field_name="plan_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _ensure_plan_exists(db, plan_id)
+
+    stmt = (
+        select(PlanReviewRound)
+        .where(PlanReviewRound.plan_id == plan_id)
+        .order_by(PlanReviewRound.round_number.desc())
+    )
+    if status:
+        stmt = stmt.where(PlanReviewRound.status == status)
+    rows = (await db.execute(stmt)).scalars().all()
+    return PlanReviewRoundListResponse(
+        planId=plan_id,
+        rounds=[_review_round_to_entry(row) for row in rows],
+    )
+
+
+@router.post("/reviews/{plan_id}/rounds", response_model=PlanReviewRoundEntry)
+async def create_plan_review_round(
+    plan_id: str,
+    payload: PlanReviewRoundCreateRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    try:
+        _validate_plan_id(plan_id, field_name="plan_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _ensure_plan_exists(db, plan_id)
+
+    round_number = payload.round_number
+    if round_number is None:
+        last_round = (
+            await db.execute(
+                select(PlanReviewRound.round_number)
+                .where(PlanReviewRound.plan_id == plan_id)
+                .order_by(PlanReviewRound.round_number.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        round_number = int(last_round or 0) + 1
+    else:
+        existing = (
+            await db.execute(
+                select(PlanReviewRound.id).where(
+                    PlanReviewRound.plan_id == plan_id,
+                    PlanReviewRound.round_number == round_number,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Review round already exists: {plan_id}#{round_number}",
+            )
+
+    actor_source = getattr(principal, "source", f"user:{principal.id}")
+    actor_fields = _principal_actor_fields(principal)
+    now = utcnow()
+    row = PlanReviewRound(
+        plan_id=plan_id,
+        round_number=round_number,
+        review_revision=payload.review_revision,
+        status=payload.status,
+        note=payload.note,
+        created_by=actor_source,
+        actor_principal_type=actor_fields["principal_type"],
+        actor_agent_id=actor_fields["agent_id"],
+        actor_run_id=actor_fields["run_id"],
+        actor_user_id=actor_fields["user_id"],
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(row)
+    await _record_plan_participant_from_principal(
+        db,
+        plan_id=plan_id,
+        role="reviewer",
+        action="create_review_round",
+        principal=principal,
+        meta={"round_number": round_number},
+    )
+    await db.commit()
+    return _review_round_to_entry(row)
+
+
+@router.patch("/reviews/{plan_id}/rounds/{round_id}", response_model=PlanReviewRoundEntry)
+async def update_plan_review_round(
+    plan_id: str,
+    round_id: str,
+    payload: PlanReviewRoundUpdateRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    try:
+        _validate_plan_id(plan_id, field_name="plan_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _ensure_plan_exists(db, plan_id)
+    round_uuid = _parse_uuid_or_400(round_id, field_name="round_id")
+    row = await _load_review_round(db, plan_id=plan_id, round_id=round_uuid)
+
+    if payload.status is None and payload.conclusion is None and payload.note is None:
+        raise HTTPException(status_code=400, detail="No round fields to update.")
+
+    if payload.status is not None:
+        row.status = payload.status
+    if payload.note is not None:
+        row.note = payload.note
+    if payload.conclusion is not None:
+        row.conclusion = payload.conclusion
+
+    if row.status == "concluded" and not (row.conclusion or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Concluded rounds require non-empty conclusion text.",
+        )
+
+    row.updated_at = utcnow()
+    if not row.created_by:
+        actor_source = getattr(principal, "source", f"user:{principal.id}")
+        actor_fields = _principal_actor_fields(principal)
+        row.created_by = actor_source
+        row.actor_principal_type = row.actor_principal_type or actor_fields["principal_type"]
+        row.actor_agent_id = row.actor_agent_id or actor_fields["agent_id"]
+        row.actor_run_id = row.actor_run_id or actor_fields["run_id"]
+        row.actor_user_id = row.actor_user_id or actor_fields["user_id"]
+    await _record_plan_participant_from_principal(
+        db,
+        plan_id=plan_id,
+        role="reviewer",
+        action="update_review_round",
+        principal=principal,
+        meta={"round_number": row.round_number, "status": row.status},
+    )
+    await db.commit()
+    return _review_round_to_entry(row)
+
+
+@router.post("/reviews/{plan_id}/nodes", response_model=PlanReviewNodeCreateResponse)
+async def create_plan_review_node(
+    plan_id: str,
+    payload: PlanReviewNodeCreateRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    try:
+        _validate_plan_id(plan_id, field_name="plan_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _ensure_plan_exists(db, plan_id)
+
+    round_uuid = _parse_uuid_or_400(payload.round_id, field_name="round_id")
+    round_row = await _load_review_round(db, plan_id=plan_id, round_id=round_uuid)
+
+    actor_source = getattr(principal, "source", f"user:{principal.id}")
+    actor_fields = _principal_actor_fields(principal)
+    now = utcnow()
+    node_row = PlanReviewNode(
+        plan_id=plan_id,
+        round_id=round_row.id,
+        kind=payload.kind,
+        author_role=payload.author_role,
+        body=payload.body,
+        severity=payload.severity,
+        plan_anchor=payload.plan_anchor,
+        meta=payload.meta,
+        created_by=actor_source,
+        actor_principal_type=actor_fields["principal_type"],
+        actor_agent_id=actor_fields["agent_id"],
+        actor_run_id=actor_fields["run_id"],
+        actor_user_id=actor_fields["user_id"],
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(node_row)
+    await db.flush()
+
+    parsed_refs: List[tuple[PlanReviewRefInput, Optional[UUID]]] = []
+    for ref in payload.refs:
+        if ref.target_node_id is None and ref.target_plan_anchor is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Each ref requires either target_node_id or target_plan_anchor.",
+            )
+
+        target_uuid: Optional[UUID] = None
+        if ref.target_node_id is not None:
+            target_uuid = _parse_uuid_or_400(ref.target_node_id, field_name="target_node_id")
+            target_node = (
+                await db.execute(
+                    select(PlanReviewNode.id).where(
+                        PlanReviewNode.id == target_uuid,
+                        PlanReviewNode.plan_id == plan_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if target_node is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Target review node not found for plan '{plan_id}': {target_uuid}",
+                )
+
+        if ref.relation in _CAUSAL_REVIEW_RELATIONS and target_uuid is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Relation '{ref.relation}' requires target_node_id.",
+            )
+        parsed_refs.append((ref, target_uuid))
+
+    if parsed_refs:
+        adjacency = await _load_causal_review_adjacency(db, plan_id=plan_id)
+        source_id = node_row.id
+        if source_id is None:
+            raise HTTPException(status_code=500, detail="Failed to allocate review node ID.")
+        for ref, target_uuid in parsed_refs:
+            if ref.relation not in _CAUSAL_REVIEW_RELATIONS or target_uuid is None:
+                continue
+            if source_id == target_uuid or _graph_has_path(adjacency, target_uuid, source_id):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Causal review link would create a cycle: "
+                        f"{source_id} -[{ref.relation}]-> {target_uuid}"
+                    ),
+                )
+            adjacency.setdefault(source_id, set()).add(target_uuid)
+
+    link_rows: List[PlanReviewLink] = []
+    for ref, target_uuid in parsed_refs:
+        link_row = PlanReviewLink(
+            plan_id=plan_id,
+            round_id=round_row.id,
+            source_node_id=node_row.id,
+            target_node_id=target_uuid,
+            relation=ref.relation,
+            source_anchor=ref.source_anchor,
+            target_anchor=ref.target_anchor,
+            target_plan_anchor=ref.target_plan_anchor,
+            quote=ref.quote,
+            meta=ref.meta,
+            created_by=actor_source,
+            created_at=now,
+        )
+        db.add(link_row)
+        link_rows.append(link_row)
+
+    await _record_plan_participant_from_principal(
+        db,
+        plan_id=plan_id,
+        role="reviewer",
+        action="create_review_node",
+        principal=principal,
+        meta={
+            "round_id": str(round_row.id),
+            "kind": payload.kind,
+            "author_role": payload.author_role,
+        },
+    )
+    await db.commit()
+    return PlanReviewNodeCreateResponse(
+        node=_review_node_to_entry(node_row),
+        links=[_review_link_to_entry(row) for row in link_rows],
+    )
+
+
+@router.get("/reviews/{plan_id}/graph", response_model=PlanReviewGraphResponse)
+async def get_plan_review_graph(
+    plan_id: str,
+    _user: CurrentUser,
+    round_number: Optional[int] = Query(
+        None, ge=1, description="Optional review round number filter."
+    ),
+    round_id: Optional[str] = Query(
+        None, description="Optional specific review round UUID filter."
+    ),
+    db: AsyncSession = Depends(get_database),
+):
+    try:
+        _validate_plan_id(plan_id, field_name="plan_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await _ensure_plan_exists(db, plan_id)
+
+    if round_number is not None and round_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Use either round_number or round_id, not both.",
+        )
+
+    rounds_stmt = (
+        select(PlanReviewRound)
+        .where(PlanReviewRound.plan_id == plan_id)
+        .order_by(PlanReviewRound.round_number.asc(), PlanReviewRound.created_at.asc())
+    )
+    if round_number is not None:
+        rounds_stmt = rounds_stmt.where(PlanReviewRound.round_number == round_number)
+    if round_id is not None:
+        round_uuid = _parse_uuid_or_400(round_id, field_name="round_id")
+        rounds_stmt = rounds_stmt.where(PlanReviewRound.id == round_uuid)
+
+    round_rows = (await db.execute(rounds_stmt)).scalars().all()
+    if (round_number is not None or round_id is not None) and not round_rows:
+        detail_target = f"round_number={round_number}" if round_number is not None else f"round_id={round_id}"
+        raise HTTPException(
+            status_code=404,
+            detail=f"Review round not found for plan '{plan_id}' ({detail_target}).",
+        )
+
+    round_ids = [row.id for row in round_rows if row.id is not None]
+    nodes_stmt = (
+        select(PlanReviewNode)
+        .where(PlanReviewNode.plan_id == plan_id)
+        .order_by(PlanReviewNode.created_at.asc())
+    )
+    links_stmt = (
+        select(PlanReviewLink)
+        .where(PlanReviewLink.plan_id == plan_id)
+        .order_by(PlanReviewLink.created_at.asc())
+    )
+    requests_stmt = (
+        select(PlanReviewRequest)
+        .where(PlanReviewRequest.plan_id == plan_id)
+        .order_by(PlanReviewRequest.created_at.asc())
+    )
+    if round_rows:
+        nodes_stmt = nodes_stmt.where(PlanReviewNode.round_id.in_(round_ids))
+        links_stmt = links_stmt.where(PlanReviewLink.round_id.in_(round_ids))
+        requests_stmt = requests_stmt.where(
+            or_(
+                PlanReviewRequest.round_id.is_(None),
+                PlanReviewRequest.round_id.in_(round_ids),
+            )
+        )
+    elif round_number is not None or round_id is not None:
+        nodes_stmt = nodes_stmt.where(False)
+        links_stmt = links_stmt.where(False)
+        requests_stmt = requests_stmt.where(False)
+
+    node_rows = (await db.execute(nodes_stmt)).scalars().all()
+    link_rows = (await db.execute(links_stmt)).scalars().all()
+    request_rows = (await db.execute(requests_stmt)).scalars().all()
+
+    return PlanReviewGraphResponse(
+        planId=plan_id,
+        rounds=[_review_round_to_entry(row) for row in round_rows],
+        nodes=[_review_node_to_entry(row) for row in node_rows],
+        links=[_review_link_to_entry(row) for row in link_rows],
+        requests=[_review_request_to_entry(row) for row in request_rows],
+    )
+
+
+@router.get("/reviews/{plan_id}/source-preview", response_model=PlanSourcePreviewResponse)
+async def preview_plan_review_source(
+    plan_id: str,
+    principal: CurrentUser,
+    path: str = Query(..., min_length=1, description="Repo-relative source path, e.g. backend/main/foo.py"),
+    start_line: int = Query(..., ge=1, description="Start line (1-based, inclusive)."),
+    end_line: Optional[int] = Query(None, ge=1, description="End line (1-based, inclusive). Defaults to start_line."),
+    db: AsyncSession = Depends(get_database),
+):
+    try:
+        _validate_plan_id(plan_id, field_name="plan_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    bundle = await get_plan_bundle(db, plan_id)
+    if not bundle:
+        raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+    if not _can_preview_plan_source(principal, bundle):
+        raise HTTPException(
+            status_code=403,
+            detail="Source preview is restricted to plan owner or admin.",
+        )
+
+    resolved_end = end_line if end_line is not None else start_line
+    if resolved_end < start_line:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid line range: {start_line}-{resolved_end}",
+        )
+    if resolved_end - start_line + 1 > _SOURCE_PREVIEW_MAX_LINES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Line range too large ({start_line}-{resolved_end}). "
+                f"Max {_SOURCE_PREVIEW_MAX_LINES} lines."
+            ),
+        )
+
+    try:
+        file_path, relative_path = _resolve_repo_file(path)
+        rows, resolved_end = _read_source_snippet(
+            file_path,
+            start_line=start_line,
+            end_line=resolved_end,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return PlanSourcePreviewResponse(
+        planId=plan_id,
+        path=relative_path,
+        startLine=start_line,
+        endLine=resolved_end,
+        lines=rows,
     )
 
 
@@ -1282,7 +4356,7 @@ class PlanProgressRequest(BaseModel):
     note: Optional[str] = Field(None, description="Short progress note.")
     sync_plan_stage: bool = Field(
         False,
-        description="When true, set plan.stage to checkpoint_id in the same update.",
+        description="When true, normalize checkpoint_id into canonical plan.stage in the same update.",
     )
 
 
@@ -1479,7 +4553,7 @@ async def log_plan_progress(
     new_checkpoints[checkpoint_index] = checkpoint
     updates: Dict[str, Any] = {"checkpoints": new_checkpoints}
     if payload.sync_plan_stage:
-        updates["stage"] = payload.checkpoint_id
+        updates["stage"] = normalize_plan_stage(payload.checkpoint_id, strict=False)
 
     try:
         result = await update_plan(
@@ -1492,6 +4566,19 @@ async def log_plan_progress(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    await _record_plan_participant_from_principal(
+        db,
+        plan_id=plan_id,
+        role="builder",
+        action="log_progress",
+        principal=principal,
+        meta={
+            "checkpoint_id": payload.checkpoint_id,
+            "sync_plan_stage": bool(payload.sync_plan_stage),
+        },
+    )
+    await db.commit()
 
     return PlanProgressResponse(
         planId=result.plan_id,
@@ -1564,7 +4651,7 @@ async def get_agent_context(
 
     active_plans = [
         AgentPlanSummary(
-            id=b.id, title=b.doc.title, status=b.doc.status, stage=b.plan.stage,
+            id=b.id, title=b.doc.title, status=b.doc.status, stage=_normalize_stage_for_response(b.plan.stage),
             owner=b.doc.owner, priority=b.plan.priority, summary=b.doc.summary or "",
             namespace=b.doc.namespace,
             dependsOn=b.plan.depends_on or [],
@@ -1592,7 +4679,7 @@ async def get_agent_context(
             documentId=target.document_id,
             title=target.doc.title,
             status=target.doc.status,
-            stage=target.plan.stage,
+            stage=_normalize_stage_for_response(target.plan.stage),
             owner=target.doc.owner,
             priority=target.plan.priority,
             summary=target.doc.summary or "",
@@ -1620,8 +4707,14 @@ async def get_agent_context(
                 "action": "create_plan",
                 "method": "POST",
                 "url": "/dev/plans",
-                "body": '{"id": "slug", "title": "...", "summary": "...", "markdown": "...", "namespace": "dev/plans", "plan_type": "feature|bugfix|refactor|exploration|task", "task_scope": "plan|user|system", "status": "active", "stage": "proposed", "owner": "unassigned", "priority": "normal", "parent_id": null, "target": {}, "checkpoints": [], "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
+                "body": '{"id": "slug", "title": "...", "summary": "...", "markdown": "...", "namespace": "dev/plans", "plan_type": "feature|bugfix|refactor|exploration|task", "task_scope": "plan|user|system", "status": "active", "stage": "backlog|proposed|discovery|design|implementation|validation|rollout|completed", "owner": "unassigned", "priority": "normal", "parent_id": null, "target": {}, "checkpoints": [], "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
                 "description": "Create a new plan (Document + PlanRegistry). Use parent_id to create sub-plans under an initiative.",
+            },
+            {
+                "action": "list_stages",
+                "method": "GET",
+                "url": "/dev/plans/stages",
+                "description": "List canonical plan stages for UI/agent validation.",
             },
             {
                 "action": "get_plan_settings",
@@ -1647,7 +4740,7 @@ async def get_agent_context(
                 "action": "update_fields",
                 "method": "PATCH",
                 "url": "/dev/plans/{plan_id}",
-                "body": '{"title": "...", "status": "active|parked|done|blocked", "stage": "...", "priority": "high|normal|low", "task_scope": "plan|user|system", "plan_type": "feature|bugfix|refactor|exploration|task", "owner": "...", "summary": "...", "visibility": "public|shared|private", "namespace": "dev/plans", "target": {}, "checkpoints": [], "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
+                "body": '{"title": "...", "status": "active|parked|done|blocked", "stage": "backlog|proposed|discovery|design|implementation|validation|rollout|completed", "priority": "high|normal|low", "task_scope": "plan|user|system", "plan_type": "feature|bugfix|refactor|exploration|task", "owner": "...", "summary": "...", "visibility": "public|shared|private", "namespace": "dev/plans", "target": {}, "checkpoints": [], "tags": [], "code_paths": [], "companions": [], "handoffs": [], "depends_on": []}',
                 "description": "Update any combination of plan fields in a single call",
             },
             {
@@ -1684,6 +4777,12 @@ async def get_agent_context(
                 "description": "Get full plan detail with markdown, checkpoints, children",
             },
             {
+                "action": "list_participants",
+                "method": "GET",
+                "url": "/dev/plans/{plan_id}/participants",
+                "description": "List attributed participants for the plan (builders + reviewers with agent/run/session context).",
+            },
+            {
                 "action": "list_revisions",
                 "method": "GET",
                 "url": "/dev/plans/revisions/{plan_id}",
@@ -1697,6 +4796,85 @@ async def get_agent_context(
                 "description": "Restore plan HEAD fields from an immutable revision snapshot.",
             },
             {
+                "action": "list_review_rounds",
+                "method": "GET",
+                "url": "/dev/plans/reviews/{plan_id}/rounds",
+                "description": "List iterative review rounds for a plan (open/changes_requested/approved/concluded).",
+            },
+            {
+                "action": "create_review_round",
+                "method": "POST",
+                "url": "/dev/plans/reviews/{plan_id}/rounds",
+                "body": '{"round_number": null, "review_revision": null, "status": "open", "note": "Initial reviewer pass"}',
+                "description": "Create a review round. round_number auto-increments when omitted.",
+            },
+            {
+                "action": "update_review_round",
+                "method": "PATCH",
+                "url": "/dev/plans/reviews/{plan_id}/rounds/{round_id}",
+                "body": '{"status": "changes_requested|approved|concluded", "conclusion": "final summary"}',
+                "description": "Update round state and optional conclusion. Concluded rounds require conclusion text.",
+            },
+            {
+                "action": "add_review_node",
+                "method": "POST",
+                "url": "/dev/plans/reviews/{plan_id}/nodes",
+                "body": '{"round_id": "uuid", "kind": "review_comment|agent_response|conclusion|note", "author_role": "reviewer|author|agent|system", "body": "...", "severity": "info|low|medium|high|critical", "plan_anchor": {"selector": "checkpoint:phase_1"}, "refs": [{"relation": "because_of|supports|contradicts|supersedes|replies_to|addresses", "target_node_id": "uuid", "target_anchor": {"selector": "p3"}, "target_plan_anchor": {"selector": "checkpoint:phase_2"}, "quote": "..." }] }',
+                "description": "Append a review/response node with typed references. Causal relations are cycle-checked.",
+            },
+            {
+                "action": "list_review_assignees",
+                "method": "GET",
+                "url": "/dev/plans/reviews/{plan_id}/assignees",
+                "description": "List live review assignees (idle first) plus recent reviewers for continuity targeting.",
+            },
+            {
+                "action": "list_review_requests",
+                "method": "GET",
+                "url": "/dev/plans/reviews/{plan_id}/requests",
+                "description": "List review requests for the plan, optionally filtered by status/round_id.",
+            },
+            {
+                "action": "create_review_request",
+                "method": "POST",
+                "url": "/dev/plans/reviews/{plan_id}/requests",
+                "body": '{"round_id": "uuid|null", "title": "...", "body": "...", "target_mode": "auto|session|recent_agent", "target_session_id": "agent-id", "preferred_agent_id": "agent-id", "target_profile_id": "profile-id", "target_method": "remote", "target_model_id": "claude-3-7-sonnet", "target_provider": "anthropic", "queue_if_busy": false, "auto_reroute_if_busy": true}',
+                "description": "Create a review request with dispatcher targeting policy (auto, pinned live session, or preferred recent agent).",
+            },
+            {
+                "action": "update_review_request",
+                "method": "PATCH",
+                "url": "/dev/plans/reviews/{plan_id}/requests/{request_id}",
+                "body": '{"status": "open|in_progress|fulfilled|cancelled", "resolution_note": "...", "resolved_node_id": "uuid|null"}',
+                "description": "Update review request status or resolution details.",
+            },
+            {
+                "action": "dispatch_review_request",
+                "method": "POST",
+                "url": "/dev/plans/reviews/{plan_id}/requests/{request_id}/dispatch",
+                "body": '{"timeout_seconds": 240, "spawn_if_missing": false, "create_round_if_missing": true}',
+                "description": "Execute one review request: resolve assignee, call target model/session, write agent response node, and fulfill the request on success.",
+            },
+            {
+                "action": "dispatch_review_tick",
+                "method": "POST",
+                "url": "/dev/plans/reviews/dispatch/tick",
+                "body": '{"plan_id": null, "limit": 5, "timeout_seconds": 240, "spawn_if_missing": false, "create_round_if_missing": true}',
+                "description": "Process a batch of open review requests (global or plan-scoped).",
+            },
+            {
+                "action": "get_review_graph",
+                "method": "GET",
+                "url": "/dev/plans/reviews/{plan_id}/graph",
+                "description": "Fetch rounds + nodes + typed links graph (optionally filter by round_number or round_id).",
+            },
+            {
+                "action": "preview_source_ref",
+                "method": "GET",
+                "url": "/dev/plans/reviews/{plan_id}/source-preview?path=factories.py&start_line=171&end_line=211",
+                "description": "Preview repository source snippet for review references. Restricted to plan owner/admin.",
+            },
+            {
                 "action": "get_documents",
                 "method": "GET",
                 "url": "/dev/plans/documents/{plan_id}",
@@ -1707,20 +4885,20 @@ async def get_agent_context(
                 "method": "POST",
                 "url": "/dev/plans/archive/{plan_id}",
                 "body": '{"auto_head": false}',
-                "description": "Archive a plan (hidden from listings, recoverable via unarchive)",
+                "description": "Archive a plan (hidden from listings, recoverable via unarchive). Admin only.",
             },
             {
                 "action": "unarchive_plan",
                 "method": "POST",
                 "url": "/dev/plans/unarchive/{plan_id}",
                 "body": '{"restore_status": "active", "auto_head": false}',
-                "description": "Unarchive a plan back to active or parked status",
+                "description": "Unarchive a plan back to active or parked status. Admin only.",
             },
             {
                 "action": "delete_plan",
                 "method": "DELETE",
                 "url": "/dev/plans/{plan_id}?hard=false",
-                "description": "Soft-delete (status=removed) or hard-delete (?hard=true) a plan. Soft is recoverable.",
+                "description": "Soft-delete (status=removed) or hard-delete (?hard=true) a plan. Soft is recoverable. Admin only.",
             },
         ],
     )
@@ -1780,7 +4958,7 @@ class PlanArchiveResponse(BaseModel):
 async def archive_plan_endpoint(
     plan_id: str,
     payload: PlanArchiveRequest,
-    principal: CurrentUser,
+    principal: CurrentAdminUser,
     db: AsyncSession = Depends(get_database),
 ):
     """Archive a plan — hidden from default listings, recoverable via unarchive."""
@@ -1815,7 +4993,7 @@ class PlanUnarchiveRequest(BaseModel):
 async def unarchive_plan_endpoint(
     plan_id: str,
     payload: PlanUnarchiveRequest,
-    principal: CurrentUser,
+    principal: CurrentAdminUser,
     db: AsyncSession = Depends(get_database),
 ):
     """Unarchive a plan — restores to active or parked status."""
@@ -1845,7 +5023,7 @@ async def unarchive_plan_endpoint(
 @router.delete("/{plan_id}", response_model=DeleteResponse)
 async def delete_plan_endpoint(
     plan_id: str,
-    principal: CurrentUser,
+    principal: CurrentAdminUser,
     hard: bool = Query(False, description="Permanently delete (irreversible). Default is soft-delete to 'removed' status."),
     db: AsyncSession = Depends(get_database),
 ):
@@ -1861,6 +5039,8 @@ async def delete_plan_endpoint(
         result = await delete_plan(db, plan_id, hard=hard, principal=principal)
     except PlanNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return DeleteResponse(success=result.success, message=result.message)
 
