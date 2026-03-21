@@ -250,8 +250,6 @@ export function useGenerationWorkbench(
   // Validate params and apply defaults when specs change
   useEffect(() => {
     if (!hasHydrated) return;
-    // Skip if operation types are out of sync (wait for sync effect to complete)
-    if (effectiveOperationType !== activeOperationType) return;
     if (!operationSpecs) return;
     const opSpec = operationSpecs[effectiveOperationType];
     if (!opSpec?.parameters) return;
@@ -259,7 +257,7 @@ export function useGenerationWorkbench(
     setDynamicParams((prev) =>
       validateAndApplyDefaults(prev, opSpec.parameters)
     );
-  }, [hasHydrated, operationSpecs, effectiveOperationType, activeOperationType, setDynamicParams]);
+  }, [hasHydrated, operationSpecs, effectiveOperationType, setDynamicParams]);
 
   // Handler for dynamic param changes - coerces types on input
   const handleParamChange = useCallback(
