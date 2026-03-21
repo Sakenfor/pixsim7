@@ -187,7 +187,7 @@ interface PlanReviewGraphResponse {
   rounds: PlanReviewRound[];
   nodes: PlanReviewNode[];
   links: PlanReviewLink[];
-  requests: PlanReviewRequest[];
+  requests: PlanRequest[];
 }
 
 interface PlanReviewRoundCreateRequest {
@@ -224,8 +224,9 @@ interface PlanReviewNodeCreateResponse {
   links: PlanReviewLink[];
 }
 
-interface PlanReviewRequest {
+interface PlanRequest {
   id: string;
+  kind: string;
   planId: string;
   roundId: string | null;
   title: string;
@@ -262,7 +263,8 @@ interface PlanReviewRequest {
   resolvedAt: string | null;
 }
 
-interface PlanReviewRequestCreateRequest {
+interface PlanRequestCreateRequest {
+  kind?: string;
   round_id?: string;
   title: string;
   body: string;
@@ -279,20 +281,20 @@ interface PlanReviewRequestCreateRequest {
   auto_reroute_if_busy?: boolean;
 }
 
-interface PlanReviewRequestUpdateRequest {
+interface PlanRequestUpdateRequest {
   status?: ReviewRequestStatus;
   resolution_note?: string;
   resolved_node_id?: string;
 }
 
-interface PlanReviewRequestDispatchRequest {
+interface PlanRequestDispatchRequest {
   timeout_seconds?: number;
   spawn_if_missing?: boolean;
   create_round_if_missing?: boolean;
 }
 
-interface PlanReviewRequestDispatchResponse {
-  request: PlanReviewRequest;
+interface PlanRequestDispatchResponse {
+  request: PlanRequest;
   node: PlanReviewNode | null;
   executed: boolean;
   message: string;
@@ -1620,7 +1622,7 @@ function PlanDetailView({
     setReviewError('');
     setReviewNotice(null);
     try {
-      const payload: PlanReviewRequestCreateRequest = {
+      const payload: PlanRequestCreateRequest = {
         title,
         body,
       };
@@ -1653,7 +1655,7 @@ function PlanDetailView({
       if (targetModelId) payload.target_model_id = targetModelId;
       if (targetProvider) payload.target_provider = targetProvider;
 
-      const created = await pixsimClient.post<PlanReviewRequest>(
+      const created = await pixsimClient.post<PlanRequest>(
         `/dev/plans/reviews/${encodedPlanId}/requests`,
         payload,
       );
@@ -1668,7 +1670,7 @@ function PlanDetailView({
       // Auto-dispatch when assignee is "auto" (idle agent dispatch)
       if (newRequestAssignee === 'auto' && created.status === 'open') {
         try {
-          const result = await pixsimClient.post<PlanReviewRequestDispatchResponse>(
+          const result = await pixsimClient.post<PlanRequestDispatchResponse>(
             `/dev/plans/reviews/${encodedPlanId}/requests/${encodeURIComponent(created.id)}/dispatch`,
             { timeout_seconds: 240, create_round_if_missing: true, spawn_if_missing: false },
           );
@@ -1702,17 +1704,17 @@ function PlanDetailView({
   ]);
 
   const handleUpdateRequestStatus = useCallback(
-    async (request: PlanReviewRequest, status: ReviewRequestStatus) => {
+    async (request: PlanRequest, status: ReviewRequestStatus) => {
       if (request.status === status) return;
       setUpdatingRequestId(request.id);
       setReviewError('');
       setReviewNotice(null);
       try {
-        const payload: PlanReviewRequestUpdateRequest = { status };
+        const payload: PlanRequestUpdateRequest = { status };
         if (status === 'fulfilled' && !request.resolutionNote) {
           payload.resolution_note = `Marked fulfilled on ${new Date().toISOString()}`;
         }
-        await pixsimClient.patch<PlanReviewRequest>(
+        await pixsimClient.patch<PlanRequest>(
           `/dev/plans/reviews/${encodedPlanId}/requests/${encodeURIComponent(request.id)}`,
           payload,
         );
@@ -1728,18 +1730,18 @@ function PlanDetailView({
   );
 
   const handleDispatchRequest = useCallback(
-    async (request: PlanReviewRequest) => {
+    async (request: PlanRequest) => {
       if (request.status !== 'open') return;
       setDispatchingRequestId(request.id);
       setReviewError('');
       setReviewNotice(null);
       try {
-        const payload: PlanReviewRequestDispatchRequest = {
+        const payload: PlanRequestDispatchRequest = {
           timeout_seconds: 240,
           create_round_if_missing: true,
           spawn_if_missing: false,
         };
-        const result = await pixsimClient.post<PlanReviewRequestDispatchResponse>(
+        const result = await pixsimClient.post<PlanRequestDispatchResponse>(
           `/dev/plans/reviews/${encodedPlanId}/requests/${encodeURIComponent(request.id)}/dispatch`,
           payload,
         );

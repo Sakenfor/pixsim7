@@ -23,7 +23,7 @@ from pixsim7.backend.main.domain.docs.models import (
     PlanParticipant,
     PlanReviewLink,
     PlanReviewNode,
-    PlanReviewRequest,
+    PlanRequest,
     PlanReviewRound,
     PlanRegistry,
     PlanRevision,
@@ -1120,7 +1120,7 @@ async def delete_plan(
     await db.execute(sa_delete(PlanParticipant).where(PlanParticipant.plan_id == plan_id))
     await db.execute(sa_delete(PlanReviewLink).where(PlanReviewLink.plan_id == plan_id))
     await db.execute(sa_delete(PlanReviewNode).where(PlanReviewNode.plan_id == plan_id))
-    await db.execute(sa_delete(PlanReviewRequest).where(PlanReviewRequest.plan_id == plan_id))
+    await db.execute(sa_delete(PlanRequest).where(PlanRequest.plan_id == plan_id))
     await db.execute(sa_delete(PlanReviewRound).where(PlanReviewRound.plan_id == plan_id))
     await db.execute(sa_delete(PlanRevision).where(PlanRevision.plan_id == plan_id))
     await db.execute(sa_delete(PlanDocument).where(PlanDocument.plan_id == plan_id))

@@ -335,21 +335,22 @@ class PlanReviewRound(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow, index=True)
 
 
-class PlanReviewRequest(SQLModel, table=True):
-    """User-requested review work item for a plan/round."""
+class PlanRequest(SQLModel, table=True):
+    """Generic plan work request — review, build, research, etc."""
 
-    __tablename__ = "plan_review_requests"
+    __tablename__ = "plan_review_requests"  # kept for migration compat
     __table_args__ = (
         Index("idx_plan_review_request_plan_status", "plan_id", "status"),
         Index("idx_plan_review_request_plan_created", "plan_id", "created_at"),
         {"schema": PLAN_META_SCHEMA},
     )
     __audit__ = AuditMeta(
-        domain="plan", entity_type="plan_review_request",
-        tracked_fields=("status", "resolution_note", "resolved_node_id"),
+        domain="plan", entity_type="plan_request",
+        tracked_fields=("status", "kind", "resolution_note", "resolved_node_id"),
     )
 
     id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
+    kind: str = Field(default="review", max_length=32, index=True)
     plan_id: str = Field(
         foreign_key=f"{PLAN_META_SCHEMA}.plan_registry.id",
         index=True,

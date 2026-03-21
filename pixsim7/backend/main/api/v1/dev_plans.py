@@ -21,7 +21,7 @@ from pixsim7.backend.main.domain.docs.models import (
     PlanParticipant,
     PlanReviewLink,
     PlanReviewNode,
-    PlanReviewRequest,
+    PlanRequest,
     PlanReviewRound,
     PlanRegistry,
     PlanRevision,
@@ -354,8 +354,9 @@ class PlanReviewNodeCreateResponse(BaseModel):
     links: List[PlanReviewLinkEntry] = Field(default_factory=list)
 
 
-class PlanReviewRequestEntry(BaseModel):
+class PlanRequestEntry(BaseModel):
     id: str
+    kind: str = "review"
     planId: str
     roundId: Optional[str] = None
     title: str
@@ -392,12 +393,13 @@ class PlanReviewRequestEntry(BaseModel):
     resolvedAt: Optional[str] = None
 
 
-class PlanReviewRequestListResponse(BaseModel):
+class PlanRequestListResponse(BaseModel):
     planId: str
-    requests: List[PlanReviewRequestEntry] = Field(default_factory=list)
+    requests: List[PlanRequestEntry] = Field(default_factory=list)
 
 
-class PlanReviewRequestCreateRequest(BaseModel):
+class PlanRequestCreateRequest(BaseModel):
+    kind: str = Field("review", description="Request kind: review, build, research, etc.")
     round_id: Optional[str] = Field(
         None, description="Optional review round UUID this request belongs to."
     )
@@ -455,7 +457,7 @@ class PlanReviewRequestCreateRequest(BaseModel):
         return value
 
 
-class PlanReviewRequestUpdateRequest(BaseModel):
+class PlanRequestUpdateRequest(BaseModel):
     status: Optional[Literal["open", "in_progress", "fulfilled", "cancelled"]] = Field(
         None, description="Updated request status."
     )
@@ -481,7 +483,7 @@ class PlanReviewRequestUpdateRequest(BaseModel):
         return value
 
 
-class PlanReviewRequestDispatchRequest(BaseModel):
+class PlanRequestDispatchRequest(BaseModel):
     timeout_seconds: int = Field(
         240,
         ge=20,
@@ -498,8 +500,8 @@ class PlanReviewRequestDispatchRequest(BaseModel):
     )
 
 
-class PlanReviewRequestDispatchResponse(BaseModel):
-    request: PlanReviewRequestEntry
+class PlanRequestDispatchResponse(BaseModel):
+    request: PlanRequestEntry
     node: Optional[PlanReviewNodeEntry] = None
     executed: bool = False
     message: str
@@ -561,7 +563,7 @@ class PlanReviewGraphResponse(BaseModel):
     rounds: List[PlanReviewRoundEntry] = Field(default_factory=list)
     nodes: List[PlanReviewNodeEntry] = Field(default_factory=list)
     links: List[PlanReviewLinkEntry] = Field(default_factory=list)
-    requests: List[PlanReviewRequestEntry] = Field(default_factory=list)
+    requests: List[PlanRequestEntry] = Field(default_factory=list)
 
 
 class PlanReviewAssigneeEntry(BaseModel):
@@ -1280,16 +1282,16 @@ def _review_link_to_entry(row: PlanReviewLink) -> PlanReviewLinkEntry:
     )
 
 
-def _request_meta_dict(row: PlanReviewRequest) -> Dict[str, Any]:
+def _request_meta_dict(row: PlanRequest) -> Dict[str, Any]:
     return dict(row.meta) if isinstance(row.meta, dict) else {}
 
 
-def _request_dispatch_meta(row: PlanReviewRequest) -> Dict[str, Any]:
+def _request_dispatch_meta(row: PlanRequest) -> Dict[str, Any]:
     raw = _request_meta_dict(row).get("dispatch")
     return dict(raw) if isinstance(raw, dict) else {}
 
 
-def _review_request_dispatch_view(row: PlanReviewRequest) -> Dict[str, Any]:
+def _review_request_dispatch_view(row: PlanRequest) -> Dict[str, Any]:
     dispatch = _request_dispatch_meta(row)
     mode = dispatch.get("target_mode")
     if mode not in _REVIEW_REQUEST_TARGET_MODES:
@@ -1346,10 +1348,10 @@ def _review_request_dispatch_view(row: PlanReviewRequest) -> Dict[str, Any]:
 
 
 def _request_dispatch_payload_from_row(
-    row: PlanReviewRequest,
-) -> PlanReviewRequestCreateRequest:
+    row: PlanRequest,
+) -> PlanRequestCreateRequest:
     dispatch = _review_request_dispatch_view(row)
-    return PlanReviewRequestCreateRequest(
+    return PlanRequestCreateRequest(
         round_id=str(row.round_id) if row.round_id else None,
         title=row.title,
         body=row.body,
@@ -1380,7 +1382,7 @@ def _truncate_prompt_block(text: Optional[str], limit: int) -> str:
 def _build_review_request_prompt(
     *,
     bundle: PlanBundle,
-    request_row: PlanReviewRequest,
+    request_row: PlanRequest,
     round_row: PlanReviewRound,
 ) -> str:
     checkpoints = bundle.plan.checkpoints if isinstance(bundle.plan.checkpoints, list) else []
@@ -1535,7 +1537,7 @@ async def _resolve_round_for_request_dispatch(
     db: AsyncSession,
     *,
     plan_id: str,
-    request_row: PlanReviewRequest,
+    request_row: PlanRequest,
     principal: CurrentUser,
     create_round_if_missing: bool,
 ) -> PlanReviewRound:
@@ -1607,7 +1609,7 @@ async def _resolve_round_for_request_dispatch(
 async def _run_review_request_via_bridge(
     *,
     plan_id: str,
-    request_row: PlanReviewRequest,
+    request_row: PlanRequest,
     prompt: str,
     model_id: Optional[str],
     timeout_seconds: int,
@@ -1711,7 +1713,7 @@ async def _dispatch_review_request_execution(
     db: AsyncSession,
     *,
     plan_id: str,
-    request_row: PlanReviewRequest,
+    request_row: PlanRequest,
     principal: CurrentUser,
     timeout_seconds: int,
     spawn_if_missing: bool,
@@ -2152,7 +2154,7 @@ def _pick_least_loaded_bridge_agent(
 
 def _resolve_review_request_targeting(
     *,
-    payload: PlanReviewRequestCreateRequest,
+    payload: PlanRequestCreateRequest,
     live_agents: List[Dict[str, Any]],
     profile_hint: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -2422,15 +2424,15 @@ async def _list_recent_review_agents(
     request_rows = (
         await db.execute(
             select(
-                PlanReviewRequest.target_agent_id,
-                PlanReviewRequest.target_agent_type,
-                PlanReviewRequest.updated_at,
+                PlanRequest.target_agent_id,
+                PlanRequest.target_agent_type,
+                PlanRequest.updated_at,
             )
             .where(
-                PlanReviewRequest.plan_id == plan_id,
-                PlanReviewRequest.target_agent_id.is_not(None),
+                PlanRequest.plan_id == plan_id,
+                PlanRequest.target_agent_id.is_not(None),
             )
-            .order_by(PlanReviewRequest.updated_at.desc())
+            .order_by(PlanRequest.updated_at.desc())
             .limit(max(limit * 6, 24))
         )
     ).all()
@@ -2479,10 +2481,11 @@ async def _list_recent_review_agents(
     return out[:limit]
 
 
-def _review_request_to_entry(row: PlanReviewRequest) -> PlanReviewRequestEntry:
+def _review_request_to_entry(row: PlanRequest) -> PlanRequestEntry:
     dispatch = _review_request_dispatch_view(row)
-    return PlanReviewRequestEntry(
+    return PlanRequestEntry(
         id=str(row.id),
+        kind=getattr(row, "kind", "review") or "review",
         planId=row.plan_id,
         roundId=str(row.round_id) if row.round_id else None,
         title=row.title,
@@ -2685,8 +2688,8 @@ async def _load_review_request(
     *,
     plan_id: str,
     request_id: UUID,
-) -> PlanReviewRequest:
-    row = await db.get(PlanReviewRequest, request_id)
+) -> PlanRequest:
+    row = await db.get(PlanRequest, request_id)
     if row is None or row.plan_id != plan_id:
         raise HTTPException(
             status_code=404,
@@ -3577,7 +3580,7 @@ async def restore_plan_revision(
     )
 
 
-@router.get("/reviews/{plan_id}/requests", response_model=PlanReviewRequestListResponse)
+@router.get("/reviews/{plan_id}/requests", response_model=PlanRequestListResponse)
 async def list_plan_review_requests(
     plan_id: str,
     _user: CurrentUser,
@@ -3600,17 +3603,17 @@ async def list_plan_review_requests(
         round_uuid = _parse_uuid_or_400(round_id, field_name="round_id")
 
     stmt = (
-        select(PlanReviewRequest)
-        .where(PlanReviewRequest.plan_id == plan_id)
-        .order_by(PlanReviewRequest.created_at.desc())
+        select(PlanRequest)
+        .where(PlanRequest.plan_id == plan_id)
+        .order_by(PlanRequest.created_at.desc())
     )
     if status is not None:
-        stmt = stmt.where(PlanReviewRequest.status == status)
+        stmt = stmt.where(PlanRequest.status == status)
     if round_uuid is not None:
-        stmt = stmt.where(PlanReviewRequest.round_id == round_uuid)
+        stmt = stmt.where(PlanRequest.round_id == round_uuid)
 
     rows = (await db.execute(stmt)).scalars().all()
-    return PlanReviewRequestListResponse(
+    return PlanRequestListResponse(
         planId=plan_id,
         requests=[_review_request_to_entry(row) for row in rows],
     )
@@ -3722,10 +3725,10 @@ async def list_plan_participants(
     )
 
 
-@router.post("/reviews/{plan_id}/requests", response_model=PlanReviewRequestEntry)
+@router.post("/reviews/{plan_id}/requests", response_model=PlanRequestEntry)
 async def create_plan_review_request(
     plan_id: str,
-    payload: PlanReviewRequestCreateRequest,
+    payload: PlanRequestCreateRequest,
     principal: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
@@ -3762,7 +3765,8 @@ async def create_plan_review_request(
     actor_source = getattr(principal, "source", f"user:{principal.id}")
     actor_fields = _principal_actor_fields(principal)
     now = utcnow()
-    row = PlanReviewRequest(
+    row = PlanRequest(
+        kind=payload.kind or "review",
         plan_id=plan_id,
         round_id=round_uuid,
         title=title,
@@ -3794,12 +3798,12 @@ async def create_plan_review_request(
 
 @router.patch(
     "/reviews/{plan_id}/requests/{request_id}",
-    response_model=PlanReviewRequestEntry,
+    response_model=PlanRequestEntry,
 )
 async def update_plan_review_request(
     plan_id: str,
     request_id: str,
-    payload: PlanReviewRequestUpdateRequest,
+    payload: PlanRequestUpdateRequest,
     principal: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
@@ -3884,12 +3888,12 @@ async def update_plan_review_request(
 
 @router.post(
     "/reviews/{plan_id}/requests/{request_id}/dispatch",
-    response_model=PlanReviewRequestDispatchResponse,
+    response_model=PlanRequestDispatchResponse,
 )
 async def dispatch_plan_review_request(
     plan_id: str,
     request_id: str,
-    payload: PlanReviewRequestDispatchRequest,
+    payload: PlanRequestDispatchRequest,
     principal: CurrentUser,
     db: AsyncSession = Depends(get_database),
 ):
@@ -3912,7 +3916,7 @@ async def dispatch_plan_review_request(
     )
 
     node_row = outcome.get("node_row")
-    return PlanReviewRequestDispatchResponse(
+    return PlanRequestDispatchResponse(
         request=_review_request_to_entry(outcome["request_row"]),
         node=_review_node_to_entry(node_row) if node_row is not None else None,
         executed=bool(outcome.get("executed", False)),
@@ -3931,13 +3935,13 @@ async def dispatch_plan_review_requests_tick(
         await _ensure_plan_exists(db, payload.plan_id)
 
     stmt = (
-        select(PlanReviewRequest)
-        .where(PlanReviewRequest.status == "open")
-        .order_by(PlanReviewRequest.created_at.asc())
+        select(PlanRequest)
+        .where(PlanRequest.status == "open")
+        .order_by(PlanRequest.created_at.asc())
         .limit(payload.limit)
     )
     if payload.plan_id is not None:
-        stmt = stmt.where(PlanReviewRequest.plan_id == payload.plan_id)
+        stmt = stmt.where(PlanRequest.plan_id == payload.plan_id)
 
     rows = (await db.execute(stmt)).scalars().all()
     items: List[PlanReviewDispatchTickItem] = []
@@ -4321,17 +4325,17 @@ async def get_plan_review_graph(
         .order_by(PlanReviewLink.created_at.asc())
     )
     requests_stmt = (
-        select(PlanReviewRequest)
-        .where(PlanReviewRequest.plan_id == plan_id)
-        .order_by(PlanReviewRequest.created_at.asc())
+        select(PlanRequest)
+        .where(PlanRequest.plan_id == plan_id)
+        .order_by(PlanRequest.created_at.asc())
     )
     if round_rows:
         nodes_stmt = nodes_stmt.where(PlanReviewNode.round_id.in_(round_ids))
         links_stmt = links_stmt.where(PlanReviewLink.round_id.in_(round_ids))
         requests_stmt = requests_stmt.where(
             or_(
-                PlanReviewRequest.round_id.is_(None),
-                PlanReviewRequest.round_id.in_(round_ids),
+                PlanRequest.round_id.is_(None),
+                PlanRequest.round_id.in_(round_ids),
             )
         )
     elif round_number is not None or round_id is not None:
