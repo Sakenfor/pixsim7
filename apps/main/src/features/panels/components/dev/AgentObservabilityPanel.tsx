@@ -751,7 +751,7 @@ function ActiveSessionsView() {
                   )}
                 </div>
 
-                {session.recent_activity.length > 0 && (
+                {(session.recent_activity?.length ?? 0) > 0 && (
                   <div className="px-4 pb-3">
                     <SectionHeader className="mb-1">Recent Activity</SectionHeader>
                     <div className="space-y-0.5 max-h-32 overflow-auto">
