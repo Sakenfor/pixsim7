@@ -11,6 +11,7 @@ import { useWorkspaceStore } from '@features/workspace';
 
 import type { OperationType } from '@/types/operations';
 
+import { usePersistedScopeState } from '../hooks/usePersistedScopeState';
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
 import { useGenerationsStore } from '../stores/generationsStore';
 
@@ -85,6 +86,7 @@ export function AssetPanelHeader({
 
   // ── Settings popover state ─────────────────────────────────────────
   const [showSettingsPopover, setShowSettingsPopover] = useState(false);
+  const [perProviderInputs, setPerProviderInputs] = usePersistedScopeState('perProviderInputs', false);
 
   // ── History panel toggle ───────────────────────────────────────────
   useEffect(() => {
@@ -342,6 +344,24 @@ export function AssetPanelHeader({
               Reset instance overrides
             </button>
           )}
+        </div>
+
+        <div className="border-t border-neutral-200 dark:border-neutral-700 mt-3 pt-2">
+          <div className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-2">
+            Inputs
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={perProviderInputs}
+              onChange={(e) => setPerProviderInputs(e.target.checked)}
+              className="rounded border-neutral-300 dark:border-neutral-600 text-accent"
+            />
+            <span className="text-[11px] text-neutral-700 dark:text-neutral-300">Per-provider inputs</span>
+          </label>
+          <p className="text-[9px] text-neutral-400 dark:text-neutral-500 mt-1">
+            Keep separate asset queues when switching providers
+          </p>
         </div>
       </Popover>
     </>
