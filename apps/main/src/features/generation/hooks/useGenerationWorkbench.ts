@@ -187,8 +187,6 @@ export function useGenerationWorkbench(
   const storeProviderId = useSessionStore((s) => s.providerId);
   const generating = useSessionStore((s) => s.generating);
   const setStoreProvider = useSessionStore((s) => s.setProvider);
-  const sessionHydrated = useSessionStore((s) => s._hasHydrated);
-
   // Use override or store values
   const operationType = options.operationType ?? storeOperationType;
   const providerId = options.providerId ?? storeProviderId;
@@ -199,18 +197,9 @@ export function useGenerationWorkbench(
   const showSettings = useSettingsStore((s) => s.showSettings);
   const setShowSettings = useSettingsStore((s) => s.setShowSettings);
   const toggleSettings = useSettingsStore((s) => s.toggleSettings);
-  const settingsHydrated = useSettingsStore((s) => s._hasHydrated);
-  const setActiveOperationType = useSettingsStore((s) => s.setActiveOperationType);
-  const activeOperationType = useSettingsStore((s) => s.activeOperationType);
 
-  const hasHydrated = sessionHydrated && settingsHydrated;
-
-  // Sync operation type to settings store for per-operation params
-  useEffect(() => {
-    if (hasHydrated && operationType !== activeOperationType) {
-      setActiveOperationType(operationType);
-    }
-  }, [hasHydrated, operationType, activeOperationType, setActiveOperationType]);
+  // Session and settings are now the same store — single hydration flag
+  const hasHydrated = useSettingsStore((s) => s._hasHydrated);
 
   const inferredProviderId = useProviderIdForModel(dynamicParams?.model as string | undefined);
   const resolvedProviderId = useMemo(() => {

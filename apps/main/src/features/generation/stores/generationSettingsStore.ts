@@ -165,16 +165,37 @@ export function createGenerationSettingsStore(
         setProvider: (id) => {
           const state = get();
           if (state.providerId === id) return;
+          const op = state.activeOperationType;
 
           // Save/restore prompt via promptMap
-          const oldPK = providerOpKey(state.providerId, state.activeOperationType);
-          const newPK = providerOpKey(id, state.activeOperationType);
+          const oldPK = providerOpKey(state.providerId, op);
+          const newPK = providerOpKey(id, op);
           const updatedPromptMap = { ...state.promptMap, [oldPK]: state.prompt };
+
+          // Save/restore params via paramsPerProviderOp (was separate onProviderChange)
+          const globals = pickGlobalUiParams(state.params);
+          const oldParamKey = providerOpKey(state.providerId, op);
+          const newParamKey = providerOpKey(id, op);
+          const updatedProviderOp = {
+            ...state.paramsPerProviderOp,
+            [oldParamKey]: state.params,
+          };
+          const baseParams = updatedProviderOp[newParamKey] || {};
+          const newParams = mergeMissingGlobalUiParams(baseParams, globals);
 
           set({
             providerId: id,
             prompt: updatedPromptMap[newPK] ?? state.prompt,
             promptMap: updatedPromptMap,
+            params: newParams,
+            paramsPerProviderOp: {
+              ...updatedProviderOp,
+              [newParamKey]: newParams,
+            },
+            paramsPerOperation: {
+              ...state.paramsPerOperation,
+              [op]: newParams,
+            },
           });
         },
 
@@ -189,34 +210,9 @@ export function createGenerationSettingsStore(
 
         // ── Params actions ──
 
-        onProviderChange: (oldProviderId, newProviderId) => {
-          const state = get();
-          const globals = pickGlobalUiParams(state.params);
-          const op = state.activeOperationType;
-
-          // Save current params under old provider+operation key
-          const oldKey = providerOpKey(oldProviderId, op);
-          const updatedProviderOp = {
-            ...state.paramsPerProviderOp,
-            [oldKey]: state.params,
-          };
-
-          // Load params for new provider+operation (or empty → specs defaults will apply)
-          const newKey = providerOpKey(newProviderId, op);
-          const baseParams = updatedProviderOp[newKey] || {};
-          const newParams = mergeMissingGlobalUiParams(baseParams, globals);
-
-          set({
-            params: newParams,
-            paramsPerProviderOp: {
-              ...updatedProviderOp,
-              [newKey]: newParams,
-            },
-            paramsPerOperation: {
-              ...state.paramsPerOperation,
-              [op]: newParams,
-            },
-          });
+        /** @deprecated Use setProvider(newId) — it now handles param switching atomically */
+        onProviderChange: (_oldProviderId, newProviderId) => {
+          get().setProvider(newProviderId);
         },
 
         setActiveOperationType: (operationType) => get().setOperationType(operationType),

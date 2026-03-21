@@ -214,12 +214,11 @@ export function GenerationSettingsPanel({
   onGenerateCurrentOnly,
   sourceToggle,
 }: GenerationSettingsPanelProps) {
-  const { id: scopeId, useSessionStore, useInputStore, useSettingsStore } = useGenerationScopeStores();
+  const { id: scopeId, useSessionStore, useInputStore } = useGenerationScopeStores();
   const operationType = useSessionStore(s => s.operationType);
   const providerId = useSessionStore(s => s.providerId);
   const setProvider = useSessionStore(s => s.setProvider);
   const setOperationType = useSessionStore(s => s.setOperationType);
-  const onProviderChange = useSettingsStore(s => s.onProviderChange);
 
   // Burst mode - persisted in session store uiState
   const [burstCount, setBurstCount] = usePersistedScopeState('burstCount', 1);
@@ -357,8 +356,7 @@ export function GenerationSettingsPanel({
               providerId={providerId}
               providers={workbench.providers}
               onSelect={(id) => {
-                // Save current params under old provider key, load new provider's params
-                onProviderChange(providerId, id);
+                // setProvider now handles param save/restore atomically
                 setProvider(id);
                 // Auto-switch operation if current one isn't supported by the new provider
                 if (id && !providerCapabilityRegistry.supportsOperation(id, operationType)) {
