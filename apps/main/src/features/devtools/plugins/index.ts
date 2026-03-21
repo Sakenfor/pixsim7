@@ -1,91 +1,20 @@
 /**
  * Dev Tools Plugins Index
  *
- * Central place to import and export all dev tool plugins.
- * Register your custom dev tools here.
- *
+ * Re-exports all tool definitions from tools.ts and auto-collects them
+ * into `builtInDevTools` for bulk registration — no manual listing needed.
+ * To add a new dev tool, just export it from tools.ts.
  */
 
-import {
-  sessionStateViewerTool,
-  generationHealthTool,
-  capabilityTestingTool,
-  appMapTool,
-  docBrowserTool,
-  plansTool,
-  agentObservabilityTool,
-  gizmoSurfacesTool,
-  promptImporterTool,
-  blockFitTool,
-  typesExplorerTool,
-  sqlQueryExplorerTool,
-  logViewerTool,
-  testOverviewTool,
-  codegenTool,
-  contentMapTool,
-  performanceTool,
-} from './tools';
+import type { DevToolDefinition } from '@pixsim7/shared.devtools.core';
 
-// Export all plugins individually
-export {
-  sessionStateViewerTool,
-  generationHealthTool,
-  capabilityTestingTool,
-  appMapTool,
-  docBrowserTool,
-  plansTool,
-  agentObservabilityTool,
-  gizmoSurfacesTool,
-  promptImporterTool,
-  blockFitTool,
-  typesExplorerTool,
-  sqlQueryExplorerTool,
-  logViewerTool,
-  testOverviewTool,
-  codegenTool,
-  contentMapTool,
-  performanceTool,
-};
+import * as allTools from './tools';
 
-// Export array of built-in dev tools for bulk registration
-export const builtInDevTools = [
-  // Session & World State
-  sessionStateViewerTool,
-  generationHealthTool,
+// Re-export all individual tool definitions
+export * from './tools';
 
-  capabilityTestingTool,
-
-  // Architecture & Graph
-  appMapTool,
-  docBrowserTool,
-  plansTool,
-  agentObservabilityTool,
-
-  // Gizmo & Surface Management
-  gizmoSurfacesTool,
-
-  // Prompt Tools
-  promptImporterTool,
-  blockFitTool,
-
-  // Types & Schema
-  typesExplorerTool,
-
-  // Database & Diagnostics
-  sqlQueryExplorerTool,
-
-  // Log Viewer
-  logViewerTool,
-
-  // Testing
-  testOverviewTool,
-
-  // Codegen
-  codegenTool,
-
-  // Content Map
-  contentMapTool,
-
-  // Performance
-  performanceTool,
-];
+// Auto-collect: every export from tools.ts that looks like a DevToolDefinition
+export const builtInDevTools: DevToolDefinition[] = Object.values(allTools).filter(
+  (v): v is DevToolDefinition =>
+    v != null && typeof v === 'object' && 'id' in v && 'label' in v,
+);
