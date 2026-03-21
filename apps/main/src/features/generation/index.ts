@@ -82,7 +82,7 @@ export type {
   GenerationSessionState,
   GenerationSessionStoreHook,
 } from './stores/generationSessionStore';
-export { getGenerationSessionStore, getGenerationSettingsStore, getGenerationInputStore, getRegisteredInputStores, getRegisteredSettingsStores } from './stores/generationScopeStores';
+export { getGenerationSessionStore, getGenerationSettingsStore, getGenerationInputStore, getRegisteredInputStores, getRegisteredSettingsStores, pruneStaleGenerationStores } from './stores/generationScopeStores';
 export {
   useGenerationsStore,
   generationsSelectors,

@@ -467,6 +467,24 @@ export const useGenerationSettingsStore = hmrSingleton('generationSettingsStore'
   createGenerationSettingsStore(STORAGE_KEY, createBackendStorage('generationSettings')),
 );
 
+// Prune stale scoped generation stores from localStorage on startup.
+// Runs once per day, removes orphaned scope keys beyond the retention limit.
+hmrSingleton('generationScopes:prune', () => {
+  if (typeof window !== 'undefined') {
+    // Delay to avoid blocking startup
+    setTimeout(() => {
+      // Dynamic import to avoid circular dependency
+      import('./generationScopeStores').then(({ pruneStaleGenerationStores }) => {
+        const removed = pruneStaleGenerationStores();
+        if (removed > 0) {
+          console.debug(`[GenerationStores] Pruned ${removed} stale localStorage keys`);
+        }
+      });
+    }, 2000);
+  }
+  return true;
+});
+
 // Manual rehydration workaround for async storage (see zustandPersistWorkaround.ts)
 // hmrSingleton guard ensures this only runs once — not again on HMR re-evaluation.
 hmrSingleton('generationSettingsStore:rehydration', () => {
