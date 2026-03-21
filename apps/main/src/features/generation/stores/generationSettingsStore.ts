@@ -448,6 +448,7 @@ export function createGenerationSettingsStore(
             state.paramsPerOperation[state.activeOperationType] = mergedActive;
             state.params = mergedActive;
             state.operationType = state.activeOperationType;
+            state.generating = false; // always reset — never carry over stale in-progress flag
             state.promptMap = state.promptMap ?? {};
             state.uiState = state.uiState ?? {};
             state._hasHydrated = true;
