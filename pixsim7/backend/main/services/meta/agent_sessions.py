@@ -118,15 +118,27 @@ class AgentSession:
         return int((self.last_heartbeat - self.started_at).total_seconds())
 
 
+PersistFn = Optional[Any]  # Callable[[CanonicalHeartbeat], Awaitable[None]] — loose to avoid import issues
+
+
 class AgentSessionRegistry:
     """In-memory registry of active agent sessions."""
 
     def __init__(self) -> None:
         self._sessions: Dict[str, AgentSession] = {}
+        self._persist_fn: PersistFn = None
+
+    def set_persist(self, fn: PersistFn) -> None:
+        """Set an async callback that persists each heartbeat to the DB.
+
+        Called once at app startup to wire in the database layer without
+        making the registry depend on SQLAlchemy/DB imports.
+        """
+        self._persist_fn = fn
 
     def record(self, hb: CanonicalHeartbeat) -> AgentSession:
         """Accept a CanonicalHeartbeat and update session state."""
-        return self.heartbeat(
+        session = self.heartbeat(
             session_id=hb.session_id,
             agent_type=hb.agent_type,
             status=hb.status,
@@ -137,6 +149,13 @@ class AgentSessionRegistry:
             detail=hb.detail,
             metadata=dict(hb.metadata) if hb.metadata else None,
         )
+        if self._persist_fn is not None and hb.action:
+            try:
+                import asyncio
+                asyncio.ensure_future(self._persist_fn(hb))
+            except RuntimeError:
+                pass  # no event loop — skip persistence silently
+        return session
 
     def heartbeat(
         self,

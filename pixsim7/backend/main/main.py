@@ -96,10 +96,41 @@ async def lifespan(app: FastAPI):
     app.state.domain_registry = domain_registry
     logger.info("domain_registry_attached", count=len(domain_registry.registered_models))
 
+    # Register model-level audit hooks (after all models are imported)
+    from pixsim7.backend.main.services.audit import register_audit_hooks
+    register_audit_hooks()
+
     # Setup database and seed all registered content loaders
     # (presets, tags, plugins, content packs, primitives, system config,
     #  analyzer definitions, authoring modes — all via content loader registry)
     await setup_database_and_seed()
+
+    # Wire agent heartbeat persistence (DB must be ready)
+    from pixsim7.backend.main.services.meta.agent_sessions import agent_session_registry
+    from pixsim7.backend.main.services.meta.agent_sessions import CanonicalHeartbeat as _CHB
+    from pixsim7.backend.main.domain.docs.models import AgentActivityLog
+    from pixsim7.backend.main.infrastructure.database.session import get_async_session
+
+    async def _persist_heartbeat(hb: _CHB) -> None:
+        try:
+            async with get_async_session() as db:
+                db.add(AgentActivityLog(
+                    session_id=hb.session_id,
+                    agent_type=hb.agent_type,
+                    status=hb.status,
+                    contract_id=hb.contract_id,
+                    plan_id=hb.plan_id,
+                    action=hb.action,
+                    detail=hb.detail or None,
+                    endpoint=hb.endpoint,
+                    extra=dict(hb.metadata) if hb.metadata else None,
+                    timestamp=hb.timestamp,
+                ))
+                await db.commit()
+        except Exception:
+            pass  # non-critical — in-memory state is the primary
+
+    agent_session_registry.set_persist(_persist_heartbeat)
 
     # Setup Redis (optional - degraded mode without it)
     redis_available = await setup_redis()
