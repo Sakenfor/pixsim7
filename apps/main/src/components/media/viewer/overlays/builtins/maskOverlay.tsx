@@ -21,15 +21,8 @@ import { VersionNavigator, useVersions } from '@lib/ui/versioning';
 import { useAssets, type AssetModel, type ViewerAsset } from '@features/assets';
 import { assetEvents } from '@features/assets/lib/assetEvents';
 import { extractUploadError, notifyGalleryOfNewAsset } from '@features/assets/lib/uploadActions';
-import { getGenerationSettingsStore, useGenerationScopeStores, useGenerationSettingsStore } from '@features/generation';
-import {
-  GENERATION_SCOPE_ID,
-  getInstanceId,
-  getScopeMode,
-  panelSettingsScopeRegistry,
-  resolveScopeInstanceId,
-  usePanelInstanceSettingsStore,
-} from '@features/panels';
+import { useGenerationSettingsStore, getRegisteredSettingsStores } from '@features/generation';
+import { MiniGalleryPopover } from '@features/generation/components/MiniGalleryPopover';
 
 
 import {
@@ -145,34 +138,16 @@ function writeMaskDraft(asset: ViewerAsset, draft: MaskOverlayDraft | null): voi
   }
 }
 
-function resolveViewerQuickGenScopeId(): string {
-  const panelManagerId = 'viewerQuickGenerate';
-  const panelId = panelManagerId;
-  const instanceId = getInstanceId(panelManagerId, panelId);
-  const scopeDef = panelSettingsScopeRegistry.get(GENERATION_SCOPE_ID);
-  if (!scopeDef) return instanceId;
-
-  const scopes = usePanelInstanceSettingsStore.getState().instances[instanceId]?.scopes;
-  const mode = getScopeMode(scopes, scopeDef, scopeDef.defaultMode);
-
-  if (scopeDef.resolveScopeId) {
-    return resolveScopeInstanceId(scopeDef, mode, {
-      instanceId,
-      panelId,
-      dockviewId: panelManagerId,
-    });
-  }
-
-  return mode === 'global' ? 'global' : instanceId;
-}
-
-function setMaskUrlInRelevantGenerationScopes(maskUrl: string | undefined): void {
+/**
+ * Broadcast mask_url to the global settings store AND all registered scoped
+ * settings stores. This ensures whichever scope the QuickGen widget is using
+ * will pick up the mask — avoids hardcoding a specific scope ID.
+ */
+function broadcastMaskUrlToGenerationScopes(maskUrl: string | undefined): void {
   useGenerationSettingsStore.getState().setParam('mask_url', maskUrl);
-  const viewerScopeId = resolveViewerQuickGenScopeId();
-  if (viewerScopeId === 'global') {
-    useGenerationSettingsStore.getState().setParam('mask_url', maskUrl);
-  } else {
-    getGenerationSettingsStore(viewerScopeId).getState().setParam('mask_url', maskUrl);
+  for (const store of getRegisteredSettingsStores()) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Zustand hook type doesn't expose getState()
+    (store as any).getState().setParam('mask_url', maskUrl);
   }
 }
 
@@ -377,8 +352,6 @@ function renderLayerToContext(
 export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponentProps) {
   const toast = useToast();
   const store = useMaskOverlayStore;
-  const { useSettingsStore } = useGenerationScopeStores();
-  const currentMaskUrl = useSettingsStore((s) => (s.params as Record<string, unknown>)?.mask_url as string | undefined);
 
   // Resolve authenticated image URL
   const imageUrl = asset.fullUrl || asset.url;
@@ -417,6 +390,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     canUndo,
     canRedo,
     resetView,
+    viewCursorHint,
   } = interaction;
 
   const draftStorageKey = useMemo(() => getMaskDraftStorageKey(asset), [asset]);
@@ -709,6 +683,8 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
 
   /** Tracks the last saved composite mask asset ID so subsequent saves overwrite it. */
   const lastSavedCompositeIdRef = useRef<number | null>(null);
+  /** Caches the backend asset ID if the source image was auto-saved to library. */
+  const autoSavedSourceAssetIdRef = useRef<number | null>(null);
   const isSavingRef = useRef(false);
 
   /** Resolve version parent from ref, any layer's savedAssetId, or existing saved masks. */
@@ -806,7 +782,33 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       const res = await fetch(maskDataUrl);
       const blob = await res.blob();
 
-      const sourceAssetIdForUpload = getViewerBackendAssetId(asset);
+      let sourceAssetIdForUpload = getViewerBackendAssetId(asset) ?? autoSavedSourceAssetIdRef.current;
+
+      // If the source asset is not in the library yet, save it first so the mask
+      // gets a proper source_asset_id link.
+      if (sourceAssetIdForUpload === null) {
+        try {
+          const srcUrl = asset.fullUrl || asset.url;
+          const token = authService.getStoredToken();
+          const imgRes = await fetch(srcUrl, token ? { headers: { Authorization: `Bearer ${token}` } } : undefined);
+          const imgBlob = await imgRes.blob();
+          const srcFilename = asset.name || `source_${Date.now()}.png`;
+          const srcResult = await uploadAsset({
+            file: imgBlob,
+            filename: srcFilename,
+            saveTarget: 'library',
+            uploadMethod: 'mask_source_auto',
+          });
+          if (srcResult.asset_id) {
+            sourceAssetIdForUpload = srcResult.asset_id;
+            autoSavedSourceAssetIdRef.current = srcResult.asset_id;
+            await notifyGalleryOfNewAsset(srcResult.asset_id);
+          }
+        } catch (err) {
+          console.warn('[MaskOverlay] Failed to auto-save source asset to library:', err);
+        }
+      }
+
       const filename = buildMaskFilename(sourceAssetIdForUpload ?? asset.id);
       const uploadContext: Record<string, unknown> = {
         ...buildMaskUploadContext({
@@ -851,7 +853,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
           // Non-critical
         }
 
-        setMaskUrlInRelevantGenerationScopes(`asset:${newAssetId}`);
+        broadcastMaskUrlToGenerationScopes(`asset:${newAssetId}`);
         attachedToGeneration = true;
 
         // Track so next save versions from this composite
@@ -999,7 +1001,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
 
   const cursor = state.mode === 'draw' || state.mode === 'erase' || state.mode === 'polygon'
     ? 'crosshair'
-    : 'grab';
+    : viewCursorHint ?? 'default';
 
   return (
     <PanelShell
@@ -1009,26 +1011,44 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       sidebarRight={
         <MaskLayersPanel
           sourceAssetId={sourceAssetId}
-          masks={sourceMaskAssets}
-          anyMasks={anyMaskAssetsQuery.items}
-          loadingMasks={maskAssetsQuery.loading || isImportingSavedMask}
-          loadingAnyMasks={anyMaskAssetsQuery.loading || isImportingSavedMask}
-          currentMaskUrl={currentMaskUrl}
           onDeleteMaskAsset={handleDeleteMaskAsset}
         />
       }
       sidebarRightWidth="w-40"
       bodyScroll={false}
     >
-      <InteractiveImageSurface
-        media={media}
-        state={state}
-        handlers={handlers}
-        cursor={cursor}
-        className="w-full h-full"
-        onMediaLoad={handleMediaLoad}
-      />
+      <div className="w-full h-full" onContextMenu={(e) => { if (state.mode === 'view') e.preventDefault(); }}>
+        <InteractiveImageSurface
+          media={media}
+          state={state}
+          handlers={handlers}
+          cursor={cursor}
+          className="w-full h-full"
+          onMediaLoad={handleMediaLoad}
+        >
+          <MaskPreviewOverlay />
+        </InteractiveImageSurface>
+      </div>
     </PanelShell>
+  );
+}
+
+// ── MaskPreviewOverlay ────────────────────────────────────────────────
+
+function MaskPreviewOverlay() {
+  const previewMaskUrl = useMaskOverlayStore((s) => s.previewMaskUrl);
+  const { src } = useAuthenticatedMedia(previewMaskUrl ?? undefined);
+
+  if (!src) return null;
+
+  return (
+    <img
+      src={src}
+      alt=""
+      className="w-full h-full opacity-60"
+      style={{ mixBlendMode: 'screen', maxWidth: 'none', maxHeight: 'none' }}
+      draggable={false}
+    />
   );
 }
 
@@ -1118,15 +1138,29 @@ function MaskToolsPanel() {
 
       {mode === 'polygon' && (
         <div className="px-2 text-[10px] text-th-muted leading-snug">
-          Click to place points. Double-click to finish. Brush size controls width.
+          Click to place points. Double-click to finish. Scroll on a vertex to adjust its width.
+        </div>
+      )}
+      {mode === 'view' && (
+        <div className="px-2 text-[10px] text-th-muted leading-snug">
+          Click a vertex to drag it. Click an edge to add a point. Right-click a vertex to remove. Scroll to adjust width.
         </div>
       )}
 
       <SideDivider />
 
-      <SideSection label="Brush" className="gap-1.5">
-        <SideSlider label="Size" value={brushSize} min={0.005} max={0.15} step={0.005} onChange={setBrushSize} />
-        <SideSlider label="Opacity" value={brushOpacity} min={0.1} max={1} step={0.1} onChange={setBrushOpacity} />
+      <SideSection label={mode === 'polygon' ? 'Curve Width' : 'Brush'} className="gap-1.5">
+        <SideSlider
+          label={mode === 'polygon' ? `Width: ${Math.round(brushSize * 500)}` : 'Size'}
+          value={brushSize}
+          min={0.005}
+          max={0.15}
+          step={0.005}
+          onChange={setBrushSize}
+        />
+        {mode !== 'polygon' && (
+          <SideSlider label="Opacity" value={brushOpacity} min={0.1} max={1} step={0.1} onChange={setBrushOpacity} />
+        )}
       </SideSection>
 
       <SideDivider />
@@ -1235,20 +1269,11 @@ function PresetButton({ preset: resolved, active, onClick }: {
 
 interface MaskLayersPanelProps {
   sourceAssetId: number | null;
-  masks: AssetModel[];
-  anyMasks: AssetModel[];
-  loadingMasks: boolean;
-  loadingAnyMasks: boolean;
-  currentMaskUrl?: string;
   onDeleteMaskAsset: (assetId: number, layerId: string) => void;
 }
 
 function MaskLayersPanel({
   sourceAssetId,
-  masks,
-  anyMasks,
-  loadingMasks,
-  loadingAnyMasks,
   onDeleteMaskAsset,
 }: MaskLayersPanelProps) {
   const {
@@ -1264,21 +1289,40 @@ function MaskLayersPanel({
 
   const activeLayer = layers.find((l) => l.id === activeLayerId) ?? null;
 
-  const sortedMasks = useMemo(
-    () => [...masks].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
-    [masks],
-  );
-  const sortedAnyMasks = useMemo(
-    () => [...anyMasks].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
-    [anyMasks],
-  );
+  const [importAnchorRect, setImportAnchorRect] = useState<DOMRect | null>(null);
+  const [showAll, setShowAll] = useState(!sourceAssetId);
+  const importButtonRef = useRef<HTMLButtonElement>(null);
 
-  const formatMaskLabel = useCallback((mask: AssetModel) => {
-    const created = Number.isFinite(Date.parse(mask.createdAt))
-      ? new Date(mask.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-      : '';
-    return created ? `#${mask.id} • ${created}` : `#${mask.id}`;
-  }, []);
+  const handleToggleImport = useCallback(() => {
+    if (importAnchorRect) {
+      setImportAnchorRect(null);
+    } else {
+      const rect = importButtonRef.current?.getBoundingClientRect();
+      if (rect) setImportAnchorRect(rect);
+    }
+  }, [importAnchorRect]);
+
+  const setPreviewMaskUrl = useMaskOverlayStore((s) => s.setPreviewMaskUrl);
+
+  const handleCloseImport = useCallback(() => {
+    setImportAnchorRect(null);
+    setPreviewMaskUrl(null);
+  }, [setPreviewMaskUrl]);
+
+  const handleMaskHover = useCallback((asset: AssetModel | null) => {
+    if (!asset) {
+      setPreviewMaskUrl(null);
+      return;
+    }
+    const url = asset.previewUrl || asset.thumbnailUrl || asset.fileUrl;
+    if (url) setPreviewMaskUrl(url);
+  }, [setPreviewMaskUrl]);
+
+  const handleSelectMask = useCallback((asset: AssetModel) => {
+    setPreviewMaskUrl(null);
+    importSavedMask(asset.id);
+    setImportAnchorRect(null);
+  }, [importSavedMask, setPreviewMaskUrl]);
 
   const renderLayerExtra = useCallback((layer: MaskLayerInfo) => {
     if (!layer.savedAssetId) return null;
@@ -1301,6 +1345,10 @@ function MaskLayersPanel({
       </div>
     );
   }, [importSavedMask, onDeleteMaskAsset]);
+
+  const importFilters = showAll || !sourceAssetId
+    ? { media_type: 'image' as const, upload_method: 'mask_draw' as const, sort: 'new' as const }
+    : { source_asset_id: sourceAssetId, media_type: 'image' as const, upload_method: 'mask_draw' as const, sort: 'new' as const };
 
   return (
     <OverlaySidePanel side="right">
@@ -1326,63 +1374,52 @@ function MaskLayersPanel({
             Loads into active layer
           </div>
         )}
-        {sourceAssetId ? (
-          <select
-            onChange={(e) => {
-              const next = e.target.value;
-              if (!next) return;
-              importSavedMask(Number(next));
-              e.target.value = '';
-            }}
-            className="w-full h-7 rounded bg-th/10 hover:bg-th/15 border border-th/10 text-[11px] text-th-secondary px-1.5"
-            title={activeLayer && !activeLayer.hasContent ? 'Load into active layer' : 'Import as new layer'}
-            disabled={loadingMasks}
-            value=""
-          >
-            <option value="">
-              {loadingMasks
-                ? 'Loading...'
-                : sortedMasks.length > 0
-                  ? 'Linked masks...'
-                  : 'No linked masks'}
-            </option>
-            {sortedMasks.map((mask) => (
-              <option key={mask.id} value={mask.id}>
-                {formatMaskLabel(mask)}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <div className="text-[10px] text-th-muted leading-snug">
-            Save source image first.
-          </div>
-        )}
-
-        <select
-          onChange={(e) => {
-            const next = e.target.value;
-            if (!next) return;
-            importSavedMask(Number(next));
-            e.target.value = '';
-          }}
-          className="w-full h-7 rounded bg-th/10 hover:bg-th/15 border border-th/10 text-[11px] text-th-secondary px-1.5"
+        <button
+          ref={importButtonRef}
+          type="button"
+          onClick={handleToggleImport}
+          className="w-full h-7 rounded bg-th/10 hover:bg-th/15 border border-th/10 text-[11px] text-th-secondary px-1.5 flex items-center gap-1.5"
           title={activeLayer && !activeLayer.hasContent ? 'Load into active layer' : 'Import as new layer'}
-          disabled={loadingAnyMasks}
-          value=""
         >
-          <option value="">
-            {loadingAnyMasks
-              ? 'Loading...'
-              : sortedAnyMasks.length > 0
-                ? 'Any mask...'
-                : 'No saved masks'}
-          </option>
-          {sortedAnyMasks.map((mask) => (
-            <option key={mask.id} value={mask.id}>
-              {formatMaskLabel(mask)}
-            </option>
-          ))}
-        </select>
+          <Icon name="paintbrush" size={11} />
+          <span className="flex-1 text-left truncate">Browse masks...</span>
+          <Icon name={importAnchorRect ? 'chevronUp' : 'chevronDown'} size={9} className="opacity-60" />
+        </button>
+
+        {importAnchorRect && (
+          <MiniGalleryPopover
+            anchorRect={importAnchorRect}
+            title={showAll || !sourceAssetId ? 'All Masks' : 'Linked Masks'}
+            onClose={handleCloseImport}
+            width={320}
+            height={360}
+            galleryProps={{
+              initialFilters: importFilters,
+              syncInitialFilters: true,
+              showSearch: true,
+              showMediaType: false,
+              showSort: true,
+              suppressHoverActions: true,
+              onItemSelect: handleSelectMask,
+              onItemHover: handleMaskHover,
+              emptyMessage: sourceAssetId && !showAll ? 'No masks for this asset.' : 'No saved masks.',
+              header: sourceAssetId ? (
+                <div className="flex items-center justify-between px-3 py-1 border-b border-neutral-200 dark:border-neutral-700">
+                  <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                    {showAll ? 'All masks' : 'Linked to this asset'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAll((v) => !v)}
+                    className="text-[10px] text-accent hover:underline"
+                  >
+                    {showAll ? 'Show linked' : 'Show all'}
+                  </button>
+                </div>
+              ) : undefined,
+            }}
+          />
+        )}
       </SideSection>
     </OverlaySidePanel>
   );

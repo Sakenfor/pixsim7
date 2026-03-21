@@ -201,6 +201,7 @@ export {
   ScopeInstanceProvider,
   useScopeInstanceId,
   ScopeHost,
+  SuppressScopeWrapping,
 } from "./lib";
 export type {
   BasePanelDefinition,

@@ -7,9 +7,13 @@
  *
  * This component is used by SmartDockview to wrap each panel with
  * appropriate scope providers (e.g., GenerationScopeProvider).
+ *
+ * Parents that already manage a scope themselves (e.g., QuickGenWidget)
+ * can render <SuppressScopeWrapping scopes={['generation']}> to prevent
+ * ScopeHost from double-wrapping child panels with the same scope.
  */
 
-import { useMemo, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 import {
   panelSettingsScopeRegistry,
@@ -19,6 +23,36 @@ import {
   type PanelSettingsScopeMode,
 } from "../../lib/panelSettingsScopes";
 import { usePanelInstanceSettingsStore } from "../../stores/panelInstanceSettingsStore";
+
+// ---------------------------------------------------------------------------
+// Suppress context — lets parent components prevent ScopeHost from wrapping
+// child panels with scopes that the parent already manages.
+// ---------------------------------------------------------------------------
+const SuppressedScopesContext = createContext<ReadonlySet<string>>(new Set());
+
+export interface SuppressScopeWrappingProps {
+  /** Scope IDs to suppress (e.g., ['generation']) */
+  scopes: string[];
+  children: ReactNode;
+}
+
+/**
+ * Prevents ScopeHost from wrapping descendant panels with the listed scopes.
+ * Use this when a parent component already provides its own scope provider.
+ */
+export function SuppressScopeWrapping({ scopes, children }: SuppressScopeWrappingProps) {
+  const parentSuppressed = useContext(SuppressedScopesContext);
+  const merged = useMemo(() => {
+    const next = new Set(parentSuppressed);
+    for (const s of scopes) next.add(s);
+    return next;
+  }, [parentSuppressed, scopes]);
+  return (
+    <SuppressedScopesContext.Provider value={merged}>
+      {children}
+    </SuppressedScopesContext.Provider>
+  );
+}
 
 export interface ScopeHostProps {
   /** Panel type ID (e.g., "quickgen-prompt") */
@@ -59,6 +93,9 @@ export function ScopeHost({
   category,
   children,
 }: ScopeHostProps) {
+  // Scopes suppressed by a parent (e.g., QuickGenWidget already manages generation scope)
+  const suppressedScopes = useContext(SuppressedScopesContext);
+
   // Get instance-specific scope mode overrides
   const instanceScopes = usePanelInstanceSettingsStore(
     (state) => state.instances[instanceId]?.scopes ?? EMPTY_SCOPES,
@@ -89,9 +126,10 @@ export function ScopeHost({
   const wrapped = useMemo(() => {
     if (!scopeDefinitions.length) return children;
 
-    // Find scopes that apply to this panel, sorted by priority (descending)
+    // Find scopes that apply to this panel, sorted by priority (descending).
+    // Skip scopes suppressed by a parent that already manages them.
     const matching = scopeDefinitions
-      .filter((scope) => scope.shouldApply?.(context))
+      .filter((scope) => !suppressedScopes.has(scope.id) && scope.shouldApply?.(context))
       .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 
     if (matching.length === 0) return children;
@@ -123,6 +161,7 @@ export function ScopeHost({
     context,
     instanceId,
     instanceScopes,
+    suppressedScopes,
     panelId,
     dockviewId,
   ]);

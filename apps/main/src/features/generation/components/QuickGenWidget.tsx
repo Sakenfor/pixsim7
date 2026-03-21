@@ -23,6 +23,7 @@ import {
   useProvideCapability,
   type GenerationContextSummary,
 } from '@features/contextHub';
+import { SuppressScopeWrapping } from '@features/panels';
 
 import { isMultiAssetOperation } from '@/types/operations';
 import type { OperationType } from '@/types/operations';
@@ -128,10 +129,15 @@ export const QuickGenWidget = forwardRef<QuickGenPanelHostRef, QuickGenWidgetPro
       hostPanelId,
     });
 
-    // Step 2: Scope provider — isolated generation stores
+    // Step 2: Scope provider — isolated generation stores.
+    // SuppressScopeWrapping prevents ScopeHost from double-wrapping inner
+    // quickgen panels (quickgen-asset, quickgen-prompt, quickgen-settings)
+    // with a second GenerationScopeProvider — they should all share this one.
     return (
       <GenerationScopeProvider scopeId={scopeInstanceId} label={scopeLabel}>
-        <QuickGenWidgetInner {...props} ref={ref} />
+        <SuppressScopeWrapping scopes={['generation']}>
+          <QuickGenWidgetInner {...props} ref={ref} />
+        </SuppressScopeWrapping>
       </GenerationScopeProvider>
     );
   },

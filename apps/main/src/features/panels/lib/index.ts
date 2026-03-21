@@ -111,4 +111,4 @@ export {
 export { useScopeInstanceId } from "../components/scope/scopeInstanceContext";
 
 // ScopeHost for automatic scope provider wrapping
-export { ScopeHost, type ScopeHostProps } from "../components/scope/ScopeHost";
+export { ScopeHost, SuppressScopeWrapping, type ScopeHostProps } from "../components/scope/ScopeHost";
