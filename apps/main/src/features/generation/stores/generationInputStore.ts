@@ -61,6 +61,8 @@ export interface AddInputOptions {
 
 export interface GenerationInputsState {
   inputsByOperation: Partial<Record<OperationType, OperationInputs>>;
+  /** Saved inputs per provider+operation for restore on provider switch */
+  inputsByProviderOp: Record<string, OperationInputs>;
   armedSlotByOperation: Partial<Record<OperationType, number>>;
   inputModeByOperation: Partial<Record<OperationType, 'append' | 'replace'>>;
 
@@ -90,6 +92,9 @@ export interface GenerationInputsState {
   updateMaskLayer: (operationType: OperationType, inputId: string, layerId: string, patch: Partial<InputMaskLayer>) => void;
   setMaskLayers: (operationType: OperationType, inputId: string, layers: InputMaskLayer[]) => void;
   toggleSkip: (operationType: OperationType, inputId: string) => void;
+
+  /** Save current inputs under oldProvider key, restore from newProvider key */
+  switchProviderInputs: (operationType: OperationType, oldProviderId: string | undefined, newProviderId: string | undefined) => void;
 
   getCurrentInput: (operationType: OperationType) => InputItem | null;
   getInputs: (operationType: OperationType) => InputItem[];
@@ -174,6 +179,7 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
     persist(
       (set, get) => ({
         inputsByOperation: {},
+        inputsByProviderOp: {},
         armedSlotByOperation: {},
         inputModeByOperation: {},
 
@@ -746,6 +752,37 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
           });
         },
 
+        switchProviderInputs: (operationType, oldProviderId, newProviderId) => {
+          set((state) => {
+            const opKey = (pid: string | undefined) => `${pid ?? '_auto'}::${operationType}`;
+            const current = getOperationInputs(state.inputsByOperation, operationType);
+
+            // Save current inputs under old provider key
+            const updatedByProviderOp = {
+              ...state.inputsByProviderOp,
+              [opKey(oldProviderId)]: { ...current },
+            };
+
+            // Restore inputs for new provider (or empty)
+            const restored = updatedByProviderOp[opKey(newProviderId)];
+            const newItems = restored ? normalizeInputItems(restored.items ?? []) : [];
+            const newIndex = restored
+              ? normalizeIndex(restored.currentIndex ?? 1, newItems.length)
+              : 1;
+
+            return {
+              inputsByProviderOp: updatedByProviderOp,
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  items: newItems,
+                  currentIndex: newIndex,
+                },
+              },
+            };
+          });
+        },
+
         getCurrentInput: (operationType) => {
           const existing = getOperationInputs(get().inputsByOperation, operationType);
           if (existing.items.length === 0) return null;
@@ -770,6 +807,7 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
         version: 1,
         partialize: (state) => ({
           inputsByOperation: state.inputsByOperation,
+          inputsByProviderOp: state.inputsByProviderOp,
         }),
         onRehydrateStorage: () => (state) => {
           if (!state) return;

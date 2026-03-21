@@ -219,6 +219,8 @@ export function GenerationSettingsPanel({
   const providerId = useSessionStore(s => s.providerId);
   const setProvider = useSessionStore(s => s.setProvider);
   const setOperationType = useSessionStore(s => s.setOperationType);
+  const switchProviderInputs = useInputStore(s => s.switchProviderInputs);
+  const [perProviderInputs] = usePersistedScopeState('perProviderInputs', false);
 
   // Burst mode - persisted in session store uiState
   const [burstCount, setBurstCount] = usePersistedScopeState('burstCount', 1);
@@ -356,7 +358,11 @@ export function GenerationSettingsPanel({
               providerId={providerId}
               providers={workbench.providers}
               onSelect={(id) => {
-                // setProvider now handles param save/restore atomically
+                // Save/restore inputs per provider when enabled
+                if (perProviderInputs) {
+                  switchProviderInputs(operationType, providerId, id);
+                }
+                // setProvider handles prompt + param save/restore atomically
                 setProvider(id);
                 // Auto-switch operation if current one isn't supported by the new provider
                 if (id && !providerCapabilityRegistry.supportsOperation(id, operationType)) {
