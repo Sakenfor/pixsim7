@@ -4,7 +4,7 @@
  * Renders an individual overlay widget with positioning, visibility, and transitions.
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useSyncExternalStore } from 'react';
 
 import type {
   OverlayWidget as OverlayWidgetType,
@@ -16,9 +16,26 @@ import { positionToStyle } from './utils/position';
 import {
   shouldShowWidget,
   getTransitionStyle,
-  prefersReducedMotion,
   adaptVisibilityForTouch,
 } from './utils/visibility';
+
+// Shared reduced-motion listener (single MediaQueryList for all widgets)
+let _reducedMotionSnapshot = typeof window !== 'undefined'
+  ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  : false;
+const _reducedMotionListeners = new Set<() => void>();
+if (typeof window !== 'undefined') {
+  const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+  mql.addEventListener('change', () => {
+    _reducedMotionSnapshot = mql.matches;
+    _reducedMotionListeners.forEach((l) => l());
+  });
+}
+function subscribeReducedMotion(cb: () => void) {
+  _reducedMotionListeners.add(cb);
+  return () => { _reducedMotionListeners.delete(cb); };
+}
+function getReducedMotionSnapshot() { return _reducedMotionSnapshot; }
 
 export interface OverlayWidgetProps {
   /** Widget configuration */
@@ -46,7 +63,7 @@ export interface OverlayWidgetProps {
 /**
  * Renders an individual overlay widget
  */
-export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
+export const OverlayWidget: React.FC<OverlayWidgetProps> = React.memo(({
   widget,
   context,
   data,
@@ -60,24 +77,14 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
   const [isWidgetFocused, setIsWidgetFocused] = useState(false);
   // TODO: wire up sibling hover detection via OverlayContainer
   const isSiblingHovered = false;
-  const [reducedMotion, setReducedMotion] = useState(false);
+
+  const reducedMotion = useSyncExternalStore(subscribeReducedMotion, getReducedMotionSnapshot);
 
   // Adapt visibility for touch devices
   const visibility = useMemo(
     () => adaptVisibilityForTouch(widget.visibility),
     [widget.visibility],
   );
-
-  // Check for reduced motion preference
-  useEffect(() => {
-    setReducedMotion(prefersReducedMotion());
-
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const handler = () => setReducedMotion(mediaQuery.matches);
-
-    mediaQuery.addEventListener('change', handler);
-    return () => mediaQuery.removeEventListener('change', handler);
-  }, []);
 
   // Determine if widget should be visible
   const isVisible = shouldShowWidget(visibility.trigger, {
@@ -249,6 +256,6 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
       {inStack ? <div style={{ overflow: isStackCollapsed ? 'hidden' : 'visible' }}>{content}</div> : content}
     </div>
   );
-};
+});
 
 OverlayWidget.displayName = 'OverlayWidget';

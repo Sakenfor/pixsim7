@@ -160,6 +160,9 @@ export function applyDefaults(
 ): OverlayConfiguration {
   const { defaultVisibility, defaultStyle } = config;
 
+  // Fast-path: nothing to merge when no defaults are set
+  if (!defaultVisibility && !defaultStyle) return config;
+
   return {
     ...config,
     widgets: config.widgets.map((widget) => ({

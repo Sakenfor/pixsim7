@@ -18,6 +18,9 @@ import { validateVisibilityConfig } from './visibility';
 
 const isDev = import.meta.env?.DEV;
 
+/** Track which config IDs have already been logged to avoid flooding the console. */
+const _loggedConfigIds = new Set<string>();
+
 /**
  * Validates a complete overlay configuration
  */
@@ -397,27 +400,22 @@ export function lintConfiguration(config: OverlayConfiguration): ValidationError
 export function validateAndLog(config: OverlayConfiguration): ValidationResult {
   const result = validateConfiguration(config);
 
-  if (isDev) {
+  if (isDev && !_loggedConfigIds.has(config.id)) {
     const allIssues = [...result.errors, ...lintConfiguration(config)];
 
     if (allIssues.length > 0) {
-      console.group(`[Overlay] Validation issues for "${config.name}"`);
+      _loggedConfigIds.add(config.id);
 
+      // Only log errors/warnings immediately; info-level issues are noise at scale.
       const errors = allIssues.filter((e) => e.severity === 'error');
       const warnings = allIssues.filter((e) => e.severity === 'warning');
-      const info = allIssues.filter((e) => e.severity === 'info');
 
-      if (errors.length > 0) {
-        console.error('Errors:', errors);
+      if (errors.length > 0 || warnings.length > 0) {
+        console.group(`[Overlay] Validation issues for "${config.name}"`);
+        if (errors.length > 0) console.error('Errors:', errors);
+        if (warnings.length > 0) console.warn('Warnings:', warnings);
+        console.groupEnd();
       }
-      if (warnings.length > 0) {
-        console.warn('Warnings:', warnings);
-      }
-      if (info.length > 0) {
-        console.info('Info:', info);
-      }
-
-      console.groupEnd();
     }
   }
 

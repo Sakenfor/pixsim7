@@ -414,13 +414,29 @@ export function handleCollisions(
   containerRect: DOMRect,
   widgetElements?: Map<string, HTMLElement>,
 ): CollisionResult {
+  const NO_COLLISIONS: CollisionResult = {
+    hasCollisions: false,
+    collisions: [],
+    adjustedPositions: new Map(),
+  };
+
   const candidates = widgets.filter((widget) => !widget.ignoreCollisions);
   if (candidates.length < 2) {
-    return {
-      hasCollisions: false,
-      collisions: [],
-      adjustedPositions: new Map(),
-    };
+    return NO_COLLISIONS;
+  }
+
+  // Fast-path: if every widget has a unique anchor position, collisions are
+  // extremely unlikely (offsets would need to be huge).  Skip expensive DOM
+  // reads in the common case.
+  if (candidates.every((w) => isOverlayPosition(w.position))) {
+    const anchorKeys = new Set<string>();
+    let hasDuplicate = false;
+    for (const w of candidates) {
+      const key = (w.position as { anchor: string }).anchor;
+      if (anchorKeys.has(key)) { hasDuplicate = true; break; }
+      anchorKeys.add(key);
+    }
+    if (!hasDuplicate) return NO_COLLISIONS;
   }
 
   // Calculate bounds for all widgets
@@ -436,11 +452,7 @@ export function handleCollisions(
   const collisions = detectCollisions(candidates, bounds);
 
   if (collisions.length === 0) {
-    return {
-      hasCollisions: false,
-      collisions: [],
-      adjustedPositions: new Map(),
-    };
+    return NO_COLLISIONS;
   }
 
   // Resolve collisions

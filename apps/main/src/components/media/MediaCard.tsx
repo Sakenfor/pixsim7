@@ -551,8 +551,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       name: customOverlayConfig?.name || merged.name || 'Media Card',
       widgets: merged.widgets ?? [],
       spacing: customOverlayConfig?.spacing || merged.spacing || 'normal',
-      // Default to enabling collision detection unless explicitly disabled
-      collisionDetection: merged.collisionDetection ?? true,
+      collisionDetection: merged.collisionDetection ?? false,
     };
 
     // Safety net: ensure preset-specific widgets are filtered based on capabilities.
@@ -601,7 +600,17 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   const shouldShowVideoElement =
     mediaType === 'video' && !thumbSrc && !!resolvedVideoSrc && !videoLoadFailed;
 
-  const overlayData: MediaCardOverlayData = {
+  // Stable callback ref for upload-to-provider (avoids new arrow fn per render)
+  const onUploadToProviderRef = useRef(resolved.onUploadToProvider);
+  onUploadToProviderRef.current = resolved.onUploadToProvider;
+  const stableOnUploadToProvider = useMemo(
+    () => resolved.onUploadToProvider
+      ? (pid: string) => onUploadToProviderRef.current!(id, pid)
+      : undefined,
+    [!!resolved.onUploadToProvider, id],
+  );
+
+  const overlayData: MediaCardOverlayData = useMemo(() => ({
     id,
     mediaType,
     providerId,
@@ -609,42 +618,38 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     tags: tagSlugs,
     description,
     createdAt,
-    // Upload state (for UploadWidget)
     uploadState: resolved.uploadState || 'idle',
     uploadProgress: resolved.uploadProgress || 0,
-    // Video state (for VideoScrubWidget, ProgressWidget)
     remoteUrl: resolved.remoteUrl || '',
-    // For video scrub, prefer original CDN URL from asset (no auth needed), fallback to actual videoSrc
     videoSrc: overlayVideoSrc,
     durationSec: resolved.durationSec,
-    // Actions (for MenuWidget callbacks)
     actions: resolved.actions,
-    // Generation status (for GenerationStatusWidget)
     generationStatus: resolved.generationStatus,
     generationId: resolved.generationId,
     generationError: resolved.generationError,
-    // Source generation (for regenerate button)
     sourceGenerationId: resolved.sourceGenerationId,
     hasGenerationContext: resolved.hasGenerationContext,
-    // Favorite state
     isFavorite: resolved.isFavorite,
     onToggleFavorite: resolved.onToggleFavorite,
-    // Info popover
     prompt: resolved.prompt,
     operationType: resolved.operationType,
     model: resolved.contextMenuAsset?.model,
     width: resolved.width,
     height: resolved.height,
-    // Upload to specific provider (self-contained menu in upload widget)
-    onUploadToProvider: resolved.onUploadToProvider
-      ? (pid: string) => resolved.onUploadToProvider!(id, pid)
-      : undefined,
-    // Cross-provider presence
+    onUploadToProvider: stableOnUploadToProvider,
     providerUploads: resolved.contextMenuAsset?.providerUploads,
     lastUploadStatusByProvider: resolved.contextMenuAsset?.lastUploadStatusByProvider,
-    // Versioning
     versionNumber: resolved.contextMenuAsset?.versionNumber,
-  };
+  }), [
+    id, mediaType, providerId, providerStatus, tagSlugs, description, createdAt,
+    resolved.uploadState, resolved.uploadProgress, resolved.remoteUrl,
+    overlayVideoSrc, resolved.durationSec, resolved.actions,
+    resolved.generationStatus, resolved.generationId, resolved.generationError,
+    resolved.sourceGenerationId, resolved.hasGenerationContext,
+    resolved.isFavorite, resolved.onToggleFavorite,
+    resolved.prompt, resolved.operationType, resolved.contextMenuAsset,
+    resolved.width, resolved.height, stableOnUploadToProvider,
+  ]);
 
   return (
     <div
@@ -659,9 +664,7 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
           gesturePhase: gesture.phase,
           edgeInset: gesture.edgeInset,
         }), [gesture.phase, gesture.edgeInset])}
-        onWidgetClick={(widgetId) => {
-          console.log('Widget clicked:', widgetId);
-        }}
+        onWidgetClick={undefined}
       >
         <div
           ref={mediaContainerRef}

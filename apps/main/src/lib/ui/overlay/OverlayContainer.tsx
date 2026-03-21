@@ -87,6 +87,19 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRefs = useRef<Map<string, HTMLElement>>(new Map());
+  // Stable per-widget ref callbacks — cached so React.memo children don't re-render
+  const widgetRefCallbacks = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
+  const getWidgetRefCallback = useCallback((widgetId: string) => {
+    let cb = widgetRefCallbacks.current.get(widgetId);
+    if (!cb) {
+      cb = (el: HTMLDivElement | null) => {
+        if (el) { widgetRefs.current.set(widgetId, el); }
+        else { widgetRefs.current.delete(widgetId); }
+      };
+      widgetRefCallbacks.current.set(widgetId, cb);
+    }
+    return cb;
+  }, []);
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [adjustedPositions, setAdjustedPositions] = useState<Map<string, WidgetPosition>>(
@@ -142,12 +155,6 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
 
       if (result.hasCollisions) {
         setAdjustedPositions(result.adjustedPositions);
-
-        if (isDev) {
-          console.log(
-            `[Overlay] Detected ${result.collisions.length} collision(s), adjusted ${result.adjustedPositions.size} widget(s)`
-          );
-        }
       } else {
         setAdjustedPositions((prev) => (prev.size === 0 ? prev : new Map()));
       }
@@ -204,16 +211,23 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
     setIsFocused(false);
   }, []);
 
-  // Widget click handler
+  // Widget click handler — use refs so callback identity is stable across renders
+  const configRef = useRef(config);
+  configRef.current = config;
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const onWidgetClickRef = useRef(onWidgetClick);
+  onWidgetClickRef.current = onWidgetClick;
+
   const handleWidgetClick = useCallback(
     (widgetId: string, event?: React.MouseEvent) => {
-      const widget = config.widgets.find((w) => w.id === widgetId);
+      const widget = configRef.current.widgets.find((w) => w.id === widgetId);
       if (widget?.onClick) {
-        widget.onClick(data, event);
+        widget.onClick(dataRef.current, event);
       }
-      onWidgetClick?.(widgetId, data);
+      onWidgetClickRef.current?.(widgetId, dataRef.current);
     },
-    [config.widgets, data, onWidgetClick],
+    [],
   );
 
   // Determine overflow behavior
@@ -247,13 +261,7 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
             data={data}
             spacing={config.spacing ?? 'normal'}
             onWidgetClick={handleWidgetClick}
-            onRef={(el) => {
-              if (el) {
-                widgetRefs.current.set(widget.id, el);
-              } else {
-                widgetRefs.current.delete(widget.id);
-              }
-            }}
+            onRef={getWidgetRefCallback(widget.id)}
           />
         );
       })}
@@ -289,13 +297,7 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
                 spacing={spacing}
                 onWidgetClick={handleWidgetClick}
                 inStack
-                onRef={(el) => {
-                  if (el) {
-                    widgetRefs.current.set(widget.id, el);
-                  } else {
-                    widgetRefs.current.delete(widget.id);
-                  }
-                }}
+                onRef={getWidgetRefCallback(widget.id)}
               />
             ))}
           </div>
