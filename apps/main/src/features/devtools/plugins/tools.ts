@@ -25,6 +25,7 @@ const CodegenDevPage = lazy(() => import('../routes/pages/CodegenDevPage').then(
 const ContentMapPanel = lazy(() => import('@features/panels/components/dev/ContentMapPanel').then(m => ({ default: m.ContentMapPanel })));
 const PlansPanel = lazy(() => import('@features/panels/components/dev/PlansPanel').then(m => ({ default: m.PlansPanel })));
 const AgentObservabilityPanel = lazy(() => import('@features/panels/components/dev/AgentObservabilityPanel').then(m => ({ default: m.AgentObservabilityPanel })));
+const PerformancePanel = lazy(() => import('@features/panels/components/dev/PerformancePanel').then(m => ({ default: m.PerformancePanel })));
 
 // ============================================================================
 // Session & World State Tools
@@ -130,6 +131,26 @@ export const agentObservabilityTool = defineDevTool({
 // ============================================================================
 // Analytics & Metrics Tools
 // ============================================================================
+
+export const performanceTool = defineDevTool({
+  id: 'performance',
+  label: 'Performance',
+  updatedAt: '2026-03-21T00:00:00Z',
+  changeNote: 'Frontend performance dashboard — heap, FPS, DOM nodes, long tasks, blob caches, Zustand stores.',
+  featureHighlights: [
+    'JS heap sparkline and usage stats',
+    'FPS counter with jank detection',
+    'Long task observer (> 50ms)',
+    'Blob URL cache utilization',
+    'Zustand store size inventory',
+  ],
+  description: 'Monitor frontend performance — heap, FPS, long tasks, caches, store sizes',
+  icon: 'gauge',
+  category: 'debug',
+  panelComponent: PerformancePanel,
+  tags: ['performance', 'memory', 'fps', 'profiling', 'leaks', 'diagnostics', 'heap', 'dom'],
+  safeForNonDev: true,
+});
 
 // ============================================================================
 // Gizmo & Surface Management

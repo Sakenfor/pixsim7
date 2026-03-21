@@ -23,6 +23,7 @@ import {
   testOverviewTool,
   codegenTool,
   contentMapTool,
+  performanceTool,
 } from './tools';
 
 // Export all plugins individually
@@ -43,6 +44,7 @@ export {
   testOverviewTool,
   codegenTool,
   contentMapTool,
+  performanceTool,
 };
 
 // Export array of built-in dev tools for bulk registration
@@ -83,4 +85,7 @@ export const builtInDevTools = [
 
   // Content Map
   contentMapTool,
+
+  // Performance
+  performanceTool,
 ];
