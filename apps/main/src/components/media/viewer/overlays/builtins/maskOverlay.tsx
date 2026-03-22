@@ -16,29 +16,30 @@ import { API_BASE_URL, deleteAsset } from '@lib/api';
 import { uploadAsset } from '@lib/api/upload';
 import { authService } from '@lib/auth';
 import { Icon } from '@lib/icons';
-import { VersionNavigator, useVersions } from '@lib/ui/versioning';
+// import { VersionNavigator, useVersions } from '@lib/ui/versioning';
 
 import { useAssets, type AssetModel, type ViewerAsset } from '@features/assets';
 import { assetEvents } from '@features/assets/lib/assetEvents';
 import { extractUploadError, notifyGalleryOfNewAsset } from '@features/assets/lib/uploadActions';
 import { useGenerationSettingsStore, getRegisteredSettingsStores } from '@features/generation';
-import { MiniGalleryPopover } from '@features/generation/components/MiniGalleryPopover';
+// import { MiniGalleryPopover } from '@features/generation/components/MiniGalleryPopover';
 
 
 import {
   type AnyElement,
+  type InteractionLayer,
   InteractiveImageSurface,
   type InteractionMode,
+  type InteractiveImageSurfaceHandle,
   type StrokeElement,
   type PolygonElement,
   useInteractionLayer,
 } from '@/components/interactive-surface';
-import { drawVariableWidthCurve } from '@/components/interactive-surface/curveRenderUtils';
+import { drawVariableWidthCurve, traceSmoothPath } from '@/components/interactive-surface/curveRenderUtils';
 import { useViewerToolPresets, type ResolvedPreset } from '@/components/media/viewer/tools';
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 
-import { LayerPanel } from '../shared/LayerPanel';
 import { useOverlayLayerStore } from '../shared/overlayLayerStore';
 import {
   OverlaySidePanel,
@@ -47,7 +48,7 @@ import {
   SideToolButton,
   SideSlider,
   SideIconButton,
-  SidePrimaryButton,
+  // SidePrimaryButton,
 } from '../shared/OverlaySidePanel';
 import type { MediaOverlayComponentProps } from '../types';
 
@@ -151,6 +152,7 @@ function broadcastMaskUrlToGenerationScopes(maskUrl: string | undefined): void {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function makeMaskStrokeId(index: number): string {
   return globalThis.crypto?.randomUUID?.() ?? `mask-import-${Date.now()}-${index}`;
 }
@@ -171,65 +173,12 @@ async function loadImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
   }
 }
 
-function rasterMaskToEditableStrokes(
-  imageData: ImageData,
-  layerId: string,
-): StrokeElement[] {
-  const { width, height, data } = imageData;
-  if (width <= 0 || height <= 0) return [];
-
-  const strokes: StrokeElement[] = [];
-  const lineSize = 1 / width;
-  let strokeIndex = 0;
-
-  const isWhiteMaskPixel = (idx: number): boolean => {
-    const r = data[idx];
-    const g = data[idx + 1];
-    const b = data[idx + 2];
-    const a = data[idx + 3];
-    if (a < 16) return false;
-    return (r + g + b) >= 384;
-  };
-
-  for (let y = 0; y < height; y++) {
-    let x = 0;
-    while (x < width) {
-      while (x < width && !isWhiteMaskPixel((y * width + x) * 4)) x++;
-      if (x >= width) break;
-
-      const start = x;
-      while (x < width && isWhiteMaskPixel((y * width + x) * 4)) x++;
-      const end = x - 1;
-
-      const yNorm = (y + 0.5) / height;
-      const x1 = (start + 0.5) / width;
-      const x2 = start === end
-        ? Math.min(1, (end + 0.501) / width)
-        : (end + 0.5) / width;
-
-      strokes.push({
-        id: makeMaskStrokeId(strokeIndex++),
-        type: 'stroke',
-        layerId,
-        visible: true,
-        points: [
-          { x: x1, y: yNorm },
-          { x: x2, y: yNorm },
-        ],
-        tool: {
-          size: lineSize,
-          color: '#ffffff',
-          opacity: 0.7,
-        },
-        isErase: false,
-      });
-    }
-  }
-
-  return strokes;
-}
-
-async function fetchMaskAssetAsEditableStrokes(maskAssetId: number, layerId: string): Promise<StrokeElement[]> {
+/**
+ * Fetch a saved mask asset and return it as an ImageBitmap with transparent
+ * background (black→transparent, white stays white).  This is stored at the
+ * layer level as a base image — no element conversion needed.
+ */
+async function fetchMaskAsBaseImage(maskAssetId: number): Promise<ImageBitmap> {
   const token = authService.getStoredToken();
   const url = `${API_BASE_URL.replace(/\/$/, '')}/assets/${maskAssetId}/file`;
   const res = await fetch(url, {
@@ -241,23 +190,30 @@ async function fetchMaskAssetAsEditableStrokes(maskAssetId: number, layerId: str
 
   const blob = await res.blob();
   const decoded = await loadImageFromBlob(blob);
+  const width = decoded.naturalWidth || decoded.width;
+  const height = decoded.naturalHeight || decoded.height;
 
-  const maxDim = 512;
-  const scale = Math.min(1, maxDim / Math.max(decoded.naturalWidth || decoded.width, decoded.naturalHeight || decoded.height));
-  const width = Math.max(1, Math.round((decoded.naturalWidth || decoded.width) * scale));
-  const height = Math.max(1, Math.round((decoded.naturalHeight || decoded.height) * scale));
-
+  // Convert black→transparent so the mask composites correctly on both
+  // the live overlay canvas (transparent bg) and the black-bg export canvas.
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) {
-    throw new Error('Failed to prepare mask import canvas.');
-  }
+  if (!ctx) throw new Error('Failed to prepare mask import canvas.');
 
-  ctx.drawImage(decoded, 0, 0, width, height);
+  ctx.drawImage(decoded, 0, 0);
   const imageData = ctx.getImageData(0, 0, width, height);
-  return rasterMaskToEditableStrokes(imageData, layerId);
+  const d = imageData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const brightness = d[i] + d[i + 1] + d[i + 2];
+    if (brightness < 384) {
+      d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; d[i + 3] = 0;
+    } else {
+      d[i] = 255; d[i + 1] = 255; d[i + 2] = 255; d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return createImageBitmap(canvas);
 }
 
 // ── Composite export ─────────────────────────────────────────────────
@@ -266,12 +222,27 @@ async function fetchMaskAssetAsEditableStrokes(maskAssetId: number, layerId: str
  * Renders a single interaction layer's elements to a canvas context.
  * Shared between single-layer export and multi-layer compositing.
  */
+/**
+ * Which element categories to render.
+ * - 'all'          — everything (default, used for composite export)
+ * - 'raster-only'  — strokes + regions + base image, skip polygons/curves
+ * - 'vector-only'  — polygons/curves only, skip strokes/regions/base image
+ */
+type RenderFilter = 'all' | 'raster-only' | 'vector-only';
+
 function renderLayerToContext(
   ctx: CanvasRenderingContext2D,
   elements: AnyElement[],
   width: number,
   height: number,
+  baseImage?: ImageBitmap,
+  filter: RenderFilter = 'all',
 ): void {
+  // Draw base image first (imported mask), then vector elements on top
+  if (baseImage && filter !== 'vector-only') {
+    ctx.drawImage(baseImage, 0, 0, width, height);
+  }
+
   // Draw strokes/polygons/regions in white
   ctx.strokeStyle = '#ffffff';
   ctx.fillStyle = '#ffffff';
@@ -281,6 +252,7 @@ function renderLayerToContext(
 
   for (const element of elements) {
     if (element.type === 'stroke' && !(element as StrokeElement).isErase) {
+      if (filter === 'vector-only') continue;
       const stroke = element as StrokeElement;
       if (stroke.points.length < 2) continue;
       ctx.lineWidth = stroke.tool.size * width;
@@ -291,6 +263,7 @@ function renderLayerToContext(
       }
       ctx.stroke();
     } else if (element.type === 'polygon') {
+      if (filter === 'raster-only') continue;
       const poly = element as PolygonElement;
       if (poly.closed) {
         // Closed polygon — fill
@@ -324,27 +297,90 @@ function renderLayerToContext(
         }
       }
     } else if (element.type === 'region') {
+      if (filter === 'vector-only') continue;
       const region = element as { bounds: { x: number; y: number; width: number; height: number } };
       ctx.fillRect(region.bounds.x * width, region.bounds.y * height, region.bounds.width * width, region.bounds.height * height);
     }
   }
 
-  // Erase strokes
-  ctx.globalCompositeOperation = 'destination-out';
-  for (const element of elements) {
-    if (element.type === 'stroke' && (element as StrokeElement).isErase) {
-      const stroke = element as StrokeElement;
-      if (stroke.points.length < 2) continue;
-      ctx.lineWidth = stroke.tool.size * width;
-      ctx.beginPath();
-      ctx.moveTo(stroke.points[0].x * width, stroke.points[0].y * height);
-      for (let i = 1; i < stroke.points.length; i++) {
-        ctx.lineTo(stroke.points[i].x * width, stroke.points[i].y * height);
+  // Erase strokes (raster operation)
+  if (filter !== 'vector-only') {
+    ctx.globalCompositeOperation = 'destination-out';
+    for (const element of elements) {
+      if (element.type === 'stroke' && (element as StrokeElement).isErase) {
+        const stroke = element as StrokeElement;
+        if (stroke.points.length < 2) continue;
+        ctx.lineWidth = stroke.tool.size * width;
+        ctx.beginPath();
+        ctx.moveTo(stroke.points[0].x * width, stroke.points[0].y * height);
+        for (let i = 1; i < stroke.points.length; i++) {
+          ctx.lineTo(stroke.points[i].x * width, stroke.points[i].y * height);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+}
+
+/**
+ * Render visible mask layers to a canvas with the given element filter.
+ * Returns the canvas, or null if there's nothing to render.
+ */
+function renderMaskComposite(
+  layers: InteractionLayer[],
+  width: number,
+  height: number,
+  baseImages: Map<string, ImageBitmap>,
+  filter: RenderFilter,
+  forceFullAlpha: boolean,
+): HTMLCanvasElement | null {
+  const visibleLayers = layers.filter(
+    (l) => l.type === 'mask' && l.visible && (l.elements.length > 0 || baseImages.has(l.id)),
+  );
+  if (visibleLayers.length === 0) return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, width, height);
+
+  for (const layer of visibleLayers) {
+    if (layer.opacity < 1) {
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width = width;
+      tmpCanvas.height = height;
+      const tmpCtx = tmpCanvas.getContext('2d');
+      if (!tmpCtx) continue;
+      tmpCtx.fillStyle = '#000000';
+      tmpCtx.fillRect(0, 0, width, height);
+      renderLayerToContext(tmpCtx, layer.elements, width, height, baseImages.get(layer.id), filter);
+      ctx.globalAlpha = layer.opacity;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.drawImage(tmpCanvas, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    } else {
+      renderLayerToContext(ctx, layer.elements, width, height, baseImages.get(layer.id), filter);
     }
   }
-  ctx.globalCompositeOperation = 'source-over';
+
+  if (forceFullAlpha) {
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const d = imageData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] > 0 || d[i + 1] > 0 || d[i + 2] > 0) {
+        d[i] = 255; d[i + 1] = 255; d[i + 2] = 255;
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  return canvas;
 }
 
 // ── MaskOverlayMain ───────────────────────────────────────────────────
@@ -391,6 +427,8 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     canRedo,
     resetView,
     viewCursorHint,
+    hoveredVertex,
+    setVertexWidth,
   } = interaction;
 
   const draftStorageKey = useMemo(() => getMaskDraftStorageKey(asset), [asset]);
@@ -399,11 +437,124 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   const persistDraftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isImportingSavedMask, setIsImportingSavedMask] = useState(false);
 
+  /** Base images for imported mask layers (layerId → ImageBitmap). */
+  const baseImagesRef = useRef<Map<string, ImageBitmap>>(new Map());
+  const surfaceRef = useRef<InteractiveImageSurfaceHandle>(null);
+
+  /**
+   * Custom layer renderer that draws the base image (imported mask) before
+   * the default element rendering.  Returns undefined when no base images
+   * exist so the default renderer handles everything.
+   */
+  const handleRenderLayer = useMemo(() => {
+    if (baseImagesRef.current.size === 0) return undefined;
+
+    return (layer: InteractionLayer, ctx: CanvasRenderingContext2D) => {
+      // Get image rect from ref (may be unavailable on first frame — that's OK,
+      // the canvas will redraw on the next state change when the ref is set)
+      const transform = surfaceRef.current?.getTransform();
+      const imageRect = transform?.getImageRect();
+
+      // Draw imported mask base image
+      const baseImage = baseImagesRef.current.get(layer.id);
+      if (baseImage && imageRect) {
+        ctx.drawImage(baseImage, imageRect.x, imageRect.y, imageRect.width, imageRect.height);
+      }
+
+      if (!imageRect) return;
+
+      const toScreenX = (nx: number) => nx * imageRect.width + imageRect.x;
+      const toScreenY = (ny: number) => ny * imageRect.height + imageRect.y;
+      const toScreen = (p: { x: number; y: number }) => ({
+        x: toScreenX(p.x),
+        y: toScreenY(p.y),
+      });
+      const zoom = state.view.zoom;
+
+      // Render all element types — same logic as InteractiveImageSurface defaults
+      for (const element of layer.elements) {
+        if (!element.visible) continue;
+
+        if (element.type === 'stroke') {
+          const stroke = element as StrokeElement;
+          if (stroke.points.length < 2) continue;
+          ctx.beginPath();
+          ctx.moveTo(toScreenX(stroke.points[0].x), toScreenY(stroke.points[0].y));
+          for (let i = 1; i < stroke.points.length; i++) {
+            ctx.lineTo(toScreenX(stroke.points[i].x), toScreenY(stroke.points[i].y));
+          }
+          ctx.strokeStyle = stroke.isErase ? 'rgba(0,0,0,1)' : stroke.tool.color;
+          ctx.lineWidth = stroke.tool.size * imageRect.width;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.globalAlpha = stroke.tool.opacity;
+          ctx.globalCompositeOperation = stroke.isErase ? 'destination-out' : 'source-over';
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = 'source-over';
+        } else if (element.type === 'polygon') {
+          const poly = element as PolygonElement;
+          const screenPts = poly.points.map(toScreen);
+          if (poly.closed) {
+            if (poly.points.length < 3) continue;
+            ctx.beginPath();
+            ctx.moveTo(screenPts[0].x, screenPts[0].y);
+            for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i].x, screenPts[i].y);
+            ctx.closePath();
+            ctx.fillStyle = poly.style?.fillColor ?? '#ffffff';
+            ctx.fill();
+          } else {
+            if (poly.points.length < 2) continue;
+            const isCurved = !!(poly.metadata as Record<string, unknown> | undefined)?.curved;
+            if (poly.pointWidths && poly.pointWidths.length === poly.points.length) {
+              const scaledWidths = poly.pointWidths.map((w) => w * zoom);
+              ctx.strokeStyle = poly.style?.strokeColor ?? '#ffffff';
+              drawVariableWidthCurve(ctx, screenPts, scaledWidths, isCurved && poly.points.length >= 3);
+            } else {
+              ctx.lineWidth = (poly.style?.strokeWidth ?? 2) * zoom;
+              ctx.strokeStyle = poly.style?.strokeColor ?? '#ffffff';
+              ctx.lineCap = 'round';
+              ctx.lineJoin = 'round';
+              ctx.beginPath();
+              if (isCurved && poly.points.length >= 3) {
+                traceSmoothPath(ctx, screenPts, false, 0.5);
+              } else {
+                ctx.moveTo(screenPts[0].x, screenPts[0].y);
+                for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i].x, screenPts[i].y);
+              }
+              ctx.stroke();
+            }
+            // Vertex handles
+            for (let i = 0; i < poly.points.length; i++) {
+              const p = toScreen(poly.points[i]);
+              const pw = poly.pointWidths?.[i];
+              const handleRadius = pw != null ? Math.max(3, (pw / 2) * zoom) : Math.max(3, 5 * Math.min(2, zoom));
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, handleRadius, 0, Math.PI * 2);
+              ctx.fillStyle = i === 0 ? '#f59e0b' : '#ffffff';
+              ctx.globalAlpha = pw != null ? 0.35 : 1;
+              ctx.fill();
+              ctx.globalAlpha = 1;
+              ctx.strokeStyle = '#111827';
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            }
+          }
+        }
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.layers, state.view.zoom]);
+
   // Combined initialization: restore draft OR create default layer (once per asset).
   // Uses ref guard to survive React StrictMode double-invoke.
   useEffect(() => {
     if (restoredDraftKeyRef.current === draftStorageKey) return;
     restoredDraftKeyRef.current = draftStorageKey;
+
+    // Reset save-tracking refs so a new asset doesn't chain to the previous one
+    lastSavedCompositeIdRef.current = null;
+    autoSavedSourceAssetIdRef.current = null;
 
     const draft = readMaskDraft(asset);
     if (draft && draft.layers.length > 0) {
@@ -427,6 +578,18 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
             elements: layerDraft.elements,
             visible: layerDraft.visible,
             opacity: layerDraft.opacity,
+          });
+        }
+        // Re-fetch base image for layers that were imported from a saved mask
+        if (layerDraft.savedAssetId) {
+          const assetId = layerDraft.savedAssetId;
+          const layerId = layerDraft.id;
+          fetchMaskAsBaseImage(assetId).then((bitmap) => {
+            baseImagesRef.current.set(layerId, bitmap);
+            // Force a re-render so the canvas picks up the base image
+            updateLayer(layerId, {});
+          }).catch((err) => {
+            console.warn('[MaskOverlay] Failed to restore base image for layer:', err);
           });
         }
       }
@@ -459,14 +622,14 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         name: l.name,
         visible: l.visible,
         opacity: l.opacity,
-        hasContent: l.elements.length > 0,
+        hasContent: l.elements.length > 0 || baseImagesRef.current.has(l.id),
         savedAssetId: l.config?.savedAssetId as number | undefined,
       })),
     [state.layers],
   );
 
   const hasContent = useMemo(
-    () => state.layers.some((l) => l.type === 'mask' && l.elements.length > 0),
+    () => state.layers.some((l) => l.type === 'mask' && (l.elements.length > 0 || baseImagesRef.current.has(l.id))),
     [state.layers],
   );
 
@@ -476,6 +639,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       source_asset_id: sourceAssetId ?? -1,
       media_type: 'image',
       upload_method: 'mask_draw',
+      asset_kind: 'mask',
       sort: 'new',
     },
   });
@@ -484,6 +648,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     filters: {
       media_type: 'image',
       upload_method: 'mask_draw',
+      asset_kind: 'mask',
       sort: 'new',
     },
   });
@@ -514,8 +679,10 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     if (maskLayers.length <= 1) {
       // Don't remove the last layer, just clear it
       clearLayer(layerId);
+      baseImagesRef.current.delete(layerId);
       return;
     }
+    baseImagesRef.current.delete(layerId);
     interactionRemoveLayer(layerId);
     // If we removed the active layer, switch to another
     if (activeLayerId === layerId) {
@@ -547,14 +714,51 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     // If active layer exists and has no content, replace it in-place.
     // Otherwise create a new layer.
     const targetLayer = activeLayerId ? getLayer(activeLayerId) : null;
-    const replaceActive = targetLayer && targetLayer.elements.length === 0;
+    const replaceActive = targetLayer && targetLayer.elements.length === 0 && !baseImagesRef.current.has(activeLayerId!);
+
+    // Look up asset metadata for vector layers / raster-only data URL
+    const assetModel = [...maskAssetsQuery.items, ...anyMaskAssetsQuery.items]
+      .find((a) => a.id === maskAssetId);
+    const ctx = assetModel?.uploadContext;
+    const vectorElements = Array.isArray(ctx?.vector_layers) ? ctx.vector_layers as AnyElement[] : [];
+    const rasterDataUrl = typeof ctx?.raster_data_url === 'string' ? ctx.raster_data_url : null;
 
     setIsImportingSavedMask(true);
     try {
+      // If we have a raster-only data URL, use that (strokes only, no baked vectors).
+      // Otherwise fall back to the full composite asset file.
+      let bitmap: ImageBitmap;
+      if (rasterDataUrl) {
+        const img = await loadImageFromBlob(await (await fetch(rasterDataUrl)).blob());
+        const canvas = document.createElement('canvas');
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+        canvas.width = w;
+        canvas.height = h;
+        const c = canvas.getContext('2d', { willReadFrequently: true })!;
+        c.drawImage(img, 0, 0);
+        // Convert black→transparent (same as fetchMaskAsBaseImage)
+        const imageData = c.getImageData(0, 0, w, h);
+        const d = imageData.data;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i] + d[i + 1] + d[i + 2] < 384) {
+            d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; d[i + 3] = 0;
+          } else {
+            d[i] = 255; d[i + 1] = 255; d[i + 2] = 255; d[i + 3] = 255;
+          }
+        }
+        c.putImageData(imageData, 0, 0);
+        bitmap = await createImageBitmap(canvas);
+      } else {
+        bitmap = await fetchMaskAsBaseImage(maskAssetId);
+      }
+
       if (replaceActive && targetLayer) {
-        const importedStrokes = await fetchMaskAssetAsEditableStrokes(maskAssetId, targetLayer.id);
+        baseImagesRef.current.set(targetLayer.id, bitmap);
+        // Restore vector elements with correct layerId
+        const restoredVectors = vectorElements.map((el) => ({ ...el, layerId: targetLayer.id }));
         updateLayer(targetLayer.id, {
-          elements: importedStrokes,
+          elements: restoredVectors,
           name: `Mask #${maskAssetId}`,
           config: { savedAssetId: maskAssetId },
         });
@@ -562,8 +766,12 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       } else {
         const id = nextMaskLayerId();
         addLayer({ type: 'mask', name: `Mask #${maskAssetId}`, id, config: { savedAssetId: maskAssetId } });
-        const importedStrokes = await fetchMaskAssetAsEditableStrokes(maskAssetId, id);
-        updateLayer(id, { elements: importedStrokes });
+        baseImagesRef.current.set(id, bitmap);
+        // Restore vector elements with correct layerId
+        if (vectorElements.length > 0) {
+          const restoredVectors = vectorElements.map((el) => ({ ...el, layerId: id }));
+          updateLayer(id, { elements: restoredVectors });
+        }
         interactionSetActiveLayer(id);
         toast.success(`Imported mask #${maskAssetId} as new layer.`);
       }
@@ -573,7 +781,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     } finally {
       setIsImportingSavedMask(false);
     }
-  }, [activeLayerId, addLayer, getLayer, interactionSetActiveLayer, isImportingSavedMask, toast, updateLayer]);
+  }, [activeLayerId, addLayer, getLayer, interactionSetActiveLayer, isImportingSavedMask, toast, updateLayer, maskAssetsQuery.items, anyMaskAssetsQuery.items]);
 
   // ── Draft persistence ──────────────────────────────────────────────
 
@@ -585,7 +793,8 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
 
     persistDraftTimerRef.current = setTimeout(() => {
       const maskLayers = state.layers.filter((l) => l.type === 'mask');
-      if (maskLayers.every((l) => l.elements.length === 0)) {
+      // A layer has content if it has stroke elements OR a base image
+      if (maskLayers.every((l) => l.elements.length === 0 && !baseImagesRef.current.has(l.id))) {
         writeMaskDraft(asset, null);
         return;
       }
@@ -620,6 +829,16 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   const currentZoom = state.view.zoom;
   const isZoomed = Math.abs(currentZoom - 1) > 0.01;
 
+  // Resolve hovered vertex width from interaction layer state
+  const hoveredVertexWidth = useMemo(() => {
+    if (!hoveredVertex) return null;
+    const layer = state.layers.find((l) => l.id === hoveredVertex.layerId);
+    const el = layer?.elements.find((e) => e.id === hoveredVertex.elementId && e.type === 'polygon');
+    if (!el) return null;
+    const poly = el as PolygonElement;
+    return poly.pointWidths?.[hoveredVertex.vertexIndex] ?? null;
+  }, [hoveredVertex, state.layers]);
+
   useEffect(() => {
     store.getState()._syncState({
       mode: state.mode,
@@ -632,8 +851,10 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       isZoomed,
       layers: layerInfos,
       activeLayerId,
+      hoveredVertex,
+      hoveredVertexWidth,
     });
-  }, [state.mode, state.tool.size, state.tool.opacity, canUndo, canRedo, hasContent, currentZoom, isZoomed, layerInfos, activeLayerId, store]);
+  }, [state.mode, state.tool.size, state.tool.opacity, canUndo, canRedo, hasContent, currentZoom, isZoomed, layerInfos, activeLayerId, hoveredVertex, hoveredVertexWidth, store]);
 
   // Sync layer state to shared overlay layer store (for default sidebar)
   useEffect(() => {
@@ -652,7 +873,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     setBrushOpacity,
     undo,
     redo,
-    clearLayer: () => activeLayerId && clearLayer(activeLayerId),
+    clearLayer: () => { if (activeLayerId) { baseImagesRef.current.delete(activeLayerId); clearLayer(activeLayerId); } },
     exportMask: async () => {},
     saveAsNew: async () => {},
     resetView,
@@ -670,13 +891,14 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   callbacksRef.current.setBrushOpacity = setBrushOpacity;
   callbacksRef.current.undo = undo;
   callbacksRef.current.redo = redo;
-  callbacksRef.current.clearLayer = () => activeLayerId && clearLayer(activeLayerId);
+  callbacksRef.current.clearLayer = () => { if (activeLayerId) { baseImagesRef.current.delete(activeLayerId); clearLayer(activeLayerId); } };
   callbacksRef.current.resetView = resetView;
   callbacksRef.current.addLayer = handleAddLayer;
   callbacksRef.current.removeLayer = handleRemoveLayer;
   callbacksRef.current.setActiveLayer = handleSetActiveLayer;
   callbacksRef.current.toggleLayerVisibility = handleToggleLayerVisibility;
   callbacksRef.current.renameLayer = handleRenameLayer;
+  callbacksRef.current.setVertexWidth = setVertexWidth;
   callbacksRef.current.importSavedMask = handleImportSavedMask;
 
   // ── Composite export ───────────────────────────────────────────────
@@ -692,7 +914,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     if (lastSavedCompositeIdRef.current) return lastSavedCompositeIdRef.current;
     // Check all visible mask layers for a savedAssetId (first one wins)
     for (const layer of state.layers) {
-      if (layer.type === 'mask' && layer.visible && layer.elements.length > 0) {
+      if (layer.type === 'mask' && layer.visible && (layer.elements.length > 0 || baseImagesRef.current.has(layer.id))) {
         const savedId = layer.config?.savedAssetId as number | undefined;
         if (savedId) return savedId;
       }
@@ -715,65 +937,37 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
 
     const width = resolvedMediaDimensions?.width || 1024;
     const height = resolvedMediaDimensions?.height || 1024;
+    const forceFullAlpha = store.getState().forceFullAlpha;
 
-    // Composite all visible mask layers onto one canvas
-    const visibleLayers = state.layers.filter((l) => l.type === 'mask' && l.visible && l.elements.length > 0);
-    if (visibleLayers.length === 0) {
+    // ── Render composite (strokes + vectors) — this is the file consumers see
+    const compositeCanvas = renderMaskComposite(
+      state.layers, width, height, baseImagesRef.current, 'all', forceFullAlpha,
+    );
+    if (!compositeCanvas) {
       toast.error('No visible mask content to export.');
       return;
     }
 
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      toast.error('Failed to create export canvas.');
-      return;
-    }
+    // ── Collect vector elements for metadata (polygons/curves across all visible layers)
+    const visibleLayers = state.layers.filter(
+      (l) => l.type === 'mask' && l.visible && (l.elements.length > 0 || baseImagesRef.current.has(l.id)),
+    );
+    const vectorElements = visibleLayers.flatMap((l) =>
+      l.elements.filter((el) => el.type === 'polygon'),
+    );
 
-    // Black background (preserve areas)
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, width, height);
-
-    // Render each visible layer (OR composition — any white pixel stays white)
-    for (const layer of visibleLayers) {
-      if (layer.opacity < 1) {
-        // Render to temp canvas with opacity, then composite
-        const tmpCanvas = document.createElement('canvas');
-        tmpCanvas.width = width;
-        tmpCanvas.height = height;
-        const tmpCtx = tmpCanvas.getContext('2d');
-        if (!tmpCtx) continue;
-        tmpCtx.fillStyle = '#000000';
-        tmpCtx.fillRect(0, 0, width, height);
-        renderLayerToContext(tmpCtx, layer.elements, width, height);
-        ctx.globalAlpha = layer.opacity;
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.drawImage(tmpCanvas, 0, 0);
-        ctx.globalAlpha = 1;
-        ctx.globalCompositeOperation = 'source-over';
-      } else {
-        renderLayerToContext(ctx, layer.elements, width, height);
+    // ── Render raster-only PNG (strokes + base images, no vectors) for re-editing
+    let rasterOnlyDataUrl: string | undefined;
+    if (vectorElements.length > 0) {
+      const rasterCanvas = renderMaskComposite(
+        state.layers, width, height, baseImagesRef.current, 'raster-only', forceFullAlpha,
+      );
+      if (rasterCanvas) {
+        rasterOnlyDataUrl = rasterCanvas.toDataURL('image/png');
       }
     }
 
-    // Binarize: any non-black pixel → pure white (clean binary mask)
-    if (store.getState().forceFullAlpha) {
-      const imageData = ctx.getImageData(0, 0, width, height);
-      const d = imageData.data;
-      for (let i = 0; i < d.length; i += 4) {
-        const isNonBlack = d[i] > 0 || d[i + 1] > 0 || d[i + 2] > 0;
-        if (isNonBlack) {
-          d[i] = 255;
-          d[i + 1] = 255;
-          d[i + 2] = 255;
-        }
-      }
-      ctx.putImageData(imageData, 0, 0);
-    }
-
-    const maskDataUrl = canvas.toDataURL('image/png');
+    const maskDataUrl = compositeCanvas.toDataURL('image/png');
 
     isSavingRef.current = true;
     store.getState()._syncState({ isSaving: true });
@@ -818,6 +1012,14 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         }),
         save_target: saveTarget,
       };
+
+      // Stash editing data: vector elements + raster-only PNG for clean re-editing
+      if (vectorElements.length > 0) {
+        uploadContext.vector_layers = vectorElements;
+        if (rasterOnlyDataUrl) {
+          uploadContext.raster_data_url = rasterOnlyDataUrl;
+        }
+      }
 
       // Chain as a version unless forced new
       if (!forceNew) {
@@ -911,6 +1113,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       toggleLayerVisibility: (id) => callbacksRef.current.toggleLayerVisibility(id),
       renameLayer: (id, name) => callbacksRef.current.renameLayer(id, name),
       importSavedMask: (id) => callbacksRef.current.importSavedMask(id),
+      setVertexWidth: (lid, eid, vi, w) => callbacksRef.current.setVertexWidth(lid, eid, vi, w),
     });
   }, [store]);
 
@@ -968,6 +1171,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   }, []);
 
   // Delete a saved mask asset from the backend and remove its layer
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDeleteMaskAsset = useCallback(async (assetId: number, layerId: string) => {
     try {
       await deleteAsset(assetId);
@@ -1008,23 +1212,18 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       className="absolute inset-0 bg-surface-inset"
       sidebar={<MaskToolsPanel />}
       sidebarWidth="w-32"
-      sidebarRight={
-        <MaskLayersPanel
-          sourceAssetId={sourceAssetId}
-          onDeleteMaskAsset={handleDeleteMaskAsset}
-        />
-      }
-      sidebarRightWidth="w-40"
       bodyScroll={false}
     >
       <div className="w-full h-full" onContextMenu={(e) => { if (state.mode === 'view') e.preventDefault(); }}>
         <InteractiveImageSurface
+          ref={surfaceRef}
           media={media}
           state={state}
           handlers={handlers}
           cursor={cursor}
           className="w-full h-full"
           onMediaLoad={handleMediaLoad}
+          renderLayer={handleRenderLayer}
         >
           <MaskPreviewOverlay />
         </InteractiveImageSurface>
@@ -1085,6 +1284,9 @@ function MaskToolsPanel() {
     saveAsNew,
     resetView,
     setForceFullAlpha,
+    hoveredVertex,
+    hoveredVertexWidth,
+    setVertexWidth,
   } = useMaskOverlayStore();
 
   const { manual, automatic } = useViewerToolPresets({ hasImage: true, hasSelection: hasContent });
@@ -1163,6 +1365,27 @@ function MaskToolsPanel() {
         )}
       </SideSection>
 
+      {hoveredVertex && hoveredVertexWidth != null && (
+        <>
+          <SideDivider />
+          <SideSection label={`Point ${hoveredVertex.vertexIndex + 1} Width`} className="gap-1">
+            <SideSlider
+              label={`${Math.round(hoveredVertexWidth)}`}
+              value={hoveredVertexWidth}
+              min={1}
+              max={75}
+              step={0.5}
+              onChange={(w) => setVertexWidth(
+                hoveredVertex.layerId,
+                hoveredVertex.elementId,
+                hoveredVertex.vertexIndex,
+                w,
+              )}
+            />
+          </SideSection>
+        </>
+      )}
+
       <SideDivider />
 
       <SideSection label="Actions">
@@ -1207,25 +1430,31 @@ function MaskToolsPanel() {
         <span className="text-[10px] text-th-secondary leading-none">Full alpha</span>
       </label>
 
-      <div className="flex flex-col gap-1">
-        <SidePrimaryButton
-          disabled={!hasContent || isSaving}
-          title={hasVersionParent ? 'Overwrite current mask version' : 'Save as new mask asset'}
-          onClick={exportMask}
-        >
-          {isSaving ? 'Saving...' : 'Save'}
-        </SidePrimaryButton>
-
-        {hasVersionParent && (
+      <div className="px-2">
+        <div className="flex w-full rounded overflow-hidden">
           <button
             disabled={!hasContent || isSaving}
-            onClick={saveAsNew}
-            className="w-full h-6 rounded bg-th/10 hover:bg-th/15 text-th-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-[10px]"
-            title="Save as a new standalone mask (no version chain)"
+            onClick={exportMask}
+            className={`flex-1 py-2 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              !hasContent || isSaving ? 'bg-th/10 text-th-muted' : 'bg-accent hover:bg-accent-hover text-accent-text'
+            } ${hasVersionParent ? 'rounded-l' : 'rounded'}`}
+            title={hasVersionParent ? 'Overwrite current mask version' : 'Save as new mask asset'}
           >
-            Save as new
+            {isSaving ? 'Saving...' : 'Save'}
           </button>
-        )}
+          {hasVersionParent && (
+            <button
+              disabled={!hasContent || isSaving}
+              onClick={saveAsNew}
+              className={`w-7 flex items-center justify-center border-l border-black/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                !hasContent || isSaving ? 'bg-th/10 text-th-muted' : 'bg-accent hover:bg-accent-hover text-accent-text'
+              } rounded-r`}
+              title="Save as new mask (no version chain)"
+            >
+              <Icon name="chevronDown" size={10} />
+            </button>
+          )}
+        </div>
       </div>
     </OverlaySidePanel>
   );
@@ -1265,186 +1494,3 @@ function PresetButton({ preset: resolved, active, onClick }: {
   );
 }
 
-// ── MaskLayersPanel (RIGHT) ───────────────────────────────────────────
-
-interface MaskLayersPanelProps {
-  sourceAssetId: number | null;
-  onDeleteMaskAsset: (assetId: number, layerId: string) => void;
-}
-
-function MaskLayersPanel({
-  sourceAssetId,
-  onDeleteMaskAsset,
-}: MaskLayersPanelProps) {
-  const {
-    layers,
-    activeLayerId,
-    addLayer: storeAddLayer,
-    removeLayer: storeRemoveLayer,
-    setActiveLayer,
-    toggleLayerVisibility,
-    renameLayer,
-    importSavedMask,
-  } = useMaskOverlayStore();
-
-  const activeLayer = layers.find((l) => l.id === activeLayerId) ?? null;
-
-  const [importAnchorRect, setImportAnchorRect] = useState<DOMRect | null>(null);
-  const [showAll, setShowAll] = useState(!sourceAssetId);
-  const importButtonRef = useRef<HTMLButtonElement>(null);
-
-  const handleToggleImport = useCallback(() => {
-    if (importAnchorRect) {
-      setImportAnchorRect(null);
-    } else {
-      const rect = importButtonRef.current?.getBoundingClientRect();
-      if (rect) setImportAnchorRect(rect);
-    }
-  }, [importAnchorRect]);
-
-  const setPreviewMaskUrl = useMaskOverlayStore((s) => s.setPreviewMaskUrl);
-
-  const handleCloseImport = useCallback(() => {
-    setImportAnchorRect(null);
-    setPreviewMaskUrl(null);
-  }, [setPreviewMaskUrl]);
-
-  const handleMaskHover = useCallback((asset: AssetModel | null) => {
-    if (!asset) {
-      setPreviewMaskUrl(null);
-      return;
-    }
-    const url = asset.previewUrl || asset.thumbnailUrl || asset.fileUrl;
-    if (url) setPreviewMaskUrl(url);
-  }, [setPreviewMaskUrl]);
-
-  const handleSelectMask = useCallback((asset: AssetModel) => {
-    setPreviewMaskUrl(null);
-    importSavedMask(asset.id);
-    setImportAnchorRect(null);
-  }, [importSavedMask, setPreviewMaskUrl]);
-
-  const renderLayerExtra = useCallback((layer: MaskLayerInfo) => {
-    if (!layer.savedAssetId) return null;
-    return (
-      <div className="flex items-center gap-1">
-        <LayerVersionNavigator
-          assetId={layer.savedAssetId}
-          onVersionSelect={importSavedMask}
-        />
-        <button
-          className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-th-muted hover:text-red-400 hover:bg-red-500/10 transition-colors"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteMaskAsset(layer.savedAssetId!, layer.id);
-          }}
-          title={`Delete saved mask #${layer.savedAssetId}`}
-        >
-          <Icon name="trash" size={10} />
-        </button>
-      </div>
-    );
-  }, [importSavedMask, onDeleteMaskAsset]);
-
-  const importFilters = showAll || !sourceAssetId
-    ? { media_type: 'image' as const, upload_method: 'mask_draw' as const, sort: 'new' as const }
-    : { source_asset_id: sourceAssetId, media_type: 'image' as const, upload_method: 'mask_draw' as const, sort: 'new' as const };
-
-  return (
-    <OverlaySidePanel side="right">
-      <SideSection label="Layers">
-        <LayerPanel
-          layers={layers}
-          activeLayerId={activeLayerId}
-          onSelectLayer={setActiveLayer}
-          onToggleVisibility={toggleLayerVisibility}
-          onRenameLayer={renameLayer}
-          onAddLayer={storeAddLayer}
-          onRemoveLayer={storeRemoveLayer}
-          renderLayerExtra={renderLayerExtra}
-        />
-      </SideSection>
-
-      <SideDivider />
-
-      {/* Import saved masks — replaces active layer if empty, else adds new */}
-      <SideSection label="Import Mask" className="gap-1">
-        {activeLayer && !activeLayer.hasContent && (
-          <div className="text-[10px] text-th-muted leading-snug">
-            Loads into active layer
-          </div>
-        )}
-        <button
-          ref={importButtonRef}
-          type="button"
-          onClick={handleToggleImport}
-          className="w-full h-7 rounded bg-th/10 hover:bg-th/15 border border-th/10 text-[11px] text-th-secondary px-1.5 flex items-center gap-1.5"
-          title={activeLayer && !activeLayer.hasContent ? 'Load into active layer' : 'Import as new layer'}
-        >
-          <Icon name="paintbrush" size={11} />
-          <span className="flex-1 text-left truncate">Browse masks...</span>
-          <Icon name={importAnchorRect ? 'chevronUp' : 'chevronDown'} size={9} className="opacity-60" />
-        </button>
-
-        {importAnchorRect && (
-          <MiniGalleryPopover
-            anchorRect={importAnchorRect}
-            title={showAll || !sourceAssetId ? 'All Masks' : 'Linked Masks'}
-            onClose={handleCloseImport}
-            width={320}
-            height={360}
-            galleryProps={{
-              initialFilters: importFilters,
-              syncInitialFilters: true,
-              showSearch: true,
-              showMediaType: false,
-              showSort: true,
-              suppressHoverActions: true,
-              onItemSelect: handleSelectMask,
-              onItemHover: handleMaskHover,
-              emptyMessage: sourceAssetId && !showAll ? 'No masks for this asset.' : 'No saved masks.',
-              header: sourceAssetId ? (
-                <div className="flex items-center justify-between px-3 py-1 border-b border-neutral-200 dark:border-neutral-700">
-                  <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                    {showAll ? 'All masks' : 'Linked to this asset'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowAll((v) => !v)}
-                    className="text-[10px] text-accent hover:underline"
-                  >
-                    {showAll ? 'Show linked' : 'Show all'}
-                  </button>
-                </div>
-              ) : undefined,
-            }}
-          />
-        )}
-      </SideSection>
-    </OverlaySidePanel>
-  );
-}
-
-// ── LayerVersionNavigator ─────────────────────────────────────────────
-
-interface LayerVersionNavigatorProps {
-  assetId: number;
-  onVersionSelect: (assetId: number) => void;
-}
-
-function LayerVersionNavigator({ assetId, onVersionSelect }: LayerVersionNavigatorProps) {
-  const { versions, loading } = useVersions('asset', assetId);
-
-  if (loading || versions.length <= 1) return null;
-
-  return (
-    <div className="pl-6" onClick={(e) => e.stopPropagation()}>
-      <VersionNavigator
-        versions={versions}
-        currentEntityId={assetId}
-        onSelect={(entry) => onVersionSelect(Number(entry.entityId))}
-        compact
-      />
-    </div>
-  );
-}
