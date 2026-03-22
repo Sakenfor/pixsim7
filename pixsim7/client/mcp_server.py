@@ -17,6 +17,12 @@ import re
 import sys
 from typing import Any
 
+# Codex app-server expects UTF-8 for subprocess stdio streams.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 try:
     import httpx
 except ImportError:
@@ -217,6 +223,89 @@ async def _init_tools() -> None:
             ):
                 _tool_aliases[legacy_name] = tool_name
 
+    # ── Built-in file tools (work locally, complement API-based tools) ──
+
+    _dynamic_tools.append(types.Tool(
+        name="read_project_file",
+        description=(
+            "Read a file from the project repository. Use relative paths "
+            "(e.g. 'pixsim7/backend/main/services/foo.py'). "
+            "Returns file content with line numbers. Max 200KB."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Relative path to the file within the project",
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Start reading from this line number (1-based, optional)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max number of lines to return (optional, default 500)",
+                },
+            },
+            "required": ["path"],
+        },
+    ))
+    _dynamic_routes["read_project_file"] = {"builtin": True}
+
+    _dynamic_tools.append(types.Tool(
+        name="list_project_files",
+        description=(
+            "List files in a project directory. Use relative paths "
+            "(e.g. 'pixsim7/backend/main/services/'). Returns file names with sizes."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Relative directory path within the project (default: root)",
+                },
+                "pattern": {
+                    "type": "string",
+                    "description": "Glob pattern to filter files (e.g. '*.py', '**/*.ts')",
+                },
+            },
+        },
+    ))
+    _dynamic_routes["list_project_files"] = {"builtin": True}
+
+    _dynamic_tools.append(types.Tool(
+        name="search_project_files",
+        description=(
+            "Search for text/regex patterns in project files. "
+            "Returns matching lines with file paths and line numbers."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Text or regex pattern to search for",
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Directory to search in (default: project root)",
+                },
+                "glob": {
+                    "type": "string",
+                    "description": "File glob to filter (e.g. '*.py', '*.ts')",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum number of matches to return (default 50)",
+                },
+            },
+            "required": ["pattern"],
+        },
+    ))
+    _dynamic_routes["search_project_files"] = {"builtin": True}
+
     # Always add the generic escape hatch
     _dynamic_tools.append(types.Tool(
         name="call_api",
@@ -260,11 +349,31 @@ async def handle_list_tools() -> list[types.Tool]:
     return _dynamic_tools
 
 
+@server.list_resources()
+async def handle_list_resources() -> list[types.Resource]:
+    # PixSim MCP currently exposes tools only.
+    return []
+
+
+@server.list_resource_templates()
+async def handle_list_resource_templates() -> list[types.ResourceTemplate]:
+    # PixSim MCP currently exposes tools only.
+    return []
+
+
 @server.call_tool()
 async def handle_call_tool(
     name: str, arguments: dict[str, Any]
 ) -> list[types.TextContent]:
     await _init_tools()
+
+    # ── Built-in file tools ──
+    if name == "read_project_file":
+        return _builtin_read_file(arguments)
+    if name == "list_project_files":
+        return _builtin_list_files(arguments)
+    if name == "search_project_files":
+        return _builtin_search_files(arguments)
 
     # Generic escape-hatch tool
     if name == "call_api":
@@ -297,6 +406,204 @@ async def handle_call_tool(
     else:
         body = remaining.pop("body", remaining or None)
         return await _proxy(method=method, path=path, body=body)
+
+
+# ── Built-in file tool implementations ─────────────────────────────
+
+_PROJECT_ROOT: str | None = None
+_MAX_FILE_SIZE = 200_000  # 200KB
+_SENSITIVE_PATTERNS = {".env", "credentials", "secret", ".key", ".pem", "id_rsa"}
+
+
+def _get_project_root() -> str:
+    """Resolve project root — walk up from this file to find the repo root."""
+    global _PROJECT_ROOT
+    if _PROJECT_ROOT:
+        return _PROJECT_ROOT
+    from pathlib import Path
+    # Walk up from mcp_server.py → client/ → pixsim7/ → repo root
+    candidate = Path(__file__).resolve().parent.parent.parent
+    # Verify it looks like a repo root
+    if (candidate / ".git").exists() or (candidate / "pixsim7").exists():
+        _PROJECT_ROOT = str(candidate)
+    else:
+        _PROJECT_ROOT = str(Path.cwd())
+    return _PROJECT_ROOT
+
+
+def _safe_resolve(relative_path: str) -> str | None:
+    """Resolve a relative path safely within the project root. Returns None if unsafe."""
+    from pathlib import Path
+    root = Path(_get_project_root())
+    try:
+        resolved = (root / relative_path).resolve()
+        # Must stay within project root
+        if not str(resolved).startswith(str(root)):
+            return None
+        # Block sensitive files
+        name_lower = resolved.name.lower()
+        for pattern in _SENSITIVE_PATTERNS:
+            if pattern in name_lower:
+                return None
+        return str(resolved)
+    except (ValueError, OSError):
+        return None
+
+
+def _builtin_read_file(args: dict) -> list[types.TextContent]:
+    """Read a file from the project with line numbers."""
+    from pathlib import Path
+    rel_path = args.get("path", "")
+    if not rel_path:
+        return [types.TextContent(type="text", text="Error: 'path' is required")]
+
+    resolved = _safe_resolve(rel_path)
+    if not resolved:
+        return [types.TextContent(type="text", text=f"Error: path '{rel_path}' is outside project or blocked")]
+
+    p = Path(resolved)
+    if not p.exists():
+        return [types.TextContent(type="text", text=f"Error: file not found: {rel_path}")]
+    if not p.is_file():
+        return [types.TextContent(type="text", text=f"Error: not a file: {rel_path}")]
+    if p.stat().st_size > _MAX_FILE_SIZE:
+        return [types.TextContent(type="text", text=f"Error: file too large ({p.stat().st_size:,} bytes, max {_MAX_FILE_SIZE:,})")]
+
+    offset = max(1, args.get("offset", 1))
+    limit = min(2000, args.get("limit", 500))
+
+    try:
+        lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        selected = lines[offset - 1 : offset - 1 + limit]
+        numbered = [f"{offset + i:>5}\t{line}" for i, line in enumerate(selected)]
+        header = f"# {rel_path} ({len(lines)} lines total, showing {offset}-{offset + len(selected) - 1})"
+        return [types.TextContent(type="text", text=header + "\n" + "\n".join(numbered))]
+    except Exception as e:
+        return [types.TextContent(type="text", text=f"Error reading file: {e}")]
+
+
+def _builtin_list_files(args: dict) -> list[types.TextContent]:
+    """List files in a project directory."""
+    from pathlib import Path
+    import fnmatch
+
+    rel_path = args.get("path", "")
+    pattern = args.get("pattern", "")
+    root = Path(_get_project_root())
+    target = root / rel_path if rel_path else root
+
+    resolved = _safe_resolve(rel_path) if rel_path else str(root)
+    if not resolved:
+        return [types.TextContent(type="text", text=f"Error: path '{rel_path}' is outside project")]
+
+    target = Path(resolved)
+    if not target.exists():
+        return [types.TextContent(type="text", text=f"Error: directory not found: {rel_path}")]
+    if not target.is_dir():
+        return [types.TextContent(type="text", text=f"Error: not a directory: {rel_path}")]
+
+    try:
+        if pattern and "**" in pattern:
+            entries = sorted(target.glob(pattern))
+        elif pattern:
+            entries = sorted(target.glob(pattern))
+        else:
+            entries = sorted(target.iterdir())
+
+        lines = []
+        for entry in entries[:200]:
+            rel = entry.relative_to(root)
+            if entry.is_dir():
+                lines.append(f"  {rel}/")
+            else:
+                size = entry.stat().st_size
+                if size > 1_000_000:
+                    size_str = f"{size / 1_000_000:.1f}MB"
+                elif size > 1000:
+                    size_str = f"{size / 1000:.0f}KB"
+                else:
+                    size_str = f"{size}B"
+                lines.append(f"  {rel}  ({size_str})")
+
+        header = f"# {rel_path or '.'} — {len(lines)} entries"
+        if len(entries) > 200:
+            header += f" (showing first 200 of {len(entries)})"
+        return [types.TextContent(type="text", text=header + "\n" + "\n".join(lines))]
+    except Exception as e:
+        return [types.TextContent(type="text", text=f"Error: {e}")]
+
+
+def _builtin_search_files(args: dict) -> list[types.TextContent]:
+    """Search for a pattern in project files."""
+    from pathlib import Path
+    import re as _re
+
+    search_pattern = args.get("pattern", "")
+    if not search_pattern:
+        return [types.TextContent(type="text", text="Error: 'pattern' is required")]
+
+    rel_path = args.get("path", "")
+    file_glob = args.get("glob", "")
+    max_results = min(200, args.get("max_results", 50))
+    root = Path(_get_project_root())
+
+    search_dir = Path(_safe_resolve(rel_path) or str(root)) if rel_path else root
+    if not search_dir.is_dir():
+        return [types.TextContent(type="text", text=f"Error: directory not found: {rel_path}")]
+
+    try:
+        regex = _re.compile(search_pattern, _re.IGNORECASE)
+    except _re.error as e:
+        return [types.TextContent(type="text", text=f"Error: invalid regex: {e}")]
+
+    # Skip directories and binary files
+    skip_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".next"}
+    text_extensions = {
+        ".py", ".ts", ".tsx", ".js", ".jsx", ".json", ".yaml", ".yml",
+        ".toml", ".md", ".txt", ".css", ".html", ".sql", ".sh", ".cfg",
+    }
+
+    matches: list[str] = []
+
+    def walk(directory: Path, depth: int = 0) -> None:
+        if depth > 10 or len(matches) >= max_results:
+            return
+        try:
+            for entry in sorted(directory.iterdir()):
+                if len(matches) >= max_results:
+                    return
+                if entry.is_dir():
+                    if entry.name not in skip_dirs:
+                        walk(entry, depth + 1)
+                elif entry.is_file():
+                    if file_glob and not entry.match(file_glob):
+                        continue
+                    if not file_glob and entry.suffix.lower() not in text_extensions:
+                        continue
+                    if entry.stat().st_size > _MAX_FILE_SIZE:
+                        continue
+                    try:
+                        content = entry.read_text(encoding="utf-8", errors="replace")
+                        for line_no, line in enumerate(content.splitlines(), 1):
+                            if regex.search(line):
+                                rel = entry.relative_to(root)
+                                matches.append(f"{rel}:{line_no}: {line.strip()[:150]}")
+                                if len(matches) >= max_results:
+                                    return
+                    except (OSError, UnicodeDecodeError):
+                        continue
+        except PermissionError:
+            pass
+
+    walk(search_dir)
+
+    if not matches:
+        return [types.TextContent(type="text", text=f"No matches found for '{search_pattern}'")]
+
+    header = f"# {len(matches)} match{'es' if len(matches) != 1 else ''} for '{search_pattern}'"
+    if len(matches) >= max_results:
+        header += f" (limited to {max_results})"
+    return [types.TextContent(type="text", text=header + "\n" + "\n".join(matches))]
 
 
 # ── HTTP proxy ────────────────────────────────────────────────────
@@ -353,7 +660,7 @@ async def _proxy(
     except httpx.ConnectError:
         return [types.TextContent(
             type="text",
-            text=f"Connection refused: {API_URL}{path} — is the backend running?",
+            text=f"Connection refused: {API_URL}{path} - is the backend running?",
         )]
     except Exception as e:
         return [types.TextContent(type="text", text=f"Error: {e}")]
@@ -363,7 +670,7 @@ async def _proxy(
 
 
 async def main() -> None:
-    print(f"[pixsim-mcp] Starting — API: {API_URL}", file=sys.stderr)
+    print(f"[pixsim-mcp] Starting - API: {API_URL}", file=sys.stderr)
     async with stdio_server() as (read, write):
         await server.run(read, write, server.create_initialization_options())
 
