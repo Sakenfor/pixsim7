@@ -23,7 +23,8 @@ from pixsim7.backend.main.domain.assets.upload_attribution import (
     infer_upload_method,
 )
 from pixsim7.backend.main.shared.upload_context_schema import normalize_upload_context
-from pixsim7.backend.main.api.v1.assets_upload_helper import prepare_upload, resolve_upload_checks
+from pixsim7.backend.main.api.v1.assets_upload_helper import prepare_upload
+from pixsim7.backend.main.services.asset.upload_preferences import UploadPreferences
 from pixsim_logging import get_logger
 
 router = APIRouter(tags=["assets-upload"])
@@ -193,7 +194,7 @@ async def upload_asset_to_provider(
     ext = os.path.splitext(file.filename or "upload.bin")[1] or (
         ".mp4" if media_type == MediaType.VIDEO else ".jpg"
     )
-    upload_checks = resolve_upload_checks(user.preferences)
+    upload_checks = UploadPreferences.for_user(user)
 
     prep = await prepare_upload(
         tmp_path=tmp_path,
@@ -734,7 +735,7 @@ async def upload_asset_from_url(
         file_size_bytes = os.path.getsize(temp_local_path)
 
         # Resolve checks from user prefs; per-request skip_dedup overrides phash
-        upload_checks = resolve_upload_checks(user.preferences)
+        upload_checks = UploadPreferences.for_user(user)
         if request.skip_dedup:
             upload_checks.phash = False
 

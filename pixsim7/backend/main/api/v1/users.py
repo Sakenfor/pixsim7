@@ -1,9 +1,10 @@
 """
 User management API endpoints
 """
-from typing import Any
+from typing import Any, List
 from fastapi import APIRouter, HTTPException, Query
-from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, UserSvc
+from pydantic import BaseModel, Field
+from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser, DatabaseSession, UserSvc
 from pixsim7.backend.main.shared.schemas.user_schemas import (
     AdminUpdateUserRequest,
     AdminUserPermissionsResponse,
@@ -193,6 +194,129 @@ async def update_user_preferences(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update preferences: {str(e)}")
+
+
+# ===== LOCAL FOLDER HASH CACHE =====
+
+
+class HashManifestEntry(BaseModel):
+    relativePath: str
+    sha256: str
+    fileSize: int | None = None
+    lastModified: int | None = None
+
+
+class HashManifestUpload(BaseModel):
+    relativePath: str
+    sha256: str
+    fileSize: int | None = None
+    lastModified: int | None = None
+
+
+class HashManifestResponse(BaseModel):
+    folder_id: str
+    manifest: List[HashManifestEntry] = Field(default_factory=list)
+    updated_at: str | None = None
+
+
+@router.get(
+    "/users/me/local-folder-hashes/{folder_id}",
+    response_model=HashManifestResponse,
+)
+async def get_folder_hash_manifest(
+    folder_id: str,
+    principal: CurrentUser,
+    db: DatabaseSession,
+):
+    """Return the persisted hash manifest for a local folder."""
+    from sqlalchemy import select
+    from pixsim7.backend.main.domain.local_folder_hash_cache import LocalFolderHashCache
+
+    row = (
+        await db.execute(
+            select(LocalFolderHashCache).where(
+                LocalFolderHashCache.user_id == principal.id,
+                LocalFolderHashCache.folder_id == folder_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if not row:
+        return HashManifestResponse(folder_id=folder_id, manifest=[], updated_at=None)
+
+    return HashManifestResponse(
+        folder_id=folder_id,
+        manifest=[HashManifestEntry(**e) for e in (row.manifest or [])],
+        updated_at=row.updated_at.isoformat() if row.updated_at else None,
+    )
+
+
+@router.put(
+    "/users/me/local-folder-hashes/{folder_id}",
+    response_model=HashManifestResponse,
+)
+async def upsert_folder_hash_manifest(
+    folder_id: str,
+    manifest: List[HashManifestUpload],
+    principal: CurrentUser,
+    db: DatabaseSession,
+):
+    """Create or replace the hash manifest for a local folder."""
+    from sqlalchemy import select
+    from pixsim7.backend.main.domain.local_folder_hash_cache import LocalFolderHashCache
+    from pixsim7.backend.main.shared.datetime_utils import utcnow
+
+    entries = [e.model_dump() for e in manifest]
+    now = utcnow()
+
+    row = (
+        await db.execute(
+            select(LocalFolderHashCache).where(
+                LocalFolderHashCache.user_id == principal.id,
+                LocalFolderHashCache.folder_id == folder_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if row:
+        row.manifest = entries
+        row.updated_at = now
+    else:
+        row = LocalFolderHashCache(
+            user_id=principal.id,
+            folder_id=folder_id,
+            manifest=entries,
+            updated_at=now,
+        )
+        db.add(row)
+
+    await db.commit()
+    await db.refresh(row)
+
+    return HashManifestResponse(
+        folder_id=folder_id,
+        manifest=[HashManifestEntry(**e) for e in row.manifest],
+        updated_at=row.updated_at.isoformat() if row.updated_at else None,
+    )
+
+
+@router.delete("/users/me/local-folder-hashes/{folder_id}", status_code=204)
+async def delete_folder_hash_manifest(
+    folder_id: str,
+    principal: CurrentUser,
+    db: DatabaseSession,
+):
+    """Delete the hash manifest when a folder is removed."""
+    from sqlalchemy import delete
+    from pixsim7.backend.main.domain.local_folder_hash_cache import LocalFolderHashCache
+
+    await db.execute(
+        delete(LocalFolderHashCache).where(
+            LocalFolderHashCache.user_id == principal.id,
+            LocalFolderHashCache.folder_id == folder_id,
+        )
+    )
+    await db.commit()
 
 
 # ===== ADMIN: USER PERMISSIONS =====

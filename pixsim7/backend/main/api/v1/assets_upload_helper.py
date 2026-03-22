@@ -15,30 +15,13 @@ from dataclasses import dataclass
 
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 from pixsim7.backend.main.services.asset.asset_hasher import compute_image_phash
-from pixsim7.backend.main.shared.schemas.user_schemas import UploadSimilarityChecks
+from pixsim7.backend.main.services.asset.upload_preferences import UploadPreferences
 from pixsim_logging import get_logger
 
 logger = get_logger()
 
-
-def resolve_upload_checks(user_preferences: dict | None) -> UploadSimilarityChecks:
-    """Resolve effective upload similarity checks from user preferences.
-
-    Handles both the new ``similarityChecks.upload`` structure and the legacy
-    ``skipSimilarCheck`` boolean.
-    """
-    prefs = user_preferences if isinstance(user_preferences, dict) else {}
-
-    # New structured config takes priority
-    sim = prefs.get("similarityChecks")
-    if isinstance(sim, dict) and "upload" in sim:
-        return UploadSimilarityChecks.model_validate(sim["upload"])
-
-    # Legacy compat: skipSimilarCheck disables phash
-    if prefs.get("skipSimilarCheck"):
-        return UploadSimilarityChecks(phash=False)
-
-    return UploadSimilarityChecks()
+# Backward-compat alias
+UploadSimilarityChecks = UploadPreferences
 
 
 @dataclass
@@ -62,7 +45,7 @@ async def prepare_upload(
     asset_service,
     provider_id: str,
     file_ext: str = ".bin",
-    checks: UploadSimilarityChecks | None = None,
+    checks: UploadPreferences | None = None,
     # Legacy compat — prefer `checks`
     skip_phash_dedup: bool = False,
 ) -> UploadPrepResult:
@@ -76,7 +59,7 @@ async def prepare_upload(
         asset_service: AssetService instance
         provider_id: Target provider ID
         file_ext: File extension
-        checks: Structured similarity check config (preferred)
+        checks: Upload preferences (preferred)
         skip_phash_dedup: Legacy boolean — ignored when ``checks`` is provided
 
     Returns:
@@ -84,7 +67,7 @@ async def prepare_upload(
     """
     # Resolve effective checks
     if checks is None:
-        checks = UploadSimilarityChecks(
+        checks = UploadPreferences(
             phash=not skip_phash_dedup,
         )
 

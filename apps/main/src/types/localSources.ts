@@ -75,6 +75,8 @@ export interface LocalFoldersController extends FolderSourceController<LocalAsse
   hashFolder: (path: string) => void;
   /** Hash only the given asset keys (for scoped actions like drilled group views) */
   hashAssets: (keys: string[]) => void;
+  /** Re-check all hashed assets against backend (clears check cache, re-queries) */
+  recheckBackend: () => void;
 
   // Missing folders (exist in backend but IndexedDB was cleared)
   /** Combined list of real folders + missing folder placeholders */

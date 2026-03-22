@@ -5,6 +5,8 @@
 import { useAuthStore } from '@pixsim7/shared.auth.core';
 import { create } from 'zustand';
 
+import { getHashManifest, putHashManifest, deleteHashManifest } from '@lib/api/localFolderHashes';
+import type { HashManifestEntry } from '@lib/api/localFolderHashes';
 import { getUserPreferences, updatePreferenceKey } from '@lib/api/userPreferences';
 import { createIdbKvStore, getUserNamespace } from '@lib/storage/idbKvCache';
 
@@ -611,7 +613,42 @@ async function cacheAssets(id: string, assets: LocalAsset[]): Promise<void> {
 // Hash metadata updates can happen in large bursts; persist them in short batches
 // to avoid rewriting full folder metadata on every single hashed file.
 const HASH_CACHE_FLUSH_DELAY_MS = 1200;
+const HASH_BACKEND_SYNC_DELAY_MS = 5000; // longer debounce for backend sync
 const pendingHashCacheFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingHashBackendSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Sync hash manifest for a folder to the backend so hashes survive browser data clears.
+ */
+function scheduleHashBackendSync(folderId: string): void {
+  const existing = pendingHashBackendSyncTimers.get(folderId);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(() => {
+    pendingHashBackendSyncTimers.delete(folderId);
+    const userId = useAuthStore.getState().user?.id;
+    if (!userId) return; // only sync for logged-in users
+
+    void (async () => {
+      try {
+        const folderAssets = Object.values(useLocalFolders.getState().assets)
+          .filter((a) => a.folderId === folderId && a.sha256);
+        const manifest: HashManifestEntry[] = folderAssets.map((a) => ({
+          relativePath: a.relativePath,
+          sha256: a.sha256!,
+          fileSize: a.sha256_file_size ?? undefined,
+          lastModified: a.sha256_last_modified ?? undefined,
+        }));
+        await putHashManifest(folderId, manifest);
+        console.debug('[LocalFolders] Synced hash manifest to backend:', folderId, manifest.length, 'entries');
+      } catch (e) {
+        console.warn('[LocalFolders] Failed to sync hash manifest to backend:', folderId, e);
+      }
+    })();
+  }, HASH_BACKEND_SYNC_DELAY_MS);
+
+  pendingHashBackendSyncTimers.set(folderId, timer);
+}
 
 function scheduleHashCacheFlush(folderId: string): void {
   const existing = pendingHashCacheFlushTimers.get(folderId);
@@ -633,6 +670,8 @@ function scheduleHashCacheFlush(folderId: string): void {
   }, HASH_CACHE_FLUSH_DELAY_MS);
 
   pendingHashCacheFlushTimers.set(folderId, timer);
+  // Also schedule a backend sync (with a longer debounce)
+  scheduleHashBackendSync(folderId);
 }
 
 /**
@@ -789,11 +828,42 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
           }, BACKGROUND_REFRESH_START_DELAY_MS);
         }
 
-        // Folders without cache need a full scan (parallel, then single merge)
+        // Folders without cache need a full scan (parallel, then single merge).
+        // Also try to restore hashes from backend so we skip re-hashing.
         if (foldersNeedingScan.length > 0) {
           const scanResults = await Promise.all(
             foldersNeedingScan.map(async (f) => {
-              const items = await scanFolder(f.id, f.handle, 5);
+              const [items, backendManifest] = await Promise.all([
+                scanFolder(f.id, f.handle, 5),
+                getHashManifest(f.id).catch(() => null),
+              ]);
+
+              // Apply backend hashes to scanned items by matching relativePath + size + lastModified
+              if (backendManifest?.manifest?.length) {
+                const hashLookup = new Map(
+                  backendManifest.manifest.map((e) => [e.relativePath, e]),
+                );
+                for (const item of items) {
+                  const entry = hashLookup.get(item.relativePath);
+                  if (
+                    entry &&
+                    typeof item.size === 'number' &&
+                    typeof item.lastModified === 'number' &&
+                    entry.fileSize === item.size &&
+                    entry.lastModified === item.lastModified
+                  ) {
+                    item.sha256 = entry.sha256;
+                    item.sha256_file_size = entry.fileSize ?? undefined;
+                    item.sha256_last_modified = entry.lastModified ?? undefined;
+                    item.sha256_computed_at = Date.now(); // mark as restored
+                  }
+                }
+                const restored = items.filter((a) => a.sha256).length;
+                if (restored > 0) {
+                  console.info(`[LocalFolders] Restored ${restored} hashes from backend for folder "${f.name}"`);
+                }
+              }
+
               void cacheAssets(f.id, items);
               return items;
             }),
@@ -886,6 +956,11 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
       clearTimeout(pendingHashFlush);
       pendingHashCacheFlushTimers.delete(id);
     }
+    const pendingBackendSync = pendingHashBackendSyncTimers.get(id);
+    if (pendingBackendSync) {
+      clearTimeout(pendingBackendSync);
+      pendingHashBackendSyncTimers.delete(id);
+    }
     // Remove cached assets for this folder
     try {
       await Promise.all([
@@ -895,8 +970,11 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     } catch (e) {
       console.warn('Failed to remove cached assets', e);
     }
-    // Sync updated folder list to backend
+    // Sync updated folder list to backend & remove hash manifest
     void syncFoldersToBackend(remain);
+    void deleteHashManifest(id).catch((e) =>
+      console.warn('[LocalFolders] Failed to delete backend hash manifest:', id, e),
+    );
   },
 
   refreshFolder: async (id: string, silent = false) => {
@@ -1072,6 +1150,10 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     set({ missingFolderNames: [] });
   },
 }));
+
+// Debug: expose store on window for console inspection
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(window as any).__localFolders = useLocalFolders;
 
 /**
  * Thumbnail cache helpers for local assets.

@@ -24,6 +24,7 @@ export { createGameApi } from './game';
 export { createGenerationOperationsApi } from './generationOperations';
 export { createGenerationsApi } from './generations';
 export { createInteractionsApi } from './interactions';
+export { createLocalFolderHashesApi } from './localFolderHashes';
 export { createLogsApi } from './logs';
 export { createPluginsApi } from './plugins';
 export { createPromptsApi } from './prompts';
@@ -221,6 +222,11 @@ export type {
   UpdateUserPreferencesRequest,
   UserPreferencesResponse,
 } from './userPreferences';
+
+export type {
+  HashManifestEntry,
+  HashManifestResponse,
+} from './localFolderHashes';
 
 export type { CompositionPackagesResponse } from './composition';
 

@@ -9,6 +9,7 @@ import { useAuthStore } from '@pixsim7/shared.auth.core';
 import type { SourceIdentity } from '@pixsim7/shared.sources.core';
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 
+import { putHashManifest } from '@lib/api/localFolderHashes';
 import { uploadAsset, type UploadAssetResponse } from '@lib/api/upload';
 
 import { usePersistentState } from '@/hooks/usePersistentState';
@@ -179,6 +180,9 @@ export function useLocalFoldersController(): LocalFoldersController {
   const backendHashCheckedRef = useRef<Set<string>>(new Set());
   const backendExistingHashesRef = useRef<Set<string>>(new Set());
   const backendHashCheckInProgressRef = useRef<Set<string>>(new Set());
+
+  // Force re-check trigger (bumped by recheckBackend)
+  const [backendCheckTrigger, setBackendCheckTrigger] = useState(0);
 
   // Background hashing progress & controls
   const [hashingProgress, setHashingProgress] = useState<HashingProgressState | null>(null);
@@ -540,11 +544,31 @@ export function useLocalFoldersController(): LocalFoldersController {
       return;
     }
 
-    const candidates = Object.values(assetsRecord).filter(asset => (
+    // When a hash run just completed (hashingProgress transitions to null/done),
+    // clear "checked-but-not-found" entries so re-hashed assets get rechecked.
+    // Hashes known to exist on backend (backendExistingHashesRef) stay cached.
+    if (!hashingProgress) {
+      for (const sha256 of backendHashCheckedRef.current) {
+        if (!backendExistingHashesRef.current.has(sha256)) {
+          backendHashCheckedRef.current.delete(sha256);
+        }
+      }
+    }
+
+    const allAssets = Object.values(assetsRecord);
+    const withHash = allAssets.filter((a) => !!a.sha256);
+    const candidates = withHash.filter(asset => (
       hasValidStoredHash(asset) &&
-      asset.last_upload_status !== 'success' &&
-      !!asset.sha256
+      asset.last_upload_status !== 'success'
     ));
+    console.info('[LocalFolders:backendCheck] effect fired', {
+      hashingProgress,
+      totalAssets: allAssets.length,
+      withHash: withHash.length,
+      candidates: candidates.length,
+      skippedInvalidHash: withHash.length - candidates.length - withHash.filter((a) => a.last_upload_status === 'success').length,
+      alreadySuccess: withHash.filter((a) => a.last_upload_status === 'success').length,
+    });
     if (candidates.length === 0) return;
 
     const hashToAssetKeys = new Map<string, string[]>();
@@ -571,6 +595,13 @@ export function useLocalFoldersController(): LocalFoldersController {
         !backendHashCheckedRef.current.has(sha256) &&
         !backendHashCheckInProgressRef.current.has(sha256)
       ));
+      console.info('[LocalFolders:backendCheck] checkRemaining', {
+        uniqueHashes: hashToAssetKeys.size,
+        toQuery: hashesToQuery.length,
+        alreadyKnown: backendExistingHashesRef.current.size,
+        alreadyChecked: backendHashCheckedRef.current.size,
+        inProgress: backendHashCheckInProgressRef.current.size,
+      });
       if (hashesToQuery.length === 0) return;
 
       for (const sha256 of hashesToQuery) {
@@ -581,20 +612,27 @@ export function useLocalFoldersController(): LocalFoldersController {
       try {
         for (let i = 0; i < hashesToQuery.length; i += BATCH_SIZE) {
           const batch = hashesToQuery.slice(i, i + BATCH_SIZE);
-          const foundHashes = await checkHashesAgainstBackend(batch);
+          const matches = await checkHashesAgainstBackend(batch);
+          const foundHashSet = new Set(matches.map((m) => m.sha256));
+          console.info('[LocalFolders:backendCheck] batch result', {
+            sent: batch.length,
+            found: matches.length,
+            sampleSent: batch.slice(0, 3),
+            sampleFound: matches.slice(0, 3),
+          });
 
           for (const sha256 of batch) {
             backendHashCheckedRef.current.add(sha256);
-            if (foundHashes.has(sha256)) {
+            if (foundHashSet.has(sha256)) {
               backendExistingHashesRef.current.add(sha256);
             }
           }
 
-          for (const sha256 of foundHashes) {
+          for (const { sha256, assetId } of matches) {
             const assetKeys = hashToAssetKeys.get(sha256);
             if (!assetKeys) continue;
             for (const assetKey of assetKeys) {
-              await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
+              await updateAssetUploadStatus(assetKey, 'success', 'Already in library', { assetId });
               setInMemoryUploadState(assetKey, 'success', { syncNote: true, note: 'Already in library' });
             }
           }
@@ -612,7 +650,35 @@ export function useLocalFoldersController(): LocalFoldersController {
       await syncKnownExisting();
       await checkRemaining();
     })();
-  }, [assetsRecord, updateAssetUploadStatus, autoCheckBackend, hashingProgress, setInMemoryUploadState]);
+   
+  }, [assetsRecord, updateAssetUploadStatus, autoCheckBackend, hashingProgress, setInMemoryUploadState, backendCheckTrigger]);
+
+  const recheckBackend = useCallback(() => {
+    // Clear all check caches so every hash gets re-queried
+    backendHashCheckedRef.current.clear();
+    backendExistingHashesRef.current.clear();
+    backendHashCheckInProgressRef.current.clear();
+
+    // Also push current hashes to backend manifest (seeds the restore cache)
+    const allAssets = Object.values(assetsRecord);
+    const folderIds = new Set(allAssets.filter((a) => a.sha256).map((a) => a.folderId));
+    for (const folderId of folderIds) {
+      const folderAssets = allAssets.filter((a) => a.folderId === folderId && a.sha256);
+      if (folderAssets.length === 0) continue;
+      const manifest = folderAssets.map((a) => ({
+        relativePath: a.relativePath,
+        sha256: a.sha256!,
+        fileSize: a.sha256_file_size ?? undefined,
+        lastModified: a.sha256_last_modified ?? undefined,
+      }));
+      void putHashManifest(folderId, manifest).then(
+        () => console.info(`[LocalFolders] Synced hash manifest for ${folderId}: ${manifest.length} entries`),
+        (e) => console.warn(`[LocalFolders] Failed to sync hash manifest for ${folderId}:`, e),
+      );
+    }
+
+    setBackendCheckTrigger((n) => n + 1);
+  }, [assetsRecord]);
 
   const pauseHashing = useCallback(() => {
     bgHashPausedRef.current = true;
@@ -1160,5 +1226,6 @@ export function useLocalFoldersController(): LocalFoldersController {
     cancelHashing,
     hashFolder,
     hashAssets,
+    recheckBackend,
   };
 }

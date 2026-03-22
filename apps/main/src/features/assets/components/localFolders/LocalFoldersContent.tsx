@@ -475,7 +475,8 @@ export function LocalFoldersContent({
   }, [visibleItems, controller.uploadStatus, handleUpload, handleUploadToProvider]);
 
   const uploadActionCount = pendingUploadCount + failedUploadCount;
-  const hasToolActions = unhashedCount > 0 || uploadActionCount > 0;
+  const hashedCount = visibleItems.length - unhashedCount;
+  const hasToolActions = unhashedCount > 0 || uploadActionCount > 0 || hashedCount > 0;
   const toolsBadgeCount = unhashedCount + uploadActionCount;
 
   // --- Gallery onOpen wrapper ---
@@ -706,7 +707,13 @@ export function LocalFoldersContent({
                       Hash unhashed ({unhashedCount})
                     </DropdownItem>
                   )}
-                  {uploadActionCount > 0 && unhashedCount > 0 && !controller.hashingProgress && (
+                  <DropdownItem
+                    icon={<Icons.search size={12} />}
+                    onClick={() => { controller.recheckBackend(); setToolsOpen(false); }}
+                  >
+                    Check library
+                  </DropdownItem>
+                  {uploadActionCount > 0 && (
                     <DropdownDivider />
                   )}
                   {uploadActionCount > 0 && (

@@ -16,8 +16,11 @@ type HashBatchResponse = {
   results?: Array<{
     sha256: string;
     exists: boolean;
+    asset_id?: number;
   }>;
 };
+
+export type HashBatchMatch = { sha256: string; assetId: number };
 
 export async function checkHashesAgainstBackend(
   hashes: string[],
@@ -25,9 +28,9 @@ export async function checkHashesAgainstBackend(
     backendUrl?: string;
     token?: string;
   }
-): Promise<Set<string>> {
+): Promise<HashBatchMatch[]> {
   const uniqueHashes = Array.from(new Set(hashes.filter(Boolean)));
-  if (uniqueHashes.length === 0) return new Set();
+  if (uniqueHashes.length === 0) return [];
 
   const base = options?.backendUrl ?? (import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000');
   const token = options?.token ?? authService.getStoredToken();
@@ -46,9 +49,7 @@ export async function checkHashesAgainstBackend(
   }
 
   const data = await res.json() as HashBatchResponse;
-  return new Set(
-    (data.results || [])
-      .filter((r) => r.exists)
-      .map((r) => r.sha256)
-  );
+  return (data.results || [])
+    .filter((r): r is { sha256: string; exists: true; asset_id: number } => r.exists && typeof r.asset_id === 'number')
+    .map((r) => ({ sha256: r.sha256, assetId: r.asset_id }));
 }

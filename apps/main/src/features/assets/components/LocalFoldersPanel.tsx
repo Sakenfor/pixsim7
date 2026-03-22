@@ -195,6 +195,14 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
         </button>
         <button
           type="button"
+          className="p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
+          title="Check library for matches"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); controller.recheckBackend(); }}
+        >
+          <Icons.search size={12} />
+        </button>
+        <button
+          type="button"
           className={`p-0.5 rounded transition-colors ${
             isFav
               ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
@@ -387,6 +395,15 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
               }}
             >
               Hash Files
+            </DropdownItem>
+            <DropdownItem
+              icon={<Icons.search size={12} />}
+              onClick={() => {
+                controller.recheckBackend();
+                closeManageFolderMenu();
+              }}
+            >
+              Check Library
             </DropdownItem>
             <DropdownItem
               icon={<Icons.star size={12} />}
