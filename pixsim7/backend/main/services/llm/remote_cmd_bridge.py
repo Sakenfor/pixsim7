@@ -561,9 +561,16 @@ def _mint_bridge_token(user_id: Optional[int], hours: int = 24) -> Optional[str]
 remote_cmd_bridge = RemoteCommandBridge()
 
 
+# ── Task types ───────────────────────────────────────────────────
+TASK_MESSAGE = "message"
+TASK_EDIT_PROMPT = "edit_prompt"
+TASK_EMBED_TEXTS = "embed_texts"
+TASK_EMBED_IMAGES = "embed_images"
+
+
 def build_bridge_task_payload(
     *,
-    task_type: str = "message",
+    task_type: str = TASK_MESSAGE,
     prompt: str,
     model: Optional[str] = None,
     instruction: Optional[str] = None,
