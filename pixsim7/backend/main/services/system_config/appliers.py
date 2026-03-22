@@ -43,37 +43,15 @@ register_applier("generation", _apply_generation_config)
 
 def _apply_generation_worker_config(data: dict) -> None:
     from pixsim7.backend.main.shared.config import settings
+    from pixsim7.backend.main.services.system_config.settings_store import apply_settings
 
-    worker_keys = (
-        "arq_max_jobs",
-        "content_filter_submit_max_retries",
-        "content_filter_rotate_after_retries",
-        "content_filter_pinned_yield_after_retries",
-        "content_filter_retry_defer_seconds",
-        "content_filter_pinned_yield_defer_multiplier",
-        "content_filter_yield_counts_as_retry",
-        "content_filter_max_yields",
-        "content_filter_yield_counter_ttl_seconds",
-        "pixverse_concurrent_cooldown_seconds",
-        "pixverse_i2i_concurrent_cooldown_seconds",
-        "dispatch_stagger_per_slot_seconds",
-        "dispatch_stagger_max_seconds",
-        "pinned_wait_padding_seconds",
-        "min_pinned_cooldown_defer_seconds",
-        "adaptive_provider_concurrency_enabled",
-        "adaptive_provider_concurrency_state_ttl_seconds",
-        "adaptive_provider_concurrency_probe_min_seconds",
-        "adaptive_provider_concurrency_probe_max_seconds",
-        "adaptive_provider_concurrency_probe_lock_ttl_seconds",
-        "adaptive_provider_concurrency_defer_jitter_max_seconds",
-        "adaptive_provider_concurrency_lower_after_consecutive_rejects",
-        "adaptive_provider_concurrency_raise_after_consecutive_probe_successes",
-        "max_pinned_concurrent_waits",
-        "pinned_concurrent_wait_counter_ttl_seconds",
-    )
-    for key in worker_keys:
-        if key in data:
-            setattr(settings, key, data[key])
+    # Populate the generic SettingsBase cache
+    apply_settings("generation_worker", data)
+
+    # Sync onto global settings object for existing readers
+    for key, value in data.items():
+        if hasattr(settings, key):
+            setattr(settings, key, value)
 
 
 register_applier("generation_worker", _apply_generation_worker_config)

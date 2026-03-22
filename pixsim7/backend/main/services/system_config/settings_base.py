@@ -118,17 +118,28 @@ class SettingsBase(BaseModel, metaclass=_SettingsMeta):
 
     @classmethod
     def _build_update_model(cls) -> None:
-        """Auto-generate an Update model where all fields are Optional."""
-        fields: Dict[str, Any] = {}
+        """Auto-generate an Update model where all fields are Optional.
+
+        Preserves Field metadata (ge, le, description, etc.) from the
+        source model so that validation constraints carry over to patches.
+        """
+        from pydantic import Field as PydanticField
+        from pydantic.fields import FieldInfo
+        import copy
+
+        field_definitions: Dict[str, Any] = {}
         for name, field_info in cls.model_fields.items():
-            # Make every field Optional with default None
-            fields[name] = (Optional[field_info.annotation], None)
+            # Clone the FieldInfo and make it Optional with default None
+            new_field = copy.copy(field_info)
+            new_field.default = None
+            new_field.annotation = Optional[field_info.annotation]
+            field_definitions[name] = (Optional[field_info.annotation], new_field)
 
         update_cls = type(
             f"{cls.__name__}Update",
             (BaseModel,),
-            {"__annotations__": {n: t for n, (t, _) in fields.items()},
-             **{n: d for n, (_, d) in fields.items()}},
+            {"__annotations__": {n: t for n, (t, _) in field_definitions.items()},
+             **{n: fi for n, (_, fi) in field_definitions.items()}},
         )
         cls._UpdateModel = update_cls
 
