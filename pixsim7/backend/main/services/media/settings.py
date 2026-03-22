@@ -46,6 +46,11 @@ class MediaSettings(SettingsBase):
         description="Maximum concurrent ingestion jobs",
     )
 
+    download_on_generate: bool = Field(
+        False,
+        description="Auto-download generated assets to local storage when generation completes",
+    )
+
     # ── Storage Format ────────────────────────────────────────────────────
 
     storage_format: Optional[str] = Field(

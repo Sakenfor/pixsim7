@@ -14,7 +14,7 @@ import { pixsimClient, BACKEND_BASE, type GenerationResponse } from '@lib/api';
 import type { AssetResponse } from '@lib/api/assets';
 import { debugFlags, hmrSingleton } from '@lib/utils';
 
-import { assetEvents, useAssetSettingsStore, fromAssetResponse, getAssetDisplayUrls } from '@features/assets';
+import { assetEvents, fromAssetResponse, getAssetDisplayUrls, useMediaSettingsStore } from '@features/assets';
 
 import { parseWebSocketMessage, type WebSocketMessage } from '@/types/websocket';
 
@@ -367,7 +367,7 @@ class WebSocketManager {
           debugFlags.log('websocket', 'Job update received:', message.type);
           const addOrUpdateGeneration = useGenerationsStore.getState().addOrUpdate;
           const patchGeneration = useGenerationsStore.getState().patch;
-          const downloadOnGenerate = useAssetSettingsStore.getState().downloadOnGenerate;
+          const downloadOnGenerate = useMediaSettingsStore.getState().serverSettings?.download_on_generate ?? false;
 
           // Extract generation ID from various possible fields
           const rawData = message as WebSocketRecord;

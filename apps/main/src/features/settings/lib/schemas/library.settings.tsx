@@ -182,10 +182,10 @@ const downloadsTab: SettingTab = {
       description: 'Configure how assets are downloaded.',
       fields: [
         {
-          id: 'downloadOnGenerate',
+          id: 'download_on_generate',
           type: 'toggle',
           label: 'Download on Generate',
-          description: 'Automatically download assets when generation completes.',
+          description: 'Automatically download generated assets to local storage when generation completes.',
           defaultValue: false,
         },
       ],
@@ -483,8 +483,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
   }, []);
 
   // Asset settings (local)
-  const downloadOnGenerate = useAssetSettingsStore((s) => s.downloadOnGenerate);
-  const setDownloadOnGenerate = useAssetSettingsStore((s) => s.setDownloadOnGenerate);
   const deleteFromProvider = useAssetSettingsStore((s) => s.deleteFromProvider);
   const setDeleteFromProvider = useAssetSettingsStore((s) => s.setDeleteFromProvider);
 
@@ -543,7 +541,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       if (fieldId === 'similarity.upload.phashThreshold') return uploadChecks.phashThreshold;
 
       // Asset settings
-      if (fieldId === 'downloadOnGenerate') return downloadOnGenerate;
       if (fieldId === 'deleteFromProvider') return deleteFromProvider;
 
       // Gallery settings
@@ -584,10 +581,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       }
 
       // Asset settings
-      if (fieldId === 'downloadOnGenerate') {
-        setDownloadOnGenerate(value);
-        return;
-      }
       if (fieldId === 'deleteFromProvider') {
         setDeleteFromProvider(value);
         return;
@@ -657,7 +650,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       'similarity.upload.sha256': uploadChecks.sha256,
       'similarity.upload.phash': uploadChecks.phash,
       'similarity.upload.phashThreshold': uploadChecks.phashThreshold,
-      downloadOnGenerate,
       deleteFromProvider,
       qualityMode,
       preferOriginal,
