@@ -1,14 +1,14 @@
 """Add dismissed column to plan_review_requests (PlanRequest).
 
-Revision ID: 20260322_0001
+Revision ID: 20260322_0003
 """
 
 from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20260322_0001"
-down_revision = "20260321_0007"
+revision = "20260322_0003"
+down_revision = "20260322_0002"
 branch_labels = None
 depends_on = None
 
