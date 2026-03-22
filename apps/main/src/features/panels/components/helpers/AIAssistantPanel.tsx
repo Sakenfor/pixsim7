@@ -1070,21 +1070,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                       </label>
                     )}
 
-                    {tab.profileId && <div className="border-t border-neutral-100 dark:border-neutral-800" />}
-
-                    {/* General (no profile) */}
-                    <button
-                      onClick={() => { onUpdateTab({ profileId: null }); setShowProfilePicker(false); }}
-                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 ${
-                        !tab.profileId ? 'bg-blue-50/50 dark:bg-blue-900/10 text-blue-600' : 'text-neutral-600 dark:text-neutral-400'
-                      }`}
-                    >
-                      <Icon name="messageSquare" size={12} className="shrink-0" />
-                      <span>General</span>
-                    </button>
-                    <div className="border-t border-neutral-100 dark:border-neutral-800" />
-
-                    {/* Profile list with edit + token buttons */}
+                    {/* Profile list with edit + token + archive buttons */}
                     {profiles.map((p) => (
                       <div
                         key={p.id}
@@ -1124,27 +1110,27 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                         >
                           <Icon name="edit" size={10} />
                         </button>
-                        {!p.is_global && (
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (!confirm(`Archive "${p.label}"? It will be hidden but plan references are preserved.`)) return;
-                              try {
-                                await pixsimClient.delete(`/dev/agent-profiles/${p.id}`);
-                                // If this profile was selected, clear it
-                                if (tab.profileId === p.id) onUpdateTab({ profileId: null });
-                                // Refresh profile list
-                                onRefreshProfiles();
-                              } catch {
-                                setMessages((prev) => [...prev, { role: 'error', text: `Failed to archive ${p.label}`, timestamp: new Date() }]);
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!confirm(`Archive "${p.label}"? It will be hidden but plan references are preserved.`)) return;
+                            try {
+                              await pixsimClient.delete(`/dev/agent-profiles/${p.id}`);
+                              // If this profile was selected, pick the first remaining
+                              if (tab.profileId === p.id) {
+                                const remaining = profiles.filter((pr) => pr.id !== p.id);
+                                onUpdateTab({ profileId: remaining[0]?.id ?? null });
                               }
-                            }}
-                            className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-500 transition-opacity shrink-0"
-                            title="Archive profile"
-                          >
-                            <Icon name="trash" size={10} />
-                          </button>
-                        )}
+                              onRefreshProfiles();
+                            } catch {
+                              setMessages((prev) => [...prev, { role: 'error', text: `Failed to archive ${p.label}`, timestamp: new Date() }]);
+                            }
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-500 transition-opacity shrink-0"
+                          title="Archive profile"
+                        >
+                          <Icon name="trash" size={10} />
+                        </button>
                       </div>
                     ))}
 
@@ -1249,13 +1235,14 @@ export function AIAssistantPanel() {
 
   const createTab = useCallback((profileId?: string) => {
     const id = createTabId();
-    const profile = profileId ? profiles.find((p) => p.id === profileId) : undefined;
+    const resolvedProfileId = profileId || profiles.find((p) => p.is_default)?.id || profiles[0]?.id || null;
+    const profile = resolvedProfileId ? profiles.find((p) => p.id === resolvedProfileId) : undefined;
     const newTab: ChatTab = {
       id,
       label: profile?.label || 'New Chat',
       sessionId: null,
-      profileId: profileId || null,
-      engine: 'claude',
+      profileId: resolvedProfileId,
+      engine: (profile ? engineFromProfile(profile) : 'claude') as AgentEngine,
       modelOverride: null,
       usePersona: true,
       createdAt: new Date().toISOString(),
