@@ -8,6 +8,10 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDomain, OperationType
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
+
+# Canonical asset kind values — extend this tuple when adding new kinds
+ASSET_KINDS = ("content", "mask", "guidance", "reference")
+AssetKind = Literal["content", "mask", "guidance", "reference"]
 from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     normalize_url as normalize_pixverse_url,
@@ -190,8 +194,8 @@ class AssetResponse(BaseModel):
     # Provider status (derived field)
     provider_status: Optional[Literal["ok", "local_only", "unknown", "flagged"]] = None
 
-    # Asset kind (purpose): 'content' (gallery), 'mask', 'guidance', 'reference'
-    asset_kind: str = "content"
+    # Asset kind (purpose)
+    asset_kind: AssetKind = "content"
 
     # Upload method (source): 'web', 'local', 'pixverse_sync', 'generated', 'video_capture'
     upload_method: Optional[str] = None
