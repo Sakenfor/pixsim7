@@ -992,11 +992,13 @@ function ParticipantEntry({ participant }: { participant: PlanParticipant }) {
 function PlanDetailView({
   planId,
   onPlanChanged,
+  onNavigatePlan,
   forgeUrlTemplate,
   stageOptions,
 }: {
   planId: string;
   onPlanChanged: () => void;
+  onNavigatePlan?: (planId: string) => void;
   forgeUrlTemplate?: string | null;
   stageOptions: PlanStageOptionEntry[];
 }) {
@@ -2144,6 +2146,42 @@ function PlanDetailView({
 
   return (
     <div className="p-4 space-y-4">
+      {/* Plan lineage — parent → this → children */}
+      {(detail.parentId || detail.children.length > 0) && (
+        <div className="flex items-center gap-1 flex-wrap text-[10px]">
+          {detail.parentId && (
+            <>
+              <button
+                type="button"
+                onClick={() => onNavigatePlan?.(detail.parentId!)}
+                className="text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[150px]"
+                title={detail.parentId}
+              >
+                {detail.parentId}
+              </button>
+              <Icon name="chevronRight" size={10} className="text-neutral-400 shrink-0" />
+            </>
+          )}
+          <span className="font-medium text-neutral-700 dark:text-neutral-300 truncate max-w-[200px]">
+            {detail.title}
+          </span>
+          {detail.children.map((child) => (
+            <span key={child.id} className="flex items-center gap-1">
+              <Icon name="chevronRight" size={10} className="text-neutral-400 shrink-0" />
+              <button
+                type="button"
+                onClick={() => onNavigatePlan?.(child.id)}
+                className="text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[150px]"
+                title={`${child.title} (${child.status})`}
+              >
+                {child.title}
+              </button>
+              <Badge color={STATUS_COLORS[child.status] ?? 'gray'} className="text-[9px]">{child.status}</Badge>
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Header with clickable status/priority badges */}
       <div>
         <div className="flex items-center gap-2 mb-1">
@@ -2343,25 +2381,7 @@ function PlanDetailView({
         </div>
       )}
 
-      {/* Sub-plans */}
-      {detail.children.length > 0 && (
-        <div>
-          <SectionHeader>Sub-plans ({detail.children.length})</SectionHeader>
-          <div className="mt-2 space-y-1">
-            {detail.children.map((child) => (
-              <div
-                key={child.id}
-                className="flex items-center gap-2 px-2 py-1.5 rounded-md border border-neutral-200 dark:border-neutral-700 text-xs"
-              >
-                <Badge color={STATUS_COLORS[child.status] ?? 'gray'} className="text-[10px]">{child.status}</Badge>
-                <span className="font-medium text-neutral-800 dark:text-neutral-200 flex-1 truncate">{child.title}</span>
-                <span className="text-neutral-400">{child.stage}</span>
-                <Badge color={PRIORITY_COLORS[child.priority] ?? 'gray'} className="text-[10px]">{child.priority}</Badge>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Sub-plans moved to lineage bar at top */}
 
       <DisclosureSection
         label="Review Loop"
@@ -3066,12 +3086,7 @@ function PlanDetailView({
         </div>
       </DisclosureSection>
 
-      {/* Parent reference */}
-      {detail.parentId && (
-        <div className="text-xs text-neutral-500 dark:text-neutral-400">
-          Parent: <span className="font-mono">{detail.parentId}</span>
-        </div>
-      )}
+      {/* Parent reference moved to lineage bar at top */}
 
       {/* Plan markdown — collapsed by default */}
       {detail.markdown && (
@@ -3460,6 +3475,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
           key={`${planId}-${refreshKey}`}
           planId={planId}
           onPlanChanged={handlePlanChanged}
+          onNavigatePlan={(id) => nav.navigate(`plan:${id}`)}
           forgeUrlTemplate={forgeUrlTemplate}
           stageOptions={stageOptions}
         />
