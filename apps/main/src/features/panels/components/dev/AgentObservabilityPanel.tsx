@@ -490,6 +490,7 @@ interface CliTokenResponse {
   command: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ActiveSessionsView() {
   const [sessions, setSessions] = useState<AgentSessionsResponse | null>(null);
   const [bridges, setBridges] = useState<BridgeStatusResponse | null>(null);
@@ -1309,6 +1310,8 @@ interface AgentProfileEntry {
   icon: string | null;
   agent_type: string;
   system_prompt: string | null;
+  model_id: string | null;
+  config: Record<string, unknown> | null;
   audience: string;
   default_scopes: string[] | null;
   assigned_plans: string[] | null;
@@ -1336,6 +1339,274 @@ const PROFILE_STATUS_COLORS: Record<string, 'green' | 'gray' | 'orange'> = {
   paused: 'orange',
   archived: 'gray',
 };
+
+// =============================================================================
+// Agents View — unified profile + sessions + live bridge state
+// =============================================================================
+
+interface ObservabilityEntry {
+  profile: AgentProfileEntry;
+  online: boolean;
+  bridge_agent: {
+    agent_id: string;
+    connected_at: string;
+    busy: boolean;
+    tasks_completed: number;
+    engines: string[];
+    pool_sessions: PoolSession[];
+  } | null;
+  recent_sessions: {
+    id: string;
+    engine: string;
+    label: string;
+    message_count: number;
+    last_used_at: string;
+    created_at: string;
+  }[];
+}
+
+interface ObservabilityResponse {
+  agents: ObservabilityEntry[];
+  total_online: number;
+  total_profiles: number;
+  orphan_bridges: ObservabilityEntry['bridge_agent'][];
+}
+
+function AgentsView() {
+  const [data, setData] = useState<ObservabilityResponse | null>(null);
+  const [bridgeAction, setBridgeAction] = useState('');
+  const [skipPermissions, setSkipPermissions] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [mintedToken, setMintedToken] = useState<MintedToken | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await pixsimClient.get<ObservabilityResponse>('/dev/agent-profiles/observability');
+      setData(res);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { void load(); const i = setInterval(load, 8000); return () => clearInterval(i); }, [load]);
+
+  const startServerBridge = useCallback(async () => {
+    setBridgeAction('starting');
+    try {
+      const extraArgs = skipPermissions ? '--dangerously-skip-permissions' : undefined;
+      const res = await pixsimClient.post<{ ok: boolean; message: string }>('/meta/agents/bridge/start', {
+        pool_size: 1, extra_args: extraArgs,
+      });
+      setBridgeAction(res.message || 'Started');
+      setTimeout(load, 2000);
+    } catch { setBridgeAction('Failed to start'); }
+  }, [load, skipPermissions]);
+
+  const stopServerBridge = useCallback(async () => {
+    setBridgeAction('stopping');
+    try {
+      const res = await pixsimClient.post<{ ok: boolean; message: string }>('/meta/agents/bridge/stop');
+      setBridgeAction(res.message || 'Stopped');
+      setTimeout(load, 1000);
+    } catch { setBridgeAction('Failed to stop'); }
+  }, [load]);
+
+  const handleMintToken = async (profileId: string) => {
+    try {
+      const resp = await pixsimClient.post<MintedToken>(
+        `/dev/agent-profiles/${profileId}/token`, undefined, { params: { hours: 24, scope: 'dev' } },
+      );
+      setMintedToken(resp);
+      setCopied(false);
+    } catch { /* handled by client */ }
+  };
+
+  const totalOnline = data?.total_online ?? 0;
+  const hasBridge = totalOnline > 0 || (data?.orphan_bridges?.length ?? 0) > 0;
+
+  return (
+    <div className="p-4 space-y-4">
+      {/* Bridge controls */}
+      <SectionHeader>Bridge</SectionHeader>
+      {!hasBridge ? (
+        <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+          <div className="px-4 py-3 bg-neutral-50 dark:bg-neutral-900 space-y-2.5">
+            <div className="text-[11px] text-neutral-500">
+              Auto-detects engines (claude, codex). Sessions spawn on demand.
+            </div>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" checked={skipPermissions} onChange={(e) => setSkipPermissions(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-neutral-300 accent-accent" />
+              <span className="text-[11px] text-neutral-500">Skip permissions</span>
+            </label>
+          </div>
+          <div className="px-4 py-2.5 flex items-center justify-end">
+            <Button size="sm" onClick={startServerBridge} disabled={bridgeAction === 'starting'}>
+              {bridgeAction === 'starting' ? 'Starting...' : 'Start Bridge'}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Badge color="green" className="text-[10px]">connected</Badge>
+          <span className="text-[10px] text-neutral-400">
+            {totalOnline} agent{totalOnline !== 1 ? 's' : ''} online
+          </span>
+          <div className="ml-auto">
+            <Button size="sm" variant="ghost" onClick={stopServerBridge} disabled={bridgeAction === 'stopping'}>
+              {bridgeAction === 'stopping' ? 'Stopping...' : 'Stop'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {bridgeAction && bridgeAction !== 'starting' && bridgeAction !== 'stopping' && (
+        <div className="text-xs text-neutral-500">{bridgeAction}</div>
+      )}
+
+      {/* Minted token display */}
+      {mintedToken && (
+        <div className="p-3 rounded border border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium">Token for {mintedToken.agent_id}</span>
+            <button onClick={() => setMintedToken(null)} className="text-neutral-400 hover:text-neutral-600 text-xs">dismiss</button>
+          </div>
+          <div className="text-[10px] font-mono bg-white dark:bg-neutral-900 p-2 rounded break-all select-all max-h-16 overflow-y-auto">
+            {mintedToken.command}
+          </div>
+          <Button size="sm" onClick={() => { if (mintedToken) { navigator.clipboard.writeText(mintedToken.command); setCopied(true); } }}>
+            {copied ? 'Copied' : 'Copy command'}
+          </Button>
+        </div>
+      )}
+
+      {/* Agent profiles */}
+      <SectionHeader>{data?.total_profiles ?? 0} Agents</SectionHeader>
+
+      <div className="space-y-2">
+        {(data?.agents ?? []).map((entry) => {
+          const { profile: p, online, bridge_agent: ba, recent_sessions: sessions } = entry;
+          const expanded = expandedId === p.id;
+          const engineColor = (e: string) => e === 'claude' ? 'blue' : e === 'codex' ? 'purple' : 'gray';
+
+          return (
+            <div key={p.id} className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+              {/* Header */}
+              <button
+                onClick={() => setExpandedId(expanded ? null : p.id)}
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-900 flex items-center gap-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              >
+                <div className={`w-2 h-2 rounded-full shrink-0 ${online ? 'bg-green-500' : p.status === 'paused' ? 'bg-yellow-500' : 'bg-neutral-400'}`} />
+                {p.icon && <Icon name={p.icon as import('@lib/icons').IconName} size={12} className="shrink-0 text-neutral-500" />}
+                <span className="text-xs font-medium truncate">{p.label}</span>
+                {ba?.engines.map((e) => (
+                  <Badge key={e} color={engineColor(e)} className="text-[9px]">{e}</Badge>
+                ))}
+                {!ba && <Badge color="gray" className="text-[9px]">{p.agent_type}</Badge>}
+                {p.model_id && <span className="text-[9px] text-neutral-400 truncate max-w-[80px]">{p.model_id.split(':').pop()}</span>}
+                <span className="ml-auto text-[9px] text-neutral-400 shrink-0">
+                  {ba ? `${ba.tasks_completed} tasks` : sessions.length > 0 ? `${sessions.length} sessions` : ''}
+                </span>
+                <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={10} className="text-neutral-400 shrink-0" />
+              </button>
+
+              {/* Expanded content */}
+              {expanded && (
+                <div className="border-t border-neutral-100 dark:border-neutral-800">
+                  {/* Actions bar */}
+                  <div className="px-3 py-1.5 flex items-center gap-1 bg-neutral-25 dark:bg-neutral-900/50">
+                    <span className="text-[10px] font-mono text-neutral-400 flex-1">{p.id}</span>
+                    <Button size="sm" variant="ghost" onClick={() => handleMintToken(p.id)} title="Mint CLI token">
+                      <Icon name="key" size={10} />
+                    </Button>
+                  </div>
+
+                  {/* Live pool sessions */}
+                  {ba && ba.pool_sessions.length > 0 && (
+                    <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                      {ba.pool_sessions.map((ps) => {
+                        const engine = ps.session_id.split('-')[0] || 'unknown';
+                        return (
+                          <div key={ps.session_id} className="px-3 py-1.5 flex items-center gap-2 text-[10px]">
+                            <Badge color={ps.state === 'ready' ? 'green' : ps.state === 'busy' ? 'orange' : ps.state === 'errored' ? 'red' : 'gray'} className="text-[9px] min-w-[38px] text-center">
+                              {ps.state}
+                            </Badge>
+                            <Badge color={engineColor(engine)} className="text-[9px]">{engine}</Badge>
+                            {ps.cli_model && <span className="text-neutral-500 font-medium">{ps.cli_model}</span>}
+                            <span className="text-neutral-400">{ps.messages_sent}/{ps.messages_received} msg</span>
+                            {ps.errors > 0 && <span className="text-red-400" title={ps.last_error || undefined}>{ps.errors} err</span>}
+                            {ps.context_pct != null && (
+                              <span className={`font-mono ${ps.context_pct > 80 ? 'text-orange-400' : ps.context_pct > 50 ? 'text-yellow-400' : 'text-neutral-400'}`}
+                                title={`${ps.total_tokens.toLocaleString()} / ${ps.context_window.toLocaleString()} tokens`}>
+                                ctx {ps.context_pct}%
+                              </span>
+                            )}
+                            {ps.last_activity && <span className="text-neutral-400 ml-auto">{formatTimestamp(ps.last_activity)}</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Recent sessions */}
+                  {sessions.length > 0 && (
+                    <div className="px-3 py-1.5">
+                      <div className="text-[9px] text-neutral-400 uppercase tracking-wider mb-1">Recent Sessions</div>
+                      <div className="space-y-0.5">
+                        {sessions.map((s) => (
+                          <div key={s.id} className="flex items-center gap-2 text-[10px] py-0.5">
+                            <Badge color={s.engine === 'claude' ? 'blue' : s.engine === 'codex' ? 'purple' : 'gray'} className="text-[8px]">{s.engine}</Badge>
+                            <span className="text-neutral-500 truncate flex-1">{s.label}</span>
+                            <span className="text-neutral-400">{s.message_count} msg</span>
+                            <span className="text-neutral-400">{formatTimestamp(s.last_used_at)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Empty state */}
+                  {!ba && sessions.length === 0 && (
+                    <div className="px-3 py-2 text-[10px] text-neutral-400">No sessions yet</div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Orphan bridges */}
+      {(data?.orphan_bridges?.length ?? 0) > 0 && (
+        <>
+          <SectionHeader>Unlinked Bridges</SectionHeader>
+          <div className="space-y-1">
+            {data!.orphan_bridges.map((ba) => ba && (
+              <div key={ba.agent_id} className="px-3 py-2 rounded border border-neutral-200 dark:border-neutral-800 text-[10px] flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                <span className="font-mono text-neutral-500">{ba.agent_id}</span>
+                {ba.engines.map((e) => (
+                  <Badge key={e} color={e === 'claude' ? 'blue' : e === 'codex' ? 'purple' : 'gray'} className="text-[9px]">{e}</Badge>
+                ))}
+                <span className="text-neutral-400 ml-auto">{ba.tasks_completed} tasks</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {!data && (
+        <div className="flex items-center justify-center py-8">
+          <EmptyState message="Loading..." icon={<Icon name="loader" size={20} />} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// =============================================================================
+// Profiles View (legacy — kept for direct profile management)
+// =============================================================================
 
 interface EditFormState {
   label: string;
@@ -1874,9 +2145,9 @@ export function AgentObservabilityPanel() {
       icon: <Icon name="graph" size={12} />,
     },
     {
-      id: 'sessions',
-      label: 'Active Sessions',
-      icon: <Icon name="activity" size={12} />,
+      id: 'agents',
+      label: 'Agents',
+      icon: <Icon name="users" size={12} />,
     },
     {
       id: 'history',
@@ -1902,20 +2173,20 @@ export function AgentObservabilityPanel() {
 
   const nav = useSidebarNav({
     sections,
-    initial: 'profiles',
+    initial: 'agents',
     storageKey: 'agent-observability:nav',
   });
 
   let content: React.ReactNode;
   switch (nav.activeId) {
+    case 'agents':
+      content = <AgentsView />;
+      break;
     case 'profiles':
       content = <ProfilesView />;
       break;
     case 'graph':
       content = <ContractGraphView />;
-      break;
-    case 'sessions':
-      content = <ActiveSessionsView />;
       break;
     case 'history':
       content = <HistoryView />;

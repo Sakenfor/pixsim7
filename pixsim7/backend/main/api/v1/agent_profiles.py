@@ -64,7 +64,7 @@ class AgentProfileCreateRequest(BaseModel):
     label: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     icon: Optional[str] = Field(None, max_length=50)
-    agent_type: str = Field(default="claude-cli", max_length=64)
+    agent_type: str = Field(default="claude", max_length=64)
     system_prompt: Optional[str] = None
     model_id: Optional[str] = Field(None, max_length=100)
     method: Optional[str] = Field(None, max_length=20)
@@ -168,6 +168,137 @@ async def list_agent_profiles(
         "profiles": [_to_response(p) for p in profiles],
         "total": len(profiles),
     }
+
+
+# ── Observability (before /{profile_id} to avoid route capture) ───
+
+
+class ChatSessionSummary(BaseModel):
+    id: str
+    engine: str
+    label: str
+    message_count: int
+    last_used_at: str
+    created_at: str
+
+
+class BridgeAgentSummary(BaseModel):
+    agent_id: str
+    connected_at: str
+    busy: bool
+    tasks_completed: int
+    engines: list[str] = []
+    pool_sessions: list[dict] = []  # raw PoolSessionEntry dicts
+
+
+class AgentObservabilityEntry(BaseModel):
+    profile: dict  # AgentProfileResponse
+    online: bool
+    bridge_agent: Optional[BridgeAgentSummary] = None
+    recent_sessions: list[ChatSessionSummary] = []
+
+
+class AgentObservabilityResponse(BaseModel):
+    agents: list[AgentObservabilityEntry]
+    total_online: int
+    total_profiles: int
+    orphan_bridges: list[BridgeAgentSummary] = []
+
+
+@router.get("/observability", response_model=AgentObservabilityResponse)
+async def agent_observability(
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    """Joined view: profiles + their sessions + live bridge state."""
+    from pixsim7.backend.main.domain.platform.agent_profile import ChatSession
+
+    # 1. Load active profiles (same filter as list endpoint)
+    stmt = (
+        select(AgentProfile)
+        .where(AgentProfile.status != "archived")
+        .where(or_(AgentProfile.user_id == principal.id, AgentProfile.user_id == 0))
+        .order_by(AgentProfile.is_default.desc(), AgentProfile.label)
+    )
+    profiles = (await db.execute(stmt)).scalars().all()
+    profile_ids = [p.id for p in profiles]
+
+    # 2. Load recent sessions grouped by profile (last 10 per profile)
+    sessions_by_profile: dict[str, list[ChatSessionSummary]] = {}
+    if profile_ids:
+        sess_stmt = (
+            select(ChatSession)
+            .where(ChatSession.profile_id.in_(profile_ids))
+            .where(ChatSession.status == "active")
+            .order_by(ChatSession.last_used_at.desc())
+            .limit(200)  # reasonable cap
+        )
+        sessions = (await db.execute(sess_stmt)).scalars().all()
+        for s in sessions:
+            pid = s.profile_id
+            if pid and pid not in sessions_by_profile:
+                sessions_by_profile[pid] = []
+            if pid and len(sessions_by_profile[pid]) < 10:
+                sessions_by_profile[pid].append(ChatSessionSummary(
+                    id=s.id,
+                    engine=s.engine,
+                    label=s.label,
+                    message_count=s.message_count,
+                    last_used_at=s.last_used_at.isoformat() if s.last_used_at else "",
+                    created_at=s.created_at.isoformat() if s.created_at else "",
+                ))
+
+    # 3. Get live bridge agents
+    try:
+        from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
+        bridge_agents = remote_cmd_bridge.get_agents(user_id=principal.id)
+    except Exception:
+        bridge_agents = []
+
+    def _build_bridge_summary(a) -> BridgeAgentSummary:
+        pool = a.pool_status or {}
+        pool_engines = pool.get("engines", [])
+        sessions_raw = pool.get("sessions", [])
+        return BridgeAgentSummary(
+            agent_id=a.agent_id,
+            connected_at=a.connected_at.isoformat(),
+            busy=a.busy,
+            tasks_completed=a.tasks_completed,
+            engines=sorted(set(pool_engines)) if pool_engines else [a.agent_type],
+            pool_sessions=sessions_raw if isinstance(sessions_raw, list) else [],
+        )
+
+    bridge_map = {a.agent_id: a for a in bridge_agents}
+
+    # 4. Join: profile.id matches bridge agent_id
+    matched_ids: set[str] = set()
+    entries = []
+    for p in profiles:
+        ba = bridge_map.get(p.id)
+        if ba:
+            matched_ids.add(p.id)
+        entries.append(AgentObservabilityEntry(
+            profile=_to_response(p),
+            online=ba is not None,
+            bridge_agent=_build_bridge_summary(ba) if ba else None,
+            recent_sessions=sessions_by_profile.get(p.id, []),
+        ))
+
+    # Sort: online first, then by label
+    entries.sort(key=lambda e: (not e.online, e.profile["label"].lower()))
+
+    # 5. Orphan bridges (no matching profile)
+    orphans = [
+        _build_bridge_summary(a) for a in bridge_agents
+        if a.agent_id not in matched_ids
+    ]
+
+    return AgentObservabilityResponse(
+        agents=entries,
+        total_online=len(matched_ids),
+        total_profiles=len(profiles),
+        orphan_bridges=orphans,
+    )
 
 
 # ── Agent Runs (before /{profile_id} to avoid route capture) ─────
