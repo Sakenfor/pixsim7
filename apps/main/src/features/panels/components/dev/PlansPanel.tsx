@@ -515,19 +515,7 @@ const STAGE_SHORT: Record<string, string> = {
   complete: 'done',
 };
 
-const STAGE_COLORS: Record<string, string> = {
-  backlog: 'text-neutral-500',
-  proposed: 'text-neutral-400',
-  discovery: 'text-sky-400',
-  design: 'text-blue-400',
-  implementation: 'text-amber-400',
-  validation: 'text-orange-400',
-  rollout: 'text-indigo-400',
-  completed: 'text-green-400',
-  'implementation-ready': 'text-blue-400',
-  'in-progress': 'text-amber-400',
-  complete: 'text-green-400',
-};
+
 
 const STAGE_BADGE_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
   backlog: 'gray',
@@ -3256,36 +3244,32 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
           <span className="flex items-center gap-1.5">
             {isFresh && (
               <span title={`Updated ${p.lastUpdated}`}>
-                <Icon name="zap" size={9} className="text-green-500" />
+                <Icon name="zap" size={9} />
               </span>
             )}
             {reviewCount > 0 && (
               <span
-                className="flex items-center gap-0.5"
+                className={`flex items-center gap-0.5 ${activeReviews > 0 ? '' : 'opacity-50'}`}
                 title={`${reviewCount} review round${reviewCount !== 1 ? 's' : ''}${activeReviews > 0 ? ` (${activeReviews} active)` : ' (all concluded)'}`}
               >
-                <Icon
-                  name="messageSquare"
-                  size={9}
-                  className={activeReviews > 0 ? 'text-blue-500' : 'text-neutral-400'}
-                />
-                <span className={`text-[9px] leading-none ${activeReviews > 0 ? 'text-blue-500' : 'text-neutral-400'}`}>
+                <Icon name="messageSquare" size={9} />
+                <span className="text-[9px] leading-none">
                   {activeReviews > 0 ? `${activeReviews}/${reviewCount}` : reviewCount}
                 </span>
               </span>
             )}
             {p.priority === 'high' && (
               <span title="High priority">
-                <Icon name="alertCircle" size={9} className="text-red-500" />
+                <Icon name="alertCircle" size={9} />
               </span>
             )}
             {p.priority === 'medium' && (
-              <span title="Medium priority">
-                <Icon name="alertCircle" size={9} className="text-amber-400" />
+              <span className="opacity-60" title="Medium priority">
+                <Icon name="alertCircle" size={9} />
               </span>
             )}
             {!indented && STAGE_SHORT[p.stage] && p.stage !== groupKey && (
-              <span className={`text-[9px] leading-none ${STAGE_COLORS[p.stage] ?? 'text-neutral-400'}`} title={p.stage}>
+              <span className="text-[9px] leading-none opacity-60" title={p.stage}>
                 {STAGE_SHORT[p.stage]}
               </span>
             )}
