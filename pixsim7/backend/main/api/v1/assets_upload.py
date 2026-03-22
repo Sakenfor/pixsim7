@@ -1016,7 +1016,7 @@ async def extract_frame(
     - Asset includes lineage link to parent video via AssetLineage
     - Based on settings and source video, may upload to provider
     """
-    from pixsim7.backend.main.services.asset import get_media_settings
+    from pixsim7.backend.main.services.media import get_media_settings
 
     try:
         # Get video asset first to determine source provider

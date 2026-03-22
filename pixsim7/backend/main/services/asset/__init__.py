@@ -20,7 +20,8 @@ from .enrichment import AssetEnrichmentService
 from .quota import AssetQuotaService
 from .branching import AssetBranchingService
 from .lineage import AssetLineageService
-from .ingestion import AssetIngestionService, get_media_settings
+from .ingestion import AssetIngestionService
+from pixsim7.backend.main.services.media.settings import get_media_settings
 from .tags import tag_asset_from_metadata, extract_ontology_ids_from_asset_tags
 from .dedup import (
     find_existing_asset,

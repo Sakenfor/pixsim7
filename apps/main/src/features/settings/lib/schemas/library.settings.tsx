@@ -191,6 +191,36 @@ const downloadsTab: SettingTab = {
       ],
     },
     {
+      id: 'storage-format',
+      title: 'Storage Format',
+      description: 'Convert images to a smaller format when downloading. The original stays on the provider CDN and can be re-downloaded later.',
+      fields: [
+        {
+          id: 'storage_format',
+          type: 'select',
+          label: 'Image Storage Format',
+          description: 'Convert downloaded images to this format. WebP at quality 90 typically saves 60-70% vs PNG with negligible visual difference.',
+          defaultValue: '',
+          options: [
+            { value: '', label: 'Original — Keep provider format (default)' },
+            { value: 'webp', label: 'WebP — Best compression, broad support' },
+            { value: 'jpeg', label: 'JPEG — Universal compatibility' },
+          ],
+        },
+        {
+          id: 'storage_quality',
+          type: 'range',
+          label: 'Conversion Quality',
+          description: 'Quality for format conversion (1-100). 90 is a good balance of size and quality.',
+          defaultValue: 90,
+          min: 70,
+          max: 100,
+          step: 1,
+          showWhen: (values: Record<string, any>) => !!values['storage_format'],
+        },
+      ],
+    },
+    {
       id: 'auto-ingestion',
       title: 'Auto-Ingestion',
       description: 'Control how media is downloaded and stored on the server.',

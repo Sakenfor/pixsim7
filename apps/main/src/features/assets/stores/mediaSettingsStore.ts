@@ -8,27 +8,14 @@
  * - Local settings (persisted in localStorage)
  * - Server settings (fetched from backend API)
  */
+import type { MediaSettings as GeneratedMediaSettings } from '@pixsim7/shared.api.model';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-// Server-side media settings (from backend)
-export interface ServerMediaSettings {
-  ingest_on_asset_add: boolean;
-  prefer_local_over_provider: boolean;
-  cache_control_max_age_seconds: number;
-  generate_thumbnails: boolean;
-  generate_previews: boolean;
-  thumbnail_quality: number;
-  preview_quality: number;
-  max_download_size_mb: number;
-  concurrency_limit: number;
-  thumbnail_size: [number, number];
-  preview_size: [number, number];
-  /** Frame extraction upload behavior: 'source_provider' | 'always' | 'never' */
-  frame_extraction_upload: 'source_provider' | 'always' | 'never';
-  /** Default provider for uploads when frame_extraction_upload is 'always' */
-  default_upload_provider: string;
-}
+// Server-side media settings — derived from backend MediaSettings (Pydantic BaseModel).
+// Required<> because the backend always returns all fields with defaults,
+// even though the OpenAPI schema marks them optional (due to Pydantic defaults).
+export type ServerMediaSettings = Required<GeneratedMediaSettings>;
 
 interface MediaSettingsState {
   // === Local settings (persisted in browser) ===
@@ -59,23 +46,6 @@ interface MediaSettingsState {
 }
 
 const STORAGE_KEY = 'media_settings_v1';
-
-// Default server settings (used before fetch completes)
-const DEFAULT_SERVER_SETTINGS: ServerMediaSettings = {
-  ingest_on_asset_add: true,
-  prefer_local_over_provider: true,
-  cache_control_max_age_seconds: 86400,
-  generate_thumbnails: true,
-  generate_previews: true,
-  thumbnail_quality: 85,
-  preview_quality: 92,
-  max_download_size_mb: 500,
-  concurrency_limit: 4,
-  thumbnail_size: [320, 320],
-  preview_size: [800, 800],
-  frame_extraction_upload: 'source_provider',
-  default_upload_provider: 'pixverse',
-};
 
 export const useMediaSettingsStore = create<MediaSettingsState>()(
   persist(
@@ -138,8 +108,3 @@ export const useMediaSettingsStore = create<MediaSettingsState>()(
   )
 );
 
-// Helper to get effective settings (with defaults)
-export function getEffectiveServerSettings(): ServerMediaSettings {
-  const store = useMediaSettingsStore.getState();
-  return store.serverSettings ?? DEFAULT_SERVER_SETTINGS;
-}

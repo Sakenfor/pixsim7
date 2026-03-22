@@ -17,10 +17,9 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-from pixsim7.backend.main.services.asset import (
-    AssetIngestionService,
-    get_media_settings,
-)
+from pixsim7.backend.main.services.asset import AssetIngestionService
+from pixsim7.backend.main.services.media import get_media_settings
+from pixsim7.backend.main.services.media.settings import MediaSettings
 from pixsim7.backend.main.services.storage import get_storage_service
 from pixsim7.backend.main.shared.path_registry import get_path_registry
 from pixsim_logging import get_logger
@@ -30,57 +29,22 @@ logger = get_logger()
 
 
 # ===== MEDIA SETTINGS =====
-
-class MediaSettingsResponse(BaseModel):
-    """Media settings response"""
-    ingest_on_asset_add: bool = Field(description="Auto-ingest when assets are created")
-    prefer_local_over_provider: bool = Field(description="Serve from local storage")
-    cache_control_max_age_seconds: int = Field(description="Cache-Control max-age")
-    generate_thumbnails: bool = Field(description="Generate thumbnails")
-    generate_previews: bool = Field(description="Generate preview derivatives")
-    thumbnail_quality: int = Field(description="JPEG quality for thumbnails (1-100)")
-    preview_quality: int = Field(description="JPEG quality for previews (1-100)")
-    max_download_size_mb: int = Field(description="Maximum download size (MB)")
-    concurrency_limit: int = Field(description="Maximum concurrent ingestion jobs")
-    thumbnail_size: list[int] = Field(description="Thumbnail dimensions [width, height]")
-    preview_size: list[int] = Field(description="Preview dimensions [width, height]")
-    frame_extraction_upload: str = Field(
-        description="Frame extraction upload behavior: 'source_provider', 'always', or 'never'"
-    )
-    default_upload_provider: str = Field(
-        description="Default provider for uploads when frame_extraction_upload is 'always'"
-    )
+# Response model = MediaSettings itself (Pydantic BaseModel)
+# Update model = auto-generated with all fields Optional
+MediaSettingsUpdate = MediaSettings.get_update_model()
 
 
-class MediaSettingsUpdate(BaseModel):
-    """Media settings update request"""
-    ingest_on_asset_add: Optional[bool] = None
-    prefer_local_over_provider: Optional[bool] = None
-    cache_control_max_age_seconds: Optional[int] = None
-    generate_thumbnails: Optional[bool] = None
-    generate_previews: Optional[bool] = None
-    thumbnail_quality: Optional[int] = None
-    preview_quality: Optional[int] = None
-    max_download_size_mb: Optional[int] = None
-    concurrency_limit: Optional[int] = None
-    thumbnail_size: Optional[list[int]] = None
-    preview_size: Optional[list[int]] = None
-    frame_extraction_upload: Optional[str] = None
-    default_upload_provider: Optional[str] = None
-
-
-@router.get("/media/settings", response_model=MediaSettingsResponse)
+@router.get("/media/settings", response_model=MediaSettings)
 async def get_settings(_user: CurrentUser):
     """
     Get media settings.
 
     Returns current media ingestion and serving settings.
     """
-    settings = get_media_settings()
-    return MediaSettingsResponse(**settings.to_dict())
+    return get_media_settings()
 
 
-@router.patch("/media/settings", response_model=MediaSettingsResponse)
+@router.patch("/media/settings", response_model=MediaSettings)
 async def update_settings(
     updates: MediaSettingsUpdate,
     user: CurrentUser,
@@ -99,7 +63,6 @@ async def update_settings(
 
     settings = get_media_settings()
 
-    # Apply updates to in-memory cache
     update_dict = updates.model_dump(exclude_none=True)
     if update_dict:
         settings.update(update_dict)
@@ -108,7 +71,7 @@ async def update_settings(
         from pixsim7.backend.main.services.system_config import set_config
         await set_config(db, "media_settings", settings.to_dict(), user.id)
 
-    return MediaSettingsResponse(**settings.to_dict())
+    return settings
 
 
 # ===== INGESTION CONTROL =====

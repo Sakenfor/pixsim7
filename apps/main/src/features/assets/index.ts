@@ -128,7 +128,6 @@ export {
 
 export {
   useMediaSettingsStore,
-  getEffectiveServerSettings,
   type ServerMediaSettings,
 } from './stores/mediaSettingsStore';
 

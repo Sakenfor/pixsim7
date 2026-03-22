@@ -54,7 +54,7 @@ def _get_semaphore() -> asyncio.Semaphore:
     """Get or create ingestion semaphore."""
     global _ingestion_semaphore
     if _ingestion_semaphore is None:
-        from pixsim7.backend.main.services.asset import get_media_settings
+        from pixsim7.backend.main.services.media import get_media_settings
         settings = get_media_settings()
         _ingestion_semaphore = asyncio.Semaphore(settings.concurrency_limit)
     return _ingestion_semaphore
@@ -71,7 +71,7 @@ async def handle_event(event: Event) -> None:
         return
 
     try:
-        from pixsim7.backend.main.services.asset import get_media_settings
+        from pixsim7.backend.main.services.media import get_media_settings
 
         settings = get_media_settings()
 

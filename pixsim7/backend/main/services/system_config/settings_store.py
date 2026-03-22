@@ -8,6 +8,23 @@ from __future__ import annotations
 
 from typing import Any
 
+
+# ---------------------------------------------------------------------------
+# Generic namespace cache (used by SettingsBase subclasses)
+# ---------------------------------------------------------------------------
+
+_namespace_caches: dict[str, dict[str, Any]] = {}
+
+
+def get_settings_data(namespace: str) -> dict[str, Any]:
+    """Read settings for any namespace from in-memory cache."""
+    return dict(_namespace_caches.get(namespace, {}))
+
+
+def apply_settings(namespace: str, data: dict) -> None:
+    """Applier callback: project data onto the generic namespace cache."""
+    _namespace_caches[namespace] = dict(data) if data else {}
+
 # ---------------------------------------------------------------------------
 # Provider settings cache
 # ---------------------------------------------------------------------------
@@ -42,19 +59,10 @@ def apply_provider_settings(data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Media settings cache
+# Media settings — delegates to generic namespace cache
 # ---------------------------------------------------------------------------
-
-_media_settings_cache: dict[str, Any] = {}
-
-
-def get_media_settings_data() -> dict[str, Any]:
-    """Read media settings from in-memory cache."""
-    return dict(_media_settings_cache)
 
 
 def apply_media_settings(data: dict) -> None:
-    """Applier callback: project DB data onto the in-memory cache."""
-    _media_settings_cache.clear()
-    if data:
-        _media_settings_cache.update(data)
+    """Applier callback: delegates to the generic namespace cache."""
+    apply_settings("media_settings", data)
