@@ -979,11 +979,11 @@ function ParticipantEntry({ participant }: { participant: PlanParticipant }) {
               </>
             )}
           </div>
-          {actionLog.length > 0 && (
-            <div>
-              <div className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 mb-1">
-                Activity ({actionLog.length})
-              </div>
+          <div>
+            <div className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 mb-1">
+              Activity ({actionLog.length > 0 ? actionLog.length : participant.touches})
+            </div>
+            {actionLog.length > 0 ? (
               <div className="space-y-0.5 max-h-40 overflow-y-auto">
                 {actionLog.map((entry, i) => (
                   <div key={`${participant.id}:action:${i}`} className="flex items-center gap-2 text-[10px]">
@@ -994,8 +994,13 @@ function ParticipantEntry({ participant }: { participant: PlanParticipant }) {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="text-[10px] text-neutral-400 italic">
+                {participant.touches} touch{participant.touches !== 1 ? 'es' : ''} recorded before activity tracking.
+                {participant.lastAction && <> Last: {participant.lastAction.replace(/_/g, ' ')}.</>}
+              </div>
+            )}
+          </div>
         </div>
       </Popover>
     </>
