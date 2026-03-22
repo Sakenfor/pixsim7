@@ -228,6 +228,7 @@ interface PlanReviewNodeCreateResponse {
 interface PlanRequest {
   id: string;
   kind: string;
+  dismissed: boolean;
   planId: string;
   roundId: string | null;
   title: string;
@@ -1290,6 +1291,23 @@ function PlanDetailView({
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [reviewGraph?.requests, selectedRoundId]);
 
+  // Nodes linked to dismissed requests — show faded in discussion
+  const dismissedNodeIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const r of reviewGraph?.requests ?? []) {
+      if (r.dismissed && r.resolvedNodeId) ids.add(r.resolvedNodeId);
+    }
+    // Also check node meta for request_id linkage
+    for (const node of reviewGraph?.nodes ?? []) {
+      const reqId = (node.meta as any)?.request_id;
+      if (reqId) {
+        const req = (reviewGraph?.requests ?? []).find((r) => r.id === reqId);
+        if (req?.dismissed) ids.add(node.id);
+      }
+    }
+    return ids;
+  }, [reviewGraph?.requests, reviewGraph?.nodes]);
+
   const liveAssigneeOptions = useMemo(
     () => (reviewAssignees?.liveSessions ?? []),
     [reviewAssignees?.liveSessions],
@@ -1928,6 +1946,7 @@ function PlanDetailView({
     const nodeOrder = selectedRoundNodeOrder.get(node.id) ?? 0;
     const indentPx = Math.min(depth, 8) * 16;
     const isFocused = focusedNodeId === node.id;
+    const isDismissed = dismissedNodeIds.has(node.id);
     const sourceRefs = extractSourceRefs(node.body);
     const sourcePreviewForNode = sourcePreview?.nodeId === node.id ? sourcePreview : null;
     const sourcePreviewErrorForNode = sourcePreviewError?.nodeId === node.id ? sourcePreviewError.message : null;
@@ -1944,7 +1963,7 @@ function PlanDetailView({
           }}
           className={`rounded border border-neutral-200 dark:border-neutral-700 p-2 ${
             depth > 0 ? 'bg-neutral-50/60 dark:bg-neutral-900/30' : ''
-          } ${isFocused ? 'ring-2 ring-blue-400 ring-offset-1 dark:ring-blue-500' : ''}`}
+          } ${isFocused ? 'ring-2 ring-blue-400 ring-offset-1 dark:ring-blue-500' : ''} ${isDismissed ? 'opacity-40' : ''}`}
         >
           <div className="flex items-center gap-1.5 flex-wrap mb-1">
             <span className="text-[10px] text-neutral-400">#{nodeOrder}</span>
@@ -2564,7 +2583,7 @@ function PlanDetailView({
                 </div>
               ) : (
                 <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                  {selectedRoundRequests.map((request) => (
+                  {selectedRoundRequests.filter((r) => !r.dismissed).map((request) => (
                     <div key={request.id} className="rounded border border-neutral-200 dark:border-neutral-700 p-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[11px] font-medium text-neutral-800 dark:text-neutral-200">
@@ -2705,6 +2724,19 @@ function PlanDetailView({
                             {request.status === statusValue ? `* ${statusValue}` : statusValue}
                           </Button>
                         ))}
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            void pixsimClient.patch<PlanRequest>(
+                              `/dev/plans/reviews/${encodedPlanId}/requests/${encodeURIComponent(request.id)}`,
+                              { dismissed: true },
+                            ).then(() => loadReviewGraph());
+                          }}
+                          disabled={request.status === 'in_progress'}
+                          title="Dismiss this request"
+                        >
+                          dismiss
+                        </Button>
                       </div>
                     </div>
                   ))}

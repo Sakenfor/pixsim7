@@ -1852,6 +1852,7 @@ def _review_request_to_entry(row: PlanRequest) -> PlanRequestEntry:
     return PlanRequestEntry(
         id=str(row.id),
         kind=getattr(row, "kind", "review") or "review",
+        dismissed=bool(getattr(row, "dismissed", False)),
         planId=row.plan_id,
         roundId=str(row.round_id) if row.round_id else None,
         title=row.title,

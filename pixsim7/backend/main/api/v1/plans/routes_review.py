@@ -334,6 +334,8 @@ async def update_plan_review_request(
 
     if payload.status is not None:
         row.status = payload.status
+    if payload.dismissed is not None:
+        row.dismissed = payload.dismissed
     if payload.resolution_note is not None:
         row.resolution_note = payload.resolution_note
     if payload.meta is not None:

@@ -364,6 +364,7 @@ class PlanRequest(SQLModel, table=True):
     title: str = Field(max_length=200)
     body: str = Field(sa_column=Column(Text, nullable=False))
     status: str = Field(default="open", max_length=32, index=True)
+    dismissed: bool = Field(default=False)
     target_agent_id: Optional[str] = Field(default=None, max_length=120)
     target_agent_type: Optional[str] = Field(default=None, max_length=64)
     requested_by: Optional[str] = Field(default=None, max_length=120)

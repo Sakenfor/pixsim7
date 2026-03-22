@@ -311,6 +311,7 @@ class PlanReviewNodeCreateResponse(BaseModel):
 class PlanRequestEntry(BaseModel):
     id: str
     kind: str = "review"
+    dismissed: bool = False
     planId: str
     roundId: Optional[str] = None
     title: str
@@ -384,6 +385,7 @@ class PlanRequestCreateRequest(BaseModel):
 
 class PlanRequestUpdateRequest(BaseModel):
     status: Optional[Literal["open", "in_progress", "fulfilled", "cancelled"]] = Field(None)
+    dismissed: Optional[bool] = Field(None)
     resolution_note: Optional[str] = Field(None)
     resolved_node_id: Optional[str] = Field(None)
     meta: Optional[Dict[str, Any]] = Field(None)
