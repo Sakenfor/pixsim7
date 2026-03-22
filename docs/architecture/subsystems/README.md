@@ -179,6 +179,23 @@ PixSim7Core (Headless)              GameRuntime (Interactive)
 | **Extensibility** | Filter registry drives dynamic UI filters |
 | **Drift** | None—frontend reads backend state |
 
+### Asset Kind Taxonomy
+
+The `asset_kind` field (string column, `Literal`-validated at API boundary) categorizes an asset's **purpose**:
+
+| Kind | Description | Gallery visible | Example |
+|------|-------------|----------------|---------|
+| `content` | Normal browsable gallery content (default) | Yes | Generated images, uploads |
+| `mask` | Generation masks (painted/imported) | No | Inpainting masks, segmentation masks |
+| `guidance` | Depth maps, pose references | No | ControlNet inputs (future) |
+| `reference` | Reference images for generation | No | Style references (future) |
+
+- `media_type` describes **format** (image/video/audio/3d_model); `asset_kind` describes **purpose**
+- Gallery queries filter `asset_kind='content'` by default; pass `None` for all kinds
+- `asset_factory._UPLOAD_METHOD_TO_KIND` auto-infers kind from `upload_method` (e.g., `mask_draw` → `mask`)
+- Defined in `shared/schemas/asset_schemas.py`: `AssetKind` type alias + `ASSET_KINDS` tuple
+- To add a new kind: update `ASSET_KINDS` + `AssetKind` Literal + `_UPLOAD_METHOD_TO_KIND`. No migration needed.
+
 ### Key Files
 
 | Layer | File | Purpose |
