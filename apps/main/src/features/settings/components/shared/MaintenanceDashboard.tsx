@@ -412,46 +412,50 @@ const folderContextConfig: RowConfig<FolderContextStats> = {
   },
 };
 
+interface FormatBreakdown {
+  mime_type: string;
+  count: number;
+  size_bytes: number;
+  size_human: string;
+}
+
 interface FormatConversionStats {
   total_images: number;
-  png_count: number;
-  png_size_bytes: number;
-  png_size_human: string;
-  already_webp: number;
-  already_jpeg: number;
+  formats: FormatBreakdown[];
+  convertible_count: number;
+  convertible_size_bytes: number;
+  convertible_size_human: string;
+  target_format: string;
   estimated_savings_pct: number;
 }
 
 const formatConversionConfig: RowConfig<FormatConversionStats> = {
-  statsEndpoint: '/api/v1/assets/format-conversion-stats',
+  statsEndpoint: '/api/v1/assets/format-conversion-stats?target_format=webp',
   actionEndpoint: '/api/v1/assets/convert-format?target_format=webp&quality=90&limit={limit}',
   defaultBatchSize: 100,
   extract: (s) => {
-    const convertible = s.png_count;
-    const total = s.total_images;
-    const done = total - convertible;
-    const pct = total > 0 ? (done / total) * 100 : 100;
+    const done = s.total_images - s.convertible_count;
+    const pct = s.total_images > 0 ? (done / s.total_images) * 100 : 100;
     return {
       done,
-      total,
+      total: s.total_images,
       pct,
-      complete: convertible === 0,
-      actionable: convertible,
+      complete: s.convertible_count === 0,
+      actionable: s.convertible_count,
       label: 'Format Conversion',
-      statsText: `${fmt(convertible)} PNGs (${s.png_size_human})`,
+      statsText: `${fmt(s.convertible_count)} convertible (${s.convertible_size_human})`,
       actionVerb: 'Convert',
     };
   },
   detailLines: (s) => {
     const lines: string[] = [];
-    if (s.png_count > 0)
-      lines.push(`${fmt(s.png_count)} PNGs → WebP would save ~${s.estimated_savings_pct.toFixed(0)}%`);
-    if (s.already_webp > 0)
-      lines.push(`${fmt(s.already_webp)} already WebP`);
-    if (s.already_jpeg > 0)
-      lines.push(`${fmt(s.already_jpeg)} already JPEG`);
-    if (s.png_count === 0)
-      lines.push('No PNGs to convert');
+    for (const f of s.formats) {
+      lines.push(`${f.mime_type.replace('image/', '')}: ${fmt(f.count)} (${f.size_human})`);
+    }
+    if (s.convertible_count > 0 && s.estimated_savings_pct > 0)
+      lines.push(`Estimated savings: ~${s.estimated_savings_pct.toFixed(0)}% → ${s.target_format}`);
+    if (s.convertible_count === 0)
+      lines.push(`All images already ${s.target_format}`);
     return lines;
   },
   resultMessage: (d) =>

@@ -1123,14 +1123,22 @@ async def backfill_upload_method(
 
 # ===== FORMAT CONVERSION STATS & BACKFILL =====
 
+class FormatBreakdown(BaseModel):
+    """Per-format count and size"""
+    mime_type: str
+    count: int
+    size_bytes: int
+    size_human: str
+
+
 class FormatConversionStatsResponse(BaseModel):
-    """Statistics for potential format conversion savings"""
+    """Statistics for image format distribution and conversion potential"""
     total_images: int
-    png_count: int
-    png_size_bytes: int
-    png_size_human: str
-    already_webp: int
-    already_jpeg: int
+    formats: list[FormatBreakdown]
+    convertible_count: int
+    convertible_size_bytes: int
+    convertible_size_human: str
+    target_format: str
     estimated_savings_pct: float
 
 
@@ -1148,7 +1156,7 @@ class FormatConversionResponse(BaseModel):
     error_ids: list[int] = []
 
 
-def _human_size(size_bytes: int) -> str:
+def _human_size(size_bytes: int | float) -> str:
     for unit in ("B", "KB", "MB", "GB"):
         if abs(size_bytes) < 1024:
             return f"{size_bytes:.1f} {unit}"
@@ -1156,42 +1164,86 @@ def _human_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} TB"
 
 
+# Estimated compression ratios (source → webp)
+_ESTIMATED_SAVINGS: dict[str, float] = {
+    "image/png": 65.0,
+    "image/jpeg": 15.0,
+    "image/bmp": 90.0,
+    "image/tiff": 85.0,
+}
+
+
 @router.get("/format-conversion-stats", response_model=FormatConversionStatsResponse)
 async def get_format_conversion_stats(
     admin: CurrentAdminUser,
     db: DatabaseSession,
+    target_format: str = Query("webp", description="Target format to estimate savings for: 'webp' or 'jpeg'"),
+    source_format: str = Query("", description="Only count this source MIME type (empty = all non-target)"),
 ):
     """
-    Preview potential savings from converting PNG images to WebP/JPEG.
+    Preview image format distribution and potential conversion savings.
 
-    Shows how many PNGs exist and estimated space savings.
+    Returns per-format breakdown and how many images could be converted
+    to the target format.
     """
-    from sqlalchemy import select, func
+    from sqlalchemy import select, func, case
     from pixsim7.backend.main.domain.assets.models import Asset
 
+    target_mime = {
+        "webp": "image/webp",
+        "jpeg": "image/jpeg",
+        "jpg": "image/jpeg",
+    }.get(target_format.lower(), f"image/{target_format.lower()}")
+
     try:
-        result = await db.execute(
+        # Per-format breakdown
+        fmt_result = await db.execute(
             select(
-                func.count().label("total"),
-                func.count().filter(Asset.mime_type == "image/png").label("png_count"),
-                func.coalesce(func.sum(Asset.file_size_bytes).filter(Asset.mime_type == "image/png"), 0).label("png_bytes"),
-                func.count().filter(Asset.mime_type == "image/webp").label("webp_count"),
-                func.count().filter(Asset.mime_type == "image/jpeg").label("jpeg_count"),
+                Asset.mime_type,
+                func.count().label("cnt"),
+                func.coalesce(func.sum(Asset.file_size_bytes), 0).label("total_bytes"),
             ).where(
                 Asset.stored_key.isnot(None),
                 Asset.media_type == "image",
-            )
+                Asset.mime_type.isnot(None),
+            ).group_by(Asset.mime_type).order_by(func.sum(Asset.file_size_bytes).desc())
         )
-        row = result.first()
+        rows = fmt_result.fetchall()
+
+        formats = []
+        total_images = 0
+        convertible_count = 0
+        convertible_bytes = 0
+        weighted_savings = 0.0
+
+        for row in rows:
+            mime, count, size_bytes = row.mime_type, row.cnt, row.total_bytes
+            total_images += count
+            formats.append(FormatBreakdown(
+                mime_type=mime,
+                count=count,
+                size_bytes=size_bytes,
+                size_human=_human_size(size_bytes),
+            ))
+
+            # Is this format convertible to target?
+            if mime != target_mime:
+                if not source_format or mime == source_format:
+                    convertible_count += count
+                    convertible_bytes += size_bytes
+                    savings = _ESTIMATED_SAVINGS.get(mime, 30.0)
+                    weighted_savings += savings * size_bytes
+
+        est_pct = (weighted_savings / convertible_bytes) if convertible_bytes > 0 else 0.0
 
         return FormatConversionStatsResponse(
-            total_images=row.total,
-            png_count=row.png_count,
-            png_size_bytes=row.png_bytes,
-            png_size_human=_human_size(row.png_bytes),
-            already_webp=row.webp_count,
-            already_jpeg=row.jpeg_count,
-            estimated_savings_pct=65.0 if row.png_count > 0 else 0.0,
+            total_images=total_images,
+            formats=formats,
+            convertible_count=convertible_count,
+            convertible_size_bytes=convertible_bytes,
+            convertible_size_human=_human_size(convertible_bytes),
+            target_format=target_format,
+            estimated_savings_pct=round(est_pct, 1),
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
