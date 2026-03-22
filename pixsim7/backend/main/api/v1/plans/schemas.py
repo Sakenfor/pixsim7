@@ -4,8 +4,6 @@ Pydantic request/response models for the Plans API.
 Extracted from dev_plans.py to keep schemas separate from route handlers.
 Import everything from here: ``from .plans.schemas import PlanSummary, ...``
 """
-from __future__ import annotations
-
 import re
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
@@ -308,14 +306,6 @@ class PlanReviewNodeCreateResponse(BaseModel):
     links: List[PlanReviewLinkEntry] = Field(default_factory=list)
 
 
-class PlanReviewGraphResponse(BaseModel):
-    planId: str
-    rounds: List[PlanReviewRoundEntry] = Field(default_factory=list)
-    nodes: List[PlanReviewNodeEntry] = Field(default_factory=list)
-    links: List[PlanReviewLinkEntry] = Field(default_factory=list)
-    requests: List["PlanRequestEntry"] = Field(default_factory=list)
-
-
 # ── Plan requests (review, build, etc.) ──────────────────────────
 
 class PlanRequestEntry(BaseModel):
@@ -453,6 +443,14 @@ class PlanReviewDispatchTickResponse(BaseModel):
     attempted: int
     processed: int
     items: List[PlanReviewDispatchTickItem] = Field(default_factory=list)
+
+
+class PlanReviewGraphResponse(BaseModel):
+    planId: str
+    rounds: List[PlanReviewRoundEntry] = Field(default_factory=list)
+    nodes: List[PlanReviewNodeEntry] = Field(default_factory=list)
+    links: List[PlanReviewLinkEntry] = Field(default_factory=list)
+    requests: List[PlanRequestEntry] = Field(default_factory=list)
 
 
 # ── Assignees & participants ─────────────────────────────────────
