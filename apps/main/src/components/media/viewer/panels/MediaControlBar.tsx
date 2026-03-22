@@ -5,7 +5,7 @@
  * Overlay tool toggles have moved to ViewerToolStrip.
  */
 
-import { Dropdown, DropdownItem } from '@pixsim7/shared.ui';
+import { Dropdown, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
 import { useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
@@ -54,6 +54,10 @@ interface MediaControlBarProps {
   scopeLabel?: string;
   scopes?: ScopeItem[];
   onSwitchScope?: (id: string) => void;
+
+  // Follow latest
+  followLatest?: boolean;
+  onToggleFollowLatest?: () => void;
 }
 
 export function MediaControlBar({
@@ -78,6 +82,8 @@ export function MediaControlBar({
   scopeLabel,
   scopes,
   onSwitchScope,
+  followLatest,
+  onToggleFollowLatest,
 }: MediaControlBarProps) {
   const [scopeDropdownOpen, setScopeDropdownOpen] = useState(false);
   const scopeTriggerRef = useRef<HTMLButtonElement>(null);
@@ -141,6 +147,17 @@ export function MediaControlBar({
                         {scope.label}
                       </DropdownItem>
                     ))}
+                    {onToggleFollowLatest && (
+                      <>
+                        <DropdownDivider />
+                        <DropdownItem
+                          onClick={onToggleFollowLatest}
+                          icon={followLatest ? <Icon name="check" size={10} /> : <span className="w-[10px]" />}
+                        >
+                          Follow latest
+                        </DropdownItem>
+                      </>
+                    )}
                   </Dropdown>
                 )}
               </div>

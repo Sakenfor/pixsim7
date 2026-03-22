@@ -73,6 +73,8 @@ export interface ViewerSettings {
   qualityMode: GalleryQualityMode;
   /** Use original source instead of generated thumbnails/previews (for large display sizes) */
   preferOriginal: boolean;
+  /** Auto-navigate to newest asset when scope head changes */
+  followLatest: boolean;
 }
 
 interface AssetViewerState {
@@ -130,6 +132,7 @@ const defaultSettings: ViewerSettings = {
   loopVideos: true,
   qualityMode: 'auto',
   preferOriginal: false,
+  followLatest: true,
 };
 
 export const useAssetViewerStore = create<AssetViewerState>()(
@@ -253,7 +256,7 @@ export const useAssetViewerStore = create<AssetViewerState>()(
       },
 
       registerScope: (id, label, assets) => {
-        const { scopes, activeScopeId, currentAsset } = get();
+        const { scopes, activeScopeId, currentAsset, settings } = get();
         const isActiveScope = id === activeScopeId;
 
         // Fast-path: when the active scope's list changes but the currently
@@ -264,6 +267,20 @@ export const useAssetViewerStore = create<AssetViewerState>()(
         if (isActiveScope && currentAsset) {
           const stillPresent = assets.some((a) => a.id === currentAsset.id);
           if (stillPresent) {
+            // Auto-follow: when the head asset changes (new item prepended)
+            // and followLatest is on, navigate to the new head.
+            const oldHead = scopes[id]?.assets[0]?.id;
+            const newHead = assets[0]?.id;
+            if (settings.followLatest && oldHead !== newHead && newHead !== undefined) {
+              set({
+                scopes: { ...scopes, [id]: { label, assets } },
+                assetList: assets,
+                currentIndex: 0,
+                currentAsset: assets[0],
+              });
+              return;
+            }
+
             set({ scopes: { ...scopes, [id]: { label, assets } } });
             return;
           }

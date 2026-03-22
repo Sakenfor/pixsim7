@@ -17,11 +17,12 @@ import { useAssetRegionStore, useCaptureRegionStore, useAssetViewerOverlayStore 
 
 import { useOverlayWidgetsForAsset } from '../../hooks/useOverlayWidgetsForAsset';
 import { useProvideRegionAnnotations } from '../capabilities';
-import { useMediaOverlayHost, useMediaOverlayRegistry, DefaultLayerSidebar } from '../overlays';
+import { useMediaOverlayHost, useMediaOverlayRegistry } from '../overlays';
 import { useMaskOverlayStore } from '../overlays/builtins/maskOverlayStore';
+import { ViewerLayersPanel } from '../overlays/shared/ViewerLayersPanel';
 import type { ViewerPanelContext } from '../types';
 
-import { useFrameCapture, useOverlayShortcuts, useViewerContext } from './hooks';
+import { useFrameCapture, useOverlayShortcuts, useRecentScope, useViewerContext } from './hooks';
 import { MediaControlBar } from './MediaControlBar';
 import { MediaDisplay, type FitMode } from './MediaDisplay';
 import { useMediaMaximize } from './useMediaMaximize';
@@ -133,7 +134,6 @@ export function MediaPanel({ context }: MediaPanelProps) {
 
   const annotationMode = activeOverlay?.id === 'annotate';
   const ActiveToolbar = activeOverlay?.Toolbar;
-  const ActiveSidebar = activeOverlay?.Sidebar;
   const ActiveMain = activeOverlay?.Main;
   const activeOverlayId = activeOverlay?.id ?? null;
   const toolStripOverlays = useMemo(
@@ -193,6 +193,16 @@ export function MediaPanel({ context }: MediaPanelProps) {
     })),
     [scopes, activeScopeId],
   );
+
+  // Recent scope — always-available session scope for recently created assets
+  useRecentScope();
+
+  // Follow latest setting
+  const followLatest = useAssetViewerStore((s) => s.settings.followLatest);
+  const updateSettings = useAssetViewerStore((s) => s.updateSettings);
+  const handleToggleFollowLatest = useCallback(() => {
+    updateSettings({ followLatest: !followLatest });
+  }, [followLatest, updateSettings]);
 
   // Reset zoom/pan on asset change
   useEffect(() => {
@@ -493,16 +503,13 @@ export function MediaPanel({ context }: MediaPanelProps) {
           )}
         </div>
 
-        {ActiveSidebar ? (
-          <ActiveSidebar
-            asset={asset}
-            settings={settings}
-            onCaptureFrame={captureFrame}
-            captureDisabled={isCapturing}
+        {asset && (
+          <ViewerLayersPanel
+            assetId={asset.id}
+            activeOverlayId={activeOverlayId}
+            sourceAssetId={typeof asset.id === 'number' ? asset.id : (Number(asset.id) || null)}
           />
-        ) : activeOverlay ? (
-          <DefaultLayerSidebar />
-        ) : null}
+        )}
       </div>
 
       <MediaControlBar
@@ -527,6 +534,8 @@ export function MediaPanel({ context }: MediaPanelProps) {
         scopeLabel={activeScopeId ? scopes[activeScopeId]?.label : undefined}
         scopes={scopeItems.length > 0 ? scopeItems : undefined}
         onSwitchScope={switchScope}
+        followLatest={followLatest}
+        onToggleFollowLatest={handleToggleFollowLatest}
       />
     </div>
   );
