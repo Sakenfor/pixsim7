@@ -3260,7 +3260,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
         extra: (
           <span className="flex items-center gap-1">
             {isFresh && (
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400" title="Updated recently" />
+              <Icon name="zap" size={9} className="text-green-500" title="Updated recently" />
             )}
             {reviewCount > 0 && (
               <Icon
