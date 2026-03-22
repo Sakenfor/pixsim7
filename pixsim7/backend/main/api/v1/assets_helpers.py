@@ -15,6 +15,12 @@ def _compute_provider_status(asset) -> str:
     remote_url = getattr(asset, "remote_url", None)
     provider_uploads = getattr(asset, "provider_uploads", None) or {}
 
+    # Also check media_metadata for flagged status (set on upload rejection)
+    if not provider_flagged:
+        meta = getattr(asset, "media_metadata", None) or {}
+        if isinstance(meta, dict) and meta.get("provider_flagged"):
+            provider_flagged = True
+
     if provider_flagged:
         return "flagged"
     elif remote_url and (remote_url.startswith("http://") or remote_url.startswith("https://")):

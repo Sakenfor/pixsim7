@@ -899,6 +899,9 @@ async def upload_asset_from_url(
         provider_asset_id = f"local_{sha256[:16]}"
         remote_url = None
         provider_upload_note = f"Asset saved locally; provider upload failed: {provider_upload_error}"
+        # Mark as flagged so the badge shows the rejection
+        media_metadata["provider_flagged"] = True
+        media_metadata["provider_flagged_reason"] = provider_upload_error
 
     try:
         asset = await add_asset(
