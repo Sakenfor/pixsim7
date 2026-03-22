@@ -7,19 +7,23 @@ from pydantic import BaseModel, Field, ConfigDict
 
 
 class DebugPreferences(BaseModel):
-    """Debug flag preferences for developer diagnostics."""
+    """Debug flag preferences — categories aligned with pixsim_logging.spec.DOMAINS."""
 
     model_config = ConfigDict(extra="allow")
 
+    # Canonical domains (sync with pixsim_logging.spec.DOMAINS)
+    account: bool | None = None
+    audit: bool | None = None
+    cron: bool | None = None
     generation: bool | None = None
-    provider: bool | None = None
-    worker: bool | None = None
+    localFolders: bool | None = None
+    overlay: bool | None = None
     persistence: bool | None = None
-    rehydration: bool | None = None
+    provider: bool | None = None
     stores: bool | None = None
-    backend: bool | None = None
-    registry: bool | None = None
+    system: bool | None = None
     websocket: bool | None = None
+    worker: bool | None = None
     validateCompositionVocabs: bool | None = Field(
         default=None,
         description="Validate composition vocab fields against registry",
