@@ -15,6 +15,9 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
 from pixsim7.backend.main.lib.registry.simple import SimpleRegistry
+from pixsim7.backend.main.services.docs.plan_authoring_policy import (
+    PLAN_AUTHORING_CONTRACT_ENDPOINT,
+)
 
 
 @dataclass
@@ -279,7 +282,7 @@ def _builtin_plans_management() -> MetaContract:
         id="plans.management",
         name="Plan Management",
         endpoint=None,
-        version="2.3.0",
+        version="2.4.0",
         auth_required=True,
         owner="devtools lane",
         summary=(
@@ -296,6 +299,7 @@ def _builtin_plans_management() -> MetaContract:
             "plan_activity",
             "plan_sync",
             "agent_assignment",
+            "plan_authoring_policy",
         ],
         relates_to=["devtools.codegen", "ui.catalog"],
         sub_endpoints=[
@@ -358,8 +362,19 @@ def _builtin_plans_management() -> MetaContract:
                         },
                     },
                     "required": ["body"],
+                    "x-policy-ref": PLAN_AUTHORING_CONTRACT_ENDPOINT,
                 },
                 tags=["create", "planning"],
+            ),
+            MetaContractEndpoint(
+                id="plans.meta_authoring_contract",
+                method="GET",
+                path=PLAN_AUTHORING_CONTRACT_ENDPOINT,
+                summary=(
+                    "Canonical plan authoring rules (required/suggested fields) "
+                    "by principal type."
+                ),
+                tags=["agent", "planning", "policy"],
             ),
             MetaContractEndpoint(
                 id="plans.list",
@@ -1002,6 +1017,83 @@ def _builtin_testing_catalog() -> MetaContract:
     )
 
 
+def _builtin_project_files() -> MetaContract:
+    return MetaContract(
+        id="project.files",
+        name="Project File Access",
+        endpoint=None,
+        version="1.0.0",
+        auth_required=True,
+        owner="platform",
+        summary="Read-only access to project source files for AI agents reviewing plans and code.",
+        audience=["dev"],
+        sub_endpoints=[
+            MetaContractEndpoint(
+                id="files_read",
+                method="GET",
+                path="/api/v1/files/read",
+                summary="Read a project file with line numbers. Provide path (relative), optional offset and limit.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "params": {
+                            "type": "object",
+                            "description": "Query parameters",
+                            "properties": {
+                                "path": {"type": "string", "description": "Relative file path (e.g. 'pixsim7/backend/main/services/foo.py')"},
+                                "offset": {"type": "integer", "description": "Start line (1-based, default 1)"},
+                                "limit": {"type": "integer", "description": "Max lines (default 500, max 2000)"},
+                            },
+                            "required": ["path"],
+                        },
+                    },
+                },
+            ),
+            MetaContractEndpoint(
+                id="files_list",
+                method="GET",
+                path="/api/v1/files/list",
+                summary="List files in a project directory with sizes. Supports glob patterns.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "params": {
+                            "type": "object",
+                            "description": "Query parameters",
+                            "properties": {
+                                "path": {"type": "string", "description": "Relative directory path (default: project root)"},
+                                "pattern": {"type": "string", "description": "Glob pattern (e.g. '*.py', '**/*.ts')"},
+                            },
+                        },
+                    },
+                },
+            ),
+            MetaContractEndpoint(
+                id="files_search",
+                method="GET",
+                path="/api/v1/files/search",
+                summary="Search for text/regex patterns across project files. Returns matching lines with paths.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "params": {
+                            "type": "object",
+                            "description": "Query parameters",
+                            "properties": {
+                                "pattern": {"type": "string", "description": "Text or regex pattern to search for"},
+                                "path": {"type": "string", "description": "Directory to search in (default: root)"},
+                                "glob": {"type": "string", "description": "File glob filter (e.g. '*.py')"},
+                                "max_results": {"type": "integer", "description": "Max matches (default 50, max 200)"},
+                            },
+                            "required": ["pattern"],
+                        },
+                    },
+                },
+            ),
+        ],
+    )
+
+
 _BUILTIN_FACTORIES = {
     "prompts.analysis": _builtin_prompts_analysis,
     "prompts.authoring": _builtin_prompts_authoring,
@@ -1013,6 +1105,7 @@ _BUILTIN_FACTORIES = {
     "ui.catalog": _builtin_ui_catalog,
     "testing.catalog": _builtin_testing_catalog,
     "user.assistant": _builtin_user_assistant,
+    "project.files": _builtin_project_files,
 }
 
 
