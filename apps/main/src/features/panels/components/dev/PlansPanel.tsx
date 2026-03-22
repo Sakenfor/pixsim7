@@ -3448,6 +3448,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
       resizable
       expandedWidth={208}
       persistKey="plans-panel-sidebar"
+      autoHideTitle={false}
       contentClassName="overflow-y-auto"
     >
       {content}
