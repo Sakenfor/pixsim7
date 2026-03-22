@@ -9,12 +9,12 @@ import type { MediaCardActions } from '@/components/media/MediaCard';
 import type { LocalFoldersController } from '@/types/localSources';
 
 import { resolveLocalUploadState } from '../../lib/localAssetState';
+import { localAssetToAssetModel } from '../../lib/localAssetToAssetModel';
 import { extractUploadError, notifyGalleryOfUpdatedAsset, resolveProviderLabel } from '../../lib/uploadActions';
 import type { AssetModel } from '../../models/asset';
 import type { LocalAsset } from '../../stores/localFoldersStore';
 
 import type { HashFilterState, UploadFilterState } from './constants';
-import { hashStringToStableNegativeId } from './utils';
 
 export interface UseLocalFolderCallbacksParams {
   controller: LocalFoldersController;
@@ -246,41 +246,10 @@ export function useLocalFolderCallbacks({
   }, [controller, toast]);
 
   const toGenerationInputAsset = useCallback((asset: LocalAsset): AssetModel => {
-    const previewUrl = controllerPreviews[asset.key];
-    const uploadedAssetId =
-      typeof asset.last_upload_asset_id === 'number' && asset.last_upload_asset_id > 0
-        ? asset.last_upload_asset_id
-        : undefined;
-    const assetId = uploadedAssetId ?? hashStringToStableNegativeId(asset.key);
-    const createdAt = new Date(asset.lastModified || Date.now()).toISOString();
-    const mediaType = asset.kind === 'video' ? 'video' : 'image';
-    const providerStatus = uploadedAssetId ? 'ok' : 'local_only';
-    const providerId = uploadedAssetId
-      ? (asset.last_upload_provider_id || controller.providerId || 'library')
-      : 'local';
-
-    return {
-      id: assetId,
-      createdAt,
-      description: asset.name,
-      durationSec: null,
-      fileSizeBytes: asset.size ?? null,
-      fileUrl: previewUrl ?? null,
-      height: asset.height ?? null,
-      isArchived: false,
-      localPath: asset.relativePath,
-      mediaType,
-      previewUrl: previewUrl ?? null,
-      providerAssetId: uploadedAssetId ? String(uploadedAssetId) : asset.key,
-      providerId,
-      providerStatus,
-      remoteUrl: previewUrl ?? null,
-      syncStatus: 'downloaded',
-      thumbnailUrl: previewUrl ?? null,
-      userId: 0,
-      width: asset.width ?? null,
-      sha256: asset.sha256 ?? null,
-    };
+    return localAssetToAssetModel(asset, {
+      previewUrl: controllerPreviews[asset.key],
+      defaultProviderId: controller.providerId,
+    });
   }, [controller.providerId, controllerPreviews]);
 
   const generationHandlers = useMemo(() => ({
