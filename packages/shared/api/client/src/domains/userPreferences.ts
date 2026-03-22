@@ -1,32 +1,17 @@
 import type { PixSimApiClient } from '../client';
 import type {
+  DebugPreferences as GeneratedDebugPreferences,
   UpdateUserPreferencesRequest as UpdateUserPreferencesRequestSchema,
   UserPreferencesResponse as UserPreferencesResponseSchema,
 } from '@pixsim7/shared.api.model';
 
 /**
- * Debug log categories — aligned with pixsim_logging DOMAINS.
+ * Debug log categories — generated from backend Pydantic schema via Orval.
+ * Canonical list matches `pixsim_logging.spec.DOMAINS`.
  *
- * Canonical list (matches backend `pixsim_logging.spec.DOMAINS`):
- *   account, audit, cron, generation, localFolders, overlay,
- *   persistence, provider, stores, system, websocket, worker
+ * Re-exported here so consumers don't need to import from the model package.
  */
-export interface DebugPreferences {
-  account?: boolean;
-  audit?: boolean;
-  cron?: boolean;
-  generation?: boolean;
-  localFolders?: boolean;
-  overlay?: boolean;
-  persistence?: boolean;
-  provider?: boolean;
-  stores?: boolean;
-  system?: boolean;
-  websocket?: boolean;
-  worker?: boolean;
-  /** Validate composition vocab fields (role, pose_id, etc.) against registry */
-  validateCompositionVocabs?: boolean;
-}
+export type DebugPreferences = GeneratedDebugPreferences;
 
 /**
  * Value type for dev tool settings.
