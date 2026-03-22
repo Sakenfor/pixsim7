@@ -46,8 +46,8 @@ from pixsim7.backend.main.api.v1.plans.schemas import (
     validate_plan_id as _validate_plan_id,
 )
 
-# Helpers imported from dev_plans (will move to plans/helpers.py later)
-from pixsim7.backend.main.api.v1 import dev_plans as _dp
+# Helpers
+from pixsim7.backend.main.api.v1.plans import helpers as _dp
 
 router = APIRouter()
 
