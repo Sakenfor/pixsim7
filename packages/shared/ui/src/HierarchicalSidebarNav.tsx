@@ -158,7 +158,7 @@ export function HierarchicalSidebarNav({
                       key={child.id}
                       type="button"
                       onClick={() => onSelectChild?.(item.id, child.id)}
-                      className={getChildClasses(variant, isChildActive, hasExtra)}
+                      className={`group/child ${getChildClasses(variant, isChildActive, hasExtra)}`}
                     >
                       <span className="flex items-center gap-2 w-full min-w-0">
                         {child.icon ? <span className="flex-shrink-0">{child.icon}</span> : null}

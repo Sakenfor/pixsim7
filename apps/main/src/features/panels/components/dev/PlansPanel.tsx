@@ -3098,6 +3098,20 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'stage' | 'updated' | 'priority' | 'title'>('stage');
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('plans-panel:pinned');
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch { return new Set(); }
+  });
+  const togglePin = useCallback((planId: string) => {
+    setPinnedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(planId)) next.delete(planId); else next.add(planId);
+      localStorage.setItem('plans-panel:pinned', JSON.stringify([...next]));
+      return next;
+    });
+  }, []);
   const [refreshKey, setRefreshKey] = useState(0);
   const [forgeUrlTemplate, setForgeUrlTemplate] = useState<string | null>(null);
   const [stageOptions, setStageOptions] = useState<PlanStageOptionEntry[]>(
@@ -3236,6 +3250,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
         ? Math.floor((Date.now() - new Date(p.lastUpdated).getTime()) / 86400000)
         : null;
       const isFresh = daysSinceUpdate !== null && daysSinceUpdate <= 1;
+      const isPinned = pinnedIds.has(p.id);
 
       return {
         id: `plan:${p.id}`,
@@ -3251,6 +3266,13 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
         ),
         extra: (
           <span className="flex items-center gap-1.5">
+            <span
+              className={`cursor-pointer ${isPinned ? '' : 'opacity-0 group-hover/child:opacity-40'} hover:!opacity-100`}
+              onClick={(e) => { e.stopPropagation(); togglePin(p.id); }}
+              title={isPinned ? 'Unpin' : 'Pin to top'}
+            >
+              <Icon name="pin" size={8} />
+            </span>
             {isFresh && (
               <span title={`Updated ${p.lastUpdated}`}>
                 <Icon name="zap" size={9} />
@@ -3277,7 +3299,12 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
                 <Icon name="alertCircle" size={9} />
               </span>
             )}
-            {!indented && STAGE_SHORT[p.stage] && p.stage !== groupKey && (
+            {sortBy === 'stage' && !indented && STAGE_SHORT[p.stage] && p.stage !== groupKey && (
+              <span className="text-[9px] leading-none opacity-60" title={p.stage}>
+                {STAGE_SHORT[p.stage]}
+              </span>
+            )}
+            {sortBy !== 'stage' && STAGE_SHORT[p.stage] && (
               <span className="text-[9px] leading-none opacity-60" title={p.stage}>
                 {STAGE_SHORT[p.stage]}
               </span>
@@ -3287,37 +3314,73 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
       };
     };
 
-    for (const key of orderedKeys) {
-      const stagePlans = grouped.byStage.get(key);
-      if (!stagePlans || stagePlans.length === 0) continue;
+    // Separate pinned plans
+    const pinnedPlans = filteredPlans.filter((p) => pinnedIds.has(p.id));
+    const unpinnedPlans = filteredPlans.filter((p) => !pinnedIds.has(p.id));
 
-      // Count children that belong to parents in this group
-      let totalCount = stagePlans.length;
-      for (const p of stagePlans) totalCount += (grouped.childOf.get(p.id)?.length ?? 0);
-
-      const children: { id: string; label: string; icon: React.ReactNode; extra: React.ReactNode }[] = [];
-      for (const p of stagePlans) {
-        children.push(makePlanEntry(p, key, false));
-        // Insert children right after their parent
-        const subPlans = grouped.childOf.get(p.id);
-        if (subPlans) {
-          for (const child of subPlans) {
-            children.push(makePlanEntry(child, key, true));
-          }
-        }
-      }
-
-      const stageLabel = stageLabelFromValue(key, stageOptionsByValue);
+    // Pinned section (always shown if any pinned)
+    if (pinnedPlans.length > 0) {
       result.push({
-        id: `stage:${key}`,
-        label: `${stageLabel} (${totalCount})`,
-        icon: <Icon name={(STAGE_ICONS[key] ?? STATUS_ICONS[key] ?? 'circle') as any} size={12} />,
-        children,
+        id: 'pinned',
+        label: `Pinned (${pinnedPlans.length})`,
+        icon: <Icon name="pin" size={12} />,
+        children: pinnedPlans.map((p) => makePlanEntry(p, '', false)),
       });
     }
 
+    if (sortBy !== 'stage') {
+      // Flat sorted list — no stage groups
+      const topLevel = unpinnedPlans.filter((p) => !p.parentId);
+      if (topLevel.length > 0) {
+        const children: { id: string; label: string; icon: React.ReactNode; extra: React.ReactNode }[] = [];
+        for (const p of topLevel) {
+          children.push(makePlanEntry(p, '', false));
+          const subPlans = grouped.childOf.get(p.id);
+          if (subPlans) {
+            for (const child of subPlans) {
+              children.push(makePlanEntry(child, '', true));
+            }
+          }
+        }
+        result.push({
+          id: 'sorted',
+          label: `Plans (${topLevel.length})`,
+          icon: <Icon name="list" size={12} />,
+          children,
+        });
+      }
+    } else {
+      // Grouped by stage
+      for (const key of orderedKeys) {
+        const stagePlans = (grouped.byStage.get(key) ?? []).filter((p) => !pinnedIds.has(p.id));
+        if (stagePlans.length === 0) continue;
+
+        let totalCount = stagePlans.length;
+        for (const p of stagePlans) totalCount += (grouped.childOf.get(p.id)?.length ?? 0);
+
+        const children: { id: string; label: string; icon: React.ReactNode; extra: React.ReactNode }[] = [];
+        for (const p of stagePlans) {
+          children.push(makePlanEntry(p, key, false));
+          const subPlans = grouped.childOf.get(p.id);
+          if (subPlans) {
+            for (const child of subPlans) {
+              children.push(makePlanEntry(child, key, true));
+            }
+          }
+        }
+
+        const stageLabel = stageLabelFromValue(key, stageOptionsByValue);
+        result.push({
+          id: `stage:${key}`,
+          label: `${stageLabel} (${totalCount})`,
+          icon: <Icon name={(STAGE_ICONS[key] ?? STATUS_ICONS[key] ?? 'circle') as any} size={12} />,
+          children,
+        });
+      }
+    }
+
     return result;
-  }, [grouped, stageOptions, stageOptionsByValue]);
+  }, [grouped, filteredPlans, pinnedIds, sortBy, stageOptions, stageOptionsByValue, togglePin]);
 
   const nav = useSidebarNav({
     sections,
