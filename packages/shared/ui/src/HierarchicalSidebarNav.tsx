@@ -6,6 +6,8 @@ export interface HierarchicalSidebarNavChildItem {
   id: string;
   label: string;
   icon?: ReactNode;
+  /** Optional content rendered right-aligned after the label (e.g. badges). */
+  extra?: ReactNode;
 }
 
 export interface HierarchicalSidebarNavItem {
@@ -68,11 +70,11 @@ function getItemClasses(variant: 'light' | 'dark', state: HierarchicalSidebarNav
   return `${base} ${tone}`;
 }
 
-function getChildClasses(variant: 'light' | 'dark', active: boolean) {
+function getChildClasses(variant: 'light' | 'dark', active: boolean, hasExtra: boolean) {
   const base =
     variant === 'light'
-      ? 'w-full flex items-center gap-2 pl-3 pr-2 py-1.5 text-left text-[11px] rounded-r-md transition-colors'
-      : 'w-full flex items-center gap-2 rounded-r px-2 py-1.5 text-left text-[11px] transition-colors';
+      ? `w-full flex ${hasExtra ? 'flex-col items-start gap-0.5' : 'items-center gap-2'} pl-3 pr-2 py-1.5 text-left text-[11px] rounded-r-md transition-colors`
+      : `w-full flex ${hasExtra ? 'flex-col items-start gap-0.5' : 'items-center gap-2'} rounded-r px-2 py-1.5 text-left text-[11px] transition-colors`;
 
   if (variant === 'light') {
     const tone = active
@@ -150,15 +152,23 @@ export function HierarchicalSidebarNav({
               <div className={getChildContainerClasses(variant)}>
                 {item.children!.map((child) => {
                   const isChildActive = (getChildState?.(item, child) ?? 'inactive') === 'active';
+                  const hasExtra = !!child.extra;
                   return (
                     <button
                       key={child.id}
                       type="button"
                       onClick={() => onSelectChild?.(item.id, child.id)}
-                      className={getChildClasses(variant, isChildActive)}
+                      className={getChildClasses(variant, isChildActive, hasExtra)}
                     >
-                      {child.icon ? <span className="flex-shrink-0">{child.icon}</span> : null}
-                      <span className="truncate">{child.label}</span>
+                      <span className="flex items-center gap-2 w-full min-w-0">
+                        {child.icon ? <span className="flex-shrink-0">{child.icon}</span> : null}
+                        <span className="truncate flex-1">{child.label}</span>
+                      </span>
+                      {hasExtra && (
+                        <span className="flex items-center gap-1 pl-5 w-full text-[9px] opacity-75">
+                          {child.extra}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
