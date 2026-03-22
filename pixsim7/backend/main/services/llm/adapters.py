@@ -807,14 +807,15 @@ class RemoteCommandLlmProvider:
         system_prompt = build_edit_prompt_system()
         instruction = build_edit_prompt_user(prompt_before, context)
 
-        task_payload = {
-            "task": "edit_prompt",
-            "prompt": prompt_before,
-            "instruction": instruction,
-            "system_prompt": system_prompt,
-            "model": model_id,
-            "context": context or {},
-        }
+        from pixsim7.backend.main.services.llm.remote_cmd_bridge import build_bridge_task_payload
+        task_payload = build_bridge_task_payload(
+            task_type="edit_prompt",
+            prompt=prompt_before,
+            instruction=instruction,
+            model=model_id,
+            context=context or {},
+            system_prompt=system_prompt,
+        )
 
         logger.info(
             "RemoteCommandLlmProvider: dispatching to remote agent, "

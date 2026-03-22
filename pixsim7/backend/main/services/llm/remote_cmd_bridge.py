@@ -559,3 +559,51 @@ def _mint_bridge_token(user_id: Optional[int], hours: int = 24) -> Optional[str]
 
 # Global singleton
 remote_cmd_bridge = RemoteCommandBridge()
+
+
+def build_bridge_task_payload(
+    *,
+    task_type: str = "message",
+    prompt: str,
+    model: Optional[str] = None,
+    instruction: Optional[str] = None,
+    context: Optional[Dict[str, Any]] = None,
+    engine: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    user_token: Optional[str] = None,
+    profile_prompt: Optional[str] = None,
+    profile_config: Optional[Dict[str, Any]] = None,
+    claude_session_id: Optional[str] = None,
+    images: Optional[list] = None,
+    image_paths: Optional[list] = None,
+) -> Dict[str, Any]:
+    """Build a standardised task payload for the remote command bridge.
+
+    Single source of truth for the payload shape — all call sites
+    (assistant chat, plan review dispatch, edit_prompt) should use this
+    to avoid field drift.
+    """
+    payload: Dict[str, Any] = {
+        "task": task_type,
+        "prompt": prompt,
+        "instruction": instruction or prompt,
+        "model": model or "default",
+        "context": context or {},
+    }
+    if engine:
+        payload["engine"] = engine
+    if system_prompt:
+        payload["system_prompt"] = system_prompt
+    if user_token:
+        payload["user_token"] = user_token
+    if profile_prompt:
+        payload["profile_prompt"] = profile_prompt
+    if profile_config:
+        payload["profile_config"] = profile_config
+    if claude_session_id:
+        payload["claude_session_id"] = claude_session_id
+    if images:
+        payload["images"] = images
+    if image_paths:
+        payload["image_paths"] = image_paths
+    return payload

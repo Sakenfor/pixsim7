@@ -948,31 +948,23 @@ async def _run_review_request_via_bridge(
     user_id: Optional[int],
     profile_hint: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge, build_bridge_task_payload
 
     target_agent_id = (request_row.target_agent_id or "").strip() or None
     agent_type = (request_row.target_agent_type or "").lower()
     engine = "codex" if "codex" in agent_type else "claude"
-    task_payload: Dict[str, Any] = {
-        "task": "message",
-        "prompt": prompt,
-        "instruction": prompt,
-        "model": model_id or "default",
-        "context": {
+    task_payload = build_bridge_task_payload(
+        prompt=prompt,
+        model=model_id,
+        context={
             "plan_id": plan_id,
             "review_request_id": str(request_row.id),
             "review_round_id": str(request_row.round_id) if request_row.round_id else None,
         },
-        "engine": engine,
-    }
-    # Pass profile persona and config (same as assistant chat path)
-    if profile_hint:
-        system_prompt = profile_hint.get("system_prompt")
-        config = profile_hint.get("config")
-        if system_prompt:
-            task_payload["profile_prompt"] = system_prompt
-        if isinstance(config, dict) and config:
-            task_payload["profile_config"] = config
+        engine=engine,
+        profile_prompt=profile_hint.get("system_prompt") if profile_hint else None,
+        profile_config=profile_hint.get("config") if profile_hint and isinstance(profile_hint.get("config"), dict) else None,
+    )
 
     if target_agent_id:
         result = await remote_cmd_bridge.dispatch_task_to_agent(

@@ -1367,22 +1367,17 @@ async def send_message_to_agent_stream(
             yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'agent_id': '', 'error': 'No bridge available for your account.'})}\n\n"
         return StreamingResponse(_err2(), media_type="text/event-stream")
 
-    task_payload: dict = {
-        "task": "message",
-        "prompt": payload.message,
-        "instruction": payload.message,
-        "model": payload.model,
-        "context": payload.context or {},
-    }
-    if raw_token and user_id is not None:
-        task_payload["user_token"] = raw_token
-    if profile_prompt:
-        task_payload["profile_prompt"] = profile_prompt
-    if profile_config:
-        task_payload["profile_config"] = profile_config
-    if payload.claude_session_id:
-        task_payload["claude_session_id"] = payload.claude_session_id
-    task_payload["engine"] = payload.engine
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import build_bridge_task_payload as _build_payload
+    task_payload = _build_payload(
+        prompt=payload.message,
+        model=payload.model,
+        context=payload.context or {},
+        engine=payload.engine,
+        user_token=raw_token if raw_token and user_id is not None else None,
+        profile_prompt=profile_prompt,
+        profile_config=profile_config,
+        claude_session_id=payload.claude_session_id,
+    )
 
     if payload.asset_ids:
         is_local = agent.metadata.get("local", False) or _is_local_agent(agent)
@@ -1541,22 +1536,17 @@ async def _send_via_bridge(
             )
         return SendMessageResponse(ok=False, agent_id="", error="All agents are busy")
 
-    task_payload: dict = {
-        "task": "message",
-        "prompt": payload.message,
-        "instruction": payload.message,
-        "model": payload.model,
-        "context": payload.context or {},
-    }
-    if raw_token and user_id is not None:
-        task_payload["user_token"] = raw_token
-    if profile_prompt:
-        task_payload["profile_prompt"] = profile_prompt
-    if profile_config:
-        task_payload["profile_config"] = profile_config
-    if payload.claude_session_id:
-        task_payload["claude_session_id"] = payload.claude_session_id
-    task_payload["engine"] = payload.engine
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import build_bridge_task_payload
+    task_payload = build_bridge_task_payload(
+        prompt=payload.message,
+        model=payload.model,
+        context=payload.context or {},
+        engine=payload.engine,
+        user_token=raw_token if raw_token and user_id is not None else None,
+        profile_prompt=profile_prompt,
+        profile_config=profile_config,
+        claude_session_id=payload.claude_session_id,
+    )
 
     # Attach asset images for vision
     if payload.asset_ids:
