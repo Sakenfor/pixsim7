@@ -277,6 +277,34 @@ async def get_activity(
     }
 
 
+# ── Companion documents ──────────────────────────────────────────
+
+
+@router.get("/documents")
+async def list_companion_documents(
+    _user: CurrentUser,
+    namespace_prefix: str = Query("plans/", description="Namespace prefix filter"),
+    limit: int = Query(200, ge=1, le=500),
+    db: AsyncSession = Depends(get_database),
+):
+    """List companion documents across all plans."""
+    from pixsim7.backend.main.domain.docs.models import Document
+
+    stmt = (
+        select(Document.id, Document.title, Document.namespace)
+        .where(Document.namespace.ilike(f"{namespace_prefix}%"))
+        .order_by(Document.updated_at.desc())
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).all()
+    return {
+        "documents": [
+            {"id": r[0], "title": r[1], "namespace": r[2]}
+            for r in rows
+        ],
+    }
+
+
 # ── Write endpoints ──────────────────────────────────────────────
 
 

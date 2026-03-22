@@ -3135,6 +3135,8 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'stage' | 'updated' | 'priority' | 'title'>('stage');
+  const [showDocs, setShowDocs] = useState(false);
+  const [companionDocs, setCompanionDocs] = useState<{ id: string; title: string; namespace: string | null }[]>([]);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem('plans-panel:pinned');
@@ -3201,6 +3203,17 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
   useEffect(() => {
     void loadPlans();
   }, [loadPlans, refreshKey]);
+
+  // Load companion docs when toggled on
+  useEffect(() => {
+    if (!showDocs) return;
+    pixsimClient
+      .get<{ documents: { id: string; title: string; namespace: string | null }[] }>(
+        '/dev/plans/documents', { params: { namespace_prefix: 'plans/', limit: 200 } },
+      )
+      .then((res) => setCompanionDocs(res.documents ?? []))
+      .catch(() => setCompanionDocs([]));
+  }, [showDocs, refreshKey]);
 
   const handlePlanChanged = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -3416,8 +3429,22 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
       }
     }
 
+    // Companion docs section
+    if (showDocs && companionDocs.length > 0) {
+      result.push({
+        id: 'docs',
+        label: `Docs (${companionDocs.length})`,
+        icon: <Icon name="fileText" size={12} />,
+        children: companionDocs.map((doc) => ({
+          id: `doc:${doc.id}`,
+          label: doc.title,
+          icon: <Icon name="fileText" size={10} />,
+        })),
+      });
+    }
+
     return result;
-  }, [grouped, filteredPlans, pinnedIds, sortBy, stageOptions, stageOptionsByValue, togglePin]);
+  }, [grouped, filteredPlans, pinnedIds, sortBy, showDocs, companionDocs, stageOptions, stageOptionsByValue, togglePin]);
 
   const nav = useSidebarNav({
     sections,
@@ -3541,6 +3568,15 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
             <option value="priority">Sort by priority</option>
             <option value="title">Sort A-Z</option>
           </select>
+          <label className="flex items-center gap-1 text-[10px] text-neutral-500 dark:text-neutral-400 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showDocs}
+              onChange={(e) => setShowDocs(e.target.checked)}
+              className="w-3 h-3"
+            />
+            Docs
+          </label>
         </div>
       }
       sidebarWidth="w-52"
