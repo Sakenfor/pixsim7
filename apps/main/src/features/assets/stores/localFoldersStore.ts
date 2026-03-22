@@ -9,6 +9,7 @@ import { getHashManifest, putHashManifest, deleteHashManifest } from '@lib/api/l
 import type { HashManifestEntry } from '@lib/api/localFolderHashes';
 import { getUserPreferences, updatePreferenceKey } from '@lib/api/userPreferences';
 import { createIdbKvStore, getUserNamespace } from '@lib/storage/idbKvCache';
+import { debugFlags } from '@lib/utils/debugFlags';
 
 import type { FolderCandidate, FolderSourceMetadata } from '../types/assetCandidate';
 
@@ -640,7 +641,7 @@ function scheduleHashBackendSync(folderId: string): void {
           lastModified: a.sha256_last_modified ?? undefined,
         }));
         await putHashManifest(folderId, manifest);
-        console.debug('[LocalFolders] Synced hash manifest to backend:', folderId, manifest.length, 'entries');
+        debugFlags.debug('localFolders', 'Synced hash manifest to backend:', folderId, manifest.length, 'entries');
       } catch (e) {
         console.warn('[LocalFolders] Failed to sync hash manifest to backend:', folderId, e);
       }
@@ -860,7 +861,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
                 }
                 const restored = items.filter((a) => a.sha256).length;
                 if (restored > 0) {
-                  console.debug(`[LocalFolders] Restored ${restored} hashes from backend for folder "${f.name}"`);
+                  debugFlags.debug('localFolders', `Restored ${restored} hashes from backend for folder "${f.name}"`);
                 }
               }
 

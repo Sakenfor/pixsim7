@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 
 import { putHashManifest } from '@lib/api/localFolderHashes';
 import { uploadAsset, type UploadAssetResponse } from '@lib/api/upload';
+import { debugFlags } from '@lib/utils/debugFlags';
 
 import { usePersistentState } from '@/hooks/usePersistentState';
 import { useViewer } from '@/hooks/useViewer';
@@ -561,7 +562,7 @@ export function useLocalFoldersController(): LocalFoldersController {
       hasValidStoredHash(asset) &&
       asset.last_upload_status !== 'success'
     ));
-    console.debug('[LocalFolders:backendCheck] effect fired', {
+    debugFlags.debug('localFolders', 'backendCheck effect fired', {
       hashingProgress,
       totalAssets: allAssets.length,
       withHash: withHash.length,
@@ -595,7 +596,7 @@ export function useLocalFoldersController(): LocalFoldersController {
         !backendHashCheckedRef.current.has(sha256) &&
         !backendHashCheckInProgressRef.current.has(sha256)
       ));
-      console.debug('[LocalFolders:backendCheck] checkRemaining', {
+      debugFlags.debug('localFolders', 'backendCheck checkRemaining', {
         uniqueHashes: hashToAssetKeys.size,
         toQuery: hashesToQuery.length,
         alreadyKnown: backendExistingHashesRef.current.size,
@@ -614,7 +615,7 @@ export function useLocalFoldersController(): LocalFoldersController {
           const batch = hashesToQuery.slice(i, i + BATCH_SIZE);
           const matches = await checkHashesAgainstBackend(batch);
           const foundHashSet = new Set(matches.map((m) => m.sha256));
-          console.debug('[LocalFolders:backendCheck] batch result', {
+          debugFlags.debug('localFolders', 'backendCheck batch result', {
             sent: batch.length,
             found: matches.length,
             sampleSent: batch.slice(0, 3),
@@ -672,8 +673,8 @@ export function useLocalFoldersController(): LocalFoldersController {
         lastModified: a.sha256_last_modified ?? undefined,
       }));
       void putHashManifest(folderId, manifest).then(
-        () => console.debug(`[LocalFolders] Synced hash manifest for ${folderId}: ${manifest.length} entries`),
-        (e) => console.warn(`[LocalFolders] Failed to sync hash manifest for ${folderId}:`, e),
+        () => debugFlags.debug('localFolders', `Synced hash manifest for ${folderId}: ${manifest.length} entries`),
+        (e) => debugFlags.warn('localFolders', `Failed to sync hash manifest for ${folderId}:`, e),
       );
     }
 

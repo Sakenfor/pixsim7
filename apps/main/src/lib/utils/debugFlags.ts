@@ -139,11 +139,20 @@ class DebugFlags {
   }
 
   /**
+   * Conditional console.debug for a category
+   */
+  debug(category: DebugCategory, ...args: any[]): void {
+    if (this.isEnabled(category)) {
+      console.debug(`[${String(category)}]`, ...args);
+    }
+  }
+
+  /**
    * Conditional console.log for a category
    */
   log(category: DebugCategory, ...args: any[]): void {
     if (this.isEnabled(category)) {
-      console.log(`[${String(category).toUpperCase()}]`, ...args);
+      console.log(`[${String(category)}]`, ...args);
     }
   }
 
@@ -152,7 +161,7 @@ class DebugFlags {
    */
   warn(category: DebugCategory, ...args: any[]): void {
     if (this.isEnabled(category)) {
-      console.warn(`[${String(category).toUpperCase()}]`, ...args);
+      console.warn(`[${String(category)}]`, ...args);
     }
   }
 
@@ -161,7 +170,7 @@ class DebugFlags {
    */
   error(category: DebugCategory, ...args: any[]): void {
     if (this.isEnabled(category)) {
-      console.error(`[${String(category).toUpperCase()}]`, ...args);
+      console.error(`[${String(category)}]`, ...args);
     }
   }
 
@@ -182,6 +191,8 @@ class DebugFlags {
       'provider',
       'worker',
       'websocket',
+      'localFolders',
+      'overlay',
     ];
 
     categories.forEach(cat => {
