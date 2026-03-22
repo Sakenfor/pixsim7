@@ -501,19 +501,6 @@ const PLAN_TYPE_ICONS: Record<string, string> = {
   proposal: 'fileText',
 };
 
-const STAGE_SHORT: Record<string, string> = {
-  backlog: 'back',
-  proposed: 'prop',
-  discovery: 'disc',
-  design: 'des',
-  implementation: 'impl',
-  validation: 'val',
-  rollout: 'roll',
-  completed: 'done',
-  'implementation-ready': 'ready',
-  'in-progress': 'wip',
-  complete: 'done',
-};
 
 
 
@@ -3299,14 +3286,14 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
                 <Icon name="alertCircle" size={9} />
               </span>
             )}
-            {sortBy === 'stage' && !indented && STAGE_SHORT[p.stage] && p.stage !== groupKey && (
-              <span className="text-[9px] leading-none opacity-60" title={p.stage}>
-                {STAGE_SHORT[p.stage]}
+            {sortBy === 'stage' && !indented && STAGE_ICONS[p.stage] && p.stage !== groupKey && (
+              <span className="opacity-50" title={p.stage}>
+                <Icon name={STAGE_ICONS[p.stage] as any} size={8} />
               </span>
             )}
-            {sortBy !== 'stage' && STAGE_SHORT[p.stage] && (
-              <span className="text-[9px] leading-none opacity-60" title={p.stage}>
-                {STAGE_SHORT[p.stage]}
+            {sortBy !== 'stage' && STAGE_ICONS[p.stage] && (
+              <span className="opacity-50" title={p.stage}>
+                <Icon name={STAGE_ICONS[p.stage] as any} size={8} />
               </span>
             )}
           </span>
