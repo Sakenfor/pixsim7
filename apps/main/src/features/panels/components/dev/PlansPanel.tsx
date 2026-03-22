@@ -543,11 +543,6 @@ const STAGE_BADGE_COLORS: Record<string, 'green' | 'blue' | 'gray' | 'orange' | 
   complete: 'green',
 };
 
-const PRIORITY_DOT: Record<string, string> = {
-  high: 'bg-red-500',
-  medium: 'bg-amber-400',
-};
-
 const PLAN_ID_RE = /^[a-z0-9][a-z0-9-]{0,119}$/;
 
 const REVIEW_ROUND_STATUS_COLORS: Record<ReviewRoundStatus, 'green' | 'blue' | 'gray' | 'orange' | 'red'> = {
@@ -3258,29 +3253,36 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
           </span>
         ),
         extra: (
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1.5">
             {isFresh && (
-              <Icon name="zap" size={9} className="text-green-500" title="Updated recently" />
-            )}
-            {reviewCount > 0 && (
-              <Icon
-                name="messageSquare"
-                size={9}
-                className={activeReviews > 0 ? 'text-blue-500' : 'text-neutral-400'}
-                title={`${reviewCount} review${reviewCount !== 1 ? 's' : ''}${activeReviews > 0 ? ` (${activeReviews} active)` : ''}`}
-              />
+              <span title={`Updated ${p.lastUpdated}`}>
+                <Icon name="zap" size={9} className="text-green-500" />
+              </span>
             )}
             {reviewCount > 0 && (
               <span
-                className={`text-[9px] leading-none ${
-                  activeReviews > 0 ? 'text-blue-500' : 'text-neutral-400'
-                }`}
+                className="flex items-center gap-0.5"
+                title={`${reviewCount} review round${reviewCount !== 1 ? 's' : ''}${activeReviews > 0 ? ` (${activeReviews} active)` : ' (all concluded)'}`}
               >
-                {activeReviews > 0 ? `${activeReviews}/${reviewCount}` : reviewCount}
+                <Icon
+                  name="messageSquare"
+                  size={9}
+                  className={activeReviews > 0 ? 'text-blue-500' : 'text-neutral-400'}
+                />
+                <span className={`text-[9px] leading-none ${activeReviews > 0 ? 'text-blue-500' : 'text-neutral-400'}`}>
+                  {activeReviews > 0 ? `${activeReviews}/${reviewCount}` : reviewCount}
+                </span>
               </span>
             )}
-            {PRIORITY_DOT[p.priority] && (
-              <span className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[p.priority]}`} title={`${p.priority} priority`} />
+            {p.priority === 'high' && (
+              <span title="High priority">
+                <Icon name="alertCircle" size={9} className="text-red-500" />
+              </span>
+            )}
+            {p.priority === 'medium' && (
+              <span title="Medium priority">
+                <Icon name="alertCircle" size={9} className="text-amber-400" />
+              </span>
             )}
             {!indented && STAGE_SHORT[p.stage] && p.stage !== groupKey && (
               <span className={`text-[9px] leading-none ${STAGE_COLORS[p.stage] ?? 'text-neutral-400'}`} title={p.stage}>
