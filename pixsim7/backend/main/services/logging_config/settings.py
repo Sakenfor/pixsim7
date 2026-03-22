@@ -14,13 +14,23 @@ from pixsim7.backend.main.services.system_config.settings_base import SettingsBa
 
 
 class LoggingSettings(SettingsBase):
-    """Per-domain log level configuration."""
+    """Logging configuration — domain levels, retention, ingestion."""
 
     _namespace = "logging"
 
     log_domain_levels: Dict[str, str] = Field(
         default_factory=dict,
-        description="Per-domain log level overrides. Keys: generation, account, provider, cron, system. Values: DEBUG/INFO/WARNING/ERROR/OFF.",
+        description="Per-domain log level overrides. Keys match pixsim_logging DOMAINS. Values: DEBUG/INFO/WARNING/ERROR/OFF.",
+    )
+    log_retention_days: int = Field(
+        30,
+        ge=1,
+        le=365,
+        description="Number of days to retain logs in the database. Older entries are purged by the cleanup task.",
+    )
+    log_level: str = Field(
+        "INFO",
+        description="Global log level (DEBUG/INFO/WARNING/ERROR). Overridden per-domain by log_domain_levels.",
     )
 
 

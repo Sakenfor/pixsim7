@@ -227,6 +227,54 @@ function DebugLogCategories() {
         debugStates={debugStates}
         onToggle={handleToggle}
       />
+      <LogDbStats />
+    </div>
+  );
+}
+
+/** Log DB stats — read-only info about the logging database */
+function LogDbStats() {
+  const [stats, setStats] = useState<{
+    config: { log_retention_days: number; log_level: string; log_domain_levels: Record<string, string> };
+    db: { total_rows: number; oldest: string | null; newest: string | null } | null;
+  } | null>(null);
+
+  useEffect(() => {
+    pixsimClient
+      .get<any>('/users/me/debug/logging-config')
+      .then(setStats)
+      .catch(() => {});
+  }, []);
+
+  if (!stats) return null;
+
+  const fmt = (iso: string | null) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700 space-y-2">
+      <div className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+        Log Database
+      </div>
+      {stats.db ? (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+          <span className="text-neutral-500 dark:text-neutral-400">Total entries</span>
+          <span>{stats.db.total_rows.toLocaleString()}</span>
+          <span className="text-neutral-500 dark:text-neutral-400">Oldest</span>
+          <span>{fmt(stats.db.oldest)}</span>
+          <span className="text-neutral-500 dark:text-neutral-400">Newest</span>
+          <span>{fmt(stats.db.newest)}</span>
+          <span className="text-neutral-500 dark:text-neutral-400">Retention</span>
+          <span>{stats.config.log_retention_days} days</span>
+          <span className="text-neutral-500 dark:text-neutral-400">Global level</span>
+          <span>{stats.config.log_level}</span>
+        </div>
+      ) : (
+        <p className="text-[11px] text-neutral-400">Log database not connected</p>
+      )}
     </div>
   );
 }

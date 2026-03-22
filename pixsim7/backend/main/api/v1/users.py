@@ -218,6 +218,41 @@ async def get_debug_categories(principal: CurrentUser):
     return {"categories": categories}
 
 
+@router.get("/users/me/debug/logging-config")
+async def get_logging_config(principal: CurrentUser):
+    """Return global logging config and DB stats."""
+    from pixsim7.backend.main.services.logging_config.settings import get_logging_settings
+
+    settings = get_logging_settings()
+    result = {
+        "config": settings.to_dict(),
+        "db": None,
+    }
+
+    # Best-effort DB stats
+    try:
+        from pixsim7.backend.main.infrastructure.database.session import AsyncLogSessionLocal
+        from sqlalchemy import text
+
+        async with AsyncLogSessionLocal() as db:
+            row = (await db.execute(text(
+                "SELECT count(*) as total, "
+                "min(timestamp) as oldest, "
+                "max(timestamp) as newest "
+                "FROM log_entries"
+            ))).first()
+            if row:
+                result["db"] = {
+                    "total_rows": row[0],
+                    "oldest": row[1].isoformat() if row[1] else None,
+                    "newest": row[2].isoformat() if row[2] else None,
+                }
+    except Exception:
+        pass
+
+    return result
+
+
 # ===== LOCAL FOLDER HASH CACHE =====
 
 
