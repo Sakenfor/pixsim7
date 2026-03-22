@@ -171,7 +171,12 @@ function HealthHeader() {
 
 interface RowConfig<S> {
   statsEndpoint: string;
+  /** Endpoint with `{limit}` placeholder for batch size, e.g. `/api/v1/assets/backfill-sha?limit={limit}` */
   actionEndpoint: string;
+  /** Available batch sizes for the dropdown. Default: [50, 100, 200] */
+  batchSizes?: number[];
+  /** Initial batch size. Default: first item in batchSizes */
+  defaultBatchSize?: number;
   extract: (s: S) => {
     done: number;
     total: number;
@@ -180,13 +185,26 @@ interface RowConfig<S> {
     actionable: number;
     label: string;
     statsText: string;
-    actionLabel: string;
+    /** Short verb for button, e.g. "Hash", "Convert", "Sync" */
+    actionVerb: string;
   };
   detailLines?: (s: S) => string[];
   resultMessage: (data: any) => string | null;
 }
 
-function useMaintenanceRow<S>(config: RowConfig<S>) {
+const DEFAULT_BATCH_SIZES = [50, 100, 200, 500];
+
+function resolveEndpoint(template: string, batchSize: number): string {
+  if (template.includes('{limit}')) {
+    return template.replace('{limit}', String(batchSize));
+  }
+  // Legacy: endpoint already has hardcoded limit — append/replace
+  const url = new URL(template, 'http://x');
+  url.searchParams.set('limit', String(batchSize));
+  return url.pathname + url.search;
+}
+
+function useMaintenanceRow<S>(config: RowConfig<S>, batchSize: number) {
   const [stats, setStats] = useState<S | null>(null);
   const [loading, setLoading] = useState(false);
   const [acting, setActing] = useState(false);
@@ -209,7 +227,8 @@ function useMaintenanceRow<S>(config: RowConfig<S>) {
     setActing(true);
     setResult(null);
     try {
-      const data = await apiFetch<any>(config.actionEndpoint, 'POST');
+      const endpoint = resolveEndpoint(config.actionEndpoint, batchSize);
+      const data = await apiFetch<any>(endpoint, 'POST');
       const msg = config.resultMessage(data);
       if (msg) setResult({ message: msg });
       const refreshed = await apiFetch<S>(config.statsEndpoint);
@@ -219,7 +238,7 @@ function useMaintenanceRow<S>(config: RowConfig<S>) {
     } finally {
       setActing(false);
     }
-  }, [config.statsEndpoint, config.actionEndpoint, config.resultMessage]);
+  }, [config.statsEndpoint, config.actionEndpoint, config.resultMessage, batchSize]);
 
   return { stats, loading, acting, result, fetchStats, runAction };
 }
@@ -230,7 +249,7 @@ function useMaintenanceRow<S>(config: RowConfig<S>) {
 
 const shaConfig: RowConfig<SHAStats> = {
   statsEndpoint: '/api/v1/assets/sha-stats',
-  actionEndpoint: '/api/v1/assets/backfill-sha?limit=100',
+  actionEndpoint: '/api/v1/assets/backfill-sha?limit={limit}',
   extract: (s) => ({
     done: s.with_sha,
     total: s.total_assets,
@@ -239,7 +258,7 @@ const shaConfig: RowConfig<SHAStats> = {
     actionable: s.without_sha_with_local,
     label: 'SHA256 Hashes',
     statsText: `${fmt(s.with_sha)} / ${fmt(s.total_assets)} hashed`,
-    actionLabel: `Hash ${Math.min(100, s.without_sha_with_local)}`,
+    actionVerb: 'Hash',
   }),
   detailLines: (s) => {
     const lines: string[] = [];
@@ -259,7 +278,7 @@ const shaConfig: RowConfig<SHAStats> = {
 
 const storageConfig: RowConfig<StorageSyncStats> = {
   statsEndpoint: '/api/v1/assets/storage-sync-stats',
-  actionEndpoint: '/api/v1/assets/bulk-sync-storage?limit=50',
+  actionEndpoint: '/api/v1/assets/bulk-sync-storage?limit={limit}',
   extract: (s) => ({
     done: s.new_storage,
     total: s.total_assets,
@@ -268,7 +287,7 @@ const storageConfig: RowConfig<StorageSyncStats> = {
     actionable: s.old_storage,
     label: 'Content Storage',
     statsText: `${fmt(s.new_storage)} / ${fmt(s.total_assets)} synced`,
-    actionLabel: `Sync ${Math.min(50, s.old_storage)}`,
+    actionVerb: 'Sync',
   }),
   detailLines: (s) => {
     const lines: string[] = [];
@@ -286,7 +305,7 @@ const storageConfig: RowConfig<StorageSyncStats> = {
 
 const contentConfig: RowConfig<ContentBlobStats> = {
   statsEndpoint: '/api/v1/assets/content-blob-stats',
-  actionEndpoint: '/api/v1/assets/backfill-content-blobs?limit=100',
+  actionEndpoint: '/api/v1/assets/backfill-content-blobs?limit={limit}',
   extract: (s) => ({
     done: s.with_content_id,
     total: s.total_assets,
@@ -295,7 +314,7 @@ const contentConfig: RowConfig<ContentBlobStats> = {
     actionable: s.missing_with_sha + s.missing_logical_size,
     label: 'Content Links',
     statsText: `${fmt(s.with_content_id)} / ${fmt(s.total_assets)} linked`,
-    actionLabel: `Link ${Math.min(100, s.missing_with_sha + s.missing_logical_size)}`,
+    actionVerb: 'Link',
   }),
   detailLines: (s) => {
     const lines: string[] = [];
@@ -321,7 +340,8 @@ const contentConfig: RowConfig<ContentBlobStats> = {
 
 const uploadMethodConfig: RowConfig<UploadMethodStats> = {
   statsEndpoint: '/api/v1/assets/upload-method-stats',
-  actionEndpoint: '/api/v1/assets/backfill-upload-method?limit=500',
+  actionEndpoint: '/api/v1/assets/backfill-upload-method?limit={limit}',
+  defaultBatchSize: 500,
   extract: (s) => ({
     done: s.with_upload_method,
     total: s.total_assets,
@@ -330,7 +350,7 @@ const uploadMethodConfig: RowConfig<UploadMethodStats> = {
     actionable: s.without_upload_method,
     label: 'Upload Method',
     statsText: `${fmt(s.with_upload_method)} / ${fmt(s.total_assets)} tagged`,
-    actionLabel: `Infer ${Math.min(500, s.without_upload_method)}`,
+    actionVerb: 'Infer',
   }),
   detailLines: (s) => {
     const lines: string[] = [];
@@ -358,7 +378,8 @@ const uploadMethodConfig: RowConfig<UploadMethodStats> = {
 
 const folderContextConfig: RowConfig<FolderContextStats> = {
   statsEndpoint: '/api/v1/assets/folder-context-stats',
-  actionEndpoint: '/api/v1/assets/backfill-folder-context?limit=200',
+  actionEndpoint: '/api/v1/assets/backfill-folder-context?limit={limit}',
+  defaultBatchSize: 200,
   extract: (s) => ({
     done: s.with_folder_context,
     total: s.total_local,
@@ -367,7 +388,7 @@ const folderContextConfig: RowConfig<FolderContextStats> = {
     actionable: s.fixable_from_metadata + s.fixable_from_prefs,
     label: 'Folder Context',
     statsText: `${fmt(s.with_folder_context)} / ${fmt(s.total_local)} local tagged`,
-    actionLabel: `Fix ${Math.min(200, s.fixable_from_metadata + s.fixable_from_prefs)}`,
+    actionVerb: 'Fix',
   }),
   detailLines: (s) => {
     const lines: string[] = [];
@@ -403,7 +424,8 @@ interface FormatConversionStats {
 
 const formatConversionConfig: RowConfig<FormatConversionStats> = {
   statsEndpoint: '/api/v1/assets/format-conversion-stats',
-  actionEndpoint: '/api/v1/assets/convert-format?target_format=webp&quality=90&limit=100',
+  actionEndpoint: '/api/v1/assets/convert-format?target_format=webp&quality=90&limit={limit}',
+  defaultBatchSize: 100,
   extract: (s) => {
     const convertible = s.png_count;
     const total = s.total_images;
@@ -417,7 +439,7 @@ const formatConversionConfig: RowConfig<FormatConversionStats> = {
       actionable: convertible,
       label: 'Format Conversion',
       statsText: `${fmt(convertible)} PNGs (${s.png_size_human})`,
-      actionLabel: `Convert ${Math.min(100, convertible)}`,
+      actionVerb: 'Convert',
     };
   },
   detailLines: (s) => {
@@ -468,7 +490,9 @@ function MaintenanceRow<S>({
   config: RowConfig<S>;
   onRefresh: React.MutableRefObject<(() => Promise<void>)[]>;
 }) {
-  const { stats, loading, acting, result, fetchStats, runAction } = useMaintenanceRow(config);
+  const sizes = config.batchSizes ?? DEFAULT_BATCH_SIZES;
+  const [batchSize, setBatchSize] = useState(config.defaultBatchSize ?? sizes[0]);
+  const { stats, loading, acting, result, fetchStats, runAction } = useMaintenanceRow(config, batchSize);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
@@ -497,6 +521,7 @@ function MaintenanceRow<S>({
   const busy = loading || acting;
   const details = config.detailLines?.(stats) ?? [];
   const hasDetails = details.length > 0;
+  const effectiveBatch = Math.min(batchSize, info.actionable);
 
   return (
     <div>
@@ -535,16 +560,28 @@ function MaintenanceRow<S>({
           {info.pct.toFixed(0)}%
         </span>
 
-        {/* Action */}
-        <div className="w-[90px] shrink-0 flex justify-end" onClick={(e) => e.stopPropagation()}>
+        {/* Action: verb button + batch size selector */}
+        <div className="w-[130px] shrink-0 flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
           {info.complete ? (
             <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           ) : info.actionable > 0 ? (
-            <Button onClick={runAction} disabled={busy} variant="outline" size="sm">
-              {acting ? <Spinner className="w-3 h-3" /> : info.actionLabel}
-            </Button>
+            <>
+              <select
+                value={batchSize}
+                onChange={(e) => setBatchSize(Number(e.target.value))}
+                disabled={busy}
+                className="h-7 text-[11px] bg-transparent border border-border rounded px-1 text-muted-foreground disabled:opacity-50 cursor-pointer tabular-nums"
+              >
+                {sizes.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <Button onClick={runAction} disabled={busy} variant="outline" size="sm">
+                {acting ? <Spinner className="w-3 h-3" /> : `${info.actionVerb} ${effectiveBatch}`}
+              </Button>
+            </>
           ) : (
             <span className="text-[10px] text-muted-foreground">—</span>
           )}
@@ -645,7 +682,7 @@ function ThumbnailRow({
         </span>
 
         {/* Action */}
-        <div className="w-[90px] shrink-0 flex justify-end">
+        <div className="w-[130px] shrink-0 flex justify-end">
           <Button onClick={regenerate} disabled={acting} variant="outline" size="sm">
             {acting ? <Spinner className="w-3 h-3" /> : 'Regen 50'}
           </Button>
@@ -701,7 +738,7 @@ export function MaintenanceDashboard() {
         <span className="w-[160px] shrink-0">Status</span>
         <span className="flex-1 min-w-[80px]">Progress</span>
         <span className="w-[36px] text-right">%</span>
-        <span className="w-[90px] shrink-0 text-right">Action</span>
+        <span className="w-[130px] shrink-0 text-right">Action</span>
       </div>
       <div className="h-px bg-border mx-3" />
 
