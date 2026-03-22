@@ -3421,27 +3421,25 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
             placeholder="Search plans..."
             size="sm"
           />
-          <div className="flex items-center gap-1">
-            {statusOptions.length > 1 && (
-              <FilterPillGroup
-                options={statusOptions}
-                value={statusFilter}
-                onChange={setStatusFilter}
-                allLabel="All"
-              />
-            )}
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              className="ml-auto text-[9px] bg-transparent border border-neutral-200 dark:border-neutral-700 rounded px-1 py-0.5 text-neutral-500 dark:text-neutral-400 cursor-pointer"
-              title="Sort plans"
-            >
-              <option value="stage">Stage</option>
-              <option value="updated">Recent</option>
-              <option value="priority">Priority</option>
-              <option value="title">A-Z</option>
-            </select>
-          </div>
+          {statusOptions.length > 1 && (
+            <FilterPillGroup
+              options={statusOptions}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allLabel="All"
+            />
+          )}
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            className="w-full text-[10px] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded px-1.5 py-1 text-neutral-600 dark:text-neutral-300 cursor-pointer"
+            title="Sort plans"
+          >
+            <option value="stage">Sort by stage</option>
+            <option value="updated">Sort by recent</option>
+            <option value="priority">Sort by priority</option>
+            <option value="title">Sort A-Z</option>
+          </select>
         </div>
       }
       sidebarWidth="w-52"
