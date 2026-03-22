@@ -756,48 +756,53 @@ def _bundle_to_summary(
     b: PlanBundle,
     children: Optional[List[PlanBundle]] = None,
     review_counts: Optional[tuple[int, int]] = None,
-) -> dict:
-    """Build summary dict from PlanBundle (Document + PlanRegistry)."""
+) -> PlanSummary:
+    """Build a typed PlanSummary from PlanBundle.
+
+    Returns a Pydantic model — any field added to the dict but missing
+    from PlanSummary will raise a validation error, preventing silent
+    drift between the builder and the response schema.
+    """
     doc, plan = b.doc, b.plan
     stage_value = _normalize_stage_for_response(plan.stage)
-    result = {
-        "id": plan.id,
-        "documentId": doc.id,
-        "parentId": plan.parent_id,
-        "title": doc.title,
-        "status": doc.status,
-        "stage": stage_value,
-        "owner": doc.owner,
-        "lastUpdated": (plan.updated_at or doc.updated_at).date().isoformat() if (plan.updated_at or doc.updated_at) else "",
-        "priority": plan.priority,
-        "summary": doc.summary or "",
-        "scope": plan.scope,
-        "planType": plan.plan_type,
-        "visibility": doc.visibility,
-        "namespace": doc.namespace,
-        "target": plan.target,
-        "checkpoints": plan.checkpoints,
-        "codePaths": plan.code_paths or [],
-        "companions": plan.companions or [],
-        "handoffs": plan.handoffs or [],
-        "tags": doc.tags or [],
-        "dependsOn": plan.depends_on or [],
-        "reviewRoundCount": review_counts[0] if review_counts else 0,
-        "activeReviewRoundCount": review_counts[1] if review_counts else 0,
-        "children": [],
-    }
+    child_entries = []
     if children:
-        result["children"] = [
-            {
-                "id": c.id,
-                "title": c.doc.title,
-                "status": c.doc.status,
-                "stage": _normalize_stage_for_response(c.plan.stage),
-                "priority": c.plan.priority,
-            }
+        child_entries = [
+            PlanChildSummary(
+                id=c.id,
+                title=c.doc.title,
+                status=c.doc.status,
+                stage=_normalize_stage_for_response(c.plan.stage),
+                priority=c.plan.priority,
+            )
             for c in children
         ]
-    return result
+    return PlanSummary(
+        id=plan.id,
+        documentId=doc.id,
+        parentId=plan.parent_id,
+        title=doc.title,
+        status=doc.status,
+        stage=stage_value,
+        owner=doc.owner,
+        lastUpdated=(plan.updated_at or doc.updated_at).date().isoformat() if (plan.updated_at or doc.updated_at) else "",
+        priority=plan.priority,
+        summary=doc.summary or "",
+        scope=plan.scope,
+        planType=plan.plan_type,
+        visibility=doc.visibility,
+        namespace=doc.namespace,
+        target=plan.target,
+        checkpoints=plan.checkpoints,
+        codePaths=plan.code_paths or [],
+        companions=plan.companions or [],
+        handoffs=plan.handoffs or [],
+        tags=doc.tags or [],
+        dependsOn=plan.depends_on or [],
+        reviewRoundCount=review_counts[0] if review_counts else 0,
+        activeReviewRoundCount=review_counts[1] if review_counts else 0,
+        children=child_entries,
+    )
 
 
 def _bundle_to_registry_entry(b: PlanBundle) -> dict:
@@ -5218,11 +5223,12 @@ async def get_plan(
 
     children = await load_children(db, plan_id)
 
-    return {
-        **_bundle_to_summary(bundle, children=children),
-        "planPath": bundle.plan.plan_path or "",
-        "markdown": bundle.doc.markdown or "",
-    }
+    summary = _bundle_to_summary(bundle, children=children)
+    return PlanDetailResponse(
+        **summary.model_dump(),
+        planPath=bundle.plan.plan_path or "",
+        markdown=bundle.doc.markdown or "",
+    )
 
 
 # ── Test coverage discovery ──────────────────────────────────────
