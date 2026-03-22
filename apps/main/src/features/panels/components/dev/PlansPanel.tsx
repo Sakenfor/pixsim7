@@ -1008,6 +1008,11 @@ function PlanDetailView({
   const [updating, setUpdating] = useState(false);
   const [lastResult, setLastResult] = useState<string | null>(null);
   const [planExpanded, setPlanExpanded] = useState(false);
+  const [coverage, setCoverage] = useState<{
+    code_paths: string[];
+    explicit_suites: string[];
+    auto_discovered: { suite_id: string; suite_label: string; kind: string | null; matched_paths: string[] }[];
+  } | null>(null);
   const [reviewGraph, setReviewGraph] = useState<PlanReviewGraphResponse | null>(null);
   const [loadingReviews, setLoadingReviews] = useState(false);
   const [reviewError, setReviewError] = useState('');
@@ -1141,7 +1146,12 @@ function PlanDetailView({
 
   useEffect(() => {
     loadDetail();
-  }, [loadDetail]);
+    // Load test coverage (non-blocking)
+    pixsimClient
+      .get<typeof coverage>(`/dev/plans/coverage/${encodedPlanId}`)
+      .then(setCoverage)
+      .catch(() => setCoverage(null));
+  }, [loadDetail, encodedPlanId]);
 
   useEffect(() => {
     void loadReviewGraph();
@@ -2385,6 +2395,61 @@ function PlanDetailView({
       )}
 
       {/* Sub-plans moved to lineage bar at top */}
+
+      {/* Test Coverage */}
+      {coverage && (coverage.explicit_suites.length > 0 || coverage.auto_discovered.length > 0) && (
+        <DisclosureSection
+          label="Test Coverage"
+          defaultOpen={false}
+          className="rounded-md border border-neutral-200 dark:border-neutral-700 p-3"
+          contentClassName="space-y-2 mt-2"
+          badge={
+            <span className="text-[10px] text-neutral-400">
+              {coverage.explicit_suites.length + coverage.auto_discovered.length} suite{coverage.explicit_suites.length + coverage.auto_discovered.length !== 1 ? 's' : ''}
+            </span>
+          }
+        >
+          {coverage.explicit_suites.length > 0 && (
+            <div>
+              <div className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 mb-1">
+                Linked suites
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {coverage.explicit_suites.map((id) => (
+                  <Badge key={id} color="purple" className="text-[9px]">{id}</Badge>
+                ))}
+              </div>
+            </div>
+          )}
+          {coverage.auto_discovered.length > 0 && (
+            <div>
+              <div className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 mb-1">
+                Auto-discovered ({coverage.auto_discovered.length})
+              </div>
+              <div className="space-y-1">
+                {coverage.auto_discovered.map((suite) => (
+                  <div key={suite.suite_id} className="flex items-start gap-2 text-[11px]">
+                    <Badge color="green" className="text-[9px] shrink-0">{suite.kind || 'test'}</Badge>
+                    <div className="min-w-0">
+                      <span className="font-medium text-neutral-700 dark:text-neutral-300">{suite.suite_label}</span>
+                      {suite.matched_paths.length > 0 && (
+                        <div className="text-[9px] text-neutral-400 truncate">
+                          {suite.matched_paths[0]}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {coverage.code_paths.length > 0 && (
+            <div className="text-[9px] text-neutral-400 mt-1">
+              Scanning {coverage.code_paths.length} code path{coverage.code_paths.length !== 1 ? 's' : ''}
+            </div>
+          )}
+        </DisclosureSection>
+      )}
 
       <DisclosureSection
         label="Review Loop"
