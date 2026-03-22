@@ -152,6 +152,7 @@ export function SidebarPaneShell({
       className={clsx(
         !collapsible && widthClassName,
         'flex shrink-0 flex-col border-r relative min-h-0',
+        resizable && 'z-10',
         collapsible && 'transition-[width] duration-200 ease-in-out',
         borderClass,
         className,
