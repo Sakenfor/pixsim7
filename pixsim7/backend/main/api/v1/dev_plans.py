@@ -566,6 +566,15 @@ class PlanReviewGraphResponse(BaseModel):
     requests: List[PlanRequestEntry] = Field(default_factory=list)
 
 
+class PlanReviewPoolSession(BaseModel):
+    sessionId: str
+    engine: str
+    state: str
+    cliModel: Optional[str] = None
+    messagesSent: int = 0
+    contextPct: Optional[float] = None
+
+
 class PlanReviewAssigneeEntry(BaseModel):
     id: str
     label: str
@@ -581,6 +590,8 @@ class PlanReviewAssigneeEntry(BaseModel):
     connectedAt: Optional[str] = None
     lastSeenAt: Optional[str] = None
     modelId: Optional[str] = None
+    engines: List[str] = Field(default_factory=list)
+    poolSessions: List[PlanReviewPoolSession] = Field(default_factory=list)
 
 
 class PlanReviewAssigneesResponse(BaseModel):
@@ -2062,6 +2073,20 @@ def _list_live_bridge_agents(principal: CurrentUser) -> List[Dict[str, Any]]:
     user_id = _principal_effective_user_id(principal)
     rows: List[Dict[str, Any]] = []
     for agent in remote_cmd_bridge.get_agents(user_id=user_id):
+        pool = agent.pool_status or {}
+        pool_engines = pool.get("engines", [])
+        sessions_raw = pool.get("sessions", [])
+        pool_sessions = [
+            {
+                "session_id": s.get("session_id", ""),
+                "engine": s.get("session_id", "").split("-")[0] if s.get("session_id") else "unknown",
+                "state": s.get("state", "unknown"),
+                "cli_model": s.get("cli_model"),
+                "messages_sent": s.get("messages_sent", 0),
+                "context_pct": s.get("context_pct"),
+            }
+            for s in sessions_raw if isinstance(s, dict)
+        ]
         rows.append(
             {
                 "agent_id": agent.agent_id,
@@ -2071,6 +2096,8 @@ def _list_live_bridge_agents(principal: CurrentUser) -> List[Dict[str, Any]]:
                 "tasks_completed": int(getattr(agent, "tasks_completed", 0) or 0),
                 "connected_at": agent.connected_at,
                 "model": agent.metadata.get("model"),
+                "engines": sorted(set(pool_engines)) if pool_engines else [agent.agent_type],
+                "pool_sessions": pool_sessions,
             }
         )
     rows.sort(
@@ -3662,6 +3689,18 @@ async def list_plan_review_assignees(
             connectedAt=row["connected_at"].isoformat() if row.get("connected_at") else None,
             lastSeenAt=row["connected_at"].isoformat() if row.get("connected_at") else None,
             modelId=row.get("model"),
+            engines=row.get("engines", []),
+            poolSessions=[
+                PlanReviewPoolSession(
+                    sessionId=ps.get("session_id", ""),
+                    engine=ps.get("engine", "unknown"),
+                    state=ps.get("state", "unknown"),
+                    cliModel=ps.get("cli_model"),
+                    messagesSent=ps.get("messages_sent", 0),
+                    contextPct=ps.get("context_pct"),
+                )
+                for ps in row.get("pool_sessions", [])
+            ],
         )
         for row in live_rows
     ]

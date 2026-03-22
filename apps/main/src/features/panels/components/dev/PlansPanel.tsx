@@ -318,6 +318,15 @@ interface PlanReviewDispatchTickResponse {
   items: PlanReviewDispatchTickItem[];
 }
 
+interface PlanReviewPoolSession {
+  sessionId: string;
+  engine: string;
+  state: string;
+  cliModel: string | null;
+  messagesSent: number;
+  contextPct: number | null;
+}
+
 interface PlanReviewAssignee {
   id: string;
   label: string;
@@ -333,6 +342,8 @@ interface PlanReviewAssignee {
   connectedAt: string | null;
   lastSeenAt: string | null;
   modelId: string | null;
+  engines: string[];
+  poolSessions: PlanReviewPoolSession[];
 }
 
 interface PlanReviewAssigneesResponse {
@@ -2797,22 +2808,44 @@ function PlanDetailView({
                     className={inputClassName}
                   >
                     <option value="auto">Auto (dispatcher)</option>
-                    {liveAssigneeOptions.length > 0 && (
-                      <optgroup label="Live Sessions">
-                        {liveAssigneeOptions.map((option) => {
-                          const parts = [option.agentId];
-                          if (option.modelId) parts.push(option.modelId);
-                          else if (option.agentType) parts.push(option.agentType);
-                          parts.push(option.busy ? `busy (${option.activeTasks})` : 'idle');
-                          if (option.tasksCompleted > 0) parts.push(`${option.tasksCompleted} done`);
-                          return (
-                            <option key={`live:${option.agentId}`} value={buildAssigneeOptionValue('live', option.agentId)}>
-                              {parts.join(' · ')}
+                    {liveAssigneeOptions.map((agent) => {
+                      const agentLabel = [
+                        agent.agentId,
+                        agent.engines?.join('/') || agent.agentType,
+                        agent.busy ? 'busy' : 'idle',
+                        agent.tasksCompleted > 0 ? `${agent.tasksCompleted} done` : '',
+                      ].filter(Boolean).join(' · ');
+
+                      // If agent has pool sessions, show them as sub-options
+                      if (agent.poolSessions && agent.poolSessions.length > 0) {
+                        return (
+                          <optgroup key={`live:${agent.agentId}`} label={agentLabel}>
+                            <option value={buildAssigneeOptionValue('live', agent.agentId)}>
+                              Any session (auto)
                             </option>
-                          );
-                        })}
-                      </optgroup>
-                    )}
+                            {agent.poolSessions.map((ps) => {
+                              const parts = [ps.sessionId];
+                              if (ps.cliModel) parts.push(ps.cliModel);
+                              parts.push(ps.state);
+                              if (ps.messagesSent > 0) parts.push(`${ps.messagesSent} msg`);
+                              if (ps.contextPct != null) parts.push(`ctx ${ps.contextPct}%`);
+                              return (
+                                <option key={`live:${ps.sessionId}`} value={buildAssigneeOptionValue('live', agent.agentId)}>
+                                  ↳ {parts.join(' · ')}
+                                </option>
+                              );
+                            })}
+                          </optgroup>
+                        );
+                      }
+
+                      // No pool sessions — single option
+                      return (
+                        <option key={`live:${agent.agentId}`} value={buildAssigneeOptionValue('live', agent.agentId)}>
+                          {agentLabel}
+                        </option>
+                      );
+                    })}
                     {recentAssigneeOptions.length > 0 && (
                       <optgroup label="Recent Reviewers">
                         {recentAssigneeOptions.map((option) => {
