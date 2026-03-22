@@ -340,7 +340,7 @@ _CAUSAL_REVIEW_RELATIONS: Set[str] = frozenset(
 _TERMINAL_REVIEW_REQUEST_STATUSES: Set[str] = frozenset({"fulfilled", "cancelled"})
 _REVIEW_REQUEST_TARGET_MODES: Set[str] = frozenset({"auto", "session", "recent_agent"})
 _REVIEW_REQUEST_DISPATCH_STATES: Set[str] = frozenset({"assigned", "queued", "unassigned"})
-_REVIEW_REQUEST_REMOTE_METHODS: Set[str] = frozenset({"remote", "cmd"})
+from pixsim7.backend.main.shared.agent_dispatch import REMOTE_METHODS as _REVIEW_REQUEST_REMOTE_METHODS
 
 
 def _validate_commit_sha(sha: str) -> str:
