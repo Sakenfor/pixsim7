@@ -2090,3 +2090,80 @@ async def _load_causal_review_adjacency(
     return adjacency
 
 
+async def _resolve_companion_docs(
+    db: AsyncSession,
+    *,
+    plan_id: str,
+    companions: List[str],
+) -> List[str]:
+    """Resolve companion references — auto-ingest file paths into docs DB.
+
+    Values that look like file paths (contain '/' and end with '.md') are
+    ingested as Document records. Already-canonical IDs are kept as-is.
+    Returns a list of document IDs (or original values if ingestion fails).
+    """
+    from pixsim7.backend.main.domain.docs.models import Document
+    from pixsim7.backend.main.shared.config import _resolve_repo_root
+
+    if not companions:
+        return []
+
+    resolved: List[str] = []
+    repo_root = _resolve_repo_root()
+
+    for ref in companions:
+        ref = ref.strip()
+        if not ref:
+            continue
+
+        # Already a doc ID (no slashes, no .md extension) — keep as-is
+        if '/' not in ref and not ref.endswith('.md'):
+            resolved.append(ref)
+            continue
+
+        # Check if a Document with this path already exists
+        doc_id = ref.replace('/', '-').replace('.md', '').replace('_', '-').lower()
+        # Truncate to 120 chars (Document.id max_length)
+        doc_id = doc_id[:120]
+
+        existing = await db.get(Document, doc_id)
+        if existing:
+            resolved.append(doc_id)
+            continue
+
+        # Try to read the file and ingest
+        file_path = repo_root / ref if repo_root else None
+        markdown = None
+        if file_path and file_path.is_file():
+            try:
+                markdown = file_path.read_text(encoding='utf-8')
+            except Exception:
+                pass
+
+        # Derive title from filename
+        title = ref.rsplit('/', 1)[-1].replace('.md', '').replace('-', ' ').replace('_', ' ').title()
+
+        doc = Document(
+            id=doc_id,
+            doc_type='doc',
+            title=title,
+            status='active',
+            owner='system',
+            summary=f'Auto-ingested companion from plan {plan_id}',
+            markdown=markdown,
+            namespace=f'plans/{plan_id}/companions',
+            tags=['companion', f'plan:{plan_id}'],
+            extra={'source_path': ref, 'auto_ingested': True},
+        )
+        try:
+            db.add(doc)
+            await db.flush()
+            resolved.append(doc_id)
+            logger.info('companion_auto_ingested', plan_id=plan_id, path=ref, doc_id=doc_id)
+        except Exception:
+            # Ingestion failed — keep original path
+            resolved.append(ref)
+
+    return resolved
+
+

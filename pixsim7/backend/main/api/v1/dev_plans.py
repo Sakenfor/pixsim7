@@ -417,7 +417,9 @@ async def create_plan(
         target=payload.target,
         checkpoints=payload.checkpoints,
         code_paths=payload.code_paths or [],
-        companions=payload.companions or [],
+        companions=await _resolve_companion_docs(
+            db, plan_id=payload.id, companions=payload.companions or [],
+        ),
         handoffs=payload.handoffs or [],
         depends_on=payload.depends_on or [],
         scope=status_to_scope(payload.status),
@@ -626,6 +628,12 @@ async def update_plan_endpoint(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
+
+    # Auto-ingest companion file paths into docs DB
+    if "companions" in updates and isinstance(updates["companions"], list):
+        updates["companions"] = await _resolve_companion_docs(
+            db, plan_id=plan_id, companions=updates["companions"],
+        )
 
     try:
         result = await update_plan(
