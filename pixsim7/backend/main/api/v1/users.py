@@ -220,13 +220,15 @@ async def get_debug_categories(principal: CurrentUser):
 
 @router.get("/users/me/debug/logging-config")
 async def get_logging_config(principal: CurrentUser):
-    """Return global logging config and DB stats."""
+    """Return global logging config, DB stats, and ingestion health."""
     from pixsim7.backend.main.services.logging_config.settings import get_logging_settings
+    from pixsim_logging import get_ingestion_stats
 
     settings = get_logging_settings()
     result = {
         "config": settings.to_dict(),
         "db": None,
+        "ingestion": get_ingestion_stats(),
     }
 
     # Best-effort DB stats

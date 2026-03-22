@@ -14,7 +14,7 @@ Environment overrides:
 
 This package keeps zero dependencies on application domain models.
 """
-from .config import configure_logging, configure_stdlib_root_logger, get_logger
+from .config import configure_logging, configure_stdlib_root_logger, get_logger, get_ingestion_stats
 from .domains import is_domain_enabled, update_domain_config
 from .spec import COMMON_FIELDS, STAGES, DOMAINS, redact_sensitive, bind_job_context, bind_generation_context, bind_domain_context
 from .file_rotation import rotate_file, append_line
@@ -24,6 +24,7 @@ __all__ = [
     "configure_logging",
     "configure_stdlib_root_logger",
     "get_logger",
+    "get_ingestion_stats",
     "is_domain_enabled",
     "update_domain_config",
     "COMMON_FIELDS",

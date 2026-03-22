@@ -37,9 +37,23 @@ def _ensure_utf8_stdout():
 DEFAULT_LEVEL = "INFO"
 
 
+_active_db_handler = None  # Set during configure_logging for stats access
+
+
 def _get_level() -> int:
     level_name = os.getenv("PIXSIM_LOG_LEVEL", DEFAULT_LEVEL).upper()
     return getattr(logging, level_name, logging.INFO)
+
+
+def get_ingestion_stats() -> dict:
+    """Return diagnostic stats from the active DB handler (if any)."""
+    if _active_db_handler is None:
+        return {"active": False}
+    return {
+        "active": True,
+        "dropped_logs": getattr(_active_db_handler, "_dropped_logs", 0),
+        "worker_errors": getattr(_active_db_handler, "_worker_errors", 0),
+    }
 
 
 def configure_logging(service_name: str, *, json: bool | None = None) -> structlog.stdlib.BoundLogger:
@@ -103,8 +117,10 @@ def configure_logging(service_name: str, *, json: bool | None = None) -> structl
         db_handler = None
         if raw_db_url:
             db_disabled_reason = "handler_exception"
+    global _active_db_handler
     if db_handler:
         processors.append(db_handler)
+        _active_db_handler = db_handler
 
     # Optional: Add HTTP ingestion handler (secondary path). This is useful for
     # services that cannot reach the DB directly but can hit a central ingest

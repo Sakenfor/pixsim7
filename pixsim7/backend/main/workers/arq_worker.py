@@ -35,6 +35,7 @@ from pixsim7.backend.main.workers.health import (
     update_simulation_heartbeat,
     get_health_tracker,
 )
+from pixsim7.backend.main.workers.log_cleanup import cleanup_old_logs
 from pixsim7.backend.main.workers.world_simulation import tick_active_worlds
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.infrastructure.queue import (
@@ -288,6 +289,7 @@ class WorkerSettings:
         requeue_pending_generations,
         requeue_pending_analyses,
         poll_device_ads,
+        cleanup_old_logs,
     ]
 
     # Cron jobs (periodic tasks)
@@ -341,6 +343,14 @@ class WorkerSettings:
             poll_device_ads,
             second={2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57},  # Every 5 seconds (offset)
             run_at_startup=True,
+        ),
+        # Purge old log entries daily at 03:00
+        cron(
+            cleanup_old_logs,
+            hour={3},
+            minute={0},
+            second={0},
+            run_at_startup=False,
         ),
     ]
 

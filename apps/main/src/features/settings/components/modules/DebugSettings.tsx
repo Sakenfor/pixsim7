@@ -237,6 +237,7 @@ function LogDbStats() {
   const [stats, setStats] = useState<{
     config: { log_retention_days: number; log_level: string; log_domain_levels: Record<string, string> };
     db: { total_rows: number; oldest: string | null; newest: string | null } | null;
+    ingestion: { active: boolean; dropped_logs?: number; worker_errors?: number };
   } | null>(null);
 
   useEffect(() => {
@@ -274,6 +275,29 @@ function LogDbStats() {
         </div>
       ) : (
         <p className="text-[11px] text-neutral-400">Log database not connected</p>
+      )}
+      {stats.ingestion.active && (
+        <div className="mt-3 pt-3 border-t border-neutral-200/50 dark:border-neutral-700/50">
+          <div className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">
+            Ingestion
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+            <span className="text-neutral-500 dark:text-neutral-400">Status</span>
+            <span className="text-green-600 dark:text-green-400">Active</span>
+            {(stats.ingestion.dropped_logs ?? 0) > 0 && (
+              <>
+                <span className="text-neutral-500 dark:text-neutral-400">Dropped logs</span>
+                <span className="text-amber-600 dark:text-amber-400">{stats.ingestion.dropped_logs}</span>
+              </>
+            )}
+            {(stats.ingestion.worker_errors ?? 0) > 0 && (
+              <>
+                <span className="text-neutral-500 dark:text-neutral-400">Write errors</span>
+                <span className="text-red-600 dark:text-red-400">{stats.ingestion.worker_errors}</span>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
