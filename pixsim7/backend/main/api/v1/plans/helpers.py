@@ -32,7 +32,9 @@ from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim7.backend.main.services.docs.plans import get_plans_index
 from pixsim7.backend.main.services.docs.plan_write import (
     PlanBundle,
+    HIDDEN_STATUSES,
     get_plan_bundle,
+    git_forge_commit_url_template,
     list_plan_bundles,
 )
 from pixsim7.backend.main.services.crud.primitives import DeleteResponse
