@@ -948,7 +948,8 @@ async def _run_review_request_via_bridge(
     user_id: Optional[int],
     profile_hint: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge, build_bridge_task_payload
+    from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
+    from pixsim7.backend.main.shared.agent_dispatch import build_task_payload as build_bridge_task_payload
 
     target_agent_id = (request_row.target_agent_id or "").strip() or None
     agent_type = (request_row.target_agent_type or "").lower()

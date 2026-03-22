@@ -1367,7 +1367,7 @@ async def send_message_to_agent_stream(
             yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'agent_id': '', 'error': 'No bridge available for your account.'})}\n\n"
         return StreamingResponse(_err2(), media_type="text/event-stream")
 
-    from pixsim7.backend.main.services.llm.remote_cmd_bridge import build_bridge_task_payload as _build_payload
+    from pixsim7.backend.main.shared.agent_dispatch import build_task_payload as _build_payload
     task_payload = _build_payload(
         prompt=payload.message,
         model=payload.model,
@@ -1536,7 +1536,7 @@ async def _send_via_bridge(
             )
         return SendMessageResponse(ok=False, agent_id="", error="All agents are busy")
 
-    from pixsim7.backend.main.services.llm.remote_cmd_bridge import build_bridge_task_payload
+    from pixsim7.backend.main.shared.agent_dispatch import build_task_payload as build_bridge_task_payload
     task_payload = build_bridge_task_payload(
         prompt=payload.message,
         model=payload.model,
