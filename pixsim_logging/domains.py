@@ -91,6 +91,22 @@ def get_domain_config_display() -> Dict[str, str]:
     return result
 
 
+def is_domain_enabled(domain: str, at_level: str = "DEBUG") -> bool:
+    """Check if a domain is enabled at the given level.
+
+    Returns True when the domain is not explicitly configured (inherits global)
+    or when configured at a level <= ``at_level``.
+    """
+    threshold = _DOMAIN_CONFIG.get(domain)
+    if threshold is None:
+        # Not configured — inherits global level; treat as enabled.
+        return True
+    if threshold == _LEVEL_OFF:
+        return False
+    requested = getattr(logging, at_level.upper(), logging.DEBUG)
+    return requested >= threshold
+
+
 def _domain_filter_processor(
     logger, method_name: str, event_dict: dict
 ):

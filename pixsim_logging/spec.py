@@ -32,7 +32,7 @@ COMMON_FIELDS = [
 # Canonical domain list — shared between backend (structlog domain filter)
 # and frontend (debugFlags categories). Keep alphabetical within groups.
 #
-# Backend-primary: generation, account, provider, cron, system, worker, audit
+# Backend-primary: account, audit, cron, generation, provider, sql, system, worker
 # Frontend-primary: localFolders, overlay, persistence, stores, websocket
 # Shared: generation, provider
 DOMAINS = [
@@ -44,6 +44,7 @@ DOMAINS = [
     "overlay",
     "persistence",
     "provider",
+    "sql",
     "stores",
     "system",
     "websocket",

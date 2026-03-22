@@ -15,11 +15,18 @@ import os
 from sqlmodel import SQLModel
 
 from pixsim7.backend.main.shared.config import settings
+from pixsim_logging.domains import is_domain_enabled
 
 logger = logging.getLogger(__name__)
 
-# Check if SQL logging is enabled via environment variable (set by launcher)
-_sql_logging_enabled = os.getenv('SQL_LOGGING_ENABLED', '0') == '1'
+# SQL echo controlled via pixsim_logging domain system.
+# Enable with: PIXSIM_LOG_DOMAINS=sql:DEBUG
+# Legacy fallback: SQL_LOGGING_ENABLED=1
+_sql_logging_enabled = (
+    is_domain_enabled("sql", at_level="DEBUG")
+    if os.getenv("PIXSIM_LOG_DOMAINS")
+    else os.getenv("SQL_LOGGING_ENABLED", "0") == "1"
+)
 
 
 # ===== ASYNC ENGINE (Primary - Application Data) =====

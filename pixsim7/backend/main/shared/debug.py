@@ -111,6 +111,10 @@ def load_global_debug_from_env(env_value: Optional[str] = None) -> Dict[str, boo
     Expected format (comma-separated categories):
         PIXSIM_WORKER_DEBUG=generation,provider,worker
 
+    Also routes enabled categories into pixsim_logging's domain filter
+    via ``update_domain_config()`` so that structlog domain filtering
+    and the DebugLogger category checks stay in sync.
+
     Returns the parsed flags dict for further inspection.
     """
     value = env_value if env_value is not None else os.getenv("PIXSIM_WORKER_DEBUG", "")
@@ -119,13 +123,21 @@ def load_global_debug_from_env(env_value: Optional[str] = None) -> Dict[str, boo
     if value:
         for part in value.split(","):
             key = part.strip().lower()
-            if not key:
-                continue
-            # Normalize known categories; allow custom ones as-is
-            if key in {"generation", "provider", "worker"}:
-                flags[key] = True
-            else:
+            if key:
                 flags[key] = True
 
     set_global_debug_flags(flags)
+
+    # Route into pixsim_logging domain filter so structlog processors
+    # respect the same categories (set enabled domains to DEBUG).
+    if flags:
+        from pixsim_logging.domains import update_domain_config, get_domain_config_display
+
+        current = get_domain_config_display()
+        merged = {**current}
+        for category in flags:
+            if category not in merged:
+                merged[category] = "DEBUG"
+        update_domain_config(merged)
+
     return flags

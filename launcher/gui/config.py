@@ -214,6 +214,8 @@ def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports
         if _worker_debug_flags:
             env['PIXSIM_WORKER_DEBUG'] = _worker_debug_flags
         env['LOG_LEVEL'] = _backend_log_level
+        env['PIXSIM_LOG_LEVEL'] = _backend_log_level
+
     # SQL logging control (use parameter if provided, otherwise use shared setting if available)
     if sql_logging is not None:
         sql_log_enabled = sql_logging
@@ -221,6 +223,24 @@ def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports
         sql_log_enabled = settings.logging.sql_logging_enabled
     else:
         sql_log_enabled = _sql_logging_enabled
+
+    # Build PIXSIM_LOG_DOMAINS from individual toggles.
+    # This is the canonical env var that pixsim_logging reads.
+    domain_parts: list[str] = []
+    if sql_log_enabled:
+        domain_parts.append("sql:DEBUG")
+    if _worker_debug_flags:
+        for cat in _worker_debug_flags.split(","):
+            cat = cat.strip()
+            if cat:
+                domain_parts.append(f"{cat}:DEBUG")
+    if domain_parts:
+        existing = env.get("PIXSIM_LOG_DOMAINS", "")
+        if existing:
+            domain_parts.insert(0, existing)
+        env["PIXSIM_LOG_DOMAINS"] = ",".join(domain_parts)
+
+    # Legacy env vars — kept for backward compat during transition
     env['SQL_LOGGING_ENABLED'] = '1' if sql_log_enabled else '0'
     # Prefer direct DB ingestion via env if configured globally (.env)
     # If LOG_DATABASE_URL/PIXSIM_LOG_DB_URL exists, pixsim_logging will use it automatically.
