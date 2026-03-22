@@ -48,6 +48,7 @@ class AssetFilterRequest(BaseModel):
 
     # Visibility filters
     searchable: Optional[bool] = Field(True, description="Filter by searchable flag (default: true)")
+    asset_kind: Optional[str] = Field("content", description="Filter by asset kind (content/mask/guidance/reference). None = all kinds.")
 
     # Lineage filters (via EXISTS subqueries, not JOINs)
     source_generation_id: Optional[int] = Field(None, description="Filter by source generation ID")

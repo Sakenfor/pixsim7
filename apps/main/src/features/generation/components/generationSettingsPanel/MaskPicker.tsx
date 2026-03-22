@@ -109,8 +109,8 @@ export function MaskPicker({
   const isOpen = anchorRect !== null;
 
   const initialFilters = showAll || !sourceAssetId
-    ? { media_type: 'image' as const, upload_method: 'mask_draw' as const, sort: 'new' as const }
-    : { source_asset_id: sourceAssetId, media_type: 'image' as const, upload_method: 'mask_draw' as const, sort: 'new' as const };
+    ? { media_type: 'image' as const, upload_method: 'mask_draw' as const, asset_kind: 'mask' as const, sort: 'new' as const }
+    : { source_asset_id: sourceAssetId, media_type: 'image' as const, upload_method: 'mask_draw' as const, asset_kind: 'mask' as const, sort: 'new' as const };
 
   return (
     <div className="flex flex-col gap-1">
