@@ -510,14 +510,17 @@ class AgentCmdSession:
                     raw_type = raw.get("type", "")
                     # Capture context window and token usage from Codex events
                     self._capture_usage(raw)
+                    is_delta = raw_method == "item/agentMessage/delta"
+                    is_text_block = raw_type == "assistant"  # Claude text streaming
                     if raw_type == "item.completed" or raw_method == "item/completed":
                         item = raw.get("item") or raw.get("params", {}).get("item", {})
                         if item.get("type") in ("agent_message", "agentMessage") and item.get("text"):
                             result_text = item["text"]
                     # Also accumulate streaming deltas (app-server agentMessage/delta)
-                    elif raw_method == "item/agentMessage/delta":
+                    elif is_delta:
                         result_text += raw.get("params", {}).get("delta", "")
-                    if on_progress and parsed.text:
+                    # Only forward meaningful progress (tool use, thinking, status) — skip streaming text
+                    if on_progress and parsed.text and not is_delta and not is_text_block:
                         on_progress("progress", parsed.text)
 
                 else:
