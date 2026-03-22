@@ -480,7 +480,9 @@ export function useAssets(options?: {
             : tags.includes(filterParams.tag))) &&
         (!filterParams.q ||
           asset.description?.toLowerCase().includes(filterParams.q.toLowerCase()) ||
-          tags.some(t => t.toLowerCase().includes(filterParams.q!.toLowerCase())));
+          tags.some(t => t.toLowerCase().includes(filterParams.q!.toLowerCase()))) &&
+        // Skip non-content assets (masks, guidance, etc.) from gallery prepend
+        ((asset as any).asset_kind ?? 'content') === (filterParams.asset_kind ?? 'content');
 
       // Only live-prepend on page 1 with default sort (newest first).
       const isDefaultSort = !filterParams.sort_by || (filterParams.sort_by === 'created_at' && filterParams.sort_dir === 'desc');
