@@ -432,14 +432,13 @@ const maintenanceTab: SettingTab = {
   groups: [
     {
       id: 'maintenance-dashboard',
-      title: 'Maintenance',
       showWhen: adminOnly,
       adminGroup: true,
       fields: [
         {
           id: 'maintenance-dashboard-widget',
           type: 'custom',
-          label: 'Maintenance',
+          label: '',
           component: MaintenanceDashboard,
         },
       ],
@@ -453,7 +452,7 @@ const maintenanceTab: SettingTab = {
         {
           id: 'content-packs-dashboard-widget',
           type: 'custom',
-          label: 'Content Packs',
+          label: '',
           component: ContentPacksDashboard,
         },
       ],

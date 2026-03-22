@@ -1119,3 +1119,263 @@ async def backfill_upload_method(
             status_code=500,
             detail=f"Failed to backfill upload method: {str(exc)}"
         )
+
+
+# ===== FORMAT CONVERSION STATS & BACKFILL =====
+
+class FormatConversionStatsResponse(BaseModel):
+    """Statistics for potential format conversion savings"""
+    total_images: int
+    png_count: int
+    png_size_bytes: int
+    png_size_human: str
+    already_webp: int
+    already_jpeg: int
+    estimated_savings_pct: float
+
+
+class FormatConversionResponse(BaseModel):
+    """Response from format conversion operation"""
+    success: bool
+    processed: int
+    converted: int
+    skipped: int
+    errors: int
+    bytes_before: int
+    bytes_after: int
+    savings_bytes: int
+    savings_human: str
+    error_ids: list[int] = []
+
+
+def _human_size(size_bytes: int) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if abs(size_bytes) < 1024:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} TB"
+
+
+@router.get("/format-conversion-stats", response_model=FormatConversionStatsResponse)
+async def get_format_conversion_stats(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+):
+    """
+    Preview potential savings from converting PNG images to WebP/JPEG.
+
+    Shows how many PNGs exist and estimated space savings.
+    """
+    from sqlalchemy import select, func
+    from pixsim7.backend.main.domain.assets.models import Asset
+
+    try:
+        result = await db.execute(
+            select(
+                func.count().label("total"),
+                func.count().filter(Asset.mime_type == "image/png").label("png_count"),
+                func.coalesce(func.sum(Asset.file_size_bytes).filter(Asset.mime_type == "image/png"), 0).label("png_bytes"),
+                func.count().filter(Asset.mime_type == "image/webp").label("webp_count"),
+                func.count().filter(Asset.mime_type == "image/jpeg").label("jpeg_count"),
+            ).where(
+                Asset.stored_key.isnot(None),
+                Asset.media_type == "image",
+            )
+        )
+        row = result.first()
+
+        return FormatConversionStatsResponse(
+            total_images=row.total,
+            png_count=row.png_count,
+            png_size_bytes=row.png_bytes,
+            png_size_human=_human_size(row.png_bytes),
+            already_webp=row.webp_count,
+            already_jpeg=row.jpeg_count,
+            estimated_savings_pct=65.0 if row.png_count > 0 else 0.0,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/convert-format", response_model=FormatConversionResponse)
+async def convert_asset_format(
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+    target_format: str = Query("webp", description="Target format: 'webp' or 'jpeg'"),
+    quality: int = Query(90, ge=60, le=100, description="Conversion quality (1-100)"),
+    limit: int = Query(50, ge=1, le=500, description="Max assets to process per batch"),
+    source_format: str = Query("image/png", description="Source MIME type to convert"),
+    dry_run: bool = Query(False, description="Preview what would be converted without modifying anything"),
+):
+    """
+    Convert existing images to a more space-efficient format.
+
+    Processes in batches — call repeatedly until png_count reaches 0.
+    The original remains available on the provider CDN via remote_url.
+    """
+    import hashlib
+    import io
+    import os
+    from pathlib import Path
+    from sqlalchemy import select
+    from sqlalchemy.orm import attributes
+    from pixsim7.backend.main.domain.assets.models import Asset
+    from pixsim7.backend.main.services.storage import get_storage_service
+
+    fmt_upper = target_format.upper()
+    if fmt_upper == "JPG":
+        fmt_upper = "JPEG"
+    if fmt_upper not in ("WEBP", "JPEG"):
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {target_format}")
+
+    target_ext = ".webp" if fmt_upper == "WEBP" else ".jpg"
+    target_mime = "image/webp" if fmt_upper == "WEBP" else "image/jpeg"
+
+    try:
+        from PIL import Image
+
+        storage = get_storage_service()
+
+        result = await db.execute(
+            select(Asset).where(
+                Asset.mime_type == source_format,
+                Asset.stored_key.isnot(None),
+                Asset.media_type == "image",
+            ).order_by(Asset.id.asc()).limit(limit)
+        )
+        assets = result.scalars().all()
+
+        processed = 0
+        converted = 0
+        skipped = 0
+        errors = 0
+        error_ids: list[int] = []
+        bytes_before = 0
+        bytes_after = 0
+
+        for asset in assets:
+            processed += 1
+
+            # Get source file path
+            source_path = storage.get_path(asset.stored_key)
+            if not os.path.exists(source_path):
+                skipped += 1
+                continue
+
+            original_size = os.path.getsize(source_path)
+            bytes_before += original_size
+
+            if dry_run:
+                # Estimate: WebP ~65% smaller, JPEG ~50% smaller for PNGs
+                est_ratio = 0.35 if fmt_upper == "WEBP" else 0.50
+                bytes_after += int(original_size * est_ratio)
+                converted += 1
+                continue
+
+            try:
+                # Convert
+                with Image.open(source_path) as img:
+                    if fmt_upper == "JPEG" and img.mode in ("RGBA", "LA", "P"):
+                        if img.mode == "RGBA":
+                            background = Image.new("RGB", img.size, (255, 255, 255))
+                            background.paste(img, mask=img.split()[3])
+                            img = background
+                        else:
+                            img = img.convert("RGB")
+
+                    buf = io.BytesIO()
+                    save_kwargs = {"quality": quality, "optimize": True}
+                    if fmt_upper == "WEBP":
+                        save_kwargs["method"] = 4
+                    img.save(buf, format=fmt_upper, **save_kwargs)
+                    new_content = buf.getvalue()
+
+                new_size = len(new_content)
+                bytes_after += new_size
+
+                # Store with new hash
+                new_sha256 = hashlib.sha256(new_content).hexdigest()
+                new_key = await storage.store_with_hash(
+                    user_id=asset.user_id,
+                    sha256=new_sha256,
+                    content=new_content,
+                    extension=target_ext,
+                )
+                new_path = storage.get_path(new_key)
+
+                # Preserve original MIME in metadata
+                if not asset.media_metadata:
+                    asset.media_metadata = {}
+                asset.media_metadata["original_mime_type"] = asset.mime_type
+                asset.media_metadata["original_stored_key"] = asset.stored_key
+
+                # Update asset
+                old_key = asset.stored_key
+                asset.stored_key = new_key
+                asset.local_path = new_path
+                asset.sha256 = new_sha256
+                asset.mime_type = target_mime
+                asset.file_size_bytes = new_size
+                asset.logical_size_bytes = new_size
+                attributes.flag_modified(asset, "media_metadata")
+
+                # Delete old file if no other asset shares it
+                from sqlalchemy import func
+                sibling_count = (await db.execute(
+                    select(func.count()).select_from(Asset).where(
+                        Asset.stored_key == old_key,
+                    )
+                )).scalar() or 0
+                if sibling_count == 0 and os.path.exists(source_path):
+                    os.remove(source_path)
+
+                converted += 1
+
+                logger.info(
+                    "format_conversion_success",
+                    asset_id=asset.id,
+                    original_bytes=original_size,
+                    new_bytes=new_size,
+                    savings_pct=round((1 - new_size / original_size) * 100, 1),
+                )
+
+            except Exception as exc:
+                bytes_after += original_size  # no change on error
+                errors += 1
+                error_ids.append(asset.id)
+                logger.warning(
+                    "format_conversion_failed",
+                    asset_id=asset.id,
+                    error=str(exc),
+                )
+
+        if not dry_run:
+            await db.commit()
+
+        savings = bytes_before - bytes_after
+
+        return FormatConversionResponse(
+            success=True,
+            processed=processed,
+            converted=converted,
+            skipped=skipped,
+            errors=errors,
+            bytes_before=bytes_before,
+            bytes_after=bytes_after,
+            savings_bytes=savings,
+            savings_human=_human_size(savings),
+            error_ids=error_ids[:20],
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "format_conversion_error",
+            error=str(exc),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to convert formats: {str(exc)}"
+        )

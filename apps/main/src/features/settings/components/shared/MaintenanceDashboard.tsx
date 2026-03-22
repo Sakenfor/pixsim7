@@ -391,6 +391,55 @@ const folderContextConfig: RowConfig<FolderContextStats> = {
   },
 };
 
+interface FormatConversionStats {
+  total_images: number;
+  png_count: number;
+  png_size_bytes: number;
+  png_size_human: string;
+  already_webp: number;
+  already_jpeg: number;
+  estimated_savings_pct: number;
+}
+
+const formatConversionConfig: RowConfig<FormatConversionStats> = {
+  statsEndpoint: '/api/v1/assets/format-conversion-stats',
+  actionEndpoint: '/api/v1/assets/convert-format?target_format=webp&quality=90&limit=100',
+  extract: (s) => {
+    const convertible = s.png_count;
+    const total = s.total_images;
+    const done = total - convertible;
+    const pct = total > 0 ? (done / total) * 100 : 100;
+    return {
+      done,
+      total,
+      pct,
+      complete: convertible === 0,
+      actionable: convertible,
+      label: 'Format Conversion',
+      statsText: `${fmt(convertible)} PNGs (${s.png_size_human})`,
+      actionLabel: `Convert ${Math.min(100, convertible)}`,
+    };
+  },
+  detailLines: (s) => {
+    const lines: string[] = [];
+    if (s.png_count > 0)
+      lines.push(`${fmt(s.png_count)} PNGs → WebP would save ~${s.estimated_savings_pct.toFixed(0)}%`);
+    if (s.already_webp > 0)
+      lines.push(`${fmt(s.already_webp)} already WebP`);
+    if (s.already_jpeg > 0)
+      lines.push(`${fmt(s.already_jpeg)} already JPEG`);
+    if (s.png_count === 0)
+      lines.push('No PNGs to convert');
+    return lines;
+  },
+  resultMessage: (d) =>
+    d.converted > 0
+      ? `${d.converted} converted, saved ${d.savings_human}${d.errors > 0 ? `, ${d.errors} errors` : ''}`
+      : d.skipped > 0
+      ? `${d.skipped} skipped (files not found on disk)`
+      : null,
+};
+
 // ---------------------------------------------------------------------------
 // Chevron
 // ---------------------------------------------------------------------------
@@ -666,6 +715,9 @@ export function MaintenanceDashboard() {
       <MaintenanceRow config={uploadMethodConfig} onRefresh={refreshCallbacks} />
       <div className="h-px bg-border/50 mx-3" />
       <MaintenanceRow config={folderContextConfig} onRefresh={refreshCallbacks} />
+
+      <div className="h-px bg-border/50 mx-3" />
+      <MaintenanceRow config={formatConversionConfig} onRefresh={refreshCallbacks} />
 
       {/* Separator before action-only rows */}
       <div className="h-px bg-border mx-3" />

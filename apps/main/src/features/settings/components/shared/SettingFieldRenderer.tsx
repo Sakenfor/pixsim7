@@ -200,6 +200,13 @@ export function SettingFieldRenderer({ field, value, onChange, allValues }: Sett
     }
   };
 
+  // Custom fields with no label span full width (dashboards, embedded panels)
+  const isFullWidth = field.type === 'custom' && !field.label;
+
+  if (isFullWidth) {
+    return <div>{renderControl()}</div>;
+  }
+
   return (
     <div className="flex items-center justify-between">
       <div className="flex-1">
