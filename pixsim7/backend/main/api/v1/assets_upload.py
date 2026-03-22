@@ -1161,6 +1161,17 @@ async def reupload_asset_to_provider(
             provider_id=request.provider_id,
             error=str(e),
         )
+        # Mark asset as flagged so the badge reflects the rejection
+        try:
+            meta = dict(asset.media_metadata or {})
+            meta["provider_flagged"] = True
+            meta["provider_flagged_reason"] = str(e)
+            asset.media_metadata = meta
+            db = asset_service.db
+            db.add(asset)
+            await db.commit()
+        except Exception:
+            pass
         raise HTTPException(
             status_code=500,
             detail=f"Failed to upload asset to provider: {str(e)}"

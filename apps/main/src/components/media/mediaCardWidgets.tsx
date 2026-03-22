@@ -427,7 +427,14 @@ function ProviderStatusContent({ data, widgetProps }: {
               <StatusMenuItem icon="eye" label="View Details" onClick={() => { actions!.onOpenDetails!(assetId); closeMenu(); }} />
             )}
             {actions!.onReupload && (
-              <StatusMenuItem icon="upload" label="Upload to provider…" onClick={() => { actions!.onReupload!(providerId); closeMenu(); }} />
+              <StatusMenuItem icon="upload" label="Upload to provider…" onClick={async () => {
+                closeMenu();
+                try {
+                  await actions!.onReupload!(providerId);
+                } finally {
+                  actions!.onReuploadDone?.();
+                }
+              }} />
             )}
             {actions!.onExtractLastFrameAndUpload && mediaType === 'video' && providerId?.startsWith('pixverse') && (
               <StatusMenuItem icon="image" label="Upload last frame to Pixverse" onClick={() => { actions!.onExtractLastFrameAndUpload!(assetId); closeMenu(); }} />

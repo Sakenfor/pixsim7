@@ -3237,47 +3237,60 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     // Any remaining (unknown stages)
     for (const s of allKeys) orderedKeys.push(s);
 
-    const makePlanEntry = (p: PlanSummary, groupKey: string, indented = false) => ({
-      id: `plan:${p.id}`,
-      label: indented ? `  ${p.title}` : p.title,
-      icon: (
-        <span className="relative flex items-center justify-center">
-          {indented
-            ? <Icon name="git-branch" size={9} className="text-neutral-500" />
-            : <Icon name={(PLAN_TYPE_ICONS[p.planType] ?? 'fileText') as any} size={11} />
-          }
-          <span className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ${STATUS_DOT_CLASSES[p.status] ?? 'bg-neutral-400'}`} />
-        </span>
-      ),
-      extra: (
-        <span className="flex items-center gap-1">
-          {(p.reviewRoundCount ?? 0) > 0 && (
-            <span
-              className={`text-[9px] leading-none px-1 rounded ${
-                (p.activeReviewRoundCount ?? 0) > 0
-                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
-                  : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400'
-              }`}
-              title={`${p.reviewRoundCount} review round${p.reviewRoundCount !== 1 ? 's' : ''}${
-                (p.activeReviewRoundCount ?? 0) > 0 ? ` (${p.activeReviewRoundCount} active)` : ''
-              }`}
-            >
-              {(p.activeReviewRoundCount ?? 0) > 0
-                ? `${p.activeReviewRoundCount}/${p.reviewRoundCount}`
-                : p.reviewRoundCount}
-            </span>
-          )}
-          {PRIORITY_DOT[p.priority] && (
-            <span className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[p.priority]}`} title={`${p.priority} priority`} />
-          )}
-          {!indented && STAGE_SHORT[p.stage] && p.stage !== groupKey && (
-            <span className={`text-[9px] leading-none ${STAGE_COLORS[p.stage] ?? 'text-neutral-400'}`} title={p.stage}>
-              {STAGE_SHORT[p.stage]}
-            </span>
-          )}
-        </span>
-      ),
-    });
+    const makePlanEntry = (p: PlanSummary, groupKey: string, indented = false) => {
+      const reviewCount = p.reviewRoundCount ?? 0;
+      const activeReviews = p.activeReviewRoundCount ?? 0;
+      const daysSinceUpdate = p.lastUpdated
+        ? Math.floor((Date.now() - new Date(p.lastUpdated).getTime()) / 86400000)
+        : null;
+      const isFresh = daysSinceUpdate !== null && daysSinceUpdate <= 1;
+
+      return {
+        id: `plan:${p.id}`,
+        label: indented ? `  ${p.title}` : p.title,
+        icon: (
+          <span className="relative flex items-center justify-center">
+            {indented
+              ? <Icon name="git-branch" size={9} className="text-neutral-500" />
+              : <Icon name={(PLAN_TYPE_ICONS[p.planType] ?? 'fileText') as any} size={11} />
+            }
+            <span className={`absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ${STATUS_DOT_CLASSES[p.status] ?? 'bg-neutral-400'}`} />
+          </span>
+        ),
+        extra: (
+          <span className="flex items-center gap-1">
+            {isFresh && (
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400" title="Updated recently" />
+            )}
+            {reviewCount > 0 && (
+              <Icon
+                name="messageSquare"
+                size={9}
+                className={activeReviews > 0 ? 'text-blue-500' : 'text-neutral-400'}
+                title={`${reviewCount} review${reviewCount !== 1 ? 's' : ''}${activeReviews > 0 ? ` (${activeReviews} active)` : ''}`}
+              />
+            )}
+            {reviewCount > 0 && (
+              <span
+                className={`text-[9px] leading-none ${
+                  activeReviews > 0 ? 'text-blue-500' : 'text-neutral-400'
+                }`}
+              >
+                {activeReviews > 0 ? `${activeReviews}/${reviewCount}` : reviewCount}
+              </span>
+            )}
+            {PRIORITY_DOT[p.priority] && (
+              <span className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[p.priority]}`} title={`${p.priority} priority`} />
+            )}
+            {!indented && STAGE_SHORT[p.stage] && p.stage !== groupKey && (
+              <span className={`text-[9px] leading-none ${STAGE_COLORS[p.stage] ?? 'text-neutral-400'}`} title={p.stage}>
+                {STAGE_SHORT[p.stage]}
+              </span>
+            )}
+          </span>
+        ),
+      };
+    };
 
     for (const key of orderedKeys) {
       const stagePlans = grouped.byStage.get(key);

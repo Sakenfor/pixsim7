@@ -303,6 +303,8 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       const detail = extractUploadError(err);
       console.error('Upload to provider failed:', detail);
       toast.error(detail);
+      // Refresh asset so badge reflects rejection (e.g. flagged status)
+      cardProps.actions?.onReuploadDone?.();
     } finally {
       setIsUploading(false);
     }
