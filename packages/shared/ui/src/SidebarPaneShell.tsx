@@ -308,12 +308,13 @@ export function SidebarPaneShell({
         </>
       )}
       {resizable && !collapsed && (
-        <div className="absolute top-0 -right-1 h-full z-10">
-          <ResizeDivider
-            onMouseDown={handleResizeStart}
-            isDragging={isDragging}
-            orientation="vertical"
-          />
+        <div className="absolute top-0 right-0 h-full z-10 w-2 cursor-col-resize" onMouseDown={handleResizeStart}>
+          <div className={clsx(
+            'w-0.5 h-full ml-auto transition-all',
+            'bg-neutral-200 dark:bg-neutral-700',
+            'hover:w-1 hover:bg-blue-400 dark:hover:bg-blue-500',
+            isDragging && 'w-1 bg-blue-500',
+          )} />
         </div>
       )}
     </div>
