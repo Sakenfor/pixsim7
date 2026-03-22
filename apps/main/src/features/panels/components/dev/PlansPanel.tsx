@@ -2227,7 +2227,10 @@ function PlanDetailView({
 
       {/* Compact metadata row */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400">
-        <span><span className="font-medium text-neutral-700 dark:text-neutral-300">{detail.owner}</span></span>
+        <span className="flex items-center gap-1">
+          <Icon name="user" size={11} className="text-neutral-400" />
+          <span className="font-medium text-neutral-700 dark:text-neutral-300">{detail.owner}</span>
+        </span>
         <span className="text-neutral-300 dark:text-neutral-600">&middot;</span>
         <span>Stage: <span className="font-medium text-neutral-700 dark:text-neutral-300">{stageLabel}</span></span>
         {overallProgress !== null ? (
