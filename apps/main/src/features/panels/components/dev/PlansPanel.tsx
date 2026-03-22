@@ -2143,13 +2143,16 @@ function PlanDetailView({
                     const lastSeenLabel = participant.lastSeenAt
                       ? formatDateTime(participant.lastSeenAt)
                       : null;
+                    const actionLog = (participant.meta?.action_log as { action: string; at: string }[] | undefined) ?? [];
+                    const actionSummary = actionLog.length > 0
+                      ? actionLog.map((e) => `  ${new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${e.action}`).join('\n')
+                      : null;
                     const tooltipParts = [
                       participant.agentType && `type: ${participant.agentType}`,
                       participant.profileId && `profile: ${participant.profileId}`,
-                      participant.lastAction && `last: ${participant.lastAction}`,
                       lastSeenLabel && `seen: ${lastSeenLabel}`,
                       participant.runId && `run: ${participant.runId}`,
-                      participant.sessionId && `session: ${participant.sessionId}`,
+                      actionSummary && `\nActions:\n${actionSummary}`,
                     ].filter(Boolean).join('\n');
                     return (
                       <div
@@ -2182,13 +2185,16 @@ function PlanDetailView({
                     const lastSeenLabel = participant.lastSeenAt
                       ? formatDateTime(participant.lastSeenAt)
                       : null;
+                    const actionLog = (participant.meta?.action_log as { action: string; at: string }[] | undefined) ?? [];
+                    const actionSummary = actionLog.length > 0
+                      ? actionLog.map((e) => `  ${new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${e.action}`).join('\n')
+                      : null;
                     const tooltipParts = [
                       participant.agentType && `type: ${participant.agentType}`,
                       participant.profileId && `profile: ${participant.profileId}`,
-                      participant.lastAction && `last: ${participant.lastAction}`,
                       lastSeenLabel && `seen: ${lastSeenLabel}`,
                       participant.runId && `run: ${participant.runId}`,
-                      participant.sessionId && `session: ${participant.sessionId}`,
+                      actionSummary && `\nActions:\n${actionSummary}`,
                     ].filter(Boolean).join('\n');
                     return (
                       <div

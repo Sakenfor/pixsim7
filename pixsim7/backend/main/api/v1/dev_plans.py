@@ -1148,6 +1148,8 @@ async def _record_plan_participant(
 
     row = (await db.execute(stmt.limit(1))).scalar_one_or_none()
     if row is None:
+        initial_meta = dict(meta) if isinstance(meta, dict) else {}
+        initial_meta["action_log"] = [{"action": action, "at": observed_at.isoformat()}]
         row = PlanParticipant(
             plan_id=plan_id,
             role=role,
@@ -1162,7 +1164,7 @@ async def _record_plan_participant(
             last_seen_at=observed_at,
             touches=1,
             last_action=action,
-            meta=meta,
+            meta=initial_meta,
         )
         db.add(row)
         return
@@ -1175,6 +1177,13 @@ async def _record_plan_participant(
     if not row.profile_id and (normalized_profile_id or normalized_agent_id):
         row.profile_id = normalized_profile_id or normalized_agent_id
     row.meta = _participant_merge_meta(row.meta, meta)
+
+    # Append to action_log (kept in meta, capped at 20 entries)
+    m = dict(row.meta) if isinstance(row.meta, dict) else {}
+    log = list(m.get("action_log", []))[-19:]  # keep last 19 + new = 20
+    log.append({"action": action, "at": observed_at.isoformat()})
+    m["action_log"] = log
+    row.meta = m
 
 
 async def _record_plan_participant_from_principal(
