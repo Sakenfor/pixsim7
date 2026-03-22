@@ -946,6 +946,7 @@ async def _run_review_request_via_bridge(
     model_id: Optional[str],
     timeout_seconds: int,
     user_id: Optional[int],
+    profile_hint: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
 
@@ -964,6 +965,14 @@ async def _run_review_request_via_bridge(
         },
         "engine": engine,
     }
+    # Pass profile persona and config (same as assistant chat path)
+    if profile_hint:
+        system_prompt = profile_hint.get("system_prompt")
+        config = profile_hint.get("config")
+        if system_prompt:
+            task_payload["profile_prompt"] = system_prompt
+        if isinstance(config, dict) and config:
+            task_payload["profile_config"] = config
 
     if target_agent_id:
         result = await remote_cmd_bridge.dispatch_task_to_agent(
@@ -1206,6 +1215,7 @@ async def _dispatch_review_request_execution(
                 request_row=request_row,
                 prompt=prompt,
                 model_id=model_id,
+                profile_hint=profile_hint,
                 timeout_seconds=timeout_seconds,
                 user_id=_principal_effective_user_id(principal),
             )
