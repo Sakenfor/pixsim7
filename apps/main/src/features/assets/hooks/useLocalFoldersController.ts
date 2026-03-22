@@ -561,7 +561,7 @@ export function useLocalFoldersController(): LocalFoldersController {
       hasValidStoredHash(asset) &&
       asset.last_upload_status !== 'success'
     ));
-    console.info('[LocalFolders:backendCheck] effect fired', {
+    console.debug('[LocalFolders:backendCheck] effect fired', {
       hashingProgress,
       totalAssets: allAssets.length,
       withHash: withHash.length,
@@ -595,7 +595,7 @@ export function useLocalFoldersController(): LocalFoldersController {
         !backendHashCheckedRef.current.has(sha256) &&
         !backendHashCheckInProgressRef.current.has(sha256)
       ));
-      console.info('[LocalFolders:backendCheck] checkRemaining', {
+      console.debug('[LocalFolders:backendCheck] checkRemaining', {
         uniqueHashes: hashToAssetKeys.size,
         toQuery: hashesToQuery.length,
         alreadyKnown: backendExistingHashesRef.current.size,
@@ -614,7 +614,7 @@ export function useLocalFoldersController(): LocalFoldersController {
           const batch = hashesToQuery.slice(i, i + BATCH_SIZE);
           const matches = await checkHashesAgainstBackend(batch);
           const foundHashSet = new Set(matches.map((m) => m.sha256));
-          console.info('[LocalFolders:backendCheck] batch result', {
+          console.debug('[LocalFolders:backendCheck] batch result', {
             sent: batch.length,
             found: matches.length,
             sampleSent: batch.slice(0, 3),
@@ -672,7 +672,7 @@ export function useLocalFoldersController(): LocalFoldersController {
         lastModified: a.sha256_last_modified ?? undefined,
       }));
       void putHashManifest(folderId, manifest).then(
-        () => console.info(`[LocalFolders] Synced hash manifest for ${folderId}: ${manifest.length} entries`),
+        () => console.debug(`[LocalFolders] Synced hash manifest for ${folderId}: ${manifest.length} entries`),
         (e) => console.warn(`[LocalFolders] Failed to sync hash manifest for ${folderId}:`, e),
       );
     }

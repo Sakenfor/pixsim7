@@ -860,7 +860,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
                 }
                 const restored = items.filter((a) => a.sha256).length;
                 if (restored > 0) {
-                  console.info(`[LocalFolders] Restored ${restored} hashes from backend for folder "${f.name}"`);
+                  console.debug(`[LocalFolders] Restored ${restored} hashes from backend for folder "${f.name}"`);
                 }
               }
 

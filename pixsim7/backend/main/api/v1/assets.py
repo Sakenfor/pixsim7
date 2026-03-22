@@ -383,12 +383,11 @@ async def check_assets_by_hash_batch(
 
         # Validate hashes (64 hex chars)
         valid_hashes = [h for h in request.hashes if len(h) == 64]
-        logger.info(
-            "batch_check_by_hash_debug",
+        logger.debug(
+            "batch_check_by_hash",
             user_id=user.id,
             total_hashes=len(request.hashes),
             valid_hashes=len(valid_hashes),
-            sample_hashes=valid_hashes[:3],
         )
         if not valid_hashes:
             return BatchCheckByHashResponse(results=[], found_count=0)
@@ -400,11 +399,10 @@ async def check_assets_by_hash_batch(
         )
         result = await asset_service.db.execute(stmt)
         found_assets = {row.sha256: row.id for row in result.all()}
-        logger.info(
+        logger.debug(
             "batch_check_by_hash_result",
             user_id=user.id,
             found_count=len(found_assets),
-            sample_found=list(found_assets.keys())[:3],
         )
 
         # Build results
