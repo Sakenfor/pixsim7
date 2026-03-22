@@ -1455,6 +1455,21 @@ def _principal_effective_user_id(principal: CurrentUser) -> Optional[int]:
     return actor.get("user_id")
 
 
+async def _resolve_profile_labels(db: "AsyncSession", principal: CurrentUser) -> Dict[str, str]:
+    """Map agent profile IDs to their labels for friendly display."""
+    try:
+        from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
+        stmt = (
+            select(AgentProfile.id, AgentProfile.label)
+            .where(AgentProfile.status != "archived")
+            .where(or_(AgentProfile.user_id == principal.id, AgentProfile.user_id == 0))
+        )
+        rows = (await db.execute(stmt)).all()
+        return {row[0]: row[1] for row in rows}
+    except Exception:
+        return {}
+
+
 def _list_live_bridge_agents(principal: CurrentUser) -> List[Dict[str, Any]]:
     """List bridge-backed live sessions visible to principal, idle-first sorted."""
     from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
@@ -3060,12 +3075,13 @@ async def list_plan_review_assignees(
     live_ids = {str(row.get("agent_id")) for row in live_rows}
     recent_rows = await _list_recent_review_agents(db, plan_id=plan_id, limit=12)
 
+    # Resolve agent IDs to profile labels for friendly display
+    profile_labels = await _resolve_profile_labels(db, principal)
+
     live_entries = [
         PlanReviewAssigneeEntry(
             id=str(row["agent_id"]),
-            label=(
-                f"{row['agent_id']} ({'busy' if row.get('busy') else 'idle'})"
-            ),
+            label=profile_labels.get(str(row["agent_id"]), str(row["agent_id"])),
             source="live",
             targetMode="session",
             targetSessionId=str(row["agent_id"]),
@@ -3103,7 +3119,7 @@ async def list_plan_review_assignees(
         recent_entries.append(
             PlanReviewAssigneeEntry(
                 id=agent_id,
-                label=f"{agent_id} (recent)",
+                label=profile_labels.get(agent_id, agent_id),
                 source="recent",
                 targetMode="recent_agent",
                 targetSessionId=None,

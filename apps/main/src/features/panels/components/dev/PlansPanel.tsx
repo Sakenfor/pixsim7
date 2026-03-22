@@ -2793,7 +2793,7 @@ function PlanDetailView({
                     <option value="auto">Auto (dispatcher)</option>
                     {liveAssigneeOptions.map((agent) => {
                       const agentLabel = [
-                        agent.agentId,
+                        agent.label || agent.agentId,
                         agent.engines?.join('/') || agent.agentType,
                         agent.busy ? 'busy' : 'idle',
                         agent.tasksCompleted > 0 ? `${agent.tasksCompleted} done` : '',
