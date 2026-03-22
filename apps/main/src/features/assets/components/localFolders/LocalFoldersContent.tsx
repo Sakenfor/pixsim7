@@ -12,13 +12,15 @@ import { usePagedItems } from '@features/gallery/lib/usePagedItems';
 import { useScrollToTopOnChange } from '@features/gallery/lib/useScrollToTopOnChange';
 
 
-import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '@/components/media/AssetGallery';
+import { GalleryEmptyState, type AssetUploadState } from '@/components/media/AssetGallery';
+import { AssetModelGallery } from '@/components/media/AssetModelGallery';
 import type { MediaCardActions } from '@/components/media/MediaCard';
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 import type { LocalFoldersController } from '@/types/localSources';
 
 
+
 import { useViewerScopeSync } from '../../hooks/useAssetViewer';
-import { useLocalAssetPreview } from '../../hooks/useLocalAssetPreview';
 import {
   canUploadToLibraryFromState,
   isFailedUploadState,
@@ -49,6 +51,15 @@ import {
 import { LocalGroupBreadcrumb } from './LocalGroupBreadcrumb';
 import { LocalGroupingMenu } from './LocalGroupingMenu';
 import { useLocalFolderCardAssetAdapter } from './useLocalFolderCardAssetAdapter';
+
+/** Preview URL resolver for AssetModel-based gallery (wraps blob URLs through auth) */
+function useLocalAssetPreviewForModel(
+  _asset: AssetModel | undefined,
+  previewUrl: string | undefined,
+): string | undefined {
+  const { src } = useAuthenticatedMedia(previewUrl);
+  return src || previewUrl;
+}
 
 type LocalGroupSummary = {
   key: string;
@@ -96,12 +107,9 @@ export function LocalFoldersContent({
   layout,
   cardSize,
   contentScrollRef,
-  getAssetKey,
+  // getAssetKey, getMediaType, getDescription, getTags, getCreatedAt
+  // are now handled by AssetModelGallery's pre-wired extractors
   getPreviewUrl,
-  getMediaType,
-  getDescription,
-  getTags,
-  getCreatedAt,
   getUploadState,
   getHashStatus,
   openAssetInViewer,
@@ -514,38 +522,123 @@ export function LocalFoldersContent({
     />
   );
 
-  // --- Render gallery (shared between flat & drilled views) ---
-  const renderAssetGallery = (assets: LocalAsset[]) => (
-    <AssetGallery
-      assets={assets}
-      getAssetKey={getAssetKey}
-      getPreviewUrl={getPreviewUrl}
-      resolvePreviewUrl={useLocalAssetPreview}
-      loadPreview={controller.loadPreview}
-      getMediaType={getMediaType}
-      getDescription={getDescription}
-      getTags={getTags}
-      getCreatedAt={getCreatedAt}
-      getUploadState={getUploadState}
-      getHashStatus={getHashStatus}
-      onOpen={handleOpen}
-      onUpload={handleUpload}
-      onUploadToProvider={handleUploadToProvider}
-      getIsFavorite={getIsFavorite}
-      onToggleFavorite={handleToggleFavorite}
-      getActions={getLocalMediaCardActions}
-      getMediaCardAsset={getMediaCardAsset}
-      layout={layout}
-      cardSize={cardSize}
-      showAssetCount={!groupByFn}
-      overlayPresetId={LOCAL_MEDIA_CARD_PRESET}
-      initialDisplayLimit={Infinity}
-      groupBy={groupByFn}
-      getGroupLabel={getGroupLabel}
-      sortGroupSections={groupByFn ? sortGroupSections : undefined}
-      collapsibleGroups={!!groupByFn}
-    />
+  // --- Map for reverse lookup: AssetModel.id → LocalAsset ---
+  // Needed by action callbacks that require the original LocalAsset (file handle, upload, etc.)
+  const localAssetByModelId = useMemo(() => {
+    const map = new Map<number, LocalAsset>();
+    for (const asset of filteredItems) {
+      const model = toGenerationInputAsset(asset);
+      map.set(model.id, asset);
+    }
+    return map;
+  }, [filteredItems, toGenerationInputAsset]);
+
+  const findLocal = useCallback(
+    (model: AssetModel): LocalAsset | undefined => localAssetByModelId.get(model.id),
+    [localAssetByModelId],
   );
+
+  // --- Wrapped action callbacks (AssetModel → LocalAsset delegation) ---
+  const onOpenModel = useCallback(
+    (model: AssetModel, resolvedPreviewUrl?: string) => {
+      const local = findLocal(model);
+      if (local) handleOpen(local, resolvedPreviewUrl);
+    },
+    [findLocal, handleOpen],
+  );
+  const onUploadModel = useCallback(
+    async (model: AssetModel) => {
+      const local = findLocal(model);
+      if (local) await handleUpload(local);
+    },
+    [findLocal, handleUpload],
+  );
+  const onUploadToProviderModel = useCallback(
+    async (model: AssetModel, providerId: string) => {
+      const local = findLocal(model);
+      if (local) await handleUploadToProvider(local, providerId);
+    },
+    [findLocal, handleUploadToProvider],
+  );
+  const onToggleFavoriteModel = useCallback(
+    async (model: AssetModel) => {
+      const local = findLocal(model);
+      if (local) await handleToggleFavorite(local);
+    },
+    [findLocal, handleToggleFavorite],
+  );
+  const getUploadStateModel = useCallback(
+    (model: AssetModel): AssetUploadState => {
+      const local = findLocal(model);
+      return local ? getUploadState(local) : 'idle';
+    },
+    [findLocal, getUploadState],
+  );
+  const getHashStatusModel = useCallback(
+    (model: AssetModel) => {
+      const local = findLocal(model);
+      return local ? getHashStatus(local) : undefined;
+    },
+    [findLocal, getHashStatus],
+  );
+  const getIsFavoriteModel = useCallback(
+    (model: AssetModel) => {
+      const local = findLocal(model);
+      return local ? getIsFavorite(local) : false;
+    },
+    [findLocal, getIsFavorite],
+  );
+  const getActionsModel = useCallback(
+    (model: AssetModel) => {
+      const local = findLocal(model);
+      return local ? getLocalMediaCardActions(local) : undefined;
+    },
+    [findLocal, getLocalMediaCardActions],
+  );
+  const groupByModel = useMemo(
+    () => groupByFn ? (model: AssetModel) => {
+      const local = findLocal(model);
+      return local ? groupByFn(local) : '';
+    } : undefined,
+    [findLocal, groupByFn],
+  );
+
+  // --- Render gallery (shared between flat & drilled views) ---
+  const renderAssetGallery = (assets: LocalAsset[]) => {
+    const models = assets.map((a) => toGenerationInputAsset(a));
+    return (
+      <AssetModelGallery
+        assets={models}
+        getPreviewUrl={(model) => {
+          const local = findLocal(model);
+          return local ? getPreviewUrl(local) : undefined;
+        }}
+        resolvePreviewUrl={useLocalAssetPreviewForModel}
+        loadPreview={async (model) => {
+          const local = findLocal(model);
+          if (local) await controller.loadPreview(local);
+        }}
+        getUploadState={getUploadStateModel}
+        getHashStatus={getHashStatusModel}
+        getIsFavorite={getIsFavoriteModel}
+        getMediaCardAsset={getMediaCardAsset}
+        onOpen={onOpenModel}
+        onUpload={onUploadModel}
+        onUploadToProvider={onUploadToProviderModel}
+        onToggleFavorite={onToggleFavoriteModel}
+        getActions={getActionsModel}
+        layout={layout}
+        cardSize={cardSize}
+        showAssetCount={!groupByFn}
+        overlayPresetId={LOCAL_MEDIA_CARD_PRESET}
+        initialDisplayLimit={Infinity}
+        groupBy={groupByModel}
+        getGroupLabel={getGroupLabel}
+        sortGroupSections={groupByFn ? sortGroupSections : undefined}
+        collapsibleGroups={!!groupByFn}
+      />
+    );
+  };
 
   // --- Main content ---
   const renderMainContent = () => {
