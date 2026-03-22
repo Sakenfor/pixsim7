@@ -17,7 +17,8 @@ from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.services.asset.content import ensure_content_blob
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType, normalize_enum
 from pixsim7.backend.main.domain.relation_types import DERIVATION
-from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
+from pixsim7.backend.main.infrastructure.events.bus import event_bus
+from pixsim7.backend.main.services.asset.events import ASSET_CREATED
 from pixsim7.backend.main.domain.assets.upload_attribution import (
     extract_hints_from_metadata,
     normalize_upload_method,
@@ -25,6 +26,19 @@ from pixsim7.backend.main.domain.assets.upload_attribution import (
 )
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import normalize_url
 from urllib.parse import urlparse
+
+
+# upload_method → asset_kind mapping for non-content artifacts
+_UPLOAD_METHOD_TO_KIND: Dict[str, str] = {
+    "mask_draw": "mask",
+}
+
+
+def _infer_asset_kind(upload_method: Optional[str]) -> str:
+    """Derive asset_kind from upload_method. Defaults to 'content'."""
+    if upload_method and upload_method in _UPLOAD_METHOD_TO_KIND:
+        return _UPLOAD_METHOD_TO_KIND[upload_method]
+    return "content"
 
 
 def _infer_upload_method_for_new_asset(
@@ -356,6 +370,7 @@ async def add_asset(
         phash64=phash64,
         upload_method=upload_method,
         upload_context=upload_context,
+        asset_kind=_infer_asset_kind(upload_method),
         created_at=datetime.now(timezone.utc),
     )
     db.add(asset)

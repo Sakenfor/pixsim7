@@ -190,6 +190,9 @@ class AssetResponse(BaseModel):
     # Provider status (derived field)
     provider_status: Optional[Literal["ok", "local_only", "unknown", "flagged"]] = None
 
+    # Asset kind (purpose): 'content' (gallery), 'mask', 'guidance', 'reference'
+    asset_kind: str = "content"
+
     # Upload method (source): 'web', 'local', 'pixverse_sync', 'generated', 'video_capture'
     upload_method: Optional[str] = None
     # Upload context captured at ingestion time (validated against schema)

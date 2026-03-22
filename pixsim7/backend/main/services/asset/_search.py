@@ -114,6 +114,7 @@ class AssetSearchMixin:
         q: Optional[str] = None,
         include_archived: bool = False,
         searchable: Optional[bool] = True,
+        asset_kind: Optional[str] = "content",
         created_from: Optional[datetime] = None,
         created_to: Optional[datetime] = None,
         min_width: Optional[int] = None,
@@ -207,6 +208,10 @@ class AssetSearchMixin:
         # Searchable filter (default True to hide non-searchable assets)
         if searchable is not None:
             query = query.where(Asset.searchable == searchable)
+
+        # Asset kind filter (default: gallery content only)
+        if asset_kind is not None:
+            query = query.where(Asset.asset_kind == asset_kind)
 
         # Asset ID whitelist
         if asset_ids:
@@ -500,6 +505,7 @@ class AssetSearchMixin:
             q=q,
             include_archived=include_archived,
             searchable=searchable,
+            asset_kind=asset_kind,
             created_from=created_from,
             created_to=created_to,
             min_width=min_width,
@@ -607,6 +613,7 @@ class AssetSearchMixin:
         content_category: Optional[str] = None,
         content_rating: Optional[str] = None,
         searchable: Optional[bool] = True,  # Default True to hide non-searchable
+        asset_kind: Optional[str] = "content",  # Default to gallery content; None = all kinds
         asset_ids: Optional[list[int]] = None,
         source_generation_id: Optional[int] = None,
         source_asset_id: Optional[int] = None,
@@ -651,6 +658,7 @@ class AssetSearchMixin:
             q=q,
             include_archived=include_archived,
             searchable=searchable,
+            asset_kind=asset_kind,
             created_from=created_from,
             created_to=created_to,
             min_width=min_width,

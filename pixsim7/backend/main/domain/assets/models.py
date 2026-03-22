@@ -16,6 +16,7 @@ from pgvector.sqlalchemy import Vector
 
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDomain
 from pixsim7.backend.main.shared.datetime_utils import utcnow
+from pixsim7.backend.main.services.audit.model_hooks import AuditMeta
 
 
 class Asset(SQLModel, table=True):
@@ -28,6 +29,10 @@ class Asset(SQLModel, table=True):
     - No Duplication: Generation params in ProviderSubmission, not here
     """
     __tablename__ = "assets"
+    __audit__ = AuditMeta(
+        domain="asset", entity_type="asset",
+        tracked_fields=("is_archived", "sync_status", "version_family_id", "version_number", "searchable"),
+    )
 
     # Primary key
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -174,6 +179,12 @@ class Asset(SQLModel, table=True):
         default=True,
         index=True,
         description="If false, requires direct link/ID"
+    )
+    asset_kind: str = Field(
+        default="content",
+        max_length=32,
+        index=True,
+        description="Purpose: 'content' (gallery), 'mask', 'guidance', 'reference'. Gallery filters by 'content' by default.",
     )
 
     # ===== UPLOAD ATTRIBUTION =====

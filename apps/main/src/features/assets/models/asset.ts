@@ -60,6 +60,8 @@ export interface AssetModel {
   providerAssetId: string;
   providerId: string;
   providerStatus?: AssetProviderStatus | null;
+  /** Purpose: 'content' (gallery), 'mask', 'guidance', 'reference' */
+  assetKind?: string;
   /** Map of provider_id -> uploaded asset URL/ID for cross-provider operations */
   providerUploads?: Record<string, string> | null;
   remoteUrl?: string | null;
@@ -166,6 +168,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     providerAssetId: response.provider_asset_id ?? '',
     providerId: response.provider_id ?? '',
     providerStatus: response.provider_status,
+    assetKind: (response as any).asset_kind ?? 'content',
     providerUploads: response.provider_uploads
       ? { ...response.provider_uploads }
       : response.provider_uploads,
