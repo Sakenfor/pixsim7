@@ -83,6 +83,26 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
         "constraint": {"type": "advisory"},
         "message": "Prefer document IDs over file paths for companions.",
     },
+    {
+        "id": "plans.create.code_paths_for_coverage",
+        "endpoint_id": "plans.create",
+        "field": "code_paths",
+        "level": "suggested",
+        "applies_to_principal_types": ["agent", "service"],
+        "description": (
+            "Populate code_paths with the file/directory paths this plan touches. "
+            "The coverage system (GET /dev/plans/coverage/{plan_id}) auto-discovers "
+            "test suites whose 'covers' paths overlap these code_paths. Checkpoints "
+            "can also link tests explicitly via evidence entries with "
+            "kind='test_suite' and ref=<suite_id>."
+        ),
+        "constraint": {"type": "advisory"},
+        "message": (
+            "Add code_paths to enable automatic test coverage discovery. "
+            "Link specific tests via checkpoint evidence: "
+            "{\"kind\": \"test_suite\", \"ref\": \"<suite_id>\"}."
+        ),
+    },
 ]
 
 
