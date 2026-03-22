@@ -182,17 +182,18 @@ class DebugFlags {
 
     console.group('🐛 Debug Flags Status');
     const categories: DebugCategory[] = [
-      'persistence',
-      'rehydration',
-      'stores',
-      'backend',
-      'registry',
+      'account',
+      'audit',
+      'cron',
       'generation',
-      'provider',
-      'worker',
-      'websocket',
       'localFolders',
       'overlay',
+      'persistence',
+      'provider',
+      'stores',
+      'system',
+      'websocket',
+      'worker',
     ];
 
     categories.forEach(cat => {

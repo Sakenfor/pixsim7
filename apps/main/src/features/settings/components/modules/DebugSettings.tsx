@@ -21,23 +21,24 @@ interface DebugCategory {
   id: keyof DebugPreferences;
   label: string;
   description: string;
-  location: 'frontend' | 'backend';
+  location: 'frontend' | 'backend' | 'both';
 }
 
+// Categories aligned with pixsim_logging.spec.DOMAINS
 const DEBUG_CATEGORIES: DebugCategory[] = [
-  // Frontend categories (browser console)
-  { id: 'persistence', label: 'Persistence', description: 'localStorage read/write operations', location: 'frontend' },
-  { id: 'rehydration', label: 'Rehydration', description: 'Store rehydration from localStorage', location: 'frontend' },
+  { id: 'account', label: 'Account', description: 'Account and auth operations', location: 'backend' },
+  { id: 'audit', label: 'Audit', description: 'Audit trail events', location: 'backend' },
+  { id: 'cron', label: 'Cron', description: 'Scheduled tasks and background jobs', location: 'backend' },
+  { id: 'generation', label: 'Generation', description: 'Generation pipeline, dedup, params', location: 'both' },
+  { id: 'localFolders', label: 'Local Folders', description: 'Local folder hashing, sync, and backend checks', location: 'frontend' },
+  { id: 'overlay', label: 'Overlay', description: 'Media card overlay and badge system', location: 'frontend' },
+  { id: 'persistence', label: 'Persistence', description: 'Store persistence and rehydration', location: 'frontend' },
+  { id: 'provider', label: 'Provider', description: 'Provider SDK calls and responses', location: 'both' },
   { id: 'stores', label: 'Stores', description: 'Store initialization and creation', location: 'frontend' },
-  { id: 'backend', label: 'Backend Sync', description: 'Backend API synchronization', location: 'frontend' },
-  { id: 'registry', label: 'Registry', description: 'Plugin/feature/route/renderer registration', location: 'frontend' },
-  { id: 'websocket', label: 'WebSocket', description: 'WebSocket connection and message handling', location: 'frontend' },
-
-  // Backend categories (server logs)
-  { id: 'generation', label: 'Generation Pipeline', description: 'Dedup, cache, params canonicalization', location: 'backend' },
-  { id: 'provider', label: 'Provider API', description: 'Provider SDK calls and responses', location: 'backend' },
-  { id: 'worker', label: 'Worker Jobs', description: 'Job processing and status polling', location: 'backend' },
-  { id: 'validateCompositionVocabs', label: 'Vocab Validation', description: 'Validate composition fields (role, pose_id, etc.) against vocab registry', location: 'backend' },
+  { id: 'system', label: 'System', description: 'System, registry, and API sync', location: 'both' },
+  { id: 'websocket', label: 'WebSocket', description: 'WebSocket connection and messages', location: 'both' },
+  { id: 'worker', label: 'Worker', description: 'Job processing and status polling', location: 'backend' },
+  { id: 'validateCompositionVocabs', label: 'Vocab Validation', description: 'Validate composition fields against vocab registry', location: 'backend' },
 ];
 
 /** Shared hook for debug state management */
@@ -189,7 +190,7 @@ function DebugCategoryList({
 /** Frontend debug settings */
 function DebugFrontendSettings() {
   const { debugStates, isLoading, handleToggle } = useDebugState();
-  const frontendCategories = DEBUG_CATEGORIES.filter(c => c.location === 'frontend');
+  const frontendCategories = DEBUG_CATEGORIES.filter(c => c.location === 'frontend' || c.location === 'both');
 
   if (isLoading) {
     return (
@@ -216,7 +217,7 @@ function DebugFrontendSettings() {
 /** Backend debug settings */
 function DebugBackendSettings() {
   const { debugStates, isLoading, handleToggle } = useDebugState();
-  const backendCategories = DEBUG_CATEGORIES.filter(c => c.location === 'backend');
+  const backendCategories = DEBUG_CATEGORIES.filter(c => c.location === 'backend' || c.location === 'both');
 
   if (isLoading) {
     return (

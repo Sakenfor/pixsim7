@@ -20,7 +20,9 @@ from typing import Dict, Optional
 
 import structlog
 
-KNOWN_DOMAINS = frozenset({"generation", "account", "provider", "cron", "system"})
+from .spec import DOMAINS
+
+KNOWN_DOMAINS = frozenset(DOMAINS)
 
 _LEVEL_OFF = -1  # Sentinel: domain disabled
 

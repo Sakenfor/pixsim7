@@ -4,18 +4,26 @@ import type {
   UserPreferencesResponse as UserPreferencesResponseSchema,
 } from '@pixsim7/shared.api.model';
 
+/**
+ * Debug log categories — aligned with pixsim_logging DOMAINS.
+ *
+ * Canonical list (matches backend `pixsim_logging.spec.DOMAINS`):
+ *   account, audit, cron, generation, localFolders, overlay,
+ *   persistence, provider, stores, system, websocket, worker
+ */
 export interface DebugPreferences {
+  account?: boolean;
+  audit?: boolean;
+  cron?: boolean;
   generation?: boolean;
-  provider?: boolean;
-  worker?: boolean;
-  persistence?: boolean;
-  rehydration?: boolean;
-  stores?: boolean;
-  backend?: boolean;
-  registry?: boolean;
-  websocket?: boolean;
   localFolders?: boolean;
   overlay?: boolean;
+  persistence?: boolean;
+  provider?: boolean;
+  stores?: boolean;
+  system?: boolean;
+  websocket?: boolean;
+  worker?: boolean;
   /** Validate composition vocab fields (role, pose_id, etc.) against registry */
   validateCompositionVocabs?: boolean;
 }

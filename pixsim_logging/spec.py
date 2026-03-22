@@ -29,7 +29,26 @@ COMMON_FIELDS = [
     "created_at",
 ]
 
-DOMAINS = ["generation", "account", "provider", "cron", "system"]
+# Canonical domain list — shared between backend (structlog domain filter)
+# and frontend (debugFlags categories). Keep alphabetical within groups.
+#
+# Backend-primary: generation, account, provider, cron, system, worker, audit
+# Frontend-primary: localFolders, overlay, persistence, stores, websocket
+# Shared: generation, provider
+DOMAINS = [
+    "account",
+    "audit",
+    "cron",
+    "generation",
+    "localFolders",
+    "overlay",
+    "persistence",
+    "provider",
+    "stores",
+    "system",
+    "websocket",
+    "worker",
+]
 
 # Stage taxonomy (pipeline + provider lifecycle)
 STAGES = [
