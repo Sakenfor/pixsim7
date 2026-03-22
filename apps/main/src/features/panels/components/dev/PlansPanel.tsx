@@ -15,6 +15,7 @@ import {
   EmptyState,
   FilterPillGroup,
   type FilterPillOption,
+  Popover,
   SearchInput,
   SectionHeader,
   SidebarContentLayout,
@@ -911,6 +912,95 @@ function CheckpointList({
 // =============================================================================
 // Plan Detail View
 // =============================================================================
+
+function ParticipantEntry({ participant }: { participant: PlanParticipant }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const label =
+    participant.agentId ??
+    (participant.userId !== null ? `user:${participant.userId}` : participant.principalType ?? 'unknown');
+  const actionLog = (participant.meta?.action_log as { action: string; at: string }[] | undefined) ?? [];
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 text-[11px] text-left group hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded px-1 -mx-1 py-0.5"
+      >
+        <span className="font-mono text-neutral-700 dark:text-neutral-300 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+          {label}
+        </span>
+        <span className="text-neutral-400 group-hover:text-blue-500">({participant.touches}x)</span>
+        {participant.lastAction && (
+          <span className="text-neutral-400 text-[10px]">{participant.lastAction}</span>
+        )}
+      </button>
+      <Popover
+        anchor={triggerRef.current}
+        placement="bottom"
+        align="start"
+        open={open}
+        onClose={() => setOpen(false)}
+        triggerRef={triggerRef}
+        className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg p-3 max-w-xs"
+      >
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium text-neutral-800 dark:text-neutral-200">{label}</span>
+            <Badge color="gray" className="text-[9px]">{participant.role}</Badge>
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
+            {participant.agentType && (
+              <>
+                <span className="text-neutral-400">Type</span>
+                <span className="text-neutral-600 dark:text-neutral-300">{participant.agentType}</span>
+              </>
+            )}
+            {participant.profileId && (
+              <>
+                <span className="text-neutral-400">Profile</span>
+                <span className="text-neutral-600 dark:text-neutral-300">{participant.profileId}</span>
+              </>
+            )}
+            <span className="text-neutral-400">Touches</span>
+            <span className="text-neutral-600 dark:text-neutral-300">{participant.touches}</span>
+            {participant.lastSeenAt && (
+              <>
+                <span className="text-neutral-400">Last seen</span>
+                <span className="text-neutral-600 dark:text-neutral-300">{formatDateTime(participant.lastSeenAt)}</span>
+              </>
+            )}
+            {participant.runId && (
+              <>
+                <span className="text-neutral-400">Run</span>
+                <span className="text-neutral-600 dark:text-neutral-300 font-mono truncate">{participant.runId}</span>
+              </>
+            )}
+          </div>
+          {actionLog.length > 0 && (
+            <div>
+              <div className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 mb-1">
+                Activity ({actionLog.length})
+              </div>
+              <div className="space-y-0.5 max-h-40 overflow-y-auto">
+                {actionLog.map((entry, i) => (
+                  <div key={`${participant.id}:action:${i}`} className="flex items-center gap-2 text-[10px]">
+                    <span className="shrink-0 w-10 text-right text-neutral-400 font-mono">
+                      {new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="text-neutral-700 dark:text-neutral-300">{entry.action.replace(/_/g, ' ')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </Popover>
+    </>
+  );
+}
 
 function PlanDetailView({
   planId,
@@ -2136,38 +2226,9 @@ function PlanDetailView({
                   Builders ({builderParticipants.length})
                 </div>
                 <div className="space-y-1">
-                  {builderParticipants.map((participant) => {
-                    const label =
-                      participant.agentId ??
-                      (participant.userId !== null ? `user:${participant.userId}` : participant.principalType ?? 'unknown');
-                    const lastSeenLabel = participant.lastSeenAt
-                      ? formatDateTime(participant.lastSeenAt)
-                      : null;
-                    const actionLog = (participant.meta?.action_log as { action: string; at: string }[] | undefined) ?? [];
-                    const actionSummary = actionLog.length > 0
-                      ? actionLog.map((e) => `  ${new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${e.action}`).join('\n')
-                      : null;
-                    const tooltipParts = [
-                      participant.agentType && `type: ${participant.agentType}`,
-                      participant.profileId && `profile: ${participant.profileId}`,
-                      lastSeenLabel && `seen: ${lastSeenLabel}`,
-                      participant.runId && `run: ${participant.runId}`,
-                      actionSummary && `\nActions:\n${actionSummary}`,
-                    ].filter(Boolean).join('\n');
-                    return (
-                      <div
-                        key={participant.id}
-                        className="text-[11px] text-neutral-600 dark:text-neutral-400 cursor-default"
-                        title={tooltipParts}
-                      >
-                        <span className="font-mono text-neutral-700 dark:text-neutral-300">{label}</span>
-                        <span className="ml-1 text-neutral-400">({participant.touches}x)</span>
-                        {participant.lastAction && (
-                          <span className="ml-1 text-neutral-400 text-[10px]">{participant.lastAction}</span>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {builderParticipants.map((participant) => (
+                    <ParticipantEntry key={participant.id} participant={participant} />
+                  ))}
                   {builderParticipants.length === 0 && (
                     <div className="text-[11px] text-neutral-400">None</div>
                   )}
@@ -2178,38 +2239,9 @@ function PlanDetailView({
                   Reviewers ({reviewerParticipants.length})
                 </div>
                 <div className="space-y-1">
-                  {reviewerParticipants.map((participant) => {
-                    const label =
-                      participant.agentId ??
-                      (participant.userId !== null ? `user:${participant.userId}` : participant.principalType ?? 'unknown');
-                    const lastSeenLabel = participant.lastSeenAt
-                      ? formatDateTime(participant.lastSeenAt)
-                      : null;
-                    const actionLog = (participant.meta?.action_log as { action: string; at: string }[] | undefined) ?? [];
-                    const actionSummary = actionLog.length > 0
-                      ? actionLog.map((e) => `  ${new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ${e.action}`).join('\n')
-                      : null;
-                    const tooltipParts = [
-                      participant.agentType && `type: ${participant.agentType}`,
-                      participant.profileId && `profile: ${participant.profileId}`,
-                      lastSeenLabel && `seen: ${lastSeenLabel}`,
-                      participant.runId && `run: ${participant.runId}`,
-                      actionSummary && `\nActions:\n${actionSummary}`,
-                    ].filter(Boolean).join('\n');
-                    return (
-                      <div
-                        key={participant.id}
-                        className="text-[11px] text-neutral-600 dark:text-neutral-400 cursor-default"
-                        title={tooltipParts}
-                      >
-                        <span className="font-mono text-neutral-700 dark:text-neutral-300">{label}</span>
-                        <span className="ml-1 text-neutral-400">({participant.touches}x)</span>
-                        {participant.lastAction && (
-                          <span className="ml-1 text-neutral-400 text-[10px]">{participant.lastAction}</span>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {reviewerParticipants.map((participant) => (
+                    <ParticipantEntry key={participant.id} participant={participant} />
+                  ))}
                   {reviewerParticipants.length === 0 && (
                     <div className="text-[11px] text-neutral-400">None</div>
                   )}
