@@ -196,6 +196,28 @@ async def update_user_preferences(
         raise HTTPException(status_code=500, detail=f"Failed to update preferences: {str(e)}")
 
 
+# ===== DEBUG SETTINGS META =====
+
+
+@router.get("/users/me/debug/categories")
+async def get_debug_categories(principal: CurrentUser):
+    """Return available debug categories with descriptions and current state."""
+    from pixsim7.backend.main.services.debug import DebugSettings
+
+    current = DebugSettings.from_dict(
+        (principal.preferences or {}).get("debug", {})
+    )
+    categories = []
+    for name, field_info in DebugSettings.model_fields.items():
+        categories.append({
+            "id": name,
+            "description": field_info.description or "",
+            "enabled": getattr(current, name, False),
+            "default": field_info.default,
+        })
+    return {"categories": categories}
+
+
 # ===== LOCAL FOLDER HASH CACHE =====
 
 

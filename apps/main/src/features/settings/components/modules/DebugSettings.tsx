@@ -11,35 +11,52 @@
 import type { DevToolSetting, DevToolSettingSelect, DevToolSettingNumber } from '@pixsim7/shared.devtools.core';
 import { useState, useEffect } from 'react';
 
+import { pixsimClient } from '@lib/api/client';
 import { getUserPreferences, updatePreferenceKey, type DebugPreferences, type DevToolsPreferences, type DevToolSettingValue } from '@lib/api/userPreferences';
 import { devToolRegistry } from '@lib/dev/devtools/devToolRegistry';
 import { debugFlags } from '@lib/utils/debugFlags';
 
 import { settingsRegistry } from '../../lib/core/registry';
 
+
+interface DebugCategoryMeta {
+  id: string;
+  description: string;
+  enabled: boolean;
+  default: boolean;
+}
+
 interface DebugCategory {
   id: keyof DebugPreferences;
   label: string;
   description: string;
-  location: 'frontend' | 'backend' | 'both';
 }
 
-// Categories aligned with pixsim_logging.spec.DOMAINS
-const DEBUG_CATEGORIES: DebugCategory[] = [
-  { id: 'account', label: 'Account', description: 'Account and auth operations', location: 'backend' },
-  { id: 'audit', label: 'Audit', description: 'Audit trail events', location: 'backend' },
-  { id: 'cron', label: 'Cron', description: 'Scheduled tasks and background jobs', location: 'backend' },
-  { id: 'generation', label: 'Generation', description: 'Generation pipeline, dedup, params', location: 'both' },
-  { id: 'localFolders', label: 'Local Folders', description: 'Local folder hashing, sync, and backend checks', location: 'frontend' },
-  { id: 'overlay', label: 'Overlay', description: 'Media card overlay and badge system', location: 'frontend' },
-  { id: 'persistence', label: 'Persistence', description: 'Store persistence and rehydration', location: 'frontend' },
-  { id: 'provider', label: 'Provider', description: 'Provider SDK calls and responses', location: 'both' },
-  { id: 'stores', label: 'Stores', description: 'Store initialization and creation', location: 'frontend' },
-  { id: 'system', label: 'System', description: 'System, registry, and API sync', location: 'both' },
-  { id: 'websocket', label: 'WebSocket', description: 'WebSocket connection and messages', location: 'both' },
-  { id: 'worker', label: 'Worker', description: 'Job processing and status polling', location: 'backend' },
-  { id: 'validateCompositionVocabs', label: 'Vocab Validation', description: 'Validate composition fields against vocab registry', location: 'backend' },
-];
+function useDebugCategories(): { categories: DebugCategory[]; loading: boolean } {
+  const [categories, setCategories] = useState<DebugCategory[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    pixsimClient
+      .get<{ categories: DebugCategoryMeta[] }>('/users/me/debug/categories')
+      .then((data) => {
+        setCategories(
+          data.categories.map((c) => ({
+            id: c.id as keyof DebugPreferences,
+            label: c.id.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase()),
+            description: c.description,
+          })),
+        );
+      })
+      .catch(() => {
+        // Fallback — should not normally happen
+        setCategories([]);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  return { categories, loading };
+}
 
 /** Shared hook for debug state management */
 function useDebugState() {
@@ -187,12 +204,12 @@ function DebugCategoryList({
   );
 }
 
-/** Frontend debug settings */
-function DebugFrontendSettings() {
-  const { debugStates, isLoading, handleToggle } = useDebugState();
-  const frontendCategories = DEBUG_CATEGORIES.filter(c => c.location === 'frontend' || c.location === 'both');
+/** Debug log categories — fetched from backend DebugSettings */
+function DebugLogCategories() {
+  const { debugStates, isLoading: prefsLoading, handleToggle } = useDebugState();
+  const { categories, loading: catsLoading } = useDebugCategories();
 
-  if (isLoading) {
+  if (prefsLoading || catsLoading) {
     return (
       <div className="flex-1 overflow-auto p-4 text-xs text-neutral-500 dark:text-neutral-400">
         Loading debug preferences...
@@ -203,37 +220,10 @@ function DebugFrontendSettings() {
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4 text-xs text-neutral-800 dark:text-neutral-100">
       <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
-        Logs appear in browser console (F12). Useful for debugging UI, stores, and client-side logic.
+        Toggle debug categories. Logs appear in browser console (frontend) and backend terminal (server).
       </p>
       <DebugCategoryList
-        categories={frontendCategories}
-        debugStates={debugStates}
-        onToggle={handleToggle}
-      />
-    </div>
-  );
-}
-
-/** Backend debug settings */
-function DebugBackendSettings() {
-  const { debugStates, isLoading, handleToggle } = useDebugState();
-  const backendCategories = DEBUG_CATEGORIES.filter(c => c.location === 'backend' || c.location === 'both');
-
-  if (isLoading) {
-    return (
-      <div className="flex-1 overflow-auto p-4 text-xs text-neutral-500 dark:text-neutral-400">
-        Loading debug preferences...
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex-1 overflow-auto p-4 space-y-4 text-xs text-neutral-800 dark:text-neutral-100">
-      <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
-        Logs appear in backend/worker console. Check terminal where backend is running.
-      </p>
-      <DebugCategoryList
-        categories={backendCategories}
+        categories={categories}
         debugStates={debugStates}
         onToggle={handleToggle}
       />
@@ -438,9 +428,9 @@ function DebugDevToolsSettings() {
   );
 }
 
-/** Default component - shows frontend settings (first sub-section) */
+/** Default component - shows log categories (first sub-section) */
 export function DebugSettings() {
-  return <DebugFrontendSettings />;
+  return <DebugLogCategories />;
 }
 
 // Register this module (only in development mode)
@@ -453,16 +443,10 @@ if (import.meta.env.DEV) {
     order: 90,
     subSections: [
       {
-        id: 'frontend',
-        label: 'Frontend',
-        icon: '🖥️',
-        component: DebugFrontendSettings,
-      },
-      {
-        id: 'backend',
-        label: 'Backend',
-        icon: '🖧',
-        component: DebugBackendSettings,
+        id: 'categories',
+        label: 'Log Categories',
+        icon: '📋',
+        component: DebugLogCategories,
       },
       {
         id: 'devtools',
