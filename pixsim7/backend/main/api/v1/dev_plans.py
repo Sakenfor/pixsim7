@@ -113,6 +113,8 @@ class PlanSummary(BaseModel):
     handoffs: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     dependsOn: List[str] = Field(default_factory=list)
+    reviewRoundCount: int = 0
+    activeReviewRoundCount: int = 0
     children: List[PlanChildSummary] = Field(default_factory=list)
 
 
