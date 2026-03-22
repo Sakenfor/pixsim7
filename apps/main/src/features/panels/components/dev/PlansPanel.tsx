@@ -3097,6 +3097,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'stage' | 'updated' | 'priority' | 'title'>('stage');
   const [refreshKey, setRefreshKey] = useState(0);
   const [forgeUrlTemplate, setForgeUrlTemplate] = useState<string | null>(null);
   const [stageOptions, setStageOptions] = useState<PlanStageOptionEntry[]>(
@@ -3154,7 +3155,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     setRefreshKey((k) => k + 1);
   }, []);
 
-  // Filter plans
+  // Filter and sort plans
   const filteredPlans = useMemo(() => {
     let result = plans;
     if (statusFilter) {
@@ -3171,8 +3172,16 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
           p.tags.some((t) => t.toLowerCase().includes(q)),
       );
     }
+    if (sortBy === 'updated') {
+      result = [...result].sort((a, b) => (b.lastUpdated || '').localeCompare(a.lastUpdated || ''));
+    } else if (sortBy === 'priority') {
+      const priorityOrder: Record<string, number> = { high: 0, normal: 1, low: 2 };
+      result = [...result].sort((a, b) => (priorityOrder[a.priority] ?? 1) - (priorityOrder[b.priority] ?? 1));
+    } else if (sortBy === 'title') {
+      result = [...result].sort((a, b) => a.title.localeCompare(b.title));
+    }
     return result;
-  }, [plans, statusFilter, searchQuery]);
+  }, [plans, statusFilter, searchQuery, sortBy]);
 
   // Status filter pills
   const statusOptions = useMemo<FilterPillOption<string>[]>(() => {
@@ -3412,14 +3421,27 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
             placeholder="Search plans..."
             size="sm"
           />
-          {statusOptions.length > 1 && (
-            <FilterPillGroup
-              options={statusOptions}
-              value={statusFilter}
-              onChange={setStatusFilter}
-              allLabel="All"
-            />
-          )}
+          <div className="flex items-center gap-1">
+            {statusOptions.length > 1 && (
+              <FilterPillGroup
+                options={statusOptions}
+                value={statusFilter}
+                onChange={setStatusFilter}
+                allLabel="All"
+              />
+            )}
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              className="ml-auto text-[9px] bg-transparent border border-neutral-200 dark:border-neutral-700 rounded px-1 py-0.5 text-neutral-500 dark:text-neutral-400 cursor-pointer"
+              title="Sort plans"
+            >
+              <option value="stage">Stage</option>
+              <option value="updated">Recent</option>
+              <option value="priority">Priority</option>
+              <option value="title">A-Z</option>
+            </select>
+          </div>
         </div>
       }
       sidebarWidth="w-52"
