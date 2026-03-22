@@ -886,31 +886,21 @@ async def update_llm_config(
 _VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "OFF"}
 
 
-class LoggingConfigResponse(BaseModel):
-    """Current per-domain log level configuration."""
-    log_domain_levels: dict = Field(
-        default_factory=dict,
-        description="Per-domain log level overrides. Keys: generation, account, provider, cron, system. Values: DEBUG/INFO/WARNING/ERROR/OFF.",
-    )
+from pixsim7.backend.main.services.logging_config import LoggingSettings
+
+LoggingConfigUpdate = LoggingSettings.get_update_model()
 
 
-class LoggingConfigUpdate(BaseModel):
-    """Partial update for logging config."""
-    log_domain_levels: dict | None = Field(
-        None,
-        description="Per-domain log level overrides. Keys: generation, account, provider, cron, system. Values: DEBUG/INFO/WARNING/ERROR/OFF.",
-    )
-
-
-@router.get("/admin/logging/config", response_model=LoggingConfigResponse)
+@router.get("/admin/logging/config", response_model=LoggingSettings)
 async def get_logging_config(user: CurrentUser):
     """Get current per-domain logging config (any authenticated user)."""
     from pixsim_logging.domains import get_domain_config_display
 
-    return LoggingConfigResponse(log_domain_levels=get_domain_config_display())
+    # Read live state from the logging module (source of truth for active levels)
+    return LoggingSettings(log_domain_levels=get_domain_config_display())
 
 
-@router.patch("/admin/logging/config", response_model=LoggingConfigResponse)
+@router.patch("/admin/logging/config", response_model=LoggingSettings)
 async def update_logging_config(
     body: LoggingConfigUpdate,
     admin: CurrentAdminUser,
@@ -930,7 +920,6 @@ async def update_logging_config(
     patch_data = body.model_dump(exclude_none=True)
     if patch_data:
         levels = patch_data.get("log_domain_levels", {})
-        # Validate keys and values
         for domain, level in levels.items():
             if domain not in KNOWN_DOMAINS:
                 raise HTTPException(
@@ -953,4 +942,4 @@ async def update_logging_config(
         active,
     )
 
-    return LoggingConfigResponse(log_domain_levels=active)
+    return LoggingSettings(log_domain_levels=active)
