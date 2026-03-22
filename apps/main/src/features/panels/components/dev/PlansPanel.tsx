@@ -1889,8 +1889,8 @@ function PlanDetailView({
               </Badge>
             )}
             {node.actorRunId && (
-              <Badge color="gray" className="text-[9px]">
-                run {node.actorRunId.slice(0, 16)}
+              <Badge color="gray" className="text-[9px] cursor-default" title={`Run ID: ${node.actorRunId}`}>
+                run {node.actorRunId.slice(0, 12)}
               </Badge>
             )}
             {parentOrder && parentId && (
@@ -2140,14 +2140,28 @@ function PlanDetailView({
                     const label =
                       participant.agentId ??
                       (participant.userId !== null ? `user:${participant.userId}` : participant.principalType ?? 'unknown');
-                    const trace = [participant.runId ? `run ${participant.runId.slice(0, 12)}` : null, participant.sessionId ? `session ${participant.sessionId.slice(0, 12)}` : null]
-                      .filter(Boolean)
-                      .join(' • ');
+                    const lastSeenLabel = participant.lastSeenAt
+                      ? formatDateTime(participant.lastSeenAt)
+                      : null;
+                    const tooltipParts = [
+                      participant.agentType && `type: ${participant.agentType}`,
+                      participant.profileId && `profile: ${participant.profileId}`,
+                      participant.lastAction && `last: ${participant.lastAction}`,
+                      lastSeenLabel && `seen: ${lastSeenLabel}`,
+                      participant.runId && `run: ${participant.runId}`,
+                      participant.sessionId && `session: ${participant.sessionId}`,
+                    ].filter(Boolean).join('\n');
                     return (
-                      <div key={participant.id} className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                      <div
+                        key={participant.id}
+                        className="text-[11px] text-neutral-600 dark:text-neutral-400 cursor-default"
+                        title={tooltipParts}
+                      >
                         <span className="font-mono text-neutral-700 dark:text-neutral-300">{label}</span>
                         <span className="ml-1 text-neutral-400">({participant.touches}x)</span>
-                        {trace && <div className="text-[10px] text-neutral-400">{trace}</div>}
+                        {participant.lastAction && (
+                          <span className="ml-1 text-neutral-400 text-[10px]">{participant.lastAction}</span>
+                        )}
                       </div>
                     );
                   })}
@@ -2165,14 +2179,28 @@ function PlanDetailView({
                     const label =
                       participant.agentId ??
                       (participant.userId !== null ? `user:${participant.userId}` : participant.principalType ?? 'unknown');
-                    const trace = [participant.runId ? `run ${participant.runId.slice(0, 12)}` : null, participant.sessionId ? `session ${participant.sessionId.slice(0, 12)}` : null]
-                      .filter(Boolean)
-                      .join(' • ');
+                    const lastSeenLabel = participant.lastSeenAt
+                      ? formatDateTime(participant.lastSeenAt)
+                      : null;
+                    const tooltipParts = [
+                      participant.agentType && `type: ${participant.agentType}`,
+                      participant.profileId && `profile: ${participant.profileId}`,
+                      participant.lastAction && `last: ${participant.lastAction}`,
+                      lastSeenLabel && `seen: ${lastSeenLabel}`,
+                      participant.runId && `run: ${participant.runId}`,
+                      participant.sessionId && `session: ${participant.sessionId}`,
+                    ].filter(Boolean).join('\n');
                     return (
-                      <div key={participant.id} className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                      <div
+                        key={participant.id}
+                        className="text-[11px] text-neutral-600 dark:text-neutral-400 cursor-default"
+                        title={tooltipParts}
+                      >
                         <span className="font-mono text-neutral-700 dark:text-neutral-300">{label}</span>
                         <span className="ml-1 text-neutral-400">({participant.touches}x)</span>
-                        {trace && <div className="text-[10px] text-neutral-400">{trace}</div>}
+                        {participant.lastAction && (
+                          <span className="ml-1 text-neutral-400 text-[10px]">{participant.lastAction}</span>
+                        )}
                       </div>
                     );
                   })}
