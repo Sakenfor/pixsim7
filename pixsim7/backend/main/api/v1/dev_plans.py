@@ -2733,7 +2733,11 @@ class PlanUpdateRequest(BaseModel):
     handoffs: Optional[List[str]] = Field(None)
     depends_on: Optional[List[str]] = Field(None)
     target: Optional[Dict[str, Any]] = Field(None, description="Structured target metadata object.")
-    checkpoints: Optional[List[Dict[str, Any]]] = Field(None, description="Structured checkpoints list.")
+    checkpoints: Optional[List[Dict[str, Any]]] = Field(None, description="Structured checkpoints list (replaces all).")
+    checkpoints_append: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description="Append checkpoints to existing list. Existing checkpoints with same ID are updated in-place.",
+    )
     patch: Optional[Dict[str, Any]] = Field(
         None,
         description="Raw mutable-field patch map. Merged with explicit fields; explicit fields win.",
@@ -2810,11 +2814,35 @@ async def update_plan_endpoint(
                 detail=f"Commit not found in repository: '{request_commit_sha}'",
             )
 
+    # Handle checkpoints_append — merge with existing before standard update
+    checkpoints_append = payload_data.pop("checkpoints_append", None)
+
     updates: Dict[str, Any] = {}
     if isinstance(raw_patch, dict):
         updates.update(raw_patch)
 
     updates.update({k: v for k, v in payload_data.items() if v is not None})
+
+    # checkpoints_append: merge new checkpoints into existing list
+    if checkpoints_append and isinstance(checkpoints_append, list):
+        if "checkpoints" in updates:
+            # Explicit checkpoints field takes priority — append to that
+            existing = updates["checkpoints"]
+        else:
+            # Load existing checkpoints from DB
+            bundle = await get_plan_bundle(db, plan_id)
+            if not bundle:
+                raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+            existing = list(bundle.plan.checkpoints or [])
+        # Merge: update in-place by ID, append new ones
+        existing_by_id = {c.get("id"): i for i, c in enumerate(existing) if c.get("id")}
+        for cp in checkpoints_append:
+            cp_id = cp.get("id")
+            if cp_id and cp_id in existing_by_id:
+                existing[existing_by_id[cp_id]] = cp
+            else:
+                existing.append(cp)
+        updates["checkpoints"] = existing
     if "stage" in updates:
         stage_value = updates["stage"]
         if not isinstance(stage_value, str) or not stage_value.strip():
