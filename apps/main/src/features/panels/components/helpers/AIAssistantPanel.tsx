@@ -40,6 +40,7 @@ interface UnifiedProfile {
   status: string;
   is_default: boolean;
   is_global: boolean;
+  config: Record<string, unknown> | null;
 }
 
 interface ChatMessage {
@@ -281,9 +282,10 @@ function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps) {
   const [label, setLabel] = useState(profile?.label || '');
   const [description, setDescription] = useState(profile?.description || '');
   const [icon, setIcon] = useState(profile?.icon || '');
-  const [agentType, setAgentType] = useState(profile?.agent_type || 'claude-cli');
+  const [agentType, setAgentType] = useState(profile?.agent_type || 'claude');
   const [method, setMethod] = useState(profile?.method || 'remote');
   const [modelId, setModelId] = useState(profile?.model_id || '');
+  const [reasoningEffort, setReasoningEffort] = useState((profile?.config?.reasoning_effort as string) || '');
   const [systemPrompt, setSystemPrompt] = useState(profile?.system_prompt || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -295,11 +297,12 @@ function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps) {
     try {
       if (isNew) {
         const slug = id.trim() || `profile-${Date.now().toString(36)}`;
+        const config = reasoningEffort ? { reasoning_effort: reasoningEffort } : null;
         const res = await pixsimClient.post<{ profile: UnifiedProfile }>('/dev/agent-profiles', {
           id: slug, label: label.trim(), description: description.trim() || null,
           icon: icon.trim() || null, system_prompt: systemPrompt.trim() || null,
           agent_type: agentType, method: method || null, model_id: modelId.trim() || null,
-          audience: 'user',
+          config, audience: 'user',
         });
         onSave(res.profile);
       } else {
@@ -310,6 +313,10 @@ function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps) {
         if (agentType !== profile.agent_type) updates.agent_type = agentType;
         if (method !== (profile.method || 'remote')) updates.method = method || null;
         if (modelId !== (profile.model_id || '')) updates.model_id = modelId.trim() || null;
+        const prevEffort = (profile.config?.reasoning_effort as string) || '';
+        if (reasoningEffort !== prevEffort) {
+          updates.config = { ...(profile.config || {}), reasoning_effort: reasoningEffort || null };
+        }
         if (systemPrompt !== (profile.system_prompt || '')) updates.system_prompt = systemPrompt.trim() || null;
         if (Object.keys(updates).length > 0) {
           const res = await pixsimClient.patch<{ profile: UnifiedProfile }>(`/dev/agent-profiles/${profile.id}`, updates);
@@ -323,7 +330,7 @@ function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps) {
     } finally {
       setSaving(false);
     }
-  }, [isNew, id, label, description, icon, agentType, method, modelId, systemPrompt, profile, onSave, onCancel]);
+  }, [isNew, id, label, description, icon, agentType, method, modelId, reasoningEffort, systemPrompt, profile, onSave, onCancel]);
 
   return (
     <div className="p-2 space-y-2">
@@ -349,7 +356,7 @@ function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps) {
       <div className="flex gap-1.5">
         <select value={agentType} onChange={(e) => setAgentType(e.target.value)}
           className="flex-1 px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent">
-          <option value="claude-cli">Claude</option>
+          <option value="claude">Claude</option>
           <option value="codex">Codex</option>
           <option value="custom">Custom</option>
         </select>
@@ -360,8 +367,22 @@ function ProfileEditor({ profile, onSave, onCancel }: ProfileEditorProps) {
         </select>
       </div>
 
-      <input value={modelId} onChange={(e) => setModelId(e.target.value)} placeholder="Model (e.g. anthropic:claude-sonnet-4)"
-        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent" />
+      <ProfileModelSelect
+        value={modelId}
+        onChange={setModelId}
+        agentType={agentType}
+        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent"
+      />
+
+      <select value={reasoningEffort} onChange={(e) => setReasoningEffort(e.target.value)}
+        className="w-full px-2 py-1 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 focus:outline-none focus:ring-1 focus:ring-accent">
+        <option value="">Effort (default)</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+        {agentType === 'claude' && <option value="max">Max</option>}
+        {agentType === 'codex' && <option value="xhigh">Extra High</option>}
+      </select>
 
       <textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} placeholder="Persona / system prompt"
         rows={3}
@@ -613,63 +634,145 @@ function MessageBubble({ msg, onRetry }: { msg: ChatMessage; onRetry?: () => voi
 }
 
 // =============================================================================
-// Model Selector (fetches from backend AI model registry)
+// Model fetching hook + selectors
 // =============================================================================
 
-interface AiModelEntry { id: string; label: string; provider_id: string }
+interface AiModelEntry { id: string; label: string; provider_id: string; is_default?: boolean; hidden?: boolean }
 
-function ModelSelector({ value, onChange, disabled }: {
-  value: string | null;
-  onChange: (v: string | null) => void;
-  disabled: boolean;
-}) {
+/** Bridge model shape returned by /meta/agents/bridge/models */
+interface BridgeModel { id: string; label: string; model: string; is_default?: boolean; hidden?: boolean }
+
+/** Derive the engine-like key used for model fetching from an agent_type string. */
+function engineForAgentType(agentType: string): AgentEngine {
+  if (agentType === 'codex') return 'codex';
+  return 'claude';
+}
+
+const CLAUDE_MODELS: AiModelEntry[] = [
+  { id: 'sonnet', label: 'Sonnet', provider_id: 'anthropic' },
+  { id: 'opus', label: 'Opus', provider_id: 'anthropic' },
+  { id: 'haiku', label: 'Haiku', provider_id: 'anthropic' },
+];
+
+/** Provider filter per engine — only show models from the relevant provider. */
+const ENGINE_PROVIDER_FILTER: Record<string, string | null> = {
+  claude: 'anthropic',
+  codex: null,  // codex has its own fetch path
+  api: null,    // api mode: show all providers
+};
+
+/** Fetch models appropriate for the given engine. Re-fetches on engine change. */
+function useModelsForEngine(engine: AgentEngine) {
   const [models, setModels] = useState<AiModelEntry[]>([]);
-  const [loaded, setLoaded] = useState(false);
 
-  // Fetch on first open (lazy)
-  const loadModels = useCallback(() => {
-    if (loaded) return;
-    setLoaded(true);
-    pixsimClient.get<{ models: AiModelEntry[] }>('/ai/models')
-      .then((r) => setModels(r.models || []))
-      .catch(() => {
-        // Fallback: common models if backend is unavailable
-        setModels([
-          { id: 'sonnet', label: 'Sonnet', provider_id: 'anthropic' },
-          { id: 'opus', label: 'Opus', provider_id: 'anthropic' },
-          { id: 'haiku', label: 'Haiku', provider_id: 'anthropic' },
-        ]);
-      });
-  }, [loaded]);
+  const fetchModels = useCallback((eng: AgentEngine) => {
+    if (eng === 'codex') {
+      pixsimClient.get<{ models: BridgeModel[] }>('/meta/agents/bridge/models', { params: { agent_type: 'codex' } })
+        .then((r) => {
+          console.log('[useModelsForEngine] codex bridge response:', r);
+          const bridgeModels = (r.models || [])
+            .map((m) => ({ id: m.id, label: m.label || m.id, provider_id: 'codex', is_default: m.is_default, hidden: m.hidden }));
+          setModels(bridgeModels);
+        })
+        .catch((err) => { console.warn('[useModelsForEngine] codex fetch failed:', err); setModels([]); });
+    } else {
+      const providerFilter = ENGINE_PROVIDER_FILTER[eng];
+      pixsimClient.get<Record<string, unknown>[]>('/dev/ai-models')
+        .then((raw) => {
+          const all = Array.isArray(raw) ? raw : [];
+          const filtered = all.filter((m) => {
+            const kind = (m.kind as string) || '';
+            if (kind === 'parser' || kind === 'embedding') return false;
+            if (providerFilter && m.provider_id !== providerFilter) return false;
+            return true;
+          }).map((m) => ({
+            id: m.id as string,
+            label: (m.label as string) || (m.id as string),
+            provider_id: (m.provider_id as string) || 'unknown',
+          }));
+          setModels(filtered.length > 0 ? filtered : CLAUDE_MODELS);
+        })
+        .catch(() => setModels(CLAUDE_MODELS));
+    }
+  }, []);
 
-  // Group by provider
+  // Fetch on mount and whenever engine changes
+  useEffect(() => {
+    console.log('[useModelsForEngine] engine changed to:', engine);
+    setModels([]);
+    fetchModels(engine);
+  }, [engine, fetchModels]);
+
+  // Sort: default first, then visible, then hidden
+  const sorted = useMemo(() =>
+    [...models].sort((a, b) => {
+      if (a.is_default !== b.is_default) return a.is_default ? -1 : 1;
+      if (a.hidden !== b.hidden) return a.hidden ? 1 : -1;
+      return 0;
+    }),
+  [models]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, AiModelEntry[]>();
-    for (const m of models) {
+    for (const m of sorted) {
       const group = map.get(m.provider_id) || [];
       group.push(m);
       map.set(m.provider_id, group);
     }
     return map;
-  }, [models]);
+  }, [sorted]);
+
+  return { models, grouped };
+}
+
+/** Compact model selector for the chat input bar */
+function ModelSelector({ value, onChange, disabled, engine }: {
+  value: string | null;
+  onChange: (v: string | null) => void;
+  disabled: boolean;
+  engine: AgentEngine;
+}) {
+  const { grouped } = useModelsForEngine(engine);
 
   return (
     <select
       value={value || ''}
       onChange={(e) => onChange(e.target.value || null)}
-      onFocus={loadModels}
       disabled={disabled}
       className="shrink-0 h-8 px-1 text-[9px] text-neutral-500 bg-transparent border-0 focus:outline-none focus:ring-0 cursor-pointer disabled:opacity-40"
       title={value ? `Model: ${value}` : 'Model (profile default)'}
     >
       <option value="">model</option>
-      {models.length === 0 && !loaded && <option disabled>Loading...</option>}
       {Array.from(grouped.entries()).map(([provider, items]) => (
         <optgroup key={provider} label={provider}>
           {items.map((m) => (
-            <option key={m.id} value={m.id}>{m.label || m.id}</option>
+            <option key={m.id} value={m.id}>{m.hidden ? '· ' : ''}{m.label || m.id}{m.is_default ? ' ★' : ''}</option>
           ))}
         </optgroup>
+      ))}
+    </select>
+  );
+}
+
+/** Full-width model select for the profile editor */
+function ProfileModelSelect({ value, onChange, agentType, className }: {
+  value: string;
+  onChange: (v: string) => void;
+  agentType: string;
+  className?: string;
+}) {
+  const engine = engineForAgentType(agentType);
+  const { models } = useModelsForEngine(engine);
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={className}
+    >
+      <option value="">Default (no override)</option>
+      {models.map((m) => (
+        <option key={m.id} value={m.id}>{m.hidden ? '· ' : ''}{m.label || m.id}{m.is_default ? ' ★' : ''}</option>
       ))}
     </select>
   );
@@ -821,7 +924,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     // Fire-and-forget — the bridge singleton manages the SSE fetch.
     // Results are consumed by the useEffect above, even if the panel unmounts.
     void chatBridge.send(tab.id, body);
-  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona]);
+  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.modelOverride]);
 
   const retryLast = useCallback(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -995,6 +1098,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                         >
                           <Icon name={(p.icon || (p.id.startsWith('assistant:') ? 'messageSquare' : 'cpu')) as IconName} size={12} className="shrink-0" />
                           <span className="truncate">{p.label}</span>
+                          {p.model_id && <span className="text-[9px] text-neutral-400 truncate max-w-[80px]">{p.model_id}</span>}
                         </button>
                         <button
                           onClick={async (e) => {
@@ -1038,11 +1142,12 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             )}
           </div>
 
-          {/* Model override — fetched from backend registry */}
+          {/* Model override — fetched from backend registry or bridge */}
           <ModelSelector
             value={tab.modelOverride}
             onChange={(v) => onUpdateTab({ modelOverride: v })}
             disabled={sending}
+            engine={tab.engine}
           />
 
           <div className="flex-1 relative">
@@ -1054,12 +1159,20 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
               onInput={handleTextareaInput}
             />
             {tab.sessionId && (
-              <span
-                className="absolute right-2 bottom-1.5 text-[8px] text-neutral-300 dark:text-neutral-600 font-mono select-all pointer-events-auto"
-                title={`Session: ${tab.sessionId}`}
+              <button
+                type="button"
+                className="absolute right-2 bottom-1.5 text-[9px] text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300 font-mono pointer-events-auto transition-colors"
+                title={`Click to copy session ID: ${tab.sessionId}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigator.clipboard.writeText(tab.sessionId!);
+                  const el = e.currentTarget;
+                  el.textContent = 'copied!';
+                  setTimeout(() => { el.textContent = tab.sessionId!.slice(0, 8); }, 1000);
+                }}
               >
                 {tab.sessionId.slice(0, 8)}
-              </span>
+              </button>
             )}
           </div>
           <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || !input.trim()} className="shrink-0">

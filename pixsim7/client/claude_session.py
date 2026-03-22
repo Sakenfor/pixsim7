@@ -40,6 +40,12 @@ class SessionStats:
     total_duration_ms: int = 0
     started_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
+    # Context window tracking
+    context_window: int = 0           # max tokens (from model info)
+    input_tokens: int = 0             # cumulative input tokens
+    output_tokens: int = 0            # cumulative output tokens
+    cache_read_tokens: int = 0        # cumulative cache read tokens
+    cost_usd: float = 0.0             # cumulative cost
 
 
 class AgentCmdSession:
@@ -57,6 +63,8 @@ class AgentCmdSession:
         system_prompt: str | None = None,
         mcp_config_path: str | None = None,
         resume_session_id: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
     ):
         from pixsim7.client.protocols import get_protocol
         self.session_id = session_id
@@ -66,6 +74,8 @@ class AgentCmdSession:
         self._system_prompt = system_prompt
         self._mcp_config_path = mcp_config_path
         self._resume_session_id = resume_session_id
+        self._model = model
+        self._reasoning_effort = reasoning_effort
         self._process: Optional[asyncio.subprocess.Process] = None
         self._reader_task: Optional[asyncio.Task] = None
         self._stderr_task: Optional[asyncio.Task] = None
@@ -75,6 +85,7 @@ class AgentCmdSession:
         self._last_error: Optional[str] = None
         self.cli_session_id: Optional[str] = None   # conversation UUID from init event
         self.cli_model: Optional[str] = None         # model reported by CLI
+        self.available_models: list[dict] = []       # models from model/list (JSON-RPC agents)
         self._pending_restart: bool = False
 
     # ── Backward-compat aliases ────────────────────────────────────
@@ -125,6 +136,8 @@ class AgentCmdSession:
             resume_session_id=self._resume_session_id,
             system_prompt=self._system_prompt,
             mcp_config_path=self._mcp_config_path,
+            model=self._model,
+            reasoning_effort=self._reasoning_effort,
             extra_args=self._extra_args,
         )
 
@@ -320,6 +333,37 @@ class AgentCmdSession:
         await self._wait_for_mcp_startup_complete(timeout=15)
         await self._log_mcp_server_status()
 
+        # Query available models (non-blocking — failure is not fatal)
+        await self.query_models()
+
+    async def query_models(self) -> list[dict]:
+        """Query available models via model/list JSON-RPC. Returns and caches the list."""
+        if not (hasattr(self._protocol, 'needs_jsonrpc_init') and self._protocol.needs_jsonrpc_init()):
+            return self.available_models
+        if not self.is_alive:
+            return self.available_models
+        try:
+            self._jsonrpc_id += 1
+            result = await self._jsonrpc_call("model/list", {"includeHidden": True}, request_id=self._jsonrpc_id, timeout=10)
+            raw_models = result.get("data", []) if isinstance(result, dict) else []
+            self.available_models = [
+                {
+                    "id": m.get("id", ""),
+                    "model": m.get("model", m.get("id", "")),
+                    "label": m.get("displayName", m.get("id", "")),
+                    "is_default": m.get("isDefault", False),
+                    "hidden": m.get("hidden", False),
+                    "input_modalities": m.get("inputModalities", []),
+                }
+                for m in raw_models
+                if isinstance(m, dict)
+            ]
+            visible = [m for m in self.available_models if not m["hidden"]]
+            client_log(f"[{self.session_id}] Models: {len(visible)} available ({len(self.available_models)} total)")
+        except Exception as e:
+            client_log(f"[{self.session_id}] model/list failed: {e}", error=True)
+        return self.available_models
+
     async def stop(self) -> None:
         """Stop the CLI process gracefully."""
         if self._reader_task:
@@ -438,6 +482,8 @@ class AgentCmdSession:
                     self.stats.messages_received += 1
                     self.stats.total_duration_ms += parsed.duration_ms
                     self.stats.last_activity = datetime.now(timezone.utc)
+                    # Capture token usage from result event (Claude)
+                    self._capture_usage(parsed.raw or {})
 
                     # For single-turn protocols, process exits after result → we're done
                     if not self._protocol.is_long_running():
@@ -462,6 +508,8 @@ class AgentCmdSession:
                     raw = parsed.raw or {}
                     raw_method = raw.get("method", "")
                     raw_type = raw.get("type", "")
+                    # Capture context window and token usage from Codex events
+                    self._capture_usage(raw)
                     if raw_type == "item.completed" or raw_method == "item/completed":
                         item = raw.get("item") or raw.get("params", {}).get("item", {})
                         if item.get("type") in ("agent_message", "agentMessage") and item.get("text"):
@@ -472,12 +520,43 @@ class AgentCmdSession:
                     if on_progress and parsed.text:
                         on_progress("progress", parsed.text)
 
-                # "other" events are silently skipped
+                else:
+                    # "other" events — still capture usage/context info
+                    self._capture_usage(parsed.raw or {})
 
         except asyncio.TimeoutError:
             self.stats.errors += 1
             self.state = SessionState.READY
             raise RuntimeError(f"No response within {timeout}s")
+
+    def _capture_usage(self, raw: dict) -> None:
+        """Extract token usage / context info from any event."""
+        # Claude result: {"type": "result", "usage": {"input_tokens": ..., "output_tokens": ...}, "total_cost_usd": ...}
+        usage = raw.get("usage")
+        if isinstance(usage, dict):
+            self.stats.input_tokens += usage.get("input_tokens", 0)
+            self.stats.output_tokens += usage.get("output_tokens", 0)
+            self.stats.cache_read_tokens += usage.get("cache_read_input_tokens", 0)
+        cost = raw.get("total_cost_usd")
+        if isinstance(cost, (int, float)):
+            self.stats.cost_usd += cost
+
+        # Codex task_started: {"method": "codex/event/task_started", "params": {"msg": {"model_context_window": 258400}}}
+        method = raw.get("method", "")
+        params = raw.get("params", {})
+        if method == "codex/event/task_started":
+            msg = params.get("msg", {})
+            ctx = msg.get("model_context_window", 0)
+            if ctx:
+                self.stats.context_window = ctx
+
+        # Codex token_count: {"method": "codex/event/token_count", "params": {"msg": {"info": {...}}}}
+        if method == "codex/event/token_count":
+            msg = params.get("msg", {})
+            info = msg.get("info")
+            if isinstance(info, dict):
+                self.stats.input_tokens = info.get("input_tokens", self.stats.input_tokens)
+                self.stats.output_tokens = info.get("output_tokens", self.stats.output_tokens)
 
     async def _read_stdout(self) -> None:
         """Read stdout, parse JSON events into the response queue."""
@@ -522,6 +601,8 @@ class AgentCmdSession:
 
     def to_dict(self) -> dict:
         """Serialize session status for display and persistence."""
+        total_tokens = self.stats.input_tokens + self.stats.output_tokens
+        context_pct = round(total_tokens / self.stats.context_window * 100, 1) if self.stats.context_window else None
         return {
             "session_id": self.session_id,
             "cli_session_id": self.cli_session_id,
@@ -535,6 +616,15 @@ class AgentCmdSession:
             "total_duration_ms": self.stats.total_duration_ms,
             "started_at": self.stats.started_at.isoformat() if self.stats.started_at else None,
             "last_activity": self.stats.last_activity.isoformat() if self.stats.last_activity else None,
+            "available_models": self.available_models,
+            # Context usage
+            "context_window": self.stats.context_window,
+            "input_tokens": self.stats.input_tokens,
+            "output_tokens": self.stats.output_tokens,
+            "cache_read_tokens": self.stats.cache_read_tokens,
+            "total_tokens": total_tokens,
+            "context_pct": context_pct,
+            "cost_usd": round(self.stats.cost_usd, 4) if self.stats.cost_usd else None,
         }
 
 

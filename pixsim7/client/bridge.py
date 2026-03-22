@@ -435,7 +435,7 @@ class Bridge:
         task_type = msg.get("task", "unknown")
         prompt = msg.get("instruction") or msg.get("prompt", "")
 
-        client_log(f"[task:{task_id[:8]}] {task_type}: {prompt[:80]}...")
+        client_log(f"[task:{task_id[:8]}] {task_type}: engine={msg.get('engine')} model={msg.get('model')} prompt={prompt[:60]}...")
 
         # Write per-request user token so MCP server uses fresh auth
         user_token = msg.get("user_token")
@@ -451,6 +451,18 @@ class Bridge:
 
         # Engine override (claude, codex, etc.)
         engine = msg.get("engine")
+
+        # Model override from agent profile (e.g. "anthropic:haiku" → "haiku")
+        model_override = msg.get("model")
+        if model_override and model_override.lower() == "default":
+            model_override = None  # "default" means use CLI's default
+        elif model_override and ":" in model_override:
+            # Strip provider prefix (e.g. "anthropic:haiku" → "haiku")
+            model_override = model_override.split(":", 1)[1]
+
+        # Reasoning effort from profile config
+        profile_config = msg.get("profile_config") or {}
+        reasoning_effort = profile_config.get("reasoning_effort")
 
         # On first message of a new conversation, inject system context + persona.
         # Resumed conversations already have these in history.
@@ -531,6 +543,8 @@ class Bridge:
                     prompt, timeout=timeout, images=images, on_progress=on_progress,
                     claude_session_id=claude_session_id,
                     engine=engine,
+                    model=model_override,
+                    reasoning_effort=reasoning_effort,
                 )
                 self._tasks_handled += 1
 

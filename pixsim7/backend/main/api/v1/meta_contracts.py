@@ -666,6 +666,17 @@ class PoolSessionEntry(BaseModel):
     cli_model: Optional[str] = None
     messages_sent: int = 0
     messages_received: int = 0
+    errors: int = 0
+    total_duration_ms: int = 0
+    started_at: Optional[str] = None
+    last_activity: Optional[str] = None
+    last_error: Optional[str] = None
+    pid: Optional[int] = None
+    # Context usage
+    context_window: int = 0
+    total_tokens: int = 0
+    context_pct: Optional[float] = None
+    cost_usd: Optional[float] = None
 
 class RemoteAgentEntry(BaseModel):
     agent_id: str
@@ -720,10 +731,24 @@ async def get_bridge_status(
                 cli_model=s.get("cli_model"),
                 messages_sent=s.get("messages_sent", 0),
                 messages_received=s.get("messages_received", 0),
+                errors=s.get("errors", 0),
+                total_duration_ms=s.get("total_duration_ms", 0),
+                started_at=s.get("started_at"),
+                last_activity=s.get("last_activity"),
+                last_error=s.get("last_error"),
+                pid=s.get("pid"),
+                context_window=s.get("context_window", 0),
+                total_tokens=s.get("total_tokens", 0),
+                context_pct=s.get("context_pct"),
+                cost_usd=s.get("cost_usd"),
             )
             for s in sessions_raw if isinstance(s, dict)
         ]
-        engines = sorted({s.engine for s in pool_sessions}) if pool_sessions else [a.agent_type]
+        # Use pool's detected engines (reported at connect), fall back to active session engines
+        pool_engines = pool.get("engines", [])
+        engines = sorted(set(pool_engines)) if pool_engines else (
+            sorted({s.engine for s in pool_sessions}) if pool_sessions else [a.agent_type]
+        )
         return RemoteAgentEntry(
             agent_id=a.agent_id,
             agent_type=a.agent_type,
@@ -1214,6 +1239,7 @@ async def send_message_to_agent(
 
     # Resolve unified agent profile (persona, model override, tool scope)
     profile_prompt: Optional[str] = None
+    profile_config: Optional[dict] = None
     try:
         from pixsim7.backend.main.api.v1.agent_profiles import resolve_profile_for_bridge
         profile = await resolve_profile_for_bridge(db, user_id or 0, payload.assistant_id)
@@ -1222,6 +1248,8 @@ async def send_message_to_agent(
                 profile_prompt = profile.system_prompt
             if profile.model_id:
                 payload.model = profile.model_id
+            if profile.config:
+                profile_config = profile.config
     except Exception:
         pass
 
@@ -1242,6 +1270,7 @@ async def send_message_to_agent(
             raw_token=raw_token,
             start=start,
             profile_prompt=profile_prompt,
+            profile_config=profile_config,
         )
 
     # ── Direct API path (method=api) ──
@@ -1286,6 +1315,7 @@ async def send_message_to_agent_stream(
             pass
 
     profile_prompt: Optional[str] = None
+    profile_config: Optional[dict] = None
     try:
         from pixsim7.backend.main.api.v1.agent_profiles import resolve_profile_for_bridge
         profile = await resolve_profile_for_bridge(db, user_id or 0, payload.assistant_id)
@@ -1294,6 +1324,8 @@ async def send_message_to_agent_stream(
                 profile_prompt = profile.system_prompt
             if profile.model_id:
                 payload.model = profile.model_id
+            if profile.config:
+                profile_config = profile.config
     except Exception:
         pass
 
@@ -1346,6 +1378,8 @@ async def send_message_to_agent_stream(
         task_payload["user_token"] = raw_token
     if profile_prompt:
         task_payload["profile_prompt"] = profile_prompt
+    if profile_config:
+        task_payload["profile_config"] = profile_config
     if payload.claude_session_id:
         task_payload["claude_session_id"] = payload.claude_session_id
     task_payload["engine"] = payload.engine
@@ -1481,6 +1515,7 @@ async def _send_via_bridge(
     raw_token: Optional[str],
     start: float,
     profile_prompt: Optional[str] = None,
+    profile_config: Optional[dict] = None,
 ) -> SendMessageResponse:
     """Route message through the Claude CLI bridge (MCP tools)."""
     import time
@@ -1517,6 +1552,8 @@ async def _send_via_bridge(
         task_payload["user_token"] = raw_token
     if profile_prompt:
         task_payload["profile_prompt"] = profile_prompt
+    if profile_config:
+        task_payload["profile_config"] = profile_config
     if payload.claude_session_id:
         task_payload["claude_session_id"] = payload.claude_session_id
     task_payload["engine"] = payload.engine

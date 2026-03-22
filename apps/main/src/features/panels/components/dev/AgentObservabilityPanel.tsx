@@ -448,6 +448,16 @@ interface PoolSession {
   cli_model: string | null;
   messages_sent: number;
   messages_received: number;
+  errors: number;
+  total_duration_ms: number;
+  started_at: string | null;
+  last_activity: string | null;
+  last_error: string | null;
+  pid: number | null;
+  context_window: number;
+  total_tokens: number;
+  context_pct: number | null;
+  cost_usd: number | null;
 }
 
 interface BridgeAgent {
@@ -599,17 +609,20 @@ function ActiveSessionsView() {
       ) : (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Badge color="green" className="text-[10px]">
-              {bridgeAgents.length} bridge{bridgeAgents.length !== 1 ? 's' : ''} connected
-            </Badge>
+            <Badge color="green" className="text-[10px]">connected</Badge>
             {bridgeAgents.map((a) => (
-              <span key={a.agent_id} className="text-[10px] text-neutral-400">
-                {a.agent_type} · {a.tasks_completed} tasks{a.busy ? ' · busy' : ''}
-              </span>
+              <div key={a.agent_id} className="flex items-center gap-1.5">
+                {a.engines.map((e) => (
+                  <Badge key={e} color={e === 'claude' ? 'blue' : e === 'codex' ? 'purple' : 'gray'} className="text-[10px]">{e}</Badge>
+                ))}
+                <span className="text-[10px] text-neutral-400">
+                  {a.tasks_completed} task{a.tasks_completed !== 1 ? 's' : ''} · {a.pool_sessions.length} session{a.pool_sessions.length !== 1 ? 's' : ''}
+                </span>
+              </div>
             ))}
             <div className="ml-auto">
               <Button size="sm" variant="ghost" onClick={stopServerBridge} disabled={bridgeAction === 'stopping'}>
-                {bridgeAction === 'stopping' ? 'Stopping...' : 'Stop Bridge'}
+                {bridgeAction === 'stopping' ? 'Stopping...' : 'Stop'}
               </Button>
             </div>
           </div>
@@ -656,55 +669,74 @@ function ActiveSessionsView() {
           <div className="mt-2 space-y-2">
             {bridgeAgents.map((agent) => (
               <div key={agent.agent_id} className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-                <div className="px-4 py-2.5 bg-neutral-50 dark:bg-neutral-900 flex items-center justify-between">
+                <div className="px-4 py-2 bg-neutral-50 dark:bg-neutral-900 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Badge color={agent.busy ? 'orange' : 'green'} className="text-[10px]">
-                      {agent.busy ? 'busy' : 'ready'}
-                    </Badge>
-                    <span className="font-mono text-xs">{agent.agent_id}</span>
-                    <Badge color="gray" className="text-[10px]">{agent.agent_type}</Badge>
+                    {agent.engines.map((e) => (
+                      <Badge key={e} color={e === 'claude' ? 'blue' : e === 'codex' ? 'purple' : 'gray'} className="text-[10px]">{e}</Badge>
+                    ))}
                     {agent.user_id != null ? (
                       <Badge color="purple" className="text-[10px]">user:{agent.user_id}</Badge>
                     ) : (
                       <Badge color="gray" className="text-[10px]">shared</Badge>
                     )}
+                    <span className="text-[10px] text-neutral-400">
+                      up {formatTimestamp(agent.connected_at)} · {agent.tasks_completed} task{agent.tasks_completed !== 1 ? 's' : ''}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-neutral-400">{agent.tasks_completed} tasks</span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => void handleTerminate(agent.agent_id)}
-                    >
-                      Terminate
-                    </Button>
-                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => void handleTerminate(agent.agent_id)}>
+                    Terminate
+                  </Button>
                 </div>
-                {/* Pool sessions within this bridge */}
-                {agent.pool_sessions.length > 0 && (
-                  <div className="px-4 py-1.5 space-y-1">
-                    {agent.pool_sessions.map((ps) => (
-                      <div key={ps.session_id} className="flex items-center gap-2 text-[10px]">
-                        <Badge color={ps.state === 'ready' ? 'green' : ps.state === 'busy' ? 'orange' : 'gray'} className="text-[9px]">
-                          {ps.state}
-                        </Badge>
-                        <span className="font-mono text-neutral-500">{ps.session_id}</span>
-                        {ps.cli_model && <span className="text-neutral-400">{ps.cli_model}</span>}
-                        {ps.messages_sent > 0 && (
-                          <span className="text-neutral-400">{ps.messages_sent} sent</span>
-                        )}
-                      </div>
-                    ))}
+
+                {/* Pool sessions */}
+                {agent.pool_sessions.length > 0 ? (
+                  <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                    {agent.pool_sessions.map((ps) => {
+                      const engine = ps.session_id.split('-')[0] || 'unknown';
+                      const engineColor = engine === 'claude' ? 'blue' : engine === 'codex' ? 'purple' : 'gray';
+                      return (
+                        <div key={ps.session_id} className="px-4 py-2 flex items-center gap-2 text-[10px]">
+                          <Badge color={ps.state === 'ready' ? 'green' : ps.state === 'busy' ? 'orange' : ps.state === 'errored' ? 'red' : 'gray'} className="text-[9px] min-w-[38px] text-center">
+                            {ps.state}
+                          </Badge>
+                          <Badge color={engineColor} className="text-[9px]">{engine}</Badge>
+                          {ps.cli_model && (
+                            <span className="text-neutral-500 font-medium">{ps.cli_model}</span>
+                          )}
+                          <span className="text-neutral-400">
+                            {ps.messages_sent}/{ps.messages_received} msg
+                          </span>
+                          {ps.errors > 0 && (
+                            <span className="text-red-400" title={ps.last_error || undefined}>{ps.errors} err</span>
+                          )}
+                          {ps.context_pct != null && (
+                            <span
+                              className={`font-mono ${ps.context_pct > 80 ? 'text-orange-400' : ps.context_pct > 50 ? 'text-yellow-400' : 'text-neutral-400'}`}
+                              title={`${ps.total_tokens.toLocaleString()} / ${ps.context_window.toLocaleString()} tokens${ps.cost_usd ? ` · $${ps.cost_usd.toFixed(3)}` : ''}`}
+                            >
+                              ctx {ps.context_pct}%
+                            </span>
+                          )}
+                          {ps.cost_usd != null && ps.cost_usd > 0 && ps.context_pct == null && (
+                            <span className="text-neutral-400">${ps.cost_usd.toFixed(3)}</span>
+                          )}
+                          {ps.last_activity && (
+                            <span className="text-neutral-400 ml-auto">{formatTimestamp(ps.last_activity)}</span>
+                          )}
+                          {ps.pid && (
+                            <span className="text-neutral-300 dark:text-neutral-600 font-mono" title={`PID: ${ps.pid}\nSession: ${ps.cli_session_id || '—'}`}>
+                              :{ps.pid}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="px-4 py-2 text-[10px] text-neutral-400">
+                    On-demand — sessions spawn when needed
                   </div>
                 )}
-                {agent.pool_sessions.length === 0 && (
-                  <div className="px-4 py-1.5 text-[10px] text-neutral-400">
-                    No active sessions — engines: {agent.engines.join(', ') || 'auto-detect'}
-                  </div>
-                )}
-                <div className="px-4 py-1.5 text-[10px] text-neutral-400">
-                  Connected {formatTimestamp(agent.connected_at)}
-                </div>
               </div>
             ))}
           </div>

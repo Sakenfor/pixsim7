@@ -67,6 +67,8 @@ class AgentProtocol:
         resume_session_id: str | None = None,
         system_prompt: str | None = None,
         mcp_config_path: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
         extra_args: list[str] | None = None,
     ) -> list[str]:
         raise NotImplementedError
@@ -89,8 +91,12 @@ class ClaudeProtocol(AgentProtocol):
 
     name = "claude"
 
-    def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, extra_args=None):
+    def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, model=None, reasoning_effort=None, extra_args=None):
         cmd = [command, "--print", "--output-format", "stream-json", "--input-format", "stream-json", "--verbose"]
+        if model:
+            cmd.extend(["--model", model])
+        if reasoning_effort:
+            cmd.extend(["--effort", reasoning_effort])
         if resume_session_id:
             cmd.extend(["--resume", resume_session_id])
         if system_prompt:
@@ -144,11 +150,15 @@ class CodexExecProtocol(AgentProtocol):
 
     name = "codex-exec"
 
-    def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, extra_args=None):
+    def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, model=None, reasoning_effort=None, extra_args=None):
         if resume_session_id:
             cmd = [command, "exec", "resume", resume_session_id, "--json"]
         else:
             cmd = [command, "exec", "--json"]
+        if model:
+            cmd.extend(["--model", model])
+        if reasoning_effort:
+            cmd.extend(["-c", f"model_reasoning_effort={reasoning_effort}"])
         # Codex doesn't support --mcp-config or --append-system-prompt per-invocation
         cmd.extend(self.translate_args(extra_args))
         return cmd
@@ -181,9 +191,24 @@ class CodexAppServerProtocol(AgentProtocol):
 
     name = "codex"
 
-    def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, extra_args=None):
+    # Safe defaults for bridge-launched sessions — override user's global
+    # config.toml values that may be incompatible with non-default models.
+    BRIDGE_CONFIG_DEFAULTS: dict[str, str] = {
+        "model_reasoning_effort": "high",
+    }
+
+    def build_start_cmd(self, command, *, resume_session_id=None, system_prompt=None, mcp_config_path=None, model=None, reasoning_effort=None, extra_args=None):
         # app-server is always long-running; resume is handled via thread/resume RPC
         cmd = [command, "app-server"]
+        if model:
+            cmd.extend(["-c", f"model={model}"])
+        # Profile-level reasoning effort takes priority
+        if reasoning_effort:
+            cmd.extend(["-c", f"model_reasoning_effort={reasoning_effort}"])
+        elif model:
+            # Non-default model — apply safe default since user's config.toml
+            # reasoning effort (e.g. xhigh) may not be supported by this model
+            cmd.extend(["-c", f"model_reasoning_effort={self.BRIDGE_CONFIG_DEFAULTS['model_reasoning_effort']}"])
         # No CLI flags for system prompt or MCP — configured globally
         return cmd
 
@@ -229,6 +254,12 @@ class CodexAppServerProtocol(AgentProtocol):
         # Error responses
         if "error" in raw:
             return ParsedEvent(kind="error", text=raw["error"].get("message", ""), raw=raw)
+
+        # Codex internal error event — contains the actual error message
+        if method == "codex/event/error":
+            msg = params.get("msg", params)
+            message = msg.get("message", "") if isinstance(msg, dict) else str(msg)
+            return ParsedEvent(kind="error", text=f"Codex error: {message[:300]}", raw=raw)
 
         # Streaming text deltas
         if method == "item/agentMessage/delta":
@@ -282,6 +313,13 @@ class CodexAppServerProtocol(AgentProtocol):
         # Thread status
         if method == "thread/status/changed":
             status = params.get("status", "")
+            # status can be a string ("active") or dict ({"type": "systemError"})
+            if isinstance(status, dict):
+                status_type = status.get("type", "")
+                if status_type in ("systemError", "error"):
+                    detail = status.get("message", "") or status.get("detail", "") or params.get("message", "") or params.get("error", "")
+                    return ParsedEvent(kind="error", text=f"Codex {status_type}: {detail or 'unknown'}", raw=raw)
+                return ParsedEvent(kind="progress", text=f"Status: {status_type}", raw=raw)
             if status:
                 return ParsedEvent(kind="progress", text=f"Status: {status}", raw=raw)
 

@@ -11,6 +11,7 @@ Works with any agent command that speaks the stream-json protocol
 from __future__ import annotations
 
 import asyncio
+import shutil
 from typing import Callable, Dict, List, Optional
 
 from pixsim7.client.claude_session import AgentCmdSession, SessionState
@@ -18,6 +19,14 @@ from pixsim7.client.log import client_log
 
 MAX_SESSIONS = 10
 IDLE_EVICT_SECONDS = 30 * 60  # 30 minutes
+
+# Known agent engines — auto-detected on startup
+KNOWN_ENGINES = ["claude", "codex"]
+
+
+def detect_engines() -> list[str]:
+    """Return list of known engines that are installed and available."""
+    return [e for e in KNOWN_ENGINES if shutil.which(e)]
 
 
 class AgentPool:
@@ -28,12 +37,15 @@ class AgentPool:
         pool_size: int = 1,
         extra_args: list[str] | None = None,
         command: str = "claude",
+        engines: list[str] | None = None,
         auto_restart: bool = True,
         max_sessions: int = MAX_SESSIONS,
     ):
         self._pool_size = pool_size
         self._extra_args = extra_args or []
-        self._command = command
+        # Engines to start: explicit list, or auto-detect, falling back to command
+        self._engines = engines or detect_engines() or [command]
+        self._command = command  # backward compat: default engine for unspecified tasks
         self._prefix = command.split("/")[-1].split("\\")[-1]  # e.g. "claude", "codex"
         self._auto_restart = auto_restart
         self._max_sessions = max_sessions
@@ -90,7 +102,7 @@ class AgentPool:
         idle = [
             s for s in self._sessions.values()
             if s.state == SessionState.READY
-            and s.session_id.startswith(f"{self._prefix}-r-")  # only evict dynamic sessions
+            and "-r-" in s.session_id  # only evict dynamic (resume) sessions, not initial ones
         ]
         if not idle:
             return False
@@ -101,7 +113,7 @@ class AgentPool:
         self._sessions.pop(oldest.session_id, None)
         return True
 
-    async def _spawn_session(self, command: str, resume_session_id: str | None = None) -> AgentCmdSession:
+    async def _spawn_session(self, command: str, resume_session_id: str | None = None, model: str | None = None, reasoning_effort: str | None = None) -> AgentCmdSession:
         """Spawn a new on-demand session (for a non-default engine or resume)."""
         if len(self._sessions) >= self._max_sessions:
             if not await self._evict_oldest_idle():
@@ -123,6 +135,8 @@ class AgentPool:
             system_prompt=self._system_prompt,
             mcp_config_path=self._mcp_config_path,
             resume_session_id=resume_session_id,
+            model=model,
+            reasoning_effort=reasoning_effort,
         )
         self._sessions[pool_key] = session
 
@@ -190,32 +204,17 @@ class AgentPool:
                     self._update_index(session)
 
     async def start(self) -> int:
-        """Start all sessions in the pool. Returns number of successfully started sessions."""
-        started = 0
-        for i in range(self._pool_size):
-            session_id = f"{self._prefix}-{i}" if self._pool_size > 1 else self._prefix
-            session = AgentCmdSession(
-                session_id=session_id,
-                extra_args=self._extra_args,
-                command=self._command,
-                system_prompt=self._system_prompt,
-                mcp_config_path=self._mcp_config_path,
-                resume_session_id=self._resume_session_id,
-            )
-            self._sessions[session_id] = session
+        """Start the pool (no sessions — they're created on demand).
 
-            if await session.start():
-                started += 1
-                self._update_index(session)
-            else:
-                client_log(f"Failed to start session {session_id}", error=True)
-
+        Returns number of available engines detected.
+        """
         # Start health monitor
         if self._auto_restart:
             self._health_task = asyncio.create_task(self._health_monitor())
 
-        client_log(f"Pool started: {started}/{self._pool_size} sessions ready")
-        return started
+        engines_str = ", ".join(e.split("/")[-1].split("\\")[-1] for e in self._engines)
+        client_log(f"Pool ready: engines={engines_str}, sessions spawn on demand")
+        return len(self._engines)
 
     async def stop(self) -> None:
         """Stop all sessions and the health monitor."""
@@ -239,6 +238,8 @@ class AgentPool:
         on_progress: "Callable[[str, str], None] | None" = None,
         claude_session_id: str | None = None,
         engine: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> tuple[str, str]:
         """
         Route a message to a session.
@@ -246,23 +247,21 @@ class AgentPool:
         If claude_session_id is provided, routes to the matching session
         (or spawns one with --resume). Otherwise picks any available session.
         Engine overrides which command to use (e.g. "codex" instead of default "claude").
+        Model overrides the default model for new sessions.
         Returns (session_id, response).
         """
         command = engine or self._command
         if claude_session_id:
             session = await self._get_or_create_for_session_id(claude_session_id, command=command)
         else:
-            # Match engine: prefer a session running the right command
-            session = self.get_available(command=command)
-            if not session and command != self._command:
-                # No session for this engine yet — spawn one
-                session = await self._spawn_session(command=command)
-
-        if not session:
-            raise RuntimeError(
-                f"No available sessions (total: {len(self._sessions)}, "
-                f"ready: {self.ready_count}, busy: {self.busy_count})"
-            )
+            # When a specific model or reasoning effort is requested, spawn a dedicated session
+            if model or reasoning_effort:
+                session = await self._spawn_session(command=command, model=model, reasoning_effort=reasoning_effort)
+            else:
+                # Match engine: prefer an existing ready session, otherwise spawn one
+                session = self.get_available(command=command)
+                if not session:
+                    session = await self._spawn_session(command=command)
 
         try:
             response = await session.send_message(message, timeout=timeout, images=images, on_progress=on_progress)
@@ -297,7 +296,7 @@ class AgentPool:
                 now = datetime.now(timezone.utc)
                 for session in list(self._sessions.values()):
                     if (
-                        session.session_id.startswith("claude-r-")
+                        "-r-" in session.session_id  # dynamic (resume) sessions only
                         and session.state == SessionState.READY
                         and session.stats.last_activity
                     ):
