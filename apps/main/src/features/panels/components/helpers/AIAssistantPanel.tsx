@@ -1124,6 +1124,27 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
                         >
                           <Icon name="edit" size={10} />
                         </button>
+                        {!p.is_global && (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!confirm(`Archive "${p.label}"? It will be hidden but plan references are preserved.`)) return;
+                              try {
+                                await pixsimClient.delete(`/dev/agent-profiles/${p.id}`);
+                                // If this profile was selected, clear it
+                                if (tab.profileId === p.id) onUpdateTab({ profileId: null });
+                                // Refresh profile list
+                                onRefreshProfiles();
+                              } catch {
+                                setMessages((prev) => [...prev, { role: 'error', text: `Failed to archive ${p.label}`, timestamp: new Date() }]);
+                              }
+                            }}
+                            className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-red-500 transition-opacity shrink-0"
+                            title="Archive profile"
+                          >
+                            <Icon name="trash" size={10} />
+                          </button>
+                        )}
                       </div>
                     ))}
 
