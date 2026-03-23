@@ -6,7 +6,7 @@ Creates and configures the console logs tab with filtering and search.
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QLineEdit, QCheckBox, QComboBox
+    QLineEdit, QCheckBox, QComboBox, QToolButton, QMenu
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QShortcut, QKeySequence
@@ -75,52 +75,135 @@ class ConsoleTab:
         console_level_combo.currentTextChanged.connect(lambda _: launcher._on_console_filter_changed())
         toolbar.addWidget(console_level_combo)
 
-        # Channel toggle pills — all enabled by default, click to toggle off
-        channel_toggles = {}
-        for ch in ("api", "pipeline", "cron", "system", "other"):
-            btn = QPushButton(ch)
-            btn.setCheckable(True)
-            btn.setChecked(True)
-            btn.setFixedHeight(22)
-            btn.setToolTip("Show/hide uncategorized logs (no channel)" if ch == "other" else f"Show/hide '{ch}' channel logs")
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #3a5f3a;
-                    color: #c8e6c9;
-                    border: 1px solid #4a7a4a;
-                    border-radius: 10px;
-                    padding: 0 8px;
-                    font-size: 8pt;
-                }
-                QPushButton:hover {
-                    border: 1px solid #5a9fd4;
-                }
-                QPushButton:!checked {
-                    background-color: #3d3d3d;
-                    color: #777;
-                    border: 1px solid #555;
-                }
-            """)
-            btn.toggled.connect(lambda _, _ch=ch: launcher._on_console_filter_changed())
-            toolbar.addWidget(btn)
-            channel_toggles[ch] = btn
-        reg('console_channel_toggles', QWidget())  # placeholder for registration
-        launcher.console_channel_toggles = channel_toggles
+        # Scope filter buttons — one per category, multi-toggle menus
+        scope_actions = {}
 
-        # Domain / service scope dropdown
-        console_scope_combo = reg('console_scope_combo', QComboBox())
-        console_scope_combo.addItem("All scopes")
-        # ── Domain scopes (business area) ──
-        for d in ("generation", "provider", "account", "audit", "system", "worker"):
-            console_scope_combo.addItem(f"domain: {d}")
-        # ── Service scopes (process namespace) ──
-        for s in ("api", "worker", "startup", "provider.*"):
-            console_scope_combo.addItem(f"service: {s}")
-        console_scope_combo.setFixedWidth(130)
-        console_scope_combo.setToolTip("Filter by domain (business area) or service (process namespace)")
-        console_scope_combo.setStyleSheet(theme.get_combobox_stylesheet())
-        console_scope_combo.currentTextChanged.connect(lambda _: launcher._on_console_filter_changed())
-        toolbar.addWidget(console_scope_combo)
+        menu_stylesheet = f"""
+            QMenu {{
+                background-color: {theme.BG_TERTIARY};
+                color: {theme.TEXT_PRIMARY};
+                border: 1px solid {theme.BORDER_DEFAULT};
+                padding: 4px 0;
+            }}
+            QMenu::item {{
+                padding: 4px 16px 4px 24px;
+            }}
+            QMenu::item:hover {{
+                background-color: {theme.BG_HOVER};
+            }}
+            QMenu::indicator {{
+                width: 14px; height: 14px;
+                margin-left: 6px;
+            }}
+            QMenu::indicator:checked {{
+                image: none;
+                background-color: {theme.ACCENT_SUCCESS};
+                border: 1px solid {theme.ACCENT_SUCCESS};
+                border-radius: 2px;
+            }}
+            QMenu::indicator:unchecked {{
+                image: none;
+                background-color: transparent;
+                border: 1px solid {theme.BORDER_DEFAULT};
+                border-radius: 2px;
+            }}
+        """
+
+        btn_style_inactive = f"""
+            QToolButton {{
+                background-color: {theme.BG_TERTIARY};
+                color: {theme.TEXT_SECONDARY};
+                border: 1px solid {theme.BORDER_DEFAULT};
+                border-radius: {theme.RADIUS_MD}px;
+                padding: 0 8px;
+                font-size: {theme.FONT_SIZE_SM};
+            }}
+            QToolButton:hover {{
+                border: 1px solid {theme.BORDER_FOCUS};
+            }}
+            QToolButton::menu-indicator {{ image: none; }}
+        """
+        btn_style_active = f"""
+            QToolButton {{
+                background-color: #1a3a2a;
+                color: {theme.ACCENT_SUCCESS};
+                border: 1px solid {theme.ACCENT_SUCCESS};
+                border-radius: {theme.RADIUS_MD}px;
+                padding: 0 8px;
+                font-size: {theme.FONT_SIZE_SM};
+            }}
+            QToolButton:hover {{
+                border: 1px solid {theme.BORDER_FOCUS};
+            }}
+            QToolButton::menu-indicator {{ image: none; }}
+        """
+
+        def _make_scope_button(label, key_prefix, items=()):
+            btn = QToolButton()
+            btn.setText(f'{label} \u25BE')
+            btn.setPopupMode(QToolButton.InstantPopup)
+            btn.setFixedHeight(24)
+            btn.setToolTip(f"Filter logs by {label.lower()}")
+            btn.setStyleSheet(btn_style_inactive)
+
+            menu = QMenu(btn)
+            menu.setStyleSheet(menu_stylesheet)
+            btn.setMenu(menu)
+
+            def _update_label():
+                count = sum(1 for k, a in scope_actions.items()
+                            if k.startswith(key_prefix + ':') and a.isChecked())
+                if count:
+                    btn.setText(f'{label} ({count}) \u25BE')
+                    btn.setStyleSheet(btn_style_active)
+                else:
+                    btn.setText(f'{label} \u25BE')
+                    btn.setStyleSheet(btn_style_inactive)
+
+            def _on_toggled(checked):
+                _update_label()
+                launcher._on_console_filter_changed()
+                menu.show()
+
+            def _rebuild_items(new_items):
+                """Replace menu items, preserving checked state for items that still exist."""
+                # Snapshot current checked keys
+                prev_checked = {
+                    k for k, a in scope_actions.items()
+                    if k.startswith(key_prefix + ':') and a.isChecked()
+                }
+                # Remove old actions from scope_actions and menu
+                for k in [k for k in scope_actions if k.startswith(key_prefix + ':')]:
+                    del scope_actions[k]
+                menu.clear()
+                # Add new items
+                for item in new_items:
+                    act = menu.addAction(item)
+                    act.setCheckable(True)
+                    act.setChecked(f"{key_prefix}:{item}" in prev_checked)
+                    act.triggered.connect(_on_toggled)
+                    scope_actions[f"{key_prefix}:{item}"] = act
+                _update_label()
+
+            # Initial population
+            _rebuild_items(items)
+
+            btn._update_scope_label = _update_label
+            btn._rebuild_items = _rebuild_items
+            return btn
+
+        # Start empty — items are rebuilt dynamically from the selected
+        # service's log buffer in _rebuild_scope_menus_from_buffer()
+        domain_btn = _make_scope_button("Domain", "domain")
+        reg('console_domain_button', domain_btn)
+        toolbar.addWidget(domain_btn)
+
+        service_btn = _make_scope_button("Service", "service")
+        reg('console_service_button', service_btn)
+        toolbar.addWidget(service_btn)
+
+        # Store actions dict on launcher for filter logic
+        launcher.console_scope_actions = scope_actions
 
         console_search_input = reg('console_search_input', QLineEdit())
         console_search_input.setPlaceholderText("Search logs (Ctrl+F)...")

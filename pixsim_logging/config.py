@@ -38,11 +38,17 @@ DEFAULT_LEVEL = "INFO"
 
 
 _active_db_handler = None  # Set during configure_logging for stats access
+_registered_services: set[str] = set()  # Auto-populated by configure_logging calls
 
 
 def _get_level() -> int:
     level_name = os.getenv("PIXSIM_LOG_LEVEL", DEFAULT_LEVEL).upper()
     return getattr(logging, level_name, logging.INFO)
+
+
+def get_registered_services() -> set[str]:
+    """Return service names seen by configure_logging() calls so far."""
+    return _registered_services.copy()
 
 
 def get_ingestion_stats() -> dict:
@@ -75,6 +81,8 @@ def configure_logging(service_name: str, *, json: bool | None = None) -> structl
     # Avoid reconfiguring structlog repeatedly unless explicitly requested.
     # structlog keeps a global configuration; calling configure() many times
     # can stack processors and create duplicate handlers.
+    _registered_services.add(service_name)
+
     if getattr(configure_logging, "_configured", False):
         # Return a logger bound with the requested service name but do not
         # touch global configuration again.

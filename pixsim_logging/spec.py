@@ -83,6 +83,21 @@ STAGES = [
 
 STAGES_SET = set(STAGES)
 
+# Service prefixes — top-level process namespaces used with configure_logging().
+# Entries ending with ".*" are wildcard prefixes (e.g. "provider.*" matches
+# "provider.pixverse", "provider.sora", etc.).
+# TODO: auto-populate from runtime registration instead of maintaining by hand
+SERVICES = [
+    "api",
+    "events",
+    "middleware.*",
+    "plugin.*",
+    "provider.*",
+    "service.*",
+    "startup",
+    "worker",
+]
+
 # Channel taxonomy (what kind of activity)
 CHANNELS = ["cron", "pipeline", "api", "system"]
 

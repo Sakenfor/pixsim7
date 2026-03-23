@@ -283,8 +283,7 @@ class UIState:
     autoscroll_enabled: bool = False    # Auto-scroll console logs to bottom
     console_style_enhanced: bool = True  # Use enhanced readable console view
     console_level_filter: str = 'All'   # Console log level filter
-    console_channel_filter: str = ''    # Disabled channels (comma-separated, empty = all enabled)
-    console_scope_filter: str = ''      # Domain/service scope filter (e.g. "domain: generation")
+    console_scope_filter: str = ''      # Active scope keys (comma-separated, e.g. "channel:api,domain:generation")
     console_search_text: str = ''       # Console search text
 
     # Health check settings

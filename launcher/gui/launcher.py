@@ -119,31 +119,9 @@ except Exception:
     from processes import ServiceProcess
 
 try:
-    from .health_worker import HealthWorker
+    from .health_bridge import HealthBridge
 except Exception:
-    from health_worker import HealthWorker
-
-# New launcher_core integration
-_NEW_CORE_AVAILABLE = False
-_NEW_CORE_IMPORT_ERROR: Optional[Exception] = None
-try:
-    from .launcher_facade import LauncherFacade
-    from .service_adapter import ServiceProcessAdapter
-    _NEW_CORE_AVAILABLE = True
-except Exception:
-    try:
-        from launcher_facade import LauncherFacade
-        from service_adapter import ServiceProcessAdapter
-        _NEW_CORE_AVAILABLE = True
-    except Exception as e:
-        _NEW_CORE_IMPORT_ERROR = e
-
-USE_NEW_CORE = _NEW_CORE_AVAILABLE and os.getenv("PIXSIM_LAUNCHER_USE_NEW_CORE", "0").lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
+    from health_bridge import HealthBridge
 
 # Import centralized theme
 try:
@@ -157,7 +135,7 @@ try:
         CONSOLE_LEVEL_PATTERNS, CONSOLE_LEVEL_STYLES,
         CONSOLE_TIMESTAMP_REGEX, ISO_TIMESTAMP_REGEX, LEVEL_PREFIX_REGEX,
         URL_LINK_REGEX, READY_REGEX, ERROR_REGEX, WARN_REGEX,
-        detect_console_level, detect_console_channel,
+        detect_console_level,
         detect_console_domain, detect_console_service,
         decorate_console_message, strip_ansi,
         format_console_log_html_classic, format_console_log_html_enhanced,
@@ -167,7 +145,7 @@ except Exception:
         CONSOLE_LEVEL_PATTERNS, CONSOLE_LEVEL_STYLES,
         CONSOLE_TIMESTAMP_REGEX, ISO_TIMESTAMP_REGEX, LEVEL_PREFIX_REGEX,
         URL_LINK_REGEX, READY_REGEX, ERROR_REGEX, WARN_REGEX,
-        detect_console_level, detect_console_channel,
+        detect_console_level,
         detect_console_domain, detect_console_service,
         decorate_console_message, strip_ansi,
         format_console_log_html_classic, format_console_log_html_enhanced,
@@ -305,38 +283,6 @@ class LauncherWindow(QWidget):
         self.services = build_services_from_manifests()
 
         # Initialize service management
-        # Use new launcher_core if available, otherwise fall back to old implementation
-        if USE_NEW_CORE:
-            # Create facade (wraps core managers)
-            self.facade = LauncherFacade(self)
-            # Log that we're using new core
-            if _launcher_logger:
-                try:
-                    _launcher_logger.info(
-                        "launcher_using_new_core",
-                        message="Using launcher_core managers"
-                    )
-                except Exception:
-                    pass
-        else:
-            # Fall back to old implementation
-            self.facade = None
-            if _launcher_logger:
-                try:
-                    if _NEW_CORE_AVAILABLE:
-                        _launcher_logger.info(
-                            "launcher_using_old_core",
-                            message="Using old ServiceProcess implementation (new core available but disabled)",
-                            enable_with_env="PIXSIM_LAUNCHER_USE_NEW_CORE=1",
-                        )
-                    else:
-                        _launcher_logger.warning(
-                            "launcher_using_old_core",
-                            message="Falling back to old ServiceProcess implementation (new core unavailable)",
-                            import_error=str(_NEW_CORE_IMPORT_ERROR) if _NEW_CORE_IMPORT_ERROR else None,
-                        )
-                except Exception:
-                    pass
         self.processes = {}
         self._rebuild_processes_from_services(preserve_state=False)
 
@@ -405,20 +351,12 @@ class LauncherWindow(QWidget):
             self._select_service(self.services[0].key)
         # Nothing heavy until UI is visible
 
-        # Background health worker / health manager
-        if USE_NEW_CORE and self.facade:
-            # Use new launcher_core health manager (via facade)
-            self.health_worker = None
-            # Start managers
-            self.facade.start_all_managers()
-            # Connect facade signals to update UI
-            self.facade.health_update.connect(self._update_service_health)
-        else:
-            # Use old health worker
-            self.health_worker = HealthWorker(self.processes, ui_state=self.ui_state, parent=self)
-            self.health_worker.health_update.connect(self._update_service_health)
-            self.health_worker.openapi_update.connect(self._update_openapi_status)
-            self.health_worker.start()
+        # Health monitoring via core HealthManager + Qt bridge.
+        # Defer start() to after the first paint so the window appears instantly.
+        self.health_bridge = HealthBridge(self.processes, ui_state=self.ui_state, parent=self)
+        self.health_bridge.health_update.connect(self._update_service_health)
+        self.health_bridge.openapi_update.connect(self._update_openapi_status)
+        QTimer.singleShot(0, self.health_bridge.start)
 
         # Connect health check signal (for any manual triggers if added later)
         self.health_check_signal.connect(self._update_service_health)
@@ -433,10 +371,7 @@ class LauncherWindow(QWidget):
         self.update_ports_label()
 
     def _create_service_process(self, service_def: ServiceDef, old_sp=None):
-        """Create a service process object for the current launcher mode."""
-        if USE_NEW_CORE and self.facade:
-            return ServiceProcessAdapter(service_def, self.facade)
-
+        """Create a service process object."""
         sp = ServiceProcess(service_def)
         if old_sp:
             try:
@@ -658,15 +593,18 @@ class LauncherWindow(QWidget):
             idx = self.console_level_combo.findText(self.ui_state.console_level_filter)
             if idx >= 0:
                 self.console_level_combo.setCurrentIndex(idx)
-        if hasattr(self, 'console_channel_toggles') and self.ui_state.console_channel_filter:
-            # Restore disabled channels from comma-separated string
-            disabled = set(self.ui_state.console_channel_filter.split(','))
-            for ch, btn in self.console_channel_toggles.items():
-                btn.setChecked(ch not in disabled)
-        if hasattr(self, 'console_scope_combo') and self.ui_state.console_scope_filter:
-            idx = self.console_scope_combo.findText(self.ui_state.console_scope_filter)
-            if idx >= 0:
-                self.console_scope_combo.setCurrentIndex(idx)
+        if hasattr(self, 'console_scope_actions') and self.ui_state.console_scope_filter:
+            raw = self.ui_state.console_scope_filter
+            # Detect new format (has colon-prefixed keys like "domain:generation")
+            if ':' in raw.split(',')[0]:
+                active = set(raw.split(','))
+                for key, act in self.console_scope_actions.items():
+                    act.setChecked(key in active)
+            # Refresh button labels to reflect restored state
+            for attr in ('console_domain_button', 'console_service_button'):
+                btn = getattr(self, attr, None)
+                if btn and hasattr(btn, '_update_scope_label'):
+                    btn._update_scope_label()
         if hasattr(self, 'console_search_input') and self.ui_state.console_search_text:
             self.console_search_input.setText(self.ui_state.console_search_text)
 
@@ -980,6 +918,9 @@ class LauncherWindow(QWidget):
                 if callable(attach_fn):
                     attach_fn()
                     _startup_trace("_select_service auto-attached logs")
+
+            # Rebuild scope menus from what's actually in this service's buffer
+            self._rebuild_scope_menus_from_buffer(sp)
 
             # Refresh logs (scroll position will be restored in _refresh_console_logs)
             self._refresh_console_logs(force=True)
@@ -1416,7 +1357,7 @@ class LauncherWindow(QWidget):
         if s and s.url:
             webbrowser.open(s.url)
 
-    # _check_health removed; handled by HealthWorker
+    # _check_health removed; handled by HealthBridge + core HealthManager
 
     def _update_service_health(self, key: str, status: HealthStatus):
         """Update the health status for a service (called from signal)."""
@@ -1500,15 +1441,14 @@ class LauncherWindow(QWidget):
 
     def _refresh_openapi_status(self, key: str):
         """Force refresh OpenAPI status check for a service."""
-        if self.health_worker:
-            # Clear the last check time to force immediate recheck
-            self.health_worker.last_openapi_check.pop(key, None)
-            self.health_worker.openapi_status_cache.pop(key, None)
-            # Run an immediate check so the card updates right away (no wait for next poll cycle).
+        bridge = getattr(self, "health_bridge", None)
+        if bridge:
+            bridge.last_openapi_check.pop(key, None)
+            bridge.openapi_status_cache.pop(key, None)
             sp = self.processes.get(key)
             if sp and getattr(sp, "health_status", None) == HealthStatus.HEALTHY:
                 try:
-                    self.health_worker._check_openapi_freshness(key, sp)
+                    bridge._check_openapi_freshness(key, sp)
                 except Exception:
                     pass
 
@@ -1922,11 +1862,10 @@ class LauncherWindow(QWidget):
 
     def _restart_services(self, keys):
         """Restart specified services after config update."""
-        # Stop health worker before rebuilding processes to avoid race condition
-        if not USE_NEW_CORE and hasattr(self, 'health_worker') and self.health_worker:
+        # Stop health bridge before rebuilding processes to avoid race condition
+        if hasattr(self, 'health_bridge'):
             try:
-                self.health_worker.stop()
-                self.health_worker.wait(2000)  # Wait up to 2 seconds
+                self.health_bridge.stop()
             except Exception:
                 pass
 
@@ -1939,12 +1878,9 @@ class LauncherWindow(QWidget):
             if key in self.processes:
                 self.processes[key].start()
 
-        # Restart health worker with new process dict
-        if not USE_NEW_CORE:
-            self.health_worker = HealthWorker(self.processes, ui_state=self.ui_state, parent=self)
-            self.health_worker.health_update.connect(self._update_service_health)
-            self.health_worker.openapi_update.connect(self._update_openapi_status)
-            self.health_worker.start()
+        # Restart health bridge with new process dict
+        self.health_bridge.rebuild_states(self.processes)
+        self.health_bridge.start()
 
         # Rebind existing cards to the rebuilt process instances.
         for key, card in self.cards.items():
@@ -2148,8 +2084,42 @@ class LauncherWindow(QWidget):
 
             self.log_view.update_content(msg, force=True)
 
+    def _rebuild_scope_menus_from_buffer(self, sp):
+        """Scan a service's log buffer and rebuild scope menu items to show
+        only domains/services that actually appear in its logs."""
+        if not sp or not sp.log_buffer:
+            return
+
+        seen_domains = set()
+        seen_services = set()
+        for record in sp.log_buffer:
+            fields = record.fields if hasattr(record, 'fields') else {}
+            if fields:
+                d = fields.get("domain")
+                if d:
+                    seen_domains.add(d)
+                s = fields.get("service")
+                if s:
+                    seen_services.add(s)
+            else:
+                line_str = str(record)
+                d = detect_console_domain(line_str)
+                if d:
+                    seen_domains.add(d)
+                s = detect_console_service(line_str)
+                if s:
+                    seen_services.add(s)
+
+        domain_btn = getattr(self, 'console_domain_button', None)
+        if domain_btn and hasattr(domain_btn, '_rebuild_items'):
+            domain_btn._rebuild_items(sorted(seen_domains))
+
+        service_btn = getattr(self, 'console_service_button', None)
+        if service_btn and hasattr(service_btn, '_rebuild_items'):
+            service_btn._rebuild_items(sorted(seen_services))
+
     def _filter_console_buffer(self, buffer):
-        """Filter log records by level, channel, scope, and search text.
+        """Filter log records by level, scope, and search text.
 
         Uses pre-parsed ``LogRecord.fields`` for structured lines (fast
         dict lookup) and falls back to heuristic regex for non-JSON lines.
@@ -2164,25 +2134,16 @@ class LauncherWindow(QWidget):
             if lvl and lvl != "All":
                 level_filter = lvl.lower()
 
-        # Channel exclusion set — channels whose toggle is OFF
-        excluded_channels = set()
-        if hasattr(self, 'console_channel_toggles'):
-            for ch, btn in self.console_channel_toggles.items():
-                if not btn.isChecked():
-                    excluded_channels.add(ch)
-
-        # Scope filter — "domain: X" or "service: X"
-        scope_kind = None  # "domain" or "service"
-        scope_value = None
-        if hasattr(self, 'console_scope_combo'):
-            raw = self.console_scope_combo.currentText().strip()
-            if raw and raw != "All scopes":
-                if raw.startswith("domain: "):
-                    scope_kind = "domain"
-                    scope_value = raw[len("domain: "):]
-                elif raw.startswith("service: "):
-                    scope_kind = "service"
-                    scope_value = raw[len("service: "):]
+        # Scope filters from multi-toggle menus
+        active_domains = set()
+        active_services = set()
+        if hasattr(self, 'console_scope_actions'):
+            for key, act in self.console_scope_actions.items():
+                kind, value = key.split(':', 1)
+                if kind == 'domain' and act.isChecked():
+                    active_domains.add(value)
+                elif kind == 'service' and act.isChecked():
+                    active_services.add(value)
 
         search_filter = None
         if hasattr(self, 'console_search_input'):
@@ -2191,7 +2152,7 @@ class LauncherWindow(QWidget):
                 search_filter = text.lower()
 
         # Fast path: no filters
-        if not level_filter and not excluded_channels and not scope_kind and not search_filter:
+        if not level_filter and not active_domains and not active_services and not search_filter:
             return list(buffer)
 
         filtered = []
@@ -2208,34 +2169,33 @@ class LauncherWindow(QWidget):
                 if not rec_level or rec_level != level_filter:
                     continue
 
-            # Channel check — prefer structured field, fall back to heuristic
-            if excluded_channels:
-                rec_channel = fields.get("channel") if fields else None
-                if rec_channel is None:
-                    rec_channel = detect_console_channel(line_str)
-                if rec_channel and rec_channel in excluded_channels:
-                    continue
-                if not rec_channel and "other" in excluded_channels:
-                    continue
-
-            # Scope check — prefer structured field, fall back to heuristic
-            if scope_kind == "domain" and scope_value:
+            # Scope inclusion filter — domain and service are OR'd together.
+            # Tagged lines must match at least one active filter; untagged
+            # lines pass through so context isn't silently lost.
+            if active_domains or active_services:
                 rec_domain = fields.get("domain") if fields else None
                 if rec_domain is None:
                     rec_domain = detect_console_domain(line_str)
-                if not rec_domain or rec_domain != scope_value:
-                    continue
-            elif scope_kind == "service" and scope_value:
                 rec_service = fields.get("service") if fields else None
                 if rec_service is None:
                     rec_service = detect_console_service(line_str)
-                if not rec_service:
-                    continue
-                if scope_value.endswith(".*"):
-                    if not rec_service.startswith(scope_value[:-2]):
+
+                has_tag = bool(rec_domain or rec_service)
+                if has_tag:
+                    matched = False
+                    if rec_domain and rec_domain in active_domains:
+                        matched = True
+                    if not matched and rec_service:
+                        for sv in active_services:
+                            if sv.endswith(".*"):
+                                if rec_service.startswith(sv[:-2]):
+                                    matched = True
+                                    break
+                            elif rec_service == sv:
+                                matched = True
+                                break
+                    if not matched:
                         continue
-                elif rec_service != scope_value:
-                    continue
 
             if search_filter and search_filter not in line_str.lower():
                 continue
@@ -2247,26 +2207,22 @@ class LauncherWindow(QWidget):
     def _console_filter_signature(self):
         """Return current console filter settings as a comparable tuple."""
         level = self.console_level_combo.currentText() if hasattr(self, 'console_level_combo') else "All"
-        channels = tuple(
-            (ch, btn.isChecked())
-            for ch, btn in self.console_channel_toggles.items()
-        ) if hasattr(self, 'console_channel_toggles') else ()
-        scope = self.console_scope_combo.currentText() if hasattr(self, 'console_scope_combo') else ""
+        scopes = tuple(
+            (key, act.isChecked())
+            for key, act in self.console_scope_actions.items()
+        ) if hasattr(self, 'console_scope_actions') else ()
         search = self.console_search_input.text().strip().lower() if hasattr(self, 'console_search_input') else ""
-        return (level, channels, scope, search)
+        return (level, scopes, search)
 
     def _on_console_filter_changed(self):
         """React immediately to console filter changes."""
         # Save filter settings
         if hasattr(self, 'console_level_combo'):
             self.ui_state.console_level_filter = self.console_level_combo.currentText()
-        if hasattr(self, 'console_channel_toggles'):
-            # Store as comma-separated list of disabled channels
-            disabled = [ch for ch, btn in self.console_channel_toggles.items() if not btn.isChecked()]
-            self.ui_state.console_channel_filter = ','.join(disabled) if disabled else ''
-        if hasattr(self, 'console_scope_combo'):
-            raw = self.console_scope_combo.currentText()
-            self.ui_state.console_scope_filter = raw if raw != "All scopes" else ''
+        if hasattr(self, 'console_scope_actions'):
+            # Store as comma-separated list of checked scope keys
+            active = [key for key, act in self.console_scope_actions.items() if act.isChecked()]
+            self.ui_state.console_scope_filter = ','.join(active) if active else ''
         if hasattr(self, 'console_search_input'):
             self.ui_state.console_search_text = self.console_search_input.text()
         save_ui_state(self.ui_state)
@@ -2393,15 +2349,11 @@ class LauncherWindow(QWidget):
     def _reload_ui(self):
         """Rebuild UI tabs and refresh settings without restarting launcher."""
         # Recreate health worker after process map rebuild so status updates keep flowing.
-        old_health_worker = None
-        if not USE_NEW_CORE:
-            old_health_worker = getattr(self, "health_worker", None)
-            if old_health_worker:
-                try:
-                    old_health_worker.stop()
-                    old_health_worker.wait(2000)
-                except Exception:
-                    pass
+        if hasattr(self, "health_bridge"):
+            try:
+                self.health_bridge.stop()
+            except Exception:
+                pass
 
         try:
             if hasattr(self, "console_refresh_timer"):
@@ -2467,11 +2419,8 @@ class LauncherWindow(QWidget):
         if hasattr(self, "console_refresh_timer"):
             self.console_refresh_timer.start(1000)
 
-        if not USE_NEW_CORE:
-            self.health_worker = HealthWorker(self.processes, ui_state=self.ui_state, parent=self)
-            self.health_worker.health_update.connect(self._update_service_health)
-            self.health_worker.openapi_update.connect(self._update_openapi_status)
-            self.health_worker.start()
+        self.health_bridge.rebuild_states(self.processes)
+        self.health_bridge.start()
 
         # Schedule deferred init for reloaded worker processes
         for sp in self.processes.values():
@@ -2612,15 +2561,9 @@ class LauncherWindow(QWidget):
             self._cleanup_openapi_generation_process()
 
         # Stop health monitoring
-        if hasattr(self, 'facade') and self.facade:
+        if hasattr(self, 'health_bridge'):
             try:
-                self.facade.stop_all_managers()
-            except Exception:
-                pass
-        elif hasattr(self, 'health_worker') and self.health_worker:
-            try:
-                self.health_worker.stop()
-                self.health_worker.wait(2000)
+                self.health_bridge.stop()
             except Exception:
                 pass
 
