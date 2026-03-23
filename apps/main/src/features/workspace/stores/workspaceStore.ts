@@ -441,6 +441,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
                 context,
               },
             ],
+            focusedFloatingPanelId: floatingId,
           });
           return;
         }
@@ -474,6 +475,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
                   }
                 : p,
             ),
+            focusedFloatingPanelId: panelId,
           });
           return;
         }
@@ -501,6 +503,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
               context,
             },
           ],
+          focusedFloatingPanelId: panelId,
         });
       },
 

@@ -201,7 +201,8 @@ async def update_user_preferences(
 
 @router.get("/users/me/debug/categories")
 async def get_debug_categories(principal: CurrentUser):
-    """Return available debug categories with descriptions and current state."""
+    """Return available debug categories with descriptions, groups, and current state."""
+    from pixsim_logging.spec import DOMAIN_GROUPS, DOMAIN_TO_GROUP
     from pixsim7.backend.main.services.debug import DebugSettings
 
     current = DebugSettings.from_dict(
@@ -214,8 +215,12 @@ async def get_debug_categories(principal: CurrentUser):
             "description": field_info.description or "",
             "enabled": getattr(current, name, False),
             "default": field_info.default,
+            "group": DOMAIN_TO_GROUP.get(name, "other"),
         })
-    return {"categories": categories}
+    groups = [
+        {"id": gid, "label": label} for gid, label, _domains in DOMAIN_GROUPS
+    ]
+    return {"categories": categories, "groups": groups}
 
 
 @router.get("/users/me/debug/logging-config")

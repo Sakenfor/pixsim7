@@ -31,13 +31,25 @@ type PanelStore = {
 
 export function SettingGroupRenderer({
   group,
-  store,
+  store: storeProp,
+  useStore: useStoreProp,
 }: {
   group: SettingGroup;
-  store: PanelStore;
+  /** Pre-resolved store (used by TabContent / CategoryContent). */
+  store?: PanelStore;
+  /** Store hook — called when `store` isn't provided (used by AdminSettings). */
+  useStore?: () => PanelStore;
 }) {
+  // Support both call patterns: direct store OR useStore hook.
+  // Hook is always called (Rules of Hooks), result is only used when storeProp is absent.
+  const hookStore = useStoreProp?.();
+  const store = storeProp ?? hookStore;
+
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminUser(user);
+
+  if (!store) return null;
+
   const allValues = { ...store.getAll(), __isAdmin: !!isAdmin, __userRole: user?.role };
 
   if (group.showWhen && !group.showWhen(allValues)) {

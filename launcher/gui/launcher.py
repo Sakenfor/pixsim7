@@ -98,19 +98,19 @@ except Exception:
     from multi_service_discovery import MultiServiceDiscovery, load_services_config
 
 try:
-    from .tabs import ConsoleTab, DbLogsTab, ToolsTab, ArchitectureTab
+    from .tabs import ConsoleTab, DbLogsTab, ToolsTab, ArchitectureTab, DiagnosticsTab
 except Exception:
-    from tabs import ConsoleTab, DbLogsTab, ToolsTab, ArchitectureTab
+    from tabs import ConsoleTab, DbLogsTab, ToolsTab, ArchitectureTab, DiagnosticsTab
 
 try:
     from .icons import (
         ICON_SETTINGS, ICON_RELOAD,
-        TAB_CONSOLE, TAB_DB_LOGS, TAB_TOOLS, TAB_SETTINGS, TAB_ARCHITECTURE
+        TAB_CONSOLE, TAB_DB_LOGS, TAB_TOOLS, TAB_DIAGNOSTICS, TAB_SETTINGS, TAB_ARCHITECTURE
     )
 except Exception:
     from icons import (
         ICON_SETTINGS, ICON_RELOAD,
-        TAB_CONSOLE, TAB_DB_LOGS, TAB_TOOLS, TAB_SETTINGS, TAB_ARCHITECTURE
+        TAB_CONSOLE, TAB_DB_LOGS, TAB_TOOLS, TAB_DIAGNOSTICS, TAB_SETTINGS, TAB_ARCHITECTURE
     )
 
 try:
@@ -158,6 +158,7 @@ try:
         CONSOLE_TIMESTAMP_REGEX, ISO_TIMESTAMP_REGEX, LEVEL_PREFIX_REGEX,
         URL_LINK_REGEX, READY_REGEX, ERROR_REGEX, WARN_REGEX,
         detect_console_level, detect_console_channel,
+        detect_console_domain, detect_console_service,
         decorate_console_message, strip_ansi,
         format_console_log_html_classic, format_console_log_html_enhanced,
     )
@@ -167,6 +168,7 @@ except Exception:
         CONSOLE_TIMESTAMP_REGEX, ISO_TIMESTAMP_REGEX, LEVEL_PREFIX_REGEX,
         URL_LINK_REGEX, READY_REGEX, ERROR_REGEX, WARN_REGEX,
         detect_console_level, detect_console_channel,
+        detect_console_domain, detect_console_service,
         decorate_console_message, strip_ansi,
         format_console_log_html_classic, format_console_log_html_enhanced,
     )
@@ -633,6 +635,9 @@ class LauncherWindow(QWidget):
         tools_tab = ToolsTab.create(self)
         self.main_tabs.addTab(tools_tab, TAB_TOOLS)
 
+        diagnostics_tab = DiagnosticsTab.create(self)
+        self.main_tabs.addTab(diagnostics_tab, TAB_DIAGNOSTICS)
+
         settings_tab = ToolsTab.create_settings(self)
         self.main_tabs.addTab(settings_tab, TAB_SETTINGS)
         self.settings_tab_index = self.main_tabs.indexOf(settings_tab)
@@ -658,6 +663,10 @@ class LauncherWindow(QWidget):
             disabled = set(self.ui_state.console_channel_filter.split(','))
             for ch, btn in self.console_channel_toggles.items():
                 btn.setChecked(ch not in disabled)
+        if hasattr(self, 'console_scope_combo') and self.ui_state.console_scope_filter:
+            idx = self.console_scope_combo.findText(self.ui_state.console_scope_filter)
+            if idx >= 0:
+                self.console_scope_combo.setCurrentIndex(idx)
         if hasattr(self, 'console_search_input') and self.ui_state.console_search_text:
             self.console_search_input.setText(self.ui_state.console_search_text)
 
@@ -2140,11 +2149,10 @@ class LauncherWindow(QWidget):
             self.log_view.update_content(msg, force=True)
 
     def _filter_console_buffer(self, buffer):
-        """Filter raw console lines by level, channel, and search text.
+        """Filter log records by level, channel, scope, and search text.
 
-        This operates purely on the in-memory buffer and does not affect
-        persisted logs. Level and channel detection is heuristic: it looks
-        for standard tokens (INFO, ERROR, channel=pipeline, etc.) in the line.
+        Uses pre-parsed ``LogRecord.fields`` for structured lines (fast
+        dict lookup) and falls back to heuristic regex for non-JSON lines.
         """
         if not buffer:
             return buffer
@@ -2154,7 +2162,7 @@ class LauncherWindow(QWidget):
         if hasattr(self, 'console_level_combo'):
             lvl = self.console_level_combo.currentText()
             if lvl and lvl != "All":
-                level_filter = lvl.upper()
+                level_filter = lvl.lower()
 
         # Channel exclusion set — channels whose toggle is OFF
         excluded_channels = set()
@@ -2163,6 +2171,19 @@ class LauncherWindow(QWidget):
                 if not btn.isChecked():
                     excluded_channels.add(ch)
 
+        # Scope filter — "domain: X" or "service: X"
+        scope_kind = None  # "domain" or "service"
+        scope_value = None
+        if hasattr(self, 'console_scope_combo'):
+            raw = self.console_scope_combo.currentText().strip()
+            if raw and raw != "All scopes":
+                if raw.startswith("domain: "):
+                    scope_kind = "domain"
+                    scope_value = raw[len("domain: "):]
+                elif raw.startswith("service: "):
+                    scope_kind = "service"
+                    scope_value = raw[len("service: "):]
+
         search_filter = None
         if hasattr(self, 'console_search_input'):
             text = self.console_search_input.text().strip()
@@ -2170,29 +2191,56 @@ class LauncherWindow(QWidget):
                 search_filter = text.lower()
 
         # Fast path: no filters
-        if not level_filter and not excluded_channels and not search_filter:
+        if not level_filter and not excluded_channels and not scope_kind and not search_filter:
             return list(buffer)
 
         filtered = []
-        for line in buffer:
-            line_str = str(line)
+        for record in buffer:
+            line_str = str(record)
+            fields = record.fields if hasattr(record, 'fields') else {}
 
+            # Level check — prefer structured field, fall back to heuristic
             if level_filter:
-                detected_level = detect_console_level(line_str)
-                if not detected_level or detected_level != level_filter:
+                rec_level = (fields.get("level") or "").lower() if fields else None
+                if not rec_level:
+                    detected = detect_console_level(line_str)
+                    rec_level = detected.lower() if detected else None
+                if not rec_level or rec_level != level_filter:
                     continue
 
+            # Channel check — prefer structured field, fall back to heuristic
             if excluded_channels:
-                detected_channel = detect_console_channel(line_str)
-                if detected_channel and detected_channel in excluded_channels:
+                rec_channel = fields.get("channel") if fields else None
+                if rec_channel is None:
+                    rec_channel = detect_console_channel(line_str)
+                if rec_channel and rec_channel in excluded_channels:
                     continue
-                if not detected_channel and "other" in excluded_channels:
+                if not rec_channel and "other" in excluded_channels:
+                    continue
+
+            # Scope check — prefer structured field, fall back to heuristic
+            if scope_kind == "domain" and scope_value:
+                rec_domain = fields.get("domain") if fields else None
+                if rec_domain is None:
+                    rec_domain = detect_console_domain(line_str)
+                if not rec_domain or rec_domain != scope_value:
+                    continue
+            elif scope_kind == "service" and scope_value:
+                rec_service = fields.get("service") if fields else None
+                if rec_service is None:
+                    rec_service = detect_console_service(line_str)
+                if not rec_service:
+                    continue
+                if scope_value.endswith(".*"):
+                    if not rec_service.startswith(scope_value[:-2]):
+                        continue
+                elif rec_service != scope_value:
                     continue
 
             if search_filter and search_filter not in line_str.lower():
                 continue
 
-            filtered.append(line)
+            filtered.append(record)
 
         return filtered
 
@@ -2203,8 +2251,9 @@ class LauncherWindow(QWidget):
             (ch, btn.isChecked())
             for ch, btn in self.console_channel_toggles.items()
         ) if hasattr(self, 'console_channel_toggles') else ()
+        scope = self.console_scope_combo.currentText() if hasattr(self, 'console_scope_combo') else ""
         search = self.console_search_input.text().strip().lower() if hasattr(self, 'console_search_input') else ""
-        return (level, channels, search)
+        return (level, channels, scope, search)
 
     def _on_console_filter_changed(self):
         """React immediately to console filter changes."""
@@ -2215,6 +2264,9 @@ class LauncherWindow(QWidget):
             # Store as comma-separated list of disabled channels
             disabled = [ch for ch, btn in self.console_channel_toggles.items() if not btn.isChecked()]
             self.ui_state.console_channel_filter = ','.join(disabled) if disabled else ''
+        if hasattr(self, 'console_scope_combo'):
+            raw = self.console_scope_combo.currentText()
+            self.ui_state.console_scope_filter = raw if raw != "All scopes" else ''
         if hasattr(self, 'console_search_input'):
             self.ui_state.console_search_text = self.console_search_input.text()
         save_ui_state(self.ui_state)
@@ -2354,6 +2406,14 @@ class LauncherWindow(QWidget):
         try:
             if hasattr(self, "console_refresh_timer"):
                 self.console_refresh_timer.stop()
+        except Exception:
+            pass
+
+        # Stop diagnostics watcher before tearing down tabs.
+        try:
+            diag_watch = getattr(self, "diagnostics_watch_widget", None)
+            if diag_watch and hasattr(diag_watch, "shutdown"):
+                diag_watch.shutdown()
         except Exception:
             pass
 
@@ -2530,6 +2590,14 @@ class LauncherWindow(QWidget):
         try:
             if hasattr(self, 'db_log_viewer'):
                 self.db_log_viewer.shutdown()
+        except Exception:
+            pass
+
+        # Stop diagnostics watcher if running.
+        try:
+            diag_watch = getattr(self, "diagnostics_watch_widget", None)
+            if diag_watch and hasattr(diag_watch, "shutdown"):
+                diag_watch.shutdown()
         except Exception:
             pass
 

@@ -31,10 +31,6 @@ COMMON_FIELDS = [
 
 # Canonical domain list — shared between backend (structlog domain filter)
 # and frontend (debugFlags categories). Keep alphabetical within groups.
-#
-# Backend-primary: account, audit, cron, generation, provider, sql, system, worker
-# Frontend-primary: localFolders, overlay, persistence, stores, websocket
-# Shared: generation, provider
 DOMAINS = [
     "account",
     "audit",
@@ -50,6 +46,28 @@ DOMAINS = [
     "websocket",
     "worker",
 ]
+
+# Grouping for the debug settings UI.  Each domain belongs to exactly one
+# group.  The order of the groups list controls render order in the panel.
+DOMAIN_GROUPS: list[tuple[str, str, list[str]]] = [
+    # (group_id, label, domain_ids)
+    ("backend", "Backend / Server", [
+        "account", "audit", "cron", "generation", "provider", "sql", "system", "worker",
+    ]),
+    ("frontend", "Frontend / Browser", [
+        "localFolders", "overlay", "persistence", "stores", "websocket",
+    ]),
+    ("validation", "Validation", [
+        "validateCompositionVocabs",
+    ]),
+]
+
+# Flat lookup: domain → group_id
+DOMAIN_TO_GROUP: dict[str, str] = {
+    domain: group_id
+    for group_id, _label, domains in DOMAIN_GROUPS
+    for domain in domains
+}
 
 # Stage taxonomy (pipeline + provider lifecycle)
 STAGES = [

@@ -2,12 +2,11 @@ import os
 import signal
 import subprocess
 import threading
-import json
 from collections import deque
 from typing import Optional, Union
 from PySide6.QtCore import QProcess, QTimer, QMetaObject, Qt, QThread
 from PySide6.QtWidgets import QApplication
-from pixsim_logging.file_rotation import rotate_file, append_line
+from pixsim_logging.file_rotation import rotate_file
 
 try:
     from .services import ServiceDef
@@ -69,6 +68,9 @@ def _get_process_utils():
     return _process_utils
 
 
+from pixsim_logging.reader import LogRecord, parse_line as _parse_log_line, sanitize_line, LogWriter
+
+
 class ServiceProcess:
     def __init__(self, defn: ServiceDef):
         self.defn = defn
@@ -78,7 +80,7 @@ class ServiceProcess:
         self.tool_available = True
         self.tool_check_message = ''
         self.last_error_line: str = ''
-        self.log_buffer: deque[str] = deque(maxlen=MAX_LOG_LINES)  # In-memory log buffer
+        self.log_buffer: deque[LogRecord] = deque(maxlen=MAX_LOG_LINES)  # In-memory log buffer
         self.max_log_lines = MAX_LOG_LINES
         self.detected_pid: Optional[int] = None  # PID of externally running process
         self.started_pid: Optional[int] = None  # PID of process we started (for detached processes)
@@ -97,6 +99,12 @@ class ServiceProcess:
 
         # Console log file persistence
         self.log_file_path = str(console_log_file(defn.key))
+        self._log_writer = LogWriter(
+            self.log_file_path,
+            max_bytes=LOG_FILE_MAX_BYTES,
+            backups=LOG_FILE_BACKUP_COUNT,
+            max_line_chars=CONSOLE_MAX_LINE_CHARS,
+        )
         self._ensure_log_dir()
         self._buffer_char_count = 0
         self._log_file_position = 0  # Track position in log file for incremental reading
@@ -181,7 +189,7 @@ class ServiceProcess:
                     self.externally_managed = True
                     self.health_status = HealthStatus.STARTING
                     _log("loaded_persisted_pid", service_key=self.defn.key, pid=stored_pid)
-                    # Recover companion PIDs (e.g. retry/simulation workers)
+                    # Recover companion PIDs (e.g. retry worker)
                     companion = entry.get("companion_pids", [])
                     if companion:
                         alive = [int(p) for p in companion if pid_store.is_pid_running(int(p))]
@@ -349,20 +357,20 @@ class ServiceProcess:
         )
 
     def _build_companion_worker_cmds(self, primary_cmd: list[str]) -> list[list[str]]:
-        """Build companion worker commands (retry + simulation) for the ARQ worker service."""
+        """Build companion worker commands (retry only) for the ARQ worker service.
+
+        The simulation worker is managed as its own independent service card
+        (simulation-worker) and is NOT spawned as a companion here.
+        """
         if self.defn.key != "worker":
             return []
         marker = "pixsim7.backend.main.workers.arq_worker.WorkerSettings"
         retry_marker = "pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings"
-        simulation_marker = "pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings"
         if not any(arg == marker for arg in primary_cmd):
             return []
-        companions: list[list[str]] = []
-        for companion_marker in (retry_marker, simulation_marker):
-            companions.append(
-                [companion_marker if arg == marker else arg for arg in primary_cmd]
-            )
-        return companions
+        return [
+            [retry_marker if arg == marker else arg for arg in primary_cmd]
+        ]
 
     def _kill_extra_started_processes(self, graceful: bool) -> None:
         """Best-effort kill companion detached processes started with this service."""
@@ -418,7 +426,6 @@ class ServiceProcess:
                         if (
                             "pixsim7.backend.main.workers.arq_worker.WorkerSettings" in cmd
                             or "pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings" in cmd
-                            or "pixsim7.backend.main.workers.arq_worker.SimulationWorkerSettings" in cmd
                         ):
                             found.append(int(pid))
             else:
@@ -440,7 +447,6 @@ class ServiceProcess:
                     if (
                         "arq_worker.WorkerSettings" in cmd
                         or "GenerationRetryWorkerSettings" in cmd
-                        or "SimulationWorkerSettings" in cmd
                     ):
                         found.append(pid)
         except Exception:
@@ -488,37 +494,33 @@ class ServiceProcess:
         except Exception as e:
             _log("failed_to_load_console_log", "warning", service_key=self.defn.key, error=str(e))
 
-    def _persist_log_line(self, line: str, *, sanitized: bool = False):
-        """Append a log line to the persistent file."""
-        try:
-            if not sanitized:
-                line = self._sanitize_log_line(line)
-            rotated = rotate_file(self.log_file_path, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT)
-            if rotated:
-                self._log_file_position = 0
-            append_line(self.log_file_path, line + '\n')
-        except Exception:
-            # Silently fail - don't interrupt logging if file write fails
-            pass
+    def _persist_log_line(self, line, *, sanitized: bool = False):
+        """Append a log line to the persistent file via the shared LogWriter."""
+        self._log_writer.write(line, already_sanitized=sanitized)
 
-    def _append_log_buffer(self, line: str):
-        """Append sanitized line to buffer enforcing char/line caps."""
+    def _append_log_buffer(self, line: str) -> LogRecord:
+        """Append sanitized line to buffer enforcing char/line caps.
+
+        Returns a ``LogRecord`` with pre-parsed structured fields when the
+        line is valid JSON (structlog default format).
+        """
         # Keep ANSI sequences in the stored line so the console
         # formatter can render colors/styles. Only clamp extremely
         # long lines for performance.
         sanitized = self._sanitize_log_line(line)
+        record = _parse_log_line(sanitized)
         # deque(maxlen) auto-evicts oldest on append (O(1)),
         # but we need to track char count for the secondary cap.
         if len(self.log_buffer) == self.log_buffer.maxlen:
             removed = self.log_buffer[0]  # about to be evicted
             self._buffer_char_count -= len(removed)
-        self.log_buffer.append(sanitized)
-        self._buffer_char_count += len(sanitized)
+        self.log_buffer.append(record)
+        self._buffer_char_count += len(record)
         # Secondary cap: evict oldest if total chars exceed budget
         while self._buffer_char_count > CONSOLE_MAX_BUFFER_CHARS and self.log_buffer:
             removed = self.log_buffer.popleft()
             self._buffer_char_count -= len(removed)
-        return sanitized
+        return record
 
     def _truncate_open_log_file(self):
         """Truncate a log file that can't be renamed (subprocess holds it open on Windows).
@@ -569,9 +571,10 @@ class ServiceProcess:
                 for line in new_lines:
                     line = line.rstrip()
                     if line:
-                        sanitized = self._append_log_buffer(line)
-                        if '[ERR]' in sanitized or '[ERROR]' in sanitized:
-                            parts = sanitized.split('] ', 2)
+                        record = self._append_log_buffer(line)
+                        raw = record.raw
+                        if '[ERR]' in raw or '[ERROR]' in raw:
+                            parts = raw.split('] ', 2)
                             if len(parts) >= 3:
                                 self.last_error_line = parts[2]
 
@@ -638,8 +641,8 @@ class ServiceProcess:
             try:
                 # Only add if not already in recent buffer (avoid duplicates)
                 n = len(self.log_buffer)
-                recent = [self.log_buffer[n - 1 - i] for i in range(min(20, n))]
-                if formatted not in recent:
+                recent_raw = {self.log_buffer[n - 1 - i].raw for i in range(min(20, n))}
+                if formatted not in recent_raw:
                     self._append_log_buffer(formatted)
                     self._persist_log_line(formatted, sanitized=True)
             except Exception:
@@ -800,7 +803,8 @@ class ServiceProcess:
             self.last_error_line = ''
             self.detected_pid = None  # Clear any detected PID since we're starting fresh
 
-            # Worker service companions: start retry + simulation workers under the same launcher card.
+            # Worker service companions: start retry worker under the same launcher card.
+            # (Simulation worker is managed independently via its own service card.)
             companion_cmds = self._build_companion_worker_cmds(cmd)
             if companion_cmds:
                 # Kill any stale worker-family processes left over from a previous
@@ -818,11 +822,7 @@ class ServiceProcess:
                         companion_role = (
                             "retry"
                             if any("GenerationRetryWorkerSettings" in part for part in companion_cmd)
-                            else (
-                                "simulation"
-                                if any("SimulationWorkerSettings" in part for part in companion_cmd)
-                                else "unknown"
-                            )
+                            else "unknown"
                         )
                         _log(
                             "worker_companion_started_detached",
@@ -1118,11 +1118,7 @@ class ServiceProcess:
 
     def _sanitize_log_line(self, line: str) -> str:
         """Clamp extremely long log lines to keep GUI responsive."""
-        if line and len(line) > CONSOLE_MAX_LINE_CHARS:
-            trimmed = line[-CONSOLE_MAX_LINE_CHARS:]
-            omitted = len(line) - CONSOLE_MAX_LINE_CHARS
-            return f"... ⏬ truncated {omitted} chars ⏬ ... {trimmed}"
-        return line
+        return sanitize_line(line, CONSOLE_MAX_LINE_CHARS)
 
     def _capture(self, is_err: bool):
         if not self.proc:

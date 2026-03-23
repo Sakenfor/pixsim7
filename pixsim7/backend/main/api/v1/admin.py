@@ -943,3 +943,49 @@ async def update_logging_config(
     )
 
     return LoggingSettings(log_domain_levels=active)
+
+
+class LogPurgeRequest(BaseModel):
+    """Optional filters for log purge.  If no filters given, deletes ALL log entries."""
+    older_than_days: int | None = Field(None, ge=0, description="Delete entries older than N days (0 = all)")
+
+
+@router.post("/admin/logging/purge")
+async def purge_logs(
+    body: LogPurgeRequest,
+    admin: CurrentAdminUser,
+    db: DatabaseSession,
+):
+    """Manually purge log entries (admin only).
+
+    With ``older_than_days=0`` (or omitted) this truncates the entire table.
+    """
+    from pixsim7.backend.main.infrastructure.database.session import AsyncLogSessionLocal
+    from sqlalchemy import text
+
+    try:
+        async with AsyncLogSessionLocal() as log_db:
+            if body.older_than_days is not None and body.older_than_days > 0:
+                result = await log_db.execute(
+                    text(
+                        "DELETE FROM log_entries "
+                        "WHERE timestamp < now() - make_interval(days => :days)"
+                    ),
+                    {"days": body.older_than_days},
+                )
+            else:
+                result = await log_db.execute(text("TRUNCATE TABLE log_entries"))
+            await log_db.commit()
+            deleted = result.rowcount if result.rowcount and result.rowcount >= 0 else None
+
+        logger.info(
+            "Manual log purge by admin %s: older_than_days=%s, deleted=%s",
+            admin.username,
+            body.older_than_days,
+            deleted,
+        )
+        return {"deleted": deleted, "older_than_days": body.older_than_days}
+
+    except Exception as e:
+        logger.error("Log purge failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Purge failed: {e}")

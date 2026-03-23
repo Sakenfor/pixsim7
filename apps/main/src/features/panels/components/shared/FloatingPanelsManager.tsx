@@ -1,6 +1,6 @@
 import { IconButton, Z } from "@pixsim7/shared.ui";
 import { runAnimation } from "@pixsim7/shared.ui";
-import { memo, useCallback, useState, useRef, useEffect } from "react";
+import { memo, useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { Rnd } from "react-rnd";
 
 import { readFloatingOriginMeta, stripFloatingOriginMeta } from "@lib/dockview/floatingPanelInterop";
@@ -219,8 +219,58 @@ function FloatingPanelContextProvider({
   return <>{children}</>;
 }
 
+// ── Overlap detection ────────────────────────────────────────────────
+
+/** Check whether two axis-aligned rects overlap (non-zero intersection). */
+function rectsOverlap(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+/**
+ * Compute which panels should be dimmed.
+ *
+ * A panel dims only when it overlaps the focused panel and is NOT the
+ * focused panel itself.  Panels that sit on their own with no overlap
+ * stay at full opacity regardless of focus state.
+ */
+function computeDimmedPanels(
+  panels: FloatingPanelState[],
+  focusedId: string | null,
+): Set<string> {
+  const dimmed = new Set<string>();
+  if (!focusedId || panels.length < 2) return dimmed;
+
+  const focused = panels.find((p) => p.id === focusedId);
+  if (!focused) return dimmed;
+
+  const focusedRect = {
+    x: focused.x,
+    y: focused.y,
+    width: focused.width,
+    height: focused.minimized ? 42 : focused.height,
+  };
+
+  for (const p of panels) {
+    if (p.id === focusedId) continue;
+    const pRect = {
+      x: p.x,
+      y: p.y,
+      width: p.width,
+      height: p.minimized ? 42 : p.height,
+    };
+    if (rectsOverlap(focusedRect, pRect)) {
+      dimmed.add(p.id);
+    }
+  }
+  return dimmed;
+}
+
 interface FloatingPanelProps {
   panel: FloatingPanelState;
+  dimmed: boolean;
   onDragStateChange: (panelId: string, isDragging: boolean, zone: DropZone | null, target: DragToDockTarget | null) => void;
   catalogVersion: number;
   activeProjectId: number | null;
@@ -230,6 +280,7 @@ interface FloatingPanelProps {
 
 const FloatingPanel = memo(function FloatingPanel({
   panel,
+  dimmed,
   onDragStateChange,
   catalogVersion,
   activeProjectId,
@@ -247,8 +298,6 @@ const FloatingPanel = memo(function FloatingPanel({
   const bringFloatingPanelToFront = useWorkspaceStore(
     (s) => s.bringFloatingPanelToFront
   );
-  const focusedId = useWorkspaceStore((s) => s.focusedFloatingPanelId);
-  const isUnfocused = focusedId !== null && focusedId !== panel.id;
   const minimizePanelToCube = useCubeStore((s) => s.minimizePanelToCube);
   const cubesVisible = useCubeSettingsStore((s) => s.visible);
   const setCubesVisible = useCubeSettingsStore((s) => s.setVisible);
@@ -476,9 +525,9 @@ const FloatingPanel = memo(function FloatingPanel({
       dragHandleClassName="floating-panel-header"
       style={{
         zIndex: Z.floatPanel + panel.zIndex,
-        opacity: isUnfocused ? 0.45 : 1,
+        opacity: dimmed ? 0.45 : 1,
         transition: 'opacity 0.2s ease-out',
-        pointerEvents: isUnfocused ? 'none' : undefined,
+        pointerEvents: dimmed ? 'none' : undefined,
       }}
       className="floating-panel"
       disableDragging={flyingAway}
@@ -488,7 +537,7 @@ const FloatingPanel = memo(function FloatingPanel({
         {/* Header — stays interactive when unfocused so users can re-focus */}
         <div
           className="floating-panel-header flex items-center justify-between cursor-move select-none px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border-b dark:border-neutral-700"
-          style={isUnfocused ? { pointerEvents: 'auto' } : undefined}
+          style={dimmed ? { pointerEvents: 'auto' } : undefined}
           onMouseDown={() => bringFloatingPanelToFront(panel.id)}
           onDoubleClick={() => useWorkspaceStore.getState().minimizeFloatingPanel(panel.id)}
         >
@@ -595,16 +644,16 @@ export function FloatingPanelsManager() {
   } = useSharedProjectSelection({ loadCatalog: false });
   const [catalogVersion, setCatalogVersion] = useState(0);
 
-  // Blur floating panels when clicking outside any floating panel
+  // Clear focused floating panel only when all floating panels are closed.
+  // We intentionally do NOT blur on every outside click — that caused
+  // distracting opacity flicker whenever the user re-focused a dockview panel.
+  // Instead, non-focused floating panels stay faded until the user clicks a
+  // different floating panel (which updates focusedFloatingPanelId).
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest('.floating-panel')) return;
+    if (floatingPanels.length === 0) {
       useWorkspaceStore.getState().blurFloatingPanels();
-    };
-    document.addEventListener('mousedown', handler, true);
-    return () => document.removeEventListener('mousedown', handler, true);
-  }, []);
+    }
+  }, [floatingPanels.length]);
 
   // Defer rendering persisted floating panels until the panel catalog has
   // been populated.  Without this guard, panels mount before definitions are
@@ -652,6 +701,13 @@ export function FloatingPanelsManager() {
     });
   }, []);
 
+  // Compute which panels should dim based on overlap with the focused panel.
+  const focusedId = useWorkspaceStore((s) => s.focusedFloatingPanelId);
+  const dimmedIds = useMemo(
+    () => computeDimmedPanels(floatingPanels, focusedId),
+    [floatingPanels, focusedId],
+  );
+
   // Don't render floating panels until panel definitions are available.
   // The DropZoneOverlay is always safe to render.
   return (
@@ -661,6 +717,7 @@ export function FloatingPanelsManager() {
           <FloatingPanel
             key={panel.id}
             panel={panel}
+            dimmed={dimmedIds.has(panel.id)}
             onDragStateChange={handleDragStateChange}
             catalogVersion={catalogVersion}
             activeProjectId={activeProjectId}

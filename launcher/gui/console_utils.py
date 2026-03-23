@@ -10,13 +10,6 @@ try:
 except ImportError:  # pragma: no cover - fallback for direct execution
     from log_formatter import build_log_header_html
 
-# Import API client for fetching field metadata
-try:
-    from launcher.core.api import get_console_field_metadata
-except ImportError:
-    # Fallback if import fails
-    def get_console_field_metadata(*args, **kwargs):
-        return None
 
 # Level detection patterns
 CONSOLE_LEVEL_PATTERNS = {
@@ -33,6 +26,16 @@ CONSOLE_CHANNEL_REGEX = re.compile(
 )
 
 KNOWN_CHANNELS = ("api", "pipeline", "cron", "system")
+
+# Domain detection: matches domain=VALUE (human format) or "domain": "VALUE" (JSON format)
+CONSOLE_DOMAIN_REGEX = re.compile(
+    r'''(?:domain=(\S+)|"domain"\s*:\s*"([^"]+)")''',
+)
+
+# Service detection: matches service=VALUE or "service": "VALUE"
+CONSOLE_SERVICE_REGEX = re.compile(
+    r'''(?:service=(\S+)|"service"\s*:\s*"([^"]+)")''',
+)
 
 CONSOLE_LEVEL_STYLES = {
     "DEBUG": {"accent": "#64B5F6", "bg": "rgba(100,181,246,0.08)"},
@@ -109,98 +112,41 @@ def is_low_signal_line(line: str) -> bool:
             return True
     return False
 
-# ===== Console Field Metadata (Dynamic) =====
+# ===== Console Field Metadata =====
+#
+# Sourced from the shared pixsim_logging.reader.field_registry — single
+# source of truth for field names, colors, and clickability.
 
-# Default fallback definitions (used if API is unavailable)
-DEFAULT_STRUCT_FIELDS = {
-    "provider_id": {"color": "#4DD0E1", "clickable": True},
-    "job_id": {"color": "#FFB74D", "clickable": True},
-    "submission_id": {"color": "#FFB74D", "clickable": True},
-    "generation_id": {"color": "#FFB74D", "clickable": True},
-    "request_id": {"color": "#FFB74D", "clickable": True},
-    "error_type": {"color": "#EF5350", "clickable": False},
-}
+from pixsim_logging.reader import field_registry as _shared_registry
 
-# Cache for field metadata
+# Build cached metadata directly from the shared registry.
+# No API call needed — the registry is available in-process.
 _field_metadata_cache: Optional[Dict[str, Any]] = None
 
 
-def load_console_field_metadata(api_url: str = "http://localhost:8000") -> Dict[str, Any]:
-    """
-    Load console field metadata from backend API with caching.
+def _build_field_metadata() -> Dict[str, Any]:
+    """Build regex + color + clickable maps from the shared field registry."""
+    fields = _shared_registry.get_all()
+    field_names = [f.name for f in fields]
+    colors = {f.name: f.color for f in fields}
+    clickable_fields = {f.name for f in fields if f.clickable}
 
-    Fetches field definitions from /api/v1/logs/console-fields and builds
-    regex patterns and color maps. Falls back to hardcoded defaults if API fails.
+    pattern = r'\b(' + '|'.join(field_names) + r')=(\S+)' if field_names else r'(?!)'
+    regex = re.compile(pattern)
 
-    Args:
-        api_url: Backend API URL
-
-    Returns:
-        Dict with 'regex', 'colors', and 'clickable_fields' keys
-    """
-    global _field_metadata_cache
-
-    # Return cached metadata if available
-    if _field_metadata_cache is not None:
-        return _field_metadata_cache
-
-    # Try to fetch from API
-    fields = get_console_field_metadata(api_url=api_url, use_cache=True, timeout=2)
-
-    if fields:
-        # Build metadata from API response
-        field_names = []
-        colors = {}
-        clickable_fields = set()
-
-        for field_def in fields:
-            name = field_def.get('name')
-            if not name:
-                continue
-
-            field_names.append(name)
-            colors[name] = field_def.get('color', '#4DD0E1')
-
-            if field_def.get('clickable', False):
-                clickable_fields.add(name)
-
-        # Build regex pattern for all fields
-        if field_names:
-            pattern = r'\b(' + '|'.join(field_names) + r')=(\S+)'
-            regex = re.compile(pattern)
-        else:
-            # Fallback to default
-            regex = re.compile(r'\b(provider_id|job_id|submission_id|generation_id|request_id|error_type)=(\S+)')
-            colors = {k: v["color"] for k, v in DEFAULT_STRUCT_FIELDS.items()}
-            clickable_fields = {k for k, v in DEFAULT_STRUCT_FIELDS.items() if v["clickable"]}
-    else:
-        # API failed, use defaults
-        field_names = list(DEFAULT_STRUCT_FIELDS.keys())
-        regex = re.compile(r'\b(' + '|'.join(field_names) + r')=(\S+)')
-        colors = {k: v["color"] for k, v in DEFAULT_STRUCT_FIELDS.items()}
-        clickable_fields = {k for k, v in DEFAULT_STRUCT_FIELDS.items() if v["clickable"]}
-
-    _field_metadata_cache = {
+    return {
         'regex': regex,
         'colors': colors,
-        'clickable_fields': clickable_fields
+        'clickable_fields': clickable_fields,
     }
-
-    return _field_metadata_cache
 
 
 def get_struct_field_metadata() -> Dict[str, Any]:
-    """Get cached or freshly loaded field metadata."""
+    """Get field metadata for console rendering (cached)."""
+    global _field_metadata_cache
     if _field_metadata_cache is None:
-        return load_console_field_metadata()
+        _field_metadata_cache = _build_field_metadata()
     return _field_metadata_cache
-
-
-# Legacy constants for backward compatibility (will use dynamic values)
-STRUCT_FIELD_REGEX = re.compile(
-    r'\b(provider_id|job_id|submission_id|generation_id|request_id|error_type)=(\S+)',
-)
-STRUCT_FIELD_COLORS = {k: v["color"] for k, v in DEFAULT_STRUCT_FIELDS.items()}
 
 # ANSI / SGR detection and stripping
 ANSI_SGR_REGEX = re.compile(r'(\x1b\[|\[)([0-9;]{1,5})m')
@@ -238,6 +184,32 @@ def detect_console_channel(line: str) -> str | None:
         value = (m.group(1) or m.group(2) or "").lower()
         if value in KNOWN_CHANNELS:
             return value
+    return None
+
+
+def detect_console_domain(line: str) -> str | None:
+    """Detect domain from a console log line.
+
+    Matches ``domain=VALUE`` or ``"domain": "VALUE"``.
+    Returns the domain string lowercased, or None if not found.
+    """
+    clean = strip_ansi(line)
+    m = CONSOLE_DOMAIN_REGEX.search(clean)
+    if m:
+        return (m.group(1) or m.group(2) or "").lower()
+    return None
+
+
+def detect_console_service(line: str) -> str | None:
+    """Detect service name from a console log line.
+
+    Matches ``service=VALUE`` or ``"service": "VALUE"``.
+    Returns the service string, or None if not found.
+    """
+    clean = strip_ansi(line)
+    m = CONSOLE_SERVICE_REGEX.search(clean)
+    if m:
+        return (m.group(1) or m.group(2) or "").strip('"')
     return None
 
 

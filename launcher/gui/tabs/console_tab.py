@@ -107,6 +107,21 @@ class ConsoleTab:
         reg('console_channel_toggles', QWidget())  # placeholder for registration
         launcher.console_channel_toggles = channel_toggles
 
+        # Domain / service scope dropdown
+        console_scope_combo = reg('console_scope_combo', QComboBox())
+        console_scope_combo.addItem("All scopes")
+        # ── Domain scopes (business area) ──
+        for d in ("generation", "provider", "account", "audit", "system", "worker"):
+            console_scope_combo.addItem(f"domain: {d}")
+        # ── Service scopes (process namespace) ──
+        for s in ("api", "worker", "startup", "provider.*"):
+            console_scope_combo.addItem(f"service: {s}")
+        console_scope_combo.setFixedWidth(130)
+        console_scope_combo.setToolTip("Filter by domain (business area) or service (process namespace)")
+        console_scope_combo.setStyleSheet(theme.get_combobox_stylesheet())
+        console_scope_combo.currentTextChanged.connect(lambda _: launcher._on_console_filter_changed())
+        toolbar.addWidget(console_scope_combo)
+
         console_search_input = reg('console_search_input', QLineEdit())
         console_search_input.setPlaceholderText("Search logs (Ctrl+F)...")
         console_search_input.setFixedWidth(180)

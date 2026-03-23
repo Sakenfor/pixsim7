@@ -19,14 +19,18 @@ from .domains import is_domain_enabled, update_domain_config
 from .spec import COMMON_FIELDS, STAGES, DOMAINS, redact_sensitive, bind_job_context, bind_generation_context, bind_domain_context
 from .file_rotation import rotate_file, append_line
 from .console_renderer import CleanConsoleRenderer
+from .reader import LogRecord, parse_line, parse_lines, field_registry, tail_file, FieldDefinition, FieldRegistry, sanitize_line, LogWriter
 
 __all__ = [
+    # Configuration
     "configure_logging",
     "configure_stdlib_root_logger",
     "get_logger",
     "get_ingestion_stats",
+    # Domain filtering
     "is_domain_enabled",
     "update_domain_config",
+    # Spec & context
     "COMMON_FIELDS",
     "STAGES",
     "DOMAINS",
@@ -34,7 +38,19 @@ __all__ = [
     "bind_job_context",
     "bind_generation_context",
     "bind_domain_context",
+    # File utilities
     "rotate_file",
     "append_line",
+    # Rendering
     "CleanConsoleRenderer",
+    # Reading & consumption
+    "LogRecord",
+    "parse_line",
+    "parse_lines",
+    "field_registry",
+    "tail_file",
+    "FieldDefinition",
+    "FieldRegistry",
+    "sanitize_line",
+    "LogWriter",
 ]
