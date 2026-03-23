@@ -223,11 +223,18 @@ export type MediaCardProps = MediaCardAssetProps | MediaCardLegacyProps;
 function resolveMediaCardProps(props: MediaCardProps): MediaCardResolvedProps {
   if ('asset' in props && props.asset) {
     const { asset, ...runtime } = props as MediaCardAssetProps;
-    return {
+    const resolved = {
       ...mediaCardPropsFromAsset(asset),
       contextMenuAsset: asset,
       ...runtime,
     };
+    // When upload state says success but the asset model has no provider status
+    // (e.g., local folder card recognized via hash check before linked asset hydration),
+    // fill in a provider status so the badge renders.
+    if (runtime.uploadState === 'success' && !resolved.providerStatus) {
+      resolved.providerStatus = 'local_only';
+    }
+    return resolved;
   }
   return props as MediaCardResolvedProps;
 }
