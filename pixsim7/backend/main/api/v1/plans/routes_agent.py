@@ -11,6 +11,7 @@ from pixsim7.backend.main.domain.docs.models import PlanRegistry
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim7.backend.main.services.docs.plan_write import (
     PlanBundle,
+    get_plan_documents,
     get_plan_bundle,
     list_plan_bundles,
 )
@@ -273,7 +274,7 @@ async def get_agent_context(
                 "action": "create_review_request",
                 "method": "POST",
                 "url": "/dev/plans/reviews/{plan_id}/requests",
-                "body": '{"round_id": "uuid|null", "title": "...", "body": "...", "target_mode": "auto|session|recent_agent", "target_session_id": "agent-id", "preferred_agent_id": "agent-id", "target_profile_id": "profile-id", "target_method": "remote", "target_model_id": "claude-3-7-sonnet", "target_provider": "anthropic", "queue_if_busy": false, "auto_reroute_if_busy": true}',
+                "body": '{"round_id": "uuid|null", "title": "...", "body": "...", "target_mode": "auto|session|recent_agent", "target_bridge_id": "bridge-uuid", "target_session_id": "agent-id", "preferred_agent_id": "agent-id", "target_profile_id": "profile-id", "target_method": "remote", "target_model_id": "claude-3-7-sonnet", "target_provider": "anthropic", "queue_if_busy": false, "auto_reroute_if_busy": true}',
                 "description": "Create a review request with dispatcher targeting policy (auto, pinned live session, or preferred recent agent).",
             },
             {
@@ -340,5 +341,4 @@ async def get_agent_context(
 
 
 # ── Plan documents endpoint ───────────────────────────────────────
-
 
