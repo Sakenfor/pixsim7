@@ -71,15 +71,30 @@ _raw = os.getenv("PIXSIM_LOG_DOMAINS", "")
 _DOMAIN_CONFIG: Dict[str, int] = parse_domain_config(_raw) if _raw else {}
 
 
+# Runtime-mutable global minimum level.  Read by _global_level_filter_processor
+# on every event.  Default DEBUG = no filtering (let domain/structlog wrapper decide).
+_GLOBAL_MIN_LEVEL: int = logging.DEBUG
+
+
 def update_global_level(level: str) -> None:
     """Update the global (root) log level at runtime.
 
     Accepts DEBUG / INFO / WARNING / ERROR / CRITICAL.
+    Sets both the structlog processor filter and the stdlib root logger.
     """
+    global _GLOBAL_MIN_LEVEL
     level = level.strip().upper()
     numeric = getattr(logging, level, None)
     if isinstance(numeric, int):
+        _GLOBAL_MIN_LEVEL = numeric
         logging.getLogger().setLevel(numeric)
+
+
+def get_global_level_display() -> str:
+    """Return current global min level as a string for API responses."""
+    if _GLOBAL_MIN_LEVEL <= logging.DEBUG:
+        return "DEBUG"
+    return logging.getLevelName(_GLOBAL_MIN_LEVEL)
 
 
 def update_domain_config(levels: Dict[str, str]) -> None:
@@ -116,6 +131,30 @@ def is_domain_enabled(domain: str, at_level: str = "DEBUG") -> bool:
         return False
     requested = getattr(logging, at_level.upper(), logging.DEBUG)
     return requested >= threshold
+
+
+def _global_level_filter_processor(
+    logger, method_name: str, event_dict: dict
+):
+    """Structlog processor that drops events below the runtime global level.
+
+    structlog's ``make_filtering_bound_logger`` is set once at configure time
+    and cached.  This processor provides a mutable global level gate that can
+    be changed at runtime via ``update_global_level()``.
+    """
+    if _GLOBAL_MIN_LEVEL <= logging.DEBUG:
+        return event_dict  # no-op when at DEBUG (default)
+
+    level_name = event_dict.get("level", "info")
+    if isinstance(level_name, str):
+        event_level = getattr(logging, level_name.upper(), logging.INFO)
+    else:
+        event_level = logging.INFO
+
+    if event_level < _GLOBAL_MIN_LEVEL:
+        raise structlog.DropEvent
+
+    return event_dict
 
 
 def _domain_filter_processor(

@@ -101,6 +101,21 @@ async def _load_persisted_system_config_for_worker() -> None:
         logger.warning("worker_system_config_load_failed", error=str(e))
 
 
+async def reload_logging_config(ctx: dict) -> None:
+    """Periodic reload of logging config from DB so UI changes take effect in worker."""
+    try:
+        from pixsim7.backend.main.infrastructure.database.session import get_async_session
+        from pixsim7.backend.main.services.system_config import get_config, apply_namespace
+        import pixsim7.backend.main.services.system_config.appliers  # noqa: F401
+
+        async with get_async_session() as db:
+            data = await get_config(db, "logging")
+        if data:
+            apply_namespace("logging", data)
+    except Exception:
+        pass  # Best-effort; next cycle will retry
+
+
 async def startup(ctx: dict) -> None:
     """
     Worker startup handler
@@ -300,6 +315,7 @@ class WorkerSettings:
         requeue_pending_analyses,
         poll_device_ads,
         cleanup_old_logs,
+        reload_logging_config,
     ]
 
     # Cron jobs (periodic tasks)
@@ -362,6 +378,12 @@ class WorkerSettings:
             second={0},
             run_at_startup=False,
         ),
+        # Reload logging config from DB every 60s (picks up UI changes)
+        cron(
+            reload_logging_config,
+            second={10},  # Once per minute, offset from heartbeat
+            run_at_startup=False,  # Already loaded in startup
+        ),
     ]
 
     # Lifecycle handlers
@@ -390,11 +412,17 @@ class GenerationRetryWorkerSettings:
 
     functions = [
         process_generation,
+        reload_logging_config,
     ]
     cron_jobs = [
         cron(
             update_retry_heartbeat,
             second={0, 30},
+            run_at_startup=False,
+        ),
+        cron(
+            reload_logging_config,
+            second={10},
             run_at_startup=False,
         ),
     ]
