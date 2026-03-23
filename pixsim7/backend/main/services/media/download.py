@@ -65,7 +65,7 @@ async def download_file(asset: "Asset", settings: "MediaSettings") -> str:
     ext = guess_extension(asset)
 
     # Download with retries
-    max_retries = 3
+    max_retries = 6
     retry_delay = 2.0
 
     for attempt in range(max_retries):
@@ -158,13 +158,16 @@ async def download_file(asset: "Asset", settings: "MediaSettings") -> str:
             else:
                 raise
         except httpx.HTTPStatusError as e:
-            # Retry on 404 - CDN propagation delay after generation
+            # Retry on 404 - CDN propagation delay after generation.
+            # Provider CDNs (especially PixVerse) can take 30-90s to
+            # propagate after reporting a video as "completed".
             if e.response.status_code == 404 and attempt < max_retries - 1:
-                propagation_delay = 5.0 * (attempt + 1)
+                propagation_delay = 10.0 * (attempt + 1)
                 logger.warning(
                     "download_retry_404",
                     asset_id=asset.id,
                     attempt=attempt + 1,
+                    max_attempts=max_retries,
                     delay=propagation_delay,
                     detail="CDN propagation delay - retrying",
                 )

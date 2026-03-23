@@ -7,6 +7,7 @@ Handles both image (Pillow) and video (ffmpeg) sources.
 from __future__ import annotations
 
 import asyncio
+import json
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -90,6 +91,12 @@ async def _generate_video_thumbnail(
 
     storage = get_storage_service()
 
+    # Validate video is actually playable before attempting frame extraction.
+    # Provider CDNs can return HTTP 200 for not-yet-encoded videos; these
+    # files either make ffmpeg fail or produce blank grey frames.
+    if not _validate_video_for_thumbnail(asset, local_path):
+        return
+
     # Ensure rotation metadata is available so thumbnails are oriented correctly.
     ensure_video_rotation(asset, local_path)
 
@@ -130,6 +137,15 @@ async def _generate_video_thumbnail(
                 asset_id=asset.id,
                 stderr=result.stderr.decode()[:200],
             )
+            return
+
+        # Verify the extracted frame is a valid, non-degenerate image.
+        # Partially-encoded videos can produce tiny grey placeholder frames.
+        if not _validate_extracted_frame(thumb_path, asset.id):
+            try:
+                Path(thumb_path).unlink(missing_ok=True)
+            except OSError:
+                pass
             return
 
         asset.thumbnail_key = thumb_key
@@ -239,6 +255,10 @@ async def _generate_video_preview(
 
     storage = get_storage_service()
 
+    # Validate video is playable (same check as thumbnail)
+    if not _validate_video_for_thumbnail(asset, local_path):
+        return
+
     # Ensure rotation metadata is available so previews are oriented correctly.
     ensure_video_rotation(asset, local_path)
 
@@ -300,6 +320,13 @@ async def _generate_video_preview(
             )
             return
 
+        if not _validate_extracted_frame(preview_path, asset.id):
+            try:
+                Path(preview_path).unlink(missing_ok=True)
+            except OSError:
+                pass
+            return
+
         asset.preview_key = preview_key
 
         logger.debug(
@@ -316,6 +343,133 @@ async def _generate_video_preview(
             asset_id=asset.id,
             detail="ffmpeg not available for video preview generation"
         )
+
+
+# ── Validation ────────────────────────────────────────────────────────────
+
+# Minimum file size (bytes) for a valid JPEG frame.  A fully grey/blank
+# 256×144 JPEG compresses to well under 1 KB; real video frames are larger.
+_MIN_FRAME_SIZE_BYTES = 1024
+
+
+def _validate_video_for_thumbnail(asset: "Asset", local_path: str) -> bool:
+    """
+    Quick-check that a downloaded video is complete enough for frame extraction.
+
+    Provider CDNs sometimes return HTTP 200 with a file that is still being
+    encoded.  ffmpeg may then either fail or extract a blank grey frame.
+    We use ffprobe to verify the file has a decodable video stream with
+    non-zero duration before attempting extraction.
+    """
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=duration,nb_frames,codec_name:format=duration",
+            "-of", "json",
+            local_path,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if result.returncode != 0:
+            logger.warning(
+                "video_thumbnail_skipped_probe_failed",
+                asset_id=asset.id,
+                stderr=result.stderr[:200],
+            )
+            return False
+
+        data = json.loads(result.stdout)
+        streams = data.get("streams", [])
+        if not streams:
+            logger.warning(
+                "video_thumbnail_skipped_no_stream",
+                asset_id=asset.id,
+            )
+            return False
+
+        # Check for non-zero duration (prefer stream, fallback to format)
+        stream_dur = streams[0].get("duration")
+        format_dur = (data.get("format") or {}).get("duration")
+        duration = float(stream_dur or format_dur or 0)
+        if duration <= 0:
+            logger.warning(
+                "video_thumbnail_skipped_zero_duration",
+                asset_id=asset.id,
+                detail="Video has zero duration — likely not fully encoded yet",
+            )
+            return False
+
+        return True
+
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+        logger.warning(
+            "video_thumbnail_skipped_probe_error",
+            asset_id=asset.id,
+            error=str(e),
+        )
+        return False
+
+
+def _validate_extracted_frame(frame_path: str, asset_id: int) -> bool:
+    """
+    Verify an ffmpeg-extracted frame is a real image, not a blank/grey
+    placeholder.  Checks file size and pixel variance.
+    """
+    path = Path(frame_path)
+    if not path.exists():
+        logger.warning("extracted_frame_missing", asset_id=asset_id)
+        return False
+
+    size = path.stat().st_size
+    if size < _MIN_FRAME_SIZE_BYTES:
+        logger.warning(
+            "extracted_frame_too_small",
+            asset_id=asset_id,
+            size_bytes=size,
+            detail="Extracted frame is suspiciously small — likely blank",
+        )
+        return False
+
+    # Check that the image has meaningful content (not a uniform grey frame).
+    # A real video frame will have pixel variance; a placeholder won't.
+    try:
+        from PIL import Image
+        from statistics import stdev as _stdev
+
+        with Image.open(frame_path) as img:
+            # Sample a small thumbnail to keep this fast
+            small = img.resize((32, 32)).convert("L")
+            pixels = list(small.getdata())
+            if len(set(pixels)) <= 2:
+                # Effectively uniform — blank or near-blank frame
+                logger.warning(
+                    "extracted_frame_blank",
+                    asset_id=asset_id,
+                    unique_values=len(set(pixels)),
+                    detail="Frame appears blank (uniform grey) — video likely not ready",
+                )
+                return False
+            # Also check standard deviation — very low stdev means near-uniform
+            stdev = _stdev(pixels)
+            if stdev < 3.0:
+                logger.warning(
+                    "extracted_frame_near_blank",
+                    asset_id=asset_id,
+                    stdev=round(stdev, 2),
+                    detail="Frame has extremely low variance — likely placeholder",
+                )
+                return False
+    except Exception as e:
+        logger.warning(
+            "extracted_frame_validation_error",
+            asset_id=asset_id,
+            error=str(e),
+        )
+        # If we can't validate, allow it (better than blocking all thumbnails)
+        return True
+
+    return True
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────

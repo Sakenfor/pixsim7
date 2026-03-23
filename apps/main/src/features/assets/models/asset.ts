@@ -20,9 +20,9 @@ function ensureUtcTimestamp(ts: string): string {
 }
 
 import { BACKEND_BASE } from '@lib/api/client';
-import { resolveAssetUrl, resolvePreviewUrl, resolveThumbnailUrl } from '@lib/assetUrlResolver';
 import { ensureBackendAbsolute } from '@lib/media/backendUrl';
 
+import { resolveAssetUrl, resolvePreviewUrl, resolveThumbnailUrl } from '../lib/assetUrlResolver';
 import type { SelectedAsset } from '../stores/assetSelectionStore';
 import type { ViewerAsset } from '../stores/assetViewerStore';
 

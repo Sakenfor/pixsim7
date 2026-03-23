@@ -55,7 +55,21 @@ function getCrossOrigin(url: string | undefined): 'anonymous' | undefined {
   return url?.startsWith('http') ? 'anonymous' : undefined;
 }
 
-const MAX_VIDEO_RETRIES = 4;
+const MAX_VIDEO_RETRIES = 3;
+/** Delay in ms before each video retry attempt.  Linear backoff:
+ *  attempt 1 → 5s, attempt 2 → 10s, attempt 3 → 15s.
+ *  Gives CDN propagation time without hammering the endpoint. */
+function getVideoRetryDelay(attempt: number): number {
+  return 5000 * attempt;
+}
+
+/**
+ * Module-level set of video URLs that exhausted all retries.
+ * Prevents remounted cards (virtualization) from re-spamming the CDN.
+ * Cleared on full page reload; entries expire when ingestion completes
+ * and the URL switches to a local backend path.
+ */
+const _failedVideoUrls = new Set<string>();
 
 
 
@@ -276,7 +290,9 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
   const videoRetryCountRef = useRef(0);
   const [intrinsicVideoAspectRatio, setIntrinsicVideoAspectRatio] = useState<number | null>(null);
   const [intrinsicThumbAspectRatio, setIntrinsicThumbAspectRatio] = useState<number | null>(null);
-  const [videoLoadFailed, setVideoLoadFailed] = useState(false);
+  const [videoLoadFailed, setVideoLoadFailed] = useState(
+    () => !!videoSrc && _failedVideoUrls.has(videoSrc),
+  );
   const [videoRetryToken, setVideoRetryToken] = useState<number | null>(null);
   const [videoRetrying, setVideoRetrying] = useState(false);
   const [videoRetryAttempt, setVideoRetryAttempt] = useState(0);
@@ -420,9 +436,15 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
       return;
     }
 
+    // Debounce: if a retry timeout is already pending, ignore duplicate
+    // error events (browsers fire multiple per failed load attempt).
+    if (videoRetryTimeoutRef.current) return;
+
     if (videoRetryCountRef.current >= MAX_VIDEO_RETRIES) {
       setVideoLoadFailed(true);
       setVideoRetrying(false);
+      // Remember this URL failed so remounted cards don't retry
+      _failedVideoUrls.add(videoSrc);
       return;
     }
 
@@ -431,19 +453,16 @@ export const MediaCard = React.memo(function MediaCard(props: MediaCardProps) {
     setVideoRetrying(true);
     setVideoRetryAttempt(videoRetryCountRef.current);
 
-    if (videoRetryTimeoutRef.current) {
-      clearTimeout(videoRetryTimeoutRef.current);
-      videoRetryTimeoutRef.current = null;
-    }
-
+    const delay = getVideoRetryDelay(videoRetryCountRef.current);
     videoRetryTimeoutRef.current = setTimeout(() => {
+      videoRetryTimeoutRef.current = null;
       if (videoSrc.startsWith('http')) {
         setVideoRetryToken(Date.now());
       } else if (videoRef.current) {
         videoRef.current.src = videoSrc;
         videoRef.current.load();
       }
-    }, 2000);
+    }, delay);
   }, [mediaType, videoSrc]);
 
   // Extract tag slugs for overlay data (quick tag matching, technical tag filtering)

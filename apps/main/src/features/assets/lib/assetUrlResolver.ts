@@ -26,6 +26,11 @@ export interface AssetWithUrls {
   syncStatus?: string | null;
 }
 
+const VIDEO_URL_RE = /\.(mp4|webm|mov|m4v|mkv|avi)(?:$|[?#])/i;
+function isVideoUrl(url: string | undefined): boolean {
+  return !!url && VIDEO_URL_RE.test(url);
+}
+
 function resolveIngestStatus(asset: AssetWithUrls): string | undefined {
   const ingestStatus = asset.ingestStatus ?? asset.ingest_status ?? undefined;
   if (ingestStatus) return ingestStatus;
@@ -99,6 +104,14 @@ export function resolveAssetUrl(asset: AssetWithUrls): string | undefined {
     if (assetId) {
       return `/api/v1/assets/${assetId}/file`;
     }
+  }
+
+  // When auto-download is enabled, don't expose CDN URLs for videos.
+  // Provider CDNs have propagation delays that cause 404s which browsers
+  // cache aggressively.  Instead, return undefined so the UI shows a
+  // "downloading" placeholder until ingestion completes and stored_key is set.
+  if (preferLocal && isVideoUrl(remoteUrl) && !storedKey) {
+    return undefined;
   }
 
   return remoteUrl;

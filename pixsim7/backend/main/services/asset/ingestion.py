@@ -106,8 +106,16 @@ class AssetIngestionService:
         is_content_addressed = asset.stored_key and '/content/' in asset.stored_key
         if not force and asset.ingest_status == INGEST_COMPLETED and is_content_addressed:
             needs_metadata = extract_metadata and not asset.metadata_extracted_at
-            needs_thumbnails = generate_thumbnails and not asset.thumbnail_generated_at
-            needs_previews = generate_previews and not asset.preview_generated_at
+            # Self-heal: treat thumbnail_generated_at as stale if the key is
+            # missing (previous run marked it done but ffmpeg actually failed).
+            needs_thumbnails = generate_thumbnails and (
+                not asset.thumbnail_generated_at or
+                (asset.thumbnail_generated_at and not asset.thumbnail_key)
+            )
+            needs_previews = generate_previews and (
+                not asset.preview_generated_at or
+                (asset.preview_generated_at and not asset.preview_key)
+            )
             if not (needs_metadata or needs_thumbnails or needs_previews):
                 logger.debug(
                     "ingest_skipped_already_complete",
@@ -167,14 +175,34 @@ class AssetIngestionService:
                 asset.metadata_extracted_at = datetime.now(timezone.utc)
 
             # Step 5: Generate thumbnails
-            if generate_thumbnails and (force or not asset.thumbnail_generated_at):
+            # Self-heal: also retry if timestamp is set but key is missing
+            # (previous run marked it done but generation actually failed).
+            thumb_needed = force or not asset.thumbnail_generated_at or (
+                asset.thumbnail_generated_at and not asset.thumbnail_key
+            )
+            if generate_thumbnails and thumb_needed:
                 await generate_thumbnail(asset, local_path, self.settings)
-                asset.thumbnail_generated_at = datetime.now(timezone.utc)
+                # Only mark as done if thumbnail_key was actually set —
+                # generate_thumbnail silently returns on ffmpeg failure
+                # without setting the key.  Leaving thumbnail_generated_at
+                # unset allows future ingestion runs to retry.
+                if asset.thumbnail_key:
+                    asset.thumbnail_generated_at = datetime.now(timezone.utc)
+                elif asset.thumbnail_generated_at:
+                    # Clear stale timestamp from a previous failed attempt
+                    asset.thumbnail_generated_at = None
 
             # Step 6: Generate previews
-            if generate_previews and (force or not asset.preview_generated_at):
+            preview_needed = force or not asset.preview_generated_at or (
+                asset.preview_generated_at and not asset.preview_key
+            )
+            if generate_previews and preview_needed:
                 await generate_preview(asset, local_path, self.settings)
-                asset.preview_generated_at = datetime.now(timezone.utc)
+                if asset.preview_key:
+                    asset.preview_generated_at = datetime.now(timezone.utc)
+                elif asset.preview_generated_at:
+                    # Clear stale timestamp from a previous failed attempt
+                    asset.preview_generated_at = None
 
             # Step 7: Trigger on-ingest analyzers (best-effort)
             await self._trigger_on_ingest_analyses(asset, local_path)

@@ -14,7 +14,8 @@ import asyncio
 from typing import Optional
 from pydantic import BaseModel
 
-from pixsim7.backend.main.infrastructure.events.bus import Event, ASSET_CREATED
+from pixsim7.backend.main.infrastructure.events.bus import Event
+from pixsim7.backend.main.services.asset.events import ASSET_CREATED
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -109,31 +110,58 @@ async def handle_event(event: Event) -> None:
         )
 
 
-async def _ingest_asset_background(asset_id: int) -> None:
+async def _ingest_asset_background(
+    asset_id: int,
+    *,
+    _retry: int = 0,
+    _max_retries: int = 2,
+) -> None:
     """
     Background task to ingest an asset.
 
-    Uses semaphore for concurrency control.
+    Uses semaphore for concurrency control.  On failure (typically CDN 404
+    for not-yet-propagated videos) schedules a delayed retry so the asset
+    isn't permanently stuck in FAILED state.
     """
     semaphore = _get_semaphore()
+    failed = False
 
     async with semaphore:
         try:
-            # Import here to avoid circular imports
             from pixsim7.backend.main.infrastructure.database.session import get_async_session
             from pixsim7.backend.main.services.asset import AssetIngestionService
 
             async with get_async_session() as db:
                 service = AssetIngestionService(db)
-                await service.ingest_asset(asset_id)
+                await service.ingest_asset(asset_id, force=(_retry > 0))
 
         except Exception as e:
+            failed = True
             logger.error(
                 "background_ingestion_failed",
                 asset_id=asset_id,
+                retry=_retry,
                 error=str(e),
-                exc_info=True
             )
+
+    # Schedule delayed retry OUTSIDE the semaphore so other ingestions
+    # aren't blocked during the wait.
+    if failed and _retry < _max_retries:
+        delay = 60 * (_retry + 1)  # 60s, 120s
+        logger.info(
+            "ingestion_retry_scheduled",
+            asset_id=asset_id,
+            retry=_retry + 1,
+            delay_sec=delay,
+        )
+        await asyncio.sleep(delay)
+        asyncio.create_task(
+            _ingest_asset_background(
+                asset_id,
+                _retry=_retry + 1,
+                _max_retries=_max_retries,
+            )
+        )
 
 
 # ===== LIFECYCLE HOOKS =====
