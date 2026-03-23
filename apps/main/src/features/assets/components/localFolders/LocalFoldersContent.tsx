@@ -603,21 +603,37 @@ export function LocalFoldersContent({
     [findLocal, groupByFn],
   );
 
+  // --- Memoized model conversion for gallery ---
+  const galleryModels = useMemo(
+    () => pageItems.map((a) => toGenerationInputAsset(a)),
+    [pageItems, toGenerationInputAsset],
+  );
+
+  const getPreviewUrlModel = useCallback(
+    (model: AssetModel) => {
+      const local = findLocal(model);
+      return local ? getPreviewUrl(local) : undefined;
+    },
+    [findLocal, getPreviewUrl],
+  );
+
+  const loadPreviewModel = useCallback(
+    async (model: AssetModel) => {
+      const local = findLocal(model);
+      if (local) await controller.loadPreview(local);
+    },
+    [findLocal, controller],
+  );
+
   // --- Render gallery (shared between flat & drilled views) ---
-  const renderAssetGallery = (assets: LocalAsset[]) => {
-    const models = assets.map((a) => toGenerationInputAsset(a));
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const renderAssetGallery = (_assets: LocalAsset[]) => {
     return (
       <AssetModelGallery
-        assets={models}
-        getPreviewUrl={(model) => {
-          const local = findLocal(model);
-          return local ? getPreviewUrl(local) : undefined;
-        }}
+        assets={galleryModels}
+        getPreviewUrl={getPreviewUrlModel}
         resolvePreviewUrl={useLocalAssetPreviewForModel}
-        loadPreview={async (model) => {
-          const local = findLocal(model);
-          if (local) await controller.loadPreview(local);
-        }}
+        loadPreview={loadPreviewModel}
         getUploadState={getUploadStateModel}
         getHashStatus={getHashStatusModel}
         getIsFavorite={getIsFavoriteModel}
