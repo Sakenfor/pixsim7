@@ -166,6 +166,8 @@ class DatabaseLogViewer(QWidget):
         self._pending_service_change = None  # Track pending service change
         self._request_trace_dialogs = {}  # request_id -> dialog
         self.init_ui()
+        # Deferred: populate combos from DB distinct values (non-blocking)
+        QTimer.singleShot(2000, self._populate_combos_from_db)
 
     def _track_worker(self, worker: QThread):
         """Track worker lifetime to avoid QThread destruction while running."""
@@ -1459,6 +1461,38 @@ class DatabaseLogViewer(QWidget):
         """Deprecated - kept for backwards compatibility (fallback field mapping)."""
         from field_metadata import get_service_fields_fallback
         return get_service_fields_fallback()
+
+    def _populate_combos_from_db(self):
+        """Fetch distinct values from the log DB and update filter combos.
+
+        Runs on a deferred timer so it doesn't block startup. Falls back
+        silently to the static spec lists if the API is unreachable.
+        """
+        combo_map = {
+            "service": self.service_combo,
+            "channel": self.channel_combo,
+        }
+        for column, combo in combo_map.items():
+            try:
+                resp = requests.get(
+                    f"{self.api_url}/api/v1/logs/distinct/{column}",
+                    timeout=2,
+                )
+                if resp.status_code == 200:
+                    values = resp.json().get("values", [])
+                    if values:
+                        current = combo.currentText()
+                        combo.blockSignals(True)
+                        combo.clear()
+                        combo.addItem("All")
+                        for v in values:
+                            combo.addItem(v)
+                        # Restore previous selection if still valid
+                        idx = combo.findText(current)
+                        combo.setCurrentIndex(idx if idx >= 0 else 0)
+                        combo.blockSignals(False)
+            except Exception:
+                pass  # Keep static spec fallback
 
     def _styled_combo(self, items):
         cb = QComboBox()

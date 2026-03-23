@@ -381,6 +381,23 @@ async def get_fields(
 
 
 
+@router.get("/distinct/{column}")
+async def get_distinct_values(
+    column: str,
+    db: AsyncSession = Depends(get_log_db),
+):
+    """Return distinct values for a log column (service, channel, domain, etc.)."""
+    try:
+        service_obj = LogService(db)
+        values = await service_obj.get_distinct_values(column)
+        return {"column": column, "values": values}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("log_distinct_error", error=str(e), column=column)
+        raise HTTPException(status_code=500, detail=f"Failed to get distinct values: {str(e)}")
+
+
 @router.get("/files")
 async def list_log_files(
     # admin: CurrentAdminUser,  # Commented out for local dev access

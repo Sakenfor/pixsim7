@@ -265,6 +265,15 @@ class LogService:
 
         return count
 
+    async def get_distinct_values(self, column: str) -> list[str]:
+        """Return distinct non-null values for a log column (service, channel, domain, etc.)."""
+        allowed = {"service", "channel", "domain", "level", "provider_id", "operation_type", "stage"}
+        if column not in allowed:
+            raise ValueError(f"Column {column!r} not allowed; pick from {allowed}")
+        sql = text(f"SELECT DISTINCT {column} FROM log_entries WHERE {column} IS NOT NULL ORDER BY {column}")
+        rows = (await self.db.execute(sql)).all()
+        return [row[0] for row in rows]
+
     async def get_fields(
         self,
         *,
