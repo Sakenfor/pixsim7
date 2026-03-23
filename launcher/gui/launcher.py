@@ -721,18 +721,21 @@ class LauncherWindow(
             self._refresh_console_logs(force=True)
             _startup_trace("_select_service console refreshed")
 
-        # Keep database log viewer in sync with selected service for quick pivots
+        # Keep database log viewer in sync with selected service for quick pivots.
+        # Card keys (main-api, worker) differ from structlog service names (api, worker),
+        # so map the card key to the best-matching DB service filter.
         if hasattr(self, 'db_log_viewer') and self.db_log_viewer:
-            svc_name = key
-            idx = self.db_log_viewer.service_combo.findText(svc_name)
-            if idx < 0:
-                # Also try lowercase/uppercase variants for robustness
-                idx = self.db_log_viewer.service_combo.findText(svc_name.lower())
-            if idx < 0:
-                idx = self.db_log_viewer.service_combo.findText(svc_name.upper())
-            if idx >= 0:
-                self.db_log_viewer.service_combo.setCurrentIndex(idx)
-                _startup_trace("_select_service db viewer synced")
+            # Try exact match first, then strip common prefixes
+            candidates = [key]
+            # "main-api" → "api", "generation-api" → "api", "simulation-worker" → "worker"
+            if '-' in key:
+                candidates.append(key.rsplit('-', 1)[-1])
+            for candidate in candidates:
+                idx = self.db_log_viewer.service_combo.findText(candidate)
+                if idx >= 0:
+                    self.db_log_viewer.service_combo.setCurrentIndex(idx)
+                    _startup_trace("_select_service db viewer synced")
+                    break
         _startup_trace(f"_select_service end ({key})")
 
     def _select_database(self, env_key: str):

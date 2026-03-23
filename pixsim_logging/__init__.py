@@ -16,7 +16,7 @@ This package keeps zero dependencies on application domain models.
 """
 from .config import configure_logging, configure_stdlib_root_logger, get_logger, get_ingestion_stats, get_registered_services, set_db_min_level
 from .domains import is_domain_enabled, update_domain_config, update_global_level, get_global_level_display
-from .spec import COMMON_FIELDS, STAGES, DOMAINS, SERVICES, redact_sensitive, bind_job_context, bind_generation_context, bind_domain_context
+from .spec import COMMON_FIELDS, STAGES, DOMAINS, SERVICES, PROVIDERS, CHANNELS, redact_sensitive, bind_job_context, bind_generation_context, bind_domain_context
 from .file_rotation import rotate_file, append_line
 from .console_renderer import CleanConsoleRenderer
 from .reader import LogRecord, parse_line, parse_lines, field_registry, tail_file, FieldDefinition, FieldRegistry, sanitize_line, LogWriter
@@ -39,6 +39,8 @@ __all__ = [
     "STAGES",
     "DOMAINS",
     "SERVICES",
+    "PROVIDERS",
+    "CHANNELS",
     "redact_sensitive",
     "bind_job_context",
     "bind_generation_context",

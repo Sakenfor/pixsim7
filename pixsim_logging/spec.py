@@ -98,6 +98,21 @@ SERVICES = [
     "worker",
 ]
 
+# Provider identifiers — AI/media generation providers.
+# Used for log filtering in DB log viewer.
+PROVIDERS = [
+    "anthropic_llm",
+    "cmd_embedding",
+    "cmd_llm",
+    "local_llm",
+    "openai_embedding",
+    "openai_llm",
+    "pixverse",
+    "remaker",
+    "remote_cmd_llm",
+    "sora",
+]
+
 # Channel taxonomy (what kind of activity)
 CHANNELS = ["cron", "pipeline", "api", "system"]
 

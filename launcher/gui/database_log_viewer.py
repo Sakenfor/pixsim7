@@ -31,6 +31,8 @@ except ImportError:
     from log_view_widget import LogViewWidget
     from clickable_fields import get_registry, get_field, ActionType
 
+from pixsim_logging.spec import SERVICES, CHANNELS, STAGES, PROVIDERS
+
 
 class LogFetchWorker(QThread):
     """Worker thread for fetching logs from API without blocking UI."""
@@ -199,7 +201,7 @@ class DatabaseLogViewer(QWidget):
         filter_bar.setSpacing(8)
 
         # Service
-        self.service_combo = self._styled_combo(['All', 'api', 'worker', 'game', 'test', 'launcher'])
+        self.service_combo = self._styled_combo(['All'] + list(SERVICES))
         self.service_combo.setMinimumWidth(100)
         self.service_combo.setToolTip("Filter by service")
         self.service_combo.currentTextChanged.connect(self._on_service_changed_fast)
@@ -213,7 +215,7 @@ class DatabaseLogViewer(QWidget):
         filter_bar.addWidget(self.level_combo)
 
         # Channel
-        self.channel_combo = self._styled_combo(['All', 'cron', 'pipeline', 'api', 'system'])
+        self.channel_combo = self._styled_combo(['All'] + list(CHANNELS))
         self.channel_combo.setMinimumWidth(90)
         self.channel_combo.setToolTip("Filter by log channel")
         self.channel_combo.currentTextChanged.connect(self.refresh_logs)
@@ -305,7 +307,7 @@ class DatabaseLogViewer(QWidget):
 
         # Provider
         advanced_layout.addWidget(QLabel('Provider:'))
-        self.provider_combo = self._styled_combo(['All', 'pixverse', 'runway', 'pika', 'sora'])
+        self.provider_combo = self._styled_combo(['All'] + list(PROVIDERS))
         self.provider_combo.setMinimumWidth(100)
         self.provider_combo.setToolTip("Filter by AI provider")
         self.provider_combo.currentTextChanged.connect(self.refresh_logs)
@@ -313,7 +315,9 @@ class DatabaseLogViewer(QWidget):
 
         # Stage
         advanced_layout.addWidget(QLabel('Stage:'))
-        self.stage_combo = self._styled_combo(['All', 'pipeline:*', 'provider:*', 'pipeline:start', 'pipeline:artifact', 'provider:submit', 'provider:status', 'provider:complete', 'provider:error'])
+        # Group wildcards come from stage prefixes, individual stages from spec
+        _stage_prefixes = sorted({s.split(':')[0] + ':*' for s in STAGES})
+        self.stage_combo = self._styled_combo(['All'] + _stage_prefixes + list(STAGES))
         self.stage_combo.setCurrentText('All')
         self.stage_combo.setMinimumWidth(130)
         self.stage_combo.setToolTip("Filter by pipeline stage")
