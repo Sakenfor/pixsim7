@@ -270,11 +270,15 @@ export function useLocalFolderCallbacks({
 
   const getLocalMediaCardActions = useCallback((asset: LocalAsset): MediaCardActions => {
     const assetModel = toGenerationInputAsset(asset);
-    const actions = createAssetActions(assetModel, generationHandlers);
+    const isUploaded = typeof asset.last_upload_asset_id === 'number' && asset.last_upload_asset_id > 0;
 
-    // Gate quick-generate behind upload status (needs a provider asset)
-    // Forward burst count and duration from gesture system for swipe-distance scaling.
-    if (asset.last_upload_asset_id != null) {
+    // Only provide generation actions for uploaded assets (need a real backend ID / URL).
+    // Unuploaded local files would send blob: URLs which the backend can't resolve.
+    const actions = isUploaded
+      ? createAssetActions(assetModel, generationHandlers)
+      : createAssetActions(assetModel, {});
+
+    if (isUploaded) {
       actions.onQuickGenerate = (_id?: number, count?: number, overrides?: { duration?: number }) =>
         quickGenerate(assetModel, { count, duration: overrides?.duration });
     }
