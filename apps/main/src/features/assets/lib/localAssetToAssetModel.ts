@@ -55,13 +55,17 @@ export function localAssetToAssetModel(
     : 'local';
   const providerStatus = isUploaded ? 'ok' : 'local_only';
 
+  // For uploaded assets, use backend file endpoint for generation-facing URLs.
+  // blob: URLs only work in the browser — the backend can't resolve them.
+  const backendFileUrl = isUploaded ? `/api/v1/assets/${uploadedAssetId}/file` : null;
+
   return {
     id,
     createdAt: new Date(asset.lastModified || Date.now()).toISOString(),
     description: asset.name,
     durationSec: null,
     fileSizeBytes: asset.size ?? null,
-    fileUrl: previewUrl ?? null,
+    fileUrl: backendFileUrl ?? previewUrl ?? null,
     height: asset.height ?? null,
     isArchived: false,
     localPath: asset.relativePath,
@@ -70,7 +74,7 @@ export function localAssetToAssetModel(
     providerAssetId: isUploaded ? String(uploadedAssetId) : asset.key,
     providerId,
     providerStatus,
-    remoteUrl: previewUrl ?? null,
+    remoteUrl: backendFileUrl ?? previewUrl ?? null,
     syncStatus: 'downloaded',
     thumbnailUrl: previewUrl ?? null,
     userId: 0,
