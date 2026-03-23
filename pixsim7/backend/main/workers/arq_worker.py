@@ -52,6 +52,7 @@ from pixsim7.backend.main.infrastructure.events.redis_bridge import (
     stop_event_bus_bridge,
 )
 from pixsim7.backend.main.infrastructure.sleep_inhibit import inhibit_sleep, allow_sleep
+from pixsim7.backend.main.infrastructure.database.session import close_database
 
 # Configure structured logging and optional ingestion via env
 logger = configure_logging("worker").bind(channel="system", domain="system")
@@ -63,11 +64,17 @@ _retry_event_bridge = None
 
 
 def _sync_preload_system_config() -> None:
-    """Pre-load DB-persisted config so class-level attributes see updated values."""
+    """Pre-load DB-persisted config so class-level attributes see updated values.
+
+    Uses a temporary event loop. Must dispose the engine afterward so pooled
+    connections don't linger bound to the closed loop (causes
+    'Event loop is closed' errors when ARQ's own loop later tries to clean up).
+    """
     import asyncio
     try:
         loop = asyncio.new_event_loop()
         loop.run_until_complete(_load_persisted_system_config_for_worker())
+        loop.run_until_complete(close_database())
         loop.close()
     except Exception:
         pass  # Falls back to env var / Pydantic default
@@ -204,6 +211,7 @@ async def shutdown(ctx: dict) -> None:
     if _event_bridge:
         await stop_event_bus_bridge()
         _event_bridge = None
+    await close_database()
 
 
 async def retry_startup(ctx: dict) -> None:
@@ -236,6 +244,7 @@ async def retry_shutdown(ctx: dict) -> None:
     if _retry_event_bridge:
         await stop_event_bus_bridge()
         _retry_event_bridge = None
+    await close_database()
 
 
 async def simulation_startup(ctx: dict) -> None:
@@ -256,6 +265,7 @@ async def simulation_startup(ctx: dict) -> None:
 async def simulation_shutdown(ctx: dict) -> None:
     """Shutdown for dedicated simulation scheduler worker."""
     logger.info("worker_shutdown", msg="PixSim7 Simulation Scheduler Worker Shutting Down")
+    await close_database()
 
 
 _sync_preload_system_config()

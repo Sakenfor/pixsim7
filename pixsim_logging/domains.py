@@ -71,6 +71,17 @@ _raw = os.getenv("PIXSIM_LOG_DOMAINS", "")
 _DOMAIN_CONFIG: Dict[str, int] = parse_domain_config(_raw) if _raw else {}
 
 
+def update_global_level(level: str) -> None:
+    """Update the global (root) log level at runtime.
+
+    Accepts DEBUG / INFO / WARNING / ERROR / CRITICAL.
+    """
+    level = level.strip().upper()
+    numeric = getattr(logging, level, None)
+    if isinstance(numeric, int):
+        logging.getLogger().setLevel(numeric)
+
+
 def update_domain_config(levels: Dict[str, str]) -> None:
     """Replace domain config at runtime (called by system_config applier).
 

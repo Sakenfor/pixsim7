@@ -892,12 +892,19 @@ LoggingConfigUpdate = LoggingSettings.get_update_model()
 
 
 @router.get("/admin/logging/config", response_model=LoggingSettings)
-async def get_logging_config(user: CurrentUser):
+async def get_logging_config(user: CurrentUser, db: DatabaseSession):
     """Get current per-domain logging config (any authenticated user)."""
+    from pixsim7.backend.main.services.system_config import get_config
     from pixsim_logging.domains import get_domain_config_display
 
-    # Read live state from the logging module (source of truth for active levels)
-    return LoggingSettings(log_domain_levels=get_domain_config_display())
+    # Merge persisted settings with live domain levels
+    persisted = await get_config(db, "logging") or {}
+    return LoggingSettings(
+        log_domain_levels=get_domain_config_display(),
+        log_level=persisted.get("log_level", "INFO"),
+        log_retention_days=persisted.get("log_retention_days", 30),
+        log_db_min_level=persisted.get("log_db_min_level", "INFO"),
+    )
 
 
 @router.patch("/admin/logging/config", response_model=LoggingSettings)
@@ -914,7 +921,7 @@ async def update_logging_config(
 
     Pass an empty dict to clear all overrides.
     """
-    from pixsim7.backend.main.services.system_config import patch_config, apply_namespace
+    from pixsim7.backend.main.services.system_config import patch_config, apply_namespace, get_config
     from pixsim_logging.domains import get_domain_config_display, KNOWN_DOMAINS
 
     patch_data = body.model_dump(exclude_none=True)
@@ -936,13 +943,19 @@ async def update_logging_config(
         apply_namespace("logging", row.data)
 
     active = get_domain_config_display()
+    persisted = row.data if patch_data else (await get_config(db, "logging") or {})
     logger.info(
         "Logging config updated by admin %s: domains=%s",
         admin.username,
         active,
     )
 
-    return LoggingSettings(log_domain_levels=active)
+    return LoggingSettings(
+        log_domain_levels=active,
+        log_level=persisted.get("log_level", "INFO"),
+        log_retention_days=persisted.get("log_retention_days", 30),
+        log_db_min_level=persisted.get("log_db_min_level", "INFO"),
+    )
 
 
 class LogPurgeRequest(BaseModel):

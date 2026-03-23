@@ -63,10 +63,12 @@ class DBLogHandler:
         table_name: str = "log_entries",
         batch_size: int = 10,
         flush_interval: float = 5.0,
+        min_level: str = "INFO",
     ) -> None:
         self.db_url = db_url
         self.batch_size = batch_size
         self.flush_interval = flush_interval
+        self.min_level: int = getattr(__import__("logging"), min_level.upper(), 20)
         # Simple counters for very lightweight, best-effort diagnostics.
         self._dropped_logs = 0
         self._worker_errors = 0
@@ -128,10 +130,14 @@ class DBLogHandler:
         self.worker_thread.start()
 
     def _load_column_limits(self, table_name: str) -> dict[str, int]:
-        """Best-effort lookup of string column limits for truncation safety."""
+        """Best-effort lookup of string column limits for truncation safety.
+
+        Defaults are intentionally conservative (smallest known column size)
+        so that truncation is safe even when DB introspection fails.
+        """
         defaults = {
             "level": 20,
-            "service": 150,
+            "service": 50,
             "env": 20,
             "request_id": 100,
             "provider_job_id": 255,
@@ -184,6 +190,16 @@ class DBLogHandler:
                 row[key] = value[:limit]
 
     def __call__(self, logger, method_name: str, event_dict: dict[str, Any]):
+        # Skip events below the DB minimum level
+        import logging as _logging
+        level_name = event_dict.get("level", method_name or "info")
+        if isinstance(level_name, str):
+            event_level = getattr(_logging, level_name.upper(), _logging.INFO)
+        else:
+            event_level = _logging.INFO
+        if event_level < self.min_level:
+            return event_dict
+
         # Enqueue a copy to avoid mutating caller dict
         try:
             self.queue.put_nowait(event_dict.copy())
@@ -307,6 +323,13 @@ class DBLogHandler:
         row.setdefault("created_at", row["timestamp"])
         self._truncate_fields(row)
         return row
+
+    def set_min_level(self, level: str) -> None:
+        """Update the minimum level for DB ingestion at runtime."""
+        import logging as _logging
+        numeric = getattr(_logging, level.strip().upper(), None)
+        if isinstance(numeric, int):
+            self.min_level = numeric
 
     def shutdown(self):
         self.shutdown_event.set()

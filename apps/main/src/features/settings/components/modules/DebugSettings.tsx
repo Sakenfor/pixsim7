@@ -316,6 +316,7 @@ const LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'OFF'] as const;
 interface LoggingConfig {
   log_retention_days: number;
   log_level: string;
+  log_db_min_level: string;
   log_domain_levels: Record<string, string>;
 }
 
@@ -474,6 +475,24 @@ function LogDatabaseSettings() {
               value={config.log_level}
               disabled={saving}
               onChange={(e) => patchConfig({ log_level: e.target.value })}
+              className="px-2 py-1 text-[11px] rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+            >
+              {LOG_LEVELS.filter((l) => l !== 'OFF').map((level) => (
+                <option key={level} value={level}>{level}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* DB ingestion floor */}
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-medium text-neutral-800 dark:text-neutral-100">DB Ingestion Level</div>
+              <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Minimum severity written to log database</div>
+            </div>
+            <select
+              value={config.log_db_min_level}
+              disabled={saving}
+              onChange={(e) => patchConfig({ log_db_min_level: e.target.value })}
               className="px-2 py-1 text-[11px] rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
             >
               {LOG_LEVELS.filter((l) => l !== 'OFF').map((level) => (

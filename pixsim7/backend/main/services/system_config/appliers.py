@@ -82,12 +82,19 @@ register_applier("llm", _apply_llm_config)
 def _apply_logging_config(data: dict) -> None:
     from pixsim7.backend.main.shared.config import settings
     from pixsim7.backend.main.services.system_config.settings_store import apply_settings
-    from pixsim_logging.domains import update_domain_config
+    from pixsim_logging.domains import update_domain_config, update_global_level
+    from pixsim_logging.config import set_db_min_level
 
     # Populate the generic SettingsBase cache
     apply_settings("logging", data)
 
     # Side effect: reconfigure loggers + sync to global settings
+    if "log_level" in data:
+        update_global_level(data["log_level"])
+
+    if "log_db_min_level" in data:
+        set_db_min_level(data["log_db_min_level"])
+
     if "log_domain_levels" in data:
         levels = data["log_domain_levels"]
         settings.log_domain_levels = levels

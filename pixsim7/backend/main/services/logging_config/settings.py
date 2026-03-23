@@ -32,6 +32,11 @@ class LoggingSettings(SettingsBase):
         "INFO",
         description="Global log level (DEBUG/INFO/WARNING/ERROR). Overridden per-domain by log_domain_levels.",
     )
+    log_db_min_level: str = Field(
+        "INFO",
+        description="Minimum level for DB log ingestion (DEBUG/INFO/WARNING/ERROR). "
+        "Prevents DEBUG console logging from flooding the log database.",
+    )
 
 
 def get_logging_settings() -> LoggingSettings:

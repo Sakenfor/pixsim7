@@ -62,6 +62,12 @@ def get_ingestion_stats() -> dict:
     }
 
 
+def set_db_min_level(level: str) -> None:
+    """Update the DB ingestion minimum level at runtime."""
+    if _active_db_handler is not None:
+        _active_db_handler.set_min_level(level)
+
+
 def configure_logging(service_name: str, *, json: bool | None = None) -> structlog.stdlib.BoundLogger:
     """Configure structlog with JSON or human format based on env.
 
