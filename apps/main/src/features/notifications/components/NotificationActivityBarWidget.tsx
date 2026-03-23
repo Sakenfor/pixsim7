@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom';
 
 import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
+import { formatActorLabel } from '@lib/identity/actorDisplay';
 
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
@@ -230,63 +231,68 @@ function NotificationPanel({
           </div>
         ) : (
           <div className="divide-y divide-neutral-800/50">
-            {notifications.map((n) => (
-              <div
-                key={n.id}
-                onClick={() => { if (!n.read) onMarkRead(n.id); }}
-                className={`px-3 py-2.5 hover:bg-neutral-800/40 transition-colors ${
-                  n.read ? 'opacity-60' : 'cursor-pointer'
-                }`}
-              >
-                <div className="flex items-start gap-2">
-                  {/* Unread dot */}
-                  <div className="mt-1.5 shrink-0">
-                    {!n.read ? (
-                      <div className="w-2 h-2 rounded-full bg-blue-500" />
-                    ) : (
-                      <div className="w-2 h-2" />
-                    )}
-                  </div>
+            {notifications.map((n) => {
+                const actorLabel =
+                  (n.actorName || '').trim() ||
+                  formatActorLabel({ fallback: n.source || null });
+                return (
+                  <div
+                    key={n.id}
+                    onClick={() => { if (!n.read) onMarkRead(n.id); }}
+                    className={`px-3 py-2.5 hover:bg-neutral-800/40 transition-colors ${
+                      n.read ? 'opacity-60' : 'cursor-pointer'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      {/* Unread dot */}
+                      <div className="mt-1.5 shrink-0">
+                        {!n.read ? (
+                          <div className="w-2 h-2 rounded-full bg-blue-500" />
+                        ) : (
+                          <div className="w-2 h-2" />
+                        )}
+                      </div>
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <Icon
-                        name={(CATEGORY_ICONS[n.category] ?? 'bell') as any}
-                        size={12}
-                        className="text-neutral-400 shrink-0"
-                      />
-                      <span className="text-xs font-medium text-neutral-200 truncate">
-                        {n.title}
-                      </span>
-                      <Badge
-                        color={SEVERITY_COLORS[n.severity] ?? 'gray'}
-                        className="text-[9px] shrink-0"
-                      >
-                        {n.severity}
-                      </Badge>
-                    </div>
-                    {n.body && (
-                      <NotificationBody body={n.body} notification={n} onNavigate={onNavigate} />
-                    )}
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-neutral-500">
-                        {n.actorName && <>{n.actorName} &middot; </>}
-                        {formatTimeAgo(n.createdAt)}
-                      </span>
-                      {n.refType && n.refId && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onNavigate(n); }}
-                          className="text-[10px] text-blue-400 hover:text-blue-300 hover:underline"
-                        >
-                          Open {n.refType}
-                        </button>
-                      )}
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <Icon
+                            name={(CATEGORY_ICONS[n.category] ?? 'bell') as any}
+                            size={12}
+                            className="text-neutral-400 shrink-0"
+                          />
+                          <span className="text-xs font-medium text-neutral-200 truncate">
+                            {n.title}
+                          </span>
+                          <Badge
+                            color={SEVERITY_COLORS[n.severity] ?? 'gray'}
+                            className="text-[9px] shrink-0"
+                          >
+                            {n.severity}
+                          </Badge>
+                        </div>
+                        {n.body && (
+                          <NotificationBody body={n.body} notification={n} onNavigate={onNavigate} />
+                        )}
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] text-neutral-500">
+                            {actorLabel ? <>{actorLabel} &middot; </> : null}
+                            {formatTimeAgo(n.createdAt)}
+                          </span>
+                          {n.refType && n.refId && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onNavigate(n); }}
+                              className="text-[10px] text-blue-400 hover:text-blue-300 hover:underline"
+                            >
+                              Open {n.refType}
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              })}
           </div>
         )}
       </div>
@@ -319,9 +325,16 @@ export function NotificationActivityBarWidget() {
     (n: NotificationItem) => {
       const target = getNavigationTarget(n);
       if (target) {
+        // Pre-seed plan selection so PlansPanel navigates to the specific plan
+        const context: Record<string, any> = {};
+        if (n.refType === 'plan' && n.refId) {
+          try { localStorage.setItem('plans-panel:nav', `plan:${n.refId}`); } catch { /* ignore */ }
+          context.targetPlanId = n.refId;
+        }
         openFloatingPanel(target.panelId as any, {
           width: target.width ?? 800,
           height: target.height ?? 500,
+          context,
         });
         setPanelOpen(false);
       }

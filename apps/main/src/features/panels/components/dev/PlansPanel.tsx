@@ -26,6 +26,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
+import { formatActorLabel } from '@lib/identity/actorDisplay';
 import { Icon } from '@lib/icons';
 
 // =============================================================================
@@ -425,6 +426,8 @@ interface AgentSessionSnapshot {
   session_id: string;
   agent_type: string;
   status: string;
+  plan_id: string | null;
+  contract_id: string | null;
   action: string;
   detail: string;
   recent_activity: AgentSessionActivity[];
@@ -798,7 +801,7 @@ function CheckpointList({
                 )}
               </button>
 
-              {/* Progress bar — always visible */}
+              {/* Progress bar Ã¢â‚¬â€ always visible */}
               {cpTotal > 0 && (
                 <div className="h-1 bg-neutral-200 dark:bg-neutral-800">
                   <div
@@ -895,12 +898,27 @@ function CheckpointList({
 // Plan Detail View
 // =============================================================================
 
-function ParticipantEntry({ participant }: { participant: PlanParticipant }) {
+function ParticipantEntry({
+  participant,
+  profileLabels,
+}: {
+  participant: PlanParticipant;
+  profileLabels: ReadonlyMap<string, string>;
+}) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const label =
-    participant.agentId ??
-    (participant.userId !== null ? `user:${participant.userId}` : participant.principalType ?? 'unknown');
+  const label = formatActorLabel(
+    {
+      principalType: participant.principalType,
+      userId: participant.userId,
+      agentId: participant.agentId,
+      profileId: participant.profileId,
+    },
+    { profileLabels },
+  );
+  const profileLabel = participant.profileId
+    ? (profileLabels.get(participant.profileId) ?? participant.profileId)
+    : null;
   const actionLog = (participant.meta?.action_log as { action: string; at: string }[] | undefined) ?? [];
 
   return (
@@ -943,7 +961,12 @@ function ParticipantEntry({ participant }: { participant: PlanParticipant }) {
             {participant.profileId && (
               <>
                 <span className="text-neutral-400">Profile</span>
-                <span className="text-neutral-600 dark:text-neutral-300">{participant.profileId}</span>
+                <span
+                  className="text-neutral-600 dark:text-neutral-300"
+                  title={profileLabel !== participant.profileId ? participant.profileId ?? undefined : undefined}
+                >
+                  {profileLabel}
+                </span>
               </>
             )}
             <span className="text-neutral-400">Touches</span>
@@ -1303,7 +1326,7 @@ function PlanDetailView({
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [reviewGraph?.requests, selectedRoundId]);
 
-  // Nodes linked to dismissed requests — show faded in discussion
+  // Nodes linked to dismissed requests Ã¢â‚¬â€ show faded in discussion
   const dismissedNodeIds = useMemo(() => {
     const ids = new Set<string>();
     for (const r of reviewGraph?.requests ?? []) {
@@ -1332,6 +1355,11 @@ function PlanDetailView({
 
   const reviewProfileById = useMemo(
     () => new Map(reviewProfiles.map((profile) => [profile.id, profile])),
+    [reviewProfiles],
+  );
+
+  const reviewProfileLabels = useMemo(
+    () => new Map(reviewProfiles.map((profile) => [profile.id, profile.label])),
     [reviewProfiles],
   );
 
@@ -1739,7 +1767,7 @@ function PlanDetailView({
       } else {
         const parsed = parseAssigneeOptionValue(newRequestAssignee);
         if (parsed?.kind === 'live') {
-          // Store as preference — dispatcher re-checks availability at dispatch time
+          // Store as preference Ã¢â‚¬â€ dispatcher re-checks availability at dispatch time
           payload.target_mode = 'auto';
           payload.preferred_agent_id = parsed.id;
         } else if (parsed?.kind === 'recent') {
@@ -1783,7 +1811,7 @@ function PlanDetailView({
           const nodeSuffix = result.node ? ` (node ${result.node.id.slice(0, 8)})` : '';
           setReviewNotice(`Request created & dispatched: ${result.message}${nodeSuffix}`);
         } catch {
-          setReviewNotice('Request created but auto-dispatch failed — dispatch manually.');
+          setReviewNotice('Request created but auto-dispatch failed Ã¢â‚¬â€ dispatch manually.');
         }
       } else {
         const dispatchLabel = created.dispatchState ? ` (${created.dispatchState})` : '';
@@ -1965,6 +1993,15 @@ function PlanDetailView({
     const threadedRelationLabel = threadRef?.relation
       ? formatReviewRelation(threadRef.relation)
       : 'reply to';
+    const nodeActorLabel = formatActorLabel(
+      {
+        principalType: node.actorPrincipalType,
+        userId: node.actorUserId,
+        agentId: node.actorAgentId,
+        fallback: node.createdBy,
+      },
+      { profileLabels: reviewProfileLabels },
+    );
 
     return (
       <div key={node.id} className="space-y-2" style={{ marginLeft: `${indentPx}px` }}>
@@ -1990,9 +2027,9 @@ function PlanDetailView({
                 {node.severity}
               </Badge>
             )}
-            {node.actorAgentId && (
+            {(node.actorAgentId || node.createdBy || node.actorUserId != null) && (
               <Badge color="green" className="text-[9px]">
-                {node.actorAgentId}
+                {nodeActorLabel}
               </Badge>
             )}
             {node.actorRunId && (
@@ -2011,9 +2048,6 @@ function PlanDetailView({
                   {threadedRelationLabel} #{parentOrder}
                 </Badge>
               </button>
-            )}
-            {node.createdBy && !node.actorAgentId && (
-              <span className="text-[10px] text-neutral-400">{node.createdBy}</span>
             )}
             <span className="text-[10px] text-neutral-400">{formatDateTime(node.createdAt)}</span>
           </div>
@@ -2156,7 +2190,7 @@ function PlanDetailView({
 
   return (
     <div className="p-4 space-y-4">
-      {/* Plan lineage — parent → this → children */}
+      {/* Plan lineage Ã¢â‚¬â€ parent Ã¢â€ â€™ this Ã¢â€ â€™ children */}
       {(detail.parentId || detail.children.length > 0) && (
         <div className="flex items-center gap-1 flex-wrap text-[10px]">
           {detail.parentId && (
@@ -2283,7 +2317,11 @@ function PlanDetailView({
                 </div>
                 <div className="space-y-1">
                   {builderParticipants.map((participant) => (
-                    <ParticipantEntry key={participant.id} participant={participant} />
+                    <ParticipantEntry
+                      key={participant.id}
+                      participant={participant}
+                      profileLabels={reviewProfileLabels}
+                    />
                   ))}
                   {builderParticipants.length === 0 && (
                     <div className="text-[11px] text-neutral-400">None</div>
@@ -2296,7 +2334,11 @@ function PlanDetailView({
                 </div>
                 <div className="space-y-1">
                   {reviewerParticipants.map((participant) => (
-                    <ParticipantEntry key={participant.id} participant={participant} />
+                    <ParticipantEntry
+                      key={participant.id}
+                      participant={participant}
+                      profileLabels={reviewProfileLabels}
+                    />
                   ))}
                   {reviewerParticipants.length === 0 && (
                     <div className="text-[11px] text-neutral-400">None</div>
@@ -2517,7 +2559,15 @@ function PlanDetailView({
                         </div>
                         {(round.actorAgentId || round.actorRunId || round.createdBy) && (
                           <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                            {(round.actorAgentId || round.createdBy) ?? 'unknown'}
+                            {formatActorLabel(
+                              {
+                                principalType: round.actorPrincipalType,
+                                userId: round.actorUserId,
+                                agentId: round.actorAgentId,
+                                fallback: round.createdBy,
+                              },
+                              { profileLabels: reviewProfileLabels },
+                            )}
                             {round.actorRunId ? ` - run ${round.actorRunId.slice(0, 16)}` : ''}
                           </div>
                         )}
@@ -2692,7 +2742,13 @@ function PlanDetailView({
                         )}
                         {request.targetAgentId && (
                           <Badge color="green" className="text-[9px]">
-                            {request.targetAgentId}
+                            {formatActorLabel(
+                              {
+                                principalType: 'agent',
+                                agentId: request.targetAgentId,
+                              },
+                              { profileLabels: reviewProfileLabels },
+                            )}
                           </Badge>
                         )}
                         {request.roundId && (
@@ -2707,7 +2763,15 @@ function PlanDetailView({
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-1">
                         <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                          by {request.requestedByAgentId || request.requestedBy || 'unknown'}
+                          by {formatActorLabel(
+                            {
+                              principalType: request.requestedByPrincipalType,
+                              userId: request.requestedByUserId,
+                              agentId: request.requestedByAgentId,
+                              fallback: request.requestedBy,
+                            },
+                            { profileLabels: reviewProfileLabels },
+                          )}
                         </span>
                         {request.targetModelId && (
                           <Badge color="purple" className="text-[9px]">{request.targetModelId}</Badge>
@@ -2726,7 +2790,15 @@ function PlanDetailView({
                         )}
                         {(request.resolvedByAgentId || request.resolvedBy) && (
                           <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                            resolved by {request.resolvedByAgentId || request.resolvedBy}
+                            resolved by {formatActorLabel(
+                              {
+                                principalType: request.resolvedByPrincipalType,
+                                userId: request.resolvedByUserId,
+                                agentId: request.resolvedByAgentId,
+                                fallback: request.resolvedBy,
+                              },
+                              { profileLabels: reviewProfileLabels },
+                            )}
                           </span>
                         )}
                       </div>
@@ -2746,12 +2818,35 @@ function PlanDetailView({
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
                               </span>
                               {session ? (
-                                <span className="text-[10px] text-green-700 dark:text-green-300">
-                                  {session.action || 'Working'}{session.detail ? `: ${session.detail.slice(0, 80)}` : ''}
-                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-[10px] text-green-700 dark:text-green-300">
+                                    {session.action || 'Working'}{session.detail ? `: ${session.detail.slice(0, 80)}` : ''}
+                                  </span>
+                                  {(session.plan_id || session.contract_id) && (
+                                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                                      {session.contract_id && (
+                                        <Badge color="blue" className="text-[9px]">
+                                          {session.contract_id}
+                                        </Badge>
+                                      )}
+                                      {session.plan_id && (
+                                        <Badge color="green" className="text-[9px]">
+                                          plan:{session.plan_id}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
                               ) : (
                                 <span className="text-[10px] text-green-700 dark:text-green-300">
-                                  Agent working{agentId ? ` (${agentId})` : ''}...
+                                  Agent working
+                                  {agentId
+                                    ? ` (${formatActorLabel(
+                                        { principalType: 'agent', agentId },
+                                        { profileLabels: reviewProfileLabels },
+                                      )})`
+                                    : ''}
+                                  ...
                                 </span>
                               )}
                             </div>
@@ -2788,7 +2883,7 @@ function PlanDetailView({
                               title="Jump to resolved node"
                             >
                               <Badge color="green" className="text-[9px]">
-                                resolved → #{resolvedOrder ?? request.resolvedNodeId!.slice(0, 8)}
+                                resolved Ã¢â€ â€™ #{resolvedOrder ?? request.resolvedNodeId!.slice(0, 8)}
                               </Badge>
                             </button>
                           </div>
@@ -2899,12 +2994,16 @@ function PlanDetailView({
                   >
                     <option value="auto">Auto (dispatcher)</option>
                     {liveAssigneeOptions.map((agent) => {
+                      const displayLabel = (agent.label || '').trim() || formatActorLabel(
+                        { principalType: 'agent', agentId: agent.agentId },
+                        { profileLabels: reviewProfileLabels },
+                      );
                       const agentLabel = [
-                        agent.label || agent.agentId,
+                        displayLabel,
                         agent.engines?.join('/') || agent.agentType,
                         agent.busy ? 'busy' : 'idle',
                         agent.tasksCompleted > 0 ? `${agent.tasksCompleted} done` : '',
-                      ].filter(Boolean).join(' · ');
+                      ].filter(Boolean).join(' - ');
 
                       // If agent has pool sessions, show them as sub-options
                       if (agent.poolSessions && agent.poolSessions.length > 0) {
@@ -2921,7 +3020,7 @@ function PlanDetailView({
                               if (ps.contextPct != null) parts.push(`ctx ${ps.contextPct}%`);
                               return (
                                 <option key={`live:${ps.sessionId}`} value={buildAssigneeOptionValue('live', agent.agentId)}>
-                                  ↳ {parts.join(' · ')}
+                                  {'-> '}{parts.join(' - ')}
                                 </option>
                               );
                             })}
@@ -2929,7 +3028,7 @@ function PlanDetailView({
                         );
                       }
 
-                      // No pool sessions — single option
+                      // No pool sessions - single option
                       return (
                         <option key={`live:${agent.agentId}`} value={buildAssigneeOptionValue('live', agent.agentId)}>
                           {agentLabel}
@@ -2939,12 +3038,17 @@ function PlanDetailView({
                     {recentAssigneeOptions.length > 0 && (
                       <optgroup label="Recent Reviewers">
                         {recentAssigneeOptions.map((option) => {
-                          const parts = [option.agentId];
+                          const parts = [
+                            formatActorLabel(
+                              { principalType: 'agent', agentId: option.agentId },
+                              { profileLabels: reviewProfileLabels },
+                            ),
+                          ];
                           if (option.agentType) parts.push(option.agentType);
                           if (option.tasksCompleted > 0) parts.push(`${option.tasksCompleted} done`);
                           return (
                             <option key={`recent:${option.agentId}`} value={buildAssigneeOptionValue('recent', option.agentId)}>
-                              {parts.join(' · ')}
+                              {parts.join(' - ')}
                             </option>
                           );
                         })}
@@ -3156,7 +3260,7 @@ function PlanDetailView({
 
       {/* Parent reference moved to lineage bar at top */}
 
-      {/* Plan markdown — collapsed by default */}
+      {/* Plan markdown Ã¢â‚¬â€ collapsed by default */}
       {detail.markdown && (
         <div>
           <button
@@ -3327,7 +3431,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
   // Child plans (parentId set) are excluded from top-level and placed after their parent.
   const grouped = useMemo(() => {
     const map = new Map<string, PlanSummary[]>();
-    const childOf = new Map<string, PlanSummary[]>(); // parentId → children
+    const childOf = new Map<string, PlanSummary[]>(); // parentId Ã¢â€ â€™ children
 
     for (const p of filteredPlans) {
       if (p.parentId) {
@@ -3342,7 +3446,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     return { byStage: map, childOf };
   }, [filteredPlans]);
 
-  // Build sidebar sections — grouped by stage, with children nested under parent
+  // Build sidebar sections Ã¢â‚¬â€ grouped by stage, with children nested under parent
   const sections = useMemo<SidebarContentLayoutSection[]>(() => {
     const result: SidebarContentLayoutSection[] = [];
 
@@ -3444,7 +3548,7 @@ export function PlansPanel({ context }: { context?: { targetPlanId?: string; [ke
     }
 
     if (sortBy !== 'stage') {
-      // Flat sorted list — no stage groups
+      // Flat sorted list Ã¢â‚¬â€ no stage groups
       const topLevel = unpinnedPlans.filter((p) => !p.parentId);
       if (topLevel.length > 0) {
         const children: { id: string; label: string; icon: React.ReactNode; extra: React.ReactNode }[] = [];

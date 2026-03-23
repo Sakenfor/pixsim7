@@ -679,7 +679,8 @@ class PoolSessionEntry(BaseModel):
     cost_usd: Optional[float] = None
 
 class RemoteAgentEntry(BaseModel):
-    agent_id: str
+    bridge_client_id: str
+    bridge_id: Optional[str] = None
     agent_type: str
     user_id: Optional[int] = None
     connected_at: str
@@ -693,6 +694,25 @@ class RemoteAgentBridgeStatus(BaseModel):
     connected: int
     available: int
     agents: List[RemoteAgentEntry]
+
+
+class BridgeMachineEntry(BaseModel):
+    bridge_client_id: str
+    bridge_id: Optional[str] = None
+    agent_type: Optional[str] = None
+    status: str
+    online: bool
+    first_seen_at: str
+    last_seen_at: str
+    last_connected_at: Optional[str] = None
+    last_disconnected_at: Optional[str] = None
+    model: Optional[str] = None
+    client_host: Optional[str] = None
+
+
+class BridgeMachinesResponse(BaseModel):
+    total: int
+    machines: List[BridgeMachineEntry]
 
 
 @router.get("/agents/bridge", response_model=RemoteAgentBridgeStatus)
@@ -750,7 +770,8 @@ async def get_bridge_status(
             sorted({s.engine for s in pool_sessions}) if pool_sessions else [a.agent_type]
         )
         return RemoteAgentEntry(
-            agent_id=a.agent_id,
+            bridge_client_id=a.bridge_client_id,
+            bridge_id=getattr(a, "bridge_id", None),
             agent_type=a.agent_type,
             user_id=a.user_id,
             connected_at=a.connected_at.isoformat(),
@@ -767,25 +788,89 @@ async def get_bridge_status(
     )
 
 
+@router.get("/agents/bridge/machines", response_model=BridgeMachinesResponse)
+async def get_bridge_machines(
+    principal: CurrentUser,
+    user_id: Optional[int] = Query(default=None, ge=1),
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_database),
+) -> BridgeMachinesResponse:
+    """List bridge client IDs (machines) used by a user.
+
+    Non-admin callers can only query their own machines.
+    Admin callers may pass ``user_id`` to inspect another user's machines.
+    """
+    from pixsim7.backend.main.domain.platform.agent_profile import BridgeUserMembership
+
+    effective_user_id = principal.user_id
+    if user_id is not None:
+        requested_user_id = int(user_id)
+        if effective_user_id is None or requested_user_id != int(effective_user_id):
+            if not principal.is_admin():
+                raise HTTPException(status_code=403, detail="Admin access required")
+            effective_user_id = requested_user_id
+
+    if effective_user_id is None:
+        raise HTTPException(status_code=400, detail="User-scoped principal required.")
+
+    stmt = (
+        select(BridgeUserMembership)
+        .where(BridgeUserMembership.user_id == int(effective_user_id))
+        .order_by(BridgeUserMembership.last_seen_at.desc())
+        .limit(limit)
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+
+    machines = []
+    for row in rows:
+        meta = dict(row.meta) if isinstance(row.meta, dict) else {}
+        status = str(row.status or "offline")
+        model_value = meta.get("model")
+        host_value = meta.get("client_host")
+        machines.append(
+            BridgeMachineEntry(
+                bridge_client_id=str(row.bridge_client_id),
+                bridge_id=str(row.bridge_id) if row.bridge_id else None,
+                agent_type=row.agent_type,
+                status=status,
+                online=status == "online",
+                first_seen_at=row.first_seen_at.isoformat() if row.first_seen_at else "",
+                last_seen_at=row.last_seen_at.isoformat() if row.last_seen_at else "",
+                last_connected_at=row.last_connected_at.isoformat() if row.last_connected_at else None,
+                last_disconnected_at=(
+                    row.last_disconnected_at.isoformat() if row.last_disconnected_at else None
+                ),
+                model=str(model_value) if isinstance(model_value, str) and model_value.strip() else None,
+                client_host=str(host_value) if isinstance(host_value, str) and host_value.strip() else None,
+            )
+        )
+
+    return BridgeMachinesResponse(total=len(machines), machines=machines)
+
+
 class TerminateAgentResponse(BaseModel):
     ok: bool
-    agent_id: str
+    bridge_client_id: str
     message: str
 
 
-@router.post("/agents/bridge/{agent_id}/terminate", response_model=TerminateAgentResponse)
-async def terminate_agent(agent_id: str) -> TerminateAgentResponse:
+@router.post("/agents/bridge/{bridge_client_id}/terminate", response_model=TerminateAgentResponse)
+async def terminate_agent(bridge_client_id: str) -> TerminateAgentResponse:
     """Disconnect a remote agent bridge by closing its WebSocket."""
     from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
 
     agent = None
     for a in remote_cmd_bridge.get_agents():
-        if a.agent_id == agent_id:
+        if a.bridge_client_id == bridge_client_id:
             agent = a
             break
 
     if not agent:
-        return TerminateAgentResponse(ok=False, agent_id=agent_id, message="Agent not found")
+        return TerminateAgentResponse(
+            ok=False,
+            bridge_client_id=bridge_client_id,
+            message="Bridge client not found",
+        )
 
     try:
         # Tell the bridge to shut down gracefully (don't reconnect)
@@ -794,8 +879,8 @@ async def terminate_agent(agent_id: str) -> TerminateAgentResponse:
     except Exception:
         pass
 
-    remote_cmd_bridge.disconnect(agent_id)
-    return TerminateAgentResponse(ok=True, agent_id=agent_id, message="Disconnected")
+    remote_cmd_bridge.disconnect(bridge_client_id)
+    return TerminateAgentResponse(ok=True, bridge_client_id=bridge_client_id, message="Disconnected")
 
 
 # =============================================================================
@@ -1081,16 +1166,104 @@ class SendMessageRequest(BaseModel):
     assistant_id: Optional[str] = Field(None, description="Assistant profile to use (resolves persona + model + scope)")
     claude_session_id: Optional[str] = Field(None, description="Conversation session UUID to route to / resume")
     skip_persona: bool = Field(False, description="If true, do not inject the profile persona into the message")
+    custom_instructions: Optional[str] = Field(None, description="User-supplied text appended to the system prompt for this session")
+    user_token: Optional[str] = Field(None, description="Pre-minted agent token to inject into the task payload (for API tool auth)")
+    focus: Optional[List[str]] = Field(None, description="Capability focus areas — filters which endpoints are included in the system prompt")
     engine: str = Field("claude", description="Agent engine command to use (claude, codex, etc.)")
+    session_policy: Optional[str] = Field(
+        None,
+        description="Session policy override: ephemeral | scoped | persistent",
+    )
+    scope_key: Optional[str] = Field(
+        None,
+        description="Scope key for scoped session routing (e.g. plan:auth-refactor)",
+    )
 
 
 class SendMessageResponse(BaseModel):
     ok: bool
-    agent_id: str
+    bridge_client_id: str
     response: Optional[str] = None
     error: Optional[str] = None
     duration_ms: Optional[int] = None
     claude_session_id: Optional[str] = Field(None, description="Claude session UUID (for resume)")
+
+
+class _SendContext:
+    """Resolved auth + profile + provider context shared by send handlers."""
+    __slots__ = ("user_id", "raw_token", "system_prompt", "profile_prompt",
+                 "profile_config", "provider_id", "model_id", "method")
+
+    def __init__(self, user_id: Optional[int], raw_token: Optional[str],
+                 system_prompt: Optional[str],
+                 profile_prompt: Optional[str], profile_config: Optional[dict],
+                 provider_id: str, model_id: str, method: str):
+        self.user_id = user_id
+        self.raw_token = raw_token
+        self.system_prompt = system_prompt
+        self.profile_prompt = profile_prompt
+        self.profile_config = profile_config
+        self.provider_id = provider_id
+        self.model_id = model_id
+        self.method = method
+
+
+async def _resolve_send_context(
+    payload: SendMessageRequest,
+    authorization: Optional[str],
+    db: AsyncSession,
+) -> _SendContext:
+    """Auth, profile, custom instructions, and provider — called once per send."""
+    from pixsim7.backend.main.api.dependencies import get_auth_service, _extract_bearer_token
+
+    user_id: Optional[int] = None
+    raw_token: Optional[str] = None
+    if authorization:
+        try:
+            raw_token = _extract_bearer_token(authorization)
+            auth_service = get_auth_service()
+            user = await auth_service.verify_token(raw_token)
+            user_id = user.id if user else None
+        except Exception:
+            pass
+
+    # Resolve unified agent profile (persona, model override, tool scope)
+    profile_prompt: Optional[str] = None
+    profile_config: Optional[dict] = None
+    try:
+        from pixsim7.backend.main.api.v1.agent_profiles import resolve_profile_for_bridge
+        profile = await resolve_profile_for_bridge(db, user_id or 0, payload.assistant_id)
+        if profile:
+            if not payload.skip_persona:
+                profile_prompt = profile.system_prompt
+            if profile.model_id:
+                payload.model = profile.model_id
+            if profile.config:
+                profile_config = profile.config
+    except Exception:
+        pass
+
+    # Append user-supplied custom instructions
+    if payload.custom_instructions:
+        if profile_prompt:
+            profile_prompt += "\n\n" + payload.custom_instructions
+        else:
+            profile_prompt = payload.custom_instructions
+
+    # Build system prompt with focus filtering
+    system_prompt = build_user_system_prompt(focus=payload.focus)
+
+    # Resolve provider, model, and delivery method
+    provider_id, model_id, method = await _resolve_assistant_provider(user_id)
+    if payload.engine == "api":
+        method = "api"
+
+    return _SendContext(
+        user_id=user_id, raw_token=raw_token,
+        system_prompt=system_prompt,
+        profile_prompt=profile_prompt, profile_config=profile_config,
+        provider_id=provider_id, model_id=model_id, method=method,
+    )
 
 
 @router.get("/agents/chat-sessions")
@@ -1122,6 +1295,9 @@ async def list_chat_sessions(
                 "id": s.id,
                 "engine": s.engine,
                 "profile_id": s.profile_id,
+                "scope_key": s.scope_key,
+                "last_plan_id": s.last_plan_id,
+                "last_contract_id": s.last_contract_id,
                 "label": s.label,
                 "message_count": s.message_count,
                 "last_used_at": s.last_used_at.isoformat(),
@@ -1146,6 +1322,65 @@ async def archive_chat_session(
     session.status = "archived"
     await db.commit()
     return {"ok": True}
+
+
+@router.get("/agents/system-prompt-preview")
+async def get_system_prompt_preview(
+    profile_id: Optional[str] = Query(None, description="Profile ID to include persona"),
+    focus: Optional[str] = Query(None, description="Comma-separated focus capability tags to filter the prompt"),
+    user: Optional[Any] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_database),
+) -> Dict[str, Any]:
+    """Return the effective system prompt and available focus areas for the chat UI.
+
+    Combines the base assistant prompt with the profile persona (if any).
+    Also returns the focus areas from the user.assistant contract so the
+    frontend can render toggleable category chips.
+    """
+    focus_list = [f.strip() for f in focus.split(",") if f.strip()] if focus else None
+    base = build_user_system_prompt(focus=focus_list)
+    persona: Optional[str] = None
+
+    if profile_id:
+        try:
+            from pixsim7.backend.main.api.v1.agent_profiles import resolve_profile_for_bridge
+            profile = await resolve_profile_for_bridge(db, user.id if user else 0, profile_id)
+            if profile and profile.system_prompt:
+                persona = profile.system_prompt
+        except Exception:
+            pass
+
+    # Expose focus areas from user.assistant.provides only.
+    # Convention: "parent:child" in related contracts → nested under parent
+    # if the parent is in user.assistant.provides.
+    focus_areas: List[Dict[str, Any]] = []
+    contract = meta_contract_registry.get_or_none("user.assistant")
+    if contract and contract.provides:
+        # Collect child tags from related contracts (parent:child convention)
+        parent_children: Dict[str, List[Dict[str, str]]] = {}
+        for related_id in (contract.relates_to or []):
+            related = meta_contract_registry.get_or_none(related_id)
+            if not related:
+                continue
+            for cap in related.provides:
+                if ":" in cap:
+                    parent, child = cap.split(":", 1)
+                    if parent in contract.provides:
+                        parent_children.setdefault(parent, []).append({
+                            "id": cap,
+                            "label": child.replace("_", " ").title(),
+                        })
+
+        for cap in contract.provides:
+            entry: Dict[str, Any] = {
+                "id": cap,
+                "label": cap.replace("_", " ").title(),
+            }
+            if cap in parent_children:
+                entry["children"] = parent_children[cap]
+            focus_areas.append(entry)
+
+    return {"base_prompt": base, "persona": persona, "focus_areas": focus_areas}
 
 
 @router.get("/agents/bridge/models")
@@ -1223,64 +1458,20 @@ async def send_message_to_agent(
     """
     import time
 
-    from pixsim7.backend.main.api.dependencies import get_auth_service, _extract_bearer_token
-
-    # Resolve user
-    user_id: Optional[int] = None
-    raw_token: Optional[str] = None
-    if authorization:
-        try:
-            raw_token = _extract_bearer_token(authorization)
-            auth_service = get_auth_service()
-            user = await auth_service.verify_token(raw_token)
-            user_id = user.id if user else None
-        except Exception:
-            pass
-
-    # Resolve unified agent profile (persona, model override, tool scope)
-    profile_prompt: Optional[str] = None
-    profile_config: Optional[dict] = None
-    try:
-        from pixsim7.backend.main.api.v1.agent_profiles import resolve_profile_for_bridge
-        profile = await resolve_profile_for_bridge(db, user_id or 0, payload.assistant_id)
-        if profile:
-            if not payload.skip_persona:
-                profile_prompt = profile.system_prompt
-            if profile.model_id:
-                payload.model = profile.model_id
-            if profile.config:
-                profile_config = profile.config
-    except Exception:
-        pass
-
-    # Resolve provider, model, and delivery method for assistant_chat
-    provider_id, model_id, method = await _resolve_assistant_provider(user_id)
-
-    # Engine override: "api" forces direct API path
-    if payload.engine == "api":
-        method = "api"
-
+    ctx = await _resolve_send_context(payload, authorization, db)
     start = time.monotonic()
 
-    # ── Bridge path (method=remote) ──
-    if method == "remote":
+    if ctx.method == "remote":
         return await _send_via_bridge(
-            payload=payload,
-            user_id=user_id,
-            raw_token=raw_token,
-            start=start,
-            profile_prompt=profile_prompt,
-            profile_config=profile_config,
+            payload=payload, user_id=ctx.user_id, raw_token=ctx.raw_token,
+            start=start, profile_prompt=ctx.profile_prompt, profile_config=ctx.profile_config,
+            system_prompt=ctx.system_prompt,
         )
 
-    # ── Direct API path (method=api) ──
     return await _send_via_direct_api(
-        payload=payload,
-        provider_id=provider_id,
-        model_id=model_id,
-        user_id=user_id,
-        start=start,
-        profile_prompt=profile_prompt,
+        payload=payload, provider_id=ctx.provider_id, model_id=ctx.model_id,
+        user_id=ctx.user_id, start=start, profile_prompt=ctx.profile_prompt,
+        system_prompt=ctx.system_prompt,
     )
 
 
@@ -1300,47 +1491,16 @@ async def send_message_to_agent_stream(
     import time
 
     from fastapi.responses import StreamingResponse
-    from pixsim7.backend.main.api.dependencies import get_auth_service, _extract_bearer_token
 
-    # ── Auth + profile resolution (same as non-streaming) ──
-    user_id: Optional[int] = None
-    raw_token: Optional[str] = None
-    if authorization:
-        try:
-            raw_token = _extract_bearer_token(authorization)
-            auth_service = get_auth_service()
-            user = await auth_service.verify_token(raw_token)
-            user_id = user.id if user else None
-        except Exception:
-            pass
-
-    profile_prompt: Optional[str] = None
-    profile_config: Optional[dict] = None
-    try:
-        from pixsim7.backend.main.api.v1.agent_profiles import resolve_profile_for_bridge
-        profile = await resolve_profile_for_bridge(db, user_id or 0, payload.assistant_id)
-        if profile:
-            if not payload.skip_persona:
-                profile_prompt = profile.system_prompt
-            if profile.model_id:
-                payload.model = profile.model_id
-            if profile.config:
-                profile_config = profile.config
-    except Exception:
-        pass
-
-    provider_id, model_id, method = await _resolve_assistant_provider(user_id)
-
-    # Engine override: "api" forces direct API path
-    if payload.engine == "api":
-        method = "api"
+    ctx = await _resolve_send_context(payload, authorization, db)
 
     # ── Non-bridge: fall back to non-streaming response wrapped as single SSE event ──
-    if method != "remote":
+    if ctx.method != "remote":
         start = time.monotonic()
         resp = await _send_via_direct_api(
-            payload=payload, provider_id=provider_id, model_id=model_id,
-            user_id=user_id, start=start, profile_prompt=profile_prompt,
+            payload=payload, provider_id=ctx.provider_id, model_id=ctx.model_id,
+            user_id=ctx.user_id, start=start, profile_prompt=ctx.profile_prompt,
+            system_prompt=ctx.system_prompt,
         )
 
         async def _single():
@@ -1353,30 +1513,32 @@ async def send_message_to_agent_stream(
 
     if remote_cmd_bridge.connected_count == 0:
         async def _err():
-            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'agent_id': '', 'error': 'No bridge running. Start one from the AI Agents panel.'})}\n\n"
+            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'bridge_client_id': '', 'error': 'No bridge running. Start one from the AI Agents panel.'})}\n\n"
         return StreamingResponse(_err(), media_type="text/event-stream")
 
-    # Pick any connected agent — the bridge pool handles concurrency internally.
-    # Prefer non-busy, but allow busy agents (pool may have free sessions).
-    agent = remote_cmd_bridge.get_available_agent(user_id=user_id)
+    agent = remote_cmd_bridge.get_available_agent(user_id=ctx.user_id)
     if not agent:
-        agents = remote_cmd_bridge.get_agents(user_id=user_id)
+        agents = remote_cmd_bridge.get_agents(user_id=ctx.user_id)
         agent = agents[0] if agents else None
     if not agent:
         async def _err2():
-            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'agent_id': '', 'error': 'No bridge available for your account.'})}\n\n"
+            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'bridge_client_id': '', 'error': 'No bridge available for your account.'})}\n\n"
         return StreamingResponse(_err2(), media_type="text/event-stream")
 
     from pixsim7.backend.main.shared.agent_dispatch import build_task_payload as _build_payload
+    effective_token = payload.user_token or (ctx.raw_token if ctx.raw_token and ctx.user_id is not None else None)
     task_payload = _build_payload(
         prompt=payload.message,
         model=payload.model,
         context=payload.context or {},
         engine=payload.engine,
-        user_token=raw_token if raw_token and user_id is not None else None,
-        profile_prompt=profile_prompt,
-        profile_config=profile_config,
+        system_prompt=ctx.system_prompt,
+        user_token=effective_token,
+        profile_prompt=ctx.profile_prompt,
+        profile_config=ctx.profile_config,
         claude_session_id=payload.claude_session_id,
+        session_policy=payload.session_policy,
+        scope_key=payload.scope_key,
     )
 
     if payload.asset_ids:
@@ -1391,12 +1553,16 @@ async def send_message_to_agent_stream(
                 task_payload["images"] = images
 
     start = time.monotonic()
-    agent_id = agent.agent_id
+    bridge_client_id = agent.bridge_client_id
+    chat_scope_key, chat_plan_id, chat_contract_id = _extract_chat_session_scope(payload)
 
     async def _stream():
         try:
             async for event in remote_cmd_bridge.dispatch_task_streaming(
-                task_payload, timeout=payload.timeout, user_id=user_id,
+                task_payload,
+                timeout=payload.timeout,
+                user_id=ctx.user_id,
+                bridge_client_id=bridge_client_id,
             ):
                 if event.get("type") == "heartbeat":
                     yield f"data: {_json.dumps({'type': 'heartbeat', 'action': event.get('action', ''), 'detail': event.get('detail', '')})}\n\n"
@@ -1411,14 +1577,17 @@ async def send_message_to_agent_stream(
                     if cli_session_id:
                         import asyncio as _asyncio
                         _asyncio.ensure_future(_upsert_chat_session(
-                            session_id=cli_session_id, user_id=user_id or 0,
+                            session_id=cli_session_id, user_id=ctx.user_id or 0,
                             engine=payload.engine, label=payload.message[:60],
                             profile_id=payload.assistant_id,
+                            scope_key=chat_scope_key,
+                            last_plan_id=chat_plan_id,
+                            last_contract_id=chat_contract_id,
                         ))
-                    yield f"data: {_json.dumps({'type': 'result', 'ok': True, 'agent_id': agent_id, 'response': response_text, 'claude_session_id': cli_session_id, 'duration_ms': duration_ms})}\n\n"
+                    yield f"data: {_json.dumps({'type': 'result', 'ok': True, 'bridge_client_id': bridge_client_id, 'response': response_text, 'claude_session_id': cli_session_id, 'duration_ms': duration_ms})}\n\n"
         except Exception as e:
             duration_ms = int((time.monotonic() - start) * 1000)
-            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'agent_id': agent_id, 'error': str(e), 'duration_ms': duration_ms})}\n\n"
+            yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'bridge_client_id': bridge_client_id, 'error': str(e), 'duration_ms': duration_ms})}\n\n"
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
 
@@ -1428,12 +1597,54 @@ async def send_message_to_agent_stream(
 # =============================================================================
 
 
+def _normalize_scope_value(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def _extract_chat_session_scope(payload: SendMessageRequest) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    context = payload.context if isinstance(payload.context, dict) else {}
+
+    scope_key = (
+        _normalize_scope_value(payload.scope_key)
+        or _normalize_scope_value(context.get("scope_key"))
+        or _normalize_scope_value(context.get("scopeKey"))
+    )
+    plan_id = (
+        _normalize_scope_value(context.get("plan_id"))
+        or _normalize_scope_value(context.get("planId"))
+        or _normalize_scope_value(context.get("x_plan_id"))
+        or _normalize_scope_value(context.get("xPlanId"))
+    )
+    contract_id = (
+        _normalize_scope_value(context.get("contract_id"))
+        or _normalize_scope_value(context.get("contractId"))
+        or _normalize_scope_value(context.get("contract"))
+    )
+
+    if scope_key and plan_id is None and scope_key.startswith("plan:"):
+        maybe_plan = scope_key.split(":", 1)[1].strip()
+        if maybe_plan:
+            plan_id = maybe_plan
+    if scope_key and contract_id is None and scope_key.startswith("contract:"):
+        maybe_contract = scope_key.split(":", 1)[1].strip()
+        if maybe_contract:
+            contract_id = maybe_contract
+
+    return scope_key, plan_id, contract_id
+
+
 async def _upsert_chat_session(
     session_id: str,
     user_id: int,
     engine: str,
     label: str,
     profile_id: Optional[str] = None,
+    scope_key: Optional[str] = None,
+    last_plan_id: Optional[str] = None,
+    last_contract_id: Optional[str] = None,
 ) -> None:
     """Create or update a chat session record (fire-and-forget)."""
     try:
@@ -1448,12 +1659,21 @@ async def _upsert_chat_session(
                 existing.last_used_at = utcnow()
                 if label and label != existing.label:
                     existing.label = label
+                if scope_key is not None:
+                    existing.scope_key = scope_key
+                if last_plan_id is not None:
+                    existing.last_plan_id = last_plan_id
+                if last_contract_id is not None:
+                    existing.last_contract_id = last_contract_id
             else:
                 db.add(ChatSession(
                     id=session_id,
                     user_id=user_id,
                     engine=engine,
                     profile_id=profile_id,
+                    scope_key=scope_key,
+                    last_plan_id=last_plan_id,
+                    last_contract_id=last_contract_id,
                     label=label or "Untitled",
                     message_count=1,
                 ))
@@ -1511,6 +1731,7 @@ async def _send_via_bridge(
     start: float,
     profile_prompt: Optional[str] = None,
     profile_config: Optional[dict] = None,
+    system_prompt: Optional[str] = None,
 ) -> SendMessageResponse:
     """Route message through the Claude CLI bridge (MCP tools)."""
     import time
@@ -1519,7 +1740,7 @@ async def _send_via_bridge(
     if remote_cmd_bridge.connected_count == 0:
         return SendMessageResponse(
             ok=False,
-            agent_id="",
+            bridge_client_id="",
             error="No bridge running. Start one from the AI Agents panel.",
         )
 
@@ -1531,22 +1752,27 @@ async def _send_via_bridge(
         if user_id is not None:
             return SendMessageResponse(
                 ok=False,
-                agent_id="",
+                bridge_client_id="",
                 error="No bridge available for your account. Start a user-scoped bridge or ask an admin.",
             )
-        return SendMessageResponse(ok=False, agent_id="", error="All agents are busy")
+        return SendMessageResponse(ok=False, bridge_client_id="", error="All agents are busy")
 
     from pixsim7.backend.main.shared.agent_dispatch import build_task_payload as build_bridge_task_payload
+    effective_token = payload.user_token or (raw_token if raw_token and user_id is not None else None)
     task_payload = build_bridge_task_payload(
         prompt=payload.message,
         model=payload.model,
         context=payload.context or {},
         engine=payload.engine,
-        user_token=raw_token if raw_token and user_id is not None else None,
+        system_prompt=system_prompt,
+        user_token=effective_token,
         profile_prompt=profile_prompt,
         profile_config=profile_config,
         claude_session_id=payload.claude_session_id,
+        session_policy=payload.session_policy,
+        scope_key=payload.scope_key,
     )
+    chat_scope_key, chat_plan_id, chat_contract_id = _extract_chat_session_scope(payload)
 
     # Attach asset images for vision
     if payload.asset_ids:
@@ -1563,8 +1789,11 @@ async def _send_via_bridge(
                 task_payload["images"] = images
 
     try:
-        result = await remote_cmd_bridge.dispatch_task(
-            task_payload, timeout=payload.timeout, user_id=user_id
+        result = await remote_cmd_bridge.dispatch_task_to_bridge_client(
+            agent.bridge_client_id,
+            task_payload,
+            timeout=payload.timeout,
+            user_id=user_id,
         )
         duration_ms = int((time.monotonic() - start) * 1000)
         response_text = (
@@ -1581,10 +1810,13 @@ async def _send_via_bridge(
                 engine=payload.engine,
                 label=payload.message[:60],
                 profile_id=payload.assistant_id,
+                scope_key=chat_scope_key,
+                last_plan_id=chat_plan_id,
+                last_contract_id=chat_contract_id,
             )
         return SendMessageResponse(
             ok=True,
-            agent_id=agent.agent_id,
+            bridge_client_id=agent.bridge_client_id,
             response=response_text,
             claude_session_id=cli_session_id,
             duration_ms=duration_ms,
@@ -1593,7 +1825,7 @@ async def _send_via_bridge(
         duration_ms = int((time.monotonic() - start) * 1000)
         return SendMessageResponse(
             ok=False,
-            agent_id=agent.agent_id,
+            bridge_client_id=agent.bridge_client_id,
             error=str(e),
             duration_ms=duration_ms,
         )
@@ -1606,13 +1838,14 @@ async def _send_via_direct_api(
     user_id: Optional[int],
     start: float,
     profile_prompt: Optional[str] = None,
+    system_prompt: Optional[str] = None,
 ) -> SendMessageResponse:
     """Route message directly through an LLM API (no bridge, no tools)."""
     import time
 
-    system_prompt = _build_user_system_prompt()
+    effective_system = system_prompt or build_user_system_prompt()
     if profile_prompt:
-        system_prompt += f"\n\nPersona: {profile_prompt}"
+        effective_system += f"\n\nPersona: {profile_prompt}"
 
     try:
         from pixsim7.backend.main.services.llm.providers import get_provider
@@ -1623,7 +1856,7 @@ async def _send_via_direct_api(
         if not provider_name:
             return SendMessageResponse(
                 ok=False,
-                agent_id="direct",
+                bridge_client_id="direct",
                 error=f"Direct API not supported for provider: {provider_id}",
             )
 
@@ -1633,7 +1866,7 @@ async def _send_via_direct_api(
         provider = get_provider(provider_name)
         request = LLMRequest(
             prompt=payload.message,
-            system_prompt=system_prompt,
+            system_prompt=effective_system,
             model=model_name,
             max_tokens=2048,
         )
@@ -1642,7 +1875,7 @@ async def _send_via_direct_api(
         duration_ms = int((time.monotonic() - start) * 1000)
         return SendMessageResponse(
             ok=True,
-            agent_id="direct",
+            bridge_client_id="direct",
             response=response.text,
             duration_ms=duration_ms,
         )
@@ -1650,7 +1883,7 @@ async def _send_via_direct_api(
         duration_ms = int((time.monotonic() - start) * 1000)
         return SendMessageResponse(
             ok=False,
-            agent_id="direct",
+            bridge_client_id="direct",
             error=str(e),
             duration_ms=duration_ms,
         )
@@ -1745,17 +1978,26 @@ async def _resolve_asset_image_paths(
 # =============================================================================
 
 
-def _build_user_system_prompt() -> str:
+def build_user_system_prompt(focus: Optional[List[str]] = None) -> str:
     """Build a system prompt for the user-facing AI assistant.
 
-    The assistant has MCP tools for API access, so the prompt focuses on
-    behaviour and context rather than listing raw endpoints.
+    Args:
+        focus: Optional list of capability tags (from the contract's ``provides``
+               list, e.g. ``["asset_browsing", "generation_assistance"]``).
+               When set, only endpoints tagged with at least one of these
+               capabilities are included; this steers the agent toward the
+               relevant tools without dumping the full endpoint catalog.
+               When ``None``, all endpoints are included.
+
+    The function walks the ``relates_to`` graph from ``user.assistant`` so
+    that related contracts (e.g. ``game.authoring``) contribute their
+    sub-endpoints when a matching focus tag is active.
     """
     contract = meta_contract_registry.get_or_none("user.assistant")
 
     lines = [
         "You are an AI assistant for the PixSim application.",
-        "You help users with their assets, generations, scenes, characters, and prompts.",
+        "You help users with their assets, generations, game worlds, and prompts.",
         "",
         "You have MCP tools available that let you query and interact with the PixSim API.",
         "Use these tools to answer questions with real data — do not guess or say you lack access.",
@@ -1763,17 +2005,48 @@ def _build_user_system_prompt() -> str:
     ]
 
     if contract and contract.provides:
-        lines.append(f"Your capabilities: {', '.join(contract.provides)}")
+        active_caps = focus if focus else contract.provides
+        lines.append(f"Your capabilities: {', '.join(active_caps)}")
         lines.append("")
 
+    # Collect endpoints.
+    # - No focus: show only user.assistant's own endpoints (if any).
+    # - Focus active: walk relates_to. For each related contract whose
+    #   ``provides`` intersects the focus set:
+    #     * Parent focus (no colon) matches a contract → include ALL its endpoints.
+    #     * Sub-focus (has colon) matches → include only endpoints tagged with it.
+    focus_set = set(focus) if focus else None
+    collected: list = []
+
+    # Own endpoints (tag-filtered when focus active)
     if contract and contract.sub_endpoints:
-        lines.append("Reference — API endpoints backing your tools:")
         for ep in contract.sub_endpoints:
+            if focus_set is None or (ep.tags and focus_set.intersection(ep.tags)):
+                collected.append(ep)
+
+    # Related contract endpoints
+    if focus_set and contract:
+        for related_id in contract.relates_to:
+            related = meta_contract_registry.get_or_none(related_id)
+            if not related or not related.sub_endpoints:
+                continue
+            matched = focus_set.intersection(related.provides)
+            if not matched:
+                continue
+            # If any matched focus is a parent tag (no colon), include all
+            # endpoints from this contract. Otherwise filter by sub-focus tags.
+            has_parent_match = any(":" not in f for f in matched)
+            if has_parent_match:
+                collected.extend(related.sub_endpoints)
+            else:
+                for ep in related.sub_endpoints:
+                    if ep.tags and matched.intersection(ep.tags):
+                        collected.append(ep)
+
+    if collected:
+        lines.append("Reference — relevant API endpoints:")
+        for ep in collected:
             lines.append(f"  {ep.method} {ep.path} — {ep.summary}")
-        lines.append("")
-        lines.append(
-            "For endpoints not covered by a specific tool, use the call_api tool."
-        )
         lines.append("")
 
     lines.extend([

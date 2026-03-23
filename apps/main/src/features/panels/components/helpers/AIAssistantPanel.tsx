@@ -1,5 +1,5 @@
-/**
- * AI Assistant Panel — tabbed chat panel with agent profile binding.
+﻿/**
+ * AI Assistant Panel â€" tabbed chat panel with agent profile binding.
  *
  * Each tab = independent conversation with its own:
  * - Session (Claude session ID)
@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { pixsimClient } from '@lib/api/client';
 import { Icon, type IconName } from '@lib/icons';
+import { formatActorLabel } from '@lib/identity/actorDisplay';
 import { useReferences, useReferenceInput, ReferencePicker } from '@lib/references';
 
 import { chatBridge } from './assistantChatBridge';
@@ -26,7 +27,7 @@ import { chatBridge } from './assistantChatBridge';
 // =============================================================================
 
 interface BridgeStatus { connected: number; available: number }
-/** Unified profile — both agent identity and assistant persona */
+/** Unified profile â€" both agent identity and assistant persona */
 interface UnifiedProfile {
   id: string;
   label: string;
@@ -47,6 +48,7 @@ interface ChatMessage {
   role: 'user' | 'assistant' | 'error' | 'system';
   text: string;
   duration_ms?: number;
+  thinkingLog?: Array<{ action: string; detail: string }>;
   timestamp: Date;
 }
 
@@ -77,7 +79,47 @@ interface ChatTab {
   engine: AgentEngine;         // which agent command to use
   modelOverride: string | null; // per-tab model override (null = use profile default)
   usePersona: boolean;         // whether to inject profile persona
+  customInstructions: string;  // user text appended to the system prompt
+  focusAreas: string[];        // capability focus tags (from contract provides)
+  injectToken: boolean;        // auto-mint and inject agent token for this session
   createdAt: string;
+}
+
+interface ReferenceScope {
+  planId: string | null;
+  contractId: string | null;
+  scopeKey: string | null;
+}
+
+function normalizeReferenceId(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim().replace(/[)\],.;!?]+$/g, '');
+  return trimmed || null;
+}
+
+function extractReferenceScope(text: string): ReferenceScope {
+  let planId: string | null = null;
+  let contractId: string | null = null;
+  const planRegex = /@plan:([^\s]+)/gi;
+  const contractRegex = /@contract:([^\s]+)/gi;
+
+  let match: RegExpExecArray | null;
+  while ((match = planRegex.exec(text)) !== null) {
+    const normalized = normalizeReferenceId(match[1]);
+    if (normalized) planId = normalized;
+  }
+  while ((match = contractRegex.exec(text)) !== null) {
+    const normalized = normalizeReferenceId(match[1]);
+    if (normalized) contractId = normalized;
+  }
+
+  const scopeKey = planId
+    ? `plan:${planId}`
+    : contractId
+      ? `contract:${contractId}`
+      : null;
+
+  return { planId, contractId, scopeKey };
 }
 
 // =============================================================================
@@ -89,9 +131,6 @@ const ACTIVE_TAB_KEY = 'ai-assistant:active-tab';
 const DRAFT_KEY_PREFIX = 'ai-assistant:draft:';
 const MSG_KEY_PREFIX = 'ai-assistant:msg:';
 const INJECT_PROMPT_EVENT = 'ai-assistant:inject-prompt';
-// Legacy keys for migration
-const LEGACY_SESSIONS_KEY = 'ai-assistant:sessions';
-const LEGACY_ACTIVE_SESSION_KEY = 'ai-assistant:active-session';
 
 interface InjectPromptDetail {
   prompt: string;
@@ -101,32 +140,8 @@ interface InjectPromptDetail {
 function loadTabs(): ChatTab[] {
   try {
     const raw = localStorage.getItem(TABS_KEY);
-    if (raw) return (JSON.parse(raw) as ChatTab[]).map((t) => ({ usePersona: true, engine: 'claude' as AgentEngine, modelOverride: null, ...t }));
+    if (raw) return (JSON.parse(raw) as ChatTab[]).map((t) => ({ usePersona: true, engine: 'claude' as AgentEngine, modelOverride: null, customInstructions: '', focusAreas: [] as string[], injectToken: false, ...t }));
   } catch { /* ignore */ }
-
-  // Migrate from legacy sessions → tabs (one-time)
-  try {
-    const legacySessions = localStorage.getItem(LEGACY_SESSIONS_KEY);
-    if (legacySessions) {
-      const sessions = JSON.parse(legacySessions) as Array<{ id: string; label: string; lastUsed: string; messageCount: number }>;
-      const tabs: ChatTab[] = sessions.map((s) => ({
-        id: s.id,
-        label: s.label,
-        sessionId: s.id,
-        assistantProfileId: null,
-        agentProfileId: null,
-        createdAt: s.lastUsed,
-      }));
-      if (tabs.length > 0) {
-        persistTabs(tabs);
-        // Clean up legacy keys
-        localStorage.removeItem(LEGACY_SESSIONS_KEY);
-        localStorage.removeItem(LEGACY_ACTIVE_SESSION_KEY);
-        return tabs;
-      }
-    }
-  } catch { /* ignore */ }
-
   return [];
 }
 
@@ -410,17 +425,23 @@ interface ChatSessionEntry {
   id: string;
   engine: string;
   profile_id: string | null;
+  scope_key?: string | null;
+  last_plan_id?: string | null;
+  last_contract_id?: string | null;
   label: string;
   message_count: number;
   last_used_at: string;
 }
 
-function ResumeSessionPicker({ onResume }: {
+function ResumeSessionPicker({ onResume, profileId, profileLabels }: {
   onResume: (sessionId: string, engine: string, label: string) => void;
+  profileId?: string | null;
+  profileLabels?: ReadonlyMap<string, string>;
 }) {
   const [open, setOpen] = useState(false);
   const [sessions, setSessions] = useState<ChatSessionEntry[]>([]);
   const [filter, setFilter] = useState<string>('');
+  const [profileOnly, setProfileOnly] = useState(!!profileId);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -437,9 +458,12 @@ function ResumeSessionPicker({ onResume }: {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const filtered = filter
-    ? sessions.filter((s) => s.engine === filter)
-    : sessions;
+  const filtered = useMemo(() => {
+    let list = sessions;
+    if (filter) list = list.filter((s) => s.engine === filter);
+    if (profileOnly && profileId) list = list.filter((s) => s.profile_id === profileId);
+    return list;
+  }, [sessions, filter, profileOnly, profileId]);
 
   return (
     <div className="relative" ref={ref}>
@@ -459,28 +483,64 @@ function ResumeSessionPicker({ onResume }: {
             {[...AGENT_COMMANDS, { id: 'api' as const, label: 'API', icon: 'zap' as IconName }].map((e) => (
               <button key={e.id} onClick={() => setFilter(e.id)} className={`px-1.5 py-0.5 text-[9px] rounded ${filter === e.id ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}>{e.label}</button>
             ))}
+            {profileId && (
+              <button
+                onClick={() => setProfileOnly(!profileOnly)}
+                className={`ml-auto px-1.5 py-0.5 text-[9px] rounded ${profileOnly ? 'bg-accent text-white' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+                title="Filter by current profile"
+              >
+                <Icon name="user" size={9} />
+              </button>
+            )}
           </div>
 
           {filtered.length === 0 && (
             <div className="p-3 text-center text-[11px] text-neutral-500">No sessions found</div>
           )}
 
-          {filtered.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => { onResume(s.id, s.engine, s.label); setOpen(false); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 border-b border-neutral-50 dark:border-neutral-800/50 last:border-0"
-            >
-              <Icon name={AGENT_COMMANDS.find((c) => c.id === s.engine)?.icon ?? (s.engine === 'api' ? 'zap' : 'messageSquare')} size={11} className="shrink-0 text-neutral-400" />
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] text-neutral-700 dark:text-neutral-300 truncate">{s.label}</div>
-                <div className="text-[9px] text-neutral-400">
-                  {s.message_count} msgs · {new Date(s.last_used_at).toLocaleDateString()} {new Date(s.last_used_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {filtered.map((s) => {
+            const sessionProfileLabel = s.profile_id
+              ? formatActorLabel(
+                  { profileId: s.profile_id, agentId: s.profile_id },
+                  { profileLabels },
+                )
+              : null;
+            const scopeKeyChip = s.scope_key
+              && !(s.last_plan_id && s.scope_key === `plan:${s.last_plan_id}`)
+              && !(s.last_contract_id && s.scope_key === `contract:${s.last_contract_id}`)
+              ? s.scope_key
+              : null;
+            return (
+              <button
+                key={s.id}
+                onClick={() => { onResume(s.id, s.engine, s.label); setOpen(false); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-neutral-50 dark:hover:bg-neutral-800 border-b border-neutral-50 dark:border-neutral-800/50 last:border-0"
+              >
+                <Icon name={AGENT_COMMANDS.find((c) => c.id === s.engine)?.icon ?? (s.engine === 'api' ? 'zap' : 'messageSquare')} size={11} className="shrink-0 text-neutral-400" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] text-neutral-700 dark:text-neutral-300 truncate">{s.label}</div>
+                  <div className="text-[9px] text-neutral-400">
+                    {sessionProfileLabel ? `${sessionProfileLabel} - ` : ''}
+                    {s.message_count} msgs - {new Date(s.last_used_at).toLocaleDateString()} {new Date(s.last_used_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                  {(s.last_contract_id || s.last_plan_id || scopeKeyChip) && (
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                      {s.last_contract_id && (
+                        <Badge color="blue" className="text-[8px]">{s.last_contract_id}</Badge>
+                      )}
+                      {s.last_plan_id && (
+                        <Badge color="green" className="text-[8px]">plan:{s.last_plan_id}</Badge>
+                      )}
+                      {scopeKeyChip && (
+                        <Badge color="gray" className="text-[8px]">{scopeKeyChip}</Badge>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-              <span className="text-[8px] text-neutral-400 uppercase shrink-0">{s.engine}</span>
-            </button>
-          ))}
+                <span className="text-[8px] text-neutral-400 uppercase shrink-0">{s.engine}</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -585,6 +645,37 @@ function ActionPicker({ open, onClose, onSelect, disabled }: {
 }
 
 // =============================================================================
+// Thinking Block â€" collapsible heartbeat log
+// =============================================================================
+
+function ThinkingBlock({ entries, live }: { entries: Array<{ action: string; detail: string }>; live?: boolean }) {
+  const [expanded, setExpanded] = useState(live ?? false);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="mb-1.5">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1 text-[10px] text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors"
+      >
+        <Icon name={live ? 'loader' : 'cpu'} size={10} className={live ? 'animate-spin' : ''} />
+        <span>{live ? 'Thinking...' : `${entries.length} steps`}</span>
+        <Icon name="chevronRight" size={8} className={`transition-transform ${expanded ? 'rotate-90' : ''}`} />
+      </button>
+      {expanded && (
+        <div className="mt-1 pl-3 border-l-2 border-neutral-200 dark:border-neutral-700 space-y-0.5 max-h-[200px] overflow-y-auto">
+          {entries.map((e, i) => (
+            <div key={i} className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              {e.detail || e.action || 'Working...'}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
 // Message Bubble
 // =============================================================================
 
@@ -612,6 +703,9 @@ function MessageBubble({ msg, onRetry }: { msg: ChatMessage; onRetry?: () => voi
           : msg.role === 'error' ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
           : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100'
       }`}>
+        {msg.role === 'assistant' && msg.thinkingLog && msg.thinkingLog.length > 0 && (
+          <ThinkingBlock entries={msg.thinkingLog} />
+        )}
         {msg.role === 'assistant' ? <MarkdownText text={msg.text} /> : <pre className="whitespace-pre-wrap text-xs font-sans leading-relaxed">{msg.text}</pre>}
         <div className="flex items-center gap-2 mt-1">
           {msg.duration_ms != null && <span className="text-[10px] opacity-50">{(msg.duration_ms / 1000).toFixed(1)}s</span>}
@@ -654,7 +748,7 @@ const CLAUDE_MODELS: AiModelEntry[] = [
   { id: 'haiku', label: 'Haiku', provider_id: 'anthropic' },
 ];
 
-/** Provider filter per engine — only show models from the relevant provider. */
+/** Provider filter per engine â€" only show models from the relevant provider. */
 const ENGINE_PROVIDER_FILTER: Record<string, string | null> = {
   claude: 'anthropic',
   codex: null,  // codex has its own fetch path
@@ -746,7 +840,7 @@ function ModelSelector({ value, onChange, disabled, engine }: {
       {Array.from(grouped.entries()).map(([provider, items]) => (
         <optgroup key={provider} label={provider}>
           {items.map((m) => (
-            <option key={m.id} value={m.id}>{m.hidden ? '· ' : ''}{m.label || m.id}{m.is_default ? ' ★' : ''}</option>
+            <option key={m.id} value={m.id}>{m.hidden ? 'Â· ' : ''}{m.label || m.id}{m.is_default ? ' â˜…' : ''}</option>
           ))}
         </optgroup>
       ))}
@@ -772,7 +866,7 @@ function ProfileModelSelect({ value, onChange, agentType, className }: {
     >
       <option value="">Default (no override)</option>
       {models.map((m) => (
-        <option key={m.id} value={m.id}>{m.hidden ? '· ' : ''}{m.label || m.id}{m.is_default ? ' ★' : ''}</option>
+        <option key={m.id} value={m.id}>{m.hidden ? 'Â· ' : ''}{m.label || m.id}{m.is_default ? ' â˜…' : ''}</option>
       ))}
     </select>
   );
@@ -790,7 +884,198 @@ const QUICK_SHORTCUTS = [
 ];
 
 // =============================================================================
-// Tab Chat View — one per tab, owns its own message state
+// System Prompt Preview â€" shown in empty state before first message
+// =============================================================================
+
+interface FocusAreaEntry { id: string; label: string; children?: FocusAreaEntry[] }
+
+interface SystemPromptPreviewProps {
+  profileId: string | null;
+  customInstructions: string;
+  onChangeInstructions: (text: string) => void;
+  focusAreas: string[];
+  onChangeFocus: (areas: string[]) => void;
+}
+
+function SystemPromptPreview({ profileId, customInstructions, onChangeInstructions, focusAreas, onChangeFocus }: SystemPromptPreviewProps) {
+  const [expanded, setExpanded] = useState(false);
+  const [basePrompt, setBasePrompt] = useState<string | null>(null);
+  const [persona, setPersona] = useState<string | null>(null);
+  const [availableFocus, setAvailableFocus] = useState<FocusAreaEntry[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const params: Record<string, string> = {};
+    if (profileId) params.profile_id = profileId;
+    if (focusAreas.length > 0) params.focus = focusAreas.join(',');
+    pixsimClient.get<{ base_prompt: string; persona: string | null; focus_areas: FocusAreaEntry[] }>('/meta/agents/system-prompt-preview', { params })
+      .then((r) => { setBasePrompt(r.base_prompt); setPersona(r.persona); setAvailableFocus(r.focus_areas || []); })
+      .catch(() => {});
+  }, [profileId, focusAreas]);
+
+  const toggleFocus = useCallback((id: string, children?: FocusAreaEntry[]) => {
+    const isActive = focusAreas.includes(id);
+    if (isActive) {
+      // Deactivate parent + all children
+      const toRemove = new Set([id, ...(children || []).map((c) => c.id)]);
+      onChangeFocus(focusAreas.filter((f) => !toRemove.has(f)));
+    } else {
+      // Activate just the parent (coarse mode). Children are opt-in refinements.
+      onChangeFocus([...focusAreas, id]);
+    }
+  }, [focusAreas, onChangeFocus]);
+
+  const toggleChildFocus = useCallback((parentId: string, childId: string, siblings: FocusAreaEntry[]) => {
+    const isActive = focusAreas.includes(childId);
+    let next = [...focusAreas];
+    if (isActive) {
+      next = next.filter((f) => f !== childId);
+      // If no children active, keep parent active (coarse mode)
+    } else {
+      // Activating a child: remove parent coarse tag, add the child
+      next = next.filter((f) => f !== parentId);
+      next.push(childId);
+    }
+    onChangeFocus(next);
+  }, [focusAreas, onChangeFocus]);
+
+  const toggleGroupExpand = useCallback((id: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  if (basePrompt === null) return null;
+
+  const hasFocus = focusAreas.length > 0;
+
+  // Check if a parent's children are active (for visual hint)
+  const hasActiveChild = (entry: FocusAreaEntry) =>
+    entry.children?.some((c) => focusAreas.includes(c.id)) ?? false;
+
+  return (
+    <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 overflow-hidden">
+      {/* Focus area chips — always visible for quick toggling */}
+      {availableFocus.length > 0 && (
+        <div className="px-3 py-2 flex flex-wrap gap-1 items-center">
+          <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wide mr-1">Focus</span>
+          {availableFocus.map((f) => {
+            const active = focusAreas.includes(f.id);
+            const childActive = hasActiveChild(f);
+            const isGroup = f.children && f.children.length > 0;
+            const groupExpanded = expandedGroups.has(f.id);
+            return (
+              <span key={f.id} className="inline-flex items-center gap-0.5">
+                <button
+                  onClick={() => toggleFocus(f.id, f.children)}
+                  className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    active || childActive
+                      ? 'bg-accent/15 text-accent'
+                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                  } ${isGroup ? 'rounded-l-full' : 'rounded-full'}`}
+                >
+                  {f.label}
+                  {childActive && !active && <span className="ml-0.5 text-[8px] opacity-60">({f.children!.filter((c) => focusAreas.includes(c.id)).length})</span>}
+                </button>
+                {isGroup && (
+                  <button
+                    onClick={() => toggleGroupExpand(f.id)}
+                    className={`px-1 py-0.5 rounded-r-full text-[10px] transition-colors border-l ${
+                      active || childActive
+                        ? 'bg-accent/15 text-accent border-accent/20'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 border-neutral-200 dark:border-neutral-700'
+                    }`}
+                    title={groupExpanded ? 'Collapse sub-focuses' : 'Expand sub-focuses'}
+                  >
+                    <Icon name="chevronRight" size={8} className={`transition-transform ${groupExpanded ? 'rotate-90' : ''}`} />
+                  </button>
+                )}
+              </span>
+            );
+          })}
+          {hasFocus && (
+            <button onClick={() => onChangeFocus([])} className="text-[9px] text-neutral-400 hover:text-neutral-600 ml-1">clear</button>
+          )}
+        </div>
+      )}
+
+      {/* Expanded sub-focus children */}
+      {availableFocus.filter((f) => f.children && expandedGroups.has(f.id)).map((f) => (
+        <div key={`sub-${f.id}`} className="px-3 pb-1.5 flex flex-wrap gap-1 items-center ml-4">
+          <span className="text-[8px] text-neutral-400 mr-0.5">{f.label}:</span>
+          {f.children!.map((child) => {
+            const active = focusAreas.includes(child.id);
+            return (
+              <button
+                key={child.id}
+                onClick={() => toggleChildFocus(f.id, child.id, f.children!)}
+                className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium transition-colors ${
+                  active
+                    ? 'bg-accent/20 text-accent'
+                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                }`}
+              >
+                {child.label}
+              </button>
+            );
+          })}
+        </div>
+      ))}
+
+      {/* Collapsible details header */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors border-t border-neutral-200 dark:border-neutral-700"
+      >
+        <Icon name="fileText" size={12} className="shrink-0 text-neutral-400" />
+        <span className="font-medium">System Prompt</span>
+        {persona && <Badge color="blue" className="text-[8px]">+ persona</Badge>}
+        {customInstructions.trim() && <Badge color="amber" className="text-[8px]">+ custom</Badge>}
+        {hasFocus && <Badge color="green" className="text-[8px]">{focusAreas.length} focus</Badge>}
+        <Icon name="chevronRight" size={10} className={`ml-auto text-neutral-400 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+      </button>
+
+      {expanded && (
+        <div className="border-t border-neutral-200 dark:border-neutral-700 px-3 py-2 space-y-2">
+          {/* Base prompt (read-only) */}
+          <div>
+            <div className="text-[9px] font-medium text-neutral-500 uppercase tracking-wide mb-1">Base prompt</div>
+            <pre className="text-[10px] leading-relaxed text-neutral-600 dark:text-neutral-400 whitespace-pre-wrap max-h-[120px] overflow-y-auto font-mono bg-neutral-100 dark:bg-neutral-800 rounded p-2">
+              {basePrompt}
+            </pre>
+          </div>
+
+          {/* Persona (read-only, from profile) */}
+          {persona && (
+            <div>
+              <div className="text-[9px] font-medium text-neutral-500 uppercase tracking-wide mb-1">Persona (from profile)</div>
+              <pre className="text-[10px] leading-relaxed text-neutral-600 dark:text-neutral-400 whitespace-pre-wrap max-h-[80px] overflow-y-auto font-mono bg-blue-50 dark:bg-blue-900/20 rounded p-2">
+                {persona}
+              </pre>
+            </div>
+          )}
+
+          {/* Custom instructions (editable) */}
+          <div>
+            <div className="text-[9px] font-medium text-neutral-500 uppercase tracking-wide mb-1">Custom instructions (appended)</div>
+            <textarea
+              value={customInstructions}
+              onChange={(e) => onChangeInstructions(e.target.value)}
+              placeholder="Add extra instructions for this conversation..."
+              rows={2}
+              className="w-full px-2 py-1.5 text-[11px] rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 resize-none focus:outline-none focus:ring-1 focus:ring-accent placeholder:text-neutral-400"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Tab Chat View â€" one per tab, owns its own message state
 // =============================================================================
 
 function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: {
@@ -824,7 +1109,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       if (result.claude_session_id && result.claude_session_id !== prevSessionId) {
         onUpdateTab({ sessionId: result.claude_session_id });
         if (prevSessionId) {
-          setMessages((m) => [...m, { role: 'system', text: 'New session — previous conversation not available', timestamp: new Date() }]);
+          setMessages((m) => [...m, { role: 'system', text: 'New session â€" previous conversation not available', timestamp: new Date() }]);
         }
       } else if (result.claude_session_id && prevSessionId && result.claude_session_id === prevSessionId) {
         setMessages((prev) => {
@@ -835,7 +1120,8 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
           return prev;
         });
       }
-      setMessages((m) => [...m, { role: 'assistant', text: result.response!, duration_ms: result.duration_ms, timestamp: new Date() }]);
+      const thinking = result.thinkingLog?.length ? result.thinkingLog.map((e) => ({ action: e.action, detail: e.detail })) : undefined;
+      setMessages((m) => [...m, { role: 'assistant', text: result.response!, duration_ms: result.duration_ms, thinkingLog: thinking, timestamp: new Date() }]);
       if (!tab.sessionId) {
         // Use the first user message as tab label
         const lastUserMsg = messages.findLast((m) => m.role === 'user');
@@ -867,7 +1153,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
 
     if (connected > 0 && prev === 0 && sawDisconnectRef.current && messages.length > 0) {
       const label = tab.sessionId
-        ? 'Reconnected — resuming conversation'
+        ? 'Reconnected â€" resuming conversation'
         : 'Bridge connected';
       setMessages((m) => [...m, { role: 'system', text: label, timestamp: new Date() }]);
     } else if (connected === 0 && prev > 0 && messages.length > 0) {
@@ -915,16 +1201,38 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     setInput('');
     setMessages((prev) => [...prev, { role: 'user', text, timestamp: new Date() }]);
 
-    const body: Record<string, unknown> = { message: text, timeout: 120, engine: tab.engine };
+    const timeout = tab.engine === 'codex' ? 600 : 300;
+    const body: Record<string, unknown> = { message: text, timeout, engine: tab.engine };
     if (tab.profileId) body.assistant_id = tab.profileId;
     if (tab.sessionId) body.claude_session_id = tab.sessionId;
     if (tab.profileId && !tab.usePersona) body.skip_persona = true;
     if (tab.modelOverride) body.model = tab.modelOverride;
+    if (tab.customInstructions.trim()) body.custom_instructions = tab.customInstructions.trim();
+    if (tab.focusAreas.length > 0) body.focus = tab.focusAreas;
+    const scope = extractReferenceScope(text);
+    if (scope.scopeKey) body.scope_key = scope.scopeKey;
+    if (scope.scopeKey) body.session_policy = 'scoped';
+    if (scope.planId || scope.contractId) {
+      body.context = {
+        ...(scope.planId ? { plan_id: scope.planId } : {}),
+        ...(scope.contractId ? { contract_id: scope.contractId } : {}),
+      };
+    }
 
-    // Fire-and-forget — the bridge singleton manages the SSE fetch.
+    // Auto-inject token: mint one for the active profile and include it
+    if (tab.injectToken && tab.profileId) {
+      try {
+        const res = await pixsimClient.post<{ access_token: string }>(`/dev/agent-profiles/${tab.profileId}/token`, null, { params: { hours: 24, scope: 'dev' } });
+        body.user_token = res.access_token;
+      } catch {
+        // Non-fatal â€" send without token
+      }
+    }
+
+    // Fire-and-forget â€" the bridge singleton manages the SSE fetch.
     // Results are consumed by the useEffect above, even if the panel unmounts.
     void chatBridge.send(tab.id, body);
-  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.modelOverride]);
+  }, [sending, tab.id, tab.profileId, tab.sessionId, tab.engine, tab.usePersona, tab.modelOverride, tab.customInstructions, tab.focusAreas, tab.injectToken]);
 
   const retryLast = useCallback(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -966,6 +1274,13 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-3">
         {messages.length === 0 && connected > 0 && (
           <div className="space-y-3">
+            <SystemPromptPreview
+              profileId={tab.profileId}
+              customInstructions={tab.customInstructions}
+              onChangeInstructions={(text) => onUpdateTab({ customInstructions: text })}
+              focusAreas={tab.focusAreas}
+              onChangeFocus={(areas) => onUpdateTab({ focusAreas: areas })}
+            />
             <EmptyState message="Ask anything or pick an action" size="sm" />
             <div className="flex flex-wrap gap-1.5 justify-center">
               {QUICK_SHORTCUTS.map((s) => (
@@ -990,7 +1305,10 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
         ))}
         {sending && (
           <div className="flex justify-start gap-2 items-end">
-            <div className="bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-2">
+            <div className="bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-2 max-w-[85%]">
+              {bridgeReq && bridgeReq.thinkingLog.length > 0 && (
+                <ThinkingBlock entries={bridgeReq.thinkingLog} live />
+              )}
               <div className="flex items-center gap-2">
                 <div className="flex gap-1">
                   <div className="w-1.5 h-1.5 bg-neutral-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -1149,7 +1467,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             )}
           </div>
 
-          {/* Model override — fetched from backend registry or bridge */}
+          {/* Model override â€" fetched from backend registry or bridge */}
           <ModelSelector
             value={tab.modelOverride}
             onChange={(v) => onUpdateTab({ modelOverride: v })}
@@ -1157,31 +1475,42 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
             engine={tab.engine}
           />
 
-          <div className="flex-1 relative">
+          {/* Inject token toggle */}
+          <button
+            onClick={() => onUpdateTab({ injectToken: !tab.injectToken })}
+            disabled={sending || !tab.profileId}
+            className={`shrink-0 h-8 flex items-center gap-0.5 px-1 rounded-lg text-[9px] transition-colors disabled:opacity-30 ${
+              tab.injectToken ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+            }`}
+            title={tab.injectToken ? 'Token will be auto-injected (click to disable)' : 'Auto-inject session token'}
+          >
+            <Icon name="key" size={12} />
+          </button>
+
+          <div className="flex-1">
             <textarea value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
               placeholder={connected > 0 ? 'Ask something... (@ to reference)' : 'No agent connected'}
               disabled={connected === 0 || sending} rows={1}
-              className="w-full px-3 py-2 pr-20 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 resize-none focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 resize-none focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50"
               style={{ minHeight: '36px', maxHeight: '120px' }}
               onInput={handleTextareaInput}
             />
-            {tab.sessionId && (
-              <button
-                type="button"
-                className="absolute right-2 bottom-1.5 text-[9px] text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-300 font-mono pointer-events-auto transition-colors"
-                title={`Click to copy session ID: ${tab.sessionId}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigator.clipboard.writeText(tab.sessionId!);
-                  const el = e.currentTarget;
-                  el.textContent = 'copied!';
-                  setTimeout(() => { el.textContent = tab.sessionId!.slice(0, 8); }, 1000);
-                }}
-              >
-                {tab.sessionId.slice(0, 8)}
-              </button>
-            )}
           </div>
+
+          {/* Session ID â€" copy button */}
+          {tab.sessionId && (
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(tab.sessionId!);
+              }}
+              className="shrink-0 h-8 flex items-center gap-0.5 px-1 rounded-lg text-[9px] font-mono text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+              title={`Session: ${tab.sessionId}\nClick to copy`}
+            >
+              <Icon name="hash" size={10} />
+              <span>{tab.sessionId.slice(0, 6)}</span>
+            </button>
+          )}
+
           <Button size="sm" onClick={() => void sendMessage(input)} disabled={connected === 0 || sending || !input.trim()} className="shrink-0">
             <Icon name="send" size={14} />
           </Button>
@@ -1207,6 +1536,10 @@ export function AIAssistantPanel() {
   const [bridge, setBridge] = useState<BridgeStatus | null>(null);
   const [bridgeStarting, setBridgeStarting] = useState(false);
   const [profiles, setProfiles] = useState<UnifiedProfile[]>([]);
+  const profileLabels = useMemo(
+    () => new Map(profiles.map((profile) => [profile.id, profile.label] as const)),
+    [profiles],
+  );
 
   // Persist tabs
   useEffect(() => { persistTabs(tabs); }, [tabs]);
@@ -1245,6 +1578,9 @@ export function AIAssistantPanel() {
       engine: (profile ? engineFromProfile(profile) : 'claude') as AgentEngine,
       modelOverride: null,
       usePersona: true,
+      customInstructions: '',
+      focusAreas: [],
+      injectToken: false,
       createdAt: new Date().toISOString(),
     };
     setTabs((prev) => [newTab, ...prev]);
@@ -1321,9 +1657,9 @@ export function AIAssistantPanel() {
           <button onClick={() => createTab()} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300" title="New chat">
             <Icon name="plus" size={12} />
           </button>
-          <ResumeSessionPicker onResume={(sessionId, engine, label) => {
+          <ResumeSessionPicker profileId={activeTab?.profileId} profileLabels={profileLabels} onResume={(sessionId, engine, label) => {
             const id = createTabId();
-            const newTab: ChatTab = { id, label: label || 'Resumed', sessionId, profileId: null, engine: (engine || 'claude') as AgentEngine, modelOverride: null, usePersona: true, createdAt: new Date().toISOString() };
+            const newTab: ChatTab = { id, label: label || 'Resumed', sessionId, profileId: null, engine: (engine || 'claude') as AgentEngine, modelOverride: null, usePersona: true, customInstructions: '', focusAreas: [], injectToken: false, createdAt: new Date().toISOString() };
             setTabs((prev) => [newTab, ...prev]);
             setActiveTab(id);
           }} />
@@ -1340,7 +1676,7 @@ export function AIAssistantPanel() {
             <button
               onClick={() => { pixsimClient.post('/meta/agents/bridge/stop').catch(() => {}); }}
               className="w-2 h-2 rounded-full bg-green-500 hover:bg-red-500 transition-colors cursor-pointer"
-              title="Connected — click to disconnect"
+              title="Connected - click to disconnect"
             />
           ) : (
             <div className="w-1.5 h-1.5 rounded-full bg-neutral-300" title="Offline" />

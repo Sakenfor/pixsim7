@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
 import { Icon } from '@lib/icons';
+import { formatActorLabel } from '@lib/identity/actorDisplay';
 
 import { openWorkspacePanel } from '@features/workspace';
 
@@ -461,7 +462,7 @@ interface PoolSession {
 }
 
 interface BridgeAgent {
-  agent_id: string;
+  bridge_client_id: string;
   agent_type: string;
   user_id: number | null;
   connected_at: string;
@@ -475,6 +476,25 @@ interface BridgeStatusResponse {
   connected: number;
   available: number;
   agents: BridgeAgent[];
+}
+
+interface BridgeMachine {
+  bridge_client_id: string;
+  bridge_id: string | null;
+  agent_type: string | null;
+  status: string;
+  online: boolean;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_connected_at: string | null;
+  last_disconnected_at: string | null;
+  model: string | null;
+  client_host: string | null;
+}
+
+interface BridgeMachinesResponse {
+  total: number;
+  machines: BridgeMachine[];
 }
 
 interface StartBridgeResponse {
@@ -494,6 +514,7 @@ interface CliTokenResponse {
 function ActiveSessionsView() {
   const [sessions, setSessions] = useState<AgentSessionsResponse | null>(null);
   const [bridges, setBridges] = useState<BridgeStatusResponse | null>(null);
+  const [bridgeMachines, setBridgeMachines] = useState<BridgeMachinesResponse | null>(null);
   const [bridgeAction, setBridgeAction] = useState('');
   const [cliToken, setCliToken] = useState<CliTokenResponse | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
@@ -504,12 +525,14 @@ function ActiveSessionsView() {
 
   const load = useCallback(async () => {
     try {
-      const [s, b] = await Promise.all([
+      const [s, b, m] = await Promise.all([
         pixsimClient.get<AgentSessionsResponse>('/meta/agents').catch(() => null),
         pixsimClient.get<BridgeStatusResponse>('/meta/agents/bridge').catch(() => null),
+        pixsimClient.get<BridgeMachinesResponse>('/meta/agents/bridge/machines').catch(() => null),
       ]);
       setSessions(s);
       setBridges(b);
+      setBridgeMachines(m);
     } catch { /* ignore */ }
   }, []);
 
@@ -545,9 +568,9 @@ function ActiveSessionsView() {
     return () => clearInterval(interval);
   }, [load]);
 
-  const handleTerminate = useCallback(async (agentId: string) => {
+  const handleTerminate = useCallback(async (bridgeClientId: string) => {
     try {
-      await pixsimClient.post(`/meta/agents/bridge/${agentId}/terminate`);
+      await pixsimClient.post(`/meta/agents/bridge/${bridgeClientId}/terminate`);
       void load();
     } catch { /* ignore */ }
   }, [load]);
@@ -573,9 +596,10 @@ function ActiveSessionsView() {
   }, [cliToken]);
 
   const bridgeAgents = bridges?.agents ?? [];
-  // Filter out sessions that are already shown as bridge agents (same agent_id)
-  const bridgeAgentIds = new Set(bridgeAgents.map((a) => a.agent_id));
+  // Filter out sessions that are already shown as bridge agents (same bridge client id)
+  const bridgeAgentIds = new Set(bridgeAgents.map((a) => a.bridge_client_id));
   const activeSessionList = (sessions?.active ?? []).filter((s) => !bridgeAgentIds.has(s.session_id));
+  const knownMachines = bridgeMachines?.machines ?? [];
 
   return (
     <div className="p-4 space-y-4">
@@ -612,7 +636,7 @@ function ActiveSessionsView() {
           <div className="flex items-center gap-2">
             <Badge color="green" className="text-[10px]">connected</Badge>
             {bridgeAgents.map((a) => (
-              <div key={a.agent_id} className="flex items-center gap-1.5">
+              <div key={a.bridge_client_id} className="flex items-center gap-1.5">
                 {a.engines.map((e) => (
                   <Badge key={e} color={e === 'claude' ? 'blue' : e === 'codex' ? 'purple' : 'gray'} className="text-[10px]">{e}</Badge>
                 ))}
@@ -669,7 +693,7 @@ function ActiveSessionsView() {
           <SectionHeader>{bridgeAgents.length} Connected Bridge{bridgeAgents.length !== 1 ? 's' : ''}</SectionHeader>
           <div className="mt-2 space-y-2">
             {bridgeAgents.map((agent) => (
-              <div key={agent.agent_id} className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+              <div key={agent.bridge_client_id} className="rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
                 <div className="px-4 py-2 bg-neutral-50 dark:bg-neutral-900 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {agent.engines.map((e) => (
@@ -684,7 +708,7 @@ function ActiveSessionsView() {
                       up {formatTimestamp(agent.connected_at)} · {agent.tasks_completed} task{agent.tasks_completed !== 1 ? 's' : ''}
                     </span>
                   </div>
-                  <Button size="sm" variant="ghost" onClick={() => void handleTerminate(agent.agent_id)}>
+                  <Button size="sm" variant="ghost" onClick={() => void handleTerminate(agent.bridge_client_id)}>
                     Terminate
                   </Button>
                 </div>
@@ -744,6 +768,30 @@ function ActiveSessionsView() {
         </div>
       )}
 
+      {knownMachines.length > 0 && (
+        <div>
+          <SectionHeader>{knownMachines.length} Known Machine{knownMachines.length !== 1 ? 's' : ''}</SectionHeader>
+          <div className="mt-2 space-y-1">
+            {knownMachines.map((m) => (
+              <div key={m.bridge_client_id} className="px-3 py-2 rounded border border-neutral-200 dark:border-neutral-800 text-[10px] flex items-center gap-2">
+                <Badge color={m.online ? 'green' : 'gray'} className="text-[9px] min-w-[44px] text-center">
+                  {m.online ? 'online' : 'offline'}
+                </Badge>
+                <span className="font-mono text-neutral-500">{m.bridge_client_id}</span>
+                {m.agent_type && (
+                  <Badge color={m.agent_type === 'claude' ? 'blue' : m.agent_type === 'codex' ? 'purple' : 'gray'} className="text-[9px]">
+                    {m.agent_type}
+                  </Badge>
+                )}
+                {m.client_host && <span className="text-neutral-400">{m.client_host}</span>}
+                {m.model && <span className="text-neutral-400 truncate max-w-[180px]">{m.model}</span>}
+                <span className="ml-auto text-neutral-400">{formatTimestamp(m.last_seen_at)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Active heartbeat sessions */}
       {activeSessionList.length > 0 && (
         <div>
@@ -770,16 +818,14 @@ function ActiveSessionsView() {
                   {session.detail && (
                     <div className="text-neutral-500">{session.detail}</div>
                   )}
-                  {session.contract_id && (
-                    <div>
-                      <span className="text-neutral-500">Contract: </span>
-                      <Badge color="blue" className="text-[10px]">{session.contract_id}</Badge>
-                    </div>
-                  )}
-                  {session.plan_id && (
-                    <div>
-                      <span className="text-neutral-500">Plan: </span>
-                      <PlanLink planId={session.plan_id} />
+                  {(session.contract_id || session.plan_id) && (
+                    <div className="flex flex-wrap items-center gap-1">
+                      {session.contract_id && (
+                        <Badge color="blue" className="text-[9px]">{session.contract_id}</Badge>
+                      )}
+                      {session.plan_id && (
+                        <Badge color="green" className="text-[9px]">plan:{session.plan_id}</Badge>
+                      )}
                     </div>
                   )}
                 </div>
@@ -810,6 +856,124 @@ function ActiveSessionsView() {
 // =============================================================================
 // History View
 // =============================================================================
+
+function HistoryEntryRow({ entry, allEntries }: {
+  entry: AgentHistoryEntry;
+  allEntries: AgentHistoryEntry[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Session timeline: other entries with the same session_id
+  const sessionTimeline = useMemo(() => {
+    if (!expanded) return [];
+    return allEntries.filter((e) => e.session_id === entry.session_id);
+  }, [expanded, entry.session_id, allEntries]);
+
+  const handleResume = useCallback(() => {
+    // Store the session_id so the AI Assistant panel can resume it
+    try {
+      const tabId = `tab-resume-${Date.now().toString(36)}`;
+      const tab = {
+        id: tabId,
+        label: entry.detail?.slice(0, 30) || entry.action || 'Resumed',
+        sessionId: entry.session_id,
+        profileId: null,
+        engine: entry.agent_type === 'codex' ? 'codex' : 'claude',
+        modelOverride: null,
+        usePersona: true,
+        customInstructions: '',
+        focusAreas: [],
+        injectToken: false,
+        createdAt: new Date().toISOString(),
+      };
+      // Prepend to saved tabs
+      const raw = localStorage.getItem('ai-assistant:tabs');
+      const tabs = raw ? JSON.parse(raw) : [];
+      tabs.unshift(tab);
+      localStorage.setItem('ai-assistant:tabs', JSON.stringify(tabs.slice(0, 20)));
+      localStorage.setItem('ai-assistant:active-tab', tabId);
+    } catch { /* ignore */ }
+    openWorkspacePanel('ai-assistant');
+  }, [entry]);
+
+  return (
+    <div className="rounded border border-neutral-200 dark:border-neutral-800">
+      {/* Clickable row */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-start gap-2 px-2 py-1.5 text-xs text-left hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
+      >
+        <Badge color={STATUS_COLORS[entry.status] ?? 'gray'} className="text-[10px] shrink-0">
+          {entry.action || entry.status}
+        </Badge>
+        <div className="flex-1 min-w-0">
+          <span className="font-mono text-neutral-500">{entry.session_id.slice(0, 16)}</span>
+          {(entry.contract_id || entry.plan_id) && (
+            <div className="mt-0.5 flex flex-wrap items-center gap-1">
+              {entry.contract_id && (
+                <Badge color="blue" className="text-[9px]">{entry.contract_id}</Badge>
+              )}
+              {entry.plan_id && (
+                <Badge color="green" className="text-[9px]">plan:{entry.plan_id}</Badge>
+              )}
+            </div>
+          )}
+          {entry.detail && (
+            <div className={`text-neutral-500 mt-0.5 ${expanded ? '' : 'truncate'}`}>{entry.detail}</div>
+          )}
+        </div>
+        <span className="shrink-0 text-neutral-400 text-[10px]">{formatTimestamp(entry.timestamp)}</span>
+        <Icon name="chevronRight" size={10} className={`shrink-0 text-neutral-400 transition-transform mt-0.5 ${expanded ? 'rotate-90' : ''}`} />
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="border-t border-neutral-100 dark:border-neutral-800 px-2 py-2 space-y-2">
+          {/* Actions */}
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" onClick={handleResume}>
+              <Icon name="messageSquare" size={11} className="mr-1" />Resume Chat
+            </Button>
+            <button
+              onClick={() => navigator.clipboard.writeText(entry.session_id)}
+              className="text-[10px] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 flex items-center gap-0.5"
+              title="Copy session ID"
+            >
+              <Icon name="copy" size={10} />
+              {entry.session_id.slice(0, 12)}
+            </button>
+          </div>
+
+          {/* Session timeline */}
+          {sessionTimeline.length > 1 && (
+            <div>
+              <SectionHeader className="mb-1">Session Timeline ({sessionTimeline.length} entries)</SectionHeader>
+              <div className="space-y-0.5 max-h-[200px] overflow-y-auto pl-2 border-l-2 border-neutral-200 dark:border-neutral-700">
+                {sessionTimeline.map((e, i) => {
+                  const isCurrent = e.timestamp === entry.timestamp && e.action === entry.action;
+                  return (
+                    <div
+                      key={`${e.timestamp}-${i}`}
+                      className={`flex items-start gap-2 py-0.5 text-[11px] ${isCurrent ? 'text-accent font-medium' : 'text-neutral-500'}`}
+                    >
+                      <span className="text-neutral-400 w-20 shrink-0 text-[10px]">
+                        {formatTimestamp(e.timestamp).split(', ').pop()}
+                      </span>
+                      <Badge color={STATUS_COLORS[e.status] ?? 'gray'} className="text-[9px] shrink-0">
+                        {e.action || e.status}
+                      </Badge>
+                      <span className="truncate flex-1">{e.detail || ''}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function HistoryView() {
   const [data, setData] = useState<AgentHistoryResponse | null>(null);
@@ -844,27 +1008,11 @@ function HistoryView() {
       <SectionHeader>{data.total} total entries (showing {data.entries.length})</SectionHeader>
       <div className="space-y-1">
         {data.entries.map((entry, i) => (
-          <div
+          <HistoryEntryRow
             key={`${entry.session_id}-${entry.timestamp}-${i}`}
-            className="flex items-start gap-2 px-2 py-1.5 rounded border border-neutral-200 dark:border-neutral-800 text-xs"
-          >
-            <Badge color={STATUS_COLORS[entry.status] ?? 'gray'} className="text-[10px] shrink-0">
-              {entry.action || entry.status}
-            </Badge>
-            <div className="flex-1 min-w-0">
-              <span className="font-mono text-neutral-500">{entry.session_id.slice(0, 16)}</span>
-              {entry.contract_id && (
-                <Badge color="blue" className="text-[9px] ml-1">{entry.contract_id}</Badge>
-              )}
-              {entry.plan_id && (
-                <span className="ml-1"><PlanLink planId={entry.plan_id} /></span>
-              )}
-              {entry.detail && (
-                <div className="text-neutral-500 truncate mt-0.5">{entry.detail}</div>
-              )}
-            </div>
-            <span className="shrink-0 text-neutral-400 text-[10px]">{formatTimestamp(entry.timestamp)}</span>
-          </div>
+            entry={entry}
+            allEntries={data.entries}
+          />
         ))}
       </div>
     </div>
@@ -1205,7 +1353,7 @@ function GroupedWriteRow({
 
 function WritesView() {
   const [data, setData] = useState<AgentWritesResponse | null>(null);
-  const [profileLabels, setProfileLabels] = useState<Record<string, string>>({});
+  const [profileLabels, setProfileLabels] = useState<ReadonlyMap<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [domainFilter, setDomainFilter] = useState<string | null>(null);
   const [grouped, setGrouped] = useState(true);
@@ -1217,8 +1365,8 @@ function WritesView() {
     ])
       .then(([writes, profiles]) => {
         setData(writes);
-        const labels: Record<string, string> = {};
-        for (const p of profiles.profiles) labels[p.id] = p.label;
+        const labels = new Map<string, string>();
+        for (const p of profiles.profiles) labels.set(p.id, p.label);
         setProfileLabels(labels);
       })
       .catch(() => {})
@@ -1284,13 +1432,17 @@ function WritesView() {
       <div className="space-y-1">
         {grouped && groups
           ? groups.map((group) => {
-              const agentSlug = group.actor.replace('agent:', '');
-              const agentName = profileLabels[agentSlug] || agentSlug;
+              const agentName = formatActorLabel(
+                { fallback: group.actor },
+                { profileLabels },
+              );
               return <GroupedWriteRow key={group.key} group={group} agentName={agentName} />;
             })
           : filtered.map((entry) => {
-              const agentSlug = entry.actor.replace('agent:', '');
-              const agentName = profileLabels[agentSlug] || agentSlug;
+              const agentName = formatActorLabel(
+                { fallback: entry.actor },
+                { profileLabels },
+              );
               return <WriteEntryRow key={entry.id} entry={entry} agentName={agentName} />;
             })}
       </div>
@@ -1348,7 +1500,7 @@ interface ObservabilityEntry {
   profile: AgentProfileEntry;
   online: boolean;
   bridge_agent: {
-    agent_id: string;
+    bridge_client_id: string;
     connected_at: string;
     busy: boolean;
     tasks_completed: number;
@@ -1581,9 +1733,9 @@ function AgentsView() {
           <SectionHeader>Unlinked Bridges</SectionHeader>
           <div className="space-y-1">
             {data!.orphan_bridges.map((ba) => ba && (
-              <div key={ba.agent_id} className="px-3 py-2 rounded border border-neutral-200 dark:border-neutral-800 text-[10px] flex items-center gap-2">
+              <div key={ba.bridge_client_id} className="px-3 py-2 rounded border border-neutral-200 dark:border-neutral-800 text-[10px] flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-                <span className="font-mono text-neutral-500">{ba.agent_id}</span>
+                <span className="font-mono text-neutral-500">{ba.bridge_client_id}</span>
                 {ba.engines.map((e) => (
                   <Badge key={e} color={e === 'claude' ? 'blue' : e === 'codex' ? 'purple' : 'gray'} className="text-[9px]">{e}</Badge>
                 ))}
@@ -1954,7 +2106,7 @@ function StatsView() {
 interface ChatMessage {
   role: 'user' | 'agent' | 'error';
   text: string;
-  agent_id?: string;
+  bridge_client_id?: string;
   duration_ms?: number;
   timestamp: Date;
 }
@@ -1962,12 +2114,12 @@ interface ChatMessage {
 interface BridgeStatus {
   connected: number;
   available: number;
-  agents: { agent_id: string; agent_type: string; busy: boolean; tasks_completed: number }[];
+  agents: { bridge_client_id: string; agent_type: string; busy: boolean; tasks_completed: number }[];
 }
 
 interface SendMessageApiResponse {
   ok: boolean;
-  agent_id: string;
+  bridge_client_id: string;
   response: string | null;
   error: string | null;
   duration_ms: number | null;
@@ -2015,7 +2167,7 @@ function SendMessageView() {
           {
             role: 'agent',
             text: res.response!,
-            agent_id: res.agent_id,
+            bridge_client_id: res.bridge_client_id,
             duration_ms: res.duration_ms ?? undefined,
             timestamp: new Date(),
           },
@@ -2057,8 +2209,8 @@ function SendMessageView() {
           {connected > 0 ? `${available}/${connected} available` : 'No agents connected'}
         </Badge>
         {bridge?.agents.map((a) => (
-          <Badge key={a.agent_id} color={a.busy ? 'orange' : 'gray'} className="text-[10px]">
-            {a.agent_id.slice(0, 12)} ({a.agent_type})
+          <Badge key={a.bridge_client_id} color={a.busy ? 'orange' : 'gray'} className="text-[10px]">
+            {a.bridge_client_id.slice(0, 12)} ({a.agent_type})
           </Badge>
         ))}
       </div>
@@ -2090,7 +2242,7 @@ function SendMessageView() {
               <pre className="whitespace-pre-wrap text-xs font-sans">{msg.text}</pre>
               {msg.role === 'agent' && (
                 <div className="flex gap-2 mt-1 text-[10px] opacity-60">
-                  {msg.agent_id && <span>{msg.agent_id}</span>}
+                  {msg.bridge_client_id && <span>{msg.bridge_client_id}</span>}
                   {msg.duration_ms != null && <span>{(msg.duration_ms / 1000).toFixed(1)}s</span>}
                 </div>
               )}

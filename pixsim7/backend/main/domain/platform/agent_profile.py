@@ -1,5 +1,5 @@
-"""
-Agent Profile — unified identity for AI agents and assistant personas.
+﻿"""
+Agent Profile â€” unified identity for AI agents and assistant personas.
 
 Merges the former ``AssistantDefinition`` (conversation persona) with
 ``AgentProfile`` (service identity).  A single profile configures:
@@ -23,7 +23,7 @@ PLATFORM_SCHEMA = "dev_meta"
 
 
 class AgentProfile(SQLModel, table=True):
-    """Unified AI profile — both identity and persona."""
+    """Unified AI profile â€” both identity and persona."""
 
     __tablename__ = "agent_profiles"
     __table_args__ = (
@@ -37,7 +37,7 @@ class AgentProfile(SQLModel, table=True):
     label: str = Field(max_length=255)
     description: Optional[str] = Field(default=None, sa_column=Column(Text))
     icon: Optional[str] = Field(default=None, max_length=50)
-    agent_type: str = Field(default="claude-cli", max_length=64)
+    agent_type: str = Field(default="claude", max_length=64)
 
     # Persona (from AssistantDefinition)
     system_prompt: Optional[str] = Field(
@@ -87,7 +87,7 @@ class AgentProfile(SQLModel, table=True):
 
 
 # ---------------------------------------------------------------------------
-# Chat Session — tracks assistant conversation sessions for resume
+# Chat Session â€” tracks assistant conversation sessions for resume
 # ---------------------------------------------------------------------------
 
 
@@ -110,6 +110,9 @@ class ChatSession(SQLModel, table=True):
     user_id: int = Field(default=0, index=True)
     engine: str = Field(default="claude", max_length=32)
     profile_id: Optional[str] = Field(default=None, max_length=120)
+    scope_key: Optional[str] = Field(default=None, max_length=255, index=True)
+    last_plan_id: Optional[str] = Field(default=None, max_length=120, index=True)
+    last_contract_id: Optional[str] = Field(default=None, max_length=120, index=True)
     label: str = Field(default="Untitled", max_length=255)
     message_count: int = Field(default=0)
     last_used_at: datetime = Field(default_factory=utcnow)
@@ -118,12 +121,84 @@ class ChatSession(SQLModel, table=True):
 
 
 # ---------------------------------------------------------------------------
-# Agent Run — per-invocation tracking (stub, v1.1)
+# Bridge Instance â€” stable identity for remote WS bridge clients
+# ---------------------------------------------------------------------------
+
+
+class BridgeInstance(SQLModel, table=True):
+    """Durable bridge identity + lifecycle state.
+
+    ``agent_id`` (legacy name; bridge_client_id) is the user/client-provided
+    stable ID used by the WS bridge.
+    ``id`` is the backend-assigned UUID used as canonical bridge identity.
+    """
+
+    __tablename__ = "bridge_instances"
+    __table_args__ = (
+        Index("idx_bridge_instances_agent_id", "agent_id", unique=True),
+        Index("idx_bridge_instances_user_status", "user_id", "status"),
+        Index("idx_bridge_instances_last_seen", "last_seen_at"),
+        {"schema": PLATFORM_SCHEMA},
+    )
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    agent_id: str = Field(max_length=120)
+    user_id: Optional[int] = Field(default=None, index=True)  # None = shared/admin bridge
+    agent_type: str = Field(default="unknown", max_length=64)
+    status: str = Field(default="online", max_length=32, index=True)  # online | offline
+    connected_at: datetime = Field(default_factory=utcnow, index=True)
+    last_seen_at: datetime = Field(default_factory=utcnow, index=True)
+    disconnected_at: Optional[datetime] = Field(default=None, index=True)
+    meta: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+# ---------------------------------------------------------------------------
+# Bridge User Membership - user <-> bridge client usage history
+# ---------------------------------------------------------------------------
+
+
+class BridgeUserMembership(SQLModel, table=True):
+    """Tracks which users have used which bridge client IDs (machines)."""
+
+    __tablename__ = "bridge_user_memberships"
+    __table_args__ = (
+        Index(
+            "idx_bridge_user_memberships_user_bridge",
+            "user_id",
+            "bridge_client_id",
+            unique=True,
+        ),
+        Index("idx_bridge_user_memberships_user_status", "user_id", "status"),
+        Index("idx_bridge_user_memberships_user_last_seen", "user_id", "last_seen_at"),
+        Index("idx_bridge_user_memberships_bridge_client_id", "bridge_client_id"),
+        Index("idx_bridge_user_memberships_bridge_id", "bridge_id"),
+        {"schema": PLATFORM_SCHEMA},
+    )
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: int = Field(nullable=False)
+    bridge_client_id: str = Field(max_length=120, nullable=False)
+    bridge_id: Optional[UUID] = Field(default=None)
+    agent_type: Optional[str] = Field(default=None, max_length=64)
+    status: str = Field(default="online", max_length=32)  # online | offline
+    first_seen_at: datetime = Field(default_factory=utcnow)
+    last_seen_at: datetime = Field(default_factory=utcnow)
+    last_connected_at: Optional[datetime] = Field(default_factory=utcnow)
+    last_disconnected_at: Optional[datetime] = Field(default=None)
+    meta: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Agent Run â€” per-invocation tracking (stub, v1.1)
 # ---------------------------------------------------------------------------
 
 
 class AgentRun(SQLModel, table=True):
-    """A single agent run/invocation. Stub for v1.1 — designed but not yet populated.
+    """A single agent run/invocation. Stub for v1.1 â€” designed but not yet populated.
 
     TODO(v1.1):
     - Populate on token mint (started_at = now, status = running)
@@ -151,3 +226,4 @@ class AgentRun(SQLModel, table=True):
     ended_at: Optional[datetime] = Field(default=None)
     summary: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
     token_jti: Optional[str] = Field(default=None, max_length=64)
+

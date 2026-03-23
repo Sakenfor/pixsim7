@@ -15,11 +15,14 @@ import {
   adminDeactivateUser,
   adminUpdateUser,
   extractErrorMessage,
+  listBridgeMachines,
   listAdminUsers,
   updateAdminUserPermissions,
   type AdminUserPermissions,
+  type BridgeMachine,
 } from '@lib/api';
 import { CODEGEN_PERMISSION, isAdminUser } from '@lib/auth/userRoles';
+import { formatActorLabel } from '@lib/identity/actorDisplay';
 
 import { useAuthStore } from '@/stores/authStore';
 
@@ -58,7 +61,12 @@ function formatDate(dateStr: string | null): string {
   });
 }
 
-// ─── User List Item ───────────────────────────────────────────────
+function formatDateTime(dateStr: string | null): string {
+  if (!dateStr) return 'Never';
+  return new Date(dateStr).toLocaleString();
+}
+
+// --- User List Item ---
 
 function UserListItem({
   user,
@@ -69,6 +77,8 @@ function UserListItem({
   isSelected: boolean;
   onSelect: () => void;
 }) {
+  const machineTotal = user.bridge_machines_total ?? 0;
+  const machineOnline = user.bridge_machines_online ?? 0;
   return (
     <button
       onClick={onSelect}
@@ -90,6 +100,11 @@ function UserListItem({
           )}
         </div>
         <div className="truncate text-[10px] text-neutral-500">{user.email}</div>
+        {machineTotal > 0 && (
+          <div className="text-[9px] text-neutral-500">
+            {machineOnline}/{machineTotal} bridge machine{machineTotal !== 1 ? 's' : ''} online
+          </div>
+        )}
       </div>
       <Badge color={ROLE_BADGE_COLOR[user.role] ?? 'gray'} className="!text-[9px] shrink-0">
         {user.role}
@@ -98,15 +113,19 @@ function UserListItem({
   );
 }
 
-// ─── User Detail Panel ────────────────────────────────────────────
+// --- User Detail Panel ---
 
 function UserDetailPanel({
   user,
   currentUserId,
+  machinesLoading,
+  onRefreshMachines,
   onUpdate,
 }: {
   user: AdminUserPermissions;
   currentUserId: number | undefined;
+  machinesLoading: boolean;
+  onRefreshMachines: () => void;
   onUpdate: (updated: AdminUserPermissions) => void;
 }) {
   const [editRole, setEditRole] = useState(user.role);
@@ -121,6 +140,10 @@ function UserDetailPanel({
   const isSelf = currentUserId === user.id;
   const permissions = normalizePermissions(user.permissions || []);
   const hasCodegen = permissions.includes(CODEGEN_PERMISSION);
+  const bridgeMachines = user.bridge_machines ?? [];
+  const bridgeMachinesTotal = user.bridge_machines_total ?? bridgeMachines.length;
+  const bridgeMachinesOnline =
+    user.bridge_machines_online ?? bridgeMachines.filter((machine) => machine.online).length;
 
   // Reset form when user changes
   useEffect(() => {
@@ -258,7 +281,7 @@ function UserDetailPanel({
           </div>
         )}
 
-        {/* ── Account section ── */}
+        {/* -- Account section -- */}
         <SectionHeader>Account</SectionHeader>
 
         <FormField label="Role">
@@ -317,7 +340,7 @@ function UserDetailPanel({
           )}
         </div>
 
-        {/* ── Permissions section ── */}
+        {/* -- Permissions section -- */}
         <SectionHeader className="mt-2">Permissions</SectionHeader>
 
         <div className="flex items-center justify-between">
@@ -365,7 +388,56 @@ function UserDetailPanel({
           </Button>
         </div>
 
-        {/* ── Danger zone ── */}
+        {/* -- Bridge machines section -- */}
+        <SectionHeader className="mt-2">Bridge machines</SectionHeader>
+
+        <div className="flex items-center justify-between text-[10px] text-neutral-500">
+          <span>
+            {bridgeMachinesOnline}/{bridgeMachinesTotal} online
+          </span>
+          <Button size="sm" variant="ghost" onClick={onRefreshMachines} loading={machinesLoading}>
+            Refresh
+          </Button>
+        </div>
+
+        {machinesLoading ? (
+          <div className="text-[11px] text-neutral-500">Loading bridge machines...</div>
+        ) : bridgeMachines.length === 0 ? (
+          <div className="rounded border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-[11px] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/30">
+            No bridge machines recorded for this user yet.
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {bridgeMachines.map((machine: BridgeMachine) => (
+              <div
+                key={machine.bridge_client_id}
+                className="rounded border border-neutral-200 bg-white px-2.5 py-2 dark:border-neutral-800 dark:bg-neutral-900/40"
+              >
+                <div className="flex items-center gap-2">
+                  <Badge color={machine.online ? 'green' : 'gray'} className="!text-[9px] !px-1.5 !py-0">
+                    {machine.online ? 'Online' : 'Offline'}
+                  </Badge>
+                  <code
+                    className="text-[10px] text-neutral-700 dark:text-neutral-200"
+                    title={machine.bridge_client_id}
+                  >
+                    {formatActorLabel({ fallback: machine.bridge_client_id })}
+                  </code>
+                  {machine.agent_type && (
+                    <span className="text-[10px] text-neutral-500">{machine.agent_type}</span>
+                  )}
+                </div>
+                <div className="mt-1 text-[10px] text-neutral-500">
+                  Last seen: {formatDateTime(machine.last_seen_at)}
+                  {machine.bridge_id ? ` - Bridge: ${machine.bridge_id}` : ''}
+                  {machine.client_host ? ` - Host: ${machine.client_host}` : ''}
+                  {machine.model ? ` - Model: ${machine.model}` : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {!isSelf && (
           <>
             <SectionHeader className="mt-2">Danger zone</SectionHeader>
@@ -394,7 +466,7 @@ function UserDetailPanel({
   );
 }
 
-// ─── Main ─────────────────────────────────────────────────────────
+// --- Main ---
 
 export function AccessSettings() {
   const currentUser = useAuthStore((s) => s.user);
@@ -405,6 +477,7 @@ export function AccessSettings() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [machinesLoadingUserId, setMachinesLoadingUserId] = useState<number | null>(null);
 
   const activeSearch = search.trim();
 
@@ -418,7 +491,19 @@ export function AccessSettings() {
         limit: 200,
         offset: 0,
       });
-      setUsers(response.users);
+      setUsers((prev) => {
+        const previousById = new Map(prev.map((user) => [user.id, user]));
+        return response.users.map((user) => {
+          const existing = previousById.get(user.id);
+          if (!existing) return user;
+          return {
+            ...user,
+            bridge_machines: existing.bridge_machines,
+            bridge_machines_total: existing.bridge_machines_total,
+            bridge_machines_online: existing.bridge_machines_online,
+          };
+        });
+      });
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to load users'));
     } finally {
@@ -444,9 +529,58 @@ export function AccessSettings() {
     [users, selectedUserId],
   );
 
+  const refreshSelectedUserMachines = useCallback(async () => {
+    if (!canManageAccess || selectedUserId == null) return;
+    const targetUserId = selectedUserId;
+    setMachinesLoadingUserId(targetUserId);
+    setError('');
+    try {
+      const response = await listBridgeMachines({
+        user_id: targetUserId,
+        limit: 100,
+      });
+      const onlineCount = response.machines.filter((machine) => machine.online).length;
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === targetUserId
+            ? {
+                ...user,
+                bridge_machines: response.machines,
+                bridge_machines_total: response.total,
+                bridge_machines_online: onlineCount,
+              }
+            : user,
+        ),
+      );
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to load bridge machines'));
+    } finally {
+      setMachinesLoadingUserId((current) => (current === targetUserId ? null : current));
+    }
+  }, [canManageAccess, selectedUserId]);
+
+  useEffect(() => {
+    void refreshSelectedUserMachines();
+  }, [refreshSelectedUserMachines]);
+
   const handleUserUpdated = useCallback((updated: AdminUserPermissions) => {
-    setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+    setUsers((prev) =>
+      prev.map((user) =>
+        user.id === updated.id
+          ? {
+              ...user,
+              ...updated,
+              bridge_machines: updated.bridge_machines ?? user.bridge_machines,
+              bridge_machines_total: updated.bridge_machines_total ?? user.bridge_machines_total,
+              bridge_machines_online: updated.bridge_machines_online ?? user.bridge_machines_online,
+            }
+          : user,
+      ),
+    );
   }, []);
+
+  const selectedUserMachinesLoading =
+    selectedUser != null && machinesLoadingUserId === selectedUser.id;
 
   if (!canManageAccess) {
     return (
@@ -465,7 +599,7 @@ export function AccessSettings() {
       )}
 
       <div className="flex overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800" style={{ minHeight: 360 }}>
-        {/* ── Left: User list ── */}
+        {/* -- Left: User list -- */}
         <div className="flex w-[220px] shrink-0 flex-col border-r border-neutral-200 bg-neutral-50/50 dark:border-neutral-800 dark:bg-neutral-900/30">
           <div className="border-b border-neutral-200 p-2 dark:border-neutral-800">
             <SearchInput
@@ -499,12 +633,14 @@ export function AccessSettings() {
           </div>
         </div>
 
-        {/* ── Right: User detail ── */}
+        {/* -- Right: User detail -- */}
         <div className="flex-1 overflow-hidden">
           {selectedUser ? (
             <UserDetailPanel
               user={selectedUser}
               currentUserId={currentUser?.id}
+              machinesLoading={selectedUserMachinesLoading}
+              onRefreshMachines={() => void refreshSelectedUserMachines()}
               onUpdate={handleUserUpdated}
             />
           ) : (
