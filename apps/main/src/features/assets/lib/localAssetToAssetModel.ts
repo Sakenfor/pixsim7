@@ -46,7 +46,7 @@ export function localAssetToAssetModel(
       ? asset.last_upload_asset_id
       : undefined;
 
-  const id = uploadedAssetId ?? hashStringToStableNegativeId(asset.key);
+  const id = uploadedAssetId ?? hashStringToStableNegativeId(asset.key ?? asset.id ?? 'unknown');
   const isUploaded = !!uploadedAssetId;
 
   const mediaType = asset.kind === 'video' ? 'video' : 'image';
