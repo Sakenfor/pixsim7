@@ -49,7 +49,13 @@ def compose_up_detached(compose_file: str) -> Tuple[bool, str]:
     return _run_compose(compose_file, ['up', '-d'], timeout=60, fail_msg='compose up failed')
 
 
+def compose_stop(compose_file: str) -> Tuple[bool, str]:
+    """Stop containers without removing them (preserves state for fast restart)."""
+    return _run_compose(compose_file, ['stop'], timeout=60, fail_msg='compose stop failed')
+
+
 def compose_down(compose_file: str) -> Tuple[bool, str]:
+    """Stop and remove containers + networks."""
     return _run_compose(compose_file, ['down'], timeout=60, fail_msg='compose down failed')
 
 

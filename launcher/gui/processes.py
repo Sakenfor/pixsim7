@@ -13,7 +13,7 @@ try:
     from .config import service_env, ROOT, check_tool_available
     from .logger import launcher_logger as _launcher_logger
     from .status import HealthStatus
-    from .docker_utils import compose_up_detached, compose_down, compose_logs
+    from .docker_utils import compose_up_detached, compose_stop, compose_down, compose_logs
     from ..core.paths import console_log_file
     from . import pid_store
 except ImportError:
@@ -21,7 +21,7 @@ except ImportError:
     from config import service_env, ROOT, check_tool_available
     from logger import launcher_logger as _launcher_logger
     from status import HealthStatus
-    from docker_utils import compose_up_detached, compose_down, compose_logs
+    from docker_utils import compose_up_detached, compose_stop, compose_down, compose_logs
     from launcher.core.paths import console_log_file
     import pid_store
 
@@ -913,8 +913,8 @@ class ServiceProcess:
         if self.defn.key == 'db':
             try:
                 compose_file = os.path.join(ROOT, 'docker-compose.db-only.yml')
-                ok, _ = compose_down(compose_file)
-                _log("db_compose_down", service_key=self.defn.key, success=ok)
+                ok, _ = compose_stop(compose_file)
+                _log("db_compose_stop", service_key=self.defn.key, success=ok)
                 self._mark_stopped()
             except Exception:
                 self._mark_stopped(HealthStatus.UNHEALTHY)
