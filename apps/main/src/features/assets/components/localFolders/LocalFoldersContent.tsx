@@ -35,7 +35,6 @@ import {
 } from '../../lib/localGroupEngine';
 import { getUploadCapableProviders } from '../../lib/resolveUploadTarget';
 import type { AssetModel } from '../../models/asset';
-import type { AssetModel } from '../../models/asset';
 import type { ViewerAsset } from '../../stores/assetViewerStore';
 import { useLocalFolderSettingsStore } from '../../stores/localFolderSettingsStore';
 import type { LocalAsset } from '../../stores/localFoldersStore';
