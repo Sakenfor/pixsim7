@@ -890,6 +890,59 @@ class PlanProgressResponse(BaseModel):
     newScope: Optional[str] = None
 
 
+def _checkpoint_progress_summary(checkpoint: Dict[str, Any], fallback_id: str) -> str:
+    checkpoint_id = str(checkpoint.get("id") or fallback_id).strip() or fallback_id
+    status = str(checkpoint.get("status") or "pending").strip() or "pending"
+    points_done, points_total = _derive_checkpoint_points(checkpoint)
+    if points_total is not None and points_total > 0:
+        return f"{checkpoint_id} [{status}] {points_done}/{points_total}"
+    return f"{checkpoint_id} [{status}] {points_done}"
+
+
+async def _emit_plan_progress_notification(
+    db: AsyncSession,
+    *,
+    plan_id: str,
+    plan_title: str,
+    checkpoint_id: str,
+    old_summary: str,
+    new_summary: str,
+    principal: CurrentUser,
+) -> None:
+    # Test stubs often use lightweight DB objects; real AsyncSession always has add().
+    if not hasattr(db, "add"):
+        return
+
+    from pixsim7.backend.main.api.v1.notifications import emit_notification
+
+    change_new = new_summary if new_summary != old_summary else f"{checkpoint_id} updated"
+
+    await emit_notification(
+        db,
+        title=f"Plan updated: {plan_title}",
+        body=f"**{plan_title}**: checkpoint -> {change_new}",
+        category="plan",
+        severity="info",
+        source=principal.source,
+        event_type="plan.updated",
+        actor_name=principal.actor_display_name,
+        actor_user_id=principal.user_id,
+        ref_type="plan",
+        ref_id=plan_id,
+        payload={
+            "planTitle": plan_title,
+            "checkpointId": checkpoint_id,
+            "changes": [
+                {
+                    "field": "checkpoint",
+                    "old": old_summary,
+                    "new": change_new,
+                }
+            ],
+        },
+    )
+
+
 @router.post("/progress/{plan_id}", response_model=PlanProgressResponse)
 async def log_plan_progress(
     plan_id: str,
@@ -948,6 +1001,7 @@ async def log_plan_progress(
 
     checkpoint_raw = checkpoints[checkpoint_index]
     checkpoint = dict(checkpoint_raw) if isinstance(checkpoint_raw, dict) else {}
+    old_checkpoint_summary = _checkpoint_progress_summary(checkpoint, payload.checkpoint_id)
 
     points_done, points_total = _derive_checkpoint_points(checkpoint)
     if payload.points_done is not None:
@@ -1068,6 +1122,7 @@ async def log_plan_progress(
     if principal.is_agent:
         last_update["actor"] = principal.audit_dict()
     checkpoint["last_update"] = last_update
+    new_checkpoint_summary = _checkpoint_progress_summary(checkpoint, payload.checkpoint_id)
 
     new_checkpoints = list(checkpoints)
     new_checkpoints[checkpoint_index] = checkpoint
@@ -1097,6 +1152,15 @@ async def log_plan_progress(
             "checkpoint_id": payload.checkpoint_id,
             "sync_plan_stage": bool(payload.sync_plan_stage),
         },
+    )
+    await _emit_plan_progress_notification(
+        db,
+        plan_id=plan_id,
+        plan_title=(getattr(getattr(bundle, "doc", None), "title", None) or plan_id),
+        checkpoint_id=payload.checkpoint_id,
+        old_summary=old_checkpoint_summary,
+        new_summary=new_checkpoint_summary,
+        principal=principal,
     )
     await db.commit()
 

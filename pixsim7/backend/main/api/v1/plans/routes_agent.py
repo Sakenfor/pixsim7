@@ -15,6 +15,9 @@ from pixsim7.backend.main.services.docs.plan_write import (
     get_plan_bundle,
     list_plan_bundles,
 )
+from pixsim7.backend.main.services.docs.plan_authoring_policy import (
+    PLAN_AUTHORING_CONTRACT_ENDPOINT,
+)
 from pixsim7.backend.main.api.v1.plans.schemas import PlanSummary
 from pixsim7.backend.main.api.v1.plans import helpers as _h
 
@@ -341,4 +344,3 @@ async def get_agent_context(
 
 
 # ── Plan documents endpoint ───────────────────────────────────────
-

@@ -122,6 +122,59 @@ class TestDevPlansProgressEndpoint:
         assert principal.id == 123
 
     @pytest.mark.asyncio
+    async def test_progress_emits_plan_updated_notification(self):
+        app = _app(authenticated=True)
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[
+                    {
+                        "id": "phase_1",
+                        "label": "Phase 1",
+                        "status": "pending",
+                        "points_total": 3,
+                        "points_done": 0,
+                    }
+                ]
+            ),
+            doc=SimpleNamespace(title="Plan A"),
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a",
+            changes=[{"field": "checkpoints"}],
+            commit_sha=None,
+            new_scope=None,
+        )
+
+        with (
+            patch(
+                "pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle",
+                new=AsyncMock(return_value=bundle),
+            ),
+            patch(
+                "pixsim7.backend.main.api.v1.dev_plans.update_plan",
+                new=AsyncMock(return_value=update_result),
+            ),
+            patch(
+                "pixsim7.backend.main.api.v1.dev_plans._emit_plan_progress_notification",
+                new=AsyncMock(),
+            ) as mock_emit,
+        ):
+            async with _client(app) as c:
+                response = await c.post(
+                    "/api/v1/dev/plans/progress/plan-a",
+                    json={"checkpoint_id": "phase_1", "points_delta": 1},
+                )
+
+        assert response.status_code == 200
+        kwargs = mock_emit.await_args.kwargs
+        assert kwargs["plan_id"] == "plan-a"
+        assert kwargs["plan_title"] == "Plan A"
+        assert kwargs["checkpoint_id"] == "phase_1"
+        assert kwargs["old_summary"] == "phase_1 [pending] 0/3"
+        assert kwargs["new_summary"] == "phase_1 [active] 1/3"
+        assert kwargs["principal"].source == "user:123"
+
+    @pytest.mark.asyncio
     async def test_progress_requires_action_fields(self):
         app = _app(authenticated=True)
 
