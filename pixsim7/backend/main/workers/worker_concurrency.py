@@ -891,12 +891,13 @@ async def _plan_pinned_concurrent_defer(
     base_defer = concurrent_cooldown_seconds + _pinned_wait_padding_seconds()
     defer_seconds = base_defer
     reason = "pinned_account_concurrent_wait"
-    increment_retry = True
+    # Concurrent waits are not errors — don't consume the retry budget.
+    # retry_count tracks actual error recoveries only.
+    increment_retry = False
 
     if adaptive_recommended_defer_seconds is not None:
         defer_seconds = max(base_defer, int(adaptive_recommended_defer_seconds))
         reason = "pinned_account_adaptive_concurrent_wait"
-        increment_retry = False
 
     wait_count = await _increment_pinned_concurrent_wait_count(
         generation.id,

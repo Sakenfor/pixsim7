@@ -75,13 +75,6 @@ RETRYABLE_TEMPORARY_ERROR_PATTERNS = [
     "server error",
 ]
 
-# Submit-time content filter rejections are retried directly in the worker
-# (job_processor.py) with a dedicated, shorter retry budget. Exclude them from
-# event-driven auto-retry to avoid double-retrying the same generation.
-WORKER_MANAGED_CONTENT_FILTER_ERROR_CODES = frozenset({
-    "content_output_rejected",
-    "content_image_rejected",
-})
 
 
 class GenerationRetryService:
@@ -156,12 +149,12 @@ class GenerationRetryService:
         if original.status not in {GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
             raise InvalidOperationError(f"Can only retry failed or cancelled generations, not {original.status.value}")
 
-        # Check retry count
-        if original.retry_count >= max_retries:
-            raise InvalidOperationError(f"Maximum retry attempts ({max_retries}) exceeded")
+        # Check attempt count
+        if (original.attempt_id or 0) >= max_retries:
+            raise InvalidOperationError(f"Maximum attempts ({max_retries}) exceeded")
 
         # Create new generation with same params
-        logger.info(f"Retrying generation {generation_id} (attempt {original.retry_count + 1}/{max_retries})")
+        logger.info(f"Retrying generation {generation_id} (attempt {(original.attempt_id or 0) + 1}/{max_retries})")
 
         new_generation = await self.creation.create_generation(
             user=user,
@@ -212,11 +205,11 @@ class GenerationRetryService:
         if not generation.error_message:
             return False
 
-        # Check retry count against configured max
+        # Check attempt count against configured max
         from pixsim7.backend.main.shared.config import settings
-        max_retries = settings.auto_retry_max_attempts
+        max_attempts = settings.auto_retry_max_attempts
 
-        if generation.retry_count >= max_retries:
+        if (generation.attempt_id or 0) >= max_attempts:
             return False
 
         # Primary path: use structured error_code if available
@@ -227,12 +220,6 @@ class GenerationRetryService:
             )
             try:
                 code = GenerationErrorCode(generation.error_code)
-                if code.value in WORKER_MANAGED_CONTENT_FILTER_ERROR_CODES:
-                    logger.info(
-                        f"Generation {generation.id} will NOT auto-retry: "
-                        f"worker-managed content filter code '{generation.error_code}'"
-                    )
-                    return False
                 is_retryable = code in RETRYABLE_ERROR_CODES
                 logger.info(
                     f"Generation {generation.id} error_code={generation.error_code} "

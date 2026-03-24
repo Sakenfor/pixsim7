@@ -115,12 +115,13 @@ async def handle_event(event: Event) -> None:
                 )
                 return
 
-            # Respect global max attempts (including the original failure)
-            if generation.retry_count >= settings.auto_retry_max_attempts:
+            # Respect global max attempts (checked against attempt_id —
+            # the comprehensive counter of every PROCESSING transition)
+            if (generation.attempt_id or 0) >= settings.auto_retry_max_attempts:
                 logger.info(
                     "auto_retry_max_attempts_reached",
                     generation_id=generation_id,
-                    retry_count=generation.retry_count,
+                    attempt_id=generation.attempt_id,
                     max_attempts=settings.auto_retry_max_attempts,
                 )
                 return

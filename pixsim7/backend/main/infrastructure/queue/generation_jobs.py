@@ -208,9 +208,11 @@ async def enqueue_generation_retry_job(
     applicable. Callers should inspect ``enqueued`` to distinguish a real
     enqueue from a dedupe lease hit.
     """
+    # Route to the main (fresh) queue so the main worker processes retries
+    # directly.  The separate retry queue required a companion worker that
+    # was easy to forget when restarting manually, causing retries to pile up.
     kwargs: dict[str, object] = {
         "generation_id": generation_id,
-        "_queue_name": GENERATION_RETRY_QUEUE_NAME,
     }
     jitter = _get_retry_defer_jitter_seconds()
     base_defer = max(defer_seconds or 0, 0)

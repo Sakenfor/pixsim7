@@ -107,11 +107,11 @@ NO_ACCOUNT_AVAILABLE_DEFER_SECONDS = 10
 
 
 def _dispatch_stagger_per_slot_seconds() -> float:
-    return _settings_float("dispatch_stagger_per_slot_seconds", 1.5, minimum=0.0)
+    return _settings_float("dispatch_stagger_per_slot_seconds", 0.3, minimum=0.0)
 
 
 def _max_dispatch_stagger_seconds() -> float:
-    return _settings_float("dispatch_stagger_max_seconds", 12.0, minimum=0.0)
+    return _settings_float("dispatch_stagger_max_seconds", 3.0, minimum=0.0)
 
 
 def _min_pinned_cooldown_defer_seconds() -> int:
@@ -1037,7 +1037,8 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     except Exception as release_err:
                         gen_logger.warning("account_release_failed", error=str(release_err))
 
-                    # Check retry count - don't retry forever
+                    # Check retry count for content filter budget (not attempt_id —
+                    # attempt_id includes non-error transitions like concurrent waits).
                     MAX_CONTENT_FILTER_RETRIES = max_submit_content_filter_retries()
                     current_retries = getattr(generation, 'retry_count', 0) or 0
 
@@ -1147,11 +1148,6 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             )
                             # Fall through to mark as failed if requeue fails
                     else:
-                        # Prevent the event-driven auto-retry handler from
-                        # applying its larger retry budget after this worker-
-                        # managed content-filter retry budget is exhausted.
-                        if _extract_error_code(e) == "content_filtered":
-                            setattr(e, "error_code", "content_output_rejected")
                         gen_logger.warning(
                             "content_filter_max_retries_exceeded",
                             generation_id=generation.id,

@@ -300,30 +300,6 @@ const generationGroups: SettingGroup[] = [
     ],
   },
   {
-    id: 'retries',
-    title: 'Auto-Retry',
-    description: 'Control how failed generations are retried.',
-    fields: [
-      {
-        id: 'autoRetryEnabled',
-        type: 'toggle',
-        label: 'Enable Auto-Retry',
-        description: 'Automatically retry failed generations when errors look temporary or content-related.',
-        defaultValue: true,
-      },
-      {
-        id: 'autoRetryMaxAttempts',
-        type: 'number',
-        label: 'Max Retry Attempts',
-        description: 'Maximum number of attempts per generation (including the first).',
-        min: 1,
-        max: 50,
-        step: 1,
-        defaultValue: 20,
-      },
-    ],
-  },
-  {
     id: 'server-limits',
     title: 'Server Limits',
     description: 'Rate limits, retry caps, and per-user quotas applied server-side. Changes are persisted to the database.',
@@ -820,10 +796,6 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
       switch (fieldId) {
         case 'autoSwitchOperationType':
           return params.autoSwitchOperationType ?? true;
-        case 'autoRetryEnabled':
-          return params.autoRetryEnabled ?? true;
-        case 'autoRetryMaxAttempts':
-          return params.autoRetryMaxAttempts ?? 20;
         case 'historyMode':
           return historyMode ?? 'per-operation';
         case 'maxHistorySize':
@@ -908,15 +880,6 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
       if (fieldId === 'autoSwitchOperationType') {
         setParam('autoSwitchOperationType', Boolean(value));
       }
-      if (fieldId === 'autoRetryEnabled') {
-        setParam('autoRetryEnabled', Boolean(value));
-      }
-      if (fieldId === 'autoRetryMaxAttempts') {
-        const n = Number(value);
-        if (!Number.isNaN(n)) {
-          setParam('autoRetryMaxAttempts', n);
-        }
-      }
       if (fieldId === 'historyMode') {
         setHistoryMode(value as HistoryMode);
       }
@@ -986,8 +949,6 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
     },
     getAll: () => ({
       autoSwitchOperationType: params.autoSwitchOperationType ?? true,
-      autoRetryEnabled: params.autoRetryEnabled ?? true,
-      autoRetryMaxAttempts: params.autoRetryMaxAttempts ?? 20,
       historyMode: historyMode ?? 'per-operation',
       maxHistorySize: maxHistorySize ?? 20,
       historySortMode: historySortMode ?? 'pinned-first',

@@ -43,6 +43,11 @@ class _FakeResult:
     def scalar(self):
         return self._scalar_value
 
+    def scalar_one(self):
+        if len(self._rows) != 1:
+            raise ValueError(f"Expected exactly one row, got {len(self._rows)}")
+        return self._rows[0]
+
     def first(self):
         if not self._rows:
             return None
@@ -101,6 +106,9 @@ class _FakeDB:
             return _FakeResult(rows=rows)
         if "from asset_analyses" in sql:
             return _FakeResult(rows=[])
+        # Account lock query (select ... for update / provider_accounts)
+        if self.accounts and ("for update" in sql or "provider_account" in sql):
+            return _FakeResult(rows=[next(iter(self.accounts.values()))])
         return _FakeResult(rows=[])
 
     async def get(self, model, entity_id):
@@ -241,12 +249,19 @@ def _install_shared_patches(monkeypatch: pytest.MonkeyPatch, db: _FakeDB) -> Non
     async def _fake_get_db():
         yield db
 
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _fake_get_async_session():
+        yield db
+
     async def _fake_refresh_account_credits(*args, **kwargs):
         return {"web": 1}
 
     monkeypatch.setattr(status_poller, "_init_poller_debug_flags", lambda: None)
     monkeypatch.setattr(status_poller, "get_global_debug_logger", lambda: _NoopDebug())
     monkeypatch.setattr(status_poller, "get_db", _fake_get_db)
+    monkeypatch.setattr(status_poller, "get_async_session", _fake_get_async_session)
     monkeypatch.setattr(status_poller, "UserService", _FakeUserService)
     monkeypatch.setattr(status_poller, "GenerationService", _FakeGenerationService)
     monkeypatch.setattr(status_poller, "ProviderService", _FakeProviderService)
@@ -384,12 +399,15 @@ async def test_poll_job_statuses_provider_error_keeps_generation_processing(
 
     assert result["checked"] == 1
     assert result["completed"] == 0
-    assert result["failed"] == 0
-    assert result["still_processing"] == 1
+    # Non-transient provider errors are marked failed so the auto-retry
+    # handler can re-queue with a fresh session (frees account slot).
+    assert result["failed"] == 1
+    assert result["still_processing"] == 0
     assert _FakeGenerationService.instance is not None
-    assert _FakeGenerationService.instance.failed == []
+    assert len(_FakeGenerationService.instance.failed) == 1
+    assert _FakeGenerationService.instance.failed[0][0] == 202  # generation_id
     assert _FakeAccountService.instance is not None
-    assert _FakeAccountService.instance.released == []
+    assert _FakeAccountService.instance.released == [502]
 
 
 @pytest.mark.asyncio

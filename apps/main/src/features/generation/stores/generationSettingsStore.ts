@@ -14,8 +14,6 @@ const PER_MODEL_PARAMS = new Set(['quality', 'resolution', 'output_resolution'])
 // accidentally dropped when switching operations or hydrating other operation scopes.
 export const GLOBAL_UI_PARAMS = new Set([
   'autoSwitchOperationType',
-  'autoRetryEnabled',
-  'autoRetryMaxAttempts',
 ]);
 
 function pickGlobalUiParams(params: Record<string, any>): Record<string, any> {
@@ -127,13 +125,22 @@ export function createGenerationSettingsStore(
           const newPK = providerOpKey(state.providerId, operationType);
           const updatedPromptMap = { ...state.promptMap, [oldPK]: state.prompt };
 
-          // Save/restore params via paramsPerOperation
+          // Save current params for old operation (both maps)
           const globals = pickGlobalUiParams(state.params);
           const updatedParamsPerOp = {
             ...state.paramsPerOperation,
             [state.activeOperationType]: state.params,
           };
-          const baseParams = updatedParamsPerOp[operationType] || {};
+          const updatedProviderOp = {
+            ...state.paramsPerProviderOp,
+            [oldPK]: state.params,
+          };
+
+          // Restore: prefer provider-scoped params, fall back to per-operation
+          const newProviderKey = providerOpKey(state.providerId, operationType);
+          const baseParams = updatedProviderOp[newProviderKey]
+            ?? updatedParamsPerOp[operationType]
+            ?? {};
           const newParams = mergeMissingGlobalUiParams(baseParams, globals);
           if (!newParams.model && state.params.model) {
             newParams.model = state.params.model;
@@ -148,6 +155,10 @@ export function createGenerationSettingsStore(
             paramsPerOperation: {
               ...updatedParamsPerOp,
               [operationType]: newParams,
+            },
+            paramsPerProviderOp: {
+              ...updatedProviderOp,
+              [newProviderKey]: newParams,
             },
           });
         },
@@ -192,10 +203,10 @@ export function createGenerationSettingsStore(
               ...updatedProviderOp,
               [newParamKey]: newParams,
             },
-            paramsPerOperation: {
-              ...state.paramsPerOperation,
-              [op]: newParams,
-            },
+            // Don't overwrite paramsPerOperation — it would clobber the old
+            // provider's params for this operation.  setOperationType reads
+            // from paramsPerProviderOp first now, so per-operation is a
+            // fallback only.
           });
         },
 
@@ -283,6 +294,10 @@ export function createGenerationSettingsStore(
                 ...prev.paramsPerOperation,
                 [prev.activeOperationType]: finalParams,
               },
+              paramsPerProviderOp: {
+                ...prev.paramsPerProviderOp,
+                [providerOpKey(prev.providerId, prev.activeOperationType)]: finalParams,
+              },
               paramsPerModel: updatedParamsPerModel,
             };
           }),
@@ -340,6 +355,10 @@ export function createGenerationSettingsStore(
               paramsPerOperation: {
                 ...prev.paramsPerOperation,
                 [prev.activeOperationType]: newParams,
+              },
+              paramsPerProviderOp: {
+                ...prev.paramsPerProviderOp,
+                [providerOpKey(prev.providerId, prev.activeOperationType)]: newParams,
               },
               paramsPerModel: updatedParamsPerModel,
             };
@@ -435,7 +454,11 @@ export function createGenerationSettingsStore(
         },
         onRehydrateStorage: () => (state) => {
           if (state) {
-            const activeParams = state.paramsPerOperation[state.activeOperationType] || {};
+            // Prefer provider-scoped params when a provider is set
+            const providerKey = providerOpKey(state.providerId, state.activeOperationType);
+            const activeParams = state.paramsPerProviderOp[providerKey]
+              ?? state.paramsPerOperation[state.activeOperationType]
+              ?? {};
             const globals = { ...pickGlobalUiParams(activeParams) };
             if (Object.keys(globals).length < GLOBAL_UI_PARAMS.size) {
               for (const params of Object.values(state.paramsPerOperation)) {
@@ -446,6 +469,7 @@ export function createGenerationSettingsStore(
             }
             const mergedActive = mergeMissingGlobalUiParams(activeParams, globals);
             state.paramsPerOperation[state.activeOperationType] = mergedActive;
+            state.paramsPerProviderOp[providerKey] = mergedActive;
             state.params = mergedActive;
             state.operationType = state.activeOperationType;
             state.generating = false; // always reset — never carry over stale in-progress flag
@@ -493,9 +517,12 @@ hmrSingleton('generationSettingsStore:rehydration', () => {
       'generationSettings_local',
       'GenerationSettingsStore'
     );
-    // After rehydration, derive params from paramsPerOperation
+    // After rehydration, derive params — prefer provider-scoped map
     const state = useGenerationSettingsStore.getState();
-    const activeParams = state.paramsPerOperation[state.activeOperationType] || {};
+    const providerKey = providerOpKey(state.providerId, state.activeOperationType);
+    const activeParams = state.paramsPerProviderOp[providerKey]
+      ?? state.paramsPerOperation[state.activeOperationType]
+      ?? {};
     const globals = { ...pickGlobalUiParams(activeParams) };
     if (Object.keys(globals).length < GLOBAL_UI_PARAMS.size) {
       for (const params of Object.values(state.paramsPerOperation)) {
@@ -513,6 +540,10 @@ hmrSingleton('generationSettingsStore:rehydration', () => {
       paramsPerOperation: {
         ...state.paramsPerOperation,
         [state.activeOperationType]: mergedActive,
+      },
+      paramsPerProviderOp: {
+        ...state.paramsPerProviderOp,
+        [providerKey]: mergedActive,
       },
       _hasHydrated: true,
     });

@@ -8,6 +8,7 @@ Runs periodically to:
 4. Update generation status
 """
 import asyncio
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
@@ -128,6 +129,146 @@ class _PollGenerationResult:
     generation_id: int
     outcome: str  # 'completed', 'failed', 'still_processing', 'error'
     missing_provider_job: bool = False
+
+
+@dataclass(slots=True)
+class _TransientPollBackoffState:
+    failures: int = 0
+    cooldown_until_mono: float = 0.0
+    last_failure_mono: float = 0.0
+
+
+_TRANSIENT_POLL_BACKOFF_STEPS_SEC: tuple[int, ...] = (10, 20, 30, 45, 60)
+_TRANSIENT_POLL_FAILURE_RESET_SEC = 120.0
+_TRANSIENT_POLL_PRUNE_STALE_SEC = 900.0
+_POLL_CONCURRENCY_NORMAL = 10
+_POLL_CONCURRENCY_DEGRADED = 4
+_POLL_CONCURRENCY_DEGRADE_THRESHOLD = 5
+_transient_poll_backoff: dict[str, _TransientPollBackoffState] = {}
+
+
+def _iter_exception_chain(error: BaseException, *, max_depth: int = 8) -> Iterable[BaseException]:
+    current: BaseException | None = error
+    seen: set[int] = set()
+    depth = 0
+    while current is not None and id(current) not in seen and depth < max_depth:
+        yield current
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+        depth += 1
+
+
+def _is_transient_network_error(error: Exception) -> bool:
+    type_markers = (
+        "connecterror",
+        "connecttimeout",
+        "readtimeout",
+        "writeerror",
+        "pooltimeout",
+        "networkerror",
+        "transporterror",
+        "gaierror",
+        "timeouterror",
+        "remotedisconnected",
+    )
+    message_markers = (
+        "all connection attempts failed",
+        "connection refused",
+        "connection reset",
+        "connection aborted",
+        "network is unreachable",
+        "no route to host",
+        "temporary failure in name resolution",
+        "name or service not known",
+        "nodename nor servname provided",
+        "getaddrinfo failed",
+        "cannot assign requested address",
+        "remote host closed",
+        "forcibly closed by the remote host",
+        "server disconnected",
+        "tls handshake",
+        "winerror 10048",
+        "winerror 10049",
+        "winerror 10050",
+        "winerror 10051",
+        "winerror 10053",
+        "winerror 10054",
+        "winerror 11001",
+    )
+    for exc in _iter_exception_chain(error):
+        exc_type = exc.__class__.__name__.lower()
+        if any(marker in exc_type for marker in type_markers):
+            return True
+        exc_msg = str(exc).lower()
+        if any(marker in exc_msg for marker in message_markers):
+            return True
+    return False
+
+
+def _is_transient_provider_poll_error(error: ProviderError) -> bool:
+    error_code = str(getattr(error, "error_code", "") or "").lower()
+    if error_code in {
+        GenerationErrorCode.PROVIDER_TIMEOUT.value,
+        GenerationErrorCode.PROVIDER_UNAVAILABLE.value,
+    }:
+        return True
+    return _is_transient_network_error(error)
+
+
+def _transient_poll_key(
+    *,
+    generation_id: int,
+    submission_id: int,
+    account_id: int | None,
+    provider_job_id: str | None,
+) -> str:
+    return f"{generation_id}:{submission_id}:{account_id or 0}:{provider_job_id or '-'}"
+
+
+def _get_transient_poll_backoff_remaining(key: str, *, now_mono: float) -> float:
+    state = _transient_poll_backoff.get(key)
+    if state is None:
+        return 0.0
+    if state.last_failure_mono and (now_mono - state.last_failure_mono) > _TRANSIENT_POLL_FAILURE_RESET_SEC:
+        state.failures = 0
+    remaining = state.cooldown_until_mono - now_mono
+    return remaining if remaining > 0 else 0.0
+
+
+def _record_transient_poll_backoff(key: str, *, now_mono: float) -> tuple[int, int]:
+    state = _transient_poll_backoff.setdefault(key, _TransientPollBackoffState())
+    if state.last_failure_mono and (now_mono - state.last_failure_mono) > _TRANSIENT_POLL_FAILURE_RESET_SEC:
+        state.failures = 0
+    state.failures += 1
+    state.last_failure_mono = now_mono
+    backoff_index = min(state.failures - 1, len(_TRANSIENT_POLL_BACKOFF_STEPS_SEC) - 1)
+    delay_sec = int(_TRANSIENT_POLL_BACKOFF_STEPS_SEC[backoff_index])
+    state.cooldown_until_mono = now_mono + delay_sec
+    return state.failures, delay_sec
+
+
+def _clear_transient_poll_backoff(key: str | None) -> None:
+    if key:
+        _transient_poll_backoff.pop(key, None)
+
+
+def _prune_transient_poll_backoff(*, now_mono: float) -> None:
+    stale_before = now_mono - _TRANSIENT_POLL_PRUNE_STALE_SEC
+    stale_keys = [
+        key
+        for key, state in _transient_poll_backoff.items()
+        if state.cooldown_until_mono <= now_mono and state.last_failure_mono <= stale_before
+    ]
+    for key in stale_keys:
+        _transient_poll_backoff.pop(key, None)
+
+
+def _active_transient_poll_backoffs(*, now_mono: float) -> int:
+    return sum(
+        1
+        for state in _transient_poll_backoff.values()
+        if state.cooldown_until_mono > now_mono
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -555,6 +696,7 @@ async def _poll_single_generation(
     generation_started_at = generation.started_at
     generation_operation_type = generation.operation_type
     missing_provider_job = False
+    transient_backoff_key: str | None = None
 
     async with get_async_session() as db:
         try:
@@ -1029,12 +1171,37 @@ async def _poll_single_generation(
                         missing_provider_job=missing_provider_job,
                     )
 
+                transient_backoff_key = _transient_poll_key(
+                    generation_id=generation.id,
+                    submission_id=submission.id,
+                    account_id=account.id,
+                    provider_job_id=submission.provider_job_id,
+                )
+                cooldown_remaining = _get_transient_poll_backoff_remaining(
+                    transient_backoff_key,
+                    now_mono=time.monotonic(),
+                )
+                if cooldown_remaining > 0:
+                    logger.debug(
+                        "provider_check_transient_backoff_skip",
+                        generation_id=generation.id,
+                        submission_id=submission.id,
+                        provider_job_id=submission.provider_job_id,
+                        cooldown_remaining_s=round(cooldown_remaining, 2),
+                    )
+                    return _PollGenerationResult(
+                        generation_id=generation_id,
+                        outcome='still_processing',
+                        missing_provider_job=missing_provider_job,
+                    )
+
                 status_result = await provider_service.check_status(
                     submission=submission_model,
                     account=account,
                     operation_type=generation_operation_type,
                     poll_cache=poll_cache,
                 )
+                _clear_transient_poll_backoff(transient_backoff_key)
                 submission = submission_model
 
                 # Include provider's raw status/metadata for debugging
@@ -1084,6 +1251,30 @@ async def _poll_single_generation(
                             missing_provider_job=missing_provider_job,
                         )
 
+                    # Release account slot early — provider already freed its
+                    # slot when the generation completed.  Holding ours during
+                    # the asset download / billing / credit-refresh chain keeps
+                    # the slot phantom-occupied and starves queued generations.
+                    # Track stats first (needs the account row locked).
+                    locked = await db.execute(
+                        select(ProviderAccount).where(ProviderAccount.id == account.id).with_for_update()
+                    )
+                    account = locked.scalar_one()
+                    account.total_videos_generated += 1
+                    account.videos_today += 1
+                    account.failure_streak = 0
+                    account.last_used = datetime.now(timezone.utc)
+                    if status_result.duration_sec:
+                        account.update_ema_generation_time(status_result.duration_sec)
+                    account.success_rate = account.calculate_success_rate()
+                    await db.commit()
+
+                    # Decrement account's concurrent job count and wake pinned waiters
+                    account = await account_service.release_account(account.id)
+                    await db.commit()
+
+                    # --- Slot is now free for other generations ---
+
                     # Refresh submission to get updated response from check_status
                     await db.refresh(submission)
                     # Create asset from submission
@@ -1117,24 +1308,6 @@ async def _poll_single_generation(
                             generation_id=generation.id,
                             error=str(billing_err)
                         )
-
-                    # Track generation stats on account (locked to prevent lost updates)
-                    locked = await db.execute(
-                        select(ProviderAccount).where(ProviderAccount.id == account.id).with_for_update()
-                    )
-                    account = locked.scalar_one()
-                    account.total_videos_generated += 1
-                    account.videos_today += 1
-                    account.failure_streak = 0
-                    account.last_used = datetime.now(timezone.utc)
-                    if status_result.duration_sec:
-                        account.update_ema_generation_time(status_result.duration_sec)
-                    account.success_rate = account.calculate_success_rate()
-                    account_id_for_release = account.id
-                    await db.commit()
-
-                    # Decrement account's concurrent job count and wake pinned waiters
-                    account = await account_service.release_account(account_id_for_release)
 
                     # Refresh credits from provider to sync actual balance
                     await refresh_account_credits(account, account_service, logger)
@@ -1254,6 +1427,29 @@ async def _poll_single_generation(
                     )
 
             except ProviderError as e:
+                if _is_transient_provider_poll_error(e):
+                    failure_count, delay_sec = _record_transient_poll_backoff(
+                        transient_backoff_key or str(generation.id),
+                        now_mono=time.monotonic(),
+                    )
+                    logger.warning(
+                        "provider_check_error_transient",
+                        generation_id=generation.id,
+                        submission_id=submission.id,
+                        provider_job_id=submission.provider_job_id,
+                        error=str(e),
+                        error_type=e.__class__.__name__,
+                        error_code=getattr(e, "error_code", None),
+                        retryable=getattr(e, "retryable", None),
+                        transient_failures=failure_count,
+                        backoff_s=delay_sec,
+                    )
+                    return _PollGenerationResult(
+                        generation_id=generation_id,
+                        outcome='still_processing',
+                        missing_provider_job=missing_provider_job,
+                    )
+
                 # Provider error during status check (auth, session, API).
                 # Fail the generation so the auto-retry handler can re-queue
                 # it with a fresh session.  Leaving it in PROCESSING forever
@@ -1290,6 +1486,30 @@ async def _poll_single_generation(
                     )
 
         except Exception as e:
+            if _is_transient_network_error(e):
+                failure_count, delay_sec = _record_transient_poll_backoff(
+                    transient_backoff_key or str(generation.id),
+                    now_mono=time.monotonic(),
+                )
+                submission_id = submission.id if "submission" in locals() and submission else None
+                provider_job_id = (
+                    submission.provider_job_id if "submission" in locals() and submission else None
+                )
+                logger.warning(
+                    "poll_generation_transient_error",
+                    generation_id=generation_id,
+                    submission_id=submission_id,
+                    provider_job_id=provider_job_id,
+                    error=str(e),
+                    error_type=e.__class__.__name__,
+                    transient_failures=failure_count,
+                    backoff_s=delay_sec,
+                )
+                return _PollGenerationResult(
+                    generation_id=generation_id,
+                    outcome='still_processing',
+                    missing_provider_job=missing_provider_job,
+                )
             logger.error("poll_generation_error", generation_id=generation_id, error=str(e), exc_info=True)
             worker_debug.worker(
                 "poll_generation_error",
@@ -1313,6 +1533,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
         dict with poll statistics
     """
     _init_poller_debug_flags()
+    now_mono = time.monotonic()
+    _prune_transient_poll_backoff(now_mono=now_mono)
     worker_debug = get_global_debug_logger()
     worker_debug.worker("poll_start")
     # Generation stats
@@ -1362,8 +1584,17 @@ async def poll_job_statuses(ctx: dict) -> dict:
             )
 
             # --- Parallel generation polling ---
-            MAX_CONCURRENT_POLLS = 10
-            _poll_semaphore = asyncio.Semaphore(MAX_CONCURRENT_POLLS)
+            now_mono = time.monotonic()
+            active_backoffs = _active_transient_poll_backoffs(now_mono=now_mono)
+            max_concurrent_polls = _POLL_CONCURRENCY_NORMAL
+            if active_backoffs >= _POLL_CONCURRENCY_DEGRADE_THRESHOLD:
+                max_concurrent_polls = _POLL_CONCURRENCY_DEGRADED
+                logger.warning(
+                    "poll_concurrency_reduced_due_to_transient_network",
+                    active_transient_backoffs=active_backoffs,
+                    max_concurrent_polls=max_concurrent_polls,
+                )
+            _poll_semaphore = asyncio.Semaphore(max_concurrent_polls)
 
             async def _bounded_poll(gen):
                 async with _poll_semaphore:
@@ -1577,59 +1808,41 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
 async def recover_stale_processing_generations(ctx: dict) -> dict:
     """
-    Fail PROCESSING generations that are clearly stale after worker restart/sleep.
+    On startup, log PROCESSING generations but leave them for the poller.
 
-    On startup (or after PC sleep), PROCESSING generations whose provider jobs
-    are lost will never complete.  They permanently occupy capacity slots,
-    blocking all pending work.
+    Previously this bulk-failed or bulk-reset stale PROCESSING generations,
+    but that was problematic:
+    - Marking FAILED didn't auto-retry (no event emitted, unknown error code).
+    - Resetting to PENDING lost the provider job reference for jobs that
+      are legitimately still running on the provider side.
 
-    This runs BEFORE reconcile_account_counters so the counter reset sees the
-    corrected state.
+    The poller already handles stuck generations correctly:
+    - 15-min timeout for unsubmitted jobs
+    - 2-hour timeout for general stuck processing
+    - Transient error backoff for provider API issues
 
-    Threshold: 5 minutes with no update.  The normal poller uses 15 min for
-    unsubmitted and 2 hr for general timeout, but on startup after sleep/crash
-    we can be more aggressive — if a PROCESSING generation hasn't been updated
-    in 5 min and the worker just started, the provider job is almost certainly
-    lost.
+    Account counter drift is fixed by reconcile_account_counters which
+    runs immediately after this on startup.
     """
-    STALE_MINUTES = 5
-
     async for db in get_db():
         try:
-            now = datetime.now(timezone.utc)
-            threshold = now - timedelta(minutes=STALE_MINUTES)
-
-            # Bulk-update: fail all stale PROCESSING generations in one shot.
-            # Using a direct UPDATE avoids ORM lifecycle hooks but is reliable
-            # even when the worker is in a partially-initialized state.
             result = await db.execute(
-                update(Generation)
-                .where(
+                select(func.count(Generation.id)).where(
                     Generation.status == GenerationStatus.PROCESSING,
-                    Generation.updated_at < threshold,
                 )
-                .values(
-                    status=GenerationStatus.FAILED,
-                    error_message=f"Stale after worker restart — no update for {STALE_MINUTES}+ minutes",
-                    error_code="worker_restart_stale",
-                    completed_at=now,
-                    updated_at=now,
-                )
-                .returning(Generation.id)
             )
-            failed_ids = [int(row[0]) for row in result.all()]
-            await db.commit()
+            processing_count = result.scalar() or 0
 
-            if failed_ids:
+            if processing_count > 0:
                 logger.info(
-                    "stale_recovery_complete",
-                    failed=len(failed_ids),
-                    generation_ids=failed_ids,
+                    "startup_processing_generations",
+                    count=processing_count,
+                    msg="Leaving for poller to handle",
                 )
             else:
-                logger.debug("stale_recovery_idle", msg="No stale processing generations")
+                logger.debug("startup_no_processing_generations")
 
-            return {"failed": len(failed_ids), "errors": 0}
+            return {"failed": 0, "errors": 0}
 
         except Exception as e:
             logger.error("stale_recovery_error", error=str(e), exc_info=True)
