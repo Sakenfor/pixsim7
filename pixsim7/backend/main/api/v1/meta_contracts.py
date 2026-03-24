@@ -1624,6 +1624,12 @@ def _extract_chat_session_scope(payload: SendMessageRequest) -> tuple[Optional[s
         or _normalize_scope_value(context.get("contract"))
     )
 
+    if scope_key is None:
+        if plan_id:
+            scope_key = f"plan:{plan_id}"
+        elif contract_id:
+            scope_key = f"contract:{contract_id}"
+
     if scope_key and plan_id is None and scope_key.startswith("plan:"):
         maybe_plan = scope_key.split(":", 1)[1].strip()
         if maybe_plan:
