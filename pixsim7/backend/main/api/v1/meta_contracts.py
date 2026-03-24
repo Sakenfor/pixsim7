@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1164,7 +1164,8 @@ class SendMessageRequest(BaseModel):
     timeout: int = Field(120, ge=10, le=600, description="Timeout in seconds")
     asset_ids: Optional[List[int]] = Field(None, description="Asset IDs to include as images (vision)")
     assistant_id: Optional[str] = Field(None, description="Assistant profile to use (resolves persona + model + scope)")
-    claude_session_id: Optional[str] = Field(None, description="Conversation session UUID to route to / resume")
+    bridge_session_id: Optional[str] = Field(None, description="Conversation session UUID to route to / resume")
+    claude_session_id: Optional[str] = Field(None, description="Legacy alias for bridge_session_id")
     skip_persona: bool = Field(False, description="If true, do not inject the profile persona into the message")
     custom_instructions: Optional[str] = Field(None, description="User-supplied text appended to the system prompt for this session")
     user_token: Optional[str] = Field(None, description="Pre-minted agent token to inject into the task payload (for API tool auth)")
@@ -1179,6 +1180,13 @@ class SendMessageRequest(BaseModel):
         description="Scope key for scoped session routing (e.g. plan:auth-refactor)",
     )
 
+    @model_validator(mode="after")
+    def _sync_bridge_session_aliases(self) -> "SendMessageRequest":
+        session_id = _normalize_scope_value(self.bridge_session_id) or _normalize_scope_value(self.claude_session_id)
+        self.bridge_session_id = session_id
+        self.claude_session_id = session_id
+        return self
+
 
 class SendMessageResponse(BaseModel):
     ok: bool
@@ -1186,7 +1194,15 @@ class SendMessageResponse(BaseModel):
     response: Optional[str] = None
     error: Optional[str] = None
     duration_ms: Optional[int] = None
-    claude_session_id: Optional[str] = Field(None, description="Claude session UUID (for resume)")
+    bridge_session_id: Optional[str] = Field(None, description="Conversation session UUID (canonical)")
+    claude_session_id: Optional[str] = Field(None, description="Legacy alias for bridge_session_id")
+
+    @model_validator(mode="after")
+    def _sync_bridge_session_aliases(self) -> "SendMessageResponse":
+        session_id = _normalize_scope_value(self.bridge_session_id) or _normalize_scope_value(self.claude_session_id)
+        self.bridge_session_id = session_id
+        self.claude_session_id = session_id
+        return self
 
 
 class _SendContext:
@@ -1430,6 +1446,7 @@ async def get_task_result(task_id: str) -> Dict[str, Any]:
 
     result = remote_cmd_bridge.pop_completed_result(task_id)
     if result:
+        session_id = result.get("bridge_session_id") or result.get("claude_session_id")
         response_text = (
             result.get("edited_prompt")
             or result.get("response")
@@ -1439,7 +1456,8 @@ async def get_task_result(task_id: str) -> Dict[str, Any]:
             "status": "completed",
             "ok": True,
             "response": response_text,
-            "claude_session_id": result.get("claude_session_id"),
+            "bridge_session_id": session_id,
+            "claude_session_id": session_id,
         }
     return {"status": "not_found"}
 
@@ -1536,6 +1554,7 @@ async def send_message_to_agent_stream(
         user_token=effective_token,
         profile_prompt=ctx.profile_prompt,
         profile_config=ctx.profile_config,
+        bridge_session_id=payload.bridge_session_id,
         claude_session_id=payload.claude_session_id,
         session_policy=payload.session_policy,
         scope_key=payload.scope_key,
@@ -1573,7 +1592,7 @@ async def send_message_to_agent_stream(
                         or event.get("response")
                         or event.get("output", "")
                     )
-                    cli_session_id = event.get("claude_session_id")
+                    cli_session_id = event.get("bridge_session_id") or event.get("claude_session_id")
                     if cli_session_id:
                         import asyncio as _asyncio
                         _asyncio.ensure_future(_upsert_chat_session(
@@ -1584,7 +1603,7 @@ async def send_message_to_agent_stream(
                             last_plan_id=chat_plan_id,
                             last_contract_id=chat_contract_id,
                         ))
-                    yield f"data: {_json.dumps({'type': 'result', 'ok': True, 'bridge_client_id': bridge_client_id, 'response': response_text, 'claude_session_id': cli_session_id, 'duration_ms': duration_ms})}\n\n"
+                    yield f"data: {_json.dumps({'type': 'result', 'ok': True, 'bridge_client_id': bridge_client_id, 'response': response_text, 'bridge_session_id': cli_session_id, 'claude_session_id': cli_session_id, 'duration_ms': duration_ms})}\n\n"
         except Exception as e:
             duration_ms = int((time.monotonic() - start) * 1000)
             yield f"data: {_json.dumps({'type': 'result', 'ok': False, 'bridge_client_id': bridge_client_id, 'error': str(e), 'duration_ms': duration_ms})}\n\n"
@@ -1774,6 +1793,7 @@ async def _send_via_bridge(
         user_token=effective_token,
         profile_prompt=profile_prompt,
         profile_config=profile_config,
+        bridge_session_id=payload.bridge_session_id,
         claude_session_id=payload.claude_session_id,
         session_policy=payload.session_policy,
         scope_key=payload.scope_key,
@@ -1808,7 +1828,7 @@ async def _send_via_bridge(
             or result.get("output", "")
         )
         # Track session for /resume
-        cli_session_id = result.get("claude_session_id")
+        cli_session_id = result.get("bridge_session_id") or result.get("claude_session_id")
         if cli_session_id:
             await _upsert_chat_session(
                 session_id=cli_session_id,
@@ -1824,6 +1844,7 @@ async def _send_via_bridge(
             ok=True,
             bridge_client_id=agent.bridge_client_id,
             response=response_text,
+            bridge_session_id=cli_session_id,
             claude_session_id=cli_session_id,
             duration_ms=duration_ms,
         )

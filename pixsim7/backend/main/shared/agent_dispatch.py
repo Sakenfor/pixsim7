@@ -57,6 +57,17 @@ def _derive_scope_key(context: Dict[str, Any], explicit_scope_key: Optional[str]
     return ""
 
 
+def _resolve_bridge_session_id(
+    bridge_session_id: Optional[str],
+    claude_session_id: Optional[str],
+) -> str:
+    """Resolve canonical bridge session id from new and legacy field names."""
+    resolved = _normalize_scope_value(bridge_session_id)
+    if resolved:
+        return resolved
+    return _normalize_scope_value(claude_session_id)
+
+
 def build_task_payload(
     *,
     task_type: str = TASK_MESSAGE,
@@ -69,6 +80,7 @@ def build_task_payload(
     user_token: Optional[str] = None,
     profile_prompt: Optional[str] = None,
     profile_config: Optional[Dict[str, Any]] = None,
+    bridge_session_id: Optional[str] = None,
     claude_session_id: Optional[str] = None,
     session_policy: Optional[str] = None,
     scope_key: Optional[str] = None,
@@ -98,8 +110,10 @@ def build_task_payload(
         payload["profile_prompt"] = profile_prompt
     if profile_config:
         payload["profile_config"] = profile_config
-    if claude_session_id:
-        payload["claude_session_id"] = claude_session_id
+    session_id = _resolve_bridge_session_id(bridge_session_id, claude_session_id)
+    if session_id:
+        payload["bridge_session_id"] = session_id
+        payload["claude_session_id"] = session_id
     scoped_key = _derive_scope_key(context_payload, scope_key)
     policy = (session_policy or "").strip().lower()
     if policy in {"ephemeral", "scoped", "persistent"}:
