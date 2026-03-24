@@ -129,11 +129,12 @@ class WindowsJobObject:
         if not self.handle:
             raise RuntimeError(f"Failed to create Job Object: {ctypes.get_last_error()}")
 
-        # Configure the job to kill all processes when the job handle is closed
+        # Configure the job for process tree tracking.
+        # NOTE: KILL_ON_JOB_CLOSE is intentionally NOT set — services should
+        # survive launcher restarts.  Use explicit stop/cleanup instead.
         info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
         info.BasicLimitInformation.LimitFlags = (
-            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE |  # Kill processes when job closes
-            JOB_OBJECT_LIMIT_BREAKAWAY_OK          # Allow processes to break away if needed
+            JOB_OBJECT_LIMIT_BREAKAWAY_OK  # Allow processes to break away if needed
         )
 
         success = SetInformationJobObject(
@@ -194,18 +195,23 @@ class WindowsJobObject:
         return bool(success)
 
     def close(self):
-        """
-        Close the job handle.
-
-        If JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE was set (which it is by default),
-        all processes in the job will be terminated automatically.
-        """
+        """Close the job handle. Processes continue running independently."""
         if self.handle:
             CloseHandle(self.handle)
             self.handle = None
 
+    def terminate(self, exit_code: int = 1):
+        """Explicitly terminate all processes in the job."""
+        if self.handle:
+            TerminateJobObject = kernel32.TerminateJobObject
+            TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
+            TerminateJobObject.restype = wintypes.BOOL
+            TerminateJobObject(self.handle, exit_code)
+            self.close()
+
     def __del__(self):
-        """Ensure job is closed when object is garbage collected."""
+        """Ensure job handle is closed on garbage collection.
+        Does NOT kill processes — use terminate() for that."""
         self.close()
 
     def __enter__(self):

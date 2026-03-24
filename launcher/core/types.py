@@ -67,6 +67,8 @@ class ServiceState:
     tool_available: bool = True
     tool_check_message: str = ""
     failure_count: int = 0
+    externally_managed: bool = False     # Running outside launcher control
+    requested_running: Optional[bool] = None  # None=unknown, True=user started, False=user stopped
 
     # Log buffer (limited size, in-memory)
     log_buffer: List[str] = field(default_factory=list)

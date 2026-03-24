@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QSplitter, QMessageBox, QDialog, QFormLayout, QLineEdit, QCheckBox, QDialogButtonBox,
     QScrollArea, QFrame, QGridLayout, QTabWidget, QMenu, QComboBox, QStackedWidget
 )
-from PySide6.QtCore import Qt, QProcess, QProcessEnvironment, QTimer, Signal, QSize, QUrl, QThread
+from PySide6.QtCore import Qt, QProcess, QProcessEnvironment, QTimer, Signal, QSize, QUrl
 from PySide6.QtGui import QColor, QTextCursor, QFont, QPalette, QShortcut, QKeySequence, QAction, QCursor
 
 # Load .env file into environment BEFORE initializing logger
@@ -76,10 +76,12 @@ except Exception:
 
 try:
     from .widgets.service_card import ServiceCard
+    from .widgets.service_card_state import ServiceCardState, build_card_state
     from .widgets.notification_bar import NotificationBar
     from .widgets.databases_widget import DatabaseCardWidget, discover_databases
 except Exception:
     from widgets.service_card import ServiceCard
+    from widgets.service_card_state import ServiceCardState, build_card_state
     from widgets.notification_bar import NotificationBar
     from widgets.databases_widget import DatabaseCardWidget, discover_databases
 
@@ -112,16 +114,6 @@ except Exception:
         ICON_SETTINGS, ICON_RELOAD,
         TAB_CONSOLE, TAB_DB_LOGS, TAB_TOOLS, TAB_DIAGNOSTICS, TAB_SETTINGS, TAB_ARCHITECTURE
     )
-
-try:
-    from .processes import ServiceProcess
-except Exception:
-    from processes import ServiceProcess
-
-try:
-    from .health_bridge import HealthBridge
-except Exception:
-    from health_bridge import HealthBridge
 
 # Import centralized theme
 try:
@@ -156,52 +148,6 @@ except Exception:
 
 from .trace import _startup_trace
 from .mixins import ConsoleLogMixin, ConsoleInteractionMixin, AutoRestartMixin, ServiceLifecycleMixin
-
-
-class ServiceStopWorker(QThread):
-    """Runs blocking service stop operations off the UI thread."""
-
-    stop_finished = Signal(str, bool, bool, str)  # key, graceful, still_running, error
-
-    def __init__(self, key: str, service_process, graceful: bool, parent=None):
-        super().__init__(parent)
-        self._key = key
-        self._service_process = service_process
-        self._graceful = graceful
-
-    def run(self):  # type: ignore[override]
-        error = ""
-        try:
-            self._service_process.stop(graceful=self._graceful)
-        except Exception as exc:
-            error = str(exc)
-
-        still_running = False
-        try:
-            alive_check = getattr(self._service_process, "_is_effective_process_alive", None)
-            if callable(alive_check):
-                still_running = bool(alive_check())
-            else:
-                still_running = bool(getattr(self._service_process, "running", False))
-        except Exception:
-            still_running = bool(getattr(self._service_process, "running", False))
-
-        # Fallback check: detached wrappers may die while a child process still
-        # owns the service port. Preserve that PID so UI state is accurate.
-        if not still_running:
-            try:
-                find_port_owner = getattr(self._service_process, "_find_port_owner_pid", None)
-                port_owner_pid = find_port_owner() if callable(find_port_owner) else None
-                if port_owner_pid:
-                    setattr(self._service_process, "detected_pid", int(port_owner_pid))
-                    setattr(self._service_process, "running", True)
-                    if hasattr(self._service_process, "externally_managed"):
-                        setattr(self._service_process, "externally_managed", True)
-                    still_running = True
-            except Exception:
-                pass
-
-        self.stop_finished.emit(self._key, self._graceful, still_running, error)
 
 
 class LauncherWindow(
@@ -276,16 +222,17 @@ class LauncherWindow(
 
         self.services = build_services_from_manifests()
 
-        # Initialize service management
-        self.processes = {}
-        self._rebuild_processes_from_services(preserve_state=False)
+        # ── Core managers via LauncherFacade (single source of truth) ──
+        from .launcher_facade import LauncherFacade
+        self.facade = LauncherFacade(parent=self)
 
-        # Clean up stale PIDs from previous sessions
-        try:
-            from .pid_store import cleanup_stale_pids
-            cleanup_stale_pids()
-        except Exception:
-            pass
+        # self.processes aliases facade states so existing mixin code that
+        # does self.processes.get(key) keeps working (returns core.ServiceState).
+        self.processes = self.facade.process_mgr.states
+
+        # Check tool availability
+        for key in list(self.processes):
+            self.facade.process_mgr.check_tool_availability(key)
 
         # Log service discovery
         if _launcher_logger:
@@ -319,14 +266,10 @@ class LauncherWindow(
         self._bulk_stop_until = 0.0
         self._stop_in_progress_keys: set[str] = set()
         self._bulk_stop_pending_keys: set[str] = set()
-        self._active_stop_workers: Dict[str, ServiceStopWorker] = {}
+        self._active_stop_workers: Dict[str, object] = {}  # legacy; kept for mixin compat
 
         # Widget registry for clean reload
         self.widgets: Dict[str, QWidget] = {}
-
-        # Check tool availability
-        for sp in self.processes.values():
-            sp.check_tool_availability()
 
         # Initialize attributes before _init_ui (load from saved state)
         self.autoscroll_enabled = self.ui_state.autoscroll_enabled
@@ -345,51 +288,117 @@ class LauncherWindow(
             self._select_service(self.services[0].key)
         # Nothing heavy until UI is visible
 
-        # Health monitoring via core HealthManager + Qt bridge.
-        # Defer start() to after the first paint so the window appears instantly.
-        self.health_bridge = HealthBridge(self.processes, ui_state=self.ui_state, parent=self)
-        self.health_bridge.health_update.connect(self._update_service_health)
-        self.health_bridge.openapi_update.connect(self._update_openapi_status)
-        QTimer.singleShot(0, self.health_bridge.start)
+        # Connect facade signals for health updates and process events.
+        # The facade's HealthManager runs in a background thread; the
+        # QtEventBridge re-emits events as Qt signals on the main thread.
+        self.facade.health_update.connect(self._update_service_health)
+        self.facade.process_started.connect(
+            lambda key, data: self._update_service_health(key, HealthStatus.STARTING))
+        self.facade.process_stopped.connect(
+            lambda key, data: self._update_service_health(key, HealthStatus.STOPPED))
 
-        # Connect health check signal (for any manual triggers if added later)
-        self.health_check_signal.connect(self._update_service_health)
+        # Defer start of health monitoring until after first paint.
+        QTimer.singleShot(0, self.facade.start_all_managers)
 
-        # Schedule deferred init for worker services (expensive orphan
-        # recovery scan runs after the first paint, not during __init__).
-        for sp in self.processes.values():
-            schedule = getattr(sp, "schedule_deferred_init", None)
-            if callable(schedule):
-                schedule()
+        # Start embedded Launcher API after first paint to avoid blocking __init__.
+        self._api_cleanup = None
+        self._embedded_api_server = None
+        QTimer.singleShot(500, self._deferred_start_api)
+
 
         self.update_ports_label()
 
-    def _create_service_process(self, service_def: ServiceDef, old_sp=None):
-        """Create a service process object."""
-        sp = ServiceProcess(service_def)
-        if old_sp:
-            try:
-                sp.running = getattr(old_sp, "running", False)
-            except Exception:
-                pass
-            try:
-                sp.health_status = getattr(old_sp, "health_status", HealthStatus.STOPPED)
-            except Exception:
-                pass
-            try:
-                sp.detected_pid = getattr(old_sp, "detected_pid", None)
-            except Exception:
-                pass
-        return sp
+    def _deferred_start_api(self):
+        """Called after first paint to start the embedded API without blocking UI."""
+        try:
+            self._start_embedded_api()
+        except Exception:
+            pass
 
-    def _rebuild_processes_from_services(self, *, preserve_state: bool = True):
-        """Rebuild self.processes from self.services with optional state transfer."""
-        old_processes = getattr(self, "processes", {}) if preserve_state else {}
-        new_processes = {}
-        for service_def in self.services:
-            old_sp = old_processes.get(service_def.key) if preserve_state else None
-            new_processes[service_def.key] = self._create_service_process(service_def, old_sp)
-        self.processes = new_processes
+    def _start_embedded_api(self, port: int = 8100):
+        """Start the Launcher API in a daemon thread sharing the facade's container."""
+        import socket
+        import threading
+
+        # Kill any standalone API process so we can take over the port.
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(("127.0.0.1", port)) == 0:
+                try:
+                    from .process_utils import find_pid_by_port, kill_process_by_pid
+                    import os
+                    pid = find_pid_by_port(port)
+                    if pid and pid != os.getpid():
+                        kill_process_by_pid(pid, force=True)
+                        import time as _t; _t.sleep(0.5)
+                except Exception:
+                    pass
+
+        # Inject the facade's container into the API dependency system.
+        from launcher.core.container import LauncherContainer
+        from launcher.api.dependencies import set_container
+
+        # Build a container that wraps the facade's existing managers.
+        container = LauncherContainer.__new__(LauncherContainer)
+        container.services = []
+        container.config = None
+        from launcher.core.event_bus import get_event_bus as _get_bus
+        container.event_bus = _get_bus()
+        container._process_mgr = self.facade.process_mgr
+        container._health_mgr = self.facade.health_mgr
+        container._log_mgr = self.facade.log_mgr
+        container._states = self.facade.process_mgr.states
+
+        # Override get methods to return our managers
+        container.get_process_manager = lambda: self.facade.process_mgr
+        container.get_health_manager = lambda: self.facade.health_mgr
+        container.get_log_manager = lambda: self.facade.log_mgr
+        from launcher.core.event_bus import get_event_bus
+        container.get_event_bus = get_event_bus
+        container.start_all = lambda: None
+        container.stop_all = lambda: None
+
+        set_container(container)
+
+        self._launch_api_server(port)
+
+    def _launch_api_server(self, port: int = 8100):
+        """Spin up the uvicorn server in a daemon thread."""
+        import threading
+        import uvicorn
+        from launcher.api.main import app
+
+        config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+        server = uvicorn.Server(config)
+        self._embedded_api_server = server
+        self._embedded_api_port = port
+
+        def _run():
+            server.run()
+            # When server exits, update the launcher-api state
+            state = self.processes.get("launcher-api")
+            if state:
+                from launcher.core.types import ServiceStatus
+                state.status = ServiceStatus.STOPPED
+                state.health = HealthStatus.STOPPED
+
+        t = threading.Thread(target=_run, daemon=True, name="launcher-api")
+        t.start()
+        self._api_cleanup = lambda: setattr(server, "should_exit", True)
+
+    def stop_embedded_api(self):
+        """Stop the embedded API server."""
+        srv = getattr(self, "_embedded_api_server", None)
+        if srv:
+            srv.should_exit = True
+            self._embedded_api_server = None
+            self._api_cleanup = None
+
+    def start_embedded_api(self):
+        """Start (or restart) the embedded API server."""
+        # Ensure old one is stopped
+        self.stop_embedded_api()
+        import time as _t; _t.sleep(0.3)
+        self._start_embedded_api(getattr(self, "_embedded_api_port", 8100))
 
     def _build_left_panel(self):
         left = QWidget()
@@ -467,7 +476,7 @@ class LauncherWindow(
         self.cards = {}
         for s in self.services:
             sp = self.processes[s.key]
-            card = ServiceCard(s, sp)
+            card = ServiceCard(s, build_card_state(sp))
             self.cards[s.key] = card
             card.clicked.connect(self._select_service)
             card.start_btn.clicked.connect(lambda checked, k=s.key: self._start_service(k))
@@ -555,26 +564,59 @@ class LauncherWindow(
         self.main_tabs.setStyleSheet(theme.get_tab_widget_stylesheet())
         right_layout.addWidget(self.main_tabs)
 
+        # Console tab is always needed immediately
         console_tab = ConsoleTab.create(self)
         self.main_tabs.addTab(console_tab, TAB_CONSOLE)
 
-        db_logs_tab = DbLogsTab.create(self)
-        self.main_tabs.addTab(db_logs_tab, TAB_DB_LOGS)
+        # Heavy tabs are lazy-loaded on first visit to speed up startup.
+        # Placeholder widgets are swapped out when the tab is selected.
+        self._lazy_tabs = {}  # index → factory callable
 
-        tools_tab = ToolsTab.create(self)
-        self.main_tabs.addTab(tools_tab, TAB_TOOLS)
+        def _add_lazy_tab(label, factory):
+            placeholder = QWidget()
+            idx = self.main_tabs.addTab(placeholder, label)
+            self._lazy_tabs[idx] = factory
 
-        diagnostics_tab = DiagnosticsTab.create(self)
-        self.main_tabs.addTab(diagnostics_tab, TAB_DIAGNOSTICS)
+        _add_lazy_tab(TAB_DB_LOGS, lambda: DbLogsTab.create(self))
+        _add_lazy_tab(TAB_TOOLS, lambda: ToolsTab.create(self))
+        _add_lazy_tab(TAB_DIAGNOSTICS, lambda: DiagnosticsTab.create(self))
+        _add_lazy_tab(TAB_SETTINGS, lambda: ToolsTab.create_settings(self))
+        self.settings_tab_index = self.main_tabs.count() - 1
+        _add_lazy_tab(TAB_ARCHITECTURE, lambda: ArchitectureTab.create(self))
 
-        settings_tab = ToolsTab.create_settings(self)
-        self.main_tabs.addTab(settings_tab, TAB_SETTINGS)
-        self.settings_tab_index = self.main_tabs.indexOf(settings_tab)
-
-        architecture_tab = ArchitectureTab.create(self)
-        self.main_tabs.addTab(architecture_tab, TAB_ARCHITECTURE)
+        self.main_tabs.currentChanged.connect(self._on_tab_changed)
 
         return right
+
+    def _on_tab_changed(self, index: int):
+        """Lazy-load tab content on first visit."""
+        factory = self._lazy_tabs.pop(index, None)
+        if factory is not None:
+            try:
+                widget = factory()
+                old = self.main_tabs.widget(index)
+                label = self.main_tabs.tabText(index)
+                self.main_tabs.removeTab(index)
+                self.main_tabs.insertTab(index, widget, label)
+                self.main_tabs.setCurrentIndex(index)
+                if old:
+                    old.deleteLater()
+                # Re-index any remaining lazy tabs after the insert/remove
+                updated = {}
+                for k, v in self._lazy_tabs.items():
+                    updated[k] = v
+                self._lazy_tabs = updated
+                # Update settings_tab_index if it moved
+                for i in range(self.main_tabs.count()):
+                    if self.main_tabs.tabText(i) == TAB_SETTINGS:
+                        self.settings_tab_index = i
+                        break
+            except Exception as e:
+                if _launcher_logger:
+                    try:
+                        _launcher_logger.error("lazy_tab_load_failed", index=index, error=str(e))
+                    except Exception:
+                        pass
 
     def _restore_console_ui_state(self):
         if hasattr(self, 'autoscroll_checkbox'):
@@ -666,23 +708,25 @@ class LauncherWindow(
         if hasattr(self, 'btn_settings'):
             self.btn_settings.clicked.connect(self._open_settings)
         if hasattr(self, 'btn_reload_ui'):
-            self.btn_reload_ui.clicked.connect(self._reload_ui)
+            self.btn_reload_ui.clicked.connect(self._reload_webviews)
+            self.btn_reload_ui.setToolTip("Reload embedded webviews (Ctrl+Shift+R for full UI reload)")
         
-        # Console log controls
-        self.btn_refresh_logs.clicked.connect(lambda: self._refresh_console_logs(force=True))
-        self.btn_clear_logs.clicked.connect(self._clear_console_display)
-        if hasattr(self, 'btn_attach_logs'):
+        # Console log controls (may be dummy QWidgets when using embedded React viewer)
+        if hasattr(getattr(self, 'btn_refresh_logs', None), 'clicked'):
+            self.btn_refresh_logs.clicked.connect(lambda: self._refresh_console_logs(force=True))
+        if hasattr(getattr(self, 'btn_clear_logs', None), 'clicked'):
+            self.btn_clear_logs.clicked.connect(self._clear_console_display)
+        if hasattr(getattr(self, 'btn_attach_logs', None), 'clicked'):
             self.btn_attach_logs.clicked.connect(self._on_attach_logs_clicked)
 
-        # Auto-refresh timer for console
+        # Console refresh timer — disabled when using embedded React viewer.
         self.console_refresh_timer = QTimer(self)
-        self.console_refresh_timer.timeout.connect(self._refresh_console_logs)
-        self.last_log_hash = {}  # Track log buffer hashes to avoid unnecessary UI updates
-        self.console_refresh_timer.start(1000)  # Refresh every second
+        self.last_log_hash = {}
 
-        # Track scroll position changes for current service
-        if hasattr(self, 'log_view'):
-            self.log_view.verticalScrollBar().valueChanged.connect(self._on_console_scroll)
+        # Keyboard shortcuts for webview reload
+        from PySide6.QtGui import QShortcut, QKeySequence
+        QShortcut(QKeySequence('F5'), self).activated.connect(self._reload_webviews)
+        QShortcut(QKeySequence('Ctrl+Shift+R'), self).activated.connect(self._reload_ui)
 
     def _select_service(self, key: str):
         """Select a service and refresh logs."""
@@ -705,37 +749,20 @@ class LauncherWindow(
         sp = self.processes.get(key)
         if key in self.cards:
             self.cards[key].set_selected(True)
-            _startup_trace("_select_service card selected")
 
-            # Auto-attach logs for externally running services (e.g., backend started outside launcher)
-            if sp is not None and getattr(sp, "proc", None) is None and getattr(sp, "running", False):
-                attach_fn = getattr(sp, "attach_logs", None)
-                if callable(attach_fn):
-                    attach_fn()
-                    _startup_trace("_select_service auto-attached logs")
-
-            # Rebuild scope menus from what's actually in this service's buffer
-            self._rebuild_scope_menus_from_buffer(sp)
-
-            # Refresh logs (scroll position will be restored in _refresh_console_logs)
-            self._refresh_console_logs(force=True)
-            _startup_trace("_select_service console refreshed")
+            # Update embedded React log viewer to show this service's logs
+            webview = getattr(self, 'console_webview', None)
+            if webview and getattr(self, '_console_webview_loaded', False):
+                webview.page().runJavaScript(f'location.hash = "{key}"')
+            else:
+                # Fallback: legacy console refresh (if webview not loaded yet)
+                self._rebuild_scope_menus_from_buffer(sp)
+                self._refresh_console_logs(force=True)
 
         # Keep database log viewer in sync with selected service for quick pivots.
         # Card keys (main-api, worker) differ from structlog service names (api, worker),
         # so map the card key to the best-matching DB service filter.
-        if hasattr(self, 'db_log_viewer') and self.db_log_viewer:
-            # Try exact match first, then strip common prefixes
-            candidates = [key]
-            # "main-api" → "api", "generation-api" → "api", "simulation-worker" → "worker"
-            if '-' in key:
-                candidates.append(key.rsplit('-', 1)[-1])
-            for candidate in candidates:
-                idx = self.db_log_viewer.service_combo.findText(candidate)
-                if idx >= 0:
-                    self.db_log_viewer.service_combo.setCurrentIndex(idx)
-                    _startup_trace("_select_service db viewer synced")
-                    break
+        # DB log viewer sync is handled by the React webview (no-op for legacy)
         _startup_trace(f"_select_service end ({key})")
 
     def _select_database(self, env_key: str):
@@ -751,17 +778,18 @@ class LauncherWindow(
 
     def _missing_dependency_keys(self, service_key: str) -> list[str]:
         """Return dependency service keys that are not currently running/healthy."""
-        sp = self.processes.get(service_key)
-        if not sp:
+        state = self.processes.get(service_key)
+        if not state:
             return []
 
-        depends_on = getattr(getattr(sp, "defn", None), "depends_on", None) or []
+        defn = getattr(state, "definition", None) or getattr(state, "defn", None)
+        depends_on = getattr(defn, "depends_on", None) or []
         missing: list[str] = []
         for dep_key in depends_on:
-            dep_process = self.processes.get(dep_key)
-            dep_running = bool(dep_process and getattr(dep_process, "running", False))
-            dep_healthy = bool(dep_process and getattr(dep_process, "health_status", None) == HealthStatus.HEALTHY)
-            if not dep_process or (not dep_running and not dep_healthy):
+            dep = self.processes.get(dep_key)
+            dep_running = bool(dep and dep.status.value in ("running", "starting"))
+            dep_healthy = bool(dep and dep.health == HealthStatus.HEALTHY)
+            if not dep or (not dep_running and not dep_healthy):
                 missing.append(dep_key)
         return missing
 
@@ -774,35 +802,52 @@ class LauncherWindow(
     # _check_health removed; handled by HealthBridge + core HealthManager
 
     def _update_service_health(self, key: str, status: HealthStatus):
-        """Update the health status for a service (called from signal)."""
-        sp = self.processes.get(key)
-        if not sp:
+        """Update the health status for a service (called from facade signal)."""
+        state = self.processes.get(key)
+        if not state:
             return
 
-        old_status = sp.health_status
-        sp.health_status = status
+        old_status = state.health
+        # The health manager already set state.health before emitting.
+        # But for signals from process_started/stopped lambdas, set it here too.
+        if state.health != status:
+            state.health = status
+
+        is_running = state.status.value in ("running", "starting")
 
         # Log status changes
         if old_status != status:
             if _launcher_logger:
                 try:
-                    _launcher_logger.info("service_health", service_key=key, status=status.value, running=sp.running)
+                    _launcher_logger.info("service_health", service_key=key, status=status.value, running=is_running)
                 except Exception:
                     pass
-            # Inject transition into the service's own console log so it's
-            # visible in the launcher Console tab when that service is selected.
             import datetime
             ts = datetime.datetime.now().strftime("%H:%M:%S")
             old_val = old_status.value if hasattr(old_status, 'value') else str(old_status)
             new_val = status.value if hasattr(status, 'value') else str(status)
-            sp.log_buffer.append(
-                f"[{ts}] [LAUNCHER] health: {old_val} → {new_val}  (running={sp.running})"
+            state.log_buffer.append(
+                f"[{ts}] [LAUNCHER] health: {old_val} → {new_val}  (running={is_running})"
             )
+
+            # Show discovery in notification bar
+            title = state.definition.title if hasattr(state, 'definition') else key
+            if old_status == HealthStatus.STOPPED and status == HealthStatus.HEALTHY:
+                self.notify(f"Detected {title} running", duration_ms=1500, category="SCAN")
+            elif old_status == HealthStatus.STOPPED and status == HealthStatus.STARTING:
+                self.notify(f"Found {title} starting...", duration_ms=1500, category="SCAN")
+            elif status == HealthStatus.STOPPED and old_status in (HealthStatus.HEALTHY, HealthStatus.UNHEALTHY):
+                self.notify(f"{title} stopped", duration_ms=1500, category="SCAN")
 
         # Update card display
         card = self.cards.get(key)
         if card:
-            card.update_status(status)
+            stopping = key in self._stop_in_progress_keys
+            card.apply_state(build_card_state(state, stopping=stopping))
+
+        # Keep status bar counts current
+        if old_status != status:
+            self.update_ports_label()
 
         # Auto-restart services that were explicitly requested to run but dropped.
         if status == HealthStatus.HEALTHY:
@@ -836,7 +881,7 @@ class LauncherWindow(
                     except Exception:
                         pass
 
-            if key != "db" and status == HealthStatus.STOPPED and getattr(sp, "requested_running", False):
+            if key != "db" and status == HealthStatus.STOPPED and getattr(state, "requested_running", False):
                 self._schedule_auto_restart(key, reason="health_stopped")
 
         # Refresh architecture panel when ANY backend service becomes healthy
@@ -855,16 +900,9 @@ class LauncherWindow(
 
     def _refresh_openapi_status(self, key: str):
         """Force refresh OpenAPI status check for a service."""
-        bridge = getattr(self, "health_bridge", None)
-        if bridge:
-            bridge.last_openapi_check.pop(key, None)
-            bridge.openapi_status_cache.pop(key, None)
-            sp = self.processes.get(key)
-            if sp and getattr(sp, "health_status", None) == HealthStatus.HEALTHY:
-                try:
-                    bridge._check_openapi_freshness(key, sp)
-                except Exception:
-                    pass
+        # OpenAPI freshness checks are not yet wired through the facade.
+        # TODO: re-add via a periodic timer or on-demand check.
+        pass
 
     def _open_account_live_feed(self, key: str):
         """Open worker account live-feed debug dialog."""
@@ -887,12 +925,12 @@ class LauncherWindow(
 
     def _generate_openapi_types(self, key: str):
         """Generate OpenAPI types for a service."""
-        sp = self.processes.get(key)
-        if not sp:
+        state = self.processes.get(key)
+        if not state:
             return
 
-        defn = getattr(sp, 'defn', None)
-        if not defn or not defn.openapi_url:
+        defn = getattr(state, 'definition', None) or getattr(state, 'defn', None)
+        if not defn or not getattr(defn, 'openapi_url', None):
             return
 
         import sys
@@ -992,8 +1030,8 @@ class LauncherWindow(
     def update_ports_label(self):
         p = read_env_ports()
         # Count running services
-        running_count = sum(1 for sp in self.processes.values() if sp.running)
-        healthy_count = sum(1 for sp in self.processes.values() if sp.health_status == HealthStatus.HEALTHY)
+        running_count = sum(1 for s in self.processes.values() if s.status.value in ("running", "starting"))
+        healthy_count = sum(1 for s in self.processes.values() if s.health == HealthStatus.HEALTHY)
 
         status_emoji = "✓" if healthy_count == running_count and running_count > 0 else "●"
         self.status_label.setText(
@@ -1015,7 +1053,7 @@ class LauncherWindow(
 
     def _restore_status_label(self):
         """Restore the status label to show port status."""
-        self._update_status_bar()
+        self.update_ports_label()
 
     def edit_env(self):
         """Open environment editor dialog."""
@@ -1038,7 +1076,7 @@ class LauncherWindow(
                 )
                 if reply == QMessageBox.Yes:
                     # Rebuild services and restart running ones
-                    running_keys = [k for k, sp in self.processes.items() if sp.running]
+                    running_keys = [k for k, s in self.processes.items() if s.status.value in ("running", "starting")]
                     self.stop_all(synchronous=True)
                     QTimer.singleShot(2000, lambda: self._restart_services(running_keys))
             except Exception as e:
@@ -1096,25 +1134,30 @@ class LauncherWindow(
         if old_always_on_top != self.ui_state.window_always_on_top:
             self._apply_window_flags()
 
-        if self.ui_state.auto_refresh_logs:
-            try:
-                self.db_log_viewer.auto_refresh_checkbox.setChecked(True)
-            except Exception:
-                pass
-        else:
-            try:
-                self.db_log_viewer.auto_refresh_checkbox.setChecked(False)
-            except Exception:
-                pass
+        # DB log auto-refresh is now handled by the React webview.
+
+    def _reload_webviews(self):
+        """Reload all embedded React webviews (console, db-logs).
+
+        Use after editing React code and running pnpm build,
+        or to pick up /logs/meta changes without restarting the launcher.
+        """
+        reloaded = []
+        for attr in ('console_webview', 'db_log_webview'):
+            wv = getattr(self, attr, None)
+            if wv is not None:
+                try:
+                    wv.reload()
+                    reloaded.append(attr)
+                except Exception:
+                    pass
+        if reloaded:
+            self.notify(f"Webviews reloaded ({len(reloaded)})", duration_ms=1500)
 
     def _reload_ui(self):
         """Rebuild UI tabs and refresh settings without restarting launcher."""
-        # Recreate health worker after process map rebuild so status updates keep flowing.
-        if hasattr(self, "health_bridge"):
-            try:
-                self.health_bridge.stop()
-            except Exception:
-                pass
+        # Pause monitoring during rebuild
+        self.facade.stop_all_managers()
 
         try:
             if hasattr(self, "console_refresh_timer"):
@@ -1122,7 +1165,6 @@ class LauncherWindow(
         except Exception:
             pass
 
-        # Stop diagnostics watcher before tearing down tabs.
         try:
             diag_watch = getattr(self, "diagnostics_watch_widget", None)
             if diag_watch and hasattr(diag_watch, "shutdown"):
@@ -1131,35 +1173,34 @@ class LauncherWindow(
             pass
 
         # Reset panels (keep splitter)
-        try:
-            if hasattr(self, "main_tabs") and self.main_tabs:
-                self.main_tabs.setParent(None)
-        except Exception:
-            pass
-        try:
-            if hasattr(self, "right_panel") and self.right_panel:
-                self.right_panel.setParent(None)
-        except Exception:
-            pass
-        try:
-            if hasattr(self, "left_panel") and self.left_panel:
-                self.left_panel.setParent(None)
-        except Exception:
-            pass
+        for attr in ("main_tabs", "right_panel", "left_panel"):
+            try:
+                w = getattr(self, attr, None)
+                if w:
+                    w.setParent(None)
+            except Exception:
+                pass
 
-        # Clear widget registry before rebuild
         self.clear_widgets()
         self.cards.clear()
 
-        # Reload state and services
+        # Reload state
         try:
             self.ui_state = load_ui_state()
         except Exception:
             pass
 
+        # Rebuild facade with fresh service definitions
         try:
             self.services = build_services_from_manifests()
-            self._rebuild_processes_from_services(preserve_state=True)
+            from .launcher_facade import LauncherFacade
+            self.facade = LauncherFacade(parent=self)
+            self.processes = self.facade.process_mgr.states
+            self.facade.health_update.connect(self._update_service_health)
+            self.facade.process_started.connect(
+                lambda k, d: self._update_service_health(k, HealthStatus.STARTING))
+            self.facade.process_stopped.connect(
+                lambda k, d: self._update_service_health(k, HealthStatus.STOPPED))
         except Exception:
             pass
 
@@ -1175,20 +1216,11 @@ class LauncherWindow(
             pass
 
         self._restore_console_ui_state()
-
         self._setup_connections()
         if hasattr(self, "console_refresh_timer"):
-            self.console_refresh_timer.start(1000)
+            self.console_refresh_timer.start(2000)
 
-        self.health_bridge.rebuild_states(self.processes)
-        self.health_bridge.start()
-
-        # Schedule deferred init for reloaded worker processes
-        for sp in self.processes.values():
-            schedule = getattr(sp, "schedule_deferred_init", None)
-            if callable(schedule):
-                schedule()
-
+        self.facade.start_all_managers()
         self._notify_ui_reloaded()
 
     def _open_db_browser(self):
@@ -1289,12 +1321,7 @@ class LauncherWindow(
         except Exception:
             pass
 
-        # Stop background worker threads
-        try:
-            if hasattr(self, 'db_log_viewer'):
-                self.db_log_viewer.shutdown()
-        except Exception:
-            pass
+        # DB log viewer is now a React webview — no shutdown needed.
 
         # Stop diagnostics watcher if running.
         try:
@@ -1314,28 +1341,30 @@ class LauncherWindow(
         finally:
             self._cleanup_openapi_generation_process()
 
-        # Stop health monitoring
-        if hasattr(self, 'health_bridge'):
+        # Stop facade managers (health monitoring, log monitoring)
+        if hasattr(self, 'facade'):
             try:
-                self.health_bridge.stop()
+                self.facade.stop_all_managers()
             except Exception:
                 pass
 
-        # Wait briefly for active async stop workers to finish.
-        for worker in list(getattr(self, "_active_stop_workers", {}).values()):
+        # Stop embedded API server
+        if self._api_cleanup:
             try:
-                worker.wait(2000)
+                self._api_cleanup()
             except Exception:
                 pass
 
         if self.ui_state.stop_services_on_exit:
-            # Attempt graceful stop of all services, then enforce after short delay
+            # Stop launcher-managed services but leave detached containers (db)
+            # alive — they should survive launcher restarts.
             try:
-                self.stop_all(synchronous=True)
-                for sp in self.processes.values():
+                for key, state in self.processes.items():
+                    defn = getattr(state, "definition", None)
+                    if defn and defn.key == "db":
+                        continue
                     try:
-                        if sp.running and getattr(sp, 'proc', None):
-                            sp._kill_process_tree()
+                        self.facade.stop_service(key, graceful=True)
                     except Exception:
                         pass
             except Exception:

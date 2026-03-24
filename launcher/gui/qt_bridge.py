@@ -1,18 +1,17 @@
 """
 Qt Bridge - Converts launcher_core events to Qt signals.
 
-This bridge allows the Qt UI to work with the pure Python core managers
-by converting their callback-based events into Qt signals that the UI can connect to.
+Thread-safe: all signal emissions are dispatched to the main thread
+via internal signals with QueuedConnection, so callbacks from background
+threads (HealthManager, ProcessManager stop threads) never deadlock.
 """
 
-from PySide6.QtCore import QObject, Signal
-from typing import Optional
+from PySide6.QtCore import QObject, Signal, Qt
 
 try:
     from launcher.core import ProcessEvent, HealthEvent
     from launcher.core.types import HealthStatus
 except ImportError:
-    # For development/testing
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -24,54 +23,57 @@ class QtEventBridge(QObject):
     """
     Bridge between launcher_core events and Qt signals.
 
-    The core managers use simple callbacks, but Qt UI needs signals.
-    This class subscribes to core events and re-emits them as Qt signals.
+    All public signals are emitted on the main thread regardless of
+    which thread calls the on_* methods.
     """
 
-    # Process events
-    process_started = Signal(str, dict)  # (service_key, data)
-    process_stopped = Signal(str, dict)  # (service_key, data)
-    process_failed = Signal(str, str)    # (service_key, error)
-    process_output = Signal(str, str)    # (service_key, output)
+    # Public signals (always emitted on main thread)
+    process_started = Signal(str, dict)
+    process_stopped = Signal(str, dict)
+    process_failed = Signal(str, str)
+    process_output = Signal(str, str)
+    health_update = Signal(str, object)
+    log_line = Signal(str, str)
 
-    # Health events
-    health_update = Signal(str, object)  # (service_key, HealthStatus)
+    # Internal cross-thread relay signals
+    _relay_process = Signal(str, str, object)   # (key, event_type, data)
+    _relay_health = Signal(str, object)         # (key, status)
+    _relay_log = Signal(str, str)               # (key, line)
 
-    # Log events
-    log_line = Signal(str, str)          # (service_key, line)
-
-    def __init__(self, parent: Optional[QObject] = None):
+    def __init__(self, parent=None):
         super().__init__(parent)
+        # Connect internal relays to dispatch handlers on the main thread
+        self._relay_process.connect(self._dispatch_process, Qt.QueuedConnection)
+        self._relay_health.connect(self._dispatch_health, Qt.QueuedConnection)
+        self._relay_log.connect(self._dispatch_log, Qt.QueuedConnection)
+
+    # ── Callbacks (called from any thread) ──
 
     def on_process_event(self, event: ProcessEvent):
-        """
-        Handle process events from core manager.
-
-        Converts ProcessEvent to appropriate Qt signal.
-        """
-        if event.event_type == "started":
-            self.process_started.emit(event.service_key, event.data or {})
-        elif event.event_type == "stopped":
-            self.process_stopped.emit(event.service_key, event.data or {})
-        elif event.event_type == "failed":
-            error = event.data.get("error", "Unknown error") if event.data else "Unknown error"
-            self.process_failed.emit(event.service_key, error)
-        elif event.event_type == "output":
-            output = event.data.get("output", "") if event.data else ""
-            self.process_output.emit(event.service_key, output)
+        self._relay_process.emit(event.service_key, event.event_type, event.data or {})
 
     def on_health_event(self, event: HealthEvent):
-        """
-        Handle health events from core manager.
-
-        Converts HealthEvent to Qt signal.
-        """
-        self.health_update.emit(event.service_key, event.status)
+        self._relay_health.emit(event.service_key, event.status)
 
     def on_log_line(self, service_key: str, line: str):
-        """
-        Handle log events from core manager.
+        self._relay_log.emit(service_key, line)
 
-        Converts log callback to Qt signal.
-        """
-        self.log_line.emit(service_key, line)
+    # ── Main-thread dispatchers ──
+
+    def _dispatch_process(self, key: str, event_type: str, data: object):
+        if event_type == "started":
+            self.process_started.emit(key, data if isinstance(data, dict) else {})
+        elif event_type == "stopped":
+            self.process_stopped.emit(key, data if isinstance(data, dict) else {})
+        elif event_type == "failed":
+            error = data.get("error", "Unknown error") if isinstance(data, dict) else str(data)
+            self.process_failed.emit(key, error)
+        elif event_type == "output":
+            output = data.get("output", "") if isinstance(data, dict) else str(data)
+            self.process_output.emit(key, output)
+
+    def _dispatch_health(self, key: str, status: object):
+        self.health_update.emit(key, status)
+
+    def _dispatch_log(self, key: str, line: str):
+        self.log_line.emit(key, line)

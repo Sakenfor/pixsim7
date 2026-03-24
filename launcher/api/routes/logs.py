@@ -16,6 +16,30 @@ from ..dependencies import get_log_manager
 router = APIRouter(prefix="/logs", tags=["logs"])
 
 
+# ── Log rendering metadata (shared with all UI consumers) ──
+
+_LOG_META_CACHE: dict | None = None
+
+
+def _build_log_meta() -> dict:
+    global _LOG_META_CACHE
+    if _LOG_META_CACHE is not None:
+        return _LOG_META_CACHE
+
+    from pixsim_logging.rendering import get_rendering_metadata
+    _LOG_META_CACHE = get_rendering_metadata()
+    return _LOG_META_CACHE
+
+
+@router.get("/meta")
+async def get_log_meta():
+    """Log rendering metadata — level colors and field definitions.
+
+    Shared by React web UI, Svelte web UI, and PySide6 GUI.
+    """
+    return _build_log_meta()
+
+
 @router.get("/{service_key}", response_model=LogsResponse)
 async def get_service_logs(
     service_key: str = Path(..., description="Service key"),

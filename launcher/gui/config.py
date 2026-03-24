@@ -272,7 +272,7 @@ class UIState:
     selected_service: str = ''
 
     # General settings
-    stop_services_on_exit: bool = True  # Graceful shutdown of all services when closing launcher
+    stop_services_on_exit: bool = False  # If True, stops all services when closing launcher
     auto_refresh_logs: bool = False     # Enable DB log auto-refresh by default
     sql_logging_enabled: bool = False   # Enable SQLAlchemy query logging (verbose)
     worker_debug_flags: str = ""        # Worker debug categories (comma-separated)
@@ -301,7 +301,7 @@ def load_ui_state() -> UIState:
                 data = json.load(f)
                 # Provide defaults for newly added keys (backwards compatibility)
                 if 'stop_services_on_exit' not in data:
-                    data['stop_services_on_exit'] = True
+                    data['stop_services_on_exit'] = False
                 if 'auto_refresh_logs' not in data:
                     data['auto_refresh_logs'] = False
                 if 'sql_logging_enabled' not in data:

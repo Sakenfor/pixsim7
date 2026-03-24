@@ -149,6 +149,31 @@ class LogViewWidget(QTextBrowser):
 
         QTimer.singleShot(0, restore_scroll)
 
+    def append_html(self, html: str):
+        """
+        Append HTML to the end of the document without reparsing the whole thing.
+
+        Much faster than setHtml() for incremental log updates.
+        Automatically scrolls to bottom if user was already at bottom.
+        """
+        if self._paused:
+            # In paused mode, store for later (will need full rebuild on resume)
+            self._pending_html = None  # invalidate — caller should do full rebuild
+            return
+
+        scrollbar = self.verticalScrollBar()
+        old_max = scrollbar.maximum()
+        was_at_bottom = (scrollbar.value() >= old_max - 50) if old_max > 0 else True
+
+        cursor = self.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        cursor.insertHtml(html)
+
+        if self._autoscroll_enabled or was_at_bottom:
+            scrollbar.setValue(scrollbar.maximum())
+
+        self.content_updated.emit()
+
     def clear_content(self):
         """Clear all content."""
         self.clear()

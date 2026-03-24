@@ -1,3 +1,10 @@
+"""Service card widget — pure view driven by ServiceCardState snapshots.
+
+The card never reads from or writes to a ServiceProcess.  The launcher
+builds a ``ServiceCardState`` and passes it via ``apply_state()``.
+Only widgets whose backing data actually changed are touched, avoiding
+unnecessary stylesheet re-parsing and Qt layout invalidation.
+"""
 from typing import Optional
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QMenu, QSizePolicy, QToolButton
 from PySide6.QtCore import Qt, Signal
@@ -9,11 +16,13 @@ try:
     from ..status import HealthStatus, STATUS_COLORS, STATUS_TEXT
     from ..openapi_checker import OpenAPIStatus
     from .. import theme
+    from .service_card_state import ServiceCardState
 except ImportError:
     from services import ServiceDef
     from status import HealthStatus, STATUS_COLORS, STATUS_TEXT
     from openapi_checker import OpenAPIStatus
     import theme
+    from service_card_state import ServiceCardState
 
 
 # OpenAPI status colors and tooltips
@@ -31,24 +40,161 @@ OPENAPI_STATUS_TEXT = {
     OpenAPIStatus.NO_OPENAPI: "",
 }
 
+# Pre-built card stylesheet templates (built once, formatted per-call)
+_CARD_STYLES: dict[str, str] = {}
+
+
+def _get_card_style(style_key: str) -> str:
+    """Return cached stylesheet for the given style_key."""
+    cached = _CARD_STYLES.get(style_key)
+    if cached is not None:
+        return cached
+
+    if style_key == "selected_unhealthy":
+        css = f"""
+            ServiceCard {{
+                background-color: rgba(248, 81, 73, 0.08);
+                border: 1px solid {theme.ACCENT_ERROR};
+                border-radius: {theme.RADIUS_MD}px;
+            }}
+            QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
+        """
+    elif style_key == "selected_normal":
+        css = f"""
+            ServiceCard {{
+                background-color: {theme.BG_HOVER};
+                border: 1px solid {theme.ACCENT_PRIMARY};
+                border-radius: {theme.RADIUS_MD}px;
+            }}
+            QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
+        """
+    elif style_key == "unhealthy":
+        css = f"""
+            ServiceCard {{
+                background-color: rgba(248, 81, 73, 0.06);
+                border: 1px solid {theme.ACCENT_ERROR};
+                border-radius: {theme.RADIUS_MD}px;
+            }}
+            ServiceCard:hover {{
+                background-color: rgba(248, 81, 73, 0.12);
+                border: 1px solid {theme.ACCENT_ERROR};
+            }}
+            QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
+        """
+    elif style_key == "external":
+        css = f"""
+            ServiceCard {{
+                background-color: {theme.BG_TERTIARY};
+                border: 1px solid {theme.BORDER_DEFAULT};
+                border-left: 3px solid {theme.ACCENT_INFO};
+                border-radius: {theme.RADIUS_MD}px;
+            }}
+            ServiceCard:hover {{
+                background-color: {theme.BG_HOVER};
+                border: 1px solid {theme.BORDER_FOCUS};
+                border-left: 3px solid {theme.ACCENT_INFO};
+            }}
+            QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
+        """
+    else:  # "normal"
+        css = f"""
+            ServiceCard {{
+                background-color: {theme.BG_TERTIARY};
+                border: 1px solid {theme.BORDER_DEFAULT};
+                border-radius: {theme.RADIUS_MD}px;
+            }}
+            ServiceCard:hover {{
+                background-color: {theme.BG_HOVER};
+                border: 1px solid {theme.BORDER_FOCUS};
+            }}
+            QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
+        """
+    _CARD_STYLES[style_key] = css
+    return css
+
+
+# ── Details formatting (pure function, no ServiceProcess dependency) ──
+
+_DETAILS_PREFERRED_ORDER = [
+    "main_worker_running",
+    "main_worker_pid",
+    "retry_worker_running",
+    "retry_worker_pids",
+    "simulation_worker_running",
+    "simulation_worker_pids",
+    "redis_endpoint",
+    "redis_reachable",
+    "queue_pending_fresh",
+    "queue_pending_retry",
+    "queue_pending_simulation",
+    "queue_in_progress",
+    "queue_pending_legacy_default",
+    "companion_worker_pids_unknown",
+    "details_updated_at",
+    "note",
+]
+
+_DETAILS_LABEL_MAP = {
+    "main_worker_running": "Main Worker",
+    "main_worker_pid": "Main PID",
+    "retry_worker_running": "Retry Worker",
+    "retry_worker_pids": "Retry PIDs",
+    "simulation_worker_running": "Simulation Worker",
+    "simulation_worker_pids": "Simulation PIDs",
+    "redis_endpoint": "Redis",
+    "redis_reachable": "Redis Reachable",
+    "queue_pending_fresh": "Fresh Queue",
+    "queue_pending_retry": "Retry Queue",
+    "queue_pending_simulation": "Simulation Queue",
+    "queue_in_progress": "In Progress",
+    "queue_pending_legacy_default": "Legacy Queue",
+    "companion_worker_pids_unknown": "Unknown Companion PIDs",
+    "details_updated_at": "Updated",
+    "note": "Note",
+}
+
+
+def _format_card_details(details: Optional[dict]) -> str:
+    if not isinstance(details, dict) or not details:
+        return ""
+    ordered_keys = [k for k in _DETAILS_PREFERRED_ORDER if k in details]
+    ordered_keys.extend(k for k in details.keys() if k not in ordered_keys)
+
+    lines: list[str] = []
+    for key in ordered_keys:
+        value = details.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            value_str = "yes" if value else "no"
+        elif isinstance(value, (list, tuple)):
+            value_str = ", ".join(str(v) for v in value) if value else "-"
+        else:
+            value_str = str(value)
+        lines.append(f"{_DETAILS_LABEL_MAP.get(key, key)}: {value_str}")
+    return "\n".join(lines)
+
 
 class ServiceCard(QFrame):
     clicked = Signal(str)
     restart_requested = Signal(str)
     db_logs_requested = Signal(str)
     account_live_feed_requested = Signal(str)
-    openapi_refresh_requested = Signal(str)  # Request to refresh OpenAPI status
-    openapi_generate_requested = Signal(str)  # Request to generate OpenAPI types
+    openapi_refresh_requested = Signal(str)
+    openapi_generate_requested = Signal(str)
 
-    def __init__(self, service_def: 'ServiceDef', service_process):
+    def __init__(self, service_def: 'ServiceDef', initial_state: ServiceCardState):
         super().__init__()
         self.service_def = service_def
-        self.service_process = service_process
         self.is_selected = False
         self.is_expanded = False
-        self._stopping = False
-        self.start_time = None  # Track when service started
-        self.openapi_status: Optional[OpenAPIStatus] = None  # Track OpenAPI freshness
+        self.start_time: Optional[datetime] = None
+        self.openapi_status: Optional[OpenAPIStatus] = None
+
+        # Cached state for diffing — will be set at end of __init__
+        self._state: Optional[ServiceCardState] = None
+        # Cached style key to avoid redundant setStyleSheet calls
+        self._applied_style_key: Optional[str] = None
 
         self.setFrameShape(QFrame.StyledPanel)
         self.setFrameShadow(QFrame.Raised)
@@ -69,11 +215,6 @@ class ServiceCard(QFrame):
 
         self.status_indicator = QLabel()
         self.status_indicator.setFixedSize(10, 10)
-        self.status_indicator.setStyleSheet(f"""
-            background-color: {STATUS_COLORS[self.service_process.health_status]};
-            border-radius: 5px;
-            border: none;
-        """)
         layout.addWidget(self.status_indicator)
 
         info_layout = QVBoxLayout()
@@ -86,16 +227,7 @@ class ServiceCard(QFrame):
         self.title_label.setMinimumWidth(60)
         info_layout.addWidget(self.title_label)
 
-        status_info = STATUS_TEXT[self.service_process.health_status]
-        if not self.service_process.tool_available:
-            status_info = f"Warn: {self.service_process.tool_check_message}"
-        elif service_def.url:
-            try:
-                port = service_def.url.split(':')[-1].split('/')[0]
-                status_info += f" | Port {port}"
-            except Exception:
-                pass
-        self.status_label = QLabel(status_info)
+        self.status_label = QLabel("")
         status_font = QFont(); status_font.setPointSize(7)
         self.status_label.setFont(status_font)
         self.status_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
@@ -133,7 +265,6 @@ class ServiceCard(QFrame):
         openapi_font = QFont(); openapi_font.setPointSize(7); openapi_font.setBold(True)
         self.openapi_indicator.setFont(openapi_font)
         self.openapi_indicator.setCursor(Qt.PointingHandCursor)
-        # Hide by default - only show if service has OpenAPI
         if service_def.openapi_url:
             self.openapi_indicator.setText("? API")
             self.openapi_indicator.setStyleSheet(f"""
@@ -156,8 +287,7 @@ class ServiceCard(QFrame):
 
         btn_layout = QHBoxLayout(); btn_layout.setSpacing(4)
 
-        # Helper to create flexible buttons
-        def make_btn(text, min_width, tooltip, bg_color, hover_color, stretch=1):
+        def make_btn(text, min_width, tooltip, bg_color, hover_color):
             btn = QPushButton(text)
             btn.setMinimumWidth(min_width)
             btn.setFixedHeight(theme.BUTTON_HEIGHT_MD)
@@ -183,17 +313,14 @@ class ServiceCard(QFrame):
             return btn
 
         self.start_btn = make_btn("Start", 36, "Start service", theme.ACCENT_SUCCESS, "#56d364")
-        self.start_btn.setEnabled(not self.service_process.running and self.service_process.tool_available)
         btn_layout.addWidget(self.start_btn, stretch=1)
 
         self.stop_btn = make_btn("Stop", 36, "Stop service gracefully", theme.ACCENT_ERROR, "#ff6b6b")
-        self.stop_btn.setEnabled(self.service_process.running)
         btn_layout.addWidget(self.stop_btn, stretch=1)
 
         self.force_stop_btn = QPushButton("!")
         self.force_stop_btn.setFixedSize(24, theme.BUTTON_HEIGHT_MD)
         self.force_stop_btn.setToolTip("Force stop service (kill all processes)")
-        self.force_stop_btn.setEnabled(self.service_process.running)
         self.force_stop_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: #8b0000;
@@ -214,7 +341,6 @@ class ServiceCard(QFrame):
         btn_layout.addWidget(self.force_stop_btn)
 
         self.restart_btn = make_btn("Restart", 52, "Restart service", theme.ACCENT_WARNING, "#e8a730")
-        self.restart_btn.setEnabled(self.service_process.running)
         btn_layout.addWidget(self.restart_btn, stretch=1)
 
         if service_def.url:
@@ -244,107 +370,80 @@ class ServiceCard(QFrame):
         details_layout.addWidget(self.details_label)
         root_layout.addWidget(self.details_frame)
 
-        self._refresh_details_panel()
-        self._update_style()
-
         # Connect restart button
         self.restart_btn.clicked.connect(lambda: self.restart_requested.emit(self.service_def.key))
 
-    def mousePressEvent(self, event):  # type: ignore[override]
-        if event.button() == Qt.LeftButton:
-            self.clicked.emit(self.service_def.key)
-        super().mousePressEvent(event)
+        # Apply initial state (forces full paint)
+        self.apply_state(initial_state)
 
-    def _show_context_menu(self, position):
-        """Show context menu with quick actions."""
-        menu = QMenu(self)
+    # ── Public API ──────────────────────────────────────────────────────
 
-        if self.service_process.running:
-            restart_action = QAction("Restart Service", self)
-            restart_action.triggered.connect(lambda: self.restart_requested.emit(self.service_def.key))
-            menu.addAction(restart_action)
+    def apply_state(self, new: ServiceCardState):
+        """Apply a new state snapshot, updating only widgets that changed."""
+        old = self._state
 
-            stop_action = QAction("Stop Service", self)
-            stop_action.triggered.connect(self.stop_btn.click)
-            menu.addAction(stop_action)
-        else:
-            start_action = QAction("Start Service", self)
-            start_action.triggered.connect(self.start_btn.click)
-            start_action.setEnabled(self.service_process.tool_available)
-            menu.addAction(start_action)
+        # Track start time across state transitions
+        if old is not None:
+            if new.is_running and not old.is_running:
+                self.start_time = datetime.now()
+            elif not new.is_running and old.is_running:
+                self.start_time = None
 
-        if self.service_def.url:
-            menu.addSeparator()
-            open_action = QAction(f"Open {self.service_def.url}", self)
-            open_action.triggered.connect(self.open_btn.click if self.open_btn else lambda: None)
-            menu.addAction(open_action)
+        # Status indicator dot — only repaint when health changes
+        if old is None or old.health_status != new.health_status:
+            self.status_indicator.setStyleSheet(
+                f"background-color: {STATUS_COLORS[new.health_status]};"
+                f"border-radius: 5px; border: none;"
+            )
 
-        menu.addSeparator()
-        select_action = QAction("Select & View Logs", self)
-        select_action.triggered.connect(lambda: self.clicked.emit(self.service_def.key))
-        menu.addAction(select_action)
+        # Status text — rebuild only when relevant fields change
+        if old is None or self._status_text_differs(old, new):
+            self.status_label.setText(self._build_status_text(new))
 
-        # Quick pivot into DB logs for this service
-        db_logs_action = QAction("View Database Logs", self)
-        db_logs_action.triggered.connect(lambda: self.db_logs_requested.emit(self.service_def.key))
-        menu.addAction(db_logs_action)
+        # Tooltip — rebuild only when relevant fields change
+        if old is None or self._tooltip_differs(old, new):
+            self.setToolTip(self._build_tooltip(new))
 
-        if self.service_def.key == "worker":
-            live_feed_action = QAction("Open Account Live Feed", self)
-            live_feed_action.triggered.connect(lambda: self.account_live_feed_requested.emit(self.service_def.key))
-            menu.addAction(live_feed_action)
+        # Title tooltip (external flag)
+        if old is None or old.externally_managed != new.externally_managed:
+            base = self.service_def.title
+            if new.externally_managed:
+                self.title_label.setToolTip(f"{base} (running outside launcher)")
+            else:
+                self.title_label.setToolTip(base)
 
-        menu.exec_(self.mapToGlobal(position))
+        # Button states — only when running/stopping/tool changes
+        if old is None or (
+            old.is_running != new.is_running
+            or old.stopping != new.stopping
+            or old.tool_available != new.tool_available
+        ):
+            if new.stopping:
+                self.start_btn.setEnabled(False)
+                self.stop_btn.setEnabled(False)
+                self.force_stop_btn.setEnabled(False)
+                self.restart_btn.setEnabled(False)
+            else:
+                self.start_btn.setEnabled(not new.is_running and new.tool_available)
+                self.stop_btn.setEnabled(new.is_running)
+                self.force_stop_btn.setEnabled(new.is_running)
+                self.restart_btn.setEnabled(new.is_running)
+
+        # Details panel — only when card_details or expand state changes
+        if old is None or old.card_details is not new.card_details:
+            self._refresh_details_panel(new)
+
+        # Card frame style — cached by style key
+        self._apply_style_if_changed(new)
+
+        self._state = new
 
     def set_selected(self, selected: bool):
+        if self.is_selected == selected:
+            return
         self.is_selected = selected
-        self._update_style()
-
-    def _show_openapi_menu(self):
-        """Show context menu for OpenAPI actions."""
-        menu = QMenu(self)
-
-        # Status info (non-clickable header)
-        status_text = OPENAPI_STATUS_TEXT.get(self.openapi_status, "Status unknown")
-        status_action = QAction(status_text, self)
-        status_action.setEnabled(False)
-        menu.addAction(status_action)
-        menu.addSeparator()
-
-        # Refresh status
-        refresh_action = QAction("Refresh Status", self)
-        refresh_action.triggered.connect(lambda: self.openapi_refresh_requested.emit(self.service_def.key))
-        menu.addAction(refresh_action)
-
-        # Generate types
-        generate_action = QAction("Generate Types", self)
-        generate_action.setToolTip("Run pnpm openapi:gen to regenerate TypeScript types")
-        generate_action.triggered.connect(lambda: self.openapi_generate_requested.emit(self.service_def.key))
-        menu.addAction(generate_action)
-
-        menu.addSeparator()
-
-        # Open OpenAPI Tools dialog
-        tools_action = QAction("OpenAPI Tools...", self)
-        tools_action.triggered.connect(self._open_openapi_tools)
-        menu.addAction(tools_action)
-
-        # Show menu at button position
-        menu.exec_(self.openapi_indicator.mapToGlobal(self.openapi_indicator.rect().bottomLeft()))
-
-    def _open_openapi_tools(self):
-        """Open the OpenAPI Tools dialog for this service."""
-        try:
-            from ..dialogs.openapi_tools_dialog import show_openapi_tools_dialog
-        except ImportError:
-            from dialogs.openapi_tools_dialog import show_openapi_tools_dialog
-        # Pass service-specific OpenAPI settings
-        show_openapi_tools_dialog(
-            self.window(),
-            openapi_url=self.service_def.openapi_url,
-            types_path=self.service_def.openapi_types_path,
-            service_name=self.service_def.title
-        )
+        if self._state is not None:
+            self._apply_style_if_changed(self._state)
 
     def update_openapi_status(self, status: OpenAPIStatus):
         """Update the OpenAPI freshness indicator."""
@@ -403,202 +502,121 @@ class ServiceCard(QFrame):
         else:
             self.openapi_indicator.hide()
 
-    def _refresh_title(self):
-        """Update title label to reflect external management state."""
-        base_title = self.service_def.title
-        if getattr(self.service_process, "externally_managed", False):
-            self.title_label.setToolTip(f"{base_title} (running outside launcher)")
-        else:
-            self.title_label.setToolTip(base_title)
-        self.title_label.setText(base_title)
+    # ── Backward-compat shims (will be removed once all callers migrate) ──
 
     def update_status(self, status: HealthStatus):
-        # Determine running state from health status
-        # A service is "running" if it's STARTING, HEALTHY, or UNHEALTHY
-        old_running = self.service_process.running
-        is_running = status in (HealthStatus.STARTING, HealthStatus.HEALTHY, HealthStatus.UNHEALTHY)
-        requested_running = getattr(self.service_process, "requested_running", None)
+        """Legacy shim — prefer apply_state()."""
+        if self._state is not None:
+            # Patch health into a copy of current state
+            from dataclasses import replace
+            new = replace(self._state, health_status=status,
+                          is_running=status in (HealthStatus.STARTING, HealthStatus.HEALTHY, HealthStatus.UNHEALTHY))
+            self.apply_state(new)
 
-        self.service_process.health_status = status
+    def set_stopping(self, stopping: bool):
+        """Legacy shim — prefer apply_state()."""
+        if self._state is not None:
+            from dataclasses import replace
+            new = replace(self._state, stopping=bool(stopping))
+            self.apply_state(new)
 
-        # Track start time
-        if is_running and not old_running:
-            self.start_time = datetime.now()
-        elif not is_running and old_running:
-            self.start_time = None
+    # ── Private helpers ─────────────────────────────────────────────────
 
-        self.status_indicator.setStyleSheet(f"""
-            background-color: {STATUS_COLORS[status]};
-            border-radius: 5px;
-            border: none;
-        """)
-        status_info = STATUS_TEXT[status]
-        # Indicate if service is running outside launcher control
-        if getattr(self.service_process, "externally_managed", False):
-            status_info += " (external)"
-        if not self.service_process.tool_available:
-            status_info = f"Warn: {self.service_process.tool_check_message}"
-        elif self.service_def.url:
-            try:
-                port = self.service_def.url.split(':')[-1].split('/')[0]
-                status_info += f" | Port {port}"
-            except Exception:
-                pass
+    def _status_text_differs(self, old: ServiceCardState, new: ServiceCardState) -> bool:
+        return (
+            old.health_status != new.health_status
+            or old.is_running != new.is_running
+            or old.tool_available != new.tool_available
+            or old.tool_check_message != new.tool_check_message
+            or old.externally_managed != new.externally_managed
+            or old.requested_running != new.requested_running
+            or old.effective_pid != new.effective_pid
+            or old.last_error_line != new.last_error_line
+            or old.stopping != new.stopping
+        )
 
-        # Add PID if available (prefer started > detected > persisted)
-        pid = self.service_process.get_effective_pid()
-        if pid:
-            status_info += f" | PID {pid}"
+    def _build_status_text(self, s: ServiceCardState) -> str:
+        if not s.tool_available:
+            return f"Warn: {s.tool_check_message}"
 
-        # Add uptime if running
-        if is_running and self.start_time:
+        info = STATUS_TEXT[s.health_status]
+        if s.externally_managed:
+            info += " (external)"
+        if s.port:
+            info += f" | Port {s.port}"
+        if s.effective_pid:
+            info += f" | PID {s.effective_pid}"
+
+        # Uptime
+        if s.is_running and self.start_time:
             uptime = datetime.now() - self.start_time
             hours = int(uptime.total_seconds() // 3600)
             minutes = int((uptime.total_seconds() % 3600) // 60)
             if hours > 0:
-                status_info += f" | Up {hours}h {minutes}m"
+                info += f" | Up {hours}h {minutes}m"
             elif minutes > 0:
-                status_info += f" | Up {minutes}m"
+                info += f" | Up {minutes}m"
             else:
-                status_info += f" | Just started"
+                info += " | Just started"
 
-        # Show intent vs actual state when interesting
-        if requested_running is True and not is_running:
-            status_info += " | Start requested"
-        elif requested_running is False and is_running and getattr(self.service_process, "externally_managed", False):
-            status_info += " | Stop requested"
+        # Intent vs actual
+        if s.requested_running and not s.is_running:
+            info += " | Start requested"
+        elif not s.requested_running and s.is_running and s.externally_managed:
+            info += " | Stop requested"
 
-        if status == HealthStatus.UNHEALTHY and getattr(self.service_process, 'last_error_line', ''):
-            err = self.service_process.last_error_line
+        if s.health_status == HealthStatus.UNHEALTHY and s.last_error_line:
+            err = s.last_error_line
             if len(err) > 80:
-                err = err[:77] + '...'
-            status_info += f" | {err}"
-        if self._stopping:
-            status_info += " | Stopping..."
-        self.status_label.setText(status_info)
-        self._refresh_details_panel()
+                err = err[:77] + "..."
+            info += f" | {err}"
+        if s.stopping:
+            info += " | Stopping..."
+        return info
 
-        # Build a helpful tooltip with error + recent logs
-        tooltip_lines = [self.service_def.title]
-        if self.service_process.tool_available is False:
-            tooltip_lines.append(f"Tool: {self.service_process.tool_check_message}")
-        if getattr(self.service_process, 'last_error_line', ''):
-            tooltip_lines.append(f"Last error: {self.service_process.last_error_line}")
-        try:
-            buf = getattr(self.service_process, "log_buffer", None)
-            if buf:
-                n = len(buf)
-                recent = [str(buf[n - 1 - i]) for i in range(min(2, n)) if str(buf[n - 1 - i]).strip()]
-                if recent:
-                    tooltip_lines.append("Recent log lines:")
-                    tooltip_lines.extend(recent)
-        except (IndexError, RuntimeError):
-            pass  # deque may be mutated concurrently; skip tooltip lines
-        self.setToolTip("\n".join(tooltip_lines))
-        # Keep title in sync with external flag
-        self._refresh_title()
-        # Update button states based on the new running state
-        if self._stopping:
-            self.start_btn.setEnabled(False)
-            self.stop_btn.setEnabled(False)
-            self.force_stop_btn.setEnabled(False)
-            self.restart_btn.setEnabled(False)
-        else:
-            self.start_btn.setEnabled(not is_running and self.service_process.tool_available)
-            self.stop_btn.setEnabled(is_running)
-            self.force_stop_btn.setEnabled(is_running)
-            self.restart_btn.setEnabled(is_running)
-        # Update card style based on health state
-        self._update_style()
+    def _tooltip_differs(self, old: ServiceCardState, new: ServiceCardState) -> bool:
+        return (
+            old.tool_available != new.tool_available
+            or old.tool_check_message != new.tool_check_message
+            or old.last_error_line != new.last_error_line
+            or old.recent_log_lines != new.recent_log_lines
+        )
 
-    def set_stopping(self, stopping: bool):
-        """Set temporary UI state while stop operation is in progress."""
-        stopping = bool(stopping)
-        if self._stopping == stopping:
-            return
-        self._stopping = stopping
-        try:
-            status = getattr(self.service_process, "health_status", HealthStatus.UNKNOWN)
-        except Exception:
-            status = HealthStatus.UNKNOWN
-        self.update_status(status)
+    def _build_tooltip(self, s: ServiceCardState) -> str:
+        lines = [self.service_def.title]
+        if not s.tool_available:
+            lines.append(f"Tool: {s.tool_check_message}")
+        if s.last_error_line:
+            lines.append(f"Last error: {s.last_error_line}")
+        if s.recent_log_lines:
+            lines.append("Recent log lines:")
+            lines.extend(s.recent_log_lines)
+        return "\n".join(lines)
+
+    def _compute_style_key(self, s: ServiceCardState) -> str:
+        if self.is_selected:
+            return "selected_unhealthy" if s.health_class == "unhealthy" else "selected_normal"
+        return s.health_class
+
+    def _apply_style_if_changed(self, s: ServiceCardState):
+        key = self._compute_style_key(s)
+        if key != self._applied_style_key:
+            self.setStyleSheet(_get_card_style(key))
+            self._applied_style_key = key
 
     def _toggle_details(self):
-        if not self._has_card_details():
+        if self._state is None or not self._state.has_card_details:
             self.is_expanded = False
             self.details_frame.setVisible(False)
             self.expand_btn.setText("+")
             return
         self.is_expanded = not self.is_expanded
-        self._refresh_details_panel()
+        self._refresh_details_panel(self._state)
 
-    def _has_card_details(self) -> bool:
-        details = getattr(self.service_process, "card_details", None)
-        return isinstance(details, dict) and bool(details)
-
-    def _format_card_details(self) -> str:
-        details = getattr(self.service_process, "card_details", None) or {}
-        if not isinstance(details, dict):
-            return ""
-
-        preferred_order = [
-            "main_worker_running",
-            "main_worker_pid",
-            "retry_worker_running",
-            "retry_worker_pids",
-            "simulation_worker_running",
-            "simulation_worker_pids",
-            "redis_endpoint",
-            "redis_reachable",
-            "queue_pending_fresh",
-            "queue_pending_retry",
-            "queue_pending_simulation",
-            "queue_in_progress",
-            "queue_pending_legacy_default",
-            "companion_worker_pids_unknown",
-            "details_updated_at",
-            "note",
-        ]
-        ordered_keys = [k for k in preferred_order if k in details]
-        ordered_keys.extend(k for k in details.keys() if k not in ordered_keys)
-
-        label_map = {
-            "main_worker_running": "Main Worker",
-            "main_worker_pid": "Main PID",
-            "retry_worker_running": "Retry Worker",
-            "retry_worker_pids": "Retry PIDs",
-            "simulation_worker_running": "Simulation Worker",
-            "simulation_worker_pids": "Simulation PIDs",
-            "redis_endpoint": "Redis",
-            "redis_reachable": "Redis Reachable",
-            "queue_pending_fresh": "Fresh Queue",
-            "queue_pending_retry": "Retry Queue",
-            "queue_pending_simulation": "Simulation Queue",
-            "queue_in_progress": "In Progress",
-            "queue_pending_legacy_default": "Legacy Queue",
-            "companion_worker_pids_unknown": "Unknown Companion PIDs",
-            "details_updated_at": "Updated",
-            "note": "Note",
-        }
-
-        lines = []
-        for key in ordered_keys:
-            value = details.get(key)
-            if value is None:
-                continue
-            if isinstance(value, bool):
-                value_str = "yes" if value else "no"
-            elif isinstance(value, (list, tuple)):
-                value_str = ", ".join(str(v) for v in value) if value else "-"
-            else:
-                value_str = str(value)
-            lines.append(f"{label_map.get(key, key)}: {value_str}")
-        return "\n".join(lines)
-
-    def _refresh_details_panel(self):
-        has_details = self._has_card_details()
-        self.expand_btn.setVisible(has_details)
-        if not has_details:
+    def _refresh_details_panel(self, s: ServiceCardState):
+        has = s.has_card_details
+        self.expand_btn.setVisible(has)
+        if not has:
             self.is_expanded = False
             self.expand_btn.setText("+")
             self.expand_btn.setToolTip("No additional details")
@@ -606,69 +624,93 @@ class ServiceCard(QFrame):
             self.details_label.setText("")
             return
 
-        self.details_label.setText(self._format_card_details())
+        self.details_label.setText(_format_card_details(s.card_details))
         self.expand_btn.setToolTip("Hide details" if self.is_expanded else "Show details")
         self.expand_btn.setText("-" if self.is_expanded else "+")
         self.details_frame.setVisible(self.is_expanded)
 
-    def _update_style(self):
-        # Determine if service is in an unhealthy state
-        is_unhealthy = self.service_process.health_status == HealthStatus.UNHEALTHY
-        is_external = getattr(self.service_process, "externally_managed", False)
+    def mousePressEvent(self, event):  # type: ignore[override]
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.service_def.key)
+        super().mousePressEvent(event)
 
-        if self.is_selected:
-            border_color = theme.ACCENT_ERROR if is_unhealthy else theme.ACCENT_PRIMARY
-            bg_color = "rgba(248, 81, 73, 0.08)" if is_unhealthy else theme.BG_HOVER
-            self.setStyleSheet(f"""
-                ServiceCard {{
-                    background-color: {bg_color};
-                    border: 1px solid {border_color};
-                    border-radius: {theme.RADIUS_MD}px;
-                }}
-                QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
-            """)
+    def _show_context_menu(self, position):
+        """Show context menu with quick actions."""
+        menu = QMenu(self)
+        s = self._state
+
+        if s and s.is_running:
+            restart_action = QAction("Restart Service", self)
+            restart_action.triggered.connect(lambda: self.restart_requested.emit(self.service_def.key))
+            menu.addAction(restart_action)
+
+            stop_action = QAction("Stop Service", self)
+            stop_action.triggered.connect(self.stop_btn.click)
+            menu.addAction(stop_action)
         else:
-            # Normal (unselected) state
-            if is_unhealthy:
-                # Stronger visual for unhealthy services
-                self.setStyleSheet(f"""
-                    ServiceCard {{
-                        background-color: rgba(248, 81, 73, 0.06);
-                        border: 1px solid {theme.ACCENT_ERROR};
-                        border-radius: {theme.RADIUS_MD}px;
-                    }}
-                    ServiceCard:hover {{
-                        background-color: rgba(248, 81, 73, 0.12);
-                        border: 1px solid {theme.ACCENT_ERROR};
-                    }}
-                    QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
-                """)
-            elif is_external:
-                # Subtle indicator for externally managed services
-                self.setStyleSheet(f"""
-                    ServiceCard {{
-                        background-color: {theme.BG_TERTIARY};
-                        border: 1px solid {theme.BORDER_DEFAULT};
-                        border-left: 3px solid {theme.ACCENT_INFO};
-                        border-radius: {theme.RADIUS_MD}px;
-                    }}
-                    ServiceCard:hover {{
-                        background-color: {theme.BG_HOVER};
-                        border: 1px solid {theme.BORDER_FOCUS};
-                        border-left: 3px solid {theme.ACCENT_INFO};
-                    }}
-                    QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
-                """)
-            else:
-                self.setStyleSheet(f"""
-                    ServiceCard {{
-                        background-color: {theme.BG_TERTIARY};
-                        border: 1px solid {theme.BORDER_DEFAULT};
-                        border-radius: {theme.RADIUS_MD}px;
-                    }}
-                    ServiceCard:hover {{
-                        background-color: {theme.BG_HOVER};
-                        border: 1px solid {theme.BORDER_FOCUS};
-                    }}
-                    QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
-                """)
+            start_action = QAction("Start Service", self)
+            start_action.triggered.connect(self.start_btn.click)
+            start_action.setEnabled(s.tool_available if s else True)
+            menu.addAction(start_action)
+
+        if self.service_def.url:
+            menu.addSeparator()
+            open_action = QAction(f"Open {self.service_def.url}", self)
+            open_action.triggered.connect(self.open_btn.click if self.open_btn else lambda: None)
+            menu.addAction(open_action)
+
+        menu.addSeparator()
+        select_action = QAction("Select & View Logs", self)
+        select_action.triggered.connect(lambda: self.clicked.emit(self.service_def.key))
+        menu.addAction(select_action)
+
+        db_logs_action = QAction("View Database Logs", self)
+        db_logs_action.triggered.connect(lambda: self.db_logs_requested.emit(self.service_def.key))
+        menu.addAction(db_logs_action)
+
+        if self.service_def.key == "worker":
+            live_feed_action = QAction("Open Account Live Feed", self)
+            live_feed_action.triggered.connect(lambda: self.account_live_feed_requested.emit(self.service_def.key))
+            menu.addAction(live_feed_action)
+
+        menu.exec_(self.mapToGlobal(position))
+
+    def _show_openapi_menu(self):
+        """Show context menu for OpenAPI actions."""
+        menu = QMenu(self)
+
+        status_text = OPENAPI_STATUS_TEXT.get(self.openapi_status, "Status unknown")
+        status_action = QAction(status_text, self)
+        status_action.setEnabled(False)
+        menu.addAction(status_action)
+        menu.addSeparator()
+
+        refresh_action = QAction("Refresh Status", self)
+        refresh_action.triggered.connect(lambda: self.openapi_refresh_requested.emit(self.service_def.key))
+        menu.addAction(refresh_action)
+
+        generate_action = QAction("Generate Types", self)
+        generate_action.setToolTip("Run pnpm openapi:gen to regenerate TypeScript types")
+        generate_action.triggered.connect(lambda: self.openapi_generate_requested.emit(self.service_def.key))
+        menu.addAction(generate_action)
+
+        menu.addSeparator()
+
+        tools_action = QAction("OpenAPI Tools...", self)
+        tools_action.triggered.connect(self._open_openapi_tools)
+        menu.addAction(tools_action)
+
+        menu.exec_(self.openapi_indicator.mapToGlobal(self.openapi_indicator.rect().bottomLeft()))
+
+    def _open_openapi_tools(self):
+        """Open the OpenAPI Tools dialog for this service."""
+        try:
+            from ..dialogs.openapi_tools_dialog import show_openapi_tools_dialog
+        except ImportError:
+            from dialogs.openapi_tools_dialog import show_openapi_tools_dialog
+        show_openapi_tools_dialog(
+            self.window(),
+            openapi_url=self.service_def.openapi_url,
+            types_path=self.service_def.openapi_types_path,
+            service_name=self.service_def.title
+        )

@@ -729,8 +729,11 @@ class DatabaseLogViewer(QWidget):
             self.refresh_btn.setEnabled(False)
 
             # Cancel previous fetch request (if still running) and start a new one.
-            if self.worker and self.worker.isRunning():
-                self._cancel_worker(self.worker)
+            try:
+                if self.worker and self.worker.isRunning():
+                    self._cancel_worker(self.worker)
+            except RuntimeError:
+                self.worker = None
 
             self.worker = LogFetchWorker(self.api_url, params)
             # Store generation in worker so callbacks can check if stale
@@ -769,8 +772,11 @@ class DatabaseLogViewer(QWidget):
         self._pending_service_change = service
 
         # Cancel existing field worker if still running.
-        if self.field_worker and self.field_worker.isRunning():
-            self._cancel_worker(self.field_worker)
+        try:
+            if self.field_worker and self.field_worker.isRunning():
+                self._cancel_worker(self.field_worker)
+        except RuntimeError:
+            self.field_worker = None  # C++ object already deleted
 
         # Start new field discovery worker
         self._field_worker_generation += 1

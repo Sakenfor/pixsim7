@@ -134,6 +134,8 @@ class ProcessManager:
         if not state:
             return False
 
+        state.requested_running = True
+
         # Don't start if already running
         if state.status in (ServiceStatus.RUNNING, ServiceStatus.STARTING):
             return True
@@ -294,6 +296,8 @@ class ProcessManager:
         state = self.states.get(service_key)
         if not state:
             return False
+
+        state.requested_running = False
 
         definition = state.definition
 

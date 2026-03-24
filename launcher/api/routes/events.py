@@ -59,25 +59,34 @@ async def websocket_events(
     await websocket.accept()
     _active_connections.add(websocket)
 
+    # Capture the event loop running this WebSocket handler so we can
+    # schedule sends from any thread (e.g. the Qt GUI thread publishing
+    # health events via the EventBus).
+    _loop = asyncio.get_event_loop()
+
     # Event handler - sends events to this WebSocket
     async def send_event(event: Event):
         """Send event to WebSocket client."""
         try:
-            # Convert event to JSON-serializable dict
             event_data = EventMessage(
                 event_type=event.event_type,
                 source=event.source,
                 timestamp=event.timestamp,
                 data=_serialize_event_data(event.data)
             )
-
             await websocket.send_json(event_data.dict())
         except Exception:
-            # Connection might be closed
             pass
 
+    def _on_event(event: Event):
+        """Thread-safe: schedule send_event on uvicorn's event loop."""
+        try:
+            _loop.call_soon_threadsafe(asyncio.ensure_future, send_event(event))
+        except RuntimeError:
+            pass  # loop closed
+
     # Subscribe to all events
-    event_bus.subscribe("*", lambda e: asyncio.create_task(send_event(e)))
+    event_bus.subscribe("*", _on_event)
 
     try:
         # Keep connection alive and handle client messages

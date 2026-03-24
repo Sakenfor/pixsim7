@@ -1074,9 +1074,11 @@ class SettingsPanel(QWidget):
         if not processes:
             return running
         for sp in processes.values():
-            if not getattr(sp, "running", False):
-                continue
-            url = getattr(sp.defn, "health_url", None) or getattr(sp.defn, "url", None)
+            if not (getattr(sp, "status", None) and sp.status.value in ("running", "starting")):
+                if not getattr(sp, "running", False):
+                    continue
+            defn = getattr(sp, "definition", None) or getattr(sp, "defn", None)
+            url = getattr(defn, "health_url", None) or getattr(defn, "url", None) if defn else None
             port = self._port_from_url(url)
             if port:
                 running.add(port)

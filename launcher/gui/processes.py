@@ -89,12 +89,9 @@ class ServiceProcess:
         self.requested_running = False  # User's intended state (start/stop button clicks)
         self.externally_managed = False  # True if service is running outside launcher control
 
-        # Load persisted PID from disk (survives launcher restarts)
-        self._load_persisted_pid()
-
-        # Worker orphan recovery is deferred to avoid blocking __init__
-        # with an expensive PowerShell process scan.  Call
-        # schedule_deferred_init() after the Qt event loop is running.
+        # PID recovery and worker orphan recovery are deferred to after
+        # the first paint via schedule_deferred_init() to keep startup fast.
+        self._pid_load_done = False
         self._worker_recovery_done = False
 
         # Console log file persistence
@@ -118,15 +115,24 @@ class ServiceProcess:
         # Log file monitoring for detached processes
 
     def schedule_deferred_init(self):
-        """Schedule expensive init work (worker orphan recovery) after the UI is up.
+        """Schedule expensive init work after the UI is up.
 
-        Call this once the Qt event loop is running.  Uses a single-shot
-        timer so the scan runs on the main thread but *after* the first
+        Call this once the Qt event loop is running.  Uses single-shot
+        timers so the work runs on the main thread but *after* the first
         paint, keeping startup snappy.
         """
-        if self._worker_recovery_done or self.defn.key != "worker":
+        # Deferred PID recovery (all services)
+        if not self._pid_load_done:
+            QTimer.singleShot(0, self._deferred_load_persisted_pid)
+        # Worker orphan recovery (worker service only, slightly later)
+        if not self._worker_recovery_done and self.defn.key == "worker":
+            QTimer.singleShot(500, self._deferred_recover_worker_family)
+
+    def _deferred_load_persisted_pid(self):
+        if self._pid_load_done:
             return
-        QTimer.singleShot(500, self._deferred_recover_worker_family)
+        self._pid_load_done = True
+        self._load_persisted_pid()
 
     def _deferred_recover_worker_family(self):
         """Run worker-family recovery outside of __init__."""
@@ -357,20 +363,12 @@ class ServiceProcess:
         )
 
     def _build_companion_worker_cmds(self, primary_cmd: list[str]) -> list[list[str]]:
-        """Build companion worker commands (retry only) for the ARQ worker service.
+        """Build companion worker commands for the ARQ worker service.
 
-        The simulation worker is managed as its own independent service card
-        (simulation-worker) and is NOT spawned as a companion here.
+        Previously spawned a retry worker companion, but retry jobs now route
+        to the main queue so no companion is needed.
         """
-        if self.defn.key != "worker":
-            return []
-        marker = "pixsim7.backend.main.workers.arq_worker.WorkerSettings"
-        retry_marker = "pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings"
-        if not any(arg == marker for arg in primary_cmd):
-            return []
-        return [
-            [retry_marker if arg == marker else arg for arg in primary_cmd]
-        ]
+        return []
 
     def _kill_extra_started_processes(self, graceful: bool) -> None:
         """Best-effort kill companion detached processes started with this service."""
@@ -952,47 +950,67 @@ class ServiceProcess:
 
         # Handle detected process (not started by launcher)
         if self.proc is None and self.detected_pid:
+            # Safety: never kill our own process (e.g. embedded API server
+            # running in a thread inside the launcher).  Instead, signal
+            # the embedded uvicorn server to shut down gracefully.
+            if self.detected_pid == os.getpid():
+                _log("stop_embedded_api", service_key=self.defn.key, pid=self.detected_pid)
+                try:
+                    # Walk up to the LauncherWindow to find the embedded server handle
+                    from PySide6.QtWidgets import QApplication
+                    for widget in QApplication.topLevelWidgets():
+                        srv = getattr(widget, "_embedded_api_server", None)
+                        if srv is not None:
+                            srv.should_exit = True
+                            break
+                except Exception:
+                    pass
+                self._mark_stopped()
+                return
             self._stop_detected_process(graceful)
             self._kill_worker_family_processes(graceful=graceful, exclude_pids={self.detected_pid})
             return
 
-        if graceful and self.defn.key == 'backend':
-            if self.proc:
-                self.proc.terminate()
+        if graceful and self.proc:
+            # Send SIGTERM / WM_CLOSE and give the process time to shut down
+            # cleanly.  This runs inside ServiceStopWorker (a QThread) so we
+            # must block synchronously — QTimer.singleShot would require an
+            # event loop that isn't running in the worker thread.
+            try:
+                from .constants import THREAD_SHUTDOWN_TIMEOUT_MS
+            except ImportError:
+                from constants import THREAD_SHUTDOWN_TIMEOUT_MS
+            self.proc.terminate()
+            finished = False
+            if isinstance(self.proc, subprocess.Popen):
                 try:
-                    from .constants import THREAD_SHUTDOWN_TIMEOUT_MS
-                except ImportError:
-                    from constants import THREAD_SHUTDOWN_TIMEOUT_MS
-                QTimer.singleShot(THREAD_SHUTDOWN_TIMEOUT_MS, lambda: self._finish_stop())
+                    self.proc.wait(timeout=THREAD_SHUTDOWN_TIMEOUT_MS / 1000)
+                    finished = True
+                except subprocess.TimeoutExpired:
+                    pass
+            else:
+                finished = self.proc.waitForFinished(THREAD_SHUTDOWN_TIMEOUT_MS)
+            if not finished:
+                _log("service_force_kill", "warning", service_key=self.defn.key)
+                self._kill_process_tree()
+                if isinstance(self.proc, subprocess.Popen):
+                    try:
+                        self.proc.wait(timeout=2)
+                    except Exception:
+                        pass
+                elif self.proc:
+                    self.proc.waitForFinished(1000)
+            if self.proc:
+                if not isinstance(self.proc, subprocess.Popen):
+                    _log("service_exit", service_key=self.defn.key, exit_code=self.proc.exitCode())
+                self.proc = None
+            self._mark_stopped()
         else:
             self._kill_process_tree()
             if self.proc:
                 self.proc.waitForFinished(1000)
                 self.proc = None
             self._mark_stopped()
-
-    def _finish_stop(self):
-        # Handle subprocess.Popen
-        if isinstance(self.proc, subprocess.Popen):
-            try:
-                if self.proc.poll() is None:
-                    _log("service_force_kill", "warning", service_key=self.defn.key)
-                    self._kill_process_tree()
-            except Exception:
-                pass
-            self._mark_stopped()
-            return
-
-        # Handle QProcess
-        if self.proc and self.proc.state() == QProcess.Running:
-            _log("service_force_kill", "warning", service_key=self.defn.key)
-            self._kill_process_tree()
-        if self.proc:
-            exit_code = self.proc.exitCode()
-            _log("service_exit", service_key=self.defn.key, exit_code=exit_code)
-            self.proc.waitForFinished(1000)
-            self.proc = None
-        self._mark_stopped()
 
     def _stop_detected_process(self, graceful: bool):
         """Stop a process detected by port/PID but not started by this launcher."""

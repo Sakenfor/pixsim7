@@ -12,8 +12,14 @@ import socket
 import subprocess
 import threading
 import urllib.request
+import logging
 from typing import Dict, Optional, Callable
 from .types import HealthStatus, HealthEvent, ServiceState, ServiceStatus
+
+logger = logging.getLogger("launcher.core.health")
+
+# Stop counting after this many consecutive failures.
+MAX_FAILURE_COUNT = 50
 
 
 class HealthManager:
@@ -32,17 +38,6 @@ class HealthManager:
         startup_interval: float = 0.5,
         stable_interval: float = 5.0
     ):
-        """
-        Initialize the health manager.
-
-        Args:
-            states: Dictionary of service states to monitor
-            event_callback: Optional callback for health events
-            interval_sec: Base health check interval in seconds
-            adaptive_enabled: If True, adjust interval based on service state
-            startup_interval: Fast interval during startup (seconds)
-            stable_interval: Slow interval when all services stable (seconds)
-        """
         self.states = states
         self.event_callback = event_callback
 
@@ -57,6 +52,12 @@ class HealthManager:
         self.failure_counts: Dict[str, int] = {}
         self.service_healthy_since: Dict[str, Optional[float]] = {}
         self.last_startup_detected: Optional[float] = None
+        self._prev_status: Dict[str, HealthStatus] = {}
+
+        # Transport backoff (for transient WinNAT/TCP churn on Windows)
+        self._transport_backoff_until: Dict[str, float] = {}
+        self._transport_backoff_failures: Dict[str, int] = {}
+        self._transport_backoff_last_failure: Dict[str, float] = {}
 
         # Thread control
         self._thread: Optional[threading.Thread] = None
@@ -91,6 +92,48 @@ class HealthManager:
     def is_running(self) -> bool:
         """Check if the health monitor is running."""
         return self._running
+
+    # ── Transport backoff (Windows WinNAT / transient socket errors) ──
+
+    @staticmethod
+    def _is_transient_transport_error(error: Exception) -> bool:
+        text = str(error).lower()
+        return (
+            "winerror 10048" in text
+            or "only one usage of each socket address" in text
+            or "wsaeaddrinuse" in text
+            or "temporarily unavailable" in text
+        )
+
+    def _transport_backoff_remaining(self, key: str) -> float:
+        until = self._transport_backoff_until.get(key, 0.0)
+        remaining = until - time.monotonic()
+        return remaining if remaining > 0 else 0.0
+
+    def _record_transport_backoff(self, key: str) -> tuple:
+        now = time.monotonic()
+        last = self._transport_backoff_last_failure.get(key, 0.0)
+        if last and (now - last) > 60.0:
+            self._transport_backoff_failures[key] = 0
+        failures = self._transport_backoff_failures.get(key, 0) + 1
+        self._transport_backoff_failures[key] = failures
+        self._transport_backoff_last_failure[key] = now
+        steps = (2.0, 4.0, 8.0, 12.0, 20.0)
+        delay = steps[min(failures - 1, len(steps) - 1)]
+        self._transport_backoff_until[key] = now + delay
+        return failures, delay
+
+    def _clear_transport_backoff(self, key: str) -> None:
+        self._transport_backoff_until.pop(key, None)
+        self._transport_backoff_failures.pop(key, None)
+        self._transport_backoff_last_failure.pop(key, None)
+
+    # ── Helpers ──
+
+    def _increment_failures(self, key: str) -> int:
+        count = min(self.failure_counts.get(key, 0) + 1, MAX_FAILURE_COUNT)
+        self.failure_counts[key] = count
+        return count
 
     def _emit_event(self, event: HealthEvent):
         """Emit a health event to the callback if registered."""
@@ -145,38 +188,44 @@ class HealthManager:
 
     def _emit_health_update(self, key: str, status: HealthStatus, details: Optional[Dict] = None):
         """Emit health update and track state change."""
-        # Update state
-        if key in self.states:
-            self.states[key].health = status
+        state = self.states.get(key)
+        if state:
+            state.health = status
 
-        # Emit event
+        # Log transitions
+        old = self._prev_status.get(key)
+        if old is not None and old != status:
+            logger.info("health_transition service=%s %s → %s failures=%d",
+                        key, old.value, status.value, self.failure_counts.get(key, 0))
+        self._prev_status[key] = status
+
+        # Enrich details with state metadata
+        merged = dict(details) if details else {}
+        if state:
+            merged.setdefault("externally_managed", state.externally_managed)
+            if state.detected_pid:
+                merged.setdefault("detected_pid", state.detected_pid)
+
         self._emit_event(HealthEvent(
             service_key=key,
             status=status,
             timestamp=time.time(),
-            details=details
+            details=merged if merged else None,
         ))
 
-        # Track for adaptive intervals
         self._track_health_change(key, status)
 
     def _check_http_health(self, url: str, timeout: float = 0.8) -> bool:
         """
-        Check health via HTTP endpoint.
-
-        Args:
-            url: Health check URL
-            timeout: Request timeout in seconds
+        Check health via HTTP endpoint.  Raises on error so callers
+        can classify the failure (e.g. transient transport errors).
 
         Returns:
             True if endpoint returns 200 OK
         """
-        try:
-            req = urllib.request.Request(url, method='GET')
-            with urllib.request.urlopen(req, timeout=timeout) as response:
-                return response.status == 200
-        except Exception:
-            return False
+        req = urllib.request.Request(url, method='GET')
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return response.status == 200
 
     def _check_tcp_health(self, host: str, port: int, timeout: float = 0.5) -> bool:
         """
@@ -243,27 +292,23 @@ class HealthManager:
             return False
 
     def _check_docker_compose_health(self, compose_file: str) -> bool:
-        """
-        Check docker-compose service health.
-
-        Args:
-            compose_file: Path to docker-compose.yml
-
-        Returns:
-            True if containers are running
-        """
-        try:
-            result = subprocess.run(
-                ['docker-compose', '-f', compose_file, 'ps'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            if result.returncode == 0 and result.stdout:
-                out = result.stdout.lower()
-                return ' up ' in f" {out} " or 'running' in out
-        except Exception:
-            pass
+        """Check docker-compose service health via ``docker compose ps``."""
+        base = ['-f', compose_file, 'ps']
+        cmds = [
+            ['docker', 'compose'] + base,
+            ['docker-compose'] + base,
+        ]
+        kwargs: dict = dict(capture_output=True, text=True, timeout=5)
+        if os.name == 'nt':
+            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+        for cmd in cmds:
+            try:
+                result = subprocess.run(cmd, **kwargs)
+                if result.returncode == 0 and result.stdout:
+                    out = result.stdout.lower()
+                    return ' up ' in f" {out} " or 'running' in out
+            except Exception:
+                continue
         return False
 
     def _detect_pid_by_port(self, port: int) -> Optional[int]:
@@ -283,7 +328,8 @@ class HealthManager:
                     ['netstat', '-ano'],
                     capture_output=True,
                     text=True,
-                    timeout=5
+                    timeout=5,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
                 )
                 if result.returncode == 0:
                     for line in result.stdout.split('\n'):
@@ -331,148 +377,212 @@ class HealthManager:
         except Exception:
             return None
 
+    def _check_service(self, key: str, state: ServiceState):
+        """Check health for a single service."""
+        definition = state.definition
+
+        # Skip services the user never started, that aren't running, and
+        # have no known PID (e.g. persisted from a previous session).
+        # Avoids burning ~1.5s per service on Windows for unbound ports.
+        # Never skip docker-compose/detached services — they can run
+        # externally (Docker Desktop) without any PID in the launcher.
+        # Never skip services with a health_url — they might be running
+        # externally and should be discovered via HTTP probe.
+        has_known_pid = state.pid or state.detected_pid
+        is_detached = definition.is_detached or definition.key == 'db'
+        has_health_url = bool(getattr(definition, 'health_url', None))
+        is_worker = definition.key == 'worker'  # only main worker uses Redis probe
+        if (not state.requested_running and state.status.value == 'stopped'
+                and not has_known_pid and not is_detached
+                and not definition.custom_health_check
+                and not has_health_url
+                and not is_worker):
+            if state.health != HealthStatus.STOPPED:
+                self._emit_health_update(key, HealthStatus.STOPPED)
+            return
+
+        # ── Custom health check ──
+        if definition.custom_health_check:
+            try:
+                is_healthy = definition.custom_health_check(state)
+                if is_healthy:
+                    self.failure_counts[key] = 0
+                    self._handle_healthy(key, state)
+                    self._emit_health_update(key, HealthStatus.HEALTHY)
+                else:
+                    self._increment_failures(key)
+                    if self.failure_counts[key] < definition.health_grace_attempts:
+                        self._emit_health_update(key, HealthStatus.STARTING)
+                    else:
+                        self._emit_health_update(key, HealthStatus.UNHEALTHY)
+            except Exception:
+                self._increment_failures(key)
+                self._emit_health_update(key, HealthStatus.UNHEALTHY)
+            return
+
+        # ── Docker-compose ──
+        if definition.key == 'db' or definition.is_detached:
+            try:
+                compose_file = os.path.join(definition.cwd, 'docker-compose.db-only.yml')
+                is_healthy = os.path.exists(compose_file) and self._check_docker_compose_health(compose_file)
+                if is_healthy:
+                    self.failure_counts[key] = 0
+                    self._handle_healthy(key, state)
+                    self._emit_health_update(key, HealthStatus.HEALTHY)
+                else:
+                    self._increment_failures(key)
+                    self._emit_health_update(key, HealthStatus.STOPPED)
+            except Exception:
+                self._increment_failures(key)
+                self._emit_health_update(key, HealthStatus.STOPPED)
+            return
+
+        # ── Worker (Redis health check) ──
+        # Only the main 'worker' uses Redis as a health proxy.
+        # Other worker variants (simulation-worker) rely on process detection.
+        if definition.key == 'worker':
+            # If user explicitly stopped, don't re-adopt just because Redis is up
+            if state.requested_running is False and state.status.value == 'stopped':
+                if state.health != HealthStatus.STOPPED:
+                    self._emit_health_update(key, HealthStatus.STOPPED)
+                return
+            redis_url = os.getenv('ARQ_REDIS_URL') or os.getenv('REDIS_URL') or 'redis://localhost:6380/0'
+            is_healthy = self._check_redis_health(redis_url)
+            if is_healthy:
+                self.failure_counts[key] = 0
+                self._handle_healthy(key, state)
+                self._emit_health_update(key, HealthStatus.HEALTHY)
+            else:
+                self._increment_failures(key)
+                grace = definition.health_grace_attempts
+                if self.failure_counts[key] < grace:
+                    if state.status.value in ('running', 'starting'):
+                        self._emit_health_update(key, HealthStatus.STARTING)
+                    else:
+                        self._emit_health_update(key, HealthStatus.STOPPED)
+                else:
+                    self._emit_health_update(key, HealthStatus.UNHEALTHY)
+            return
+
+        # ── Standard HTTP health check ──
+        if definition.health_url:
+            # Transport backoff for transient WinNAT / socket errors
+            if self._transport_backoff_remaining(key) > 0 and state.status.value in ('running', 'starting'):
+                return
+
+            try:
+                is_healthy = self._check_http_health(definition.health_url, timeout=1.5)
+                if is_healthy:
+                    self._clear_transport_backoff(key)
+                    self.failure_counts[key] = 0
+                    # Don't re-adopt if user explicitly stopped this service
+                    if state.requested_running is False and state.status.value == 'stopped':
+                        self._emit_health_update(key, HealthStatus.STOPPED)
+                    else:
+                        self._handle_healthy(key, state)
+                        self._emit_health_update(key, HealthStatus.HEALTHY)
+                else:
+                    self._handle_http_failure(key, state, None)
+            except Exception as e:
+                self._handle_http_failure(key, state, e)
+        else:
+            # No health URL — use status as proxy
+            if state.status.value in ('running', 'starting'):
+                self.failure_counts[key] = 0
+                self._emit_health_update(key, HealthStatus.HEALTHY)
+            else:
+                self._emit_health_update(key, HealthStatus.STOPPED)
+
+    def _handle_healthy(self, key: str, state: ServiceState):
+        """Common handling when a service is found healthy."""
+        definition = state.definition
+        if state.status.value == 'stopped':
+            # Don't auto-adopt if user explicitly stopped this service.
+            # ProcessManager.stop() sets requested_running = False.
+            # Default (None) means unknown — allow adoption of external services.
+            if state.requested_running is False:
+                return
+            state.status = ServiceStatus.RUNNING
+            # Adopt: service found running externally — treat as wanted
+            state.requested_running = True
+            if not state.detected_pid and definition.health_url:
+                port = self._extract_port_from_url(definition.health_url)
+                if port:
+                    state.detected_pid = self._detect_pid_by_port(port)
+        state.externally_managed = not state.requested_running
+
+    def _handle_http_failure(self, key: str, state: ServiceState, error: Optional[Exception]):
+        """Handle HTTP health check failure with transport backoff and grace."""
+        definition = state.definition
+        self._increment_failures(key)
+        fc = self.failure_counts[key]
+        grace = definition.health_grace_attempts
+        current_health = state.health
+
+        transient = error is not None and self._is_transient_transport_error(error)
+        if transient:
+            self._record_transport_backoff(key)
+        elif error is not None:
+            self._clear_transport_backoff(key)
+
+        # Tolerate short glitches while previously healthy
+        if current_health == HealthStatus.HEALTHY and fc < grace and transient:
+            self._emit_health_update(key, HealthStatus.HEALTHY)
+            return
+
+        # Grace period: keep STARTING
+        if current_health in (HealthStatus.STARTING, HealthStatus.UNKNOWN) and fc < grace:
+            if state.status.value in ('running', 'starting'):
+                self._emit_health_update(key, HealthStatus.STARTING)
+            else:
+                self._emit_health_update(key, HealthStatus.STOPPED)
+        # Was healthy, now failing
+        elif current_health == HealthStatus.HEALTHY or (
+            state.status.value == 'running' and current_health == HealthStatus.STARTING
+        ):
+            self._emit_health_update(key, HealthStatus.UNHEALTHY)
+        # Fully stopped
+        else:
+            state.pid = None
+            state.detected_pid = None
+            state.status = ServiceStatus.STOPPED
+            state.externally_managed = False
+            self._emit_health_update(key, HealthStatus.STOPPED)
+
     def _run_loop(self):
         """Main health checking loop (runs in thread)."""
-        import os
-
         while not self._stop_event.is_set():
-            # Update adaptive interval
+          try:
             self._update_adaptive_interval()
-
             start_time = time.time()
 
-            # Check each service
+            # Check fast services (HTTP/TCP) before slow ones (docker-compose)
+            # so health cards update quickly at startup.
+            fast = []
+            slow = []
             for key, state in self.states.items():
+                defn = state.definition
+                if defn.is_detached or defn.key == 'db' or defn.custom_health_check:
+                    slow.append((key, state))
+                else:
+                    fast.append((key, state))
+
+            for key, state in (*fast, *slow):
                 if self._stop_event.is_set():
                     break
-
-                definition = state.definition
-
-                # Custom health check function
-                if definition.custom_health_check:
+                try:
+                    self._check_service(key, state)
+                except Exception as exc:
                     try:
-                        is_healthy = definition.custom_health_check(state)
-                        if is_healthy:
-                            self.failure_counts[key] = 0
-                            # Mark as RUNNING if detected externally
-                            if state.status.value == 'stopped':
-                                state.status = ServiceStatus.RUNNING
-                                # Try to detect PID by port
-                                if not state.detected_pid and definition.health_url:
-                                    port = self._extract_port_from_url(definition.health_url)
-                                    if port:
-                                        state.detected_pid = self._detect_pid_by_port(port)
-                            self._emit_health_update(key, HealthStatus.HEALTHY)
-                        else:
-                            self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
-                            if self.failure_counts[key] < definition.health_grace_attempts:
-                                self._emit_health_update(key, HealthStatus.STARTING)
-                            else:
-                                self._emit_health_update(key, HealthStatus.UNHEALTHY)
-                    except Exception:
-                        self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                        self._increment_failures(key)
                         self._emit_health_update(key, HealthStatus.UNHEALTHY)
-                    continue
-
-                # Special case: docker-compose
-                if definition.key == 'db' or definition.is_detached:
-                    try:
-                        # Check via docker-compose ps
-                        compose_file = os.path.join(definition.cwd, 'docker-compose.db-only.yml')
-                        if os.path.exists(compose_file):
-                            is_healthy = self._check_docker_compose_health(compose_file)
-                        else:
-                            is_healthy = False
-
-                        if is_healthy:
-                            self.failure_counts[key] = 0
-                            # Mark as RUNNING if detected externally
-                            if state.status.value == 'stopped':
-                                state.status = ServiceStatus.RUNNING
-                            self._emit_health_update(key, HealthStatus.HEALTHY)
-                        else:
-                            self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
-                            self._emit_health_update(key, HealthStatus.STOPPED)
                     except Exception:
-                        self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
-                        self._emit_health_update(key, HealthStatus.STOPPED)
-                    continue
+                        pass  # Never let emit errors kill the health loop
 
-                # Special case: worker (Redis health check)
-                if definition.key == 'worker':
-                    redis_url = os.getenv('ARQ_REDIS_URL') or os.getenv('REDIS_URL') or 'redis://localhost:6380/0'
-                    is_healthy = self._check_redis_health(redis_url)
-
-                    if is_healthy:
-                        self.failure_counts[key] = 0
-                        # Mark as RUNNING if detected externally
-                        if state.status.value == 'stopped':
-                            state.status = ServiceStatus.RUNNING
-                            # Try to detect PID by port (if worker exposes HTTP endpoint)
-                            if not state.detected_pid and definition.health_url:
-                                port = self._extract_port_from_url(definition.health_url)
-                                if port:
-                                    state.detected_pid = self._detect_pid_by_port(port)
-                        self._emit_health_update(key, HealthStatus.HEALTHY)
-                    else:
-                        self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
-                        if self.failure_counts[key] < definition.health_grace_attempts:
-                            if state.status.value in ('running', 'starting'):
-                                self._emit_health_update(key, HealthStatus.STARTING)
-                            else:
-                                self._emit_health_update(key, HealthStatus.STOPPED)
-                        else:
-                            self._emit_health_update(key, HealthStatus.UNHEALTHY)
-                    continue
-
-                # Standard HTTP health check
-                if definition.health_url:
-                    is_healthy = self._check_http_health(definition.health_url)
-
-                    if is_healthy:
-                        self.failure_counts[key] = 0
-                        # If service is healthy but status is STOPPED, it must be running externally.
-                        # Mark it as RUNNING and detect PID so we can stop it later.
-                        if state.status.value == 'stopped':
-                            state.status = ServiceStatus.RUNNING
-                            # Try to detect PID by port
-                            if not state.detected_pid:
-                                port = self._extract_port_from_url(definition.health_url)
-                                if port:
-                                    state.detected_pid = self._detect_pid_by_port(port)
-                        self._emit_health_update(key, HealthStatus.HEALTHY)
-                    else:
-                        self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
-                        grace = definition.health_grace_attempts
-                        current_status = state.health
-
-                        # In grace period, keep showing STARTING
-                        if current_status in (HealthStatus.STARTING, HealthStatus.UNKNOWN) and self.failure_counts[key] < grace:
-                            if state.status.value in ('running', 'starting'):
-                                self._emit_health_update(key, HealthStatus.STARTING)
-                            else:
-                                self._emit_health_update(key, HealthStatus.STOPPED)
-                        # Was healthy, now unhealthy
-                        elif current_status == HealthStatus.HEALTHY or (state.status.value == 'running' and current_status == HealthStatus.STARTING):
-                            self._emit_health_update(key, HealthStatus.UNHEALTHY)
-                        # Just stopped / no longer reachable: mark both health and status as STOPPED
-                        else:
-                            # Clear PID/detected_pid so UI reflects stopped state even if
-                            # the process was killed externally (e.g. via diagnostic script).
-                            state.pid = None
-                            state.detected_pid = None
-                            state.status = ServiceStatus.STOPPED
-                            self._emit_health_update(key, HealthStatus.STOPPED)
-                else:
-                    # No health URL, assume healthy if running
-                    if state.status.value in ('running', 'starting'):
-                        self.failure_counts[key] = 0
-                        self._emit_health_update(key, HealthStatus.HEALTHY)
-                    else:
-                        self._emit_health_update(key, HealthStatus.STOPPED)
-
-            # Sleep for remaining interval time
             elapsed = time.time() - start_time
             remaining = self.interval - elapsed
             if remaining > 0:
                 self._stop_event.wait(timeout=remaining)
+          except Exception:
+            # Never let the health loop die — sleep and retry
+            self._stop_event.wait(timeout=2.0)

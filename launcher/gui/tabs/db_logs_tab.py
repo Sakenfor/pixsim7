@@ -1,35 +1,41 @@
 """
-Database Logs Tab for Launcher
+Database Logs Tab — embedded React DB log viewer via QWebEngineView.
 
-Creates the database logs viewer tab.
+Loads the React DB log query viewer from the embedded Launcher API at /db-logs.
+Replaces the old PySide6 DatabaseLogViewer widget.
 """
 
-try:
-    from ..config import read_env_ports
-    from ..database_log_viewer import DatabaseLogViewer
-except ImportError:
-    from config import read_env_ports
-    from database_log_viewer import DatabaseLogViewer
+from PySide6.QtWidgets import QWidget, QVBoxLayout
+from PySide6.QtCore import QUrl
 
 
 class DbLogsTab:
-    """
-    Database logs tab builder for the launcher.
-
-    Creates the database logs viewer widget.
-    """
+    """Database logs tab using embedded React viewer."""
 
     @staticmethod
     def create(launcher):
-        """
-        Create the database logs tab.
+        """Create the database logs tab with an embedded webview."""
+        from PySide6.QtWebEngineWidgets import QWebEngineView
+        from PySide6.QtWebEngineCore import QWebEngineSettings
 
-        Args:
-            launcher: LauncherWindow instance
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        Returns:
-            DatabaseLogViewer: The database log viewer widget
-        """
-        p = read_env_ports()
-        launcher.db_log_viewer = DatabaseLogViewer(api_url=f"http://localhost:{p.backend}")
-        return launcher.db_log_viewer
+        webview = QWebEngineView()
+        settings = webview.settings()
+        settings.setAttribute(QWebEngineSettings.LocalContentCanAccessRemoteUrls, True)
+        layout.addWidget(webview)
+
+        launcher.db_log_webview = webview
+
+        # Stub out db_log_viewer so legacy code that checks hasattr doesn't crash
+        launcher.db_log_viewer = None
+
+        def _load():
+            webview.setUrl(QUrl("http://localhost:8100/db-logs"))
+
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(1500, _load)
+
+        return tab

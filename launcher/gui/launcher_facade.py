@@ -69,7 +69,7 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
             """Custom start for docker-compose."""
             from launcher.core.types import ServiceStatus, HealthStatus
             try:
-                from scripts.launcher_gui.docker_utils import compose_up_detached
+                from launcher.gui.docker_utils import compose_up_detached
                 ok, out = compose_up_detached(compose_file)
                 if ok:
                     state.status = ServiceStatus.RUNNING
@@ -90,7 +90,7 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
             """Custom stop for docker-compose."""
             from launcher.core.types import ServiceStatus, HealthStatus
             try:
-                from scripts.launcher_gui.docker_utils import compose_down
+                from launcher.gui.docker_utils import compose_down
                 ok, _ = compose_down(compose_file)
                 state.status = ServiceStatus.STOPPED
                 state.health = HealthStatus.STOPPED
@@ -103,7 +103,7 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
         def db_health(state):
             """Custom health check for docker-compose."""
             try:
-                from scripts.launcher_gui.docker_utils import compose_ps
+                from launcher.gui.docker_utils import compose_ps
                 ok, stdout = compose_ps(compose_file)
                 if ok and stdout:
                     out = stdout.lower()

@@ -22,6 +22,14 @@ except ImportError:
 
 
 class ConsoleLogMixin:
+    # ── Incremental rendering state ──
+    # Tracks how many lines (from the filtered buffer) were last rendered
+    # for the currently selected service, enabling append-only updates when
+    # only new lines arrived and filters haven't changed.
+    _console_rendered_count: int = 0
+    _console_rendered_filter_sig: object = None
+    _console_rendered_service: str = ""
+
     def _refresh_console_logs(self, force: bool = False):
         """Refresh the console log display with service output (only when changed)."""
         _startup_trace("_refresh_console_logs start")
@@ -50,25 +58,14 @@ class ConsoleLogMixin:
 
         # Calculate hash of current log buffer to detect changes
         if sp.log_buffer:
-            _startup_trace(f"_refresh_console_logs buffer size={len(sp.log_buffer)}")
-            if getattr(self, "_startup_tracing", False):
-                try:
-                    max_line = max((len(str(line)) for line in sp.log_buffer), default=0)
-                    _startup_trace(f"_refresh_console_logs max_line_len={max_line}")
-                except Exception:
-                    pass
-            # Efficient hash: use buffer length + hash of last 10 lines
-            # This avoids creating a massive tuple every second
-            # (deque doesn't support slicing, so use indexed access)
             n = len(sp.log_buffer)
             tail_count = min(n, 10)
             last_lines = tuple(sp.log_buffer[n - tail_count + i] for i in range(tail_count))
             buffer_signature = hash((n, last_lines))
         else:
-            buffer_signature = hash((sp.running, sp.health_status.value if sp.health_status else None))
+            buffer_signature = hash((sp.status.value, sp.health.value if sp.health else None))
         filter_signature = self._console_filter_signature()
         current_hash = (buffer_signature, filter_signature)
-        _startup_trace("_refresh_console_logs hash computed")
 
         # Only update UI if logs changed
         if not force and self.last_log_hash.get(self.selected_service_key) == current_hash:
@@ -79,15 +76,9 @@ class ConsoleLogMixin:
 
         # Get logs from buffer and update using LogViewWidget
         if sp.log_buffer:
-            _startup_trace("_refresh_console_logs applying filter")
-            # Apply in-memory filtering based on console filter controls
             filtered_buffer = self._filter_console_buffer(sp.log_buffer)
-            _startup_trace(f"_refresh_console_logs filtered size={len(filtered_buffer)}")
 
-            # Cap rendered lines to avoid slow setHtml on huge documents.
-            # The full buffer is preserved for filtering/copy — we only
-            # limit what gets formatted into HTML and painted.
-            RENDER_CAP = 500
+            RENDER_CAP = 150
             if len(filtered_buffer) > RENDER_CAP:
                 skipped = len(filtered_buffer) - RENDER_CAP
                 render_buffer = filtered_buffer[-RENDER_CAP:]
@@ -95,43 +86,70 @@ class ConsoleLogMixin:
                 skipped = 0
                 render_buffer = filtered_buffer
 
-            # Format as HTML with syntax highlighting
+            # ── Incremental path ──
+            # If same service, same filters, and buffer only grew (append-only),
+            # format just the new lines and use append_html() instead of full rebuild.
+            same_service = (self._console_rendered_service == self.selected_service_key)
+            same_filters = (self._console_rendered_filter_sig == filter_signature)
+            can_incremental = (
+                same_service and same_filters and not force
+                and skipped == 0  # incremental only when showing full buffer
+                and self._console_rendered_count > 0
+                and len(render_buffer) > self._console_rendered_count
+            )
+
             enhanced = getattr(self, "console_style_enhanced", True)
-            try:
-                if enhanced:
-                    log_html = format_console_log_html_enhanced(render_buffer)
-                else:
-                    log_html = format_console_log_html_classic(render_buffer)
-            except Exception as fmt_err:
-                # Fallback to plain text if HTML formatting crashes on
-                # malformed log content — prevents silent refresh death.
-                if _launcher_logger:
-                    try:
-                        _launcher_logger.warning("console_format_error", error=str(fmt_err))
-                    except Exception:
-                        pass
-                log_html = "<pre>" + "\n".join(
-                    str(line).replace("&", "&amp;").replace("<", "&lt;")
-                    for line in render_buffer
-                ) + "</pre>"
 
-            if skipped > 0:
-                log_html = (
-                    f'<div style="color: #888; padding: 4px 8px; font-size: 8pt; border-bottom: 1px solid #444;">'
-                    f'{skipped} older lines not shown (scroll up in full buffer with copy button)'
-                    f'</div>\n'
-                ) + log_html
+            if can_incremental:
+                # Only format the new lines
+                new_lines = render_buffer[self._console_rendered_count:]
+                _startup_trace(f"_refresh_console_logs incremental +{len(new_lines)} lines")
+                try:
+                    if enhanced:
+                        delta_html = format_console_log_html_enhanced(new_lines)
+                    else:
+                        delta_html = format_console_log_html_classic(new_lines)
+                    self.log_view.append_html(delta_html)
+                except Exception:
+                    can_incremental = False  # fall through to full rebuild
 
-            _startup_trace("_refresh_console_logs formatted html")
+            if not can_incremental:
+                # ── Full rebuild ──
+                _startup_trace(f"_refresh_console_logs full rebuild {len(render_buffer)} lines")
+                try:
+                    if enhanced:
+                        log_html = format_console_log_html_enhanced(render_buffer)
+                    else:
+                        log_html = format_console_log_html_classic(render_buffer)
+                except Exception as fmt_err:
+                    if _launcher_logger:
+                        try:
+                            _launcher_logger.warning("console_format_error", error=str(fmt_err))
+                        except Exception:
+                            pass
+                    log_html = "<pre>" + "\n".join(
+                        str(line).replace("&", "&amp;").replace("<", "&lt;")
+                        for line in render_buffer
+                    ) + "</pre>"
 
-            # Use unified LogViewWidget API - handles scroll preservation automatically
-            self.log_view.update_content(log_html, force=force)
-            _startup_trace("_refresh_console_logs content updated")
+                if skipped > 0:
+                    log_html = (
+                        f'<div style="color: #888; padding: 4px 8px; font-size: 8pt; border-bottom: 1px solid #444;">'
+                        f'{skipped} older lines not shown (scroll up in full buffer with copy button)'
+                        f'</div>\n'
+                    ) + log_html
+
+                self.log_view.update_content(log_html, force=force)
+
+            # Update incremental tracking
+            self._console_rendered_count = len(render_buffer)
+            self._console_rendered_filter_sig = filter_signature
+            self._console_rendered_service = self.selected_service_key
+            _startup_trace("_refresh_console_logs done")
         else:
             # No logs - show appropriate message
-            if sp.running:
-                # Check health status to provide more context
-                if sp.health_status == HealthStatus.HEALTHY:
+            if sp.status.value in ("running", "starting"):
+                if sp.health == HealthStatus.HEALTHY:
                     msg = (
                         f'<div style="color: #888; padding: 20px;">'
                         f'Service <strong>{service_title}</strong> is running (detected from previous session).'
@@ -156,7 +174,10 @@ class ConsoleLogMixin:
 
         seen_domains = set()
         seen_services = set()
-        for record in sp.log_buffer:
+        # Cap scan to last 200 lines to avoid freezing on large buffers.
+        buf = sp.log_buffer
+        scan = buf[-200:] if len(buf) > 200 else buf
+        for record in scan:
             fields = record.fields if hasattr(record, 'fields') else {}
             if fields:
                 d = fields.get("domain")
@@ -215,9 +236,12 @@ class ConsoleLogMixin:
             if text:
                 search_filter = text.lower()
 
-        # Fast path: no filters
+        # Fast path: no filters — return last RENDER_CAP lines directly
         if not level_filter and not active_domains and not active_services and not search_filter:
-            return list(buffer)
+            try:
+                return list(buffer[-500:]) if len(buffer) > 500 else list(buffer)
+            except Exception:
+                return []
 
         filtered = []
         for record in buffer:
@@ -304,19 +328,18 @@ class ConsoleLogMixin:
     def _clear_console_display(self):
         """Clear the console log display and persisted logs."""
         if self.selected_service_key and self.selected_service_key in self.processes:
-            self.processes[self.selected_service_key].clear_logs()
+            try:
+                self.facade.clear_service_logs(self.selected_service_key)
+            except Exception:
+                # Fallback: clear the in-memory buffer directly
+                state = self.processes.get(self.selected_service_key)
+                if state and hasattr(state, 'log_buffer'):
+                    state.log_buffer.clear()
         self.log_view.clear()
 
     def _refresh_db_logs(self):
-        try:
-            self.db_log_viewer.refresh_logs()
-        except Exception:
-            pass
-        _startup_trace("_refresh_console_logs end")
+        # DB logs are now handled by the React webview — no-op.
+        pass
 
     def refresh_logs(self):
-        # Legacy method: delegate to DB log viewer
-        try:
-            self._refresh_db_logs()
-        except Exception:
-            pass
+        pass

@@ -9,7 +9,8 @@ clean, decoupled architecture.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import sys
 from pathlib import Path
@@ -42,55 +43,67 @@ async def lifespan(app: FastAPI):
     """
     Lifespan context manager for startup/shutdown.
 
-    Initializes and cleans up the launcher container.
+    If a container was already injected (e.g. by the GUI's embedded API),
+    skip creating a new one — the GUI's facade manages the lifecycle.
     """
     global _container
 
-    # Startup
-    print("=" * 70)
-    print("PixSim7 Launcher API")
-    print("=" * 70)
-    print()
+    from .dependencies import get_container as _get_existing
 
-    # Load service definitions from manifests
+    # Check if a container was already injected by the GUI
+    already_injected = False
     try:
-        apply_launcher_settings_to_env(load_launcher_settings())
+        existing = _get_existing()
+        already_injected = True
+        _container = existing
+        print("PixSim7 Launcher API (embedded mode — using injected container)")
     except Exception:
         pass
 
-    from launcher.gui.services import build_services_from_manifests
+    if not already_injected:
+        # Standalone mode: create our own container
+        print("=" * 70)
+        print("PixSim7 Launcher API")
+        print("=" * 70)
+        print()
 
-    services_list = build_services_from_manifests()
-    print(f"Loaded {len(services_list)} service definitions")
+        try:
+            apply_launcher_settings_to_env(load_launcher_settings())
+        except Exception:
+            pass
 
-    # Create container with config
-    _container = create_container(
-        services_list,
-        root_dir=ROOT,
-        config_overrides={
-            'health': {
-                'base_interval': 2.0,
-                'adaptive_enabled': True
+        from launcher.gui.services import build_services_from_manifests
+        from launcher.gui.launcher_facade import convert_service_def
+
+        raw_services = build_services_from_manifests()
+        services_list = [convert_service_def(sd) for sd in raw_services]
+        print(f"Loaded {len(services_list)} service definitions")
+
+        _container = create_container(
+            services_list,
+            root_dir=ROOT,
+            config_overrides={
+                'health': {
+                    'base_interval': 2.0,
+                    'adaptive_enabled': True
+                }
             }
-        }
-    )
+        )
 
-    # Set container for dependency injection
-    set_container(_container)
-
-    # Start managers
-    _container.start_all()
-    print("✓ Managers started")
-    print()
+        set_container(_container)
+        _container.start_all()
+        print("✓ Managers started")
+        print()
 
     yield
 
-    # Shutdown
-    print()
-    print("Shutting down...")
-    _container.stop_all()
-    print("✓ Managers stopped")
-    print("Goodbye!")
+    # Shutdown — only stop managers we created
+    if not already_injected and _container:
+        print()
+        print("Shutting down...")
+        _container.stop_all()
+        print("✓ Managers stopped")
+        print("Goodbye!")
 
 
 # Create FastAPI app
@@ -159,10 +172,38 @@ app.include_router(settings_router)
 app.include_router(codegen_router)
 
 
-@app.get("/", include_in_schema=False)
-async def root():
-    """Redirect root to docs."""
-    return RedirectResponse(url="/docs")
+# Serve the built React launcher UI if available.
+# In production the webview shell points at this origin; the static
+# files are served alongside the API routes.
+# ROOT is launcher/, project root is one level above that.
+_PROJECT_ROOT = ROOT.parent
+_LAUNCHER_DIST = _PROJECT_ROOT / "apps" / "launcher" / "dist"
+
+if _LAUNCHER_DIST.is_dir() and (_LAUNCHER_DIST / "index.html").exists():
+    _index_html = str(_LAUNCHER_DIST / "index.html")
+    _assets = _LAUNCHER_DIST / "assets"
+    if _assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_assets)), name="launcher-assets")
+
+    @app.get("/", include_in_schema=False)
+    async def root():
+        """Serve the launcher UI."""
+        return FileResponse(_index_html)
+
+    @app.get("/viewer", include_in_schema=False)
+    async def viewer():
+        """Serve the embedded log viewer (SPA route)."""
+        return FileResponse(_index_html)
+
+    @app.get("/db-logs", include_in_schema=False)
+    async def db_logs():
+        """Serve the DB log query viewer (SPA route)."""
+        return FileResponse(_index_html)
+else:
+    @app.get("/", include_in_schema=False)
+    async def root():
+        """Redirect root to docs when no UI is built."""
+        return RedirectResponse(url="/docs")
 
 
 @app.get("/api", include_in_schema=False)
