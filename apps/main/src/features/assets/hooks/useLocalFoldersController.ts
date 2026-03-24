@@ -560,7 +560,9 @@ export function useLocalFoldersController(): LocalFoldersController {
     const withHash = allAssets.filter((a) => !!a.sha256);
     const candidates = withHash.filter(asset => (
       hasValidStoredHash(asset) &&
-      asset.last_upload_status !== 'success'
+      // Include: not yet checked OR marked success but missing asset_id (legacy backfill)
+      (asset.last_upload_status !== 'success' ||
+       (asset.last_upload_status === 'success' && !asset.last_upload_asset_id))
     ));
     debugFlags.debug('localFolders', 'backendCheck effect fired', {
       hashingProgress,
