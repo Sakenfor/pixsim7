@@ -59,7 +59,7 @@ export function localAssetToAssetModel(
 
   // For uploaded assets, use backend file endpoint for generation-facing URLs.
   // blob: URLs only work in the browser — the backend can't resolve them.
-  const backendFileUrl = isUploaded ? `/api/v1/assets/${uploadedAssetId}/file` : null;
+  const backendFileUrl = uploadedAssetId ? `/api/v1/assets/${uploadedAssetId}/file` : null;
 
   return {
     id,
