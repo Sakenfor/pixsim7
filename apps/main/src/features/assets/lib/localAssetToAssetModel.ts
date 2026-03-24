@@ -47,9 +47,7 @@ export function localAssetToAssetModel(
       : undefined;
 
   const id = uploadedAssetId ?? hashStringToStableNegativeId(asset.key ?? asset.id ?? 'unknown');
-  // Consider uploaded if we have a real backend ID OR if the upload status says success
-  // (legacy assets may have status but no asset_id from before the hash-check fix)
-  const isUploaded = !!uploadedAssetId || asset.last_upload_status === 'success';
+  const isUploaded = !!uploadedAssetId;
 
   const mediaType = asset.kind === 'video' ? 'video' : 'image';
   const providerId = isUploaded

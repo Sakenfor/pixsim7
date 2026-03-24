@@ -111,23 +111,32 @@ export interface MediaCardOverlayData {
  * Create primary media type icon widget (top-left)
  */
 export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> {
-  const { mediaType, providerStatus, hashStatus, badgeConfig } = props;
+  const { mediaType, providerStatus, hashStatus, badgeConfig, uploadState } = props;
 
   // Map providerStatus ("ok", "local_only", etc.) to the internal
   // MediaStatusBadge keys used by MEDIA_STATUS_ICON.
   const statusKey = providerStatus === 'ok' ? 'provider_ok' : providerStatus;
   const statusMeta = statusKey ? MEDIA_STATUS_ICON[statusKey as keyof typeof MEDIA_STATUS_ICON] : null;
 
-  // Provider status ring takes priority over hash status ring
+  // Determine effective status: uploadState='success' means "in library"
+  // even when providerStatus hasn't been hydrated yet (local folder cards).
+  const effectiveHasStatus = !!(providerStatus && statusMeta) || uploadState === 'success';
+  const effectiveRingColor = providerStatus && statusMeta
+    ? (statusMeta.color === 'green' ? 'ring-accent' :
+       statusMeta.color === 'yellow' ? 'ring-amber-500' :
+       statusMeta.color === 'red' ? 'ring-red-500' :
+       'ring-neutral-400')
+    : uploadState === 'success'
+      ? 'ring-accent'  // green ring for "in library"
+      : 'ring-neutral-400';
+
+  // Provider/upload status ring takes priority over hash status ring
   let ringColor: string;
   let hasRing = false;
 
-  if (badgeConfig?.showStatusIcon && providerStatus && statusMeta) {
+  if (badgeConfig?.showStatusIcon && effectiveHasStatus) {
     hasRing = true;
-    ringColor = statusMeta.color === 'green' ? 'ring-accent' :
-                statusMeta.color === 'yellow' ? 'ring-amber-500' :
-                statusMeta.color === 'red' ? 'ring-red-500' :
-                'ring-neutral-400';
+    ringColor = effectiveRingColor;
   } else if (hashStatus === 'duplicate') {
     hasRing = true;
     ringColor = 'ring-amber-500';
