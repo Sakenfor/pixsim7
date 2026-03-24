@@ -27,22 +27,12 @@ pytestmark = pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="backend deps not 
 
 
 class TestBuildTaskPayload:
-    def test_prefers_bridge_session_id_over_legacy_alias(self):
+    def test_sets_bridge_session_id(self):
         payload = build_task_payload(
             prompt="hello",
             bridge_session_id="sess-canonical",
-            claude_session_id="sess-legacy",
         )
         assert payload["bridge_session_id"] == "sess-canonical"
-        assert payload["claude_session_id"] == "sess-canonical"
-
-    def test_legacy_session_id_populates_canonical_field(self):
-        payload = build_task_payload(
-            prompt="hello",
-            claude_session_id="sess-legacy",
-        )
-        assert payload["bridge_session_id"] == "sess-legacy"
-        assert payload["claude_session_id"] == "sess-legacy"
 
     def test_preserves_explicit_scope_and_policy(self):
         payload = build_task_payload(

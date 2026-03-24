@@ -11,10 +11,17 @@ import { getAuthTokenProvider } from '@pixsim7/shared.auth.core';
 
 import { API_BASE_URL } from '@lib/api/client';
 
+export interface ThinkingEntry {
+  action: string;
+  detail: string;
+  timestamp: number;
+}
+
 export interface BridgeRequest {
   tabId: string;
   status: 'pending' | 'streaming' | 'completed' | 'error';
   activity: string | null;
+  thinkingLog: ThinkingEntry[];
   result: BridgeResult | null;
   abort: AbortController;
 }
@@ -24,7 +31,8 @@ export interface BridgeResult {
   response?: string;
   error?: string;
   duration_ms?: number;
-  claude_session_id?: string;
+  bridge_session_id?: string;
+  thinkingLog?: ThinkingEntry[];
 }
 
 type Listener = () => void;
@@ -40,7 +48,7 @@ class AssistantChatBridge {
     this._requests.get(tabId)?.abort.abort();
 
     const abort = new AbortController();
-    const request: BridgeRequest = { tabId, status: 'pending', activity: null, result: null, abort };
+    const request: BridgeRequest = { tabId, status: 'pending', activity: null, thinkingLog: [], result: null, abort };
     this._requests.set(tabId, request);
     this._notify();
 
@@ -84,12 +92,22 @@ class AssistantChatBridge {
           try { event = JSON.parse(line.slice(6)); } catch { continue; }
 
           if (event.type === 'heartbeat') {
-            request.activity = (event.detail as string) || (event.action as string) || 'Working...';
+            const action = (event.action as string) || '';
+            const detail = (event.detail as string) || '';
+            request.activity = detail || action || 'Working...';
+            // Deduplicate consecutive identical entries
+            const last = request.thinkingLog[request.thinkingLog.length - 1];
+            if (!last || last.action !== action || last.detail !== detail) {
+              request.thinkingLog.push({ action, detail, timestamp: Date.now() });
+            }
             this._notify();
           } else if (event.type === 'result') {
             request.status = 'completed';
             request.activity = null;
-            request.result = event as unknown as BridgeResult;
+            request.result = {
+              ...(event as unknown as BridgeResult),
+              thinkingLog: request.thinkingLog,
+            };
             this._notify();
           }
         }
@@ -98,7 +116,7 @@ class AssistantChatBridge {
       // Stream ended without a result event
       if (request.status === 'streaming') {
         request.status = 'error';
-        request.result = { ok: false, error: 'Stream ended without result' };
+        request.result = { ok: false, error: 'Stream ended without result', thinkingLog: request.thinkingLog };
         this._notify();
       }
     } catch (err) {
@@ -107,7 +125,7 @@ class AssistantChatBridge {
         request.result = { ok: false, error: 'cancelled' };
       } else {
         request.status = 'error';
-        request.result = { ok: false, error: err instanceof Error ? err.message : 'Request failed' };
+        request.result = { ok: false, error: err instanceof Error ? err.message : 'Request failed', thinkingLog: request.thinkingLog };
       }
       this._notify();
     }
@@ -143,7 +161,7 @@ class AssistantChatBridge {
     // Changes whenever any request updates
     let hash = 0;
     for (const [, req] of this._requests) {
-      hash += req.status.length + (req.activity?.length ?? 0);
+      hash += req.status.length + (req.activity?.length ?? 0) + req.thinkingLog.length;
     }
     return hash + this._requests.size;
   }

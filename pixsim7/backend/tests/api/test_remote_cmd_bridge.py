@@ -21,11 +21,18 @@ except ImportError:
 pytestmark = pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="backend deps not available")
 
 
-def _make_agent(agent_id: str = "test-agent", busy: bool = False, task_id: str | None = None, user_id: int | None = None) -> RemoteAgent:
+def _make_agent(
+    agent_id: str = "test-agent",
+    busy: bool = False,
+    task_id: str | None = None,
+    user_id: int | None = None,
+    bridge_id: str | None = None,
+) -> RemoteAgent:
     ws = AsyncMock()
     agent = RemoteAgent(
         agent_id=agent_id,
         websocket=ws,
+        bridge_id=bridge_id,
         agent_type="claude-cli",
         user_id=user_id,
     )
@@ -161,7 +168,7 @@ class TestTaskLifecycle:
         agent = _make_agent(task_id="task-1")
         bridge._agents["test-agent"] = agent
 
-        result = {"edited_prompt": "hello", "claude_session_id": "sess-123"}
+        result = {"edited_prompt": "hello", "bridge_session_id": "sess-123"}
         resolved = bridge.resolve_task("task-1", result)
 
         assert resolved is True
@@ -258,6 +265,17 @@ class TestAgentRouting:
         result = bridge.get_available_agent(user_id=99)
         assert result is shared
 
+    def test_get_agent_by_bridge_id(self):
+        bridge = RemoteCommandBridge()
+        user_agent = _make_agent(agent_id="user", user_id=1, bridge_id="bridge-user")
+        shared_agent = _make_agent(agent_id="shared", user_id=None, bridge_id="bridge-shared")
+        bridge._agents["user"] = user_agent
+        bridge._agents["shared"] = shared_agent
+
+        assert bridge.get_agent_by_bridge_id("bridge-user", user_id=1) is user_agent
+        assert bridge.get_agent_by_bridge_id("bridge-user", user_id=2) is None
+        assert bridge.get_agent_by_bridge_id("bridge-shared", user_id=2) is shared_agent
+
 
 class TestDisconnect:
     """Agent disconnect — cleanup and pending task failure."""
@@ -266,7 +284,7 @@ class TestDisconnect:
     async def test_disconnect_removes_agent(self):
         bridge = RemoteCommandBridge()
         ws = AsyncMock()
-        agent = await bridge.connect(ws, agent_id="a1")
+        agent = await bridge.connect(ws, bridge_client_id="a1")
         assert "a1" in bridge._agents
 
         bridge.disconnect("a1")
@@ -276,7 +294,7 @@ class TestDisconnect:
     async def test_disconnect_fails_pending_task(self):
         bridge = RemoteCommandBridge()
         ws = AsyncMock()
-        agent = await bridge.connect(ws, agent_id="a1")
+        agent = await bridge.connect(ws, bridge_client_id="a1")
         agent.current_task_id = "task-1"
 
         loop = asyncio.get_event_loop()
@@ -288,3 +306,39 @@ class TestDisconnect:
         assert future.done()
         with pytest.raises(ConnectionError):
             future.result()
+
+    @pytest.mark.asyncio
+    async def test_disconnect_ignores_stale_websocket(self):
+        bridge = RemoteCommandBridge()
+        ws_old = AsyncMock()
+        ws_new = AsyncMock()
+
+        await bridge.connect(ws_old, bridge_client_id="a1")
+        await bridge.connect(ws_new, bridge_client_id="a1")
+        assert bridge._agents["a1"].websocket is ws_new
+
+        bridge.disconnect("a1", websocket=ws_old)
+        assert "a1" in bridge._agents
+
+        bridge.disconnect("a1", websocket=ws_new)
+        assert "a1" not in bridge._agents
+
+
+class TestBridgeTargeting:
+    """Bridge-ID dispatch and routing behavior."""
+
+    @pytest.mark.asyncio
+    async def test_dispatch_task_to_bridge_routes_to_matching_agent(self):
+        bridge = RemoteCommandBridge()
+        agent = _make_agent(agent_id="a1", user_id=1, bridge_id="bridge-1")
+        bridge._agents["a1"] = agent
+
+        bridge._dispatch_to_agent = AsyncMock(return_value={"ok": True})  # type: ignore[method-assign]
+        result = await bridge.dispatch_task_to_bridge(
+            "bridge-1",
+            {"task": "noop"},
+            user_id=1,
+        )
+
+        assert result["ok"] is True
+        bridge._dispatch_to_agent.assert_awaited_once()

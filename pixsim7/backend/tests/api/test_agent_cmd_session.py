@@ -28,12 +28,12 @@ class TestBackwardCompat:
     def test_cli_session_alias(self):
         assert CliSession is AgentCmdSession
 
-    def test_claude_session_id_property(self):
+    def test_bridge_session_id_property(self):
         session = AgentCmdSession(session_id="test")
         session.cli_session_id = "abc-123"
-        assert session.claude_session_id == "abc-123"
+        assert session.bridge_session_id == "abc-123"
 
-        session.claude_session_id = "def-456"
+        session.bridge_session_id = "def-456"
         assert session.cli_session_id == "def-456"
 
     def test_claude_model_property(self):

@@ -8,16 +8,17 @@ import json
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Set
+from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, Set
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser
 from pixsim7.backend.main.domain.docs.models import (
     PlanParticipant,
+    PlanReviewDelegation,
     PlanReviewLink,
     PlanReviewNode,
     PlanRequest,
@@ -340,6 +341,11 @@ _CAUSAL_REVIEW_RELATIONS: Set[str] = frozenset(
 _TERMINAL_REVIEW_REQUEST_STATUSES: Set[str] = frozenset({"fulfilled", "cancelled"})
 _REVIEW_REQUEST_TARGET_MODES: Set[str] = frozenset({"auto", "session", "recent_agent"})
 _REVIEW_REQUEST_DISPATCH_STATES: Set[str] = frozenset({"assigned", "queued", "unassigned"})
+_PLAN_REQUEST_KIND_ALIASES: Dict[str, str] = {
+    "review": "review",
+    "build": "review",
+    "research": "review",
+}
 from pixsim7.backend.main.shared.agent_dispatch import REMOTE_METHODS as _REVIEW_REQUEST_REMOTE_METHODS
 
 
@@ -627,7 +633,15 @@ def _review_request_dispatch_view(row: PlanRequest) -> Dict[str, Any]:
     dispatch = _request_dispatch_meta(row)
     mode = dispatch.get("target_mode")
     if mode not in _REVIEW_REQUEST_TARGET_MODES:
-        mode = "session" if row.target_agent_id else "auto"
+        mode = "session" if (getattr(row, "target_agent_id", None) or getattr(row, "target_bridge_id", None)) else "auto"
+
+    target_bridge_id = dispatch.get("target_bridge_id")
+    if not isinstance(target_bridge_id, str):
+        target_bridge_id = getattr(row, "target_bridge_id", None)
+    if isinstance(target_bridge_id, str):
+        target_bridge_id = target_bridge_id.strip() or None
+    else:
+        target_bridge_id = None
 
     target_session_id = dispatch.get("target_session_id")
     if not isinstance(target_session_id, str):
@@ -653,9 +667,17 @@ def _review_request_dispatch_view(row: PlanRequest) -> Dict[str, Any]:
     if not isinstance(target_provider, str):
         target_provider = None
 
+    target_user_id_raw = dispatch.get("target_user_id")
+    if isinstance(target_user_id_raw, int) and target_user_id_raw > 0:
+        target_user_id = target_user_id_raw
+    elif isinstance(getattr(row, "target_user_id", None), int) and getattr(row, "target_user_id", None) > 0:
+        target_user_id = int(getattr(row, "target_user_id"))
+    else:
+        target_user_id = None
+
     dispatch_state = dispatch.get("dispatch_state")
     if dispatch_state not in _REVIEW_REQUEST_DISPATCH_STATES:
-        dispatch_state = "assigned" if row.target_agent_id else "unassigned"
+        dispatch_state = "assigned" if (getattr(row, "target_agent_id", None) or target_bridge_id) else "unassigned"
 
     dispatch_reason = dispatch.get("dispatch_reason")
     if not isinstance(dispatch_reason, str):
@@ -666,6 +688,8 @@ def _review_request_dispatch_view(row: PlanRequest) -> Dict[str, Any]:
 
     return {
         "target_mode": mode,
+        "target_user_id": target_user_id,
+        "target_bridge_id": target_bridge_id,
         "target_session_id": target_session_id,
         "preferred_agent_id": preferred_agent_id,
         "target_profile_id": target_profile_id,
@@ -688,14 +712,16 @@ def _request_dispatch_payload_from_row(
         title=row.title,
         body=row.body,
         target_mode=dispatch["target_mode"],
-        target_agent_id=row.target_agent_id,
-        target_agent_type=row.target_agent_type,
+        target_bridge_id=dispatch["target_bridge_id"],
+        target_agent_id=getattr(row, "target_agent_id", None),
+        target_agent_type=getattr(row, "target_agent_type", None),
         target_session_id=dispatch["target_session_id"],
         preferred_agent_id=dispatch["preferred_agent_id"],
         target_profile_id=dispatch["target_profile_id"],
         target_method=dispatch["target_method"],
         target_model_id=dispatch["target_model_id"],
         target_provider=dispatch["target_provider"],
+        target_user_id=dispatch["target_user_id"],
         queue_if_busy=dispatch["queue_if_busy"],
         auto_reroute_if_busy=dispatch["auto_reroute_if_busy"],
         meta=_request_meta_dict(row) or None,
@@ -951,6 +977,7 @@ async def _run_review_request_via_bridge(
     from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
     from pixsim7.backend.main.shared.agent_dispatch import build_task_payload as build_bridge_task_payload
 
+    target_bridge_id = (getattr(request_row, "target_bridge_id", None) or "").strip() or None
     target_agent_id = (request_row.target_agent_id or "").strip() or None
     agent_type = (request_row.target_agent_type or "").lower()
     engine = "codex" if "codex" in agent_type else "claude"
@@ -965,10 +992,19 @@ async def _run_review_request_via_bridge(
         engine=engine,
         profile_prompt=profile_hint.get("system_prompt") if profile_hint else None,
         profile_config=profile_hint.get("config") if profile_hint and isinstance(profile_hint.get("config"), dict) else None,
+        session_policy="scoped",
+        scope_key=f"plan:{plan_id}",
     )
 
-    if target_agent_id:
-        result = await remote_cmd_bridge.dispatch_task_to_agent(
+    if target_bridge_id:
+        result = await remote_cmd_bridge.dispatch_task_to_bridge(
+            target_bridge_id,
+            task_payload,
+            timeout=timeout_seconds,
+            user_id=user_id,
+        )
+    elif target_agent_id:
+        result = await remote_cmd_bridge.dispatch_task_to_bridge_client(
             target_agent_id,
             task_payload,
             timeout=timeout_seconds,
@@ -991,10 +1027,29 @@ async def _run_review_request_via_bridge(
 
     return {
         "response_text": response_text,
-        "agent_id": target_agent_id or (request_row.target_agent_id or None),
-        "run_id": result.get("claude_session_id"),
+        "bridge_client_id": (
+            str(result.get("bridge_client_id") or "").strip()
+            or target_agent_id
+            or (request_row.target_agent_id or None)
+        ),
+        "bridge_id": (
+            str(result.get("bridge_id") or "").strip()
+            or target_bridge_id
+            or (getattr(request_row, "target_bridge_id", None) or None)
+        ),
+        "run_id": result.get("bridge_session_id"),
         "meta": {
-            "claude_session_id": result.get("claude_session_id"),
+            "bridge_id": (
+                str(result.get("bridge_id") or "").strip()
+                or target_bridge_id
+                or (getattr(request_row, "target_bridge_id", None) or None)
+            ),
+            "bridge_client_id": (
+                str(result.get("bridge_client_id") or "").strip()
+                or target_agent_id
+                or (request_row.target_agent_id or None)
+            ),
+            "bridge_session_id": result.get("bridge_session_id"),
         },
     }
 
@@ -1005,7 +1060,7 @@ async def _run_review_request_via_api(
     provider_id: Optional[str],
     model_id: Optional[str],
 ) -> Dict[str, Any]:
-    from pixsim7.backend.main.api.v1.meta_contracts import _build_user_system_prompt
+    from pixsim7.backend.main.api.v1.meta_contracts import build_user_system_prompt
     from pixsim7.backend.main.services.llm.models import LLMRequest
     from pixsim7.backend.main.services.llm.providers import get_provider
 
@@ -1023,7 +1078,7 @@ async def _run_review_request_via_api(
     response = await provider.generate(
         LLMRequest(
             prompt=prompt,
-            system_prompt=_build_user_system_prompt(),
+            system_prompt=build_user_system_prompt(),
             model=model_name,
             max_tokens=2048,
         )
@@ -1034,6 +1089,7 @@ async def _run_review_request_via_api(
 
     return {
         "response_text": response_text,
+        "bridge_client_id": None,
         "agent_id": None,
         "run_id": None,
         "meta": {
@@ -1041,6 +1097,88 @@ async def _run_review_request_via_api(
             "model": model_name,
         },
     }
+
+
+def _normalize_plan_request_kind(kind: Optional[str]) -> str:
+    """Map request kinds to registered executor keys.
+
+    ``build`` and ``research`` currently reuse the review executor.
+    """
+    raw = str(kind or "review").strip().lower()
+    if not raw:
+        raw = "review"
+    return _PLAN_REQUEST_KIND_ALIASES.get(raw, raw)
+
+
+async def _execute_plan_request_kind_review(
+    *,
+    db: AsyncSession,
+    plan_id: str,
+    request_row: PlanRequest,
+    principal: CurrentUser,
+    timeout_seconds: int,
+    create_round_if_missing: bool,
+    method: str,
+    model_id: Optional[str],
+    provider_id: Optional[str],
+    profile_hint: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Review-kind executor (also used by build/research aliases)."""
+    bundle = await get_plan_bundle(db, plan_id)
+    if bundle is None:
+        raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+    round_row = await _resolve_round_for_request_dispatch(
+        db,
+        plan_id=plan_id,
+        request_row=request_row,
+        principal=principal,
+        create_round_if_missing=create_round_if_missing,
+    )
+    prompt = _build_review_request_prompt(
+        bundle=bundle,
+        request_row=request_row,
+        round_row=round_row,
+    )
+
+    if method in _REVIEW_REQUEST_REMOTE_METHODS:
+        dispatch_user_id = (
+            int(request_row.target_user_id)
+            if isinstance(getattr(request_row, "target_user_id", None), int)
+            and int(getattr(request_row, "target_user_id")) > 0
+            else _principal_effective_user_id(principal)
+        )
+        result = await _run_review_request_via_bridge(
+            plan_id=plan_id,
+            request_row=request_row,
+            prompt=prompt,
+            model_id=model_id,
+            profile_hint=profile_hint,
+            timeout_seconds=timeout_seconds,
+            user_id=dispatch_user_id,
+        )
+    else:
+        result = await _run_review_request_via_api(
+            prompt=prompt,
+            provider_id=provider_id,
+            model_id=model_id,
+        )
+
+    return {
+        "round_row": round_row,
+        "result": result,
+        "node_kind": "agent_response",
+        "author_role": "agent",
+        "participant_role": "reviewer",
+        "participant_action": "dispatch_review_request",
+        "success_message": "Review request dispatched and fulfilled.",
+    }
+
+
+PlanRequestKindExecutor = Callable[..., Awaitable[Dict[str, Any]]]
+_PLAN_REQUEST_KIND_EXECUTORS: Dict[str, PlanRequestKindExecutor] = {
+    "review": _execute_plan_request_kind_review,
+}
 
 
 async def _dispatch_review_request_execution(
@@ -1053,27 +1191,53 @@ async def _dispatch_review_request_execution(
     spawn_if_missing: bool,
     create_round_if_missing: bool,
 ) -> Dict[str, Any]:
+    requested_kind = str(getattr(request_row, "kind", "") or "").strip().lower() or "review"
+    executor_key = _normalize_plan_request_kind(requested_kind)
+    kind_executor = _PLAN_REQUEST_KIND_EXECUTORS.get(executor_key)
+    if kind_executor is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported plan request kind '{requested_kind}'. "
+                f"Supported kinds: {', '.join(sorted(_PLAN_REQUEST_KIND_EXECUTORS.keys()))}"
+            ),
+        )
+
     if request_row.status in _TERMINAL_REVIEW_REQUEST_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Review request '{request_row.id}' is already {request_row.status} "
+                f"Plan request '{request_row.id}' is already {request_row.status} "
                 "and cannot be dispatched."
             ),
         )
     if request_row.status == "in_progress":
         raise HTTPException(
             status_code=409,
-            detail=f"Review request '{request_row.id}' is already in_progress.",
+            detail=f"Plan request '{request_row.id}' is already in_progress.",
         )
 
     actor_source = getattr(principal, "source", f"user:{principal.id}")
     actor_fields = _principal_actor_fields(principal)
     dispatch_view = _review_request_dispatch_view(request_row)
+    target_user_id, delegation_grant_id = await _resolve_request_target_user(
+        db,
+        principal=principal,
+        plan_id=plan_id,
+        requested_target_user_id=dispatch_view.get("target_user_id"),
+        requested_profile_id=dispatch_view.get("target_profile_id"),
+        requested_bridge_id=dispatch_view.get("target_bridge_id"),
+        requested_session_id=dispatch_view.get("target_session_id"),
+    )
+    allowed_profile_user_ids: Set[int] = set()
+    if isinstance(target_user_id, int) and target_user_id > 0:
+        allowed_profile_user_ids.add(target_user_id)
+
     profile_hint = await _load_target_profile_hint(
         db,
         principal=principal,
         profile_id=dispatch_view.get("target_profile_id"),
+        allowed_user_ids=allowed_profile_user_ids or None,
     )
     execution_cfg = _resolve_review_request_execution_config(
         dispatch_view=dispatch_view,
@@ -1083,13 +1247,13 @@ async def _dispatch_review_request_execution(
     model_id = execution_cfg.get("model_id")
     provider_id = execution_cfg.get("provider")
 
-    live_agents = _list_live_bridge_agents(principal)
+    live_agents = _list_live_bridge_agents(principal, target_user_id=target_user_id)
     spawn_meta: Optional[Dict[str, Any]] = None
     if method in _REVIEW_REQUEST_REMOTE_METHODS and not live_agents and spawn_if_missing:
         spawn_meta = await _try_start_shared_bridge(pool_size=1)
         if spawn_meta.get("ok"):
             await asyncio.sleep(0.6)
-            live_agents = _list_live_bridge_agents(principal)
+            live_agents = _list_live_bridge_agents(principal, target_user_id=target_user_id)
 
     try:
         dispatch_payload = _request_dispatch_payload_from_row(request_row)
@@ -1097,10 +1261,13 @@ async def _dispatch_review_request_execution(
             payload=dispatch_payload,
             live_agents=live_agents,
             profile_hint=profile_hint,
+            target_user_id=target_user_id,
         )
     except HTTPException as exc:
         dispatch = {
             "target_mode": dispatch_view.get("target_mode"),
+            "target_user_id": target_user_id,
+            "target_bridge_id": getattr(request_row, "target_bridge_id", None) or dispatch_view.get("target_bridge_id"),
             "target_session_id": dispatch_view.get("target_session_id"),
             "preferred_agent_id": dispatch_view.get("preferred_agent_id"),
             "target_profile_id": dispatch_view.get("target_profile_id"),
@@ -1136,8 +1303,10 @@ async def _dispatch_review_request_execution(
             "error": None,
         }
 
+    request_row.target_bridge_id = dispatch.get("target_bridge_id")
     request_row.target_agent_id = dispatch.get("target_agent_id")
     request_row.target_agent_type = dispatch.get("target_agent_type")
+    request_row.target_user_id = dispatch.get("target_user_id")
     request_row.meta = _merge_request_meta_with_dispatch(request_row.meta, dispatch)
     request_row.updated_at = utcnow()
 
@@ -1177,7 +1346,10 @@ async def _dispatch_review_request_execution(
             "method": method,
             "model_id": model_id,
             "provider": provider_id,
+            "target_user_id": request_row.target_user_id,
+            "target_bridge_id": request_row.target_bridge_id,
             "target_agent_id": request_row.target_agent_id,
+            "delegation_grant_id": delegation_grant_id,
             "spawn": spawn_meta,
         },
     )
@@ -1185,44 +1357,33 @@ async def _dispatch_review_request_execution(
 
     started_mono = asyncio.get_event_loop().time()
     try:
-        bundle = await get_plan_bundle(db, plan_id)
-        if bundle is None:
-            raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
-
-        round_row = await _resolve_round_for_request_dispatch(
-            db,
+        execution = await kind_executor(
+            db=db,
             plan_id=plan_id,
             request_row=request_row,
             principal=principal,
+            timeout_seconds=timeout_seconds,
             create_round_if_missing=create_round_if_missing,
+            method=method,
+            model_id=model_id,
+            provider_id=provider_id,
+            profile_hint=profile_hint,
         )
-        prompt = _build_review_request_prompt(
-            bundle=bundle,
-            request_row=request_row,
-            round_row=round_row,
-        )
-
-        if method in _REVIEW_REQUEST_REMOTE_METHODS:
-            result = await _run_review_request_via_bridge(
-                plan_id=plan_id,
-                request_row=request_row,
-                prompt=prompt,
-                model_id=model_id,
-                profile_hint=profile_hint,
-                timeout_seconds=timeout_seconds,
-                user_id=_principal_effective_user_id(principal),
-            )
-        else:
-            result = await _run_review_request_via_api(
-                prompt=prompt,
-                provider_id=provider_id,
-                model_id=model_id,
-            )
+        round_row = execution["round_row"]
+        result = execution["result"]
+        node_kind = str(execution.get("node_kind") or "agent_response")
+        author_role = str(execution.get("author_role") or "agent")
+        participant_role = str(execution.get("participant_role") or "reviewer")
+        participant_action = str(execution.get("participant_action") or "dispatch_review_request")
+        success_message = str(execution.get("success_message") or "Request dispatched and fulfilled.")
 
         node_actor = dict(actor_fields)
         node_created_by = actor_source
-        execution_agent_id = result.get("agent_id")
+        execution_agent_id = result.get("bridge_client_id")
+        execution_bridge_id = result.get("bridge_id")
         execution_run_id = result.get("run_id")
+        if isinstance(execution_bridge_id, str) and execution_bridge_id.strip():
+            request_row.target_bridge_id = execution_bridge_id.strip()
         if execution_agent_id:
             node_created_by = f"agent:{execution_agent_id}"
             node_actor["principal_type"] = "agent"
@@ -1237,9 +1398,12 @@ async def _dispatch_review_request_execution(
                 "method": method,
                 "model_id": model_id,
                 "provider": provider_id,
+                "target_user_id": request_row.target_user_id,
+                "target_bridge_id": request_row.target_bridge_id,
                 "target_agent_id": request_row.target_agent_id,
                 "target_agent_type": request_row.target_agent_type,
                 "dispatch_reason": dispatch.get("dispatch_reason"),
+                "delegation_grant_id": delegation_grant_id,
             },
         }
         result_meta = result.get("meta")
@@ -1248,15 +1412,15 @@ async def _dispatch_review_request_execution(
 
         execution_session_id: Optional[str] = None
         if isinstance(result_meta, dict):
-            raw_session_id = result_meta.get("claude_session_id") or result_meta.get("session_id")
+            raw_session_id = result_meta.get("bridge_session_id") or result_meta.get("session_id")
             if isinstance(raw_session_id, str) and raw_session_id.strip():
                 execution_session_id = raw_session_id.strip()
 
         node_row = PlanReviewNode(
             plan_id=plan_id,
             round_id=round_row.id,
-            kind="agent_response",
-            author_role="agent",
+            kind=node_kind,
+            author_role=author_role,
             body=str(result.get("response_text") or "").strip(),
             meta=node_meta,
             created_by=node_created_by,
@@ -1294,8 +1458,8 @@ async def _dispatch_review_request_execution(
         await _record_plan_participant(
             db,
             plan_id=plan_id,
-            role="reviewer",
-            action="dispatch_review_request",
+            role=participant_role,
+            action=participant_action,
             principal_type=node_actor.get("principal_type"),
             agent_id=node_actor.get("agent_id"),
             agent_type=request_row.target_agent_type,
@@ -1310,6 +1474,7 @@ async def _dispatch_review_request_execution(
                 "method": method,
                 "provider": provider_id,
                 "model_id": model_id,
+                "target_bridge_id": request_row.target_bridge_id,
             },
         )
         await db.commit()
@@ -1317,7 +1482,7 @@ async def _dispatch_review_request_execution(
         duration_ms = int((asyncio.get_event_loop().time() - started_mono) * 1000)
         return {
             "executed": True,
-            "message": "Review request dispatched and fulfilled.",
+            "message": success_message,
             "duration_ms": duration_ms,
             "request_row": request_row,
             "node_row": node_row,
@@ -1381,28 +1546,186 @@ def _principal_effective_user_id(principal: CurrentUser) -> Optional[int]:
     return actor.get("user_id")
 
 
-async def _resolve_profile_labels(db: "AsyncSession", principal: CurrentUser) -> Dict[str, str]:
+def _normalize_id_list(values: Any) -> Optional[Set[str]]:
+    if not isinstance(values, list):
+        return None
+    out = {str(v).strip() for v in values if str(v).strip()}
+    return out or None
+
+
+def _match_allowlist(values: Any, requested: Optional[str]) -> bool:
+    allowed = _normalize_id_list(values)
+    if not allowed:
+        return True
+    if not requested:
+        return False
+    return requested in allowed
+
+
+async def _find_active_review_delegation(
+    db: AsyncSession,
+    *,
+    principal: CurrentUser,
+    plan_id: str,
+    target_user_id: int,
+    requested_profile_id: Optional[str] = None,
+    requested_bridge_id: Optional[str] = None,
+    requested_session_id: Optional[str] = None,
+) -> Optional[PlanReviewDelegation]:
+    requester_user_id = _principal_effective_user_id(principal)
+    if requester_user_id is None:
+        return None
+    if target_user_id == requester_user_id:
+        return None
+
+    now = utcnow()
+    rows = (
+        await db.execute(
+            select(PlanReviewDelegation)
+            .where(
+                PlanReviewDelegation.grantor_user_id == target_user_id,
+                PlanReviewDelegation.delegate_user_id == requester_user_id,
+                PlanReviewDelegation.status == "active",
+                or_(PlanReviewDelegation.plan_id.is_(None), PlanReviewDelegation.plan_id == plan_id),
+                or_(PlanReviewDelegation.expires_at.is_(None), PlanReviewDelegation.expires_at >= now),
+            )
+            .order_by(PlanReviewDelegation.updated_at.desc(), PlanReviewDelegation.created_at.desc())
+        )
+    ).scalars().all()
+
+    for row in rows:
+        if not _match_allowlist(row.allowed_profile_ids, requested_profile_id):
+            continue
+        if not _match_allowlist(row.allowed_bridge_ids, requested_bridge_id):
+            continue
+        if not _match_allowlist(row.allowed_agent_ids, requested_session_id):
+            continue
+        return row
+    return None
+
+
+async def _resolve_request_target_user(
+    db: AsyncSession,
+    *,
+    principal: CurrentUser,
+    plan_id: str,
+    requested_target_user_id: Optional[int],
+    requested_profile_id: Optional[str] = None,
+    requested_bridge_id: Optional[str] = None,
+    requested_session_id: Optional[str] = None,
+) -> tuple[Optional[int], Optional[str]]:
+    principal_user_id = _principal_effective_user_id(principal)
+    target_user_id = (
+        int(requested_target_user_id)
+        if isinstance(requested_target_user_id, int) and requested_target_user_id > 0
+        else principal_user_id
+    )
+
+    if target_user_id is None:
+        return None, None
+
+    if _principal_is_admin(principal):
+        return target_user_id, None
+    if principal_user_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="User binding is required for delegated review routing.",
+        )
+    if target_user_id == principal_user_id:
+        return target_user_id, None
+
+    grant = await _find_active_review_delegation(
+        db,
+        principal=principal,
+        plan_id=plan_id,
+        target_user_id=target_user_id,
+        requested_profile_id=requested_profile_id,
+        requested_bridge_id=requested_bridge_id,
+        requested_session_id=requested_session_id,
+    )
+    if grant is None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"No active review delegation grant from user {target_user_id} "
+                "for this plan and target constraints."
+            ),
+        )
+    return target_user_id, str(grant.id)
+
+
+async def _list_delegated_target_user_ids(
+    db: AsyncSession,
+    *,
+    principal: CurrentUser,
+    plan_id: str,
+) -> List[int]:
+    principal_user_id = _principal_effective_user_id(principal)
+    if principal_user_id is None:
+        return []
+
+    now = utcnow()
+    rows = (
+        await db.execute(
+            select(PlanReviewDelegation.grantor_user_id)
+            .where(
+                PlanReviewDelegation.delegate_user_id == principal_user_id,
+                PlanReviewDelegation.status == "active",
+                or_(PlanReviewDelegation.plan_id.is_(None), PlanReviewDelegation.plan_id == plan_id),
+                or_(PlanReviewDelegation.expires_at.is_(None), PlanReviewDelegation.expires_at >= now),
+            )
+        )
+    ).all()
+    out: Set[int] = set()
+    for (grantor_user_id,) in rows:
+        if isinstance(grantor_user_id, int) and grantor_user_id > 0:
+            out.add(grantor_user_id)
+    return sorted(out)
+
+
+async def _resolve_profile_labels(
+    db: "AsyncSession",
+    principal: CurrentUser,
+    *,
+    visible_user_ids: Optional[Set[int]] = None,
+) -> Dict[str, str]:
     """Map agent profile IDs to their labels for friendly display."""
     try:
         from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
-        stmt = (
-            select(AgentProfile.id, AgentProfile.label)
-            .where(AgentProfile.status != "archived")
-            .where(or_(AgentProfile.user_id == principal.id, AgentProfile.user_id == 0))
-        )
+
+        stmt = select(AgentProfile.id, AgentProfile.label).where(AgentProfile.status != "archived")
+        filter_user_ids: Set[int] = set(visible_user_ids or set())
+        if _principal_is_admin(principal):
+            if filter_user_ids:
+                filter_user_ids.add(0)
+                stmt = stmt.where(AgentProfile.user_id.in_(sorted(filter_user_ids)))
+        else:
+            requester_user_id = _principal_effective_user_id(principal)
+            if requester_user_id is not None:
+                filter_user_ids.add(requester_user_id)
+            filter_user_ids.add(0)
+            stmt = stmt.where(AgentProfile.user_id.in_(sorted(filter_user_ids)))
+
         rows = (await db.execute(stmt)).all()
         return {row[0]: row[1] for row in rows}
     except Exception:
         return {}
 
 
-def _list_live_bridge_agents(principal: CurrentUser) -> List[Dict[str, Any]]:
+def _list_live_bridge_agents(
+    principal: CurrentUser,
+    *,
+    target_user_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
     """List bridge-backed live sessions visible to principal, idle-first sorted."""
     from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
 
-    user_id = _principal_effective_user_id(principal)
+    principal_user_id = _principal_effective_user_id(principal)
+    route_user_id = target_user_id if target_user_id is not None else principal_user_id
     rows: List[Dict[str, Any]] = []
-    for agent in remote_cmd_bridge.get_agents(user_id=user_id):
+    for agent in remote_cmd_bridge.get_agents(user_id=route_user_id):
+        if target_user_id is not None and agent.user_id not in (None, target_user_id):
+            continue
         pool = agent.pool_status or {}
         pool_engines = pool.get("engines", [])
         sessions_raw = pool.get("sessions", [])
@@ -1419,8 +1742,10 @@ def _list_live_bridge_agents(principal: CurrentUser) -> List[Dict[str, Any]]:
         ]
         rows.append(
             {
+                "bridge_id": getattr(agent, "bridge_id", None),
                 "agent_id": agent.agent_id,
                 "agent_type": agent.agent_type,
+                "user_id": agent.user_id,
                 "busy": bool(agent.busy),
                 "active_tasks": int(getattr(agent, "active_tasks", 0) or 0),
                 "tasks_completed": int(getattr(agent, "tasks_completed", 0) or 0),
@@ -1435,7 +1760,7 @@ def _list_live_bridge_agents(principal: CurrentUser) -> List[Dict[str, Any]]:
             row["busy"],
             row["active_tasks"],
             row["tasks_completed"],
-            str(row["agent_id"]).lower(),
+            str(row.get("bridge_id") or row["agent_id"]).lower(),
         )
     )
     return rows
@@ -1455,18 +1780,27 @@ async def _load_target_profile_hint(
     *,
     principal: CurrentUser,
     profile_id: Optional[str],
+    allowed_user_ids: Optional[Set[int]] = None,
 ) -> Optional[Dict[str, Any]]:
     target = (profile_id or "").strip()
     if not target:
         return None
 
     stmt = select(AgentProfile).where(AgentProfile.id == target)
-    if not _principal_is_admin(principal):
-        user_id = _principal_effective_user_id(principal)
-        if user_id is None:
-            stmt = stmt.where(AgentProfile.user_id == 0)
-        else:
-            stmt = stmt.where(or_(AgentProfile.user_id == user_id, AgentProfile.user_id == 0))
+    if _principal_is_admin(principal):
+        if allowed_user_ids:
+            visible_user_ids = set(int(v) for v in allowed_user_ids if isinstance(v, int))
+            visible_user_ids.add(0)
+            stmt = stmt.where(AgentProfile.user_id.in_(sorted(visible_user_ids)))
+    else:
+        requester_user_id = _principal_effective_user_id(principal)
+        visible_user_ids: Set[int] = set(int(v) for v in (allowed_user_ids or set()) if isinstance(v, int))
+        # If delegation scope is provided, do not implicitly include requester-owned profiles.
+        # This keeps cross-user routing pinned to the delegated target user(s) plus shared profiles.
+        if not visible_user_ids and requester_user_id is not None:
+            visible_user_ids.add(requester_user_id)
+        visible_user_ids.add(0)
+        stmt = stmt.where(AgentProfile.user_id.in_(sorted(visible_user_ids)))
 
     row = (await db.execute(stmt)).scalar_one_or_none()
     if row is None:
@@ -1523,11 +1857,13 @@ def _resolve_review_request_targeting(
     payload: PlanRequestCreateRequest,
     live_agents: List[Dict[str, Any]],
     profile_hint: Optional[Dict[str, Any]] = None,
+    target_user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     target_mode = payload.target_mode
     queue_if_busy = bool(payload.queue_if_busy)
     auto_reroute_if_busy = bool(payload.auto_reroute_if_busy)
 
+    requested_bridge_id = (payload.target_bridge_id or "").strip() or None
     manual_target = (payload.target_agent_id or "").strip() or None
     requested_session_id = (payload.target_session_id or "").strip() or None
     preferred_agent_id = (payload.preferred_agent_id or "").strip() or None
@@ -1536,6 +1872,11 @@ def _resolve_review_request_targeting(
     target_method = (payload.target_method or "").strip() or None
     target_model_id = (payload.target_model_id or "").strip() or None
     target_provider = (payload.target_provider or "").strip() or None
+    requested_target_user_id = (
+        int(payload.target_user_id)
+        if isinstance(payload.target_user_id, int) and payload.target_user_id > 0
+        else target_user_id
+    )
 
     if profile_hint:
         target_profile_id = target_profile_id or str(profile_hint.get("id") or "").strip() or None
@@ -1547,35 +1888,49 @@ def _resolve_review_request_targeting(
     profile_agent_id = target_profile_id
 
     # Backward compatibility for older clients that only send target_agent_id.
-    if target_mode == "auto" and not requested_session_id and manual_target:
+    if target_mode == "auto" and not requested_session_id and not requested_bridge_id and manual_target:
         target_mode = "session"
         requested_session_id = manual_target
-    if target_mode == "session" and not requested_session_id and manual_target:
+    if target_mode == "session" and not requested_session_id and not requested_bridge_id and manual_target:
         requested_session_id = manual_target
     if target_mode == "recent_agent" and not preferred_agent_id and manual_target:
         preferred_agent_id = manual_target
 
     by_id = {str(agent["agent_id"]): agent for agent in live_agents}
+    by_bridge_id = {
+        str(agent.get("bridge_id")): agent
+        for agent in live_agents
+        if agent.get("bridge_id")
+    }
 
     def _dispatch_result(
         *,
         state: Literal["assigned", "queued", "unassigned"],
         reason: str,
         assigned_agent: Optional[Dict[str, Any]] = None,
-        explicit_target_id: Optional[str] = None,
+        explicit_target_agent_id: Optional[str] = None,
+        explicit_target_bridge_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         assigned_id = str(assigned_agent["agent_id"]) if assigned_agent else None
+        assigned_bridge_id = (
+            str(assigned_agent.get("bridge_id"))
+            if assigned_agent and assigned_agent.get("bridge_id")
+            else None
+        )
         assigned_type = (
             str(assigned_agent["agent_type"])
             if assigned_agent and assigned_agent.get("agent_type")
             else requested_agent_type
         )
-        target_agent_id = assigned_id or explicit_target_id
+        target_agent_id = assigned_id or explicit_target_agent_id
+        target_bridge_id = assigned_bridge_id or explicit_target_bridge_id
         target_session_id = assigned_id or (
-            explicit_target_id if target_mode == "session" else None
+            explicit_target_agent_id if target_mode == "session" else None
         )
         return {
             "target_mode": target_mode,
+            "target_user_id": requested_target_user_id,
+            "target_bridge_id": target_bridge_id,
             "target_session_id": target_session_id,
             "preferred_agent_id": preferred_agent_id,
             "target_profile_id": target_profile_id,
@@ -1591,26 +1946,39 @@ def _resolve_review_request_targeting(
         }
 
     if target_mode == "session":
-        if not requested_session_id:
+        if not requested_session_id and not requested_bridge_id:
             raise HTTPException(
                 status_code=400,
-                detail="target_session_id is required when target_mode='session'.",
+                detail=(
+                    "target_session_id or target_bridge_id is required "
+                    "when target_mode='session'."
+                ),
             )
-        target = by_id.get(requested_session_id)
+        if requested_bridge_id:
+            target = by_bridge_id.get(requested_bridge_id)
+            target_display = f"bridge '{requested_bridge_id}'"
+            reason_prefix = "target_bridge"
+            requested_agent_for_session = str(target["agent_id"]) if target else requested_session_id
+        else:
+            target = by_id.get(requested_session_id)
+            target_display = f"session '{requested_session_id}'"
+            reason_prefix = "target_session"
+            requested_agent_for_session = requested_session_id
         if target is None:
             if auto_reroute_if_busy:
                 idle = _pick_idle_bridge_agent(live_agents)
                 if idle is not None:
                     return _dispatch_result(
                         state="assigned",
-                        reason="target_session_missing_rerouted",
+                        reason=f"{reason_prefix}_missing_rerouted",
                         assigned_agent=idle,
-                        explicit_target_id=requested_session_id,
+                        explicit_target_agent_id=requested_agent_for_session,
+                        explicit_target_bridge_id=requested_bridge_id,
                     )
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    f"Target session '{requested_session_id}' is not connected."
+                    f"Target {target_display} is not connected."
                     " Refresh assignees and retry."
                 ),
             )
@@ -1618,30 +1986,34 @@ def _resolve_review_request_targeting(
         if not target.get("busy"):
             return _dispatch_result(
                 state="assigned",
-                reason="target_session_idle",
+                reason=f"{reason_prefix}_idle",
                 assigned_agent=target,
-                explicit_target_id=requested_session_id,
+                explicit_target_agent_id=requested_agent_for_session,
+                explicit_target_bridge_id=requested_bridge_id,
             )
         if queue_if_busy:
             return _dispatch_result(
                 state="queued",
-                reason="target_session_busy_queued",
+                reason=f"{reason_prefix}_busy_queued",
                 assigned_agent=target,
-                explicit_target_id=requested_session_id,
+                explicit_target_agent_id=requested_agent_for_session,
+                explicit_target_bridge_id=requested_bridge_id,
             )
         if auto_reroute_if_busy:
-            idle = _pick_idle_bridge_agent(live_agents, exclude_agent_id=requested_session_id)
+            exclude_agent_id = requested_agent_for_session or str(target.get("agent_id") or "")
+            idle = _pick_idle_bridge_agent(live_agents, exclude_agent_id=exclude_agent_id)
             if idle is not None:
                 return _dispatch_result(
                     state="assigned",
-                    reason="target_session_busy_rerouted",
+                    reason=f"{reason_prefix}_busy_rerouted",
                     assigned_agent=idle,
-                    explicit_target_id=requested_session_id,
+                    explicit_target_agent_id=requested_agent_for_session,
+                    explicit_target_bridge_id=requested_bridge_id,
                 )
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Target session '{requested_session_id}' is busy."
+                f"Target {target_display} is busy."
                 " Enable queueing or auto-reroute to proceed."
             ),
         )
@@ -1658,14 +2030,14 @@ def _resolve_review_request_targeting(
                 state="assigned",
                 reason="preferred_agent_live_idle",
                 assigned_agent=preferred_live,
-                explicit_target_id=preferred_agent_id,
+                explicit_target_agent_id=preferred_agent_id,
             )
         if preferred_live and queue_if_busy:
             return _dispatch_result(
                 state="queued",
                 reason="preferred_agent_busy_queued",
                 assigned_agent=preferred_live,
-                explicit_target_id=preferred_agent_id,
+                explicit_target_agent_id=preferred_agent_id,
             )
         if auto_reroute_if_busy:
             idle = _pick_idle_bridge_agent(
@@ -1677,12 +2049,12 @@ def _resolve_review_request_targeting(
                     state="assigned",
                     reason="preferred_agent_rerouted",
                     assigned_agent=idle,
-                    explicit_target_id=preferred_agent_id,
+                    explicit_target_agent_id=preferred_agent_id,
                 )
         return _dispatch_result(
             state="unassigned",
             reason="preferred_agent_unavailable",
-            explicit_target_id=preferred_agent_id,
+            explicit_target_agent_id=preferred_agent_id,
         )
 
     # target_mode == "auto"
@@ -1693,14 +2065,14 @@ def _resolve_review_request_targeting(
                 state="assigned",
                 reason="profile_live_idle",
                 assigned_agent=profile_live,
-                explicit_target_id=profile_agent_id,
+                explicit_target_agent_id=profile_agent_id,
             )
         if profile_live and queue_if_busy:
             return _dispatch_result(
                 state="queued",
                 reason="profile_live_busy_queued",
                 assigned_agent=profile_live,
-                explicit_target_id=profile_agent_id,
+                explicit_target_agent_id=profile_agent_id,
             )
         if profile_live and auto_reroute_if_busy:
             idle_after_profile = _pick_idle_bridge_agent(
@@ -1712,7 +2084,7 @@ def _resolve_review_request_targeting(
                     state="assigned",
                     reason="profile_live_busy_rerouted",
                     assigned_agent=idle_after_profile,
-                    explicit_target_id=profile_agent_id,
+                    explicit_target_agent_id=profile_agent_id,
                 )
 
     idle = _pick_idle_bridge_agent(live_agents)
@@ -1731,7 +2103,8 @@ def _resolve_review_request_targeting(
     return _dispatch_result(
         state="unassigned",
         reason="auto_no_live_agents",
-        explicit_target_id=profile_agent_id or manual_target or preferred_agent_id,
+        explicit_target_agent_id=profile_agent_id or manual_target or preferred_agent_id,
+        explicit_target_bridge_id=requested_bridge_id,
     )
 
 
@@ -1742,16 +2115,20 @@ def _merge_request_meta_with_dispatch(
     merged: Dict[str, Any] = dict(base_meta) if isinstance(base_meta, dict) else {}
     merged["dispatch"] = {
         "target_mode": dispatch.get("target_mode"),
+        "target_bridge_id": dispatch.get("target_bridge_id"),
         "target_session_id": dispatch.get("target_session_id"),
         "preferred_agent_id": dispatch.get("preferred_agent_id"),
         "target_profile_id": dispatch.get("target_profile_id"),
         "target_method": dispatch.get("target_method"),
         "target_model_id": dispatch.get("target_model_id"),
         "target_provider": dispatch.get("target_provider"),
+        "target_user_id": dispatch.get("target_user_id"),
+        "delegation_grant_id": dispatch.get("delegation_grant_id"),
         "queue_if_busy": bool(dispatch.get("queue_if_busy", False)),
         "auto_reroute_if_busy": bool(dispatch.get("auto_reroute_if_busy", True)),
         "dispatch_state": dispatch.get("dispatch_state"),
         "dispatch_reason": dispatch.get("dispatch_reason"),
+        "resolved_bridge_id": dispatch.get("target_bridge_id"),
         "resolved_agent_id": dispatch.get("target_agent_id"),
         "resolved_agent_type": dispatch.get("target_agent_type"),
         "dispatched_at": utcnow().isoformat(),
@@ -1859,14 +2236,16 @@ def _review_request_to_entry(row: PlanRequest) -> PlanRequestEntry:
         body=row.body,
         status=row.status,
         targetMode=dispatch["target_mode"],
-        targetAgentId=row.target_agent_id,
-        targetAgentType=row.target_agent_type,
+        targetBridgeId=dispatch["target_bridge_id"],
+        targetAgentId=getattr(row, "target_agent_id", None),
+        targetAgentType=getattr(row, "target_agent_type", None),
         targetSessionId=dispatch["target_session_id"],
         preferredAgentId=dispatch["preferred_agent_id"],
         targetProfileId=dispatch["target_profile_id"],
         targetMethod=dispatch["target_method"],
         targetModelId=dispatch["target_model_id"],
         targetProvider=dispatch["target_provider"],
+        targetUserId=dispatch["target_user_id"],
         queueIfBusy=dispatch["queue_if_busy"],
         autoRerouteIfBusy=dispatch["auto_reroute_if_busy"],
         dispatchState=dispatch["dispatch_state"],
@@ -2165,5 +2544,3 @@ async def _resolve_companion_docs(
             resolved.append(ref)
 
     return resolved
-
-

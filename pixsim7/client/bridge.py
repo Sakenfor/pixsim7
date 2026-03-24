@@ -17,6 +17,8 @@ import shutil
 import subprocess as sp
 import sys
 import tempfile
+import uuid
+from pathlib import Path
 from typing import Optional
 
 try:
@@ -43,20 +45,52 @@ class Bridge:
         self._url = url
         # Derive agent_type from pool command name (e.g. "claude", "codex")
         self._agent_type = agent_type or pool._prefix or "claude"
-        self._agent_id: Optional[str] = None
+        self._bridge_client_id: Optional[str] = self._load_persistent_bridge_client_id()
         self._connected = False
         self._tasks_handled = 0
         self._mcp_config_path: Optional[str] = None
         self._token_file_path: Optional[str] = None
         self._system_prompt: Optional[str] = None
+        self._bridge_client_id_file = Path.home() / ".pixsim" / "bridge_id"
 
     @property
     def is_connected(self) -> bool:
         return self._connected
 
     @property
-    def agent_id(self) -> Optional[str]:
-        return self._agent_id
+    def bridge_client_id(self) -> Optional[str]:
+        return self._bridge_client_id
+
+    def _load_persistent_bridge_client_id(self) -> Optional[str]:
+        """Load stable bridge identity from ~/.pixsim/bridge_id if present."""
+        path = Path.home() / ".pixsim" / "bridge_id"
+        try:
+            raw = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        if not raw:
+            return None
+        # Keep IDs path/query safe and bounded.
+        if len(raw) > 120:
+            return None
+        allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_:")
+        if any(ch not in allowed for ch in raw):
+            return None
+        return raw
+
+    def _persist_bridge_client_id(self, bridge_client_id: str) -> None:
+        """Persist stable bridge identity for process restarts."""
+        if not bridge_client_id:
+            return
+        try:
+            self._bridge_client_id_file.parent.mkdir(parents=True, exist_ok=True)
+            self._bridge_client_id_file.write_text(bridge_client_id, encoding="utf-8")
+            try:
+                os.chmod(str(self._bridge_client_id_file), 0o600)
+            except OSError:
+                pass
+        except OSError:
+            return
 
     async def run(self) -> None:
         """Main loop — connect, handle tasks, reconnect on failure."""
@@ -87,9 +121,9 @@ class Bridge:
     async def _connect_and_serve(self) -> None:
         """Single connection session."""
         ws_url = f"{self._url}?agent_type={self._agent_type}"
-        # Reconnect with same identity so backend maps back to the same agent
-        if self._agent_id:
-            ws_url += f"&agent_id={self._agent_id}"
+        # Reconnect with same identity so backend maps back to the same bridge client
+        if self._bridge_client_id:
+            ws_url += f"&bridge_client_id={self._bridge_client_id}"
         # Send model info if known from any pool session
         pool_model = next(
             (s.cli_model for s in self._pool.sessions if s.cli_model), None
@@ -102,7 +136,12 @@ class Bridge:
         async with ws_connect(ws_url) as ws:
             # Welcome message
             welcome = json.loads(await ws.recv())
-            self._agent_id = welcome.get("agent_id", "unknown")
+            connected_bridge_client_id = str(welcome.get("bridge_client_id") or "").strip()
+            if not connected_bridge_client_id:
+                connected_bridge_client_id = f"{self._agent_type}-{uuid.uuid4().hex[:8]}"
+            if connected_bridge_client_id != self._bridge_client_id:
+                self._persist_bridge_client_id(connected_bridge_client_id)
+            self._bridge_client_id = connected_bridge_client_id
             self._connected = True
 
             # Determine scope: user-scoped bridge vs shared/dev bridge
@@ -132,7 +171,7 @@ class Bridge:
             # Report available models from pool sessions (if any)
             await self._report_models(ws)
 
-            client_log(f"Connected as {self._agent_id}")
+            client_log(f"Connected as {self._bridge_client_id}")
             client_log(f"Pool: {self._pool.ready_count} ready, {self._pool.busy_count} busy, max {self._pool._max_sessions}")
             client_log("Waiting for tasks...\n")
 
@@ -447,7 +486,9 @@ class Bridge:
                 pass
 
         # Session ID for conversation affinity / resume
-        claude_session_id = msg.get("claude_session_id")
+        bridge_session_id = msg.get("bridge_session_id")
+        session_policy = str(msg.get("session_policy") or "").strip().lower() or None
+        scope_key = str(msg.get("scope_key") or "").strip() or None
 
         # Engine override (claude, codex, etc.)
         engine = msg.get("engine")
@@ -466,7 +507,7 @@ class Bridge:
 
         # On first message of a new conversation, inject system context + persona.
         # Resumed conversations already have these in history.
-        if not claude_session_id:
+        if not bridge_session_id:
             preamble_parts: list[str] = []
             if self._system_prompt:
                 preamble_parts.append(f"[System context]\n{self._system_prompt}")
@@ -541,16 +582,18 @@ class Bridge:
             try:
                 session_id, response = await self._pool.send_message(
                     prompt, timeout=timeout, images=images, on_progress=on_progress,
-                    claude_session_id=claude_session_id,
+                    bridge_session_id=bridge_session_id,
                     engine=engine,
                     model=model_override,
                     reasoning_effort=reasoning_effort,
+                    session_policy=session_policy,
+                    scope_key=scope_key,
                 )
                 self._tasks_handled += 1
 
-                # Get the Claude session UUID for resume support
+                # Get conversation session UUID for resume support
                 session = next((s for s in self._pool.sessions if s.session_id == session_id), None)
-                claude_session_id = session.claude_session_id if session else None
+                bridge_session_id = session.bridge_session_id if session else None
 
                 preview = response[:120].replace('\n', ' ')
                 client_log(f"[task:{task_id[:8]}] Done via {session_id} ({len(response)} chars): {preview}")
@@ -560,8 +603,8 @@ class Bridge:
                     "task_id": task_id,
                     "edited_prompt": response,
                 }
-                if claude_session_id:
-                    result_msg["claude_session_id"] = claude_session_id
+                if bridge_session_id:
+                    result_msg["bridge_session_id"] = bridge_session_id
                 await ws.send(json.dumps(result_msg))
 
                 # Report updated pool status (new sessions may have spawned)
@@ -607,7 +650,7 @@ class Bridge:
         """Bridge status summary."""
         return {
             "connected": self._connected,
-            "agent_id": self._agent_id,
+            "bridge_client_id": self._bridge_client_id,
             "tasks_handled": self._tasks_handled,
             "pool": self._pool.status(),
         }

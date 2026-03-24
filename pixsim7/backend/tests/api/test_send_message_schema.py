@@ -27,7 +27,6 @@ class TestSendMessageRequest:
         assert req.engine == "claude"
         assert req.skip_persona is False
         assert req.bridge_session_id is None
-        assert req.claude_session_id is None
         assert req.assistant_id is None
 
     def test_engine_override(self):
@@ -45,12 +44,10 @@ class TestSendMessageRequest:
     def test_session_id_canonical(self):
         req = SendMessageRequest(message="hi", bridge_session_id="abc-123")
         assert req.bridge_session_id == "abc-123"
-        assert req.claude_session_id == "abc-123"
 
-    def test_session_id_legacy_alias(self):
-        req = SendMessageRequest(message="hi", claude_session_id="abc-legacy")
-        assert req.bridge_session_id == "abc-legacy"
-        assert req.claude_session_id == "abc-legacy"
+    def test_rejects_legacy_session_key(self):
+        with pytest.raises(Exception):
+            SendMessageRequest(message="hi", claude_session_id="legacy-id")
 
     def test_timeout_bounds(self):
         req = SendMessageRequest(message="hi", timeout=10)
@@ -79,7 +76,6 @@ class TestSendMessageRequest:
         assert req.assistant_id == "profile-coder"
         assert req.engine == "codex"
         assert req.bridge_session_id == "sess-abc"
-        assert req.claude_session_id == "sess-abc"
 
     def test_extract_scope_derives_from_plan_context(self):
         req = SendMessageRequest(
@@ -111,13 +107,3 @@ class TestSendMessageResponse:
             bridge_session_id="sess-1",
         )
         assert response.bridge_session_id == "sess-1"
-        assert response.claude_session_id == "sess-1"
-
-    def test_response_session_id_legacy_alias(self):
-        response = SendMessageResponse(
-            ok=True,
-            bridge_client_id="bridge-1",
-            claude_session_id="sess-legacy",
-        )
-        assert response.bridge_session_id == "sess-legacy"
-        assert response.claude_session_id == "sess-legacy"

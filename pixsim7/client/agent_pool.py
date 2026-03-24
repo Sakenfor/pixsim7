@@ -56,6 +56,8 @@ class AgentPool:
         self._health_task: Optional[asyncio.Task] = None
         # Index: cli_session_id -> pool session key (for affinity routing)
         self._session_id_index: Dict[str, str] = {}
+        # Index: scope_key -> pool session key (for scoped routing)
+        self._scope_key_index: Dict[str, str] = {}
         self._next_dynamic_id = 0
 
     @property
@@ -79,23 +81,41 @@ class AgentPool:
                 return session
         return None
 
-    def _find_by_session_id(self, claude_session_id: str) -> Optional[AgentCmdSession]:
-        """Find a session by its Claude conversation UUID."""
+    def _find_by_session_id(self, bridge_session_id: str) -> Optional[AgentCmdSession]:
+        """Find a session by its bridge conversation UUID."""
         # Fast path: index
-        pool_key = self._session_id_index.get(claude_session_id)
+        pool_key = self._session_id_index.get(bridge_session_id)
         if pool_key and pool_key in self._sessions:
             return self._sessions[pool_key]
         # Slow path: scan (index may be stale)
         for session in self._sessions.values():
-            if session.claude_session_id == claude_session_id:
-                self._session_id_index[claude_session_id] = session.session_id
+            if session.bridge_session_id == bridge_session_id:
+                self._session_id_index[bridge_session_id] = session.session_id
                 return session
         return None
 
+    def _find_by_scope_key(self, scope_key: str) -> Optional[AgentCmdSession]:
+        """Find a session bound to a scoped task key."""
+        pool_key = self._scope_key_index.get(scope_key)
+        if pool_key and pool_key in self._sessions:
+            return self._sessions[pool_key]
+        if pool_key:
+            self._scope_key_index.pop(scope_key, None)
+        return None
+
+    def _drop_indexes_for_session(self, session_id: str) -> None:
+        """Remove stale session and scope indexes for a removed session."""
+        for key, value in list(self._session_id_index.items()):
+            if value == session_id:
+                self._session_id_index.pop(key, None)
+        for key, value in list(self._scope_key_index.items()):
+            if value == session_id:
+                self._scope_key_index.pop(key, None)
+
     def _update_index(self, session: AgentCmdSession) -> None:
-        """Update the claude_session_id -> pool key index."""
-        if session.claude_session_id:
-            self._session_id_index[session.claude_session_id] = session.session_id
+        """Update the bridge_session_id -> pool key index."""
+        if session.bridge_session_id:
+            self._session_id_index[session.bridge_session_id] = session.session_id
 
     async def _evict_oldest_idle(self) -> bool:
         """Stop the oldest idle on-demand session to make room. Returns True if one was evicted."""
@@ -107,10 +127,11 @@ class AgentPool:
         if not idle:
             return False
         oldest = min(idle, key=lambda s: s.stats.last_activity or s.stats.started_at or s.stats.last_activity)
-        client_log(f"[pool] Evicting idle session {oldest.session_id} (claude: {oldest.claude_session_id})")
+        client_log(f"[pool] Evicting idle session {oldest.session_id} (bridge: {oldest.bridge_session_id})")
         await oldest.stop()
-        # Remove from pool but remember the mapping
+        # Remove from pool and clear stale indexes.
         self._sessions.pop(oldest.session_id, None)
+        self._drop_indexes_for_session(oldest.session_id)
         return True
 
     async def _spawn_session(self, command: str, resume_session_id: str | None = None, model: str | None = None, reasoning_effort: str | None = None) -> AgentCmdSession:
@@ -152,21 +173,44 @@ class AgentPool:
         return session
 
     async def _get_or_create_for_session_id(
-        self, claude_session_id: str, command: str | None = None,
+        self, bridge_session_id: str, command: str | None = None,
     ) -> AgentCmdSession:
         """Find the session with this conversation, or spawn a new one with --resume."""
-        existing = self._find_by_session_id(claude_session_id)
+        existing = self._find_by_session_id(bridge_session_id)
         if existing and existing.state == SessionState.READY:
             return existing
         if existing and existing.state == SessionState.BUSY:
             raise RuntimeError(
-                f"Session for conversation {claude_session_id[:8]} is busy"
+                f"Session for conversation {bridge_session_id[:8]} is busy"
             )
 
         return await self._spawn_session(
             command=command or self._command,
-            resume_session_id=claude_session_id,
+            resume_session_id=bridge_session_id,
         )
+
+    async def _get_or_create_for_scope_key(
+        self,
+        scope_key: str,
+        *,
+        command: str,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+    ) -> AgentCmdSession:
+        """Find or create a scoped session bound to ``scope_key``."""
+        existing = self._find_by_scope_key(scope_key)
+        if existing and existing.state == SessionState.READY and existing._command == command:
+            return existing
+        if existing and existing.state == SessionState.BUSY:
+            raise RuntimeError(f"Scoped session '{scope_key}' is busy")
+
+        session = await self._spawn_session(
+            command=command,
+            model=model,
+            reasoning_effort=reasoning_effort,
+        )
+        self._scope_key_index[scope_key] = session.session_id
+        return session
 
     async def configure(
         self,
@@ -236,23 +280,41 @@ class AgentPool:
         timeout: int = 120,
         images: list[dict] | None = None,
         on_progress: "Callable[[str, str], None] | None" = None,
-        claude_session_id: str | None = None,
+        bridge_session_id: str | None = None,
         engine: str | None = None,
         model: str | None = None,
         reasoning_effort: str | None = None,
+        session_policy: str | None = None,
+        scope_key: str | None = None,
     ) -> tuple[str, str]:
         """
         Route a message to a session.
 
-        If claude_session_id is provided, routes to the matching session
+        If bridge_session_id is provided, routes to the matching session
         (or spawns one with --resume). Otherwise picks any available session.
         Engine overrides which command to use (e.g. "codex" instead of default "claude").
         Model overrides the default model for new sessions.
         Returns (session_id, response).
         """
         command = engine or self._command
-        if claude_session_id:
-            session = await self._get_or_create_for_session_id(claude_session_id, command=command)
+        policy = (session_policy or "").strip().lower()
+        if policy not in {"ephemeral", "scoped", "persistent"}:
+            policy = "persistent"
+        scope = (scope_key or "").strip()
+        ephemeral = False
+
+        if bridge_session_id:
+            session = await self._get_or_create_for_session_id(bridge_session_id, command=command)
+        elif policy == "ephemeral":
+            session = await self._spawn_session(command=command, model=model, reasoning_effort=reasoning_effort)
+            ephemeral = True
+        elif policy == "scoped" and scope:
+            session = await self._get_or_create_for_scope_key(
+                scope,
+                command=command,
+                model=model,
+                reasoning_effort=reasoning_effort,
+            )
         else:
             # When a specific model or reasoning effort is requested, spawn a dedicated session
             if model or reasoning_effort:
@@ -265,7 +327,7 @@ class AgentPool:
 
         try:
             response = await session.send_message(message, timeout=timeout, images=images, on_progress=on_progress)
-            # Update index after first message (session now has its claude_session_id)
+            # Update index after first message (session now has its bridge_session_id)
             self._update_index(session)
             return session.session_id, response
         except Exception:
@@ -273,6 +335,13 @@ class AgentPool:
             if session.state == SessionState.BUSY:
                 session.state = SessionState.READY
             raise
+        finally:
+            if ephemeral:
+                try:
+                    await session.stop()
+                finally:
+                    self._sessions.pop(session.session_id, None)
+                    self._drop_indexes_for_session(session.session_id)
 
     async def _health_monitor(self) -> None:
         """Periodically check session health and restart dead sessions."""
@@ -305,6 +374,7 @@ class AgentPool:
                             client_log(f"[health] Evicting idle session {session.session_id} ({idle_secs:.0f}s idle)")
                             await session.stop()
                             self._sessions.pop(session.session_id, None)
+                            self._drop_indexes_for_session(session.session_id)
 
         except asyncio.CancelledError:
             return

@@ -90,11 +90,11 @@ class AgentCmdSession:
 
     # ── Backward-compat aliases ────────────────────────────────────
     @property
-    def claude_session_id(self) -> Optional[str]:
+    def bridge_session_id(self) -> Optional[str]:
         return self.cli_session_id
 
-    @claude_session_id.setter
-    def claude_session_id(self, value: Optional[str]) -> None:
+    @bridge_session_id.setter
+    def bridge_session_id(self, value: Optional[str]) -> None:
         self.cli_session_id = value
 
     @property

@@ -1106,12 +1106,12 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
       setMessages((m) => [...m, { role: 'system', text: 'Request cancelled', timestamp: new Date() }]);
     } else if (result.ok && result.response) {
       const prevSessionId = tab.sessionId;
-      if (result.claude_session_id && result.claude_session_id !== prevSessionId) {
-        onUpdateTab({ sessionId: result.claude_session_id });
+      if (result.bridge_session_id && result.bridge_session_id !== prevSessionId) {
+        onUpdateTab({ sessionId: result.bridge_session_id });
         if (prevSessionId) {
           setMessages((m) => [...m, { role: 'system', text: 'New session â€" previous conversation not available', timestamp: new Date() }]);
         }
-      } else if (result.claude_session_id && prevSessionId && result.claude_session_id === prevSessionId) {
+      } else if (result.bridge_session_id && prevSessionId && result.bridge_session_id === prevSessionId) {
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === 'system' && last.text.startsWith('Reconnected')) {
@@ -1204,7 +1204,7 @@ function TabChatView({ tab, onUpdateTab, bridge, profiles, onRefreshProfiles }: 
     const timeout = tab.engine === 'codex' ? 600 : 300;
     const body: Record<string, unknown> = { message: text, timeout, engine: tab.engine };
     if (tab.profileId) body.assistant_id = tab.profileId;
-    if (tab.sessionId) body.claude_session_id = tab.sessionId;
+    if (tab.sessionId) body.bridge_session_id = tab.sessionId;
     if (tab.profileId && !tab.usePersona) body.skip_persona = true;
     if (tab.modelOverride) body.model = tab.modelOverride;
     if (tab.customInstructions.trim()) body.custom_instructions = tab.customInstructions.trim();
