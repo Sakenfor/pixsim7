@@ -1,3 +1,4 @@
+import { Z } from "@pixsim7/shared.ui";
 import type { DockviewApi } from "dockview-core";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -7,11 +8,27 @@ import { readFloatingOriginMeta } from "@lib/dockview/floatingPanelInterop";
 import { dockWidgetSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 import { hmrSingleton } from "@lib/utils/hmrSafe";
 
+
 import { createBackendStorage } from "../../../lib/backendStorage";
 import { pluginCatalog } from "../../../lib/plugins/pluginSystem";
 import { getBuiltinLayoutPresetsForScope, isBuiltinPreset, BUILTIN_PRESET_IDS } from "../lib/builtinPresets";
 import { getFloatingDefinitionId, createFloatingInstanceId } from "../lib/floatingPanelUtils";
 import { resolveWorkspaceDockview } from "../lib/resolveWorkspaceDockview";
+
+/** Max z-index offset allowed for floating panels before normalization kicks in. */
+const FLOAT_Z_BUDGET = Z.floatOverlay - Z.floatPanel - 1; // 99
+
+/**
+ * Normalize z-index values on floating panels so they stay within the safe
+ * range (0 .. FLOAT_Z_BUDGET). Preserves relative stacking order.
+ */
+function normalizeFloatZIndices(panels: FloatingPanelState[]): FloatingPanelState[] {
+  const maxZ = Math.max(...panels.map((p) => p.zIndex), 0);
+  if (maxZ <= FLOAT_Z_BUDGET) return panels;
+  const sorted = [...new Set(panels.map((p) => p.zIndex))].sort((a, b) => a - b);
+  const rank = new Map(sorted.map((z, i) => [z, i]));
+  return panels.map((p) => ({ ...p, zIndex: rank.get(p.zIndex)! }));
+}
 
 /**
  * Preset scope determines which dockviews a preset applies to
@@ -429,7 +446,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
           const maxZ = Math.max(...floatingPanels.map((p) => p.zIndex), 0);
 
           set({
-            floatingPanels: [
+            floatingPanels: normalizeFloatZIndices([
               ...floatingPanels,
               {
                 id: floatingId,
@@ -440,7 +457,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
                 zIndex: maxZ + 1,
                 context,
               },
-            ],
+            ]),
             focusedFloatingPanelId: floatingId,
           });
           return;
@@ -461,19 +478,21 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
               ? { ...(existing.context ?? {}), ...context }
               : existing.context;
           set({
-            floatingPanels: get().floatingPanels.map((p) =>
-              p.id === panelId
-                ? {
-                    ...p,
-                    x: nextX,
-                    y: nextY,
-                    width: nextWidth,
-                    height: nextHeight,
-                    minimized: false,
-                    zIndex: maxZ + 1,
-                    context: nextContext,
-                  }
-                : p,
+            floatingPanels: normalizeFloatZIndices(
+              get().floatingPanels.map((p) =>
+                p.id === panelId
+                  ? {
+                      ...p,
+                      x: nextX,
+                      y: nextY,
+                      width: nextWidth,
+                      height: nextHeight,
+                      minimized: false,
+                      zIndex: maxZ + 1,
+                      context: nextContext,
+                    }
+                  : p,
+              ),
             ),
             focusedFloatingPanelId: panelId,
           });
@@ -491,7 +510,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
         const maxZ = Math.max(...get().floatingPanels.map((p) => p.zIndex), 0);
 
         set({
-          floatingPanels: [
+          floatingPanels: normalizeFloatZIndices([
             ...get().floatingPanels,
             {
               id: panelId,
@@ -502,7 +521,7 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
               zIndex: maxZ + 1,
               context,
             },
-          ],
+          ]),
           focusedFloatingPanelId: panelId,
         });
       },
@@ -566,8 +585,10 @@ const createWorkspaceStore = () => create<WorkspaceState & WorkspaceActions>()(
       bringFloatingPanelToFront: (panelId) => {
         const maxZ = Math.max(...get().floatingPanels.map((p) => p.zIndex), 0);
         set({
-          floatingPanels: get().floatingPanels.map((p) =>
-            p.id === panelId ? { ...p, zIndex: maxZ + 1 } : p,
+          floatingPanels: normalizeFloatZIndices(
+            get().floatingPanels.map((p) =>
+              p.id === panelId ? { ...p, zIndex: maxZ + 1 } : p,
+            ),
           ),
           focusedFloatingPanelId: panelId,
         });
