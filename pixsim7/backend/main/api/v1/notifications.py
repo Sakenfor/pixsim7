@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
@@ -26,6 +26,17 @@ from pixsim7.backend.main.shared.schemas.user_schemas import (
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
+_CATEGORY_ID_ALIASES: Dict[str, str] = {
+    "plans": "plan",
+    "features": "feature",
+    "systems": "system",
+    "documents": "document",
+    "generations": "generation",
+    "characters": "character",
+    "agent": "agent_session",
+    "agents": "agent_session",
+    "reviews": "review_workflow",
+}
 
 # ── Models ────────────────────────────────────────────────────────
 
@@ -313,6 +324,45 @@ def _user_filter(user: User):
     )
 
 
+def _normalize_category_id(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    return _CATEGORY_ID_ALIASES.get(normalized, normalized)
+
+
+def _category_scope_expr(category_id: str):
+    """Match a category plus dotted descendants (e.g. plan + plan.*)."""
+    return or_(
+        Notification.category == category_id,
+        Notification.category.like(f"{category_id}.%"),
+    )
+
+
+def _apply_category_scope_filter(stmt, category_id: Optional[str]):
+    if not category_id:
+        return stmt
+    return stmt.where(_category_scope_expr(category_id))
+
+
+def _apply_suppressed_scope_filters(stmt, suppressed: Set[str]):
+    for category_id in sorted(suppressed):
+        stmt = stmt.where(~_category_scope_expr(category_id))
+    return stmt
+
+
+def _iter_parent_categories(category_id: str) -> List[str]:
+    """Yield dotted parents from nearest to root: plan.status -> [plan]."""
+    parts = category_id.split(".")
+    parents: List[str] = []
+    while len(parts) > 1:
+        parts = parts[:-1]
+        parents.append(".".join(parts))
+    return parents
+
+
 def _get_user_notification_prefs(user: User) -> Dict[str, NotificationCategoryPref]:
     """Extract typed notification preferences from user, falling back to empty."""
     raw_prefs = getattr(user, "preferences", None) or {}
@@ -320,14 +370,26 @@ def _get_user_notification_prefs(user: User) -> Dict[str, NotificationCategoryPr
     if not isinstance(notif_prefs, dict):
         return {}
     result: Dict[str, NotificationCategoryPref] = {}
-    for cat_id, pref_data in notif_prefs.items():
-        if isinstance(pref_data, dict):
-            result[cat_id] = NotificationCategoryPref.model_validate(pref_data)
+    for raw_cat_id, pref_data in notif_prefs.items():
+        if not isinstance(pref_data, dict):
+            continue
+        category_id = _normalize_category_id(str(raw_cat_id))
+        if not category_id:
+            continue
+        parsed = NotificationCategoryPref.model_validate(pref_data)
+        # If both alias and canonical keys exist, canonical wins.
+        if raw_cat_id == category_id or category_id not in result:
+            result[category_id] = parsed
     return result
 
 
 def _resolve_granularity(category_id: str, user_prefs: Dict[str, NotificationCategoryPref]) -> str:
     """Resolve effective granularity for a category: user pref > registry default."""
+    normalized_category_id = _normalize_category_id(category_id)
+    if not normalized_category_id:
+        return "all"
+    category_id = normalized_category_id
+
     if category_id in user_prefs:
         return user_prefs[category_id].granularity
 
@@ -347,6 +409,15 @@ def _resolve_granularity(category_id: str, user_prefs: Dict[str, NotificationCat
             parent_id = parent_spec.parent_category_id if parent_spec is not None else None
 
         return spec.default_granularity
+
+    # Fallback for unregistered dotted subcategories (e.g. "plan.created"):
+    # inherit from the closest known parent preference/spec.
+    for parent_id in _iter_parent_categories(category_id):
+        if parent_id in user_prefs:
+            return user_prefs[parent_id].granularity
+        if notification_category_registry.get_or_none(parent_id) is not None:
+            return _resolve_granularity(parent_id, user_prefs)
+
     return "all"
 
 
@@ -475,6 +546,7 @@ async def list_notifications(
     db: AsyncSession = Depends(get_database),
 ):
     """List notifications for the current user (broadcasts + targeted)."""
+    category_id = _normalize_category_id(category)
     stmt = (
         select(Notification)
         .where(_user_filter(user))
@@ -482,8 +554,8 @@ async def list_notifications(
         .offset(offset)
         .limit(limit)
     )
-    if category:
-        stmt = stmt.where(Notification.category == category)
+    if category_id:
+        stmt = _apply_category_scope_filter(stmt, category_id)
     if unread_only:
         stmt = stmt.where(Notification.read == False)  # noqa: E712
 
@@ -491,7 +563,7 @@ async def list_notifications(
     if not include_suppressed:
         suppressed = _get_suppressed_categories(user)
         if suppressed:
-            stmt = stmt.where(Notification.category.notin_(suppressed))
+            stmt = _apply_suppressed_scope_filters(stmt, suppressed)
 
     rows = list((await db.execute(stmt)).scalars().all())
 
@@ -502,19 +574,23 @@ async def list_notifications(
     actor_names = await _resolve_actor_names(db, rows)
     plan_titles = await _resolve_plan_titles(db, rows)
 
-    # Unread count (also respects suppression)
-    count_stmt = (
-        select(func.count())
-        .select_from(Notification)
+    # Unread count with the same visibility/category suppression semantics.
+    unread_stmt = (
+        select(Notification)
         .where(_user_filter(user))
         .where(Notification.read == False)  # noqa: E712
     )
+    if category_id:
+        unread_stmt = _apply_category_scope_filter(unread_stmt, category_id)
     if not include_suppressed:
         suppressed = _get_suppressed_categories(user)
         if suppressed:
-            count_stmt = count_stmt.where(Notification.category.notin_(suppressed))
+            unread_stmt = _apply_suppressed_scope_filters(unread_stmt, suppressed)
 
-    unread = (await db.execute(count_stmt)).scalar_one() or 0
+    unread_rows = list((await db.execute(unread_stmt)).scalars().all())
+    if not include_suppressed:
+        unread_rows = _apply_granularity_filter(unread_rows, user)
+    unread = len(unread_rows)
 
     return NotificationListResponse(
         notifications=[

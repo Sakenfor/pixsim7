@@ -18,10 +18,13 @@ import pytest
 
 try:
     from pixsim7.backend.main.api.v1.notifications import (
+        _normalize_category_id,
         _resolve_actor_user_id,
+        _resolve_granularity,
         _to_response,
     )
     from pixsim7.backend.main.domain.platform.notification import Notification
+    from pixsim7.backend.main.shared.schemas.user_schemas import NotificationCategoryPref
 
     IMPORTS_AVAILABLE = True
 except ImportError:
@@ -89,3 +92,15 @@ class TestNotificationRendering:
         assert _resolve_actor_user_id("user:42", None) == 42
         assert _resolve_actor_user_id("user:not-a-number", None) is None
         assert _resolve_actor_user_id("system", None) is None
+
+    def test_category_alias_normalization(self) -> None:
+        assert _normalize_category_id("plans") == "plan"
+        assert _normalize_category_id("PLANs") == "plan"
+        assert _normalize_category_id("plan.created") == "plan.created"
+
+    def test_unregistered_subcategory_inherits_parent_granularity(self) -> None:
+        prefs = {"plan": NotificationCategoryPref(granularity="status_only")}
+        assert _resolve_granularity("plan.custom_field", prefs) == "status_only"
+
+        off_prefs = {"plan": NotificationCategoryPref(granularity="off")}
+        assert _resolve_granularity("plan.custom_field", off_prefs) == "off"
