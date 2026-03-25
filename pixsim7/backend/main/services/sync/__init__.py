@@ -24,3 +24,28 @@ Shared base class:
    ``TtlSync`` — monotonic-clock TTL gating for any async sync function.
    See ``services/sync/ttl.py``.
 """
+from __future__ import annotations
+
+import logging
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
+
+
+async def run_startup_syncs(db: AsyncSession) -> None:
+    """Run all TTL-gated syncs at startup so the DB is immediately fresh.
+
+    Called once from the app lifespan after the database is ready.
+    Add new TTL sync consumers here as they are created.
+    """
+    from pixsim7.backend.main.services.testing.sync import ensure_synced
+
+    result = await ensure_synced(db)
+    if result and result.ran:
+        logger.info(
+            "startup_sync_complete",
+            sync_name="test_suites",
+            created=result.created,
+            updated=result.updated,
+        )

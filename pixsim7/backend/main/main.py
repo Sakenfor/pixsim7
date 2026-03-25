@@ -197,6 +197,12 @@ async def lifespan(app: FastAPI):
     )
     start_content_watchers()
 
+    # Run all TTL-gated syncs (test suites, etc.) so DB is fresh at startup
+    from pixsim7.backend.main.services.sync import run_startup_syncs
+    from pixsim7.backend.main.infrastructure.database.session import get_async_session
+    async with get_async_session() as db:
+        await run_startup_syncs(db)
+
     logger.info("pixsim7_ready")
 
     yield
