@@ -13,6 +13,7 @@ Usage:
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional, Type
 from uuid import UUID
 
@@ -32,7 +33,6 @@ from pixsim7.backend.main.services.ownership import (
 from .crud_registry import TemplateCRUDSpec, NestedEntitySpec, CustomAction, get_template_crud_registry
 from .crud_service import TemplateCRUDService, NestedEntityService, CRUDValidationError
 
-from pixsim7.backend.main.services.audit import emit_audit
 
 
 # =============================================================================
@@ -320,17 +320,6 @@ def _register_create_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
         )
         try:
             item = await service.create(data)
-            if spec.audit_config and spec.audit_config.enabled:
-                actor = f"user:{getattr(current_user, 'id', 0)}"
-                if hasattr(current_user, 'source'):
-                    actor = current_user.source
-                await emit_audit(
-                    db, domain=spec.audit_config.domain,
-                    entity_type=spec.audit_config.entity_type,
-                    entity_id=str(getattr(item, spec.id_field, '')),
-                    entity_label=str(getattr(item, spec.audit_config.label_field, '') or ''),
-                    action="created", actor=actor,
-                )
             return await service.transform_response(item)
         except CRUDValidationError as e:
             raise HTTPException(status_code=422, detail=e.message)
@@ -393,17 +382,6 @@ def _register_update_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
             item = await service.update(entity_id, data)
             if not item:
                 raise HTTPException(status_code=404, detail=f"{spec.kind} not found")
-            if spec.audit_config and spec.audit_config.enabled:
-                actor = f"user:{getattr(current_user, 'id', 0)}"
-                if hasattr(current_user, 'source'):
-                    actor = current_user.source
-                await emit_audit(
-                    db, domain=spec.audit_config.domain,
-                    entity_type=spec.audit_config.entity_type,
-                    entity_id=str(entity_id),
-                    entity_label=str(getattr(item, spec.audit_config.label_field, '') or ''),
-                    action="updated", actor=actor,
-                )
             return await service.transform_response(item)
         except CRUDValidationError as e:
             raise HTTPException(status_code=422, detail=e.message)
@@ -467,17 +445,6 @@ def _register_delete_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
 
         if not success:
             raise HTTPException(status_code=404, detail=f"{spec.kind} not found")
-        if spec.audit_config and spec.audit_config.enabled:
-            actor = f"user:{getattr(current_user, 'id', 0)}"
-            if hasattr(current_user, 'source'):
-                actor = current_user.source
-            await emit_audit(
-                db, domain=spec.audit_config.domain,
-                entity_type=spec.audit_config.entity_type,
-                entity_id=str(entity_id),
-                action="deleted" if hard else "deactivated",
-                actor=actor,
-            )
         return DeleteResponse(
             success=True,
             message=f"{spec.kind} {'deleted' if hard else 'deactivated'} successfully"
@@ -1018,3 +985,124 @@ def create_template_crud_router(
             }
 
     return router
+
+
+# =============================================================================
+# Meta contract endpoint generation
+# =============================================================================
+
+
+def entity_specs_to_meta_sub_endpoints(
+    *,
+    route_prefix: str = "/api/v1/game",
+    tag: str = "game_authoring",
+    kinds: Optional[List[str]] = None,
+    group_consolidation: Optional[Dict[str, str]] = None,
+) -> list:
+    """Convert registered TemplateCRUDSpecs to MetaContractEndpoint entries.
+
+    Mirrors ``spec_to_meta_sub_endpoints`` from the lightweight registry CRUD
+    module but works with the heavier ``TemplateCRUDSpec`` shape.
+
+    Args:
+        route_prefix: Base API path the entity CRUD router is mounted at.
+        tag: Parent tag applied to every generated endpoint (for focus filtering).
+        kinds: If set, only include specs whose ``kind`` is in this list.
+               ``None`` means include all registered specs.
+        group_consolidation: Maps spec domain tags (e.g. ``"npcs"``, ``"locations"``)
+               to group names (e.g. ``"characters"``, ``"worlds"``).  The group
+               name is combined with *tag* to form a sub-focus tag
+               ``{tag}:{group}`` (e.g. ``game_authoring:characters``).  Each
+               endpoint is tagged with both the parent *tag* and the sub-focus.
+               When ``None``, the spec's last tag is used as-is.
+
+    Returns:
+        List of MetaContractEndpoint instances.  Call
+        ``discovered_focus_groups()`` on the result to get the unique
+        sub-focus tags that were emitted.
+    """
+    from pixsim7.backend.main.services.meta.contract_registry import MetaContractEndpoint
+
+    consolidation = group_consolidation or {}
+    registry = get_template_crud_registry()
+    specs = registry.get_enabled_specs()
+    if kinds is not None:
+        kind_set = set(kinds)
+        specs = [s for s in specs if s.kind in kind_set]
+
+    endpoints: list = []
+    for spec in specs:
+        # Derive a readable noun from the kind, e.g. "gameLocation" -> "game location"
+        noun = re.sub(r"([a-z])([A-Z])", r"\1 \2", spec.kind).lower()
+        base = f"{route_prefix}/{spec.url_prefix}"
+
+        # Derive sub-focus group from spec tags: ["runtime", "npcs"] → "npcs"
+        # then consolidate: "npcs" → "characters" → tag "game_authoring:characters"
+        domain = spec.tags[-1] if spec.tags else spec.kind
+        group = consolidation.get(domain, domain)
+        group_tag = f"{tag}:{group}"
+        ep_tags = [tag, group_tag]
+
+        if spec.enable_list:
+            endpoints.append(MetaContractEndpoint(
+                id=f"game.{spec.kind}.list",
+                method="GET",
+                path=base,
+                summary=f"List {noun}s.",
+                tags=[*ep_tags, "read"],
+            ))
+        if spec.enable_get:
+            endpoints.append(MetaContractEndpoint(
+                id=f"game.{spec.kind}.get",
+                method="GET",
+                path=f"{base}/{{id}}",
+                summary=f"Get a single {noun} by ID.",
+                tags=[*ep_tags, "read"],
+            ))
+        if spec.enable_create:
+            endpoints.append(MetaContractEndpoint(
+                id=f"game.{spec.kind}.create",
+                method="POST",
+                path=base,
+                summary=f"Create a {noun}.",
+                tags=[*ep_tags, "write"],
+            ))
+        if spec.enable_update:
+            endpoints.append(MetaContractEndpoint(
+                id=f"game.{spec.kind}.update",
+                method="PUT",
+                path=f"{base}/{{id}}",
+                summary=f"Update a {noun}.",
+                tags=[*ep_tags, "write"],
+            ))
+        if spec.enable_delete:
+            endpoints.append(MetaContractEndpoint(
+                id=f"game.{spec.kind}.delete",
+                method="DELETE",
+                path=f"{base}/{{id}}",
+                summary=f"Delete a {noun}.",
+                tags=[*ep_tags, "write"],
+            ))
+
+        # Nested entity endpoints
+        for nested in spec.nested_entities:
+            nested_base = f"{base}/{{id}}/{nested.url_suffix}"
+            nested_noun = nested.kind
+            if nested.enable_list:
+                endpoints.append(MetaContractEndpoint(
+                    id=f"game.{spec.kind}.{nested.kind}.list",
+                    method="GET",
+                    path=nested_base,
+                    summary=f"List {nested_noun}s for a {spec.kind}.",
+                    tags=[*ep_tags, "read"],
+                ))
+            if nested.enable_create:
+                endpoints.append(MetaContractEndpoint(
+                    id=f"game.{spec.kind}.{nested.kind}.create",
+                    method="POST",
+                    path=nested_base,
+                    summary=f"Create a {nested_noun} under a {spec.kind}.",
+                    tags=[*ep_tags, "write"],
+                ))
+
+    return endpoints

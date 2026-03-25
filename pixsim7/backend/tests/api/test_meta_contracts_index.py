@@ -107,6 +107,14 @@ async def test_contracts_index_includes_endpoint_metadata() -> None:
     assert progress_endpoint.path == "/api/v1/dev/plans/progress/{plan_id}"
     assert progress_endpoint.input_schema is not None
 
+    authoring_contract = endpoints["plans.meta_authoring_contract"]
+    assert authoring_contract.method == "GET"
+    assert authoring_contract.path == "/api/v1/dev/plans/meta/authoring-contract"
+
+    create_endpoint = endpoints["plans.create"]
+    assert create_endpoint.input_schema is not None
+    assert create_endpoint.input_schema.get("x-policy-ref") == "/api/v1/dev/plans/meta/authoring-contract"
+
     sync_endpoint = endpoints["plans.sync"]
     assert sync_endpoint.availability.status == "disabled"
     assert sync_endpoint.availability.reason

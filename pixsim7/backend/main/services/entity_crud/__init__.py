@@ -35,7 +35,7 @@ from .crud_service import (
     NestedEntityService,
     CRUDValidationError,
 )
-from .crud_router import create_template_crud_router
+from .crud_router import create_template_crud_router, entity_specs_to_meta_sub_endpoints
 from .default_specs import register_default_template_specs
 
 __all__ = [
@@ -55,6 +55,7 @@ __all__ = [
     "get_template_crud_registry",
     "reset_template_crud_registry",
     "create_template_crud_router",
+    "entity_specs_to_meta_sub_endpoints",
     "register_default_template_specs",
     # ID parsers
     "parse_uuid",

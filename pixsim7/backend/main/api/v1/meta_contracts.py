@@ -715,6 +715,33 @@ class BridgeMachinesResponse(BaseModel):
     machines: List[BridgeMachineEntry]
 
 
+async def _resolve_effective_user_id_from_authorization(
+    authorization: Optional[str],
+) -> Optional[int]:
+    """Resolve effective user ID from bearer token (user or agent-on-behalf token)."""
+    if not authorization:
+        return None
+
+    try:
+        from pixsim7.backend.main.api.dependencies import (
+            _extract_bearer_token,
+            get_auth_service,
+        )
+        from pixsim7.backend.main.shared.actor import RequestPrincipal
+
+        token = _extract_bearer_token(authorization)
+        auth_service = get_auth_service()
+        payload = await auth_service.verify_token_claims(token, update_last_used=False)
+        principal = RequestPrincipal.from_jwt_payload(payload)
+        if principal.user_id is not None:
+            return int(principal.user_id)
+
+        user = await auth_service.verify_token(token)
+        return int(user.id) if user else None
+    except Exception:
+        return None
+
+
 @router.get("/agents/bridge", response_model=RemoteAgentBridgeStatus)
 async def get_bridge_status(
     authorization: Optional[str] = Header(None),
@@ -726,16 +753,7 @@ async def get_bridge_status(
     """
     from pixsim7.backend.main.services.llm.remote_cmd_bridge import remote_cmd_bridge
 
-    user_id: Optional[int] = None
-    if authorization:
-        try:
-            from pixsim7.backend.main.api.dependencies import get_auth_service, _extract_bearer_token
-            token = _extract_bearer_token(authorization)
-            auth_service = get_auth_service()
-            user = await auth_service.verify_token(token)
-            user_id = user.id if user else None
-        except Exception:
-            pass
+    user_id = await _resolve_effective_user_id_from_authorization(authorization)
 
     agents = remote_cmd_bridge.get_agents(user_id=user_id)
 
@@ -1075,18 +1093,9 @@ async def start_server_bridge(
             message=f"Bridge already running (PID: {_server_bridge_process.pid})",
         )
 
-    # Resolve user for scoping
-    from pixsim7.backend.main.api.dependencies import get_auth_service, _extract_bearer_token
-    user_id: Optional[int] = None
+    # Resolve user for scoping (supports agent tokens with on_behalf_of).
+    user_id = await _resolve_effective_user_id_from_authorization(authorization)
     bridge_token: Optional[str] = None
-    if authorization:
-        try:
-            raw_token = _extract_bearer_token(authorization)
-            auth_service = get_auth_service()
-            user = await auth_service.verify_token(raw_token)
-            user_id = user.id if user else None
-        except Exception:
-            pass
 
     # Mint a bridge token so the subprocess connects as this user
     if user_id is not None:
@@ -1117,6 +1126,12 @@ async def start_server_bridge(
     pythonpath = env.get("PYTHONPATH", "")
     if repo_root not in pythonpath:
         env["PYTHONPATH"] = repo_root + os.pathsep + pythonpath if pythonpath else repo_root
+    # Foundation for future multi-managed bridge support:
+    # isolate persisted bridge_client_id by scope instead of one global ~/.pixsim/bridge_id.
+    env.setdefault(
+        "PIXSIM_BRIDGE_ID_NAMESPACE",
+        f"user_{user_id}" if user_id is not None else "shared",
+    )
 
     try:
         _server_bridge_process = subprocess.Popen(

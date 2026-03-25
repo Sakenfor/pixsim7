@@ -60,6 +60,59 @@ class RegistryCrudSpec:
     disable_update: bool = False
 
 
+def _resolve_actor(user: Any) -> str:
+    """Derive audit actor string from a user/principal object."""
+    from pixsim7.backend.main.services.audit import resolve_actor
+    return resolve_actor(user)
+
+
+async def _registry_audit_created(
+    db: AsyncSession, spec: RegistryCrudSpec, item: Any, user: Any,
+) -> None:
+    if not (spec.audit_config and spec.audit_config.enabled):
+        return
+    from pixsim7.backend.main.services.audit import emit_audit
+    await emit_audit(
+        db, domain=spec.audit_config.domain, entity_type=spec.audit_config.entity_type,
+        entity_id=str(getattr(item, 'id', '')),
+        entity_label=str(getattr(item, spec.audit_config.label_field, '') or ''),
+        action="created", actor=_resolve_actor(user),
+    )
+    await db.commit()
+
+
+async def _registry_audit_updated(
+    db: AsyncSession, spec: RegistryCrudSpec, existing: Any, updated: Any,
+    request: BaseModel, user: Any,
+) -> None:
+    if not (spec.audit_config and spec.audit_config.enabled):
+        return
+    from pixsim7.backend.main.services.audit import emit_audit, emit_audit_batch
+    from pixsim7.backend.main.services.audit.emit import _serialize_value
+    actor = _resolve_actor(user)
+    label = str(getattr(updated, spec.audit_config.label_field, '') or '')
+    req_fields = request.model_fields_set if hasattr(request, 'model_fields_set') else set()
+    changes = []
+    for fn in req_fields:
+        ov = getattr(existing, fn, None)
+        nv = getattr(updated, fn, None)
+        if ov != nv:
+            changes.append({"field": fn, "old": _serialize_value(ov), "new": _serialize_value(nv)})
+    if changes:
+        await emit_audit_batch(
+            db, domain=spec.audit_config.domain, entity_type=spec.audit_config.entity_type,
+            entity_id=str(getattr(updated, 'id', '')), entity_label=label,
+            changes=changes, actor=actor,
+        )
+    else:
+        await emit_audit(
+            db, domain=spec.audit_config.domain, entity_type=spec.audit_config.entity_type,
+            entity_id=str(getattr(updated, 'id', '')), entity_label=label,
+            action="updated", actor=actor,
+        )
+    await db.commit()
+
+
 def mount_registry_crud(router: APIRouter, spec: RegistryCrudSpec) -> None:
     """Mount GET (list), POST (create), PATCH (update) routes on the router."""
 
@@ -109,20 +162,7 @@ def mount_registry_crud(router: APIRouter, spec: RegistryCrudSpec) -> None:
                 spec.registry.register_item(item)
             if spec.after_create:
                 await spec.after_create(item, db)
-            if spec.audit_config and spec.audit_config.enabled:
-                from pixsim7.backend.main.services.audit import emit_audit
-                actor = f"user:{getattr(current_user, 'id', 0)}"
-                if hasattr(current_user, 'source'):
-                    actor = current_user.source
-                label_field = spec.audit_config.label_field
-                await emit_audit(
-                    db, domain=spec.audit_config.domain,
-                    entity_type=spec.audit_config.entity_type,
-                    entity_id=str(getattr(item, 'id', '')),
-                    entity_label=str(getattr(item, label_field, '') or ''),
-                    action="created", actor=actor,
-                )
-                await db.commit()
+            await _registry_audit_created(db, spec, item, current_user)
             return spec.to_response(item) if spec.to_response else item
 
         # Patch the annotation so FastAPI sees the correct request model
@@ -162,20 +202,7 @@ def mount_registry_crud(router: APIRouter, spec: RegistryCrudSpec) -> None:
                 spec.registry.register(key, updated)
             if spec.after_update:
                 await spec.after_update(updated, db)
-            if spec.audit_config and spec.audit_config.enabled:
-                from pixsim7.backend.main.services.audit import emit_audit
-                actor = f"user:{getattr(current_user, 'id', 0)}"
-                if hasattr(current_user, 'source'):
-                    actor = current_user.source
-                label_field = spec.audit_config.label_field
-                await emit_audit(
-                    db, domain=spec.audit_config.domain,
-                    entity_type=spec.audit_config.entity_type,
-                    entity_id=str(item_id),
-                    entity_label=str(getattr(updated, label_field, '') or ''),
-                    action="updated", actor=actor,
-                )
-                await db.commit()
+            await _registry_audit_updated(db, spec, existing, updated, request, current_user)
             return spec.to_response(updated) if spec.to_response else updated
 
         _update_item.__annotations__["request"] = UpdateModel

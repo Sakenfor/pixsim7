@@ -45,6 +45,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel
 
 from .crud_registry import TemplateCRUDSpec, FilterOperator, NestedEntitySpec
+from pixsim7.backend.main.services.audit import emit_audit, emit_audit_batch, resolve_actor
+from pixsim7.backend.main.services.audit.emit import _serialize_value
 from pixsim7.backend.main.services.ownership import OwnershipScope, apply_ownership_filter
 
 T = TypeVar("T", bound=SQLModel)
@@ -94,6 +96,26 @@ class TemplateCRUDService(Generic[T]):
         self.user = user
         self.world_id = world_id
         self.session_id = session_id
+
+    # -- Audit helpers ----------------------------------------------------------
+
+    @property
+    def _audit_enabled(self) -> bool:
+        cfg = self.spec.audit_config
+        return bool(cfg and cfg.enabled)
+
+    def _resolve_actor(self) -> str:
+        return resolve_actor(self.user)
+
+    def _entity_label(self, entity: Any) -> str:
+        if not self.spec.audit_config:
+            return ""
+        return str(getattr(entity, self.spec.audit_config.label_field, '') or '')
+
+    def _entity_id_str(self, entity: Any) -> str:
+        return str(getattr(entity, self.spec.id_field, ''))
+
+    # -- Query helpers ---------------------------------------------------------
 
     def _apply_owner_scope(self, query: Any) -> Any:
         """Apply owner scoping if configured."""
@@ -441,6 +463,16 @@ class TemplateCRUDService(Generic[T]):
         if self.spec.after_create:
             await self.spec.after_create(self.db, entity)
 
+        # Audit
+        if self._audit_enabled:
+            cfg = self.spec.audit_config
+            await emit_audit(
+                self.db, domain=cfg.domain, entity_type=cfg.entity_type,
+                entity_id=self._entity_id_str(entity),
+                entity_label=self._entity_label(entity),
+                action="created", actor=self._resolve_actor(),
+            )
+
         return entity
 
     async def update(
@@ -492,6 +524,14 @@ class TemplateCRUDService(Generic[T]):
                 protected_fields.add(self.spec.ownership_policy.world_field)
             if self.spec.ownership_policy.session_field:
                 protected_fields.add(self.spec.ownership_policy.session_field)
+
+        # Snapshot old values for audit diff
+        old_snapshot: Dict[str, Any] = {}
+        if self._audit_enabled:
+            for field_name in data:
+                if hasattr(entity, field_name) and field_name not in protected_fields:
+                    old_snapshot[field_name] = getattr(entity, field_name)
+
         for field_name, value in data.items():
             if hasattr(entity, field_name) and field_name not in protected_fields:
                 setattr(entity, field_name, value)
@@ -506,6 +546,30 @@ class TemplateCRUDService(Generic[T]):
         # Run after_update hook
         if self.spec.after_update:
             await self.spec.after_update(self.db, entity)
+
+        # Audit — per-field diff
+        if self._audit_enabled:
+            cfg = self.spec.audit_config
+            actor = self._resolve_actor()
+            changes = [
+                {"field": fn, "old": _serialize_value(ov), "new": _serialize_value(getattr(entity, fn, None))}
+                for fn, ov in old_snapshot.items()
+                if ov != getattr(entity, fn, None)
+            ]
+            if changes:
+                await emit_audit_batch(
+                    self.db, domain=cfg.domain, entity_type=cfg.entity_type,
+                    entity_id=self._entity_id_str(entity),
+                    entity_label=self._entity_label(entity),
+                    changes=changes, actor=actor,
+                )
+            else:
+                await emit_audit(
+                    self.db, domain=cfg.domain, entity_type=cfg.entity_type,
+                    entity_id=self._entity_id_str(entity),
+                    entity_label=self._entity_label(entity),
+                    action="updated", actor=actor,
+                )
 
         return entity
 
@@ -524,13 +588,18 @@ class TemplateCRUDService(Generic[T]):
         if not entity:
             return False
 
+        # Snapshot for audit before potential hard delete
+        audit_eid = self._entity_id_str(entity) if self._audit_enabled else ""
+        audit_label = self._entity_label(entity) if self._audit_enabled else ""
+
         # Run before_delete hook
         if self.spec.before_delete:
             allow = await self.spec.before_delete(self.db, entity)
             if not allow:
                 return False
 
-        if self.spec.supports_soft_delete and not hard:
+        is_soft = self.spec.supports_soft_delete and not hard
+        if is_soft:
             # Soft delete
             if hasattr(entity, "is_active"):
                 entity.is_active = False
@@ -545,6 +614,16 @@ class TemplateCRUDService(Generic[T]):
         # Run after_delete hook
         if self.spec.after_delete:
             await self.spec.after_delete(self.db, entity_id)
+
+        # Audit
+        if self._audit_enabled:
+            cfg = self.spec.audit_config
+            await emit_audit(
+                self.db, domain=cfg.domain, entity_type=cfg.entity_type,
+                entity_id=audit_eid, entity_label=audit_label,
+                action="deactivated" if is_soft else "deleted",
+                actor=self._resolve_actor(),
+            )
 
         return True
 
