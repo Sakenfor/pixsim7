@@ -933,6 +933,15 @@ export function useQuickGenerateController() {
     const { currentInputs, currentInput, transitionInputs } = getInputState(activeOperationType);
     const dynamicParams = { ...bindings.dynamicParams, ...overrides?.paramOverrides };
 
+    // When explicitly skipping active asset fallback (e.g. virtual empty slot),
+    // also clear stale asset references from persisted settings params so
+    // buildGenerationRequest doesn't pick them up as an asset input.
+    if (overrides?.skipActiveAssetFallback) {
+      delete dynamicParams.source_asset_id;
+      delete dynamicParams.source_asset_ids;
+      delete dynamicParams.composition_assets;
+    }
+
     // Asset overrides: convert AssetModel[] to InputItems, bypassing store inputs
     let effectiveInputs: any[];
     let effectiveCurrentInput: any;
