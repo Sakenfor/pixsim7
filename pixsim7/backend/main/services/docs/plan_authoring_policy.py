@@ -8,9 +8,9 @@ and MCP contract metadata.
 from __future__ import annotations
 
 import copy
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Set
 
-PLAN_AUTHORING_CONTRACT_VERSION = "2026-03-21.1"
+PLAN_AUTHORING_CONTRACT_VERSION = "2026-03-24.1"
 PLAN_AUTHORING_CONTRACT_ENDPOINT = "/api/v1/dev/plans/meta/authoring-contract"
 
 PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
@@ -101,6 +101,22 @@ PLAN_AUTHORING_RULES: List[Dict[str, Any]] = [
             "Add code_paths to enable automatic test coverage discovery. "
             "Link specific tests via checkpoint evidence: "
             "{\"kind\": \"test_suite\", \"ref\": \"<suite_id>\"}."
+        ),
+    },
+    {
+        "id": "plans.progress.evidence.test_suite_refs_registered_for_automation",
+        "endpoint_id": "plans.progress",
+        "field": "append_evidence",
+        "level": "required",
+        "applies_to_principal_types": ["agent", "service"],
+        "description": (
+            "When appending test_suite evidence from automated principals, each "
+            "ref must exist in the test suite registry."
+        ),
+        "constraint": {"type": "evidence_test_suite_refs_exist"},
+        "message": (
+            "append_evidence test_suite refs must exist in the test registry. "
+            "Run /api/v1/dev/testing/sync first if suites are missing."
         ),
     },
 ]
@@ -194,3 +210,65 @@ def validate_plan_create_policy(payload: Any, principal: Any) -> List[str]:
 
     return violations
 
+
+def _extract_test_suite_refs_from_evidence(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+
+    out: List[str] = []
+    seen: Set[str] = set()
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "").strip()
+        ref = str(item.get("ref") or "").strip()
+        if kind != "test_suite" or not ref or ref in seen:
+            continue
+        seen.add(ref)
+        out.append(ref)
+    return out
+
+
+def validate_plan_progress_policy(
+    payload: Any,
+    principal: Any,
+    *,
+    referenced_test_suite_ids: Optional[List[str]] = None,
+    known_test_suite_ids: Optional[Set[str]] = None,
+) -> List[str]:
+    """Return policy violations for plans.progress under the current principal."""
+    principal_type = _principal_type(principal)
+    violations: List[str] = []
+
+    for rule in PLAN_AUTHORING_RULES:
+        if rule.get("endpoint_id") != "plans.progress":
+            continue
+        if rule.get("level") != "required":
+            continue
+
+        applies_to = rule.get("applies_to_principal_types") or []
+        if principal_type not in applies_to:
+            continue
+
+        field_name = str(rule.get("field") or "").strip()
+        if not field_name:
+            continue
+        value = getattr(payload, field_name, None)
+        constraint = rule.get("constraint") or {}
+        constraint_type = str(constraint.get("type") or "").strip()
+
+        if constraint_type == "evidence_test_suite_refs_exist":
+            suite_ids = (
+                list(referenced_test_suite_ids)
+                if referenced_test_suite_ids is not None
+                else _extract_test_suite_refs_from_evidence(value)
+            )
+            if not suite_ids or known_test_suite_ids is None:
+                continue
+            missing = [sid for sid in suite_ids if sid not in known_test_suite_ids]
+            if missing:
+                rule_message = str(rule.get("message") or f"{field_name} violated required policy")
+                violations.append(f"{rule_message} Missing suite ids: {missing}")
+            continue
+
+    return violations

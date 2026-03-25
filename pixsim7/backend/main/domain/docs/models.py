@@ -365,8 +365,10 @@ class PlanRequest(SQLModel, table=True):
     body: str = Field(sa_column=Column(Text, nullable=False))
     status: str = Field(default="open", max_length=32, index=True)
     dismissed: bool = Field(default=False)
+    target_bridge_id: Optional[str] = Field(default=None, max_length=120, index=True)
     target_agent_id: Optional[str] = Field(default=None, max_length=120)
     target_agent_type: Optional[str] = Field(default=None, max_length=64)
+    target_user_id: Optional[int] = Field(default=None, index=True)
     requested_by: Optional[str] = Field(default=None, max_length=120)
     requested_by_principal_type: Optional[str] = Field(default=None, max_length=16)
     requested_by_agent_id: Optional[str] = Field(default=None, max_length=120)
@@ -387,6 +389,40 @@ class PlanRequest(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow, index=True)
     updated_at: datetime = Field(default_factory=utcnow, index=True)
     resolved_at: Optional[datetime] = Field(default=None, index=True)
+
+
+class PlanReviewDelegation(SQLModel, table=True):
+    """Cross-user delegation grants for plan review routing."""
+
+    __tablename__ = "plan_review_delegations"
+    __table_args__ = (
+        Index("idx_plan_review_delegation_delegate_status", "delegate_user_id", "status"),
+        Index("idx_plan_review_delegation_grantor_status", "grantor_user_id", "status"),
+        Index("idx_plan_review_delegation_plan_scope", "plan_id"),
+        {"schema": PLAN_META_SCHEMA},
+    )
+    __audit__ = AuditMeta(
+        domain="plan",
+        entity_type="plan_review_delegation",
+        tracked_fields=("status", "expires_at", "revoked_at"),
+    )
+
+    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
+    grantor_user_id: int = Field(index=True)
+    delegate_user_id: int = Field(index=True)
+    plan_id: Optional[str] = Field(default=None, max_length=120, index=True)
+    status: str = Field(default="active", max_length=32, index=True)
+    allowed_profile_ids: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    allowed_bridge_ids: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    allowed_agent_ids: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    note: Optional[str] = Field(default=None, sa_column=Column(Text))
+    created_by_user_id: Optional[int] = Field(default=None)
+    revoked_by_user_id: Optional[int] = Field(default=None)
+    expires_at: Optional[datetime] = Field(default=None, index=True)
+    revoked_at: Optional[datetime] = Field(default=None, index=True)
+    meta: Optional[Dict] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
 
 
 class PlanReviewNode(SQLModel, table=True):

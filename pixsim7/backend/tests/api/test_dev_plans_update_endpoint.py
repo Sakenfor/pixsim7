@@ -16,6 +16,7 @@ try:
     )
     from pixsim7.backend.main.api.v1.dev_plans import router
     from pixsim7.backend.main.shared.actor import RequestPrincipal
+    from pixsim7.backend.main.services.docs.plan_write import PlanRevisionConflictError
 
     IMPORTS_AVAILABLE = True
 except ImportError:
@@ -27,7 +28,7 @@ def _app(*, authenticated: bool = True) -> "FastAPI":
     app.include_router(router, prefix="/api/v1")
 
     async def _db():
-        yield SimpleNamespace()
+        yield SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
 
     app.dependency_overrides[get_database] = _db
 
@@ -51,17 +52,22 @@ def _client(app: FastAPI):
     )
 
 
+def _update_result(*, changes: list[dict]) -> SimpleNamespace:
+    return SimpleNamespace(
+        plan_id="plan-a",
+        changes=changes,
+        revision=1,
+        commit_sha=None,
+        new_scope=None,
+    )
+
+
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
 class TestDevPlansUpdateEndpoint:
     @pytest.mark.asyncio
     async def test_update_accepts_checkpoints_target_and_patch(self):
         app = _app(authenticated=True)
-        update_result = SimpleNamespace(
-            plan_id="plan-a",
-            changes=[{"field": "checkpoints"}],
-            commit_sha=None,
-            new_scope=None,
-        )
+        update_result = _update_result(changes=[{"field": "checkpoints"}])
         mock_update = AsyncMock(return_value=update_result)
 
         payload = {
@@ -94,12 +100,7 @@ class TestDevPlansUpdateEndpoint:
     @pytest.mark.asyncio
     async def test_update_explicit_fields_override_patch_keys(self):
         app = _app(authenticated=True)
-        update_result = SimpleNamespace(
-            plan_id="plan-a",
-            changes=[{"field": "stage"}],
-            commit_sha=None,
-            new_scope=None,
-        )
+        update_result = _update_result(changes=[{"field": "stage"}])
         mock_update = AsyncMock(return_value=update_result)
 
         payload = {
@@ -114,7 +115,7 @@ class TestDevPlansUpdateEndpoint:
         assert response.status_code == 200
         args, _kwargs = mock_update.await_args
         updates = args[2]
-        assert updates["stage"] == "execution"
+        assert updates["stage"] == "implementation"
 
     @pytest.mark.asyncio
     async def test_update_requires_non_empty_payload(self):
@@ -130,9 +131,7 @@ class TestDevPlansUpdateEndpoint:
     async def test_update_commit_sha_passed_to_service(self):
         """commit_sha on update request is validated and passed as evidence_commit_sha."""
         app = _app(authenticated=True)
-        update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[{"field": "stage"}], commit_sha=None, new_scope=None,
-        )
+        update_result = _update_result(changes=[{"field": "stage"}])
         mock_update = AsyncMock(return_value=update_result)
 
         payload = {
@@ -168,9 +167,7 @@ class TestDevPlansUpdateEndpoint:
     async def test_update_without_commit_sha_backward_compatible(self):
         """Update without commit_sha still works (evidence_commit_sha=None)."""
         app = _app(authenticated=True)
-        update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[{"field": "stage"}], commit_sha=None, new_scope=None,
-        )
+        update_result = _update_result(changes=[{"field": "stage"}])
         mock_update = AsyncMock(return_value=update_result)
 
         payload = {"stage": "execution"}
@@ -187,9 +184,7 @@ class TestDevPlansUpdateEndpoint:
     async def test_update_commit_sha_not_treated_as_plan_field(self):
         """commit_sha is not passed as a plan update field."""
         app = _app(authenticated=True)
-        update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[{"field": "stage"}], commit_sha=None, new_scope=None,
-        )
+        update_result = _update_result(changes=[{"field": "stage"}])
         mock_update = AsyncMock(return_value=update_result)
 
         payload = {
@@ -211,9 +206,7 @@ class TestDevPlansUpdateEndpoint:
     async def test_update_auto_head_resolves_commit_sha(self):
         """auto_head=True resolves HEAD when commit_sha is not set."""
         app = _app(authenticated=True)
-        update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[{"field": "stage"}], commit_sha=None, new_scope=None,
-        )
+        update_result = _update_result(changes=[{"field": "stage"}])
         mock_update = AsyncMock(return_value=update_result)
 
         payload = {"stage": "implementation", "auto_head": True}
@@ -233,9 +226,7 @@ class TestDevPlansUpdateEndpoint:
     async def test_update_auto_head_does_not_override_explicit_sha(self):
         """auto_head=True does not override an explicit commit_sha."""
         app = _app(authenticated=True)
-        update_result = SimpleNamespace(
-            plan_id="plan-a", changes=[{"field": "stage"}], commit_sha=None, new_scope=None,
-        )
+        update_result = _update_result(changes=[{"field": "stage"}])
         mock_update = AsyncMock(return_value=update_result)
 
         payload = {
@@ -285,3 +276,46 @@ class TestDevPlansUpdateEndpoint:
             )
 
         assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_update_expected_revision_passed_to_service(self):
+        app = _app(authenticated=True)
+        update_result = _update_result(changes=[{"field": "status"}])
+        mock_update = AsyncMock(return_value=update_result)
+
+        payload = {
+            "status": "active",
+            "expected_revision": 7,
+        }
+
+        with patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update):
+            async with _client(app) as c:
+                response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
+
+        assert response.status_code == 200
+        args, kwargs = mock_update.await_args
+        updates = args[2]
+        assert "expected_revision" not in updates
+        assert kwargs["expected_revision"] == 7
+
+    @pytest.mark.asyncio
+    async def test_update_expected_revision_conflict_returns_409(self):
+        app = _app(authenticated=True)
+        mock_update = AsyncMock(
+            side_effect=PlanRevisionConflictError(expected_revision=4, current_revision=5)
+        )
+
+        payload = {
+            "status": "active",
+            "expected_revision": 4,
+        }
+
+        with patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=mock_update):
+            async with _client(app) as c:
+                response = await c.patch("/api/v1/dev/plans/plan-a", json=payload)
+
+        assert response.status_code == 409
+        detail = response.json()["detail"]
+        assert detail["error"] == "plan_revision_conflict"
+        assert detail["expected_revision"] == 4
+        assert detail["current_revision"] == 5

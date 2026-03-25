@@ -8,7 +8,7 @@ import re
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ── Validation helpers (used by schema validators) ───────────────
 
@@ -58,6 +58,7 @@ class PlanSummary(BaseModel):
     handoffs: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
     dependsOn: List[str] = Field(default_factory=list)
+    revision: Optional[int] = None
     reviewRoundCount: int = 0
     activeReviewRoundCount: int = 0
     children: List[PlanChildSummary] = Field(default_factory=list)
@@ -318,6 +319,7 @@ class PlanRequestEntry(BaseModel):
     body: str
     status: str
     targetMode: Optional[Literal["auto", "session", "recent_agent"]] = None
+    targetBridgeId: Optional[str] = None
     targetAgentId: Optional[str] = None
     targetAgentType: Optional[str] = None
     targetSessionId: Optional[str] = None
@@ -326,6 +328,9 @@ class PlanRequestEntry(BaseModel):
     targetMethod: Optional[str] = None
     targetModelId: Optional[str] = None
     targetProvider: Optional[str] = None
+    targetUserId: Optional[int] = None
+    reviewMode: Literal["review_only", "propose_patch", "apply_patch"] = "review_only"
+    baseRevision: Optional[int] = None
     queueIfBusy: bool = False
     autoRerouteIfBusy: bool = True
     dispatchState: Optional[Literal["assigned", "queued", "unassigned"]] = None
@@ -359,6 +364,7 @@ class PlanRequestCreateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     body: str = Field(..., min_length=1)
     target_mode: Literal["auto", "session", "recent_agent"] = Field("auto")
+    target_bridge_id: Optional[str] = Field(None, max_length=120)
     target_agent_id: Optional[str] = Field(None, max_length=120)
     target_agent_type: Optional[str] = Field(None, max_length=64)
     target_session_id: Optional[str] = Field(None, max_length=120)
@@ -367,6 +373,20 @@ class PlanRequestCreateRequest(BaseModel):
     target_method: Optional[str] = Field(None, max_length=32)
     target_model_id: Optional[str] = Field(None, max_length=120)
     target_provider: Optional[str] = Field(None, max_length=64)
+    target_user_id: Optional[int] = Field(
+        None,
+        ge=1,
+        description="Optional delegate target user ID for cross-user review routing.",
+    )
+    review_mode: Literal["review_only", "propose_patch", "apply_patch"] = Field(
+        "review_only",
+        description="Review execution mode: review_only | propose_patch | apply_patch.",
+    )
+    base_revision: Optional[int] = Field(
+        None,
+        ge=1,
+        description="Optional plan revision baseline for patch-oriented review modes.",
+    )
     queue_if_busy: bool = Field(False)
     auto_reroute_if_busy: bool = Field(True)
     meta: Optional[Dict[str, Any]] = Field(None)
@@ -381,6 +401,12 @@ class PlanRequestCreateRequest(BaseModel):
         except (TypeError, ValueError) as exc:
             raise ValueError(f"Invalid 'round_id': '{value}' (expected UUID).") from exc
         return value
+
+    @model_validator(mode="after")
+    def _validate_review_mode_base_revision(self):
+        if self.review_mode in ("propose_patch", "apply_patch") and self.base_revision is None:
+            raise ValueError("base_revision is required when review_mode is propose_patch or apply_patch.")
+        return self
 
 
 class PlanRequestUpdateRequest(BaseModel):
@@ -414,6 +440,81 @@ class PlanRequestDispatchResponse(BaseModel):
     executed: bool = False
     message: str
     durationMs: Optional[int] = None
+
+
+class PlanReviewDelegationEntry(BaseModel):
+    id: str
+    grantorUserId: int
+    delegateUserId: int
+    planId: Optional[str] = None
+    status: str
+    allowedProfileIds: List[str] = Field(default_factory=list)
+    allowedBridgeIds: List[str] = Field(default_factory=list)
+    allowedAgentIds: List[str] = Field(default_factory=list)
+    note: Optional[str] = None
+    createdByUserId: Optional[int] = None
+    revokedByUserId: Optional[int] = None
+    expiresAt: Optional[str] = None
+    revokedAt: Optional[str] = None
+    meta: Optional[Dict[str, Any]] = None
+    createdAt: str
+    updatedAt: str
+
+
+class PlanReviewDelegationListResponse(BaseModel):
+    generatedAt: str
+    asGrantor: List[PlanReviewDelegationEntry] = Field(default_factory=list)
+    asDelegate: List[PlanReviewDelegationEntry] = Field(default_factory=list)
+
+
+class PlanReviewDelegationRequestCreateRequest(BaseModel):
+    grantor_user_id: int = Field(..., ge=1, description="User who should approve this delegation request.")
+    plan_id: Optional[str] = Field(None, description="Optional plan scope. Null means any plan.")
+    allowed_profile_ids: Optional[List[str]] = Field(None)
+    allowed_bridge_ids: Optional[List[str]] = Field(None)
+    allowed_agent_ids: Optional[List[str]] = Field(None)
+    note: Optional[str] = Field(None)
+    expires_at: Optional[str] = Field(None, description="Optional ISO timestamp for automatic expiry.")
+    meta: Optional[Dict[str, Any]] = Field(None)
+
+    @field_validator("plan_id")
+    @classmethod
+    def _validate_plan_id_field(cls, value: Optional[str]):
+        if value is None:
+            return value
+        return validate_plan_id(value, field_name="plan_id")
+
+
+class PlanReviewDelegationGrantCreateRequest(BaseModel):
+    delegate_user_id: int = Field(..., ge=1, description="User receiving access to reviewer routing.")
+    plan_id: Optional[str] = Field(None, description="Optional plan scope. Null means any plan.")
+    allowed_profile_ids: Optional[List[str]] = Field(None)
+    allowed_bridge_ids: Optional[List[str]] = Field(None)
+    allowed_agent_ids: Optional[List[str]] = Field(None)
+    note: Optional[str] = Field(None)
+    expires_at: Optional[str] = Field(None, description="Optional ISO timestamp for automatic expiry.")
+    meta: Optional[Dict[str, Any]] = Field(None)
+
+    @field_validator("plan_id")
+    @classmethod
+    def _validate_plan_id_field(cls, value: Optional[str]):
+        if value is None:
+            return value
+        return validate_plan_id(value, field_name="plan_id")
+
+
+class PlanReviewDelegationApproveRequest(BaseModel):
+    allowed_profile_ids: Optional[List[str]] = Field(None)
+    allowed_bridge_ids: Optional[List[str]] = Field(None)
+    allowed_agent_ids: Optional[List[str]] = Field(None)
+    note: Optional[str] = Field(None)
+    expires_at: Optional[str] = Field(None)
+    meta: Optional[Dict[str, Any]] = Field(None)
+
+
+class PlanReviewDelegationRevokeRequest(BaseModel):
+    note: Optional[str] = Field(None)
+    meta: Optional[Dict[str, Any]] = Field(None)
 
 
 class PlanReviewDispatchTickRequest(BaseModel):
@@ -469,8 +570,10 @@ class PlanReviewPoolSession(BaseModel):
 class PlanReviewAssigneeEntry(BaseModel):
     id: str
     label: str
-    source: Literal["live", "recent"]
+    source: Literal["live", "recent", "delegated"]
     targetMode: Literal["session", "recent_agent"]
+    bridgeId: Optional[str] = None
+    targetUserId: Optional[int] = None
     targetSessionId: Optional[str] = None
     agentId: str
     agentType: Optional[str] = None

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -21,7 +22,7 @@ except ImportError:
     IMPORTS_AVAILABLE = False
 
 
-def _app(*, authenticated: bool = True) -> FastAPI:
+def _app(*, authenticated: bool = True, principal=None) -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
 
@@ -36,7 +37,8 @@ def _app(*, authenticated: bool = True) -> FastAPI:
 
         app.dependency_overrides[get_current_user] = _deny
     else:
-        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, role="user")
+        resolved_principal = principal or SimpleNamespace(id=1, role="user")
+        app.dependency_overrides[get_current_user] = lambda: resolved_principal
 
     return app
 
@@ -66,8 +68,21 @@ def _mock_db_get(existing_plan_id: str | None = None):
 
 def _make_mock_db(existing_plan_id: str | None = None):
     """Build a mock async DB session."""
+    class _ExecResult:
+        def __init__(self, value=None):
+            self._value = value
+
+        def scalar_one_or_none(self):
+            return self._value
+
+    async def _execute(*_args, **_kwargs):
+        # record_plan_revision() expects db.execute(...).scalar_one_or_none()
+        # and treats None as "no previous revision".
+        return _ExecResult(None)
+
     mock_db = AsyncMock()
     mock_db.get = AsyncMock(side_effect=_mock_db_get(existing_plan_id))
+    mock_db.execute = AsyncMock(side_effect=_execute)
     mock_db.add = MagicMock()
     mock_db.flush = AsyncMock()
     mock_db.commit = AsyncMock()
@@ -110,6 +125,75 @@ class TestDevPlansCreateEndpoint:
         assert body["documentId"] == "plan:test-plan"
         assert body["created"] is True
         assert body.get("exportError") is None
+
+    @pytest.mark.asyncio
+    async def test_agent_create_requires_checkpoints(self):
+        """Automated callers must include checkpoints per authoring policy."""
+        app = _app(
+            principal=SimpleNamespace(
+                id=0,
+                role="agent",
+                principal_type="agent",
+                source="agent:test",
+            )
+        )
+        mock_db = _make_mock_db()
+        app.dependency_overrides[get_database] = lambda: mock_db
+
+        async with _client(app) as c:
+            response = await c.post("/api/v1/dev/plans", json=VALID_PAYLOAD)
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert "policy" in json.dumps(detail).lower()
+        assert "checkpoints" in json.dumps(detail).lower()
+
+    @pytest.mark.asyncio
+    async def test_agent_create_with_checkpoints_allowed(self):
+        """Agent payload succeeds when checkpoints are present."""
+        app = _app(
+            principal=SimpleNamespace(
+                id=0,
+                role="agent",
+                principal_type="agent",
+                source="agent:test",
+            )
+        )
+        mock_db = _make_mock_db()
+        payload = {
+            **VALID_PAYLOAD,
+            "checkpoints": [{"id": "phase_1", "label": "Phase 1"}],
+        }
+
+        with (
+            patch(_PATCH_EMIT, new_callable=AsyncMock),
+            patch(_PATCH_GIT, return_value=None),
+            patch(_PATCH_SETTINGS, SimpleNamespace(plans_db_only_mode=True)),
+            patch(_PATCH_MAKE_DOC_ID, return_value="plan:test-plan"),
+        ):
+            app.dependency_overrides[get_database] = lambda: mock_db
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans", json=payload)
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["planId"] == "test-plan"
+        assert body["created"] is True
+
+    @pytest.mark.asyncio
+    async def test_authoring_contract_endpoint_exposes_rules(self):
+        """GET /meta/authoring-contract returns canonical policy metadata."""
+        app = _app()
+        async with _client(app) as c:
+            response = await c.get("/api/v1/dev/plans/meta/authoring-contract")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["endpoint"] == "/api/v1/dev/plans/meta/authoring-contract"
+        assert body["version"]
+        rule_ids = {r["id"] for r in body["rules"]}
+        assert "plans.create.checkpoints.non_empty_for_automation" in rule_ids
+        assert "plans.progress.evidence.test_suite_refs_registered_for_automation" in rule_ids
 
     @pytest.mark.asyncio
     async def test_create_success_all_fields(self):
@@ -170,6 +254,27 @@ class TestDevPlansCreateEndpoint:
         assert any("plan_type" in str(e) for e in detail)
 
     @pytest.mark.asyncio
+    async def test_list_stages_returns_canonical_taxonomy(self):
+        """Stage metadata endpoint exposes canonical stage values in order."""
+        app = _app()
+        async with _client(app) as c:
+            response = await c.get("/api/v1/dev/plans/stages")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["defaultStage"] == "proposed"
+        assert [stage["value"] for stage in body["stages"]] == [
+            "backlog",
+            "proposed",
+            "discovery",
+            "design",
+            "implementation",
+            "validation",
+            "rollout",
+            "completed",
+        ]
+
+    @pytest.mark.asyncio
     async def test_invalid_status_rejected(self):
         """Invalid status returns 422."""
         app = _app()
@@ -220,6 +325,32 @@ class TestDevPlansCreateEndpoint:
         assert response.status_code == 422
         detail = response.json()["detail"]
         assert any("visibility" in str(e) for e in detail)
+
+    @pytest.mark.asyncio
+    async def test_invalid_plan_id_slug_rejected(self):
+        """Plan IDs must be lowercase slug tokens."""
+        app = _app()
+        async with _client(app) as c:
+            response = await c.post(
+                "/api/v1/dev/plans",
+                json={**VALID_PAYLOAD, "id": "../bad-id"},
+            )
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert any("Invalid 'id'" in str(e) for e in detail)
+
+    @pytest.mark.asyncio
+    async def test_invalid_depends_on_id_rejected(self):
+        """depends_on entries must also use canonical plan ID slug format."""
+        app = _app()
+        async with _client(app) as c:
+            response = await c.post(
+                "/api/v1/dev/plans",
+                json={**VALID_PAYLOAD, "depends_on": ["good-plan", "BAD_PLAN"]},
+            )
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert any("depends_on[]" in str(e) for e in detail)
 
     # ── Duplicate ID ──────────────────────────────────────────────
 

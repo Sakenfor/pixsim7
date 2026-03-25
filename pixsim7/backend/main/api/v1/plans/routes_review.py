@@ -1,7 +1,8 @@
 """Review routes — rounds, nodes, requests, participants, assignees."""
 from __future__ import annotations
 
-from typing import Dict, List, Literal, Optional
+from datetime import datetime
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -16,6 +17,7 @@ from pixsim7.backend.main.domain.docs.models import (
     PlanReviewNode,
     PlanRequest,
     PlanReviewRound,
+    PlanReviewDelegation,
 )
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 from pixsim7.backend.main.api.v1.plans.schemas import (
@@ -25,6 +27,12 @@ from pixsim7.backend.main.api.v1.plans.schemas import (
     PlanRequestUpdateRequest,
     PlanRequestDispatchRequest,
     PlanRequestDispatchResponse,
+    PlanReviewDelegationEntry,
+    PlanReviewDelegationListResponse,
+    PlanReviewDelegationRequestCreateRequest,
+    PlanReviewDelegationGrantCreateRequest,
+    PlanReviewDelegationApproveRequest,
+    PlanReviewDelegationRevokeRequest,
     PlanReviewAssigneesResponse,
     PlanReviewAssigneeEntry,
     PlanReviewPoolSession,
@@ -50,6 +58,272 @@ from pixsim7.backend.main.api.v1.plans.schemas import (
 from pixsim7.backend.main.api.v1.plans import helpers as _dp
 
 router = APIRouter()
+
+
+_DELEGATION_TERMINAL_STATUSES = {"revoked", "cancelled"}
+
+
+def _clean_optional_id_list(values: Optional[List[str]]) -> Optional[List[str]]:
+    if values is None:
+        return None
+    out: List[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        text = str(raw or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out or None
+
+
+def _parse_optional_iso_datetime(raw_value: Optional[str], *, field_name: str) -> Optional[datetime]:
+    text = (raw_value or "").strip()
+    if not text:
+        return None
+    normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid '{field_name}' datetime '{raw_value}'. Expected ISO-8601.",
+        ) from exc
+
+
+def _delegation_to_entry(row: PlanReviewDelegation) -> PlanReviewDelegationEntry:
+    return PlanReviewDelegationEntry(
+        id=str(row.id),
+        grantorUserId=int(row.grantor_user_id),
+        delegateUserId=int(row.delegate_user_id),
+        planId=row.plan_id,
+        status=row.status,
+        allowedProfileIds=list(row.allowed_profile_ids or []),
+        allowedBridgeIds=list(row.allowed_bridge_ids or []),
+        allowedAgentIds=list(row.allowed_agent_ids or []),
+        note=row.note,
+        createdByUserId=row.created_by_user_id,
+        revokedByUserId=row.revoked_by_user_id,
+        expiresAt=row.expires_at.isoformat() if row.expires_at else None,
+        revokedAt=row.revoked_at.isoformat() if row.revoked_at else None,
+        meta=row.meta,
+        createdAt=row.created_at.isoformat() if row.created_at else "",
+        updatedAt=row.updated_at.isoformat() if row.updated_at else "",
+    )
+
+
+async def _load_review_delegation_or_404(
+    db: AsyncSession,
+    delegation_id: str,
+) -> PlanReviewDelegation:
+    delegation_uuid = _dp._parse_uuid_or_400(delegation_id, field_name="delegation_id")
+    row = (
+        await db.execute(
+            select(PlanReviewDelegation).where(PlanReviewDelegation.id == delegation_uuid)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Delegation not found: {delegation_id}")
+    return row
+
+
+@router.get("/reviews/delegations", response_model=PlanReviewDelegationListResponse)
+async def list_plan_review_delegations(
+    principal: CurrentUser,
+    status: Optional[str] = Query(
+        None,
+        description="Optional delegation status filter (pending, active, revoked, cancelled).",
+    ),
+    plan_id: Optional[str] = Query(
+        None,
+        description="Optional scoped plan filter.",
+    ),
+    db: AsyncSession = Depends(get_database),
+):
+    if plan_id is not None:
+        try:
+            _validate_plan_id(plan_id, field_name="plan_id")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    principal_user_id = _dp._principal_effective_user_id(principal)
+    if principal_user_id is None and not _dp._principal_is_admin(principal):
+        raise HTTPException(status_code=403, detail="User binding is required for delegation listing.")
+
+    stmt = select(PlanReviewDelegation).order_by(PlanReviewDelegation.updated_at.desc())
+    if not _dp._principal_is_admin(principal):
+        stmt = stmt.where(
+            or_(
+                PlanReviewDelegation.grantor_user_id == principal_user_id,
+                PlanReviewDelegation.delegate_user_id == principal_user_id,
+            )
+        )
+    if status:
+        stmt = stmt.where(PlanReviewDelegation.status == status)
+    if plan_id is not None:
+        stmt = stmt.where(PlanReviewDelegation.plan_id == plan_id)
+
+    rows = (await db.execute(stmt)).scalars().all()
+    as_grantor = [row for row in rows if row.grantor_user_id == principal_user_id]
+    as_delegate = [row for row in rows if row.delegate_user_id == principal_user_id]
+    if _dp._principal_is_admin(principal):
+        as_grantor = rows
+        as_delegate = rows
+
+    return PlanReviewDelegationListResponse(
+        generatedAt=utcnow().isoformat(),
+        asGrantor=[_delegation_to_entry(row) for row in as_grantor],
+        asDelegate=[_delegation_to_entry(row) for row in as_delegate],
+    )
+
+
+@router.post("/reviews/delegations/requests", response_model=PlanReviewDelegationEntry)
+async def create_plan_review_delegation_request(
+    payload: PlanReviewDelegationRequestCreateRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    delegate_user_id = _dp._principal_effective_user_id(principal)
+    if delegate_user_id is None:
+        raise HTTPException(status_code=403, detail="User binding is required for delegation requests.")
+    if payload.grantor_user_id == delegate_user_id:
+        raise HTTPException(status_code=400, detail="grantor_user_id must differ from current user.")
+    if payload.plan_id is not None:
+        await _dp._ensure_plan_exists(db, payload.plan_id)
+
+    now = utcnow()
+    row = PlanReviewDelegation(
+        grantor_user_id=int(payload.grantor_user_id),
+        delegate_user_id=int(delegate_user_id),
+        plan_id=payload.plan_id,
+        status="pending",
+        allowed_profile_ids=_clean_optional_id_list(payload.allowed_profile_ids),
+        allowed_bridge_ids=_clean_optional_id_list(payload.allowed_bridge_ids),
+        allowed_agent_ids=_clean_optional_id_list(payload.allowed_agent_ids),
+        note=(payload.note.strip() if isinstance(payload.note, str) and payload.note.strip() else None),
+        created_by_user_id=int(delegate_user_id),
+        expires_at=_parse_optional_iso_datetime(payload.expires_at, field_name="expires_at"),
+        meta=payload.meta,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _delegation_to_entry(row)
+
+
+@router.post("/reviews/delegations/grants", response_model=PlanReviewDelegationEntry)
+async def create_plan_review_delegation_grant(
+    payload: PlanReviewDelegationGrantCreateRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    grantor_user_id = _dp._principal_effective_user_id(principal)
+    if grantor_user_id is None:
+        raise HTTPException(status_code=403, detail="User binding is required for delegation grants.")
+    resolved_grantor_user_id = int(grantor_user_id)
+    if payload.delegate_user_id == resolved_grantor_user_id and not _dp._principal_is_admin(principal):
+        raise HTTPException(status_code=400, detail="delegate_user_id must differ from current user.")
+    if payload.plan_id is not None:
+        await _dp._ensure_plan_exists(db, payload.plan_id)
+
+    now = utcnow()
+    row = PlanReviewDelegation(
+        grantor_user_id=resolved_grantor_user_id,
+        delegate_user_id=int(payload.delegate_user_id),
+        plan_id=payload.plan_id,
+        status="active",
+        allowed_profile_ids=_clean_optional_id_list(payload.allowed_profile_ids),
+        allowed_bridge_ids=_clean_optional_id_list(payload.allowed_bridge_ids),
+        allowed_agent_ids=_clean_optional_id_list(payload.allowed_agent_ids),
+        note=(payload.note.strip() if isinstance(payload.note, str) and payload.note.strip() else None),
+        created_by_user_id=resolved_grantor_user_id,
+        expires_at=_parse_optional_iso_datetime(payload.expires_at, field_name="expires_at"),
+        meta=payload.meta,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _delegation_to_entry(row)
+
+
+@router.post("/reviews/delegations/{delegation_id}/approve", response_model=PlanReviewDelegationEntry)
+async def approve_plan_review_delegation(
+    delegation_id: str,
+    payload: PlanReviewDelegationApproveRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    row = await _load_review_delegation_or_404(db, delegation_id)
+    principal_user_id = _dp._principal_effective_user_id(principal)
+    if not _dp._principal_is_admin(principal) and principal_user_id != row.grantor_user_id:
+        raise HTTPException(status_code=403, detail="Only the grantor may approve this delegation.")
+    if row.status != "pending":
+        raise HTTPException(status_code=409, detail=f"Delegation is not pending (status={row.status}).")
+
+    if payload.allowed_profile_ids is not None:
+        row.allowed_profile_ids = _clean_optional_id_list(payload.allowed_profile_ids)
+    if payload.allowed_bridge_ids is not None:
+        row.allowed_bridge_ids = _clean_optional_id_list(payload.allowed_bridge_ids)
+    if payload.allowed_agent_ids is not None:
+        row.allowed_agent_ids = _clean_optional_id_list(payload.allowed_agent_ids)
+    if payload.expires_at is not None:
+        row.expires_at = _parse_optional_iso_datetime(payload.expires_at, field_name="expires_at")
+    if payload.note is not None:
+        row.note = payload.note.strip() or None
+    if payload.meta is not None:
+        row.meta = payload.meta
+
+    row.status = "active"
+    row.updated_at = utcnow()
+    await db.commit()
+    await db.refresh(row)
+    return _delegation_to_entry(row)
+
+
+@router.post("/reviews/delegations/{delegation_id}/revoke", response_model=PlanReviewDelegationEntry)
+async def revoke_plan_review_delegation(
+    delegation_id: str,
+    payload: PlanReviewDelegationRevokeRequest,
+    principal: CurrentUser,
+    db: AsyncSession = Depends(get_database),
+):
+    row = await _load_review_delegation_or_404(db, delegation_id)
+    principal_user_id = _dp._principal_effective_user_id(principal)
+    is_admin = _dp._principal_is_admin(principal)
+    is_grantor = principal_user_id == row.grantor_user_id
+    is_delegate = principal_user_id == row.delegate_user_id
+
+    if not (is_admin or is_grantor or is_delegate):
+        raise HTTPException(status_code=403, detail="Not allowed to revoke this delegation.")
+    if row.status in _DELEGATION_TERMINAL_STATUSES:
+        return _delegation_to_entry(row)
+    if is_delegate and not (is_admin or is_grantor) and row.status != "pending":
+        raise HTTPException(
+            status_code=403,
+            detail="Delegate may only cancel pending delegation requests.",
+        )
+
+    now = utcnow()
+    if is_delegate and not (is_admin or is_grantor):
+        row.status = "cancelled"
+    else:
+        row.status = "revoked"
+        row.revoked_by_user_id = principal_user_id
+        row.revoked_at = now
+    if payload.note is not None:
+        row.note = payload.note.strip() or None
+    if payload.meta is not None:
+        row.meta = payload.meta
+    row.updated_at = now
+
+    await db.commit()
+    await db.refresh(row)
+    return _delegation_to_entry(row)
+
 
 @router.get("/reviews/{plan_id}/requests", response_model=PlanRequestListResponse)
 async def list_plan_review_requests(
@@ -94,6 +368,11 @@ async def list_plan_review_requests(
 async def list_plan_review_assignees(
     plan_id: str,
     principal: CurrentUser,
+    target_user_id: Optional[int] = Query(
+        None,
+        ge=1,
+        description="Optional explicit target user for delegated assignee resolution.",
+    ),
     db: AsyncSession = Depends(get_database),
 ):
     try:
@@ -102,19 +381,84 @@ async def list_plan_review_assignees(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     await _dp._ensure_plan_exists(db, plan_id)
 
-    live_rows = _dp._list_live_bridge_agents(principal)
+    resolved_target_user_id, _delegation_grant_id = await _dp._resolve_request_target_user(
+        db,
+        principal=principal,
+        plan_id=plan_id,
+        requested_target_user_id=target_user_id,
+    )
+    principal_user_id = _dp._principal_effective_user_id(principal)
+    live_rows: List[Dict[str, Any]] = []
+
+    primary_rows = _dp._list_live_bridge_agents(principal, target_user_id=resolved_target_user_id)
+    for row in primary_rows:
+        row_copy = dict(row)
+        row_copy["source"] = (
+            "delegated"
+            if (
+                isinstance(resolved_target_user_id, int)
+                and isinstance(principal_user_id, int)
+                and resolved_target_user_id != principal_user_id
+                and row_copy.get("user_id") == resolved_target_user_id
+            )
+            else "live"
+        )
+        row_copy["target_user_id"] = resolved_target_user_id
+        live_rows.append(row_copy)
+
+    if target_user_id is None:
+        delegated_user_ids = await _dp._list_delegated_target_user_ids(
+            db,
+            principal=principal,
+            plan_id=plan_id,
+        )
+        existing_agents = {
+            str(row.get("bridge_id") or row.get("agent_id"))
+            for row in live_rows
+        }
+        for delegated_user_id in delegated_user_ids:
+            if isinstance(principal_user_id, int) and delegated_user_id == principal_user_id:
+                continue
+            delegated_rows = _dp._list_live_bridge_agents(
+                principal,
+                target_user_id=delegated_user_id,
+            )
+            for row in delegated_rows:
+                row_copy = dict(row)
+                row_copy["target_user_id"] = delegated_user_id
+                if row_copy.get("user_id") == delegated_user_id:
+                    row_copy["source"] = "delegated"
+                else:
+                    row_copy["source"] = "live"
+                candidate_id = str(row_copy.get("bridge_id") or row_copy.get("agent_id"))
+                if candidate_id in existing_agents:
+                    continue
+                existing_agents.add(candidate_id)
+                live_rows.append(row_copy)
+
     live_ids = {str(row.get("agent_id")) for row in live_rows}
     recent_rows = await _dp._list_recent_review_agents(db, plan_id=plan_id, limit=12)
 
     # Resolve agent IDs to profile labels for friendly display
-    profile_labels = await _dp._resolve_profile_labels(db, principal)
+    visible_user_ids = {
+        int(row.get("target_user_id"))
+        for row in live_rows
+        if isinstance(row.get("target_user_id"), int)
+    }
+    profile_labels = await _dp._resolve_profile_labels(
+        db,
+        principal,
+        visible_user_ids=visible_user_ids or None,
+    )
 
     live_entries = [
         PlanReviewAssigneeEntry(
-            id=str(row["agent_id"]),
+            id=str(row.get("bridge_id") or row["agent_id"]),
             label=profile_labels.get(str(row["agent_id"]), str(row["agent_id"])),
-            source="live",
+            source=str(row.get("source") or "live"),
             targetMode="session",
+            bridgeId=str(row.get("bridge_id")) if row.get("bridge_id") else None,
+            targetUserId=int(row.get("target_user_id")) if isinstance(row.get("target_user_id"), int) else None,
             targetSessionId=str(row["agent_id"]),
             agentId=str(row["agent_id"]),
             agentType=row.get("agent_type"),
@@ -153,6 +497,7 @@ async def list_plan_review_assignees(
                 label=profile_labels.get(agent_id, agent_id),
                 source="recent",
                 targetMode="recent_agent",
+                targetUserId=None,
                 targetSessionId=None,
                 agentId=agent_id,
                 agentType=row.get("agent_type"),
@@ -234,20 +579,40 @@ async def create_plan_review_request(
         round_uuid = _dp._parse_uuid_or_400(payload.round_id, field_name="round_id")
         await _dp._load_review_round(db, plan_id=plan_id, round_id=round_uuid)
 
+    target_user_id, delegation_grant_id = await _dp._resolve_request_target_user(
+        db,
+        principal=principal,
+        plan_id=plan_id,
+        requested_target_user_id=payload.target_user_id,
+        requested_profile_id=payload.target_profile_id,
+        requested_bridge_id=payload.target_bridge_id,
+        requested_session_id=payload.target_session_id,
+    )
+    allowed_profile_user_ids = {target_user_id} if isinstance(target_user_id, int) and target_user_id > 0 else None
+
     profile_hint = await _dp._load_target_profile_hint(
         db,
         principal=principal,
         profile_id=payload.target_profile_id,
+        allowed_user_ids=allowed_profile_user_ids,
     )
-    live_agents = _dp._list_live_bridge_agents(principal)
+    live_agents = _dp._list_live_bridge_agents(principal, target_user_id=target_user_id)
     dispatch = _dp._resolve_review_request_targeting(
         payload=payload,
         live_agents=live_agents,
         profile_hint=profile_hint,
+        target_user_id=target_user_id,
+    )
+    request_meta = _dp._merge_request_meta_with_review_config(
+        payload.meta,
+        review_mode=payload.review_mode,
+        base_revision=payload.base_revision,
     )
 
     actor_source = getattr(principal, "source", f"user:{principal.id}")
     actor_fields = _dp._principal_actor_fields(principal)
+    if delegation_grant_id:
+        dispatch["delegation_grant_id"] = delegation_grant_id
     now = utcnow()
     row = PlanRequest(
         kind=payload.kind or "review",
@@ -256,6 +621,8 @@ async def create_plan_review_request(
         title=title,
         body=body,
         status="open",
+        target_user_id=dispatch.get("target_user_id"),
+        target_bridge_id=dispatch.get("target_bridge_id"),
         target_agent_id=dispatch.get("target_agent_id"),
         target_agent_type=dispatch.get("target_agent_type"),
         requested_by=actor_source,
@@ -263,7 +630,7 @@ async def create_plan_review_request(
         requested_by_agent_id=actor_fields["agent_id"],
         requested_by_run_id=actor_fields["run_id"],
         requested_by_user_id=actor_fields["user_id"],
-        meta=_dp._merge_request_meta_with_dispatch(payload.meta, dispatch),
+        meta=_dp._merge_request_meta_with_dispatch(request_meta, dispatch),
         created_at=now,
         updated_at=now,
     )
@@ -752,7 +1119,7 @@ async def create_plan_review_node(
     await db.commit()
     return PlanReviewNodeCreateResponse(
         node=_dp._review_node_to_entry(node_row),
-        links=[_review_link_to_entry(row) for row in link_rows],
+        links=[_dp._review_link_to_entry(row) for row in link_rows],
     )
 
 
@@ -837,7 +1204,7 @@ async def get_plan_review_graph(
         planId=plan_id,
         rounds=[_dp._review_round_to_entry(row) for row in round_rows],
         nodes=[_dp._review_node_to_entry(row) for row in node_rows],
-        links=[_review_link_to_entry(row) for row in link_rows],
+        links=[_dp._review_link_to_entry(row) for row in link_rows],
         requests=[_dp._review_request_to_entry(row) for row in request_rows],
     )
 
@@ -900,4 +1267,3 @@ async def preview_plan_review_source(
         endLine=resolved_end,
         lines=rows,
     )
-

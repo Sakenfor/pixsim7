@@ -26,6 +26,7 @@ from pixsim7.backend.main.domain.docs.models import (
     PlanRegistry,
     PlanRevision,
     PlanSyncRun,
+    TestSuiteRecord,
 )
 from pixsim7.backend.main.domain.platform.agent_profile import AgentProfile
 from pixsim7.backend.main.shared.config import _resolve_repo_root, settings
@@ -41,6 +42,7 @@ from pixsim7.backend.main.services.docs.plan_write import (
     HIDDEN_STATUSES,
     PlanBundle,
     PlanNotFoundError,
+    PlanRevisionConflictError,
     PlanWriteError,
     status_to_scope,
     archive_plan,
@@ -70,6 +72,7 @@ from pixsim7.backend.main.services.docs.plan_authoring_policy import (
     PLAN_AUTHORING_CONTRACT_ENDPOINT,
     get_plan_authoring_contract,
     validate_plan_create_policy,
+    validate_plan_progress_policy,
 )
 from pixsim_logging import get_logger
 
@@ -349,6 +352,13 @@ async def get_plan_authoring_contract_endpoint(
     )
 
 
+async def _resolve_companion_docs(
+    db: "AsyncSession", *, plan_id: str, companions: list[str]
+) -> list[str]:
+    """Resolve companion doc references. Pass-through for now."""
+    return companions
+
+
 @router.post("", response_model=PlanCreateResponse)
 async def create_plan(
     payload: PlanCreateRequest,
@@ -517,6 +527,11 @@ class PlanUpdateRequest(BaseModel):
         None,
         description="Raw mutable-field patch map. Merged with explicit fields; explicit fields win.",
     )
+    expected_revision: Optional[int] = Field(
+        None,
+        ge=1,
+        description="Optional optimistic-lock revision guard. Update is rejected if current revision differs.",
+    )
     commit_sha: Optional[str] = Field(
         None,
         description="Git commit SHA associated with this update. Recorded on audit events for traceability.",
@@ -568,6 +583,7 @@ async def update_plan_endpoint(
     request_commit_sha = payload_data.pop("commit_sha", None)
     auto_head = payload_data.pop("auto_head", False)
     verify_commits_flag = payload_data.pop("verify_commits", False)
+    expected_revision = payload_data.pop("expected_revision", None)
 
     # Resolve auto_head → commit_sha
     if auto_head and request_commit_sha is None:
@@ -639,9 +655,19 @@ async def update_plan_endpoint(
         result = await update_plan(
             db, plan_id, updates, principal=principal,
             evidence_commit_sha=request_commit_sha,
+            expected_revision=expected_revision,
         )
     except PlanNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PlanRevisionConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "plan_revision_conflict",
+                "expected_revision": exc.expected_revision,
+                "current_revision": exc.current_revision,
+            },
+        ) from exc
     except PlanWriteError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except ValueError as exc:
@@ -1002,6 +1028,38 @@ async def log_plan_progress(
     checkpoint_raw = checkpoints[checkpoint_index]
     checkpoint = dict(checkpoint_raw) if isinstance(checkpoint_raw, dict) else {}
     old_checkpoint_summary = _checkpoint_progress_summary(checkpoint, payload.checkpoint_id)
+
+    referenced_test_suite_ids: list[str] = []
+    for item in payload.append_evidence or []:
+        ref = _normalize_evidence_ref(item)
+        if not ref or ref.get("kind") != "test_suite":
+            continue
+        suite_id = str(ref.get("ref") or "").strip()
+        if suite_id and suite_id not in referenced_test_suite_ids:
+            referenced_test_suite_ids.append(suite_id)
+
+    known_test_suite_ids: Optional[Set[str]] = None
+    if referenced_test_suite_ids:
+        suites_result = await db.execute(
+            select(TestSuiteRecord.id).where(TestSuiteRecord.id.in_(referenced_test_suite_ids))
+        )
+        known_test_suite_ids = set(suites_result.scalars().all())
+
+    progress_policy_violations = validate_plan_progress_policy(
+        payload,
+        principal,
+        referenced_test_suite_ids=referenced_test_suite_ids,
+        known_test_suite_ids=known_test_suite_ids,
+    )
+    if progress_policy_violations:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Plan authoring policy violation",
+                "errors": progress_policy_violations,
+                "contract": PLAN_AUTHORING_CONTRACT_ENDPOINT,
+            },
+        )
 
     points_done, points_total = _derive_checkpoint_points(checkpoint)
     if payload.points_done is not None:

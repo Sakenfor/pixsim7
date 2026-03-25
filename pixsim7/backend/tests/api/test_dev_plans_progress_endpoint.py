@@ -22,7 +22,7 @@ except ImportError:
     IMPORTS_AVAILABLE = False
 
 
-def _app(*, authenticated: bool = True) -> "FastAPI":
+def _app(*, authenticated: bool = True, principal=None) -> "FastAPI":
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
 
@@ -37,9 +37,10 @@ def _app(*, authenticated: bool = True) -> "FastAPI":
 
         app.dependency_overrides[get_current_principal] = _deny
     else:
-        app.dependency_overrides[get_current_principal] = lambda: RequestPrincipal(
+        principal_obj = principal or RequestPrincipal(
             id=123, role="user", username="user123",
         )
+        app.dependency_overrides[get_current_principal] = lambda: principal_obj
 
     return app
 
@@ -704,6 +705,95 @@ class TestDevPlansProgressEndpoint:
                 response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
 
         assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_progress_agent_test_suite_evidence_requires_registry_entry(self):
+        app = _app(
+            authenticated=True,
+            principal=RequestPrincipal(
+                id=0,
+                role="agent",
+                principal_type="agent",
+                agent_id="profile-test-agent",
+                username="agent:profile-test-agent",
+                on_behalf_of=1,
+            ),
+        )
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[{"id": "cp1", "label": "CP 1", "status": "pending"}]
+            )
+        )
+        suites_result = SimpleNamespace(
+            scalars=lambda: SimpleNamespace(all=lambda: []),
+        )
+        mock_db = SimpleNamespace(execute=AsyncMock(return_value=suites_result))
+        app.dependency_overrides[get_database] = lambda: mock_db
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "append_evidence": [{"kind": "test_suite", "ref": "missing-suite"}],
+            "note": "link tests",
+        }
+
+        with patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert detail["message"] == "Plan authoring policy violation"
+        assert detail["contract"] == "/api/v1/dev/plans/meta/authoring-contract"
+        assert "missing-suite" in detail["errors"][0]
+
+    @pytest.mark.asyncio
+    async def test_progress_agent_test_suite_evidence_accepts_registered_suite(self):
+        app = _app(
+            authenticated=True,
+            principal=RequestPrincipal(
+                id=0,
+                role="agent",
+                principal_type="agent",
+                agent_id="profile-test-agent",
+                username="agent:profile-test-agent",
+                on_behalf_of=1,
+            ),
+        )
+        bundle = SimpleNamespace(
+            plan=SimpleNamespace(
+                checkpoints=[{"id": "cp1", "label": "CP 1", "status": "pending"}]
+            )
+        )
+        update_result = SimpleNamespace(
+            plan_id="plan-a",
+            changes=[{"field": "checkpoints"}],
+            commit_sha=None,
+            new_scope=None,
+        )
+        suites_result = SimpleNamespace(
+            scalars=lambda: SimpleNamespace(all=lambda: ["suite-registered"]),
+        )
+        mock_db = SimpleNamespace(execute=AsyncMock(return_value=suites_result))
+        app.dependency_overrides[get_database] = lambda: mock_db
+
+        payload = {
+            "checkpoint_id": "cp1",
+            "append_evidence": [{"kind": "test_suite", "ref": "suite-registered"}],
+            "note": "link tests",
+        }
+
+        with (
+            patch("pixsim7.backend.main.api.v1.dev_plans.get_plan_bundle", new=AsyncMock(return_value=bundle)),
+            patch("pixsim7.backend.main.api.v1.dev_plans.update_plan", new=AsyncMock(return_value=update_result)) as mock_update,
+            patch("pixsim7.backend.main.api.v1.dev_plans._record_plan_participant_from_principal", new=AsyncMock()),
+        ):
+            async with _client(app) as c:
+                response = await c.post("/api/v1/dev/plans/progress/plan-a", json=payload)
+
+        assert response.status_code == 200
+        args, _kwargs = mock_update.await_args
+        checkpoint = args[2]["checkpoints"][0]
+        assert {"kind": "test_suite", "ref": "suite-registered"} in checkpoint["evidence"]
 
     @pytest.mark.asyncio
     async def test_progress_requires_authentication(self):

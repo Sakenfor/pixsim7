@@ -200,6 +200,15 @@ class PlanWriteError(RuntimeError):
     pass
 
 
+class PlanRevisionConflictError(ValueError):
+    def __init__(self, *, expected_revision: int, current_revision: int):
+        self.expected_revision = int(expected_revision)
+        self.current_revision = int(current_revision)
+        super().__init__(
+            f"Plan revision conflict: expected {self.expected_revision}, current {self.current_revision}"
+        )
+
+
 @dataclass
 class PlanBundle:
     """Combined view of a plan: Document (shared) + PlanRegistry (plan-specific)."""
@@ -865,6 +874,7 @@ async def update_plan(
     updates: Dict[str, Any],
     principal=None,
     evidence_commit_sha: Optional[str] = None,
+    expected_revision: Optional[int] = None,
     revision_event_type: str = "update",
     restore_from_revision: Optional[int] = None,
 ) -> PlanUpdateResult:
@@ -913,6 +923,13 @@ async def update_plan(
 
     bundle = await _ensure_bundle(db, plan_id)
     doc, plan = bundle.doc, bundle.plan
+    if isinstance(expected_revision, int):
+        current_revision = int(getattr(doc, "revision", 0) or 0)
+        if current_revision != expected_revision:
+            raise PlanRevisionConflictError(
+                expected_revision=expected_revision,
+                current_revision=current_revision,
+            )
     result = PlanUpdateResult(plan_id=plan_id)
 
     # Compute changes, route to correct table

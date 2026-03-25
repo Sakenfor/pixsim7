@@ -115,6 +115,7 @@ def _bundle_to_summary(
         handoffs=plan.handoffs or [],
         tags=doc.tags or [],
         dependsOn=plan.depends_on or [],
+        revision=doc.revision,
         reviewRoundCount=review_counts[0] if review_counts else 0,
         activeReviewRoundCount=review_counts[1] if review_counts else 0,
         children=child_entries,
@@ -341,6 +342,7 @@ _CAUSAL_REVIEW_RELATIONS: Set[str] = frozenset(
 _TERMINAL_REVIEW_REQUEST_STATUSES: Set[str] = frozenset({"fulfilled", "cancelled"})
 _REVIEW_REQUEST_TARGET_MODES: Set[str] = frozenset({"auto", "session", "recent_agent"})
 _REVIEW_REQUEST_DISPATCH_STATES: Set[str] = frozenset({"assigned", "queued", "unassigned"})
+_REVIEW_REQUEST_MODES: Set[str] = frozenset({"review_only", "propose_patch", "apply_patch"})
 _PLAN_REQUEST_KIND_ALIASES: Dict[str, str] = {
     "review": "review",
     "build": "review",
@@ -629,6 +631,39 @@ def _request_dispatch_meta(row: PlanRequest) -> Dict[str, Any]:
     return dict(raw) if isinstance(raw, dict) else {}
 
 
+def _review_request_mode_from_meta(meta: Dict[str, Any]) -> str:
+    raw_mode = meta.get("review_mode")
+    mode = str(raw_mode or "review_only").strip().lower()
+    if mode not in _REVIEW_REQUEST_MODES:
+        mode = "review_only"
+    return mode
+
+
+def _review_request_base_revision_from_meta(meta: Dict[str, Any]) -> Optional[int]:
+    raw_revision = meta.get("base_revision")
+    if isinstance(raw_revision, int) and raw_revision > 0:
+        return int(raw_revision)
+    if isinstance(raw_revision, str):
+        text = raw_revision.strip()
+        if text.isdigit():
+            parsed = int(text)
+            if parsed > 0:
+                return parsed
+    return None
+
+
+def _review_request_config_view(row: PlanRequest) -> Dict[str, Any]:
+    meta = _request_meta_dict(row)
+    mode = _review_request_mode_from_meta(meta)
+    base_revision = _review_request_base_revision_from_meta(meta)
+    if mode in ("propose_patch", "apply_patch") and base_revision is None:
+        mode = "review_only"
+    return {
+        "review_mode": mode,
+        "base_revision": base_revision,
+    }
+
+
 def _review_request_dispatch_view(row: PlanRequest) -> Dict[str, Any]:
     dispatch = _request_dispatch_meta(row)
     mode = dispatch.get("target_mode")
@@ -707,6 +742,7 @@ def _request_dispatch_payload_from_row(
     row: PlanRequest,
 ) -> PlanRequestCreateRequest:
     dispatch = _review_request_dispatch_view(row)
+    review_cfg = _review_request_config_view(row)
     return PlanRequestCreateRequest(
         round_id=str(row.round_id) if row.round_id else None,
         title=row.title,
@@ -722,6 +758,8 @@ def _request_dispatch_payload_from_row(
         target_model_id=dispatch["target_model_id"],
         target_provider=dispatch["target_provider"],
         target_user_id=dispatch["target_user_id"],
+        review_mode=review_cfg["review_mode"],
+        base_revision=review_cfg["base_revision"],
         queue_if_busy=dispatch["queue_if_busy"],
         auto_reroute_if_busy=dispatch["auto_reroute_if_busy"],
         meta=_request_meta_dict(row) or None,
@@ -760,6 +798,9 @@ def _build_review_request_prompt(
     summary_block = _truncate_prompt_block(bundle.doc.summary, 1200)
     markdown_block = _truncate_prompt_block(bundle.doc.markdown, 12000)
     request_body = _truncate_prompt_block(request_row.body, 4000)
+    review_cfg = _review_request_config_view(request_row)
+    review_mode = str(review_cfg["review_mode"])
+    base_revision = review_cfg["base_revision"]
 
     parts = [
         "You are reviewing a development plan and must produce actionable review feedback.",
@@ -771,10 +812,30 @@ def _build_review_request_prompt(
         f"Plan Stage: {bundle.plan.stage}",
         f"Round Number: {round_row.round_number}",
         f"Review Request: {request_row.title}",
+        f"Review Mode: {review_mode}",
+        f"Base Revision: {base_revision if base_revision is not None else 'not specified'}",
         "",
         "Request Instructions:",
         request_body or "(empty)",
     ]
+    if review_mode == "propose_patch":
+        parts.extend(
+            [
+                "",
+                "Mode Instructions:",
+                "- Include a concrete proposed plan patch in addition to regular review feedback.",
+                "- Do not claim that changes were applied; this mode is proposal-only.",
+            ]
+        )
+    elif review_mode == "apply_patch":
+        parts.extend(
+            [
+                "",
+                "Mode Instructions:",
+                "- Apply plan updates directly when tooling allows.",
+                "- Report what changed and include resulting revision details in the response.",
+            ]
+        )
     if summary_block:
         parts.extend(["", "Plan Summary:", summary_block])
     if compact_checkpoints:
@@ -1181,6 +1242,39 @@ _PLAN_REQUEST_KIND_EXECUTORS: Dict[str, PlanRequestKindExecutor] = {
 }
 
 
+async def _enforce_patch_review_base_revision(
+    db: AsyncSession,
+    *,
+    plan_id: str,
+    request_row: PlanRequest,
+) -> None:
+    review_cfg = _review_request_config_view(request_row)
+    review_mode = str(review_cfg.get("review_mode") or "review_only")
+    base_revision = review_cfg.get("base_revision")
+    if review_mode not in ("propose_patch", "apply_patch"):
+        return
+    if not isinstance(base_revision, int) or base_revision <= 0:
+        return
+
+    bundle = await get_plan_bundle(db, plan_id)
+    if bundle is None:
+        raise HTTPException(status_code=404, detail=f"Plan not found: {plan_id}")
+
+    current_revision = int(getattr(getattr(bundle, "doc", None), "revision", 0) or 0)
+    if current_revision == int(base_revision):
+        return
+
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "error": "plan_review_base_revision_conflict",
+            "review_mode": review_mode,
+            "expected_revision": int(base_revision),
+            "current_revision": current_revision,
+        },
+    )
+
+
 async def _dispatch_review_request_execution(
     db: AsyncSession,
     *,
@@ -1216,6 +1310,12 @@ async def _dispatch_review_request_execution(
             status_code=409,
             detail=f"Plan request '{request_row.id}' is already in_progress.",
         )
+
+    await _enforce_patch_review_base_revision(
+        db,
+        plan_id=plan_id,
+        request_row=request_row,
+    )
 
     actor_source = getattr(principal, "source", f"user:{principal.id}")
     actor_fields = _principal_actor_fields(principal)
@@ -2136,6 +2236,24 @@ def _merge_request_meta_with_dispatch(
     return merged or None
 
 
+def _merge_request_meta_with_review_config(
+    base_meta: Optional[Dict[str, Any]],
+    *,
+    review_mode: Optional[str],
+    base_revision: Optional[int],
+) -> Optional[Dict[str, Any]]:
+    merged: Dict[str, Any] = dict(base_meta) if isinstance(base_meta, dict) else {}
+    mode = str(review_mode or "review_only").strip().lower()
+    if mode not in _REVIEW_REQUEST_MODES:
+        mode = "review_only"
+    merged["review_mode"] = mode
+    if isinstance(base_revision, int) and base_revision > 0:
+        merged["base_revision"] = int(base_revision)
+    else:
+        merged.pop("base_revision", None)
+    return merged or None
+
+
 async def _list_recent_review_agents(
     db: AsyncSession,
     *,
@@ -2226,6 +2344,7 @@ async def _list_recent_review_agents(
 
 def _review_request_to_entry(row: PlanRequest) -> PlanRequestEntry:
     dispatch = _review_request_dispatch_view(row)
+    review_cfg = _review_request_config_view(row)
     return PlanRequestEntry(
         id=str(row.id),
         kind=getattr(row, "kind", "review") or "review",
@@ -2246,6 +2365,8 @@ def _review_request_to_entry(row: PlanRequest) -> PlanRequestEntry:
         targetModelId=dispatch["target_model_id"],
         targetProvider=dispatch["target_provider"],
         targetUserId=dispatch["target_user_id"],
+        reviewMode=review_cfg["review_mode"],
+        baseRevision=review_cfg["base_revision"],
         queueIfBusy=dispatch["queue_if_busy"],
         autoRerouteIfBusy=dispatch["auto_reroute_if_busy"],
         dispatchState=dispatch["dispatch_state"],
