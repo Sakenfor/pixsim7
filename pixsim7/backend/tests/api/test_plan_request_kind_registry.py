@@ -1,6 +1,17 @@
 """Tests for plan request kind normalization and executor guardrails."""
-
 from __future__ import annotations
+
+TEST_SUITE = {
+    "id": "plan-request-kind-registry",
+    "label": "Plan Request Kind Registry",
+    "kind": "unit",
+    "category": "backend/api",
+    "subcategory": "plan-reviews",
+    "covers": [
+        "pixsim7/backend/main/api/v1/plans/helpers.py",
+    ],
+    "order": 41,
+}
 
 from types import SimpleNamespace
 from uuid import uuid4

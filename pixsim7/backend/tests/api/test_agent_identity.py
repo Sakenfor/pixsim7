@@ -1,6 +1,18 @@
 """Tests for agent/service identity — token minting, RequestPrincipal, audit recording."""
-
 from __future__ import annotations
+
+TEST_SUITE = {
+    "id": "agent-identity",
+    "label": "Agent Identity & Authentication",
+    "kind": "contract",
+    "category": "backend/api",
+    "subcategory": "agent-auth",
+    "covers": [
+        "pixsim7/backend/main/api/v1/agent_tokens.py",
+        "pixsim7/backend/main/shared/auth.py",
+    ],
+    "order": 30,
+}
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch

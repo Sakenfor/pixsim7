@@ -1,6 +1,17 @@
 """API tests for POST /dev/plans create endpoint."""
-
 from __future__ import annotations
+
+TEST_SUITE = {
+    "id": "dev-plans-create",
+    "label": "Dev Plans Create Endpoint",
+    "kind": "contract",
+    "category": "backend/api",
+    "subcategory": "plan-crud",
+    "covers": [
+        "pixsim7/backend/main/api/v1/dev_plans.py",
+    ],
+    "order": 43,
+}
 
 import json
 from types import SimpleNamespace

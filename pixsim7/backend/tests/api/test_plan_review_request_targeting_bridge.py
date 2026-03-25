@@ -1,6 +1,17 @@
 """Unit tests for review-request bridge UUID targeting resolution."""
-
 from __future__ import annotations
+
+TEST_SUITE = {
+    "id": "plan-review-request-targeting",
+    "label": "Plan Review Request Bridge Targeting",
+    "kind": "unit",
+    "category": "backend/api",
+    "subcategory": "plan-reviews",
+    "covers": [
+        "pixsim7/backend/main/api/v1/plans/helpers.py",
+    ],
+    "order": 40,
+}
 
 import pytest
 

@@ -1,6 +1,18 @@
 """Tests for RemoteCommandBridge — heartbeat tracking, task lifecycle, stale cleanup."""
 from __future__ import annotations
 
+TEST_SUITE = {
+    "id": "remote-cmd-bridge",
+    "label": "Remote Command Bridge",
+    "kind": "unit",
+    "category": "backend/api",
+    "subcategory": "agent-bridge",
+    "covers": [
+        "pixsim7/backend/main/services/llm/remote_cmd_bridge.py",
+    ],
+    "order": 31,
+}
+
 import asyncio
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace

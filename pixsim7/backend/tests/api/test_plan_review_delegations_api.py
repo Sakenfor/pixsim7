@@ -1,6 +1,18 @@
 """API tests for review delegation request/approval endpoints."""
-
 from __future__ import annotations
+
+TEST_SUITE = {
+    "id": "plan-review-delegations",
+    "label": "Plan Review Delegations API",
+    "kind": "contract",
+    "category": "backend/api",
+    "subcategory": "plan-reviews",
+    "covers": [
+        "pixsim7/backend/main/api/v1/plans/routes_review.py",
+        "pixsim7/backend/main/api/v1/plans/helpers.py",
+    ],
+    "order": 44,
+}
 
 from datetime import datetime, timezone
 from types import SimpleNamespace

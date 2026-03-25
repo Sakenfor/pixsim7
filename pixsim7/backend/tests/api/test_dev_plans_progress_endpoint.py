@@ -1,6 +1,18 @@
 """API tests for /dev/plans/progress/{plan_id} checkpoint progress updates."""
-
 from __future__ import annotations
+
+TEST_SUITE = {
+    "id": "dev-plans-progress",
+    "label": "Dev Plans Progress Endpoint",
+    "kind": "contract",
+    "category": "backend/api",
+    "subcategory": "plan-progress",
+    "covers": [
+        "pixsim7/backend/main/api/v1/dev_plans.py",
+        "pixsim7/backend/main/services/docs/plan_write.py",
+    ],
+    "order": 42,
+}
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch

@@ -1,6 +1,18 @@
 """Tests for chat session tracking — list, archive, upsert."""
 from __future__ import annotations
 
+TEST_SUITE = {
+    "id": "chat-sessions-api",
+    "label": "Chat Sessions API",
+    "kind": "contract",
+    "category": "backend/api",
+    "subcategory": "chat",
+    "covers": [
+        "pixsim7/backend/main/services/meta/agent_sessions.py",
+    ],
+    "order": 32,
+}
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
