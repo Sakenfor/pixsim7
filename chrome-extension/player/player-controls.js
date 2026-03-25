@@ -397,7 +397,7 @@ import {
     playPause: { code: 'Space', ctrl: false, shift: false, alt: false, label: 'Play/Pause' },
     skipBack: { code: 'ArrowLeft', ctrl: false, shift: false, alt: false, label: 'Skip Back' },
     skipForward: { code: 'ArrowRight', ctrl: false, shift: false, alt: false, label: 'Skip Forward' },
-    capture: { code: 'KeyC', ctrl: false, shift: false, alt: false, label: 'Capture' },
+    capture: { code: 'KeyC', ctrl: false, shift: false, alt: false, label: 'Capture / Region' },
     saveAsset: { code: 'KeyS', ctrl: false, shift: false, alt: false, label: 'Save Asset' },
     regionMode: { code: 'KeyR', ctrl: false, shift: false, alt: false, label: 'Rectangle' },
     polygonMode: { code: 'KeyP', ctrl: false, shift: false, alt: false, label: 'Polygon' },
@@ -569,7 +569,15 @@ import {
     } else if (matchesHotkey(e, hotkeys.capture)) {
       if (e.ctrlKey || e.metaKey) return;
       e.preventDefault();
-      window.PXS7Player.capture?.captureAndUpload();
+      // If a region is drawn, capture it; otherwise toggle region mode
+      const hasRect = state.selectedRegion && state.selectedRegion.width > 0;
+      const hasPoly = state.polygonPoints && state.polygonPoints.length >= 3;
+      if (hasRect || hasPoly) {
+        window.PXS7Player.capture?.captureAndUpload();
+      } else {
+        window.PXS7Player.region?.setRegionType('rect');
+        window.PXS7Player.region?.toggleRegionMode();
+      }
     } else if (matchesHotkey(e, hotkeys.saveAsset)) {
       if (e.ctrlKey || e.metaKey) return;
       e.preventDefault();
