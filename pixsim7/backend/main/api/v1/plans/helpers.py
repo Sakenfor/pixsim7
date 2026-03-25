@@ -2432,13 +2432,29 @@ def _derive_checkpoint_points(checkpoint: Dict[str, Any]) -> tuple[int, Optional
     return points_done, points_total
 
 
-def _normalize_evidence_ref(item: Any) -> Optional[Dict[str, str]]:
+EVIDENCE_KINDS = (
+    "file_path",     # repo-relative source file path
+    "test_suite",    # registered test suite ID
+    "git_commit",    # commit SHA
+    "doc_ref",       # reference to a document/plan
+    "issue_link",    # external issue tracker link
+    "migration",     # database migration file
+)
+
+
+def _normalize_evidence_ref(
+    item: Any,
+    *,
+    strict: bool = True,
+) -> Optional[Dict[str, str]]:
     """Normalize an evidence item to ``{"kind": ..., "ref": ...}`` form.
 
     Accepts:
-    - ``str`` (legacy file path) → ``{"kind": "file_path", "ref": "..."}``
-    - ``{"kind": "test_suite", "ref": "suite-id"}`` → pass-through
-    - ``{"kind": "file_path", "ref": "path/to/file"}`` → pass-through
+    - ``str`` (legacy file path) -> ``{"kind": "file_path", "ref": "..."}``
+    - ``{"kind": "<kind>", "ref": "<value>"}`` -> validated pass-through
+
+    When *strict* is True (default), raises ValueError for unrecognized kinds.
+    When False, unknown kinds are passed through (for reading legacy data).
     """
     if isinstance(item, str):
         text = item.strip()
@@ -2448,6 +2464,11 @@ def _normalize_evidence_ref(item: Any) -> Optional[Dict[str, str]]:
         ref = str(item["ref"]).strip()
         if not ref:
             return None
+        if strict and kind not in EVIDENCE_KINDS:
+            raise ValueError(
+                f"Unknown evidence kind '{kind}'. "
+                f"Valid kinds: {', '.join(EVIDENCE_KINDS)}"
+            )
         return {"kind": kind, "ref": ref}
     return None
 
@@ -2466,7 +2487,7 @@ def _merge_evidence(existing: Any, appends: Optional[list]) -> List[Dict[str, st
     seen: set[str] = set()
 
     for item in (existing if isinstance(existing, list) else []):
-        ref = _normalize_evidence_ref(item)
+        ref = _normalize_evidence_ref(item, strict=False)
         if ref is None:
             continue
         key = _evidence_key(ref)
@@ -2476,7 +2497,7 @@ def _merge_evidence(existing: Any, appends: Optional[list]) -> List[Dict[str, st
         out.append(ref)
 
     for item in appends or []:
-        ref = _normalize_evidence_ref(item)
+        ref = _normalize_evidence_ref(item)  # strict=True for new evidence
         if ref is None:
             continue
         key = _evidence_key(ref)

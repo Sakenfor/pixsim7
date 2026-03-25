@@ -28,6 +28,8 @@ async def emit_audit(
     old_value: str | None = None,
     new_value: str | None = None,
     actor: str = "system",
+    run_id: str | None = None,
+    plan_id: str | None = None,
     commit_sha: str | None = None,
     extra: dict | None = None,
 ) -> EntityAudit:
@@ -42,6 +44,8 @@ async def emit_audit(
         old_value=old_value,
         new_value=new_value,
         actor=actor,
+        run_id=run_id,
+        plan_id=plan_id,
         commit_sha=commit_sha,
         extra=extra,
         timestamp=utcnow(),
@@ -59,6 +63,8 @@ async def emit_audit_batch(
     changes: List[Dict[str, Any]],
     entity_label: str | None = None,
     actor: str = "system",
+    run_id: str | None = None,
+    plan_id: str | None = None,
     commit_sha: str | None = None,
     extra: dict | None = None,
 ) -> List[EntityAudit]:
@@ -86,6 +92,8 @@ async def emit_audit_batch(
             old_value=change.get("old"),
             new_value=change.get("new"),
             actor=actor,
+            run_id=run_id,
+            plan_id=plan_id,
             commit_sha=commit_sha,
             extra=extra,
             timestamp=now,
@@ -102,6 +110,11 @@ def resolve_actor(user: Any) -> str:
     if user:
         return f"user:{getattr(user, 'id', 0)}"
     return "system"
+
+
+def resolve_run_id(principal: Any) -> str | None:
+    """Extract run_id from a principal if available."""
+    return getattr(principal, 'run_id', None) or None
 
 
 def _serialize_value(value: Any) -> str | None:

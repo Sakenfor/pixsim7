@@ -646,6 +646,21 @@ async def update_plan_endpoint(
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
+    # Validate depends_on plan IDs exist
+    depends_on = updates.get("depends_on")
+    if isinstance(depends_on, list) and depends_on:
+        from pixsim7.backend.main.domain.docs.models import PlanRegistry
+        existing_ids_result = await db.execute(
+            select(PlanRegistry.id).where(PlanRegistry.id.in_(depends_on))
+        )
+        existing_ids = set(existing_ids_result.scalars().all())
+        missing = [d for d in depends_on if d not in existing_ids]
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"depends_on references non-existent plan(s): {', '.join(missing)}",
+            )
+
     # Auto-ingest companion file paths into docs DB
     if "companions" in updates and isinstance(updates["companions"], list):
         updates["companions"] = await _resolve_companion_docs(
@@ -1032,7 +1047,10 @@ async def log_plan_progress(
 
     referenced_test_suite_ids: list[str] = []
     for item in payload.append_evidence or []:
-        ref = _normalize_evidence_ref(item)
+        try:
+            ref = _normalize_evidence_ref(item)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not ref or ref.get("kind") != "test_suite":
             continue
         suite_id = str(ref.get("ref") or "").strip()

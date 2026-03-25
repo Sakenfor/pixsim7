@@ -33,6 +33,8 @@ class EntityAudit(SQLModel, table=True):
     old_value: Optional[str] = Field(default=None, sa_column=Column(Text))
     new_value: Optional[str] = Field(default=None, sa_column=Column(Text))
     actor: str = Field(max_length=120)  # user:1, agent:codex-cli, system
+    run_id: Optional[str] = Field(default=None, max_length=120, index=True)
+    plan_id: Optional[str] = Field(default=None, max_length=120, index=True)
     commit_sha: Optional[str] = Field(default=None, max_length=64)
     extra: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column("metadata", JSON))
     timestamp: datetime = Field(default_factory=utcnow, index=True)
