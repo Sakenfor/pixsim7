@@ -35,6 +35,7 @@ import {
   type AnyElement,
   type RegionElement,
   type PolygonElement,
+  type ViewState,
 } from '@/components/interactive-surface';
 import {
   hitTestCurve,
@@ -60,6 +61,10 @@ interface RegionAnnotationOverlayProps {
   onRegionCreated?: (region: AssetRegion) => void;
   onRegionSelected?: (regionId: string | null) => void;
   useRegionStore?: AssetRegionStoreHook;
+  /** Initial viewport state — lets the overlay start at the host's zoom/pan */
+  viewState?: Partial<ViewState>;
+  /** Called when the overlay changes zoom/pan */
+  onViewStateChange?: (view: { zoom: number; pan: { x: number; y: number } }) => void;
 }
 
 // ============================================================================
@@ -74,6 +79,16 @@ const REGION_COLORS = [
   { stroke: '#8b5cf6', fill: 'rgba(139, 92, 246, 0.15)' },
   { stroke: '#ec4899', fill: 'rgba(236, 72, 153, 0.15)' },
 ];
+
+/** Undo snapshot for a region's geometric state */
+interface RegionSnapshot {
+  points?: NormalizedPoint[];
+  pointWidths?: number[];
+  bounds?: Rect;
+}
+
+/** Maximum undo entries per edit session */
+const MAX_UNDO = 50;
 
 /** Threshold for polygon auto-close detection (normalized, 3% of viewport) */
 const CLOSE_THRESHOLD = 0.03;
@@ -103,6 +118,8 @@ export function RegionAnnotationOverlay({
   onRegionCreated,
   onRegionSelected,
   useRegionStore: regionStore,
+  viewState: initialViewState,
+  onViewStateChange,
 }: RegionAnnotationOverlayProps) {
   void _settings; // Reserved for future use
   const useRegionStore = regionStore ?? useAssetRegionStore;
@@ -118,6 +135,7 @@ export function RegionAnnotationOverlay({
   const addRegion = useRegionStore((s) => s.addRegion);
   const updateRegion = useRegionStore((s) => s.updateRegion);
   const selectRegion = useRegionStore((s) => s.selectRegion);
+  const setDrawingMode = useRegionStore((s) => s.setDrawingMode);
   const getRegion = useRegionStore((s) => s.getRegion);
 
   // Local drawing state
@@ -140,6 +158,9 @@ export function RegionAnnotationOverlay({
   const [handleDragStartBounds, setHandleDragStartBounds] = useState<Rect | null>(null);
   const [hoveredHandleIndex, setHoveredHandleIndex] = useState(-1);
 
+  // Select-mode hover state (before entering edit mode)
+  const [selectHoverCursor, setSelectHoverCursor] = useState<string | null>(null);
+
   // Region dragging (both types)
   const [isDraggingRegion, setIsDraggingRegion] = useState(false);
   const [regionDragStart, setRegionDragStart] = useState<NormalizedPoint | null>(null);
@@ -148,6 +169,87 @@ export function RegionAnnotationOverlay({
 
   // Modifier key tracking (for vertex removal hint)
   const [modifierHeld, setModifierHeld] = useState(false);
+
+  // Undo stack for edit-mode mutations (region snapshots)
+  const undoStackRef = useRef<RegionSnapshot[]>([]);
+
+  /** Push the current state of the editing region onto the undo stack */
+  const pushUndo = useCallback((regionId: string) => {
+    const region = regions.find((r) => r.id === regionId);
+    if (!region) return;
+    const snapshot: RegionSnapshot = {};
+    if (region.points) snapshot.points = [...region.points];
+    if (region.pointWidths) snapshot.pointWidths = [...region.pointWidths];
+    if (region.bounds) snapshot.bounds = { ...region.bounds };
+    const stack = undoStackRef.current;
+    stack.push(snapshot);
+    if (stack.length > MAX_UNDO) stack.splice(0, stack.length - MAX_UNDO);
+  }, [regions]);
+
+  /** Pop and restore the last snapshot */
+  const performUndo = useCallback(() => {
+    const editId = editingPolygonId ?? editingRectId;
+    if (!editId) return;
+    const snapshot = undoStackRef.current.pop();
+    if (!snapshot) return;
+    const updates: Partial<AssetRegion> = {};
+    if (snapshot.points) updates.points = snapshot.points;
+    if (snapshot.pointWidths) updates.pointWidths = snapshot.pointWidths;
+    if (snapshot.bounds) updates.bounds = snapshot.bounds;
+    updateRegion(asset.id, editId, updates);
+  }, [editingPolygonId, editingRectId, updateRegion, asset.id]);
+
+  /**
+   * Finalize the in-progress polygon/curve without switching away from the
+   * current drawing mode.  Called on Enter / Escape so the user can finish
+   * one shape and immediately start the next.
+   *
+   * @param switchToSelect  When true (double-click path), also switches mode
+   *                        to 'select'.
+   */
+  const finalizeInProgressShape = useCallback(
+    (switchToSelect = false) => {
+      if (!isActiveLayerEditable) return;
+      const targetLayerId = activeLayerId ?? ensureDefaultLayer(asset.id);
+      const colorIndex = regions.length % REGION_COLORS.length;
+      const colors = REGION_COLORS[colorIndex];
+
+      if (drawingMode === 'polygon' && polygonPoints.length >= 3) {
+        const regionId = addRegion(asset.id, {
+          layerId: targetLayerId,
+          type: 'polygon',
+          points: polygonPoints,
+          label: `Region ${regions.length + 1}`,
+          style: { strokeColor: colors.stroke, fillColor: colors.fill },
+        });
+        selectRegion(regionId);
+        const region = getRegion(asset.id, regionId);
+        if (region) onRegionCreated?.(region);
+      } else if (drawingMode === 'curve' && polygonPoints.length >= 2) {
+        const regionId = addRegion(asset.id, {
+          layerId: targetLayerId,
+          type: 'curve',
+          points: polygonPoints,
+          label: `Curve ${regions.length + 1}`,
+          style: { strokeColor: colors.stroke, strokeWidth: 3 },
+        });
+        selectRegion(regionId);
+        const region = getRegion(asset.id, regionId);
+        if (region) onRegionCreated?.(region);
+      } else {
+        // Not enough points — just discard
+      }
+
+      setPolygonPoints([]);
+      setCursorPosition(null);
+      if (switchToSelect) setDrawingMode('select');
+    },
+    [
+      activeLayerId, addRegion, asset.id, drawingMode, ensureDefaultLayer,
+      getRegion, isActiveLayerEditable, onRegionCreated, polygonPoints,
+      regions, selectRegion, setDrawingMode,
+    ],
+  );
 
   // Derived
   const editingRegionId = editingPolygonId ?? editingRectId;
@@ -169,7 +271,15 @@ export function RegionAnnotationOverlay({
     setMode,
   } = useInteractionLayer({
     initialMode: drawingMode === 'select' ? 'view' : 'region',
+    initialViewState,
   });
+
+  // Sync zoom/pan changes back to host
+  const currentZoom = state.view.zoom;
+  const currentPan = state.view.pan;
+  useEffect(() => {
+    onViewStateChange?.({ zoom: currentZoom, pan: currentPan });
+  }, [currentZoom, currentPan, onViewStateChange]);
 
   // ============================================================================
   // Effects
@@ -345,6 +455,8 @@ export function RegionAnnotationOverlay({
     setRegionDragStart(null);
     setRegionDragOriginalBounds(null);
     setRegionDragOriginalPoints(null);
+    setSelectHoverCursor(null);
+    undoStackRef.current = [];
   }, []);
 
   // Exit edit mode when drawing mode changes away from select
@@ -373,10 +485,26 @@ export function RegionAnnotationOverlay({
     }
   }, [editingPolygonId, editingRectId, regions, isRegionLayerLocked, exitEditMode]);
 
-  // Modifier key tracking
+  // Modifier key tracking + undo shortcut + shape finalization
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.altKey || e.ctrlKey) setModifierHeld(true);
+
+      // Ctrl+Z / Cmd+Z -> undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        if (editingPolygonId || editingRectId) {
+          e.preventDefault();
+          performUndo();
+        }
+      }
+
+      // Enter / Escape -> finalize in-progress shape (stay in draw mode)
+      if (e.key === 'Enter' || e.key === 'Escape') {
+        if (polygonPoints.length > 0 && (drawingMode === 'polygon' || drawingMode === 'curve')) {
+          e.preventDefault();
+          finalizeInProgressShape(false);
+        }
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (!e.altKey && !e.ctrlKey) setModifierHeld(false);
@@ -387,7 +515,7 @@ export function RegionAnnotationOverlay({
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, []);
+  }, [drawingMode, editingPolygonId, editingRectId, finalizeInProgressShape, performUndo, polygonPoints.length]);
 
   // ============================================================================
   // Drawing & Editing Handlers
@@ -400,8 +528,18 @@ export function RegionAnnotationOverlay({
     return region?.points ?? null;
   }, [editingPolygonId, regions]);
 
+  // Track whether a middle-click pan is in progress (forwarded to baseHandlers)
+  const isPanningRef = useRef(false);
+
   const handlePointerDown = useCallback(
     (event: SurfacePointerEvent) => {
+      // Middle-click → delegate to base handler for pan
+      if (event.nativeEvent.button === 1) {
+        isPanningRef.current = true;
+        baseHandlers.onPointerDown?.(event);
+        return;
+      }
+
       if (!event.withinBounds) return;
       const isRightClick = event.nativeEvent.button === 2;
 
@@ -416,6 +554,7 @@ export function RegionAnnotationOverlay({
           // Check handle hit
           const handleIdx = findRectHandle(event.normalized, editingRegion.bounds, RECT_HANDLE_THRESHOLD);
           if (handleIdx >= 0 && !isRightClick) {
+            pushUndo(editingRectId);
             setDraggingHandleIndex(handleIdx);
             setHandleDragStartBounds({ ...editingRegion.bounds });
             return;
@@ -427,6 +566,7 @@ export function RegionAnnotationOverlay({
             event.normalized.y >= y && event.normalized.y <= y + height
           ) {
             if (!isRightClick) {
+              pushUndo(editingRectId);
               setIsDraggingRegion(true);
               setRegionDragStart(event.normalized);
               setRegionDragOriginalBounds({ ...editingRegion.bounds });
@@ -456,6 +596,7 @@ export function RegionAnnotationOverlay({
           if (hit.vertexIndex >= 0 && (isRightClick || modifierHeld)) {
             const result = removeCurveVertex(points, hit.vertexIndex, closed, editingRegion?.pointWidths);
             if (result) {
+              pushUndo(editingPolygonId);
               updateRegion(asset.id, editingPolygonId, { points: result.points, pointWidths: result.pointWidths });
               setHoveredVertexIndex(-1);
             }
@@ -464,6 +605,7 @@ export function RegionAnnotationOverlay({
 
           // Vertex drag
           if (hit.vertexIndex >= 0 && !isRightClick) {
+            pushUndo(editingPolygonId);
             setDraggingVertexIndex(hit.vertexIndex);
             setVertexDragStartPoints([...points]);
             return;
@@ -473,9 +615,9 @@ export function RegionAnnotationOverlay({
           if (hit.edgeIndex >= 0 && !isRightClick) {
             const result = insertCurveVertex(points, event.normalized, closed, editingRegion?.pointWidths);
             if (result) {
+              pushUndo(editingPolygonId);
               updateRegion(asset.id, editingPolygonId, { points: result.points, pointWidths: result.pointWidths });
-              const insertedIndex = hit.edgeIndex + 1;
-              setDraggingVertexIndex(insertedIndex);
+              setDraggingVertexIndex(result.insertedIndex ?? hit.edgeIndex + 1);
               setVertexDragStartPoints([...result.points]);
               setHoveredEdgeIndex(-1);
             }
@@ -487,6 +629,7 @@ export function RegionAnnotationOverlay({
             ? pointNearPath(event.normalized, points, CURVE_HIT.PROXIMITY)
             : hit.isInside;
           if (shouldDrag && !isRightClick) {
+            pushUndo(editingPolygonId);
             setIsDraggingRegion(true);
             setRegionDragStart(event.normalized);
             setRegionDragOriginalPoints([...points]);
@@ -500,6 +643,61 @@ export function RegionAnnotationOverlay({
 
       // ---- Select mode ----
       if (drawingMode === 'select') {
+        // Direct vertex click: enter edit mode and start vertex drag immediately
+        if (!isRightClick) {
+          for (const region of interactiveRegions) {
+            if (isRegionLayerLocked(region)) continue;
+            if ((region.type === 'polygon' || region.type === 'curve') && region.points) {
+              const isCurve = region.type === 'curve';
+              const hit = hitTestCurve(event.normalized, region.points, !isCurve);
+              if (hit.vertexIndex >= 0) {
+                selectRegion(region.id);
+                onRegionSelected?.(region.id);
+                setEditingPolygonId(region.id);
+                if (isCurve && !region.pointWidths) {
+                  updateRegion(asset.id, region.id, {
+                    pointWidths: initPointWidths(region.points.length, region.style?.strokeWidth ?? 3),
+                  });
+                }
+                pushUndo(region.id);
+                setDraggingVertexIndex(hit.vertexIndex);
+                setVertexDragStartPoints([...region.points]);
+                return;
+              }
+              if (hit.edgeIndex >= 0) {
+                selectRegion(region.id);
+                onRegionSelected?.(region.id);
+                setEditingPolygonId(region.id);
+                if (isCurve && !region.pointWidths) {
+                  updateRegion(asset.id, region.id, {
+                    pointWidths: initPointWidths(region.points.length, region.style?.strokeWidth ?? 3),
+                  });
+                }
+                const result = insertCurveVertex(region.points, event.normalized, !isCurve, region.pointWidths);
+                if (result) {
+                  pushUndo(region.id);
+                  updateRegion(asset.id, region.id, { points: result.points, pointWidths: result.pointWidths });
+                  setDraggingVertexIndex(result.insertedIndex ?? hit.edgeIndex + 1);
+                  setVertexDragStartPoints([...result.points]);
+                  setHoveredEdgeIndex(-1);
+                }
+                return;
+              }
+            } else if (region.type === 'rect' && region.bounds) {
+              const handleIdx = findRectHandle(event.normalized, region.bounds, RECT_HANDLE_THRESHOLD);
+              if (handleIdx >= 0) {
+                selectRegion(region.id);
+                onRegionSelected?.(region.id);
+                setEditingRectId(region.id);
+                pushUndo(region.id);
+                setDraggingHandleIndex(handleIdx);
+                setHandleDragStartBounds({ ...region.bounds });
+                return;
+              }
+            }
+          }
+        }
+
         const clickedRegion = findRegionAtPoint(interactiveRegions, event.normalized);
         if (clickedRegion && !isRightClick) {
           selectRegion(clickedRegion.id);
@@ -508,7 +706,7 @@ export function RegionAnnotationOverlay({
           setRegionDragStart(event.normalized);
           if (clickedRegion.type === 'rect' && clickedRegion.bounds) {
             setRegionDragOriginalBounds({ ...clickedRegion.bounds });
-          } else if (clickedRegion.type === 'polygon' && clickedRegion.points) {
+          } else if ((clickedRegion.type === 'polygon' || clickedRegion.type === 'curve') && clickedRegion.points) {
             setRegionDragOriginalPoints([...clickedRegion.points]);
           }
         } else if (!isRightClick) {
@@ -589,6 +787,7 @@ export function RegionAnnotationOverlay({
             selectRegion(regionId);
             setPolygonPoints([]);
             setCursorPosition(null);
+            setDrawingMode('select');
             const region = getRegion(asset.id, regionId);
             if (region) onRegionCreated?.(region);
             return;
@@ -601,6 +800,7 @@ export function RegionAnnotationOverlay({
       activeLayerId,
       addRegion,
       asset.id,
+      baseHandlers,
       drawingMode,
       editingIsCurve,
       editingPolygonId,
@@ -616,8 +816,10 @@ export function RegionAnnotationOverlay({
       onRegionCreated,
       onRegionSelected,
       polygonPoints,
+      pushUndo,
       regions,
       selectRegion,
+      setDrawingMode,
       selectedRegionId,
       updateRegion,
     ]
@@ -625,6 +827,12 @@ export function RegionAnnotationOverlay({
 
   const handlePointerMove = useCallback(
     (event: SurfacePointerEvent) => {
+      // Middle-click pan — delegate to base handler
+      if (isPanningRef.current) {
+        baseHandlers.onPointerMove?.(event);
+        return;
+      }
+
       // 1. Track cursor for polygon/curve preview line
       if ((drawingMode === 'polygon' || drawingMode === 'curve') && polygonPoints.length > 0) {
         setCursorPosition(event.normalized);
@@ -707,7 +915,30 @@ export function RegionAnnotationOverlay({
         return;
       }
 
-      // 8. Rect drawing (existing)
+      // 8. Select mode hover — cursor hints over vertices/edges/regions
+      if (drawingMode === 'select' && !editingPolygonId && !editingRectId) {
+        let nextCursor: string | null = null;
+        for (const region of interactiveRegions) {
+          if (isRegionLayerLocked(region)) continue;
+          if ((region.type === 'polygon' || region.type === 'curve') && region.points) {
+            const hit = hitTestCurve(event.normalized, region.points, region.type !== 'curve');
+            if (hit.vertexIndex >= 0) { nextCursor = 'pointer'; break; }
+            if (hit.edgeIndex >= 0) { nextCursor = 'copy'; break; }
+          } else if (region.type === 'rect' && region.bounds) {
+            const handleIdx = findRectHandle(event.normalized, region.bounds, RECT_HANDLE_THRESHOLD);
+            if (handleIdx >= 0) { nextCursor = HANDLE_CURSORS[handleIdx] ?? 'pointer'; break; }
+          }
+        }
+        if (!nextCursor) {
+          // Check if hovering over any region body
+          const hovered = findRegionAtPoint(interactiveRegions, event.normalized);
+          if (hovered) nextCursor = 'move';
+        }
+        if (nextCursor !== selectHoverCursor) setSelectHoverCursor(nextCursor);
+        return;
+      }
+
+      // 9. Rect drawing (existing)
       if (!isDrawing || !drawStart || drawingMode !== 'rect') return;
 
       const x = Math.min(drawStart.x, event.normalized.x);
@@ -718,6 +949,7 @@ export function RegionAnnotationOverlay({
       setCurrentRect({ x, y, width, height });
     },
     [
+      baseHandlers,
       isDrawing,
       drawStart,
       drawingMode,
@@ -741,13 +973,22 @@ export function RegionAnnotationOverlay({
       selectedRegionId,
       handleDragStartBounds,
       regions,
+      interactiveRegions,
       isRegionLayerLocked,
+      selectHoverCursor,
     ]
   );
 
   const handlePointerUp = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     (_event: SurfacePointerEvent) => {
+      // End middle-click pan
+      if (isPanningRef.current) {
+        isPanningRef.current = false;
+        baseHandlers.onPointerUp?.(_event);
+        return;
+      }
+
       // End handle drag
       if (draggingHandleIndex >= 0) {
         setDraggingHandleIndex(-1);
@@ -816,6 +1057,7 @@ export function RegionAnnotationOverlay({
       activeLayerId,
       addRegion,
       asset.id,
+      baseHandlers,
       currentRect,
       draggingHandleIndex,
       draggingVertexIndex,
@@ -834,54 +1076,12 @@ export function RegionAnnotationOverlay({
 
   const handleDoubleClick = useCallback(
     (event: SurfacePointerEvent) => {
-      const targetLayerId = activeLayerId ?? ensureDefaultLayer(asset.id);
-
-      // Complete polygon on double-click when drawing
-      if (drawingMode === 'polygon' && polygonPoints.length >= 3 && isActiveLayerEditable) {
-        const colorIndex = regions.length % REGION_COLORS.length;
-        const colors = REGION_COLORS[colorIndex];
-
-        const regionId = addRegion(asset.id, {
-          layerId: targetLayerId,
-          type: 'polygon',
-          points: polygonPoints,
-          label: `Region ${regions.length + 1}`,
-          style: {
-            strokeColor: colors.stroke,
-            fillColor: colors.fill,
-          },
-        });
-
-        selectRegion(regionId);
-        setPolygonPoints([]);
-        setCursorPosition(null);
-        const region = getRegion(asset.id, regionId);
-        if (region) {
-          onRegionCreated?.(region);
-        }
-        return;
-      }
-
-      // Complete curve on double-click (open path, no fill)
-      if (drawingMode === 'curve' && polygonPoints.length >= 2 && isActiveLayerEditable) {
-        const colorIndex = regions.length % REGION_COLORS.length;
-        const colors = REGION_COLORS[colorIndex];
-
-        const regionId = addRegion(asset.id, {
-          layerId: targetLayerId,
-          type: 'curve',
-          points: polygonPoints,
-          label: `Curve ${regions.length + 1}`,
-          style: { strokeColor: colors.stroke, strokeWidth: 3 },
-        });
-
-        selectRegion(regionId);
-        setPolygonPoints([]);
-        setCursorPosition(null);
-        const region = getRegion(asset.id, regionId);
-        if (region) {
-          onRegionCreated?.(region);
-        }
+      // Complete polygon / curve on double-click → finalize and switch to select
+      if (
+        (drawingMode === 'polygon' && polygonPoints.length >= 3) ||
+        (drawingMode === 'curve' && polygonPoints.length >= 2)
+      ) {
+        finalizeInProgressShape(true);
         return;
       }
 
@@ -914,20 +1114,14 @@ export function RegionAnnotationOverlay({
       }
     },
     [
-      activeLayerId,
-      addRegion,
       asset.id,
       drawingMode,
       editingRegionId,
-      ensureDefaultLayer,
-      getRegion,
-      isActiveLayerEditable,
+      finalizeInProgressShape,
       isRegionLayerLocked,
       interactiveRegions,
-      onRegionCreated,
       onRegionSelected,
       polygonPoints,
-      regions,
       selectRegion,
       updateRegion,
     ]
@@ -944,10 +1138,11 @@ export function RegionAnnotationOverlay({
       const delta = event.deltaY < 0 ? 0.5 : -0.5;
       const newWidths = adjustVertexWidth(editingRegion.pointWidths, hoveredVertexIndex, delta);
       if (newWidths) {
+        pushUndo(editingPolygonId);
         updateRegion(asset.id, editingPolygonId, { pointWidths: newWidths });
       }
     },
-    [editingPolygonId, editingIsCurve, hoveredVertexIndex, regions, updateRegion, asset.id]
+    [editingPolygonId, editingIsCurve, hoveredVertexIndex, regions, updateRegion, asset.id, pushUndo]
   );
 
   // Attach wheel listener (passive: false needed for preventDefault)
@@ -999,9 +1194,9 @@ export function RegionAnnotationOverlay({
     if (hoveredVertexIndex >= 0) return 'pointer';
     if (hoveredEdgeIndex >= 0) return 'copy';
     if (editingPolygonId || editingRectId) return 'default';
-    if (drawingMode === 'select') return 'pointer';
+    if (drawingMode === 'select') return selectHoverCursor ?? 'default';
     return 'crosshair';
-  }, [isDraggingRegion, draggingHandleIndex, draggingVertexIndex, hoveredHandleIndex, hoveredVertexIndex, hoveredEdgeIndex, editingPolygonId, editingRectId, drawingMode, modifierHeld]);
+  }, [isDraggingRegion, draggingHandleIndex, draggingVertexIndex, hoveredHandleIndex, hoveredVertexIndex, hoveredEdgeIndex, editingPolygonId, editingRectId, drawingMode, modifierHeld, selectHoverCursor]);
 
   // Show loading state while fetching authenticated media
   if (mediaLoading || !resolvedMediaSrc) {
@@ -1134,6 +1329,33 @@ export function RegionAnnotationOverlay({
           );
         })()}
 
+        {/* Select mode: subtle vertex dots on selected region (hint: click to edit) */}
+        {drawingMode === 'select' && !editingPolygonId && !editingRectId && selectedRegionId && (() => {
+          const selectedRegion = regions.find((r) => r.id === selectedRegionId);
+          if (!selectedRegion?.points) return null;
+          const colorIndex = regions.indexOf(selectedRegion) % REGION_COLORS.length;
+          const accentColor = REGION_COLORS[colorIndex].stroke;
+
+          return (
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              {selectedRegion.points.map((p, i) => (
+                <circle
+                  key={i}
+                  cx={p.x * 100}
+                  cy={p.y * 100}
+                  r={0.5}
+                  fill={accentColor}
+                  opacity={0.6}
+                />
+              ))}
+            </svg>
+          );
+        })()}
+
         {/* Polygon/curve edit mode: vertex handles */}
         {editingPolygonId && (() => {
           const editingRegion = regions.find((r) => r.id === editingPolygonId);
@@ -1163,12 +1385,12 @@ export function RegionAnnotationOverlay({
                       <circle
                         cx={p.x * 100}
                         cy={p.y * 100}
-                        r={Math.max(0.4, pw * 0.15)}
+                        r={Math.max(0.8, pw * 0.25)}
                         fill="none"
                         stroke={isHovered ? '#ffffff' : accentColor}
-                        strokeWidth={0.1}
-                        strokeDasharray="0.3,0.2"
-                        opacity={0.6}
+                        strokeWidth={isHovered ? 0.15 : 0.1}
+                        strokeDasharray="0.4,0.25"
+                        opacity={isHovered ? 0.9 : 0.5}
                       />
                     )}
                     <circle

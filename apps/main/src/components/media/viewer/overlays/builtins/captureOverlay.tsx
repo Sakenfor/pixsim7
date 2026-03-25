@@ -4,10 +4,11 @@ import { Icon } from '@lib/icons';
 
 import { useCaptureRegionStore } from '@features/mediaViewer';
 
+import type { ViewState } from '@/components/interactive-surface';
+
 import type { CaptureAction } from '../../panels/hooks/useFrameCapture';
 import { RegionAnnotationOverlay } from '../../panels/RegionAnnotationOverlay';
 import { findActiveRegion, getRegionPixelDimensions, useRegionStoreSelectors } from '../index';
-import { LayerPanel } from '../shared/LayerPanel';
 import {
   OverlaySidePanel,
   SideSection,
@@ -23,7 +24,14 @@ export function CaptureOverlayMain({
   onCaptureFrame,
   captureDisabled,
   mediaDimensions,
+  viewState,
+  onViewStateChange,
 }: MediaOverlayComponentProps) {
+  const overlayViewState = useMemo<Partial<ViewState> | undefined>(
+    () => viewState ? { zoom: viewState.zoom, pan: viewState.pan, fitMode: viewState.fitMode as ViewState['fitMode'] } : undefined,
+    [viewState],
+  );
+
   return (
     <div className="absolute inset-0 flex bg-surface-inset">
       <CaptureToolsPanel
@@ -37,9 +45,10 @@ export function CaptureOverlayMain({
           asset={asset}
           settings={settings}
           useRegionStore={useCaptureRegionStore}
+          viewState={overlayViewState}
+          onViewStateChange={onViewStateChange}
         />
       </div>
-      <CaptureLayersPanel asset={asset} />
     </div>
   );
 }
@@ -92,6 +101,18 @@ function CaptureToolsPanel({
 
   return (
     <OverlaySidePanel className="w-36">
+      <SideSection label="Tools">
+        <SideToolButton
+          icon="mousePointer"
+          label="Select"
+          active={drawingMode === 'select'}
+          title="Select / move regions"
+          onClick={() => setDrawingMode('select')}
+        />
+      </SideSection>
+
+      <SideDivider />
+
       <SideSection label="Region">
         <SideToolButton
           icon="square"
@@ -171,47 +192,3 @@ function CaptureToolsPanel({
   );
 }
 
-function CaptureLayersPanel({ asset }: { asset: MediaOverlayComponentProps['asset'] }) {
-  const {
-    regions,
-    layers,
-    activeLayerId,
-    addLayer,
-    removeLayer,
-    setActiveLayer,
-    toggleLayerVisibility,
-    toggleLayerLock,
-    moveLayer,
-    renameLayer,
-  } = useRegionStoreSelectors(useCaptureRegionStore, asset.id);
-
-  const layerInfos = useMemo(
-    () => layers.map((layer) => ({
-      id: layer.id,
-      name: layer.name,
-      visible: layer.visible,
-      locked: layer.locked,
-      opacity: layer.opacity,
-      hasContent: regions.some((region) => region.layerId === layer.id),
-    })),
-    [layers, regions]
-  );
-
-  return (
-    <OverlaySidePanel className="w-44" side="right">
-      <SideSection label="Layers">
-        <LayerPanel
-          layers={layerInfos}
-          activeLayerId={activeLayerId}
-          onSelectLayer={setActiveLayer}
-          onToggleVisibility={toggleLayerVisibility}
-          onToggleLock={toggleLayerLock}
-          onMoveLayer={moveLayer}
-          onRenameLayer={renameLayer}
-          onAddLayer={addLayer}
-          onRemoveLayer={removeLayer}
-        />
-      </SideSection>
-    </OverlaySidePanel>
-  );
-}
