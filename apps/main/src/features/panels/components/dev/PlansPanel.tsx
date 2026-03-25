@@ -745,12 +745,15 @@ function ClickableBadge({
 function ParticipantEntry({
   participant,
   profileLabels,
+  open,
+  onToggle,
 }: {
   participant: PlanParticipant;
   profileLabels: ReadonlyMap<string, string>;
+  open: boolean;
+  onToggle: () => void;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
   const label = formatActorLabel(
     {
       principalType: participant.principalType,
@@ -771,7 +774,7 @@ function ParticipantEntry({
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={onToggle}
         aria-haspopup="dialog"
         aria-expanded={open}
         title="Click to view participant details"
@@ -797,7 +800,7 @@ function ParticipantEntry({
         placement="bottom"
         align="start"
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => { if (open) onToggle(); }}
         triggerRef={triggerRef}
         className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg p-3 max-w-xs"
       >
@@ -835,7 +838,14 @@ function ParticipantEntry({
             {participant.runId && (
               <>
                 <span className="text-neutral-400">Run</span>
-                <span className="text-neutral-600 dark:text-neutral-300 font-mono truncate">{participant.runId}</span>
+                <button
+                  type="button"
+                  className="text-neutral-600 dark:text-neutral-300 font-mono truncate text-left hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
+                  title="Copy run ID"
+                  onClick={() => navigator.clipboard.writeText(participant.runId!)}
+                >
+                  {participant.runId}
+                </button>
               </>
             )}
           </div>
@@ -1149,6 +1159,9 @@ function PlanDetailView({
     () => planParticipants?.builders ?? [],
     [planParticipants?.builders],
   );
+
+  // Only one participant popover open at a time
+  const [openParticipantId, setOpenParticipantId] = useState<string | null>(null);
 
   useEffect(() => {
     if (reviewRounds.length === 0) {
@@ -2025,6 +2038,8 @@ function PlanDetailView({
                       key={participant.id}
                       participant={participant}
                       profileLabels={reviewProfileLabels}
+                      open={openParticipantId === participant.id}
+                      onToggle={() => setOpenParticipantId((prev) => prev === participant.id ? null : participant.id)}
                     />
                   ))}
                   {builderParticipants.length === 0 && (
@@ -2042,6 +2057,8 @@ function PlanDetailView({
                       key={participant.id}
                       participant={participant}
                       profileLabels={reviewProfileLabels}
+                      open={openParticipantId === participant.id}
+                      onToggle={() => setOpenParticipantId((prev) => prev === participant.id ? null : participant.id)}
                     />
                   ))}
                   {reviewerParticipants.length === 0 && (

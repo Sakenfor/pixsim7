@@ -8,25 +8,33 @@ const POLL_INTERVAL = 2000
 
 /** Extract unique event names and domains from log lines (for dynamic filter dropdowns). */
 function discoverFilters(lines: string[]) {
-  const events = new Set<string>()
-  const domains = new Set<string>()
+  const eventCounts = new Map<string, number>()
+  const domainCounts = new Map<string, number>()
   // Sample last 300 lines for performance
   const sample = lines.length > 300 ? lines.slice(-300) : lines
   for (const line of sample) {
     const parsed = parseLine(line)
-    // Event: first word of message (before space or key=value)
     if (parsed.message) {
       const ev = parsed.message.split(/\s/)[0]
       if (ev && ev.length > 2 && ev.length < 40 && !ev.includes('=')) {
-        events.add(ev)
+        eventCounts.set(ev, (eventCounts.get(ev) ?? 0) + 1)
       }
     }
-    if (parsed.fields.domain) domains.add(parsed.fields.domain)
+    if (parsed.fields.domain) {
+      const d = parsed.fields.domain
+      domainCounts.set(d, (domainCounts.get(d) ?? 0) + 1)
+    }
   }
-  return {
-    events: [...events].sort(),
-    domains: [...domains].sort(),
-  }
+  // Only show events/domains that appear more than once (skip one-off startup noise)
+  const events = [...eventCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .sort((a, b) => b[1] - a[1])  // most frequent first
+    .map(([ev]) => ev)
+  const domains = [...domainCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .sort((a, b) => b[1] - a[1])
+    .map(([d]) => d)
+  return { events, domains }
 }
 
 export function LogViewer({ onFieldClick }: { onFieldClick?: (name: string, value: string) => void }) {
