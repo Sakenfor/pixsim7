@@ -134,7 +134,7 @@ export const QuickGenWidget = forwardRef<QuickGenPanelHostRef, QuickGenWidgetPro
     // quickgen panels (quickgen-asset, quickgen-prompt, quickgen-settings)
     // with a second GenerationScopeProvider — they should all share this one.
     return (
-      <GenerationScopeProvider scopeId={scopeInstanceId} label={scopeLabel}>
+      <GenerationScopeProvider scopeId={scopeInstanceId} label={scopeLabel} inheritParentScope={false}>
         <SuppressScopeWrapping scopes={['generation']}>
           <QuickGenWidgetInner {...props} ref={ref} />
         </SuppressScopeWrapping>

@@ -50,6 +50,11 @@ export function useGenerationScopeStores(): GenerationScopeStores {
 interface GenerationScopeProviderProps {
   scopeId: string;
   label?: string;
+  /**
+   * When true (default), nested providers reuse the nearest parent generation scope.
+   * Set to false to force a new scope even if a parent exists.
+   */
+  inheritParentScope?: boolean;
   children: React.ReactNode;
 }
 
@@ -60,14 +65,16 @@ interface GenerationScopeProviderProps {
 export function GenerationScopeProvider({
   scopeId,
   label,
+  inheritParentScope = true,
   children,
 }: GenerationScopeProviderProps) {
   // Check if already inside a scope - preserve parent scope to prevent nested overrides
   const parentScope = useContext(GenerationScopeContext);
 
   const scopeStores = useMemo<GenerationScopeStores>(() => {
-    // If parent scope exists, preserve it (prevents nested dockviews from overriding)
-    if (parentScope) {
+    // If parent scope exists and inheritance is enabled, preserve it
+    // (prevents nested dockviews from overriding).
+    if (inheritParentScope && parentScope) {
       return parentScope;
     }
 
@@ -86,7 +93,7 @@ export function GenerationScopeProvider({
       useSettingsStore: getGenerationSettingsStore(scopeId),
       useInputStore: getGenerationInputStore(scopeId),
     };
-  }, [scopeId, label, parentScope]);
+  }, [scopeId, label, parentScope, inheritParentScope]);
 
   return (
     <GenerationScopeContext.Provider value={scopeStores}>

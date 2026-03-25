@@ -1,5 +1,6 @@
 import { createGeneration, type CreateGenerationRequest, type GenerationNodeConfigSchema } from '@lib/api/generations';
 import { devValidateParams, devLogParams } from '@lib/utils/validation/devValidation';
+
 import { providerCapabilityRegistry } from '@features/providers';
 
 import type { OperationType } from '@/types/operations';
@@ -201,6 +202,18 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
     force_new: true,
     ...(prepared.preferredAccountId ? { preferred_account_id: prepared.preferredAccountId } : {}),
   };
+  if (import.meta.env.DEV) {
+    (globalThis as any).__quickgenLastCreateGenerationRequest = {
+      ts: Date.now(),
+      providerId: prepared.providerId,
+      generationType: prepared.generationType,
+      configMaskUrl: (prepared.generationConfig as any)?.mask_url ?? null,
+      hasCompositionAssets:
+        Array.isArray((prepared.generationConfig as any)?.composition_assets)
+        && (prepared.generationConfig as any).composition_assets.length > 0,
+      requestMaskUrl: (generationRequest.config as any)?.mask_url ?? null,
+    };
+  }
 
   // Call new unified generations API
   const generation = await createGeneration(generationRequest);
@@ -243,6 +256,18 @@ export function prepareGenerateAssetSubmission(req: GenerateAssetRequest): Prepa
     providerId,
     req.runContext,
   );
+  if (import.meta.env.DEV) {
+    (globalThis as any).__quickgenLastPreparedSubmission = {
+      ts: Date.now(),
+      providerId,
+      generationType,
+      mergedMaskUrl: mergedParams.mask_url ?? null,
+      configMaskUrl: (config as any)?.mask_url ?? null,
+      hasCompositionAssets:
+        Array.isArray((config as any)?.composition_assets)
+        && (config as any).composition_assets.length > 0,
+    };
+  }
   return {
     providerId,
     generationType,

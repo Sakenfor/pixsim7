@@ -25,7 +25,7 @@ export interface QuickGenerateContext {
   transitionDurations?: number[];
   activeAsset?: SelectedAsset;
   currentInput?: InputItem;
-  /** Max prompt chars — prompt is clamped to this limit before sending to API */
+  /** Max prompt chars - prompt is clamped to this limit before sending to API */
   maxChars?: number;
 }
 
@@ -98,6 +98,45 @@ function resolveAssetUrlFromInput(asset: Partial<InputItem['asset']>): string | 
     }
   }
   return undefined;
+}
+
+function resolveMaskLayerAssetUrl(layer: any): string | undefined {
+  if (!layer || typeof layer !== 'object') return undefined;
+
+  const directUrl =
+    typeof layer.assetUrl === 'string' && layer.assetUrl.trim().length > 0
+      ? layer.assetUrl.trim()
+      : undefined;
+  if (directUrl) return directUrl;
+
+  const aliasUrl =
+    typeof layer.maskUrl === 'string' && layer.maskUrl.trim().length > 0
+      ? layer.maskUrl.trim()
+      : undefined;
+  if (aliasUrl) return aliasUrl;
+
+  const candidateId =
+    (typeof layer.savedAssetId === 'number' && Number.isFinite(layer.savedAssetId)
+      ? Math.floor(layer.savedAssetId)
+      : undefined)
+    ?? (typeof layer.assetId === 'number' && Number.isFinite(layer.assetId)
+      ? Math.floor(layer.assetId)
+      : undefined)
+    ?? (typeof layer.asset?.id === 'number' && Number.isFinite(layer.asset.id)
+      ? Math.floor(layer.asset.id)
+      : undefined);
+
+  if (typeof candidateId === 'number' && candidateId > 0) {
+    return `asset:${candidateId}`;
+  }
+
+  return undefined;
+}
+
+function isMaskLayerVisible(layer: any): boolean {
+  if (!layer || typeof layer !== 'object') return false;
+  // Legacy compatibility: treat missing `visible` as enabled.
+  return layer.visible !== false;
 }
 
 /**
@@ -238,7 +277,7 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
                 console.warn(`[pickFromSet] Failed to fetch locked asset ${item.assetSetRef.lockedAssetId}, using display asset`);
               }
             } else {
-              // Bug 3: locked mode without lockedAssetId — treat as random pick with warning
+              // Bug 3: locked mode without lockedAssetId - treat as random pick with warning
               console.warn(`[pickFromSet] Locked mode without lockedAssetId on input ${item.id}, falling back to random pick`);
               const setAssets = await resolveAssetSet(set);
               if (setAssets.length > 0) {
@@ -252,7 +291,7 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
               }
             }
           } else {
-            // random_each — resolve set, pick using strategy
+            // random_each - resolve set, pick using strategy
             const setAssets = await resolveAssetSet(set);
             if (setAssets.length > 0) {
               const result = pickFromSet(setAssets, item.assetSetRef.pickStrategy, item.assetSetRef);
@@ -265,7 +304,7 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
             }
           }
         } else {
-          // Bug 1: set not found — warn instead of silent fallback
+          // Bug 1: set not found - warn instead of silent fallback
           console.warn(`[pickFromSet] Asset set "${item.assetSetRef.setId}" not found, using display asset`);
         }
       }
@@ -335,7 +374,7 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
     const hasAnyAsset = !!(resolvedSourceIds || explicitCompositionAssets || hasQueuedCompositionAssets);
 
     if (!hasAnyAsset && !trimmedPrompt) {
-      // No asset AND no prompt — can't do image_to_image or text_to_image
+      // No asset AND no prompt - can't do image_to_image or text_to_image
       return {
         error: 'No image selected. Select an image or enter a prompt for text-to-image.',
         finalPrompt: trimmedPrompt,
@@ -349,7 +388,7 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
       };
     }
 
-    // No asset + has prompt → will fall back to text_to_image via getFallbackOperation
+    // No asset + has prompt -> will fall back to text_to_image via getFallbackOperation
 
     if (resolvedSourceIds && !dynamicParams.source_asset_ids) {
       inferredSourceAssetIds = resolvedSourceIds;
@@ -522,14 +561,29 @@ export async function buildGenerationRequest(context: QuickGenerateContext): Pro
 
   // Per-asset mask: prefer maskLayers, fall back to legacy maskUrl
   if (currentInput?.maskLayers && currentInput.maskLayers.length > 0) {
-    const visibleLayers = currentInput.maskLayers.filter((l) => l.visible);
-    if (visibleLayers.length === 1) {
-      // Single visible layer — use its asset URL directly (no compositing needed)
-      params.mask_url = visibleLayers[0].assetUrl;
-    } else if (visibleLayers.length > 1) {
-      // Multiple visible layers — composite mask_url is set by the mask overlay on save.
+    const normalizedLayers = currentInput.maskLayers
+      .map((layer: any) => ({
+        layer,
+        assetUrl: resolveMaskLayerAssetUrl(layer),
+      }))
+      .filter(
+        (entry): entry is { layer: any; assetUrl: string } =>
+          typeof entry.assetUrl === 'string' && entry.assetUrl.length > 0,
+      );
+    const visibleLayers = normalizedLayers.filter((entry) => isMaskLayerVisible(entry.layer));
+    const activeLayers = visibleLayers.length > 0 ? visibleLayers : normalizedLayers;
+
+    if (activeLayers.length === 1) {
+      // Single visible layer - use its asset URL directly (no compositing needed)
+      params.mask_url = activeLayers[0].assetUrl;
+    } else if (activeLayers.length > 1) {
+      // Multiple visible layers - composite mask_url is set by the mask overlay on save.
       // At this point the composite should already be stored as the first layer's savedAssetId
       // or via the global mask_url param. Fall through to let dynamicParams.mask_url handle it.
+      if (!params.mask_url) {
+        // Safety fallback: if no composite exists yet, send the first visible layer.
+        params.mask_url = activeLayers[0].assetUrl;
+      }
     }
   } else if (currentInput?.maskUrl) {
     params.mask_url = currentInput.maskUrl;

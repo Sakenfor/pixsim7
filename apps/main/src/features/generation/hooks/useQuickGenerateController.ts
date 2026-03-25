@@ -43,6 +43,8 @@ import {
 } from '../lib/runContext';
 import { executeSequentialSteps, createSequentialStepRunContextMetadata } from '../lib/sequentialExecutor';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
+import { useGenerationInputStore } from '../stores/generationInputStore';
+import { getRegisteredInputStores } from '../stores/generationScopeStores';
 
 /** Result of the generation pipeline (no widget state side-effects). */
 export interface GenerationPipelineResult {
@@ -186,6 +188,160 @@ function mergePromptToolRunContextPatch(
   return nextRunContext;
 }
 
+function hasMaskState(input: any): boolean {
+  if (!input || typeof input !== 'object') return false;
+  const hasMaskLayers = Array.isArray(input.maskLayers) && input.maskLayers.length > 0;
+  const hasMaskUrl = typeof input.maskUrl === 'string' && input.maskUrl.trim().length > 0;
+  return hasMaskLayers || hasMaskUrl;
+}
+
+function resolveMaskLayerAssetUrl(layer: any): string | undefined {
+  if (!layer || typeof layer !== 'object') return undefined;
+  if (typeof layer.assetUrl === 'string' && layer.assetUrl.trim().length > 0) {
+    return layer.assetUrl.trim();
+  }
+  if (typeof layer.maskUrl === 'string' && layer.maskUrl.trim().length > 0) {
+    return layer.maskUrl.trim();
+  }
+  const candidateId =
+    (typeof layer.savedAssetId === 'number' && Number.isFinite(layer.savedAssetId)
+      ? Math.floor(layer.savedAssetId)
+      : undefined)
+    ?? (typeof layer.assetId === 'number' && Number.isFinite(layer.assetId)
+      ? Math.floor(layer.assetId)
+      : undefined)
+    ?? (typeof layer.asset?.id === 'number' && Number.isFinite(layer.asset.id)
+      ? Math.floor(layer.asset.id)
+      : undefined);
+  if (typeof candidateId === 'number' && candidateId > 0) {
+    return `asset:${candidateId}`;
+  }
+  return undefined;
+}
+
+function resolveMaskUrlFromInput(input: any): string | undefined {
+  if (!input || typeof input !== 'object') return undefined;
+  if (typeof input.maskUrl === 'string' && input.maskUrl.trim().length > 0) {
+    return input.maskUrl.trim();
+  }
+  const layers = Array.isArray(input.maskLayers) ? input.maskLayers : [];
+  if (layers.length === 0) return undefined;
+  const normalizedLayers = layers
+    .map((layer) => ({ layer, assetUrl: resolveMaskLayerAssetUrl(layer) }))
+    .filter(
+      (entry): entry is { layer: any; assetUrl: string } =>
+        typeof entry.assetUrl === 'string' && entry.assetUrl.length > 0,
+    );
+  if (normalizedLayers.length === 0) return undefined;
+  const visibleLayers = normalizedLayers.filter((entry) => entry.layer?.visible !== false);
+  const activeLayers = visibleLayers.length > 0 ? visibleLayers : normalizedLayers;
+  return activeLayers[0]?.assetUrl;
+}
+
+function mergeMaskState(baseInput: any, maskInput: any): any {
+  if (!baseInput || !maskInput) return baseInput;
+  return {
+    ...baseInput,
+    ...(typeof maskInput.maskUrl === 'string' ? { maskUrl: maskInput.maskUrl } : {}),
+    ...(Array.isArray(maskInput.maskLayers) && maskInput.maskLayers.length > 0
+      ? { maskLayers: maskInput.maskLayers }
+      : {}),
+  };
+}
+
+function getStoreState(store: any): any | null {
+  if (!store || typeof store !== 'function' || typeof store.getState !== 'function') {
+    return null;
+  }
+  try {
+    return store.getState();
+  } catch {
+    return null;
+  }
+}
+
+function findMaskInputInOperationItems(
+  items: any[],
+  options: { inputId?: string; assetId?: number },
+): any | null {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  if (options.inputId) {
+    const exact = items.find((item) => item?.id === options.inputId && hasMaskState(item));
+    if (exact) return exact;
+  }
+  if (typeof options.assetId === 'number') {
+    const sameAsset = items.find((item) => item?.asset?.id === options.assetId && hasMaskState(item));
+    if (sameAsset) return sameAsset;
+  }
+  return null;
+}
+
+function findMaskInputInPersistedStorage(
+  activeOperationType: OperationType,
+  options: { inputId?: string; assetId?: number },
+): any | null {
+  if (typeof localStorage === 'undefined') return null;
+
+  const persistedPrefix = 'generation_inputs';
+  const keys = Object.keys(localStorage).filter(
+    (key) => key === persistedPrefix || key.startsWith(`${persistedPrefix}:`),
+  );
+
+  for (const key of keys) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      const state = parsed?.state ?? parsed;
+      const operationItems = state?.inputsByOperation?.[activeOperationType]?.items ?? [];
+      const matched = findMaskInputInOperationItems(operationItems, options);
+      if (matched) return matched;
+    } catch {
+      // Ignore malformed persisted entries.
+    }
+  }
+
+  return null;
+}
+
+function recoverMaskInput(
+  activeOperationType: OperationType,
+  options: { inputId?: string; assetId?: number },
+  preferredStores: any[] = [],
+): any | null {
+  const candidateStores: any[] = [
+    ...preferredStores,
+    useGenerationInputStore,
+    ...getRegisteredInputStores(),
+  ];
+  const seenStores = new Set<any>();
+
+  for (const store of candidateStores) {
+    if (!store || seenStores.has(store)) continue;
+    seenStores.add(store);
+    const state = getStoreState(store);
+    if (!state) continue;
+
+    const operationItems = state.inputsByOperation?.[activeOperationType]?.items ?? [];
+    const fromItems = findMaskInputInOperationItems(operationItems, options);
+    if (fromItems) return fromItems;
+
+    const fromCurrent =
+      typeof state.getCurrentInput === 'function'
+        ? state.getCurrentInput(activeOperationType)
+        : null;
+    if (fromCurrent && hasMaskState(fromCurrent)) {
+      const sameInput = options.inputId && fromCurrent.id === options.inputId;
+      const sameAsset = options.assetId != null && fromCurrent?.asset?.id === options.assetId;
+      if (sameInput || sameAsset) {
+        return fromCurrent;
+      }
+    }
+  }
+
+  return findMaskInputInPersistedStorage(activeOperationType, options);
+}
+
 /**
  * Hook: useQuickGenerateController
  *
@@ -316,10 +472,30 @@ export function useQuickGenerateController() {
   function getInputState(activeOperationType: OperationType = getActiveOperationType()) {
     const inputState = (useInputStore as any).getState();
     const allItems = inputState.inputsByOperation?.[activeOperationType]?.items ?? [];
-    const currentInputs = allItems.filter((item: any) => !item.skipped);
-    const currentInput = inputState.getCurrentInput
+    let currentInputs = allItems.filter((item: any) => !item.skipped);
+    let currentInput = inputState.getCurrentInput
       ? inputState.getCurrentInput(activeOperationType)
       : null;
+
+    // Scope divergence guard:
+    // If this controller is bound to a different scoped input store than the
+    // mask picker, recover mask state from any known generation input store
+    // (and persisted snapshots) using input id/asset id.
+    if (currentInput && !hasMaskState(currentInput)) {
+      const maskLookup = {
+        inputId: typeof currentInput.id === 'string' ? currentInput.id : undefined,
+        assetId: typeof currentInput?.asset?.id === 'number' ? currentInput.asset.id : undefined,
+      };
+      const recoveredMaskInput = recoverMaskInput(activeOperationType, maskLookup, [useInputStore]);
+
+      if (recoveredMaskInput) {
+        currentInput = mergeMaskState(currentInput, recoveredMaskInput);
+        currentInputs = currentInputs.map((item: any) =>
+          item?.id === currentInput?.id ? mergeMaskState(item, recoveredMaskInput) : item,
+        );
+      }
+    }
+
     const allTransitionItems = inputState.inputsByOperation?.video_transition?.items ?? [];
     const transitionInputs = allTransitionItems.filter((item: any) => !item.skipped);
     return { currentInputs, currentInput, transitionInputs };
@@ -413,6 +589,49 @@ export function useQuickGenerateController() {
 
     if (buildResult.error || !buildResult.params) {
       return { error: buildResult.error ?? 'Invalid generation request' };
+    }
+
+    const fallbackMaskUrlFromCurrentInput = resolveMaskUrlFromInput(currentInput);
+    const fallbackMaskUrlFromInputs = Array.isArray(clampedInputs)
+      ? clampedInputs
+          .map((input: any) => resolveMaskUrlFromInput(input))
+          .find((value): value is string => typeof value === 'string' && value.length > 0)
+      : undefined;
+    const fallbackMaskUrl = fallbackMaskUrlFromCurrentInput ?? fallbackMaskUrlFromInputs;
+    if (!buildResult.params.mask_url && fallbackMaskUrl) {
+      buildResult.params.mask_url = fallbackMaskUrl;
+    }
+
+    if (import.meta.env.DEV) {
+      const inputMaskLayers = Array.isArray(currentInput?.maskLayers)
+        ? currentInput.maskLayers.map((layer: any) => ({
+            id: layer?.id ?? null,
+            assetUrl: layer?.assetUrl ?? null,
+            visible: layer?.visible,
+          }))
+        : [];
+      console.debug('[quickgen:mask-debug]', {
+        operationType: activeOperationType,
+        currentInputId: currentInput?.id ?? null,
+        currentInputAssetId: currentInput?.asset?.id ?? null,
+        inputMaskLayers,
+        inputMaskUrl: currentInput?.maskUrl ?? null,
+        fallbackMaskUrlFromCurrentInput: fallbackMaskUrlFromCurrentInput ?? null,
+        fallbackMaskUrlFromInputs: fallbackMaskUrlFromInputs ?? null,
+        resolvedMaskUrl: buildResult.params?.mask_url ?? null,
+      });
+      (globalThis as any).__quickgenLastMaskDebug = {
+        ts: Date.now(),
+        operationType: activeOperationType,
+        currentInputId: currentInput?.id ?? null,
+        currentInputAssetId: currentInput?.asset?.id ?? null,
+        fallbackMaskUrlFromCurrentInput: fallbackMaskUrlFromCurrentInput ?? null,
+        fallbackMaskUrlFromInputs: fallbackMaskUrlFromInputs ?? null,
+        resolvedMaskUrl: buildResult.params?.mask_url ?? null,
+        hasCompositionAssets:
+          Array.isArray(buildResult.params?.composition_assets)
+          && buildResult.params.composition_assets.length > 0,
+      };
     }
 
     const hasAssetInput =
@@ -720,12 +939,30 @@ export function useQuickGenerateController() {
     let activeAssetOverride: ReturnType<typeof toSelectedAsset> | undefined;
 
     if (Array.isArray(overrides?.assetOverrides)) {
-      const inputItems = overrides.assetOverrides.map(asset => ({
-        id: `quick-${asset.id}-${Date.now()}`,
-        asset,
-        queuedAt: new Date().toISOString(),
-        lockedTimestamp: undefined,
-      }));
+      const maskCandidates = [
+        currentInput,
+        ...currentInputs,
+      ].filter((item) => hasMaskState(item));
+
+      const inputItems = overrides.assetOverrides.map((asset, index) => {
+        const baseInput = {
+          id: `quick-${asset.id}-${Date.now()}-${index}`,
+          asset,
+          queuedAt: new Date().toISOString(),
+          lockedTimestamp: undefined,
+        };
+
+        const fromKnownInputs = maskCandidates.find(
+          (item: any) => item?.asset?.id === asset.id && hasMaskState(item),
+        );
+        const recoveredMaskInput =
+          fromKnownInputs
+          ?? recoverMaskInput(activeOperationType, { assetId: asset.id }, [useInputStore]);
+
+        return recoveredMaskInput
+          ? mergeMaskState(baseInput, recoveredMaskInput)
+          : baseInput;
+      });
       effectiveInputs = inputItems;
       effectiveCurrentInput = inputItems[0] ?? null;
       if (overrides.assetOverrides.length > 0) {

@@ -1,3 +1,5 @@
+import { hmrSingleton } from '@lib/utils';
+
 import type { GenerationInputStoreHook } from "./generationInputStore";
 import { createGenerationInputStore } from "./generationInputStore";
 import type { GenerationSessionStoreHook } from "./generationSessionStore";
@@ -8,15 +10,70 @@ export type GenerationSettingsStoreHook = <T>(
   selector: (state: GenerationSettingsState) => T
 ) => T;
 
-import { hmrSingleton } from '@lib/utils';
-
 // Persist scope store Maps across HMR module re-evaluations.
 const settingsStores = hmrSingleton('generationScopes:settings', () => new Map<string, GenerationSettingsStoreHook>());
 const inputStores = hmrSingleton('generationScopes:input', () => new Map<string, GenerationInputStoreHook>());
 
 
+function normalizeScopeStorageId(scopeId: string): string {
+  if (!scopeId || typeof scopeId !== 'string') return scopeId;
+  const parts = scopeId.split(':');
+  if (parts.length === 2 && parts[0] === parts[1]) {
+    return parts[0];
+  }
+  return scopeId;
+}
+
 function getStorageKey(prefix: string, scopeId: string) {
-  return `${prefix}:${scopeId}`;
+  return `${prefix}:${normalizeScopeStorageId(scopeId)}`;
+}
+
+function migrateLegacyDuplicateScopedKey(prefix: string, scopeId: string): void {
+  if (typeof localStorage === 'undefined') return;
+  const normalizedScopeId = normalizeScopeStorageId(scopeId);
+  if (normalizedScopeId === scopeId) return;
+
+  const legacyKey = `${prefix}:${scopeId}`;
+  const normalizedKey = `${prefix}:${normalizedScopeId}`;
+  try {
+    const legacyRaw = localStorage.getItem(legacyKey);
+    if (!legacyRaw) return;
+    const normalizedRaw = localStorage.getItem(normalizedKey);
+    if (!normalizedRaw) {
+      localStorage.setItem(normalizedKey, legacyRaw);
+    }
+    localStorage.removeItem(legacyKey);
+  } catch {
+    // Best-effort migration only.
+  }
+}
+
+function collapseDuplicateScopedStorageKeys(): number {
+  if (typeof localStorage === 'undefined') return 0;
+  let removed = 0;
+  const allKeys = Object.keys(localStorage);
+  for (const key of allKeys) {
+    for (const prefix of SCOPED_PREFIXES) {
+      if (!key.startsWith(prefix)) continue;
+      const rawScopeId = key.slice(prefix.length);
+      const normalizedScopeId = normalizeScopeStorageId(rawScopeId);
+      if (normalizedScopeId === rawScopeId) break;
+
+      const normalizedKey = `${prefix}${normalizedScopeId}`;
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw && !localStorage.getItem(normalizedKey)) {
+          localStorage.setItem(normalizedKey, raw);
+        }
+        localStorage.removeItem(key);
+        removed++;
+      } catch {
+        // Ignore malformed keys/values.
+      }
+      break;
+    }
+  }
+  return removed;
 }
 
 /**
@@ -30,25 +87,33 @@ export function getGenerationSessionStore(scopeId: string): GenerationSessionSto
 }
 
 export function getGenerationSettingsStore(scopeId: string): GenerationSettingsStoreHook {
-  const existing = settingsStores.get(scopeId);
+  const normalizedScopeId = normalizeScopeStorageId(scopeId);
+  const existing =
+    settingsStores.get(normalizedScopeId)
+    ?? (normalizedScopeId !== scopeId ? settingsStores.get(scopeId) : undefined);
   if (existing) return existing;
 
+  migrateLegacyDuplicateScopedKey("generation_settings", scopeId);
   const store = createGenerationSettingsStore(
     getStorageKey("generation_settings", scopeId),
     localStorage,
   );
-  settingsStores.set(scopeId, store);
+  settingsStores.set(normalizedScopeId, store);
   return store;
 }
 
 export function getGenerationInputStore(scopeId: string): GenerationInputStoreHook {
-  const existing = inputStores.get(scopeId);
+  const normalizedScopeId = normalizeScopeStorageId(scopeId);
+  const existing =
+    inputStores.get(normalizedScopeId)
+    ?? (normalizedScopeId !== scopeId ? inputStores.get(scopeId) : undefined);
   if (existing) return existing;
 
+  migrateLegacyDuplicateScopedKey("generation_inputs", scopeId);
   const store = createGenerationInputStore(
     getStorageKey("generation_inputs", scopeId),
   );
-  inputStores.set(scopeId, store);
+  inputStores.set(normalizedScopeId, store);
   return store;
 }
 
@@ -60,11 +125,25 @@ export function getRegisteredInputStores(): GenerationInputStoreHook[] {
   return Array.from(inputStores.values());
 }
 
+export function getRegisteredInputStoreEntries(): Array<{
+  scopeId: string;
+  store: GenerationInputStoreHook;
+}> {
+  return Array.from(inputStores.entries()).map(([scopeId, store]) => ({ scopeId, store }));
+}
+
 /**
  * Returns all registered scoped settings stores (does NOT include the global singleton).
  */
 export function getRegisteredSettingsStores(): GenerationSettingsStoreHook[] {
   return Array.from(settingsStores.values());
+}
+
+export function getRegisteredSettingsStoreEntries(): Array<{
+  scopeId: string;
+  store: GenerationSettingsStoreHook;
+}> {
+  return Array.from(settingsStores.entries()).map(([scopeId, store]) => ({ scopeId, store }));
 }
 
 // ---------------------------------------------------------------------------
@@ -89,12 +168,10 @@ const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000; // once per day
  */
 export function pruneStaleGenerationStores(): number {
   try {
-    const lastPrune = Number(localStorage.getItem(PRUNE_MARKER_KEY) || '0');
-    if (Date.now() - lastPrune < PRUNE_INTERVAL_MS) return 0;
-
-    // Remove all legacy session keys (they've been migrated into settings)
     const allKeys = Object.keys(localStorage);
     let removed = 0;
+
+    // Remove all legacy session keys (they've been migrated into settings)
     for (const key of allKeys) {
       if (LEGACY_PREFIXES.some((p) => key.startsWith(p))) {
         localStorage.removeItem(key);
@@ -102,11 +179,21 @@ export function pruneStaleGenerationStores(): number {
       }
     }
 
+    // Collapse duplicated scope ids in persisted keys:
+    // generation_settings:x:x -> generation_settings:x
+    // generation_inputs:x:x -> generation_inputs:x
+    removed += collapseDuplicateScopedStorageKeys();
+
+    const lastPrune = Number(localStorage.getItem(PRUNE_MARKER_KEY) || '0');
+    if (Date.now() - lastPrune < PRUNE_INTERVAL_MS) return removed;
+
+    const scopedKeys = Object.keys(localStorage);
+
     // Collect scoped keys grouped by scope ID
     const scopeLastModified = new Map<string, number>();
     const scopeKeys = new Map<string, string[]>();
 
-    for (const key of allKeys) {
+    for (const key of scopedKeys) {
       for (const prefix of SCOPED_PREFIXES) {
         if (key.startsWith(prefix)) {
           const scopeId = key.slice(prefix.length);
@@ -160,3 +247,9 @@ export function pruneStaleGenerationStores(): number {
     return 0;
   }
 }
+
+// Normalize duplicate scoped key shapes once at module boot/HMR.
+hmrSingleton('generationScopes:normalizeDuplicateKeys', () => {
+  collapseDuplicateScopedStorageKeys();
+  return true;
+});

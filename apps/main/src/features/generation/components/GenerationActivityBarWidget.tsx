@@ -55,7 +55,7 @@ export function GenerationActivityBarWidget() {
         onClick={handleClick}
         className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors relative ${
           isActive
-            ? 'text-accent bg-accent/15'
+            ? 'text-amber-400 bg-amber-500/15'
             : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700/50'
         }`}
         aria-label={`Generations: ${activeCount} active`}
@@ -73,7 +73,7 @@ export function GenerationActivityBarWidget() {
 
         {/* Active count badge */}
         {isActive && (
-          <div className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-white leading-none">
+          <div className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-amber-500 text-[10px] font-semibold text-white leading-none">
             {activeCount}
           </div>
         )}

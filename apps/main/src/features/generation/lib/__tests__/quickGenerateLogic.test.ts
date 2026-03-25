@@ -386,4 +386,50 @@ describe('buildGenerationRequest', () => {
       { url: 'blob:local-video', layer: 0, role: 'source_video', media_type: 'video' },
     ]);
   });
+
+  it('derives mask_url from legacy mask layer savedAssetId when assetUrl is missing', async () => {
+    const context = createBaseContext({
+      operationType: 'image_to_image',
+      prompt: 'Retouch this region',
+      dynamicParams: {},
+      operationInputs: [
+        { id: 'input-a', asset: { id: 42, mediaType: 'image' }, queuedAt: '' },
+      ] as any,
+      currentInput: {
+        id: 'input-a',
+        asset: { id: 42, mediaType: 'image' },
+        queuedAt: '',
+        maskLayers: [
+          { id: 'mask-1', savedAssetId: 77, visible: true },
+        ],
+      } as any,
+    });
+
+    const result = await buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params?.mask_url).toBe('asset:77');
+  });
+
+  it('falls back to first resolvable mask layer when no layers are marked visible', async () => {
+    const context = createBaseContext({
+      operationType: 'image_to_image',
+      prompt: 'Retouch this region',
+      dynamicParams: {},
+      operationInputs: [
+        { id: 'input-a', asset: { id: 42, mediaType: 'image' }, queuedAt: '' },
+      ] as any,
+      currentInput: {
+        id: 'input-a',
+        asset: { id: 42, mediaType: 'image' },
+        queuedAt: '',
+        maskLayers: [
+          { id: 'mask-1', savedAssetId: 88, visible: false },
+        ],
+      } as any,
+    });
+
+    const result = await buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params?.mask_url).toBe('asset:88');
+  });
 });

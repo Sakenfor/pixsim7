@@ -35,6 +35,14 @@ export interface UseQuickGenScopeSyncResult {
   scopeLabel: string;
 }
 
+function normalizeQuickGenScopeInstanceId(scopeInstanceId: string): string {
+  const parts = scopeInstanceId.split(':');
+  if (parts.length === 2 && parts[0] === parts[1]) {
+    return parts[0];
+  }
+  return scopeInstanceId;
+}
+
 /**
  * Keeps all quickgen panels in a host in scope-sync.
  *
@@ -116,14 +124,17 @@ export function useQuickGenScopeSync({
 
   // Resolve the scope instance ID for GenerationScopeProvider
   const scopeInstanceId = useMemo(() => {
-    if (generationScopeDefinition.resolveScopeId) {
-      return resolveScopeInstanceId(generationScopeDefinition, activeMode, {
-        instanceId: hostInstanceId,
-        panelId: resolvedHostPanelId,
-        dockviewId: panelManagerId,
-      });
-    }
-    return activeMode === 'global' ? 'global' : hostInstanceId;
+    const resolved = generationScopeDefinition.resolveScopeId
+      ? resolveScopeInstanceId(generationScopeDefinition, activeMode, {
+          instanceId: hostInstanceId,
+          panelId: resolvedHostPanelId,
+          dockviewId: panelManagerId,
+        })
+      : (activeMode === 'global' ? 'global' : hostInstanceId);
+
+    // Normalize quickgen host ids like "viewerQuickGenerate:viewerQuickGenerate"
+    // to "viewerQuickGenerate" so scoped generation storage keys stay concise.
+    return normalizeQuickGenScopeInstanceId(resolved);
   }, [generationScopeDefinition, activeMode, hostInstanceId, resolvedHostPanelId, panelManagerId]);
 
   const scopeLabel = generationScopeDefinition.label ?? 'Generation Settings';
