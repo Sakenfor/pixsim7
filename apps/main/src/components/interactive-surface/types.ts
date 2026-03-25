@@ -288,6 +288,8 @@ export interface SurfaceState {
   selectedElementIds: string[];
   /** For video: current playback time */
   currentTime?: number;
+  /** Hovered polygon vertex (for visual highlight in renderer) */
+  hoveredVertex?: { elementId: string; vertexIndex: number } | null;
 }
 
 // ============================================================================

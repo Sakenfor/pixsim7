@@ -87,19 +87,28 @@ export function useOverlayShortcuts({
           }
           break;
         case 'r':
-          // Switch to rect mode
-          if (annotationMode && !e.ctrlKey && !e.metaKey) {
-            setDrawingMode('rect');
+          // Switch to rect mode (annotation & capture overlays)
+          if (!e.ctrlKey && !e.metaKey) {
+            if (overlayMode === 'annotate') {
+              setDrawingMode('rect');
+            } else if (overlayMode === 'capture') {
+              useCaptureRegionStore.getState().setDrawingMode('rect');
+            }
           }
           break;
         case 'p':
-          // Switch to polygon mode
-          if (annotationMode && !e.ctrlKey && !e.metaKey) {
-            setDrawingMode('polygon');
+          // Switch to polygon mode (annotation & capture overlays)
+          if (!e.ctrlKey && !e.metaKey) {
+            if (overlayMode === 'annotate') {
+              setDrawingMode('polygon');
+            } else if (overlayMode === 'capture') {
+              useCaptureRegionStore.getState().setDrawingMode('polygon');
+            }
           }
           break;
         case 'c':
-          // Switch to curve mode (annotation and capture overlays)
+          // Switch to curve mode when inside annotation/capture,
+          // otherwise toggle the Capture overlay (shortcut: C)
           if (!e.ctrlKey && !e.metaKey) {
             if (overlayMode === 'annotate') {
               setDrawingMode('curve');

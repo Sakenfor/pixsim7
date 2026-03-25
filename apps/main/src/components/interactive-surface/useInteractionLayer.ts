@@ -14,7 +14,14 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 
 import { generateUUID } from '@lib/utils/uuid';
 
-import { findNearVertex, adjustVertexWidth } from './curveEditUtils';
+import {
+  findNearVertex,
+  adjustVertexWidth,
+  hitTestCurve,
+  insertCurveVertex,
+  removeCurveVertex,
+  CURVE_HIT,
+} from './curveEditUtils';
 import { drawVariableWidthCurve } from './curveRenderUtils';
 import type {
   SurfaceState,
@@ -65,6 +72,8 @@ export interface UseInteractionLayerOptions {
   initialMode?: InteractionMode;
   /** Initial tool config */
   initialTool?: Partial<DrawToolConfig>;
+  /** Initial view state (zoom, pan, fitMode) — merged with defaults */
+  initialViewState?: Partial<ViewState>;
   /** Maximum history entries for undo/redo */
   maxHistorySize?: number;
   /** When false, polygon mode creates open curves instead of closed filled shapes */
@@ -136,6 +145,15 @@ export interface UseInteractionLayerReturn {
   // Export
   exportLayerAsMask: (layerId: string, width: number, height: number) => string | null;
   exportAllLayers: () => InteractionLayer[];
+
+  /** Cursor hint from view-mode polygon hover (null = no polygon nearby) */
+  viewCursorHint: string | null;
+
+  /** Currently hovered vertex in view mode (for sidebar width control) */
+  hoveredVertex: { layerId: string; elementId: string; vertexIndex: number } | null;
+
+  /** Set the width of a specific vertex on a polygon */
+  setVertexWidth: (layerId: string, elementId: string, vertexIndex: number, width: number) => void;
 }
 
 // ============================================================================
@@ -149,6 +167,7 @@ export function useInteractionLayer(
     initialLayers = [],
     initialMode = 'view',
     initialTool = {},
+    initialViewState,
     maxHistorySize = 50,
     polygonCloseOnFinalize = true,
     onStateChange,
@@ -165,7 +184,9 @@ export function useInteractionLayer(
     ...DEFAULT_TOOL_CONFIG,
     ...initialTool,
   });
-  const [view, setViewState] = useState<ViewState>(DEFAULT_VIEW_STATE);
+  const [view, setViewState] = useState<ViewState>(
+    initialViewState ? { ...DEFAULT_VIEW_STATE, ...initialViewState } : DEFAULT_VIEW_STATE
+  );
   const [layers, setLayers] = useState<InteractionLayer[]>(initialLayers);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(
     initialLayers[0]?.id ?? null
@@ -186,6 +207,20 @@ export function useInteractionLayer(
   const preShapeLayersRef = useRef<InteractionLayer[] | null>(null);
   const currentPolygonRef = useRef<{ layerId: string; elementId: string } | null>(null);
   const activePolygonVertexDragRef = useRef<{ layerId: string; elementId: string; vertexIndex: number } | null>(null);
+
+  // Post-finalization curve editing state (view mode)
+  /** The finalized polygon currently being edited (vertex drag/insert/remove) */
+  const editingPolygonRef = useRef<{ layerId: string; elementId: string } | null>(null);
+  /** Layers snapshot before the current edit sequence (for undo) */
+  const preEditLayersRef = useRef<InteractionLayer[] | null>(null);
+  /** Cursor hint for the mask overlay to read */
+  const [viewCursorHint, setViewCursorHint] = useState<string | null>(null);
+  /** Hovered vertex info in view mode (for sidebar width control) */
+  const [hoveredVertex, setHoveredVertex] = useState<{
+    layerId: string;
+    elementId: string;
+    vertexIndex: number;
+  } | null>(null);
 
   // View ref (avoids stale closures in pointer/wheel handlers)
   const viewRef = useRef<ViewState>(view);
@@ -209,8 +244,9 @@ export function useInteractionLayer(
       activeLayerId,
       selectedElementIds,
       currentTime,
+      hoveredVertex: hoveredVertex ? { elementId: hoveredVertex.elementId, vertexIndex: hoveredVertex.vertexIndex } : null,
     }),
-    [mode, tool, view, layers, activeLayerId, selectedElementIds, currentTime]
+    [mode, tool, view, layers, activeLayerId, selectedElementIds, currentTime, hoveredVertex]
   );
 
   // ============================================================================
@@ -521,8 +557,84 @@ export function useInteractionLayer(
       const native = event.nativeEvent;
       const currentMode = modeRef.current;
 
-      // View mode OR middle-mouse in any mode → start pan
-      if (currentMode === 'view' || native.button === 1) {
+      // Middle-mouse in any mode → start pan
+      if (native.button === 1) {
+        isPanningRef.current = true;
+        panStartRef.current = { x: native.clientX, y: native.clientY };
+        panStartViewRef.current = { ...viewRef.current.pan };
+        return;
+      }
+
+      // View mode: edit finalized polygons or pan
+      if (currentMode === 'view') {
+        const isRightClick = native.button === 2;
+        if ((native.button === 0 || isRightClick) && event.withinBounds) {
+          // Search all layers for polygon elements near the click
+          for (const layer of layers) {
+            if (!layer.visible || layer.locked) continue;
+            for (const element of layer.elements) {
+              if (element.type !== 'polygon') continue;
+              const poly = element as PolygonElement;
+              if (poly.points.length < 2) continue;
+              const hit = hitTestCurve(event.normalized, poly.points, poly.closed);
+
+              // Right-click or ctrl+click on vertex → remove
+              if (hit.vertexIndex >= 0 && (isRightClick || native.ctrlKey || native.altKey)) {
+                const result = removeCurveVertex(poly.points, hit.vertexIndex, poly.closed, poly.pointWidths);
+                if (result) {
+                  pushHistory('Remove vertex', { layers });
+                  setLayers((prev) =>
+                    prev.map((l) => {
+                      if (l.id !== layer.id) return l;
+                      return {
+                        ...l,
+                        elements: l.elements.map((e) => {
+                          if (e.id !== element.id) return e;
+                          return { ...e, points: result.points, pointWidths: result.pointWidths } as PolygonElement;
+                        }),
+                      };
+                    }),
+                  );
+                }
+                return;
+              }
+
+              // Left-click on vertex → start drag
+              if (hit.vertexIndex >= 0 && !isRightClick) {
+                preEditLayersRef.current = preEditLayersRef.current ?? layers;
+                editingPolygonRef.current = { layerId: layer.id, elementId: element.id };
+                activePolygonVertexDragRef.current = { layerId: layer.id, elementId: element.id, vertexIndex: hit.vertexIndex };
+                return;
+              }
+
+              // Left-click on edge → insert vertex + start drag
+              if (hit.edgeIndex >= 0 && !isRightClick) {
+                const insertResult = insertCurveVertex(poly.points, event.normalized, poly.closed, poly.pointWidths);
+                if (insertResult) {
+                  preEditLayersRef.current = preEditLayersRef.current ?? layers;
+                  editingPolygonRef.current = { layerId: layer.id, elementId: element.id };
+                  setLayers((prev) =>
+                    prev.map((l) => {
+                      if (l.id !== layer.id) return l;
+                      return {
+                        ...l,
+                        elements: l.elements.map((e) => {
+                          if (e.id !== element.id) return e;
+                          return { ...e, points: insertResult.points, pointWidths: insertResult.pointWidths } as PolygonElement;
+                        }),
+                      };
+                    }),
+                  );
+                  const dragIdx = insertResult.insertedIndex ?? hit.edgeIndex + 1;
+                  activePolygonVertexDragRef.current = { layerId: layer.id, elementId: element.id, vertexIndex: dragIdx };
+                }
+                return;
+              }
+            }
+          }
+        }
+
+        // No polygon hit → pan
         isPanningRef.current = true;
         panStartRef.current = { x: native.clientX, y: native.clientY };
         panStartViewRef.current = { ...viewRef.current.pan };
@@ -630,7 +742,7 @@ export function useInteractionLayer(
         } as Omit<PointElement, 'id' | 'layerId'>);
       }
     },
-    [tool, layers, activeLayerId, addElement]
+    [tool, layers, activeLayerId, addElement, pushHistory]
   );
 
   const handlePointerMove = useCallback(
@@ -682,6 +794,34 @@ export function useInteractionLayer(
         return;
       }
 
+      // View mode hover: cursor hints + vertex tracking for polygon vertices/edges
+      if (modeRef.current === 'view' && !isPanningRef.current) {
+        let nextHint: string | null = null;
+        let nextHovered: typeof hoveredVertex = null;
+        for (const layer of layers) {
+          if (!layer.visible || layer.locked) continue;
+          for (const element of layer.elements) {
+            if (element.type !== 'polygon') continue;
+            const poly = element as PolygonElement;
+            if (poly.points.length < 2) continue;
+            const hit = hitTestCurve(event.normalized, poly.points, poly.closed);
+            if (hit.vertexIndex >= 0) {
+              nextHint = 'pointer';
+              nextHovered = { layerId: layer.id, elementId: element.id, vertexIndex: hit.vertexIndex };
+              break;
+            }
+            if (hit.edgeIndex >= 0) { nextHint = 'copy'; break; }
+          }
+          if (nextHint) break;
+        }
+        if (nextHint !== viewCursorHint) setViewCursorHint(nextHint);
+        // Only update hovered vertex state when it actually changed
+        const prevH = hoveredVertex;
+        if (nextHovered?.elementId !== prevH?.elementId || nextHovered?.vertexIndex !== prevH?.vertexIndex) {
+          setHoveredVertex(nextHovered);
+        }
+      }
+
       // Drawing handling
       if (!isDrawingRef.current || !currentStrokeRef.current) return;
       const currentMode = modeRef.current;
@@ -712,7 +852,7 @@ export function useInteractionLayer(
 
       lastPointRef.current = event.normalized;
     },
-    [tool.pressureSensitive, activeLayerId, setView]
+    [tool.pressureSensitive, activeLayerId, setView, layers, viewCursorHint]
   );
 
   const handlePointerUp = useCallback(
@@ -724,6 +864,12 @@ export function useInteractionLayer(
       }
 
       if (activePolygonVertexDragRef.current) {
+        // If this was a view-mode edit, push undo
+        if (editingPolygonRef.current && preEditLayersRef.current) {
+          pushHistory('Edit curve', { layers: preEditLayersRef.current });
+          preEditLayersRef.current = null;
+          editingPolygonRef.current = null;
+        }
         activePolygonVertexDragRef.current = null;
         return;
       }
@@ -795,34 +941,58 @@ export function useInteractionLayer(
       if (!event.withinBounds) return;
 
       // Per-point width adjustment: scroll on a vertex of an open polygon
-      if (modeRef.current === 'polygon' && currentPolygonRef.current && !polygonCloseRef.current) {
-        const { layerId, elementId } = currentPolygonRef.current;
-        const cursor = lastPointerRef.current ?? event.normalized;
-        const layer = layers.find((l) => l.id === layerId);
-        const poly = layer?.elements.find(
-          (e) => e.id === elementId && e.type === 'polygon',
-        ) as PolygonElement | undefined;
+      // Works during drawing (polygon mode) AND on finalized curves (view mode)
+      const widthTarget =
+        modeRef.current === 'polygon' && currentPolygonRef.current && !polygonCloseRef.current
+          ? currentPolygonRef.current
+          : modeRef.current === 'view'
+            ? null // scan all layers below
+            : undefined; // skip
 
-        if (poly?.pointWidths && poly.points.length > 0) {
-          const hit = findNearVertex(cursor, poly.points);
-          if (hit.index >= 0) {
-            const delta = event.deltaY < 0 ? 1.5 : -1.5;
-            const newWidths = adjustVertexWidth(poly.pointWidths, hit.index, delta);
-            if (newWidths) {
-              setLayers((prev) =>
-                prev.map((l) => {
-                  if (l.id !== layerId) return l;
-                  return {
-                    ...l,
-                    elements: l.elements.map((e) => {
-                      if (e.id !== elementId || e.type !== 'polygon') return e;
-                      return { ...e, pointWidths: newWidths };
-                    }),
-                  };
+      if (widthTarget !== undefined) {
+        const cursor = lastPointerRef.current ?? event.normalized;
+
+        // Helper to attempt width adjustment on a specific polygon
+        const tryAdjust = (layerId: string, elementId: string, poly: PolygonElement): boolean => {
+          if (!poly.pointWidths || poly.points.length === 0) return false;
+          // Use a tight threshold so scroll only affects the closest vertex
+          const hit = findNearVertex(cursor, poly.points, CURVE_HIT.VERTEX);
+          if (hit.index < 0) return false;
+          const delta = event.deltaY < 0 ? 1.5 : -1.5;
+          const newWidths = adjustVertexWidth(poly.pointWidths, hit.index, delta, 1, 75);
+          if (!newWidths) return false;
+          setLayers((prev) =>
+            prev.map((l) => {
+              if (l.id !== layerId) return l;
+              return {
+                ...l,
+                elements: l.elements.map((e) => {
+                  if (e.id !== elementId || e.type !== 'polygon') return e;
+                  return { ...e, pointWidths: newWidths };
                 }),
-              );
+              };
+            }),
+          );
+          return true;
+        };
+
+        if (widthTarget) {
+          // Drawing mode: target the in-progress polygon
+          const layer = layers.find((l) => l.id === widthTarget.layerId);
+          const poly = layer?.elements.find(
+            (e) => e.id === widthTarget.elementId && e.type === 'polygon',
+          ) as PolygonElement | undefined;
+          if (poly && tryAdjust(widthTarget.layerId, widthTarget.elementId, poly)) return;
+        } else {
+          // View mode: scan all layers for a polygon vertex near cursor
+          for (const layer of layers) {
+            if (!layer.visible || layer.locked) continue;
+            for (const element of layer.elements) {
+              if (element.type !== 'polygon') continue;
+              const poly = element as PolygonElement;
+              if (poly.closed) continue; // only open curves have variable width
+              if (tryAdjust(layer.id, element.id, poly)) return;
             }
-            return; // consumed — don't zoom
           }
         }
       }
@@ -1156,5 +1326,27 @@ export function useInteractionLayer(
     // Export
     exportLayerAsMask,
     exportAllLayers,
+
+    // View-mode edit cursor + vertex info
+    viewCursorHint,
+    hoveredVertex,
+    setVertexWidth: (layerId: string, elementId: string, vertexIndex: number, width: number) => {
+      setLayers((prev) =>
+        prev.map((l) => {
+          if (l.id !== layerId) return l;
+          return {
+            ...l,
+            elements: l.elements.map((e) => {
+              if (e.id !== elementId || e.type !== 'polygon') return e;
+              const poly = e as PolygonElement;
+              if (!poly.pointWidths || vertexIndex < 0 || vertexIndex >= poly.pointWidths.length) return e;
+              const newWidths = [...poly.pointWidths];
+              newWidths[vertexIndex] = Math.max(1, Math.min(75, width));
+              return { ...poly, pointWidths: newWidths };
+            }),
+          };
+        }),
+      );
+    },
   };
 }

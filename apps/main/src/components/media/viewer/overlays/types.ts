@@ -16,6 +16,10 @@ export interface MediaOverlayComponentProps {
   captureDisabled?: boolean;
   /** Media dimensions (for capture region display) */
   mediaDimensions?: { width: number; height: number };
+  /** Current viewer viewport state (zoom 1-based, pan in px) */
+  viewState?: { zoom: number; pan: { x: number; y: number }; fitMode: string };
+  /** Called when the overlay changes zoom/pan (so host can sync) */
+  onViewStateChange?: (viewState: { zoom: number; pan: { x: number; y: number } }) => void;
 }
 
 export type MediaOverlayTone = 'green' | 'purple' | 'blue' | 'amber';

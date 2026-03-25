@@ -45,12 +45,24 @@ export interface MaskOverlayStoreState {
   forceFullAlpha: boolean;
   setForceFullAlpha: (value: boolean) => void;
 
+  // ── Preview ────────────────────────────────────────────────────────
+  /** Transient mask preview URL shown on the viewer (e.g. during import hover). */
+  previewMaskUrl: string | null;
+  setPreviewMaskUrl: (url: string | null) => void;
+
   // ── Layer state ─────────────────────────────────────────────────────
   layers: MaskLayerInfo[];
   activeLayerId: string | null;
 
   /** True when there's a known version parent for the current mask (enables "Save" vs "Save as new"). */
   hasVersionParent: boolean;
+
+  // ── Hovered vertex (for per-point width control) ──────────────────
+  hoveredVertex: { layerId: string; elementId: string; vertexIndex: number } | null;
+  /** Current width of the hovered vertex (null when nothing hovered) */
+  hoveredVertexWidth: number | null;
+  /** Set width of a specific vertex */
+  setVertexWidth: (layerId: string, elementId: string, vertexIndex: number, width: number) => void;
 
   // ── Callbacks (registered by Main, called by panels) ────────────────
   setMode: (mode: InteractionMode) => void;
@@ -75,11 +87,12 @@ export interface MaskOverlayStoreState {
 
   // ── Internal sync method ────────────────────────────────────────────
   _syncState: (partial: Partial<Pick<MaskOverlayStoreState,
-    'mode' | 'brushSize' | 'brushOpacity' | 'canUndo' | 'canRedo' | 'hasContent' | 'isSaving' | 'zoom' | 'isZoomed' | 'layers' | 'activeLayerId' | 'hasVersionParent' | 'activePresetId'
+    'mode' | 'brushSize' | 'brushOpacity' | 'canUndo' | 'canRedo' | 'hasContent' | 'isSaving' | 'zoom' | 'isZoomed' | 'layers' | 'activeLayerId' | 'hasVersionParent' | 'activePresetId' | 'hoveredVertex' | 'hoveredVertexWidth'
   >>) => void;
   _registerCallbacks: (cbs: Partial<Pick<MaskOverlayStoreState,
     'setMode' | 'setBrushSize' | 'setBrushOpacity' | 'undo' | 'redo' | 'clearLayer' | 'exportMask' | 'saveAsNew' | 'resetView'
     | 'addLayer' | 'removeLayer' | 'setActiveLayer' | 'toggleLayerVisibility' | 'renameLayer' | 'importSavedMask'
+    | 'setVertexWidth'
   >>) => void;
 }
 
@@ -103,10 +116,17 @@ export const useMaskOverlayStore = create<MaskOverlayStoreState>((set) => ({
   forceFullAlpha: true,
   setForceFullAlpha: (value) => set({ forceFullAlpha: value }),
 
+  previewMaskUrl: null,
+  setPreviewMaskUrl: (url) => set({ previewMaskUrl: url }),
+
   hasVersionParent: false,
 
   layers: [],
   activeLayerId: null,
+
+  hoveredVertex: null,
+  hoveredVertexWidth: null,
+  setVertexWidth: noop,
 
   setMode: noop,
   setBrushSize: noop,

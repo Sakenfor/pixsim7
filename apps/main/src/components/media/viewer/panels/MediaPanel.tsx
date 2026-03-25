@@ -210,6 +210,19 @@ export function MediaPanel({ context }: MediaPanelProps) {
     setPan({ x: 0, y: 0 });
   }, [asset?.id]);
 
+  // Overlay viewport sync — pass current zoom/pan to overlays, handle changes back
+  const overlayViewState = useMemo(
+    () => ({ zoom: zoom / 100, pan, fitMode }),
+    [zoom, pan, fitMode],
+  );
+  const handleOverlayViewStateChange = useCallback(
+    (vs: { zoom: number; pan: { x: number; y: number } }) => {
+      setZoom(Math.round(vs.zoom * 100));
+      setPan(vs.pan);
+    },
+    [],
+  );
+
   // Button zoom — zoom around center, adjust pan proportionally
   const zoomIn = useCallback(() => {
     const cur = zoomRef.current;
@@ -448,6 +461,8 @@ export function MediaPanel({ context }: MediaPanelProps) {
                     onCaptureFrame={captureFrame}
                     captureDisabled={isCapturing}
                     mediaDimensions={mediaDimensions}
+                    viewState={overlayViewState}
+                    onViewStateChange={handleOverlayViewStateChange}
                   />
                 </div>
               )}
@@ -471,6 +486,8 @@ export function MediaPanel({ context }: MediaPanelProps) {
                     onCaptureFrame={captureFrame}
                     captureDisabled={isCapturing}
                     mediaDimensions={mediaDimensions}
+                    viewState={overlayViewState}
+                    onViewStateChange={handleOverlayViewStateChange}
                   />
                 </div>
               )}

@@ -72,6 +72,17 @@ export {
   getBoundingBox,
 } from './useCoordinateTransform';
 
+// Unified layer store
+export { createSurfaceLayerStore } from './surfaceLayerStore';
+export type {
+  SurfaceLayer,
+  LayerPurpose,
+  ExtendedElement,
+  ElementExtensions,
+  SurfaceLayerStoreState,
+  SurfaceLayerStoreHook,
+} from './surfaceLayerStore';
+
 // Types
 export type {
   // Geometry

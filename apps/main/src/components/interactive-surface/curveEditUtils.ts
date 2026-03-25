@@ -70,6 +70,8 @@ export function findNearVertex(
 export interface CurveVertexResult {
   points: Point[];
   pointWidths?: number[];
+  /** Index of the inserted vertex (only set by insertCurveVertex) */
+  insertedIndex?: number;
 }
 
 /**
@@ -100,14 +102,17 @@ export function insertCurveVertex(
   const newPoints = insertVertexOnEdge(points, insertPoint, edgeThreshold, closed);
   if (newPoints.length === points.length) return null; // nothing inserted
 
-  // Find which edge the new vertex was inserted on
+  // Find which index the new vertex landed at by reference comparison.
+  // insertVertexOnEdge spreads the original array, so existing points keep
+  // their identity — the one index whose reference doesn't match either
+  // neighbour in the original array is the freshly created vertex.
   const insertedIndex = newPoints.findIndex(
     (p, i) => i > 0 && i < newPoints.length - 1 &&
       p !== points[i] && p !== points[i - 1],
-  ) ?? -1;
+  );
 
   if (!pointWidths || pointWidths.length !== points.length) {
-    return { points: newPoints };
+    return { points: newPoints, insertedIndex };
   }
 
   // Interpolate width from the two neighbours
@@ -116,7 +121,7 @@ export function insertCurveVertex(
   const newWidth = (pointWidths[edgeStart] + pointWidths[edgeEnd]) / 2;
   const newWidths = [...pointWidths];
   newWidths.splice(insertedIndex, 0, newWidth);
-  return { points: newPoints, pointWidths: newWidths };
+  return { points: newPoints, pointWidths: newWidths, insertedIndex };
 }
 
 /**

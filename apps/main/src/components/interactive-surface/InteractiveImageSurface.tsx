@@ -18,7 +18,6 @@
  * ```
  */
 
-import { drawVariableWidthCurve, traceSmoothPath } from './curveRenderUtils';
 import {
   useRef,
   useState,
@@ -30,6 +29,7 @@ import {
   useImperativeHandle,
 } from 'react';
 
+import { drawVariableWidthCurve, traceSmoothPath } from './curveRenderUtils';
 import type {
   InteractiveImageSurfaceProps,
   SurfacePointerEvent,
@@ -433,23 +433,34 @@ export const InteractiveImageSurface = forwardRef<
 
           // Show editable vertex handles for open polygons
           if (!poly.closed) {
+            const hv = state.hoveredVertex;
+            const isHoveredPoly = hv?.elementId === element.id;
             for (let i = 0; i < poly.points.length; i++) {
               const p = poly.points[i];
               const x = toScreenX(p.x);
               const y = toScreenY(p.y);
+              const isHoveredVert = isHoveredPoly && hv!.vertexIndex === i;
               // Size handle proportional to point width if available
               const pw = poly.pointWidths?.[i];
               const handleRadius = pw != null
                 ? Math.max(3, (pw / 2) * viewState.zoom)
                 : Math.max(3, 5 * Math.min(2, viewState.zoom));
+              // Width indicator ring for hovered vertex
+              if (isHoveredVert && pw != null) {
+                ctx.beginPath();
+                ctx.arc(x, y, handleRadius + 3, 0, Math.PI * 2);
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+              }
               ctx.beginPath();
               ctx.arc(x, y, handleRadius, 0, Math.PI * 2);
-              ctx.fillStyle = i === 0 ? '#f59e0b' : '#ffffff';
-              ctx.globalAlpha = pw != null ? 0.35 : 1;
+              ctx.fillStyle = isHoveredVert ? '#22c55e' : i === 0 ? '#f59e0b' : '#ffffff';
+              ctx.globalAlpha = isHoveredVert ? 0.7 : pw != null ? 0.35 : 1;
               ctx.fill();
               ctx.globalAlpha = 1;
-              ctx.strokeStyle = '#111827';
-              ctx.lineWidth = 1;
+              ctx.strokeStyle = isHoveredVert ? '#ffffff' : '#111827';
+              ctx.lineWidth = isHoveredVert ? 2 : 1;
               ctx.stroke();
             }
           }
@@ -490,6 +501,7 @@ export const InteractiveImageSurface = forwardRef<
           ctx.globalCompositeOperation = 'source-over';
           break;
         }
+
       }
     },
     [transform, viewState.zoom]
@@ -543,6 +555,27 @@ export const InteractiveImageSurface = forwardRef<
     }
   }, [state, renderLayer, renderElement, renderElementDefault]);
 
+  // ============================================================================
+  // Imperative handle (before layout effects so ref is available to renderLayer)
+  // ============================================================================
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      getCanvas: () => canvasRef.current,
+      getMedia: () =>
+        media.type === 'video' ? videoRef.current : imageRef.current,
+      redraw: redrawCanvas,
+      exportCanvas: (type = 'image/png', quality = 1) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return null;
+        return canvas.toDataURL(type, quality);
+      },
+      getTransform: () => transform,
+    }),
+    [media.type, redrawCanvas, transform]
+  );
+
   // Redraw on state change (useLayoutEffect prevents one-frame flash where
   // the image has repositioned but canvas strokes still show at old positions)
   useLayoutEffect(() => {
@@ -566,27 +599,6 @@ export const InteractiveImageSurface = forwardRef<
 
     redrawCanvas();
   }, [containerDimensions, redrawCanvas]);
-
-  // ============================================================================
-  // Imperative handle
-  // ============================================================================
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      getCanvas: () => canvasRef.current,
-      getMedia: () =>
-        media.type === 'video' ? videoRef.current : imageRef.current,
-      redraw: redrawCanvas,
-      exportCanvas: (type = 'image/png', quality = 1) => {
-        const canvas = canvasRef.current;
-        if (!canvas) return null;
-        return canvas.toDataURL(type, quality);
-      },
-      getTransform: () => transform,
-    }),
-    [media.type, redrawCanvas, transform]
-  );
 
   // ============================================================================
   // Computed styles

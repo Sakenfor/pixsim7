@@ -29,6 +29,7 @@ export { useRegionStoreSelectors, type RegionStoreSelectors } from './useRegionS
 
 // Shared layer system
 export { LayerPanel, type LayerInfo, type LayerPanelProps } from './shared/LayerPanel';
+export { ViewerLayersPanel } from './shared/ViewerLayersPanel';
 export { DefaultLayerSidebar } from './shared/DefaultLayerSidebar';
 export { useOverlayLayerStore } from './shared/overlayLayerStore';
 export type { OverlayLayerCallbacks, OverlayLayerStoreState } from './shared/overlayLayerStore';

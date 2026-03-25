@@ -350,7 +350,6 @@ export function AssetViewerDockview({
       storageKey="dockview:asset-viewer:v5"
       excludeFromLayout={floatingViewerPanelIds}
       context={context}
-      defaultPanelScopes={['generation']}
       defaultLayout={viewerDefaultLayout}
       minPanelsForTabs={2}
       className={className}
